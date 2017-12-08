@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 typed_ast = { path = "../typed_ast", version = "*" }
+generics = { path = "../generics", version = "*" }
 ast = { path = "../ast", version = "*" }
 parser = { path = "../parser", version = "*" }
 lexer = { path = "../lexer", version = "*" }

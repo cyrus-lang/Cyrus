@@ -223,6 +223,8 @@ impl<'a> CodeGenBuilder<'a> {
     ) -> StructType<'a> {
         if let Some(_) = &resolved_struct.struct_sig.generic_params {
             let type_args = type_args.as_ref().expect("Generic struct used without type args!");
+            dbg!(type_args.clone());
+            todo!();
             let normalized_args = self.get_normalized_type_args(type_args);
 
             let key = MonomorphKey::new(resolved_struct.symbol_id, normalized_args);

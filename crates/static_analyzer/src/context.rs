@@ -480,6 +480,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
+        let mut mapping_ctx = GenericMappingCtx::new_root();
+
         self.control_stack.push(ControlContext::Switch);
 
         if typed_switch.cases.is_empty() {
@@ -535,7 +537,13 @@ impl<'a> AnalysisContext<'a> {
 
                 let resolved_enum = local_or_global_symbol.as_enum().unwrap();
                 let mut enum_sig = resolved_enum.enum_sig.clone();
-                self.substitute_enum_type_args(scope_id_opt, &mut enum_sig, generic_type_opt, typed_switch.loc.clone());
+                self.substitute_enum_type_args(
+                    &mut mapping_ctx,
+                    scope_id_opt,
+                    &mut enum_sig,
+                    generic_type_opt,
+                    typed_switch.loc.clone(),
+                );
 
                 return self.analyze_switch_on_enum(scope_id_opt, typed_switch, &mut enum_sig);
             }
