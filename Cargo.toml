@@ -11,7 +11,7 @@ members = [
     "crates/cli",
     "crates/static_analyzer",
     "crates/resolver",
-    "crates/partialmatch",
+    "crates/partialmatch", "crates/generics",
 ]
 default-members = ["crates/cli"]
 

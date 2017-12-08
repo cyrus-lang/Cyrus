@@ -1,0 +1,9 @@
+[package]
+name = "generics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+typed_ast = { path = "../typed_ast", version = "*" }
+ast = { path = "../ast", version = "*" }
+diagcentral = { path = "../diagcentral", version = "*" }
