@@ -1,0 +1,18 @@
+[package]
+name = "cyrus-lang"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+
+[workspace]
+members = ["ast", "builtins", "compiler", "evaluator", "lexer", "object", "parser", "token"]
+
+[[bin]]
+name = "cyrus"
+path = "./cli.rs"
+
+[dependencies]
+parser = { path = "./parser", version = "*" }
+evaluator = { path = "./evaluator", version = "*" }
+object = { path = "./object", version = "*" }
+llvm-ir = "0.11.1"

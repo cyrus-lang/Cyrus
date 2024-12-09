@@ -1,0 +1,9 @@
+[package]
+name = "parser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lexer = {path = "../lexer", version = "*"}
+ast = {path = "../ast", version = "*"}
+token = {path = "../token", version = "*"}
