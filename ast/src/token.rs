@@ -19,7 +19,7 @@ pub enum TokenKind {
     Minus,
     Slash,
     Asterisk,
-    Modulo,
+    Percent,
     Increment,
     Decrement,
 
@@ -71,7 +71,7 @@ impl fmt::Display for TokenKind {
             Self::Minus => write!(f, "-"),
             Self::Asterisk => write!(f, "*"),
             Self::Slash => write!(f, "/"),
-            Self::Modulo => write!(f, "%"),
+            Self::Percent => write!(f, "%"),
             Self::Assign => write!(f, "="),
             Self::LeftParen => write!(f, "("),
             Self::RightParen => write!(f, ")"),

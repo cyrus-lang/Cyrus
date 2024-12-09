@@ -88,7 +88,7 @@ mod tests {
                 TokenKind::Minus,
                 TokenKind::Asterisk,
                 TokenKind::Slash,
-                TokenKind::Modulo,
+                TokenKind::Percent,
                 TokenKind::Assign,
             ]),
             None,

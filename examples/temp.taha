@@ -1,7 +1,0 @@
-#userInput = input("Enter your name: ");
-
-print("Hello, " + userInput + "!");
-
-if (userInput == 2) {
-    print(1);
-}

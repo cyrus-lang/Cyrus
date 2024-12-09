@@ -146,8 +146,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_modulo() {
-        assert_parse("3 * 2");
+    fn test_parse_Percent() {
+        assert_parse("3 % 2");
     }
 
     #[test]

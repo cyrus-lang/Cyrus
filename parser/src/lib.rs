@@ -1,5 +1,5 @@
 use ast::{
-    expression::{
+    ast::{
         BinaryExpression, Boolean, Expression, FunctionCall, Identifier, Integer, Literal,
         StringType, UnaryExpression, UnaryOperator, UnaryOperatorType,
     },
@@ -671,7 +671,7 @@ impl<'a> Parser<'a> {
             | TokenKind::Minus
             | TokenKind::Asterisk
             | TokenKind::Slash
-            | TokenKind::Modulo
+            | TokenKind::Percent
             | TokenKind::Equal
             | TokenKind::NotEqual
             | TokenKind::LessEqual
