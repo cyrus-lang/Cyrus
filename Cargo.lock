@@ -13,13 +13,6 @@ name = "ast"
 version = "0.1.0"
 
 [[package]]
-name = "builtins"
-version = "0.1.0"
-dependencies = [
- "object",
-]
-
-[[package]]
 name = "cc"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -27,6 +20,10 @@ checksum = "27f657647bcff5394bf56c7317665bbf790a137a50eaaa5c6bfbb9e27a518f2d"
 dependencies = [
  "shlex",
 ]
+
+[[package]]
+name = "cli"
+version = "0.1.0"
 
 [[package]]
 name = "compiler"
@@ -39,7 +36,6 @@ dependencies = [
 name = "cyrus-lang"
 version = "0.1.0"
 dependencies = [
- "object",
  "parser",
 ]
 
@@ -74,13 +70,6 @@ dependencies = [
  "libc",
  "regex-lite",
  "semver",
-]
-
-[[package]]
-name = "object"
-version = "0.1.0"
-dependencies = [
- "ast",
 ]
 
 [[package]]

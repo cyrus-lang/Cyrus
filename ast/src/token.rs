@@ -1,18 +1,19 @@
 use std::fmt;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+use crate::ast::Literal;
+
+#[derive(Debug,  Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Illegal,
     EOF,
     Identifier { name: String },
-    Integer(i64),
-    String(String),
+    Literal(Literal),
 
     // Operators
     Plus,
@@ -41,6 +42,7 @@ pub enum TokenKind {
     Pipe,
     Ampersand,
     Semicolon,
+    Colon,
     LessThan,
     GreaterThan,
     LessEqual,
@@ -68,14 +70,14 @@ pub enum TokenKind {
     F32,
     F64,
     Array,
+    String,
+    Boolean,
 }
 
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Identifier { name } => write!(f, "{}", name),
-            Self::Integer(value) => write!(f, "{}", value),
-            Self::String(value) => write!(f, "{}", value),
             Self::Plus => write!(f, "+"),
             Self::Minus => write!(f, "-"),
             Self::Asterisk => write!(f, "*"),
@@ -101,6 +103,7 @@ impl fmt::Display for TokenKind {
             Self::And => write!(f, "&&"),
             Self::Or => write!(f, "||"),
             Self::Semicolon => write!(f, ";"),
+            Self::Colon => write!(f, ":"),
             // Keywords
             Self::Function => write!(f, "fn"),
             Self::Match => write!(f, "match"),
@@ -121,6 +124,7 @@ impl fmt::Display for TokenKind {
             Self::F32 => write!(f, "f32"),
             Self::F64 => write!(f, "f64"),
             Self::Array => write!(f, "array"),
+            Self::String => write!(f, "string"),
             // ETC
             Self::Illegal => write!(f, "ILLEGAL"),
             Self::EOF => write!(f, "EOF"),

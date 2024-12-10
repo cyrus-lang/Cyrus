@@ -1,6 +1,6 @@
 use core::fmt;
 
-use token::TokenKind;
+use ast::token::TokenKind;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Precedence {

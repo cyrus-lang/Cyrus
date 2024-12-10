@@ -5,12 +5,11 @@ edition = "2021"
 resolver = "2"
 
 [workspace]
-members = ["ast", "builtins", "compiler", "lexer", "object", "parser"]
+members = ["ast", "cli", "compiler", "lexer", "parser"]
 
 [[bin]]
 name = "cyrus"
-path = "./cli.rs"
+path = "./cli/cli.rs"
 
 [dependencies]
 parser = { path = "./parser", version = "*" }
-object = { path = "./object", version = "*" }

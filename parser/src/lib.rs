@@ -1,15 +1,7 @@
-use ast::{
-    ast::{
-        BinaryExpression, Boolean, Expression, FunctionCall, Identifier, Integer, Literal,
-        StringType, UnaryExpression, UnaryOperator, UnaryOperatorType,
-    },
-    program::Program,
-    statement::{BlockStatement, For, Function, If, Return, Statement, Variable},
-    Node,
-};
-use lexer::Lexer;
+use ast::ast::*;
+use ast::token::*;
+use lexer::*;
 use precedences::{determine_token_precedence, Precedence};
-use token::{Span, Token, TokenKind};
 
 mod parser_test;
 mod precedences;
@@ -123,25 +115,52 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_function_params(&mut self) -> Result<Vec<Identifier>, ParseError> {
+    fn parse_function_params(&mut self) -> Result<FunctionParams, ParseError> {
         self.expect_current(TokenKind::LeftParen)?;
 
-        let mut params: Vec<Identifier> = Vec::new();
+        let mut params: Vec<FunctionParam> = Vec::new();
 
         while self.current_token.kind != TokenKind::RightParen {
             match self.current_token.kind.clone() {
                 TokenKind::Identifier { name } => {
-                    params.push(Identifier {
-                        name,
-                        span: self.current_token.span.clone(),
+                    self.next_token(); // consume the identifier
+
+                    let start = self.current_token.span.start;
+
+                    // get the var type 
+
+                    let mut varty: Option<TokenKind> = None;
+                    if self.current_token_is(TokenKind::Colon) {
+                        self.next_token(); // consume the colon
+
+                        varty = Some(self.parse_type_token()?);
+
+                        self.next_token(); // consume the type
+                    }
+
+                    let mut default_value: Option<Expression> = None;
+
+                    if self.current_token_is(TokenKind::Assign) {
+                        self.next_token(); // consume the assign
+
+                        default_value = Some(self.parse_expression(Precedence::Lowest)?.0);
+
+                        self.next_token(); // consume the expression
+                    } 
+
+                    params.push(FunctionParam {
+                        identifier: Identifier { name: name, span: self.current_token.span.clone() },
+                        ty: varty,
+                        default_value: default_value,
+                        span: Span { start: start, end: self.current_token.span.end },
                     });
 
-                    match &self.peek_token.kind {
+                    // after reading
+                    match &self.current_token.kind {
                         TokenKind::Comma => {
                             self.next_token();
                         }
                         TokenKind::RightParen => {
-                            self.next_token();
                             break;
                         }
                         _ => {
@@ -151,8 +170,6 @@ impl<'a> Parser<'a> {
                             ))
                         }
                     }
-
-                    self.next_token(); // consume the current identifier
                 }
                 _ => {
                     return Err(format!(
@@ -186,7 +203,6 @@ impl<'a> Parser<'a> {
                 condition = Some(result.0);
             }
             Err(e) => {
-                dbg!(e.clone());
                 return Err(e);
             }
         }
@@ -235,12 +251,37 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
+        match self.current_token.kind {
+            TokenKind::Boolean
+            | TokenKind::String
+            | TokenKind::I32
+            | TokenKind::I64
+            | TokenKind::USize
+            | TokenKind::F32
+            | TokenKind::F64 => Ok(self.current_token.kind.clone()),
+            _ => Err(format!(
+                "invalid type entered for the variable: {}",
+                self.current_token.kind
+            )),
+        }
+    }
+
     fn parse_variable_declaration(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
         self.next_token(); // consume sharp token
 
         let identifier = self.current_token.clone(); // export the name of the identifier
-        self.next_token(); // consume thte identofier
+        self.next_token(); // consume thte identifier
+
+        let mut varty: Option<TokenKind> = None;
+        if self.current_token_is(TokenKind::Colon) {
+            self.next_token(); // consume the colon
+
+            varty = Some(self.parse_type_token()?);
+
+            self.next_token(); // consume the type token
+        }
 
         self.expect_current(TokenKind::Assign)?;
 
@@ -257,6 +298,7 @@ impl<'a> Parser<'a> {
                 start,
                 end: span.end,
             },
+            ty: varty,
         }))
     }
 
@@ -495,16 +537,7 @@ impl<'a> Parser<'a> {
                 end,
             },
         }))
-    }
-
-    fn parse_bool_expression(&mut self, token_kind: TokenKind) -> Result<Expression, ParseError> {
-        let bool_literal = Expression::Literal(Literal::Boolean(Boolean {
-            raw: token_kind == TokenKind::True,
-            span: self.current_token.span.clone(),
-        }));
-
-        Ok(bool_literal)
-    }
+    }    
 
     fn parse_expression(
         &mut self,
@@ -582,7 +615,6 @@ impl<'a> Parser<'a> {
                         }));
                     }
                     _ => {
-                        dbg!(self.current_token.kind.clone());
                         return Err(format!(
                             "expected identifier but got {}",
                             self.current_token.kind
@@ -617,15 +649,8 @@ impl<'a> Parser<'a> {
                     }));
                 }
             }
-            TokenKind::Integer(value) => {
-                Expression::Literal(Literal::Integer(Integer { raw: *value, span }))
-            }
-            TokenKind::String(value) => Expression::Literal(Literal::String(StringType {
-                raw: value.clone(),
-                span,
-            })),
-            token_kind @ TokenKind::True | token_kind @ TokenKind::False => {
-                return self.parse_bool_expression(token_kind.clone());
+            TokenKind::Literal(value) => {
+               Expression::Literal(value.clone())
             }
             TokenKind::Minus | TokenKind::Bang => {
                 let start = self.current_token.span.start;

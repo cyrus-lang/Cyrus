@@ -1,5 +1,5 @@
 use std::fmt::{self, Debug};
-use ast::token::*;
+use ast::{ast::{IntegerLiteral, Literal, StringType}, token::*};
 
 mod lexer_test;
 
@@ -127,7 +127,10 @@ impl Lexer {
             '"' => {
                 let (start, end, content) = self.read_string()?;
                 return Ok(Token {
-                    kind: TokenKind::String(content),
+                    kind: TokenKind::Literal(Literal::String(StringType{
+                        raw: content,
+                        span: Span { start, end }
+                    })),
                     span: Span { start, end },
                 });
             }
@@ -264,6 +267,7 @@ impl Lexer {
                 }
             }
             ';' => TokenKind::Semicolon,
+            ':' => TokenKind::Colon,
             _ => {
                 // Reading identifiers and integers is happening here
                 let start = self.pos;
@@ -354,12 +358,12 @@ impl Lexer {
 
         let end = self.pos;
 
-        let identifier: i64 = self.input[start..end]
+        let value: i32 = self.input[start..end]
             .to_string()
             .parse()
             .expect("expected identifier to be a number but it's something unknown");
 
-        TokenKind::Integer(identifier)
+        TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value)))
     }
 
     fn is_numeric(&self, ch: char) -> bool {
@@ -445,6 +449,7 @@ impl Lexer {
             "f32" => TokenKind::F32,
             "f64" => TokenKind::F64,
             "array" => TokenKind::Array,
+            "string" => TokenKind::String,
             _ => TokenKind::Identifier {
                 name: ident.to_string(),
             },

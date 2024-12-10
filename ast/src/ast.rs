@@ -21,7 +21,10 @@ impl Default for Program {
 
 impl Program {
     pub fn new() -> Self {
-        Self { body: vec![], span: Span::new_empty_span() }
+        Self {
+            body: vec![],
+            span: Span::new_empty_span(),
+        }
     }
 }
 
@@ -63,7 +66,7 @@ pub struct Identifier {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
     Integer(IntegerLiteral),
     Float(FloatLiteral),
@@ -71,7 +74,7 @@ pub enum Literal {
     String(StringType),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum IntegerLiteral {
     I32(i32),
     I64(i64),
@@ -80,7 +83,7 @@ pub enum IntegerLiteral {
     USize(usize),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum FloatLiteral {
     F32(f32),
     F64(f64),
@@ -101,13 +104,13 @@ pub struct BinaryExpression {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Boolean {
     pub raw: bool,
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct StringType {
     pub raw: String,
     pub span: Span,
@@ -128,8 +131,6 @@ pub struct Hash {
 pub fn format_expressions(exprs: &Vec<Expression>) -> String {
     exprs.iter().map(|expr| expr.to_string()).collect()
 }
-
-
 
 #[derive(Debug, Clone)]
 pub enum Statement {
@@ -154,7 +155,6 @@ pub struct Return {
     pub argument: Expression,
     pub span: Span,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Package {
@@ -204,13 +204,13 @@ pub struct Match {
 #[derive(Debug, Clone)]
 pub struct MatchPattern {
     pub raw: Expression,
-    pub span: Span
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
-    pub params: Vec<Identifier>,
+    pub params: FunctionParams,
     pub body: Box<BlockStatement>,
     pub span: Span,
 }
@@ -224,10 +224,20 @@ pub struct BlockStatement {
 #[derive(Debug, Clone)]
 pub struct Variable {
     pub identifier: Token,
-    pub ty: Literal,
+    pub ty: Option<TokenKind>,
     pub expr: Expression,
     pub span: Span,
 }
+
+#[derive(Debug, Clone)]
+pub struct FunctionParam {
+    pub identifier: Identifier,
+    pub ty: Option<TokenKind>,
+    pub default_value: Option<Expression>,
+    pub span: Span,
+}
+
+pub type FunctionParams = Vec<FunctionParam>;
 
 #[derive(Debug, Clone)]
 pub struct If {

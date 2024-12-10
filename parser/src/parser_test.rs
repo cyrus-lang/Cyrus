@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use std::ops::Index;
+
     use lexer::Lexer;
-    use token::TokenKind;
+    use ast::token::*;
 
     use crate::Parser;
 
@@ -44,7 +46,11 @@ mod tests {
 
     #[test]
     fn test_variable_declaration() {
-        assert_parse("#my_var = 1 + 2 * 3;");
+        assert_parse("#my_var0: i32 = 1 + 2 * 3;");
+        assert_parse("#my_var1: i64 = 0;");
+        assert_parse("#my_var2: f32 = 0;");
+        assert_parse("#my_var3: usize = 0;");
+        assert_parse("#my_var4 = 0;");
     }
 
     #[test]
@@ -92,11 +98,20 @@ mod tests {
 
     #[test]
     fn test_parse_function_params() {
-        let mut lexer = Lexer::new("(a, b, c)".to_string());
+        let mut lexer = Lexer::new("(a: i32, b: usize = 1, c: string)".to_string());
         let mut parser = Parser::new(&mut lexer);
-        let params = parser.parse_function_params();
+        let params = parser.parse_function_params().unwrap();
 
-        println!("{:#?}", params);
+        assert_eq!(params.index(0).identifier.name, "a");
+        assert_eq!(params.index(0).default_value.is_none(), true);
+        assert_eq!(params.index(0).ty.clone() == Some(TokenKind::I32), true);
+
+        assert_eq!(params.index(1).identifier.name, "b");
+        assert_eq!(params.index(1).ty.clone() == Some(TokenKind::USize), true);
+
+        assert_eq!(params.index(2).identifier.name, "c");
+        assert_eq!(params.index(2).default_value.is_none(), true);
+        assert_eq!(params.index(2).ty.clone() == Some(TokenKind::String), true);
     }
 
     #[test]
@@ -112,7 +127,7 @@ mod tests {
 
     #[test]
     fn test_function_statement() {
-        assert_parse("fn foo_bar(a, b) { ret a + b; } foo_bar(1, 2);");
+        assert_parse("fn foo_bar(a: i32, b: usize) { ret a + b; } foo_bar(1, 2);");
     }
 
     #[test]
@@ -146,18 +161,18 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_Percent() {
+    fn test_parse_percent() {
         assert_parse("3 % 2");
     }
 
     #[test]
     fn test_comparative_expression() {
         assert_parse("i < 10;");
-        // assert_parse("i > 10;");
-        // assert_parse("i <= 10");
-        // assert_parse("i >= 10");
-        // assert_parse("i == 10");
-        // assert_parse("i != 10");
+        assert_parse("i > 10;");
+        assert_parse("i <= 10");
+        assert_parse("i >= 10");
+        assert_parse("i == 10");
+        assert_parse("i != 10");
     }
 
     #[test]

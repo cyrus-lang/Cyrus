@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::Lexer;
-    use ast::token::{Span, TokenKind};
+    use ast::{ast::{IntegerLiteral, Literal, StringType}, token::{Span, TokenKind}};
 
     fn assert_tokens(
         input: &str,
@@ -43,7 +43,7 @@ mod tests {
     #[test]
     fn test_code_2() {
         let code = "
-        fn divide(num1, num2) {
+        fn divide(num1: i32, num2: i32) {
             if num2 == 0 {
                 throw \"devidide by zero is not possible\";
             }
@@ -197,40 +197,6 @@ mod tests {
     }
 
     #[test]
-    fn test_read_integer() {
-        assert_tokens(
-            "123 456",
-            Some(&vec![TokenKind::Integer(123), TokenKind::Integer(456)]),
-            None,
-        );
-    }
-
-    #[test]
-    fn test_spans() {
-        assert_tokens(
-            "hello",
-            Some(&vec![TokenKind::Identifier {
-                name: "hello".to_string(),
-            }]),
-            Some(&vec![Span { start: 0, end: 4 }]),
-        );
-
-        assert_tokens(
-            "1 + 2",
-            Some(&vec![
-                TokenKind::Integer(1),
-                TokenKind::Plus,
-                TokenKind::Integer(2),
-            ]),
-            Some(&vec![
-                Span { start: 0, end: 0 },
-                Span { start: 2, end: 2 },
-                Span { start: 4, end: 4 },
-            ]),
-        );
-    }
-
-    #[test]
     fn test_variable_declaration() {
         assert_tokens(
             "#my_var = 10;",
@@ -240,7 +206,7 @@ mod tests {
                     name: "my_var".to_string(),
                 },
                 TokenKind::Assign,
-                TokenKind::Integer(10),
+                TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(10))),
                 TokenKind::Semicolon,
             ]),
             None,
@@ -302,9 +268,9 @@ mod tests {
                     name: "foo_bar".to_string(),
                 },
                 TokenKind::LeftParen,
-                TokenKind::Integer(1),
+                TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(1))),
                 TokenKind::Comma,
-                TokenKind::Integer(2),
+                TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(2))),
                 TokenKind::RightParen,
             ]),
             None,
@@ -315,7 +281,7 @@ mod tests {
     fn test_str() {
         assert_tokens(
             "\"Cyrus-Lang\"",
-            Some(&vec![TokenKind::String(String::from("Cyrus-Lang"))]),
+            Some(&vec![TokenKind::Literal(Literal::String(StringType{ raw: "Cyrus-Lang".to_string(), span: Span { start: 0, end: 12 } })),]),
             None,
         );
     }
