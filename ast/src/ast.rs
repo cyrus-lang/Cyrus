@@ -65,10 +65,25 @@ pub struct Identifier {
 
 #[derive(Debug, Clone)]
 pub enum Literal {
-    Integer(Integer),
-    Float(Float),
+    Integer(IntegerLiteral),
+    Float(FloatLiteral),
     Boolean(Boolean),
     String(StringType),
+}
+
+#[derive(Debug, Clone)]
+pub enum IntegerLiteral {
+    I32(i32),
+    I64(i64),
+    U32(u32),
+    U64(u64),
+    USize(usize),
+}
+
+#[derive(Debug, Clone)]
+pub enum FloatLiteral {
+    F32(f32),
+    F64(f64),
 }
 
 #[derive(Debug, Clone)]
@@ -83,18 +98,6 @@ pub struct BinaryExpression {
     pub operator: Token,
     pub left: Box<Expression>,
     pub right: Box<Expression>,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct Integer {
-    pub raw: i64,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone)]
-pub struct Float {
-    pub raw: f64,
     pub span: Span,
 }
 
@@ -130,7 +133,7 @@ pub fn format_expressions(exprs: &Vec<Expression>) -> String {
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-    VariableDeclaration(Variable),
+    Variable(Variable),
     Expression(Expression),
     If(If),
     Return(Return),
@@ -139,7 +142,7 @@ pub enum Statement {
     Match(Match),
     Struct(Struct),
     Package(Package),
-    ImportPackage(ImportPackage),
+    Import(Import),
 }
 
 pub fn format_statements(stmts: &Vec<Statement>) -> String {
@@ -160,7 +163,7 @@ pub struct Package {
 }
 
 #[derive(Debug, Clone)]
-pub struct ImportPackage {
+pub struct Import {
     pub name: Identifier,
     pub span: Span,
 }
@@ -221,6 +224,7 @@ pub struct BlockStatement {
 #[derive(Debug, Clone)]
 pub struct Variable {
     pub identifier: Token,
+    pub ty: Literal,
     pub expr: Expression,
     pub span: Span,
 }

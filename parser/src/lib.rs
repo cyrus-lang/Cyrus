@@ -174,7 +174,7 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume for token
 
         let mut initializer: Option<Variable> = None;
-        if let Statement::VariableDeclaration(var) = self.parse_variable_declaration()? {
+        if let Statement::Variable(var) = self.parse_variable_declaration()? {
             initializer = Some(var);
         }
 
@@ -250,7 +250,7 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        Ok(Statement::VariableDeclaration(Variable {
+        Ok(Statement::Variable(Variable {
             identifier,
             expr,
             span: Span {

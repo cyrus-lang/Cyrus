@@ -13,9 +13,15 @@ impl fmt::Display for Identifier {
     }
 }
 
-impl fmt::Display for Integer {
+impl fmt::Display for IntegerLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.raw)
+        write!(f, "{}", self)
+    }
+}
+
+impl fmt::Display for FloatLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -37,7 +43,7 @@ impl fmt::Display for Literal {
             Literal::Integer(integer) => write!(f, "{}", integer),
             Literal::Boolean(boolean) => write!(f, "{}", boolean),
             Literal::String(string_type) => write!(f, "{}", string_type),
-            Literal::Float(float) => write!(f, "{}", float.raw),
+            Literal::Float(float) => write!(f, "{}", float),
         }
     }
 }

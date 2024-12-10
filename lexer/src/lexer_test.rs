@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::Lexer;
-    use token::{Span, TokenKind};
+    use ast::token::{Span, TokenKind};
 
     fn assert_tokens(
         input: &str,

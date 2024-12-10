@@ -1,5 +1,5 @@
 use std::fmt::{self, Debug};
-use token::{Span, Token, TokenKind};
+use ast::token::*;
 
 mod lexer_test;
 
@@ -428,6 +428,9 @@ impl Lexer {
         match ident.as_str() {
             "fn" => TokenKind::Function,
             "match" => TokenKind::Match,
+            "struct" => TokenKind::Struct,
+            "import" => TokenKind::Import,
+            "package" => TokenKind::Package,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "ret" => TokenKind::Return,
@@ -436,6 +439,12 @@ impl Lexer {
             "continue" => TokenKind::Continue,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
+            "i32" => TokenKind::I32,
+            "i64" => TokenKind::I64,
+            "usize" => TokenKind::USize,
+            "f32" => TokenKind::F32,
+            "f64" => TokenKind::F64,
+            "array" => TokenKind::Array,
             _ => TokenKind::Identifier {
                 name: ident.to_string(),
             },

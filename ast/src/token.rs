@@ -59,6 +59,15 @@ pub enum TokenKind {
     For,
     Break,
     Continue,
+    Struct,
+    Import,
+    Package,
+    I32,
+    I64,
+    USize,
+    F32,
+    F64,
+    Array,
 }
 
 impl fmt::Display for TokenKind {
@@ -92,8 +101,12 @@ impl fmt::Display for TokenKind {
             Self::And => write!(f, "&&"),
             Self::Or => write!(f, "||"),
             Self::Semicolon => write!(f, ";"),
+            // Keywords
             Self::Function => write!(f, "fn"),
             Self::Match => write!(f, "match"),
+            Self::Struct => write!(f, "struct"),
+            Self::Import => write!(f, "import"),
+            Self::Package => write!(f, "package"),
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
             Self::Return => write!(f, "ret"),
@@ -102,6 +115,13 @@ impl fmt::Display for TokenKind {
             Self::Continue => write!(f, "continue"),
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
+            Self::I32 => write!(f, "i32"),
+            Self::I64 => write!(f, "i64"),
+            Self::USize => write!(f, "usize"),
+            Self::F32 => write!(f, "f32"),
+            Self::F64 => write!(f, "f64"),
+            Self::Array => write!(f, "array"),
+            // ETC
             Self::Illegal => write!(f, "ILLEGAL"),
             Self::EOF => write!(f, "EOF"),
             _ => write!(f, "INVALID_TOKEN"),
