@@ -1,8 +1,8 @@
 package main;
 
 // Import some libraries
-imoprt "http:simple_http_server";
-imoprt "assert";
+imoprt http:simple_http_server;
+imoprt assert;
 
 // Variable definition
 #a: i32 = 10;
@@ -13,7 +13,7 @@ imoprt "assert";
 #f: f32 = 20.5;
 #g: f64 = 30.5;
 #h: string = "Cyrus";
-#i: char = "C";
+#i: char = 'C';
 #j: bool = true;
 
 if (a == 2) {
@@ -64,7 +64,7 @@ struct Point {
     y: 15
 };
 
-struct ThreeDPoint: Point { // extends Point struct
+struct ThreeDPoint > Point { // extends Point struct
     z: i32
 }
 
