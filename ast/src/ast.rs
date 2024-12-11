@@ -158,7 +158,7 @@ pub struct Return {
 
 #[derive(Debug, Clone)]
 pub struct Package {
-    pub name: Identifier,
+    pub sub_packages: Vec<Identifier>,
     pub span: Span,
 }
 

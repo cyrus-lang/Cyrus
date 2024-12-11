@@ -50,6 +50,7 @@ impl<'a> Parser<'a> {
             TokenKind::Return => self.parse_return_statement(),
             TokenKind::Hashtag => self.parse_variable_declaration(),
             TokenKind::For => self.parse_for_statement(),
+            TokenKind::Package => self.parse_package_declaration(),
             _ => self.parse_expression_statement(),
         }
     }
@@ -115,6 +116,55 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    fn parse_package_declaration(&mut self) -> Result<Statement, ParseError> {
+        let start = self.current_token.span.start;
+
+        if self.current_token_is(TokenKind::Package) {
+            self.next_token(); // consume package keyword
+
+            let mut sub_packages: Vec<Identifier> = vec![];
+
+            while !self.current_token_is(TokenKind::Semicolon) {
+                match self.current_token.kind.clone() {
+                    TokenKind::Identifier { name } => {
+                        dbg!(name.clone());
+                        sub_packages.push(Identifier {
+                            name,
+                            span: Span {
+                                start,
+                                end: self.current_token.span.end,
+                            },
+                        });
+
+                        self.next_token(); // consume identifier
+                    }
+                    TokenKind::Colon => {
+                        self.next_token();
+                        continue;
+                    }
+                    _ => {
+                        return Err(format!(
+                            "wanted an identifier as package name but got {}",
+                            self.current_token.kind
+                        ));
+                    }
+                }
+            }
+
+            let span = Span {
+                start,
+                end: self.current_token.span.end,
+            };
+
+            return Ok(Statement::Package(Package { sub_packages, span }));
+        } else {
+            Err(format!(
+                "invalid token passed to package_declaration parser: {}",
+                self.current_token.kind
+            ))
+        }
+    }
+
     fn parse_function_params(&mut self) -> Result<FunctionParams, ParseError> {
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -127,7 +177,7 @@ impl<'a> Parser<'a> {
 
                     let start = self.current_token.span.start;
 
-                    // get the var type 
+                    // get the var type
 
                     let mut varty: Option<TokenKind> = None;
                     if self.current_token_is(TokenKind::Colon) {
@@ -146,13 +196,19 @@ impl<'a> Parser<'a> {
                         default_value = Some(self.parse_expression(Precedence::Lowest)?.0);
 
                         self.next_token(); // consume the expression
-                    } 
+                    }
 
                     params.push(FunctionParam {
-                        identifier: Identifier { name: name, span: self.current_token.span.clone() },
+                        identifier: Identifier {
+                            name: name,
+                            span: self.current_token.span.clone(),
+                        },
                         ty: varty,
                         default_value: default_value,
-                        span: Span { start: start, end: self.current_token.span.end },
+                        span: Span {
+                            start: start,
+                            end: self.current_token.span.end,
+                        },
                     });
 
                     // after reading
@@ -537,7 +593,7 @@ impl<'a> Parser<'a> {
                 end,
             },
         }))
-    }    
+    }
 
     fn parse_expression(
         &mut self,
@@ -649,9 +705,7 @@ impl<'a> Parser<'a> {
                     }));
                 }
             }
-            TokenKind::Literal(value) => {
-               Expression::Literal(value.clone())
-            }
+            TokenKind::Literal(value) => Expression::Literal(value.clone()),
             TokenKind::Minus | TokenKind::Bang => {
                 let start = self.current_token.span.start;
                 let prefix_operator = self.current_token.clone();

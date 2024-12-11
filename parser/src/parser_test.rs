@@ -212,4 +212,10 @@ mod tests {
             ",
         );
     }
+
+    #[test]
+    fn test_package_declaration() {
+        assert_parse("package sample;");
+        assert_parse("package root:sub:sub2;");
+    }
 }
