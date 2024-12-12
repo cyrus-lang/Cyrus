@@ -1,4 +1,4 @@
-use std::{fmt, ops::Deref};
+use std::fmt;
 
 use crate::ast::Literal;
 
@@ -66,7 +66,8 @@ pub enum TokenKind {
     Package,
     I32,
     I64,
-    USize,
+    U32,
+    U64,
     F32,
     F64,
     Array,
@@ -120,7 +121,8 @@ impl fmt::Display for TokenKind {
             Self::False => write!(f, "false"),
             Self::I32 => write!(f, "i32"),
             Self::I64 => write!(f, "i64"),
-            Self::USize => write!(f, "usize"),
+            Self::U32 => write!(f, "u32"),
+            Self::U64 => write!(f, "u64"),
             Self::F32 => write!(f, "f32"),
             Self::F64 => write!(f, "f64"),
             Self::Array => write!(f, "array"),

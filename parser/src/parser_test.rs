@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn test_parse_function_params() {
-        let mut lexer = Lexer::new("(a: i32, b: usize = 1, c: string)".to_string());
+        let mut lexer = Lexer::new("(a: i32, b: u32 = 1, c: string)".to_string());
         let mut parser = Parser::new(&mut lexer);
         let params = parser.parse_function_params().unwrap();
 
@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(params.index(0).ty.clone() == Some(TokenKind::I32), true);
 
         assert_eq!(params.index(1).identifier.name, "b");
-        assert_eq!(params.index(1).ty.clone() == Some(TokenKind::USize), true);
+        assert_eq!(params.index(1).ty.clone() == Some(TokenKind::U32), true);
 
         assert_eq!(params.index(2).identifier.name, "c");
         assert_eq!(params.index(2).default_value.is_none(), true);

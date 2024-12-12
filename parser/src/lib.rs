@@ -313,7 +313,8 @@ impl<'a> Parser<'a> {
             | TokenKind::String
             | TokenKind::I32
             | TokenKind::I64
-            | TokenKind::USize
+            | TokenKind::U32
+            | TokenKind::U64
             | TokenKind::F32
             | TokenKind::F64 => Ok(self.current_token.kind.clone()),
             _ => Err(format!(

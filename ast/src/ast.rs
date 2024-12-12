@@ -70,8 +70,8 @@ pub struct Identifier {
 pub enum Literal {
     Integer(IntegerLiteral),
     Float(FloatLiteral),
-    Boolean(Boolean),
-    String(StringType),
+    Boolean(BooleanLiteral),
+    String(StringLiteral),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -80,7 +80,6 @@ pub enum IntegerLiteral {
     I64(i64),
     U32(u32),
     U64(u64),
-    USize(usize),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -105,13 +104,13 @@ pub struct BinaryExpression {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Boolean {
+pub struct BooleanLiteral {
     pub raw: bool,
     pub span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct StringType {
+pub struct StringLiteral {
     pub raw: String,
     pub span: Span,
 }

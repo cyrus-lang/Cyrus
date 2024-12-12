@@ -1,5 +1,5 @@
 use std::fmt::{self, Debug};
-use ast::{ast::{IntegerLiteral, Literal, StringType}, token::*};
+use ast::{ast::{IntegerLiteral, Literal, StringLiteral}, token::*};
 
 mod lexer_test;
 
@@ -127,7 +127,7 @@ impl Lexer {
             '"' => {
                 let (start, end, content) = self.read_string()?;
                 return Ok(Token {
-                    kind: TokenKind::Literal(Literal::String(StringType{
+                    kind: TokenKind::Literal(Literal::String(StringLiteral{
                         raw: content,
                         span: Span { start, end }
                     })),
@@ -445,7 +445,8 @@ impl Lexer {
             "false" => TokenKind::False,
             "i32" => TokenKind::I32,
             "i64" => TokenKind::I64,
-            "usize" => TokenKind::USize,
+            "u32" => TokenKind::U32,
+            "u64" => TokenKind::U64,
             "f32" => TokenKind::F32,
             "f64" => TokenKind::F64,
             "array" => TokenKind::Array,

@@ -1,7 +1,8 @@
 [package]
-name = "compiler"
+name = "cyrus_codegen_llvm"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 llvm-sys = "181.2.0"
+ast = { path = "../ast", version = "*" }

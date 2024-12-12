@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::Lexer;
-    use ast::{ast::{IntegerLiteral, Literal, StringType}, token::{Span, TokenKind}};
+    use ast::{ast::{IntegerLiteral, Literal, StringLiteral}, token::{Span, TokenKind}};
 
     fn assert_tokens(
         input: &str,
@@ -281,7 +281,7 @@ mod tests {
     fn test_str() {
         assert_tokens(
             "\"Cyrus-Lang\"",
-            Some(&vec![TokenKind::Literal(Literal::String(StringType{ raw: "Cyrus-Lang".to_string(), span: Span { start: 0, end: 12 } })),]),
+            Some(&vec![TokenKind::Literal(Literal::String(StringLiteral{ raw: "Cyrus-Lang".to_string(), span: Span { start: 0, end: 12 } })),]),
             None,
         );
     }

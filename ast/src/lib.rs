@@ -1,4 +1,4 @@
 pub mod ast;
 pub mod token;
-pub mod format;
+mod format;
 

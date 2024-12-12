@@ -25,13 +25,13 @@ impl fmt::Display for FloatLiteral {
     }
 }
 
-impl fmt::Display for Boolean {
+impl fmt::Display for BooleanLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.raw)
     }
 }
 
-impl fmt::Display for StringType {
+impl fmt::Display for StringLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.raw)
     }
