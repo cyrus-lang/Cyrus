@@ -1,5 +1,5 @@
 [package]
-name = "cyrus_codegen_llvm"
+name = "cyrusc"
 version = "0.1.0"
 edition = "2021"
 

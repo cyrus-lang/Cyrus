@@ -22,18 +22,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "cli"
-version = "0.1.0"
-
-[[package]]
 name = "cyrus-lang"
 version = "0.1.0"
 dependencies = [
+ "ast",
+ "cyrusc",
+ "llvm-sys",
  "parser",
 ]
 
 [[package]]
-name = "cyrus_codegen_llvm"
+name = "cyrusc"
 version = "0.1.0"
 dependencies = [
  "ast",

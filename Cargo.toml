@@ -5,11 +5,15 @@ edition = "2021"
 resolver = "2"
 
 [workspace]
-members = ["ast", "cli", "cyrus_codegen_llvm", "lexer", "parser"]
+members = ["ast", "cyrusc", "lexer", "parser"]
 
 [[bin]]
 name = "cyrus"
-path = "./cli/cli.rs"
+path = "./cli.rs"
 
 [dependencies]
+llvm-sys = "181.2.0"
 parser = { path = "./parser", version = "*" }
+cyrusc = { path = "./cyrusc", version = "*" }
+ast = { path = "./ast", version = "*" }
+
