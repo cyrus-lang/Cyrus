@@ -1,25 +1,29 @@
-use std::ffi::CStr;
-use std::os::raw::c_char;
 use ast::ast::*;
-use compile_statements::compile_block_statements;
+use compile_expressions::*;
 use llvm_sys::core::*;
 use llvm_sys::*;
-use compile_expressions::*;
+use std::ffi::CStr;
+use std::os::raw::c_char;
 
 pub mod compile_expressions;
 mod compile_expressions_test;
 mod compile_statements;
 
-pub unsafe fn compile(node: Node, module_name: &str) -> *mut LLVMModule {
+type CompileErr = &'static str;
+type CompileResult<T> = Result<T, CompileErr>;
+
+pub unsafe fn compile(node: Node, module_name: &str) -> CompileResult<*mut LLVMModule> {
     let context = LLVMContextCreate();
     let module_id: *const c_char = module_name.as_ptr() as *const c_char;
     let module = LLVMModuleCreateWithNameInContext(module_id, context);
     let builder = LLVMCreateBuilderInContext(context);
 
+    let mut compiler = Compiler { builder };
+
     match node {
-        Node::Program(program) => compile_block_statements(&program.body),
+        Node::Program(program) => compiler.compile_block_statements(&program.body),
         Node::Statement(statement) => todo!(),
-        Node::Expression(expression) => compile_expressions(expression),
+        Node::Expression(expression) => compiler.compile_expressions(expression)?,
     };
 
     // cleanup llvm objects
@@ -27,7 +31,7 @@ pub unsafe fn compile(node: Node, module_name: &str) -> *mut LLVMModule {
     // LLVMDisposeModule(module);
     // LLVMContextDispose(context);
 
-    return module;
+    Ok(module)
 }
 
 pub unsafe fn print_llvm_module(ty: *mut LLVMModule) {
