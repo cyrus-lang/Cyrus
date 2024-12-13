@@ -4,22 +4,17 @@ use cyrusc::{
 };
 
 use ast::ast::*;
+use llvm_sys::core::LLVMDumpValue;
 
 
 pub fn main() {
     // fs::read_to_string("");
     
-    // let code = "1";
-    // let node =  parser::Parser::parse(code.to_string()).unwrap();
-
-    let node = Node::Expression(
-        Expression::Literal(Literal::Integer(
-            IntegerLiteral::I32(10)
-        ))
-    );
+    let code = "200 * 10";
+    let node =  parser::Parser::parse(code.to_string()).unwrap();
 
     unsafe {
-        let module = compile(node, "sample\0");
-        print_llvm_module(module);
+        let result = compile(node, "sample\0").unwrap();
+        print_llvm_module(result.0);
     }
 }

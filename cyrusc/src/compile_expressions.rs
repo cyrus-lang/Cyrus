@@ -1,14 +1,11 @@
 use crate::CompileResult;
+use crate::Compiler;
 use ast::ast::*;
 use ast::token::*;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::CString;
 use std::os::raw::c_char;
-
-pub struct Compiler {
-    pub builder: LLVMBuilderRef,
-}
 
 impl Compiler {
     pub fn compile_expressions(&mut self, expression: Expression) -> CompileResult<LLVMValueRef> {

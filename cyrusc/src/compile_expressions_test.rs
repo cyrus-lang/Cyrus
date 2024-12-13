@@ -4,13 +4,13 @@ mod tests {
     use ast::token::Span;
     use ast::token::Token;
     use ast::token::TokenKind;
-    use llvm_sys::core::*;
     use llvm_sys::prelude::*;
 
     #[test]
     fn test_compile_literal_i32() {
         let mut ec = Compiler {
             builder: unsafe { LLVMCreateBuilder() },
+            context: unsafe { LLVMContextCreate() },
         };
 
         let value = ec
@@ -26,6 +26,7 @@ mod tests {
     fn test_compile_literal_i64() {
         let mut ec = Compiler {
             builder: unsafe { LLVMCreateBuilder() },
+            context: unsafe { LLVMContextCreate() },
         };
 
         let value = ec
@@ -42,6 +43,7 @@ mod tests {
     fn test_compile_literal_u32() {
         let mut ec = Compiler {
             builder: unsafe { LLVMCreateBuilder() },
+            context: unsafe { LLVMContextCreate() },
         };
 
         let value = ec
@@ -58,6 +60,7 @@ mod tests {
     fn test_compile_literal_u64() {
         let mut ec = Compiler {
             builder: unsafe { LLVMCreateBuilder() },
+            context: unsafe { LLVMContextCreate() },
         };
 
         let value = ec
@@ -74,6 +77,7 @@ mod tests {
     fn test_compile_literal_f32() {
         let mut ec = Compiler {
             builder: unsafe { LLVMCreateBuilder() },
+            context: unsafe { LLVMContextCreate() },
         };
 
         let value = ec
@@ -91,6 +95,7 @@ mod tests {
     fn test_compile_literal_f64() {
         let mut ec = Compiler {
             builder: unsafe { LLVMCreateBuilder() },
+            context: unsafe { LLVMContextCreate() },
         };
 
         let value = ec
@@ -109,6 +114,7 @@ mod tests {
     fn test_compile_literal_string() {
         let mut ec = Compiler {
             builder: unsafe { LLVMCreateBuilder() },
+            context: unsafe { LLVMContextCreate() },
         };
 
         let value_str = String::from("Cyrus!");
@@ -124,6 +130,7 @@ mod tests {
     fn test_compile_literal_boolean() {
         let mut ec = Compiler {
             builder: unsafe { LLVMCreateBuilder() },
+            context: unsafe { LLVMContextCreate() },
         };
 
         let boolean_literal_test_cases: Vec<(bool, i32)> = vec![(true, 1), (false, 0)];
@@ -147,6 +154,7 @@ mod tests {
     fn test_compile_prefix_expression() {
         let mut ec = Compiler {
             builder: unsafe { LLVMCreateBuilder() },
+            context: unsafe { LLVMContextCreate() },
         };
 
         let value = ec
