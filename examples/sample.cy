@@ -1,1 +1,1 @@
-#a: string = "Hello";
+#a: i32 = 10;

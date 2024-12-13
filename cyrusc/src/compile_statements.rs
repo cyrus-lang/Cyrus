@@ -1,18 +1,11 @@
 use std::{any::Any, ops::DerefMut, os::raw::c_char, result};
 
 use ast::{
-    ast::{Expression, Literal, Statement, Variable},
+    ast::{Expression, Function, Literal, Statement, Variable},
     token::TokenKind,
 };
-use llvm_sys::{
-    core::{
-        LLVMArrayType, LLVMArrayType2, LLVMBuildAlloca, LLVMBuildGEP2, LLVMBuildStore,
-        LLVMConstInt, LLVMConstString, LLVMDumpType, LLVMDumpValue, LLVMFloatType, LLVMGetUndef,
-        LLVMInt32Type, LLVMInt32TypeInContext, LLVMInt64Type, LLVMInt8Type, LLVMPrintTypeToString,
-        LLVMVoidTypeInContext,
-    },
-    prelude::{LLVMTypeRef, LLVMValueRef},
-};
+use llvm_sys::core::*;
+use llvm_sys::prelude::*;
 
 use crate::{CompileResult, Compiler};
 
@@ -23,13 +16,17 @@ impl Compiler {
             Statement::Expression(expression) => self.compile_expressions(expression),
             Statement::If(_) => todo!(),
             Statement::Return(_) => todo!(),
-            Statement::Function(function) => todo!(),
+            Statement::Function(function) => self.compile_function(function),
             Statement::For(_) => todo!(),
             Statement::Match(_) => todo!(),
             Statement::Struct(_) => todo!(),
             Statement::Package(package) => todo!(),
             Statement::Import(import) => todo!(),
         }
+    }
+
+    pub fn compile_function(&mut self, function: Function) -> CompileResult<LLVMValueRef> {
+        todo!()
     }
 
     pub fn compile_variable_statement(
