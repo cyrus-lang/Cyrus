@@ -1,19 +1,42 @@
-use cyrusc::{
-    compile,
-    print_llvm_module
-};
+use std::fs;
 
-use ast::ast::*;
-use llvm_sys::core::LLVMDumpValue;
+use clap::Parser;
+use cyrusc::*;
+use parser::Parser as CyrusParser;
 
+#[derive(clap::Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[command(subcommand)]
+    cmd: Commands,
+}
+
+#[derive(clap::Subcommand, Debug, Clone)]
+enum Commands {
+    Run { file_path: String },
+    Version,
+}
 
 pub fn main() {
-    // fs::read_to_string("");
-    
-    let code = "200 * 10";
-    let node =  parser::Parser::parse(code.to_string()).unwrap();
+    let version = env!("CARGO_PKG_VERSION");
+    let args = Args::parse();
 
+    match args.cmd {
+        Commands::Run { file_path } => {
+            let content = fs::read_to_string(file_path.clone()).expect(format!("cyrus: No such file or directory. -- {}", file_path).as_str());
+            compile_program(content);
+        }
+        Commands::Version => {
+            println!("Cyrus {}", version)
+        }
+    }
+}
+
+pub fn compile_program(code: String) {
+    let node = CyrusParser::parse(code).unwrap();
+    
     unsafe {
+        // TODO - Add module name handling
         let result = compile(node, "sample\0").unwrap();
         print_llvm_module(result.0);
     }
