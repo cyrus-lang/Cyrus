@@ -4,16 +4,24 @@ mod tests {
     use ast::token::Span;
     use ast::token::Token;
     use ast::token::TokenKind;
-    use llvm_sys::prelude::*;
+
+    macro_rules! build_compiler {
+        () => {{
+            let compiler = Compiler {
+                builder: unsafe { LLVMCreateBuilder() },
+                context: unsafe { LLVMContextCreate() },
+                module: unsafe { LLVMModuleCreateWithName("my_module".as_ptr() as *const i8) },
+            };
+
+            compiler
+        }};
+    }
 
     #[test]
     fn test_compile_literal_i32() {
-        let mut ec = Compiler {
-            builder: unsafe { LLVMCreateBuilder() },
-            context: unsafe { LLVMContextCreate() },
-        };
+        let mut compiler= build_compiler!();
 
-        let value = ec
+        let value = compiler
             .compile_literal(Literal::Integer(IntegerLiteral::I32(10)))
             .unwrap();
         unsafe {
@@ -24,12 +32,9 @@ mod tests {
 
     #[test]
     fn test_compile_literal_i64() {
-        let mut ec = Compiler {
-            builder: unsafe { LLVMCreateBuilder() },
-            context: unsafe { LLVMContextCreate() },
-        };
+        let mut compiler= build_compiler!();
 
-        let value = ec
+        let value = compiler
             .compile_literal(Literal::Integer(IntegerLiteral::I64(10)))
             .unwrap();
 
@@ -41,12 +46,9 @@ mod tests {
 
     #[test]
     fn test_compile_literal_u32() {
-        let mut ec = Compiler {
-            builder: unsafe { LLVMCreateBuilder() },
-            context: unsafe { LLVMContextCreate() },
-        };
+        let mut compiler= build_compiler!();
 
-        let value = ec
+        let value = compiler
             .compile_literal(Literal::Integer(IntegerLiteral::U32(5)))
             .unwrap();
 
@@ -58,12 +60,9 @@ mod tests {
 
     #[test]
     fn test_compile_literal_u64() {
-        let mut ec = Compiler {
-            builder: unsafe { LLVMCreateBuilder() },
-            context: unsafe { LLVMContextCreate() },
-        };
+        let mut compiler= build_compiler!();
 
-        let value = ec
+        let value = compiler
             .compile_literal(Literal::Integer(IntegerLiteral::U64(5)))
             .unwrap();
 
@@ -75,12 +74,8 @@ mod tests {
 
     #[test]
     fn test_compile_literal_f32() {
-        let mut ec = Compiler {
-            builder: unsafe { LLVMCreateBuilder() },
-            context: unsafe { LLVMContextCreate() },
-        };
-
-        let value = ec
+        let mut compiler= build_compiler!();
+        let value = compiler
             .compile_literal(Literal::Float(FloatLiteral::F32(5.5)))
             .unwrap();
 
@@ -93,12 +88,9 @@ mod tests {
 
     #[test]
     fn test_compile_literal_f64() {
-        let mut ec = Compiler {
-            builder: unsafe { LLVMCreateBuilder() },
-            context: unsafe { LLVMContextCreate() },
-        };
+        let mut compiler= build_compiler!();
 
-        let value = ec
+        let value = compiler
             .compile_literal(Literal::Float(FloatLiteral::F64(5.5)))
             .unwrap();
 
@@ -112,14 +104,10 @@ mod tests {
 
     #[test]
     fn test_compile_literal_string() {
-        let mut ec = Compiler {
-            builder: unsafe { LLVMCreateBuilder() },
-            context: unsafe { LLVMContextCreate() },
-        };
-
+        let mut compiler= build_compiler!();
         let value_str = String::from("Cyrus!");
 
-        ec.compile_literal(Literal::String(StringLiteral {
+        compiler.compile_literal(Literal::String(StringLiteral {
             raw: value_str.clone(),
             span: Span::new_empty_span(),
         }))
@@ -128,15 +116,12 @@ mod tests {
 
     #[test]
     fn test_compile_literal_boolean() {
-        let mut ec = Compiler {
-            builder: unsafe { LLVMCreateBuilder() },
-            context: unsafe { LLVMContextCreate() },
-        };
+        let mut compiler= build_compiler!();
 
         let boolean_literal_test_cases: Vec<(bool, i32)> = vec![(true, 1), (false, 0)];
 
         for tc in boolean_literal_test_cases {
-            let value = ec
+            let value = compiler
                 .compile_literal(Literal::Boolean(BooleanLiteral {
                     raw: tc.0,
                     span: Span::new_empty_span(),
@@ -152,15 +137,17 @@ mod tests {
 
     #[test]
     fn test_compile_prefix_expression() {
-        let mut ec = Compiler {
-            builder: unsafe { LLVMCreateBuilder() },
-            context: unsafe { LLVMContextCreate() },
-        };
+        let mut compiler= build_compiler!();
 
-        let value = ec
-            .compile_prefix_expression(UnaryExpression{
-                operator: Token { kind: TokenKind::Minus, span: Span::new_empty_span()  },
-                operand: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
+        let value = compiler
+            .compile_prefix_expression(UnaryExpression {
+                operator: Token {
+                    kind: TokenKind::Minus,
+                    span: Span::new_empty_span(),
+                },
+                operand: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(
+                    10,
+                )))),
                 span: Span::new_empty_span(),
             })
             .unwrap();
@@ -171,9 +158,7 @@ mod tests {
         }
     }
 
-    // TODO 
+    // TODO
     // Write unit test for prefix_expression->bang kind.
     // After reviewing the code.
-
-    
 }

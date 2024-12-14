@@ -1,13 +1,13 @@
-use std::{any::Any, ops::DerefMut, os::raw::c_char, result};
+use std::{any::Any, ffi::CString, ops::DerefMut, os::raw::c_char, result};
 
 use ast::{
-    ast::{Expression, Function, Literal, Statement, Variable},
+    ast::{Expression, Function, FunctionParam, Literal, Statement, Variable},
     token::TokenKind,
 };
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 
-use crate::{CompileResult, Compiler};
+use crate::{CompileErr, CompileResult, Compiler};
 
 impl Compiler {
     pub fn compile_statement(&mut self, statement: Statement) -> CompileResult<LLVMValueRef> {
@@ -26,7 +26,49 @@ impl Compiler {
     }
 
     pub fn compile_function(&mut self, function: Function) -> CompileResult<LLVMValueRef> {
-        todo!()
+        let name = function.name.as_ptr() as *const i8;
+
+        unsafe {
+            if let Some(return_type) = function.return_type {
+                let ret_type = self.determine_llvm_type(return_type.kind)?;
+                let mut param_types = vec![];
+    
+                for param in function.params {
+                    if let Some(token_kind) = param.ty {
+                        param_types.push(self.determine_llvm_type(token_kind)?);
+                    }
+                }
+    
+                let func_type =
+                    LLVMFunctionType(ret_type, param_types.as_mut_ptr(), param_types.len() as u32, 0);
+    
+                let func = LLVMAddFunction(self.module, name, func_type);
+                let entry = CString::new("entry").unwrap();
+                let basic_block = LLVMAppendBasicBlockInContext(self.context, func, entry.as_ptr());
+                LLVMPositionBuilderAtEnd(self.builder, basic_block);
+
+                Ok(func)
+            } else {
+                return Err("dynamic return type in function declaration not supported yet");
+            }
+        }
+    }
+
+    pub unsafe fn determine_llvm_type(
+        &mut self,
+        token_kind: TokenKind,
+    ) -> Result<LLVMTypeRef, CompileErr> {
+        let result = match token_kind {
+            TokenKind::I32 => LLVMInt32Type(),
+            TokenKind::I64 => LLVMInt64Type(),
+            TokenKind::U32 => LLVMInt32Type(),
+            TokenKind::U64 => LLVMInt32Type(),
+            TokenKind::F32 => LLVMFloatType(),
+            TokenKind::F64 => LLVMFloatType(),
+            _ => return Err("unsupported type passed to determine_llvm_type method"),
+        };
+
+        Ok(result)
     }
 
     pub fn compile_variable_statement(
@@ -131,6 +173,7 @@ impl Compiler {
 
                     let alloc =
                         LLVMBuildAlloca(self.builder, var_type, name.as_ptr() as *const c_char);
+
                     LLVMBuildStore(self.builder, alloc, var_value);
                 }
 

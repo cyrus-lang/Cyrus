@@ -435,6 +435,21 @@ impl<'a> Parser<'a> {
 
         let params = self.parse_function_params()?;
 
+        let mut return_type: Option<Token> = None;
+
+        // parse return type
+        if self.current_token_is(TokenKind::Colon) {
+            self.next_token(); // consume colon
+            
+            return_type = Some(self.current_token.clone());
+        
+            if self.current_token_is(TokenKind::LeftBrace) {
+                return Err("expected to get a return type but got left brace".to_string());
+            }
+
+            self.next_token();
+        }
+
         // we used current_token_is because we don't want to consume it,
         // we pass this statement that is inside a brace to parse_block_statement.
         if self.current_token_is(TokenKind::LeftBrace) {
@@ -454,6 +469,7 @@ impl<'a> Parser<'a> {
                 name: function_name,
                 params,
                 body,
+                return_type,
                 span: Span { start, end },
             }));
         }

@@ -4,6 +4,7 @@ use llvm_sys::*;
 use prelude::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::sync::{LazyLock, Mutex};
 
 pub mod compile_expressions;
 mod compile_expressions_test;
@@ -12,9 +13,12 @@ mod compile_statements;
 type CompileErr = &'static str;
 type CompileResult<T> = Result<T, CompileErr>;
 
+static NAMED_VALUES: LazyLock<Mutex<Vec<(&'static str, i32)>>> = LazyLock::new(|| Mutex::new(vec![]));
+
 pub struct Compiler {
     pub builder: LLVMBuilderRef,
-    pub context: LLVMContextRef
+    pub context: LLVMContextRef,
+    pub module: LLVMModuleRef
 }
 
 pub unsafe fn compile(node: Node, module_name: &str) -> CompileResult<(LLVMModuleRef, LLVMValueRef)> {
@@ -30,7 +34,7 @@ pub unsafe fn compile(node: Node, module_name: &str) -> CompileResult<(LLVMModul
     let basic_block = LLVMAppendBasicBlockInContext(context, function, CString::new("entry").unwrap().as_ptr());
     LLVMPositionBuilderAtEnd(builder, basic_block);
 
-    let mut compiler = Compiler { builder, context };
+    let mut compiler = Compiler { builder, context, module };
 
     let result: LLVMValueRef = match node {
         Node::Program(program) => compiler.compile_block_statements(program.body)?,

@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn test_function_statement() {
-        assert_parse("fn foo_bar(a: i32, b: usize) { ret a + b; } foo_bar(1, 2);");
+        assert_parse("fn foo_bar(a: i32, b: i32): i32 { ret a + b; }");
     }
 
     #[test]

@@ -211,6 +211,7 @@ pub struct Function {
     pub name: String,
     pub params: FunctionParams,
     pub body: Box<BlockStatement>,
+    pub return_type: Option<Token>,
     pub span: Span,
 }
 
