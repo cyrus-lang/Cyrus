@@ -113,7 +113,7 @@ impl fmt::Display for TokenKind {
             Self::Package => write!(f, "package"),
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
-            Self::Return => write!(f, "ret"),
+            Self::Return => write!(f, "return"),
             Self::For => write!(f, "for"),
             Self::Break => write!(f, "break"),
             Self::Continue => write!(f, "continue"),

@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_return_statement() {
-        assert_parse("ret 1 + 2");
+        assert_parse("return 1 + 2");
     }
 
     #[test]

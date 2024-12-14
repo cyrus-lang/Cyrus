@@ -437,7 +437,7 @@ impl Lexer {
             "package" => TokenKind::Package,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
-            "ret" => TokenKind::Return,
+            "return" => TokenKind::Return,
             "for" => TokenKind::For,
             "break" => TokenKind::Break,
             "continue" => TokenKind::Continue,

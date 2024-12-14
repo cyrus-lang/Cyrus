@@ -1,7 +1,7 @@
-use std::{any::Any, ffi::CString, ops::DerefMut, os::raw::c_char, result};
+use std::{ffi::CString, os::raw::c_char};
 
 use ast::{
-    ast::{Expression, Function, FunctionParam, Literal, Statement, Variable},
+    ast::{Expression, Function, Literal, Return, Statement, Variable},
     token::TokenKind,
 };
 use llvm_sys::core::*;
@@ -15,7 +15,7 @@ impl Compiler {
             Statement::Variable(variable) => self.compile_variable_statement(variable),
             Statement::Expression(expression) => self.compile_expressions(expression),
             Statement::If(_) => todo!(),
-            Statement::Return(_) => todo!(),
+            Statement::Return(ret) => self.compile_return(ret),
             Statement::Function(function) => self.compile_function(function),
             Statement::For(_) => todo!(),
             Statement::Match(_) => todo!(),
@@ -25,6 +25,16 @@ impl Compiler {
         }
     }
 
+    pub fn compile_return(&mut self, ret: Return) -> CompileResult<LLVMValueRef> {
+        let result = self.compile_expressions(ret.argument)?;
+
+        unsafe {
+            LLVMBuildRet(self.builder, result);
+        }
+
+        Ok(result)
+    }
+
     pub fn compile_function(&mut self, function: Function) -> CompileResult<LLVMValueRef> {
         let name = function.name.as_ptr() as *const i8;
 
@@ -32,20 +42,27 @@ impl Compiler {
             if let Some(return_type) = function.return_type {
                 let ret_type = self.determine_llvm_type(return_type.kind)?;
                 let mut param_types = vec![];
-    
+
                 for param in function.params {
                     if let Some(token_kind) = param.ty {
                         param_types.push(self.determine_llvm_type(token_kind)?);
                     }
                 }
-    
-                let func_type =
-                    LLVMFunctionType(ret_type, param_types.as_mut_ptr(), param_types.len() as u32, 0);
-    
+
+                let func_type = LLVMFunctionType(
+                    ret_type,
+                    param_types.as_mut_ptr(),
+                    param_types.len() as u32,
+                    0,
+                );
+
                 let func = LLVMAddFunction(self.module, name, func_type);
-                let entry = CString::new("entry").unwrap();
-                let basic_block = LLVMAppendBasicBlockInContext(self.context, func, entry.as_ptr());
-                LLVMPositionBuilderAtEnd(self.builder, basic_block);
+                let entry_name = CString::new("entry").unwrap();
+                let entry_block =
+                    LLVMAppendBasicBlockInContext(self.context, func, entry_name.as_ptr());
+                LLVMPositionBuilderAtEnd(self.builder, entry_block);
+
+                self.compile_block_statements(function.body.body)?;
 
                 Ok(func)
             } else {
@@ -75,7 +92,7 @@ impl Compiler {
         &mut self,
         variable: Variable,
     ) -> CompileResult<LLVMValueRef> {
-        let mut var_type: LLVMTypeRef;
+        let var_type: LLVMTypeRef;
         let var_value = self.compile_expressions(variable.expr.clone())?;
 
         match variable.identifier.kind {
@@ -189,7 +206,7 @@ impl Compiler {
     ) -> CompileResult<LLVMValueRef> {
         unsafe {
             let void_type = LLVMVoidTypeInContext(self.context);
-            let mut last_result: LLVMValueRef = LLVMGetUndef(void_type);
+            let last_result: LLVMValueRef = LLVMGetUndef(void_type);
 
             for statement in statements {
                 self.compile_statement(statement.clone())?; // REVIEW - consider to remove clone

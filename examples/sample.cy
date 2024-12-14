@@ -1,3 +1,3 @@
 fn sample(): i32 {
-    ret 10;
+    return 10 / 2;
 }
