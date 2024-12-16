@@ -37,7 +37,11 @@ pub fn compile_program(code: String) {
     
     unsafe {
         // TODO - Add module name handling
-        let result = compile(node, "sample\0").unwrap();
-        print_llvm_module(result.0);
+        match compile(node, "sample\0") {
+            Ok(result) => print_llvm_module(result.0),
+            Err(err) => {
+                println!("cyrus: (error) {}", err);
+            },
+        }
     }
 }

@@ -2,10 +2,12 @@ use ast::ast::*;
 use llvm_sys::core::*;
 use llvm_sys::*;
 use prelude::*;
-use std::ffi::{CStr, CString};
+use std::collections::HashMap;
+use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::sync::{LazyLock, Mutex};
 
+mod allloc;
 pub mod compile_expressions;
 mod compile_expressions_test;
 mod compile_statements;
@@ -13,28 +15,34 @@ mod compile_statements;
 type CompileErr = &'static str;
 type CompileResult<T> = Result<T, CompileErr>;
 
-static NAMED_VALUES: LazyLock<Mutex<Vec<(&'static str, i32)>>> = LazyLock::new(|| Mutex::new(vec![]));
+pub struct AllocTable {
+    pub alloc: LLVMValueRef,
+    pub ty: LLVMTypeRef,
+}
 
 pub struct Compiler {
     pub builder: LLVMBuilderRef,
     pub context: LLVMContextRef,
-    pub module: LLVMModuleRef
+    pub module: LLVMModuleRef,
+    pub alloc_table: Mutex<HashMap<String, AllocTable>>
 }
 
-pub unsafe fn compile(node: Node, module_name: &str) -> CompileResult<(LLVMModuleRef, LLVMValueRef)> {
+pub unsafe fn compile(
+    node: Node,
+    module_name: &str,
+) -> CompileResult<(LLVMModuleRef, LLVMValueRef)> {
     let context = LLVMContextCreate();
     let module_id: *const c_char = module_name.as_ptr() as *const c_char;
     let module = LLVMModuleCreateWithNameInContext(module_id, context);
     let builder = LLVMCreateBuilderInContext(context);
+    let alloc_table= Mutex::new(HashMap::new());
 
-    // FIXME - Just for testing 
-    let int_type = LLVMInt32Type();
-    let function_type = LLVMFunctionType(int_type, std::ptr::null_mut(), 0, 0);
-    let function = LLVMAddFunction(module, CString::new("main").unwrap().as_ptr(), function_type);
-    let basic_block = LLVMAppendBasicBlockInContext(context, function, CString::new("entry").unwrap().as_ptr());
-    LLVMPositionBuilderAtEnd(builder, basic_block);
-
-    let mut compiler = Compiler { builder, context, module };
+    let mut compiler = Compiler {
+        builder,
+        context,
+        module,
+        alloc_table,
+    };
 
     let result: LLVMValueRef = match node {
         Node::Program(program) => compiler.compile_block_statements(program.body)?,

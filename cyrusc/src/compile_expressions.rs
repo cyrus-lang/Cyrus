@@ -1,7 +1,9 @@
+use crate::allloc::get_alloc_value;
 use crate::CompileResult;
 use crate::Compiler;
 use ast::ast::*;
 use ast::token::*;
+use core::alloc;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::CString;
@@ -10,45 +12,65 @@ use std::os::raw::c_char;
 impl Compiler {
     pub fn compile_expressions(&mut self, expression: Expression) -> CompileResult<LLVMValueRef> {
         match expression {
-            Expression::Identifier(identifier) => todo!(),
+            Expression::Identifier(identifier) => self.compile_identifer_expression(identifier),
             Expression::Literal(literal) => self.compile_literal(literal),
             Expression::Prefix(unary_expression) => {
                 self.compile_prefix_expression(unary_expression)
             }
-            Expression::Infix(binary_expression) => self.compile_infix_expression(binary_expression),
+            Expression::Infix(binary_expression) => {
+                self.compile_infix_expression(binary_expression)
+            }
             Expression::FunctionCall(function_call) => todo!(),
             Expression::UnaryOperator(unary_operator) => todo!(),
         }
     }
+    pub fn compile_identifer_expression(
+        &mut self,
+        identifier: Identifier,
+    ) -> CompileResult<LLVMValueRef> {
+        unsafe {
+            let alloc_table = self.alloc_table.lock().unwrap();
+            let variable = alloc_table.get(&identifier.name);
 
-    pub fn compile_infix_expression(&mut self, binary_expression: BinaryExpression) -> CompileResult<LLVMValueRef> {
+            if let Some(variable) = variable {
+                let value = get_alloc_value(self.builder, variable.alloc, variable.ty);
+                return Ok(value);
+            } else {
+                return Err("failed to get the variable from alloc_table by it's name");
+            }
+        }
+    }
+
+    pub fn compile_infix_expression(
+        &mut self,
+        binary_expression: BinaryExpression,
+    ) -> CompileResult<LLVMValueRef> {
         let lhs = self.compile_expressions(*binary_expression.left)?;
         let rhs = self.compile_expressions(*binary_expression.right)?;
-        
+
         let val: LLVMValueRef;
 
         unsafe {
-            match binary_expression.operator.kind{
-                TokenKind::Plus => { 
+            match binary_expression.operator.kind {
+                TokenKind::Plus => {
                     let name = CString::new("add").unwrap();
                     val = LLVMBuildAdd(self.builder, lhs, rhs, name.as_ptr());
-                },
-                TokenKind::Minus => { 
+                }
+                TokenKind::Minus => {
                     let name = CString::new("sub").unwrap();
                     val = LLVMBuildSub(self.builder, lhs, rhs, name.as_ptr());
-                 },
-                TokenKind::Asterisk => { 
+                }
+                TokenKind::Asterisk => {
                     let name: CString = CString::new("mul").unwrap();
                     val = LLVMBuildMul(self.builder, lhs, rhs, name.as_ptr());
-                },
-                TokenKind::Slash => { 
+                }
+                TokenKind::Slash => {
                     let name = CString::new("dev").unwrap();
                     val = LLVMBuildSDiv(self.builder, lhs, rhs, name.as_ptr());
-                },
-                
-                // REVIEW - more operations
+                }
 
-                _ => return Err("invalid operation for infix expression")
+                // REVIEW - more operations
+                _ => return Err("invalid operation for infix expression"),
             }
         }
 

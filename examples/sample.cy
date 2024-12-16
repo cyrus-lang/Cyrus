@@ -1,3 +1,5 @@
 fn sample(): i32 {
-    return 10 / 2;
+    #a: string = "Cyrus Lang";
+
+    return 0;
 }

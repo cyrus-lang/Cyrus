@@ -11,6 +11,7 @@ mod tests {
                 builder: unsafe { LLVMCreateBuilder() },
                 context: unsafe { LLVMContextCreate() },
                 module: unsafe { LLVMModuleCreateWithName("my_module".as_ptr() as *const i8) },
+                alloc_table: Mutex::new(HashMap::new())
             };
 
             compiler

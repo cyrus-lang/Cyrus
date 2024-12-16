@@ -1,4 +1,8 @@
-use std::{ffi::CString, os::raw::c_char};
+use std::{
+    ffi::{CStr, CString},
+    fs::soft_link,
+    os::raw::c_char,
+};
 
 use ast::{
     ast::{Expression, Function, Literal, Return, Statement, Variable},
@@ -92,6 +96,7 @@ impl Compiler {
         &mut self,
         variable: Variable,
     ) -> CompileResult<LLVMValueRef> {
+        let alignment: u32 = 4;
         let var_type: LLVMTypeRef;
         let var_value = self.compile_expressions(variable.expr.clone())?;
 
@@ -99,91 +104,48 @@ impl Compiler {
             TokenKind::Identifier { name } => {
                 unsafe {
                     match variable.ty {
-                        Some(ty) => match ty {
-                            TokenKind::I32 => {
-                                var_type = LLVMInt32Type();
-                            }
-                            TokenKind::I64 => {
-                                var_type = LLVMInt64Type();
-                            }
-                            TokenKind::U32 => {
-                                var_type = LLVMInt32Type();
-                            }
-                            TokenKind::U64 => {
-                                var_type = LLVMInt32Type();
-                            }
-                            TokenKind::F32 => {
-                                var_type = LLVMFloatType();
-                            }
-                            TokenKind::F64 => {
-                                var_type = LLVMFloatType();
-                            }
-                            TokenKind::String => {
-                                let i8_type = LLVMInt8Type();
-                                let len: u64;
-                                let value: String;
-
-                                if let Expression::Literal(literal) = variable.expr {
-                                    if let Literal::String(string_value) = literal {
-                                        value = string_value.raw.clone();
-
-                                        // +1 for null terminator
-                                        len = (string_value.raw.len() + 1).try_into().unwrap();
-                                    } else {
-                                        return Err("invalid literal set for the string variable");
-                                    }
-                                } else {
-                                    return Err("invalid expression set for the string variable");
+                        Some(ty) => {
+                            match ty {
+                                TokenKind::I32 => {
+                                    var_type = LLVMInt32TypeInContext(self.context);
                                 }
+                                TokenKind::I64 => {
+                                    var_type = LLVMInt64TypeInContext(self.context);
+                                }
+                                TokenKind::U32 => {
+                                    var_type = LLVMInt32TypeInContext(self.context);
+                                }
+                                TokenKind::U64 => {
+                                    var_type = LLVMInt32TypeInContext(self.context);
+                                }
+                                TokenKind::F32 => {
+                                    var_type = LLVMFloatTypeInContext(self.context);
+                                }
+                                TokenKind::F64 => {
+                                    var_type = LLVMFloatTypeInContext(self.context);
+                                }
+                                TokenKind::String => {
+                                    let mut var_value_len: usize = 0;
+                                    let var_value_str = LLVMGetAsString(var_value, &mut var_value_len);
 
-                                let array_type = LLVMArrayType2(i8_type, len);
-                                let alloc = LLVMBuildAlloca(
-                                    self.builder,
-                                    array_type,
-                                    name.as_ptr() as *const c_char,
-                                );
-
-                                for (i, b) in value.bytes().enumerate() {
-                                    let index = LLVMConstInt(
-                                        LLVMInt32TypeInContext(self.context),
-                                        i as u64,
+                                    // FIXME later
+                                    dbg!(CStr::from_ptr(var_value_str).to_str().unwrap()); 
+                                    
+                                    let string_value = LLVMConstStringInContext(
+                                        self.context,
+                                        var_value_str,
+                                        var_value_len as u32,
                                         0,
                                     );
-
-                                    let element_ptr = LLVMBuildGEP2(
-                                        self.builder,
-                                        array_type,
-                                        alloc,
-                                        [index].as_mut_ptr(),
-                                        1,
-                                        format!("{}_element_{}", name, i).as_ptr() as *const i8,
-                                    );
-
-                                    let byte_value = LLVMConstInt(i8_type, b as u64, 0);
-                                    LLVMBuildStore(self.builder, byte_value, element_ptr);
+    
+                                    let global_name = "hello".as_ptr() as *const i8;
+    
+                                    let global_var = LLVMAddGlobal(self.module, LLVMTypeOf(string_value), global_name);
+    
+                                   return Ok(string_value);
                                 }
-
-                                // Null-terminate the string
-                                let null_index = LLVMConstInt(
-                                    LLVMInt32TypeInContext(self.context),
-                                    len as u64 - 1,
-                                    0,
-                                );
-
-                                let null_ptr = LLVMBuildGEP2(
-                                    self.builder,
-                                    array_type,
-                                    alloc,
-                                    [null_index].as_mut_ptr(),
-                                    1,
-                                    "null_terminator".as_ptr() as *const i8,
-                                );
-                                let null_value = LLVMConstInt(i8_type, 0, 0);
-                                LLVMBuildStore(self.builder, null_value, null_ptr);
-
-                                return Ok(alloc);
+                                _ => panic!("this kind of allocation not supported yet"),
                             }
-                            _ => return Err("this kind of allocation not supported yet"),
                         },
                         None => return Err("dynamic allocation not supported yet"),
                     }
@@ -191,7 +153,17 @@ impl Compiler {
                     let alloc =
                         LLVMBuildAlloca(self.builder, var_type, name.as_ptr() as *const c_char);
 
-                    LLVMBuildStore(self.builder, alloc, var_value);
+                    let store = LLVMBuildStore(self.builder, alloc, var_value);
+
+                    LLVMSetAlignment(store, alignment);
+
+                    self.alloc_table.lock().unwrap().insert(
+                        name,
+                        crate::AllocTable {
+                            alloc,
+                            ty: var_type,
+                        },
+                    );
                 }
 
                 return Ok(var_value);
