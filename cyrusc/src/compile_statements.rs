@@ -96,16 +96,15 @@ impl Compiler {
                 Some(ty) => unsafe {
                     match ty {
                         TokenKind::String => {
-                            todo!();
-
-                            let mut value_len: usize = 0;
-                            let value = LLVMGetAsString(expr, &mut value_len);
-
-                            let ty =
-                                LLVMConstStringInContext(self.context, value, value_len as u32, 0);
                             let name = variable.name.as_ptr() as *const i8;
 
-                            return Some(ty);
+                            let char_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
+
+                            let alloc = LLVMBuildAlloca(self.builder, char_ptr_type, name);
+
+                            LLVMBuildStore(self.builder, expr, alloc);
+
+                            return None;
                         }
                         TokenKind::I32
                         | TokenKind::I64
