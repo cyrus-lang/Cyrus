@@ -8,8 +8,6 @@ Key Features:
 
  * Statically-typed: Enforces type safety at compile time, reducing runtime errors and improving code reliability.
 
- * Garbage Collector: One of the key strengths of Cyrus is its powerful garbage collector. This automatic memory management system efficiently reclaims unused memory, eliminating the risk of memory leaks and simplifying development.
-
  * LLVM backend: Enables efficient code generation and optimization across various platforms and architectures.
 
  * C-inspired syntax: Offers a familiar and concise syntax for developers accustomed to C-like languages.
