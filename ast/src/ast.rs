@@ -223,7 +223,7 @@ pub struct BlockStatement {
 
 #[derive(Debug, Clone)]
 pub struct Variable {
-    pub identifier: Token,
+    pub name: String,
     pub ty: Option<TokenKind>,
     pub expr: Expression,
     pub span: Span,

@@ -5,15 +5,15 @@ use prelude::*;
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::os::raw::c_char;
-use std::sync::{LazyLock, Mutex};
+use std::sync::Mutex;
 
 mod allloc;
 pub mod compile_expressions;
 mod compile_expressions_test;
 mod compile_statements;
+mod compiler_errors;
 
 type CompileErr = &'static str;
-type CompileResult<T> = Result<T, CompileErr>;
 
 pub struct AllocTable {
     pub alloc: LLVMValueRef,
@@ -24,18 +24,15 @@ pub struct Compiler {
     pub builder: LLVMBuilderRef,
     pub context: LLVMContextRef,
     pub module: LLVMModuleRef,
-    pub alloc_table: Mutex<HashMap<String, AllocTable>>
+    pub alloc_table: Mutex<HashMap<String, AllocTable>>,
 }
 
-pub unsafe fn compile(
-    node: Node,
-    module_name: &str,
-) -> CompileResult<(LLVMModuleRef, LLVMValueRef)> {
+pub unsafe fn compile(node: Node, module_name: &str) -> (LLVMModuleRef, Option<LLVMValueRef>) {
     let context = LLVMContextCreate();
     let module_id: *const c_char = module_name.as_ptr() as *const c_char;
     let module = LLVMModuleCreateWithNameInContext(module_id, context);
     let builder = LLVMCreateBuilderInContext(context);
-    let alloc_table= Mutex::new(HashMap::new());
+    let alloc_table = Mutex::new(HashMap::new());
 
     let mut compiler = Compiler {
         builder,
@@ -44,10 +41,10 @@ pub unsafe fn compile(
         alloc_table,
     };
 
-    let result: LLVMValueRef = match node {
-        Node::Program(program) => compiler.compile_block_statements(program.body)?,
+    let result: Option<LLVMValueRef> = match node {
+        Node::Program(program) => compiler.compile_block_statements(program.body),
         Node::Statement(statement) => todo!(),
-        Node::Expression(expression) => compiler.compile_expressions(expression)?,
+        Node::Expression(expression) => compiler.compile_expressions(expression),
     };
 
     // cleanup llvm objects
@@ -55,7 +52,7 @@ pub unsafe fn compile(
     // LLVMDisposeModule(module);
     // LLVMContextDispose(context);
 
-    Ok((module, result))
+    (module, result)
 }
 
 pub unsafe fn print_llvm_module(ty: *mut LLVMModule) {
@@ -64,3 +61,4 @@ pub unsafe fn print_llvm_module(ty: *mut LLVMModule) {
     let value = c_str.to_str().unwrap().to_string();
     println!("{}", value);
 }
+

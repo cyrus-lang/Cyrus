@@ -23,8 +23,8 @@ mod tests {
         let mut compiler= build_compiler!();
 
         let value = compiler
-            .compile_literal(Literal::Integer(IntegerLiteral::I32(10)))
-            .unwrap();
+            .compile_literal(Literal::Integer(IntegerLiteral::I32(10)));
+
         unsafe {
             let extracted_value: i32 = LLVMConstIntGetSExtValue(value).try_into().unwrap();
             assert_eq!(extracted_value, 10);
@@ -36,8 +36,7 @@ mod tests {
         let mut compiler= build_compiler!();
 
         let value = compiler
-            .compile_literal(Literal::Integer(IntegerLiteral::I64(10)))
-            .unwrap();
+            .compile_literal(Literal::Integer(IntegerLiteral::I64(10)));
 
         unsafe {
             let extracted_value: i64 = LLVMConstIntGetSExtValue(value).try_into().unwrap();
@@ -50,8 +49,7 @@ mod tests {
         let mut compiler= build_compiler!();
 
         let value = compiler
-            .compile_literal(Literal::Integer(IntegerLiteral::U32(5)))
-            .unwrap();
+            .compile_literal(Literal::Integer(IntegerLiteral::U32(5)));
 
         unsafe {
             let extracted_value: u32 = LLVMConstIntGetSExtValue(value).try_into().unwrap();
@@ -64,8 +62,7 @@ mod tests {
         let mut compiler= build_compiler!();
 
         let value = compiler
-            .compile_literal(Literal::Integer(IntegerLiteral::U64(5)))
-            .unwrap();
+            .compile_literal(Literal::Integer(IntegerLiteral::U64(5)));
 
         unsafe {
             let extracted_value: u64 = LLVMConstIntGetSExtValue(value).try_into().unwrap();
@@ -77,8 +74,7 @@ mod tests {
     fn test_compile_literal_f32() {
         let mut compiler= build_compiler!();
         let value = compiler
-            .compile_literal(Literal::Float(FloatLiteral::F32(5.5)))
-            .unwrap();
+            .compile_literal(Literal::Float(FloatLiteral::F32(5.5)));
 
         unsafe {
             let mut loses_info: LLVMBool = 0;
@@ -92,8 +88,7 @@ mod tests {
         let mut compiler= build_compiler!();
 
         let value = compiler
-            .compile_literal(Literal::Float(FloatLiteral::F64(5.5)))
-            .unwrap();
+            .compile_literal(Literal::Float(FloatLiteral::F64(5.5)));
 
         unsafe {
             let mut loses_info: LLVMBool = 0;
@@ -111,8 +106,7 @@ mod tests {
         compiler.compile_literal(Literal::String(StringLiteral {
             raw: value_str.clone(),
             span: Span::new_empty_span(),
-        }))
-        .unwrap();
+        }));
     }
 
     #[test]
@@ -126,8 +120,7 @@ mod tests {
                 .compile_literal(Literal::Boolean(BooleanLiteral {
                     raw: tc.0,
                     span: Span::new_empty_span(),
-                }))
-                .unwrap();
+                }));
 
             unsafe {
                 let extracted_value: u64 = LLVMConstIntGetZExtValue(value).try_into().unwrap();
@@ -150,8 +143,7 @@ mod tests {
                     10,
                 )))),
                 span: Span::new_empty_span(),
-            })
-            .unwrap();
+            });
 
         unsafe {
             let extracted_value: i32 = LLVMConstIntGetSExtValue(value).try_into().unwrap();

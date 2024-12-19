@@ -331,6 +331,11 @@ impl<'a> Parser<'a> {
         let identifier = self.current_token.clone(); // export the name of the identifier
         self.next_token(); // consume thte identifier
 
+        let name = match identifier.kind {
+            TokenKind::Identifier { name } => name,
+            _ => return Err("invalid token given as name of the variable".to_string())
+        };
+
         let mut varty: Option<TokenKind> = None;
         if self.current_token_is(TokenKind::Colon) {
             self.next_token(); // consume the colon
@@ -349,7 +354,7 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Statement::Variable(Variable {
-            identifier,
+            name,
             expr,
             span: Span {
                 start,

@@ -1,16 +1,16 @@
 use crate::allloc::get_alloc_value;
-use crate::CompileResult;
+use crate::compiler_error;
+use crate::undefined_expression_error;
 use crate::Compiler;
 use ast::ast::*;
 use ast::token::*;
-use core::alloc;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::CString;
 use std::os::raw::c_char;
 
 impl Compiler {
-    pub fn compile_expressions(&mut self, expression: Expression) -> CompileResult<LLVMValueRef> {
+    pub fn compile_expressions(&mut self, expression: Expression) -> Option<LLVMValueRef> {
         match expression {
             Expression::Identifier(identifier) => self.compile_identifer_expression(identifier),
             Expression::Literal(literal) => self.compile_literal(literal),
@@ -24,19 +24,16 @@ impl Compiler {
             Expression::UnaryOperator(unary_operator) => todo!(),
         }
     }
-    pub fn compile_identifer_expression(
-        &mut self,
-        identifier: Identifier,
-    ) -> CompileResult<LLVMValueRef> {
+    pub fn compile_identifer_expression(&mut self, identifier: Identifier) -> Option<LLVMValueRef> {
         unsafe {
             let alloc_table = self.alloc_table.lock().unwrap();
             let variable = alloc_table.get(&identifier.name);
 
             if let Some(variable) = variable {
                 let value = get_alloc_value(self.builder, variable.alloc, variable.ty);
-                return Ok(value);
+                return Some(value);
             } else {
-                return Err("failed to get the variable from alloc_table by it's name");
+                compiler_error!("failed to get the variable from alloc_table by it's name");
             }
         }
     }
@@ -44,43 +41,45 @@ impl Compiler {
     pub fn compile_infix_expression(
         &mut self,
         binary_expression: BinaryExpression,
-    ) -> CompileResult<LLVMValueRef> {
-        let lhs = self.compile_expressions(*binary_expression.left)?;
-        let rhs = self.compile_expressions(*binary_expression.right)?;
+    ) -> Option<LLVMValueRef> {
+        if let Some(lhs) = self.compile_expressions(*binary_expression.left) {
+            if let Some(rhs) = self.compile_expressions(*binary_expression.right) {
+                let val: LLVMValueRef;
 
-        let val: LLVMValueRef;
+                unsafe {
+                    match binary_expression.operator.kind {
+                        TokenKind::Plus => {
+                            let name = CString::new("add").unwrap();
+                            val = LLVMBuildAdd(self.builder, lhs, rhs, name.as_ptr());
+                        }
+                        TokenKind::Minus => {
+                            let name = CString::new("sub").unwrap();
+                            val = LLVMBuildSub(self.builder, lhs, rhs, name.as_ptr());
+                        }
+                        TokenKind::Asterisk => {
+                            let name: CString = CString::new("mul").unwrap();
+                            val = LLVMBuildMul(self.builder, lhs, rhs, name.as_ptr());
+                        }
+                        TokenKind::Slash => {
+                            let name = CString::new("dev").unwrap();
+                            val = LLVMBuildSDiv(self.builder, lhs, rhs, name.as_ptr());
+                        }
 
-        unsafe {
-            match binary_expression.operator.kind {
-                TokenKind::Plus => {
-                    let name = CString::new("add").unwrap();
-                    val = LLVMBuildAdd(self.builder, lhs, rhs, name.as_ptr());
-                }
-                TokenKind::Minus => {
-                    let name = CString::new("sub").unwrap();
-                    val = LLVMBuildSub(self.builder, lhs, rhs, name.as_ptr());
-                }
-                TokenKind::Asterisk => {
-                    let name: CString = CString::new("mul").unwrap();
-                    val = LLVMBuildMul(self.builder, lhs, rhs, name.as_ptr());
-                }
-                TokenKind::Slash => {
-                    let name = CString::new("dev").unwrap();
-                    val = LLVMBuildSDiv(self.builder, lhs, rhs, name.as_ptr());
+                        // REVIEW - more operations
+                        _ => compiler_error!("invalid operation for infix expression"),
+                    }
                 }
 
-                // REVIEW - more operations
-                _ => return Err("invalid operation for infix expression"),
+                return Some(val);
+            } else {
+                undefined_expression_error!();
             }
+        } else {
+            undefined_expression_error!();
         }
-
-        Ok(val)
     }
 
-    pub fn compile_prefix_expression(
-        &mut self,
-        unary_expression: UnaryExpression,
-    ) -> CompileResult<LLVMValueRef> {
+    pub fn compile_prefix_expression(&mut self, unary_expression: UnaryExpression) -> Option<LLVMValueRef> {
         unsafe {
             match unary_expression.operator.kind {
                 // REVIEW
@@ -88,21 +87,27 @@ impl Compiler {
                 // aptly or not. good luck to my future version =))
                 TokenKind::Bang => {
                     let name = CString::new("not").unwrap();
-                    let value = self.compile_expressions(*unary_expression.operand)?;
-                    Ok(LLVMBuildNot(self.builder, value, name.as_ptr()))
+                    if let Some(value) = self.compile_expressions(*unary_expression.operand) {
+                        return Some(LLVMBuildNot(self.builder, value, name.as_ptr()));
+                    } else {
+                        compiler_error!("bang prefix operator used for invalid expression");
+                    }
                 }
                 TokenKind::Minus => {
                     let name = CString::new("neg").unwrap();
-                    let value = self.compile_expressions(*unary_expression.operand)?;
 
-                    Ok(LLVMBuildNeg(self.builder, value, name.as_ptr()))
+                    if let Some(value) = self.compile_expressions(*unary_expression.operand) {
+                        return Some(LLVMBuildNeg(self.builder, value, name.as_ptr()));
+                    } else {
+                        compiler_error!("minus prefix operator used for invalid expression");
+                    }
                 }
-                _ => Err("unknown operator for unary expression"),
+                _ => compiler_error!("unknown operator for unary expression"),
             }
         }
     }
 
-    pub fn compile_literal(&mut self, literal: Literal) -> CompileResult<LLVMValueRef> {
+    pub fn compile_literal(&mut self, literal: Literal) -> Option<LLVMValueRef> {
         let ty: LLVMTypeRef;
         let val: LLVMValueRef;
 
@@ -157,6 +162,6 @@ impl Compiler {
             },
         }
 
-        Ok(val)
+        Some(val)
     }
 }

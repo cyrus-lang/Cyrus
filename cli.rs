@@ -23,7 +23,8 @@ pub fn main() {
 
     match args.cmd {
         Commands::Run { file_path } => {
-            let content = fs::read_to_string(file_path.clone()).expect(format!("cyrus: No such file or directory. -- {}", file_path).as_str());
+            let content = fs::read_to_string(file_path.clone())
+                .expect(format!("cyrus: No such file or directory. -- {}", file_path).as_str());
             compile_program(content);
         }
         Commands::Version => {
@@ -34,14 +35,10 @@ pub fn main() {
 
 pub fn compile_program(code: String) {
     let node = CyrusParser::parse(code).unwrap();
-    
+
     unsafe {
         // TODO - Add module name handling
-        match compile(node, "sample\0") {
-            Ok(result) => print_llvm_module(result.0),
-            Err(err) => {
-                println!("cyrus: (error) {}", err);
-            },
-        }
+        let result = compile(node, "sample\0");
+        print_llvm_module(result.0);
     }
 }
