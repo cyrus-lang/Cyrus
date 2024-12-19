@@ -1,5 +1,5 @@
 fn sample(): i32 {
-    #a: string = "Hello World";
+    #a: string = "Cyrus Lang";
 
     return 0;
 }
