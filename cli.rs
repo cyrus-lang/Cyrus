@@ -66,9 +66,13 @@ fn read_file(file_path: String) -> (String, String) {
 
     let mut contents = String::new();
 
-    file.read_to_string(&mut contents)
-        .expect(format!("cyrus: Failed to read the file content").as_str());
-
+    match file.read_to_string(&mut contents) {
+        Err(_) => {
+            compiler_error!("Failed to read the file content.");
+        },
+        _ => {}
+    }
+        
     let file_name = path.file_name().unwrap().to_str().unwrap();
 
     (contents, file_name.to_string())
