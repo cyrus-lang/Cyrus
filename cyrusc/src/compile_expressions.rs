@@ -1,4 +1,3 @@
-use crate::allloc::get_alloc_value;
 use crate::compiler_error;
 use crate::undefined_expression_error;
 use crate::Compiler;
@@ -24,13 +23,14 @@ impl Compiler {
             Expression::UnaryOperator(unary_operator) => todo!(),
         }
     }
+    
     pub fn compile_identifer_expression(&mut self, identifier: Identifier) -> Option<LLVMValueRef> {
         unsafe {
             let alloc_table = self.alloc_table.lock().unwrap();
             let variable = alloc_table.get(&identifier.name);
 
             if let Some(variable) = variable {
-                let value = get_alloc_value(self.builder, variable.alloc, variable.ty);
+                let value = LLVMBuildLoad2(self.builder, variable.ty, variable.alloc, "loaded_value".as_ptr() as *const i8);
                 return Some(value);
             } else {
                 compiler_error!("failed to get the variable from alloc_table by it's name");
@@ -102,7 +102,7 @@ impl Compiler {
                         compiler_error!("minus prefix operator used for invalid expression");
                     }
                 }
-                _ => compiler_error!("unknown operator for unary expression"),
+                _ => compiler_error!(format!("unknown operator for unary expression: {}", unary_expression.operator.kind)),
             }
         }
     }

@@ -1,10 +1,9 @@
-use std::fs;
-
 use clap::Parser;
 use cyrusc::*;
 use parser::Parser as CyrusParser;
+use std::{fs::File, io::Read, path::Path};
 
-#[derive(clap::Parser)]
+#[derive(clap::Parser, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[command(subcommand)]
@@ -14,6 +13,7 @@ struct Args {
 #[derive(clap::Subcommand, Debug, Clone)]
 enum Commands {
     Run { file_path: String },
+    LLVM { file_path: String },
     Version,
 }
 
@@ -23,9 +23,30 @@ pub fn main() {
 
     match args.cmd {
         Commands::Run { file_path } => {
-            let content = fs::read_to_string(file_path.clone())
-                .expect(format!("cyrus: No such file or directory. -- {}", file_path).as_str());
-            compile_program(content);
+            let file = read_file(file_path);
+            let code = file.0;
+            let file_name = file.1;
+
+            let node = CyrusParser::parse(code).unwrap();
+
+            unsafe {
+                let result = compile(node, format!("{}\0", file_name).as_str());
+
+                compile_native(result.0);
+            }
+        }
+        Commands::LLVM { file_path } => {
+            let file = read_file(file_path);
+            let code = file.0;
+            let file_name = file.1;
+
+            let node = CyrusParser::parse(code).unwrap();
+
+            unsafe {
+                let result = compile(node, format!("{}\0", file_name).as_str());
+
+                print_llvm_module(result.0);
+            }
         }
         Commands::Version => {
             println!("Cyrus {}", version)
@@ -33,12 +54,22 @@ pub fn main() {
     }
 }
 
-pub fn compile_program(code: String) {
-    let node = CyrusParser::parse(code).unwrap();
+fn read_file(file_path: String) -> (String, String) {
+    let path = Path::new(file_path.as_str());
 
-    unsafe {
-        // TODO - Add module name handling
-        let result = compile(node, "sample\0");
-        print_llvm_module(result.0);
-    }
+    let mut file = match File::open(path) {
+        Ok(content) => content,
+        Err(_) => {
+            compiler_error!(format!("No such file or directory. -- {}", file_path));
+        }
+    };
+
+    let mut contents = String::new();
+
+    file.read_to_string(&mut contents)
+        .expect(format!("cyrus: Failed to read the file content").as_str());
+
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+
+    (contents, file_name.to_string())
 }

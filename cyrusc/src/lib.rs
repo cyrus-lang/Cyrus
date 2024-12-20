@@ -1,19 +1,18 @@
 use ast::ast::*;
+use execution_engine::{LLVMCreateExecutionEngineForModule, LLVMExecutionEngineRef};
 use llvm_sys::core::*;
 use llvm_sys::*;
 use prelude::*;
+use target::{LLVM_InitializeNativeAsmPrinter, LLVM_InitializeNativeTarget};
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::sync::Mutex;
 
-mod allloc;
 pub mod compile_expressions;
 mod compile_expressions_test;
 mod compile_statements;
 mod compiler_errors;
-
-type CompileErr = &'static str;
 
 pub struct AllocTable {
     pub alloc: LLVMValueRef,
@@ -47,11 +46,6 @@ pub unsafe fn compile(node: Node, module_name: &str) -> (LLVMModuleRef, Option<L
         Node::Expression(expression) => compiler.compile_expressions(expression),
     };
 
-    // cleanup llvm objects
-    // LLVMDisposeBuilder(builder);
-    // LLVMDisposeModule(module);
-    // LLVMContextDispose(context);
-
     (module, result)
 }
 
@@ -62,3 +56,13 @@ pub unsafe fn print_llvm_module(ty: *mut LLVMModule) {
     println!("{}", value);
 }
 
+pub unsafe fn compile_native(module: LLVMModuleRef) {
+    if LLVM_InitializeNativeTarget() != 0 || LLVM_InitializeNativeAsmPrinter() != 0 {
+        compiler_error!("failed to initialize native target");
+    }
+
+    let mut engine: LLVMExecutionEngineRef = std::ptr::null_mut();
+    if LLVMCreateExecutionEngineForModule(&mut engine, module, 0 as *mut *mut i8) != 0 {
+        compiler_error!("failed to create execution engine");
+    }    
+}

@@ -1,7 +1,8 @@
 #[macro_export]
 macro_rules! compiler_error {
     ($s:expr) => {{
-        panic!("(compiler) cyrus: {}", $s);
+        println!("(compiler) cyrus: {}", $s);
+        std::process::exit(1);
     }};
 }
 

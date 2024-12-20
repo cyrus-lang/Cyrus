@@ -1,7 +1,4 @@
-use std::{
-    ffi::{CStr, CString},
-    os::raw::c_char,
-};
+use std::{ffi::CString, os::raw::c_char};
 
 use ast::{
     ast::{Function, Return, Statement, Variable},
@@ -10,7 +7,7 @@ use ast::{
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 
-use crate::{compiler_error, undefined_expression_error, CompileErr, Compiler};
+use crate::{compiler_error, undefined_expression_error, AllocTable, Compiler};
 
 impl Compiler {
     pub fn compile_statement(&mut self, statement: Statement) -> Option<LLVMValueRef> {
@@ -98,11 +95,20 @@ impl Compiler {
                         TokenKind::String => {
                             let name = variable.name.as_ptr() as *const i8;
 
-                            let char_ptr_type = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
+                            let char_ptr_type =
+                                LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
 
                             let alloc = LLVMBuildAlloca(self.builder, char_ptr_type, name);
 
                             LLVMBuildStore(self.builder, expr, alloc);
+
+                            self.alloc_table.lock().unwrap().insert(
+                                variable.name,
+                                AllocTable {
+                                    alloc,
+                                    ty: char_ptr_type,
+                                },
+                            );
 
                             return None;
                         }
@@ -134,6 +140,14 @@ impl Compiler {
                             let var_align = LLVMGetAlignment(alloc);
 
                             LLVMSetAlignment(store, var_align);
+
+                            self.alloc_table.lock().unwrap().insert(
+                                variable.name,
+                                AllocTable {
+                                    alloc,
+                                    ty: var_type.0,
+                                },
+                            );
                         }
                         _ => compiler_error!("invalid variable type given in variable assignment"),
                     }
