@@ -1,19 +1,23 @@
 use ast::ast::*;
-use execution_engine::{LLVMCreateExecutionEngineForModule, LLVMExecutionEngineRef};
+use execution_engine::{LLVMCreateExecutionEngineForModule, LLVMGetFunctionAddress};
 use llvm_sys::core::*;
 use llvm_sys::*;
 use prelude::*;
-use target::{LLVM_InitializeNativeAsmPrinter, LLVM_InitializeNativeTarget};
-use std::collections::HashMap;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::sync::Mutex;
+use std::{collections::HashMap, ffi::CString};
+use target::{
+    LLVM_InitializeNativeAsmParser, LLVM_InitializeNativeAsmPrinter, LLVM_InitializeNativeTarget,
+};
 
+mod compile_builtins;
 pub mod compile_expressions;
 mod compile_expressions_test;
 mod compile_statements;
 mod compiler_errors;
 
+#[derive(Debug)]
 pub struct AllocTable {
     pub alloc: LLVMValueRef,
     pub ty: LLVMTypeRef,
@@ -57,12 +61,35 @@ pub unsafe fn print_llvm_module(ty: *mut LLVMModule) {
 }
 
 pub unsafe fn compile_native(module: LLVMModuleRef) {
-    if LLVM_InitializeNativeTarget() != 0 || LLVM_InitializeNativeAsmPrinter() != 0 {
-        compiler_error!("failed to initialize native target");
+    LLVM_InitializeNativeTarget();
+    LLVM_InitializeNativeAsmPrinter();
+    LLVM_InitializeNativeAsmParser();
+
+    let mut engine = std::ptr::null_mut();
+    let mut error = std::ptr::null_mut();
+    if LLVMCreateExecutionEngineForModule(&mut engine, module, &mut error) != 0 {
+        compiler_error!("bootstrap execution engine failed");
     }
 
-    let mut engine: LLVMExecutionEngineRef = std::ptr::null_mut();
-    if LLVMCreateExecutionEngineForModule(&mut engine, module, 0 as *mut *mut i8) != 0 {
-        compiler_error!("failed to create execution engine");
-    }    
+    let main_func_name = CString::new("main").unwrap();
+    let main_func = LLVMGetNamedFunction(module, main_func_name.as_ptr());
+
+    if !main_func.is_null() {
+        let main_return_value: u64;
+
+        let main_func_ptr = LLVMGetFunctionAddress(engine, main_func_name.as_ptr());
+
+        if main_func_ptr == 0 {
+            compiler_error!("could not get function address for main");
+        }
+
+        let main_typed_ptr = std::mem::transmute::<
+            u64,
+            extern "C" fn(i32, *const *const c_char) -> i32,
+        >(main_func_ptr);
+
+        main_return_value = main_typed_ptr(0, Vec::new().as_ptr()) as u64;
+
+        std::process::exit(main_return_value as i32);
+    }
 }

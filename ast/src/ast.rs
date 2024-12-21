@@ -55,7 +55,7 @@ pub struct UnaryOperator {
 
 #[derive(Debug, Clone)]
 pub struct FunctionCall {
-    pub call: Box<Expression>,
+    pub function_name: Identifier,
     pub arguments: Vec<Expression>,
     pub span: Span,
 }

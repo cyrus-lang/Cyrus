@@ -79,9 +79,9 @@ impl fmt::Display for Expression {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
             Expression::FunctionCall(FunctionCall {
-                call, arguments, ..
+                function_name, arguments, ..
             }) => {
-                write!(f, "{}({})", call, format_expressions(arguments))
+                write!(f, "{}({})", function_name, format_expressions(arguments))
             }
         }
     }

@@ -1,7 +1,7 @@
 use std::{ffi::CString, os::raw::c_char};
 
 use ast::{
-    ast::{Function, Return, Statement, Variable},
+    ast::{Function, If, Return, Statement, Variable},
     token::TokenKind,
 };
 use llvm_sys::core::*;
@@ -14,7 +14,7 @@ impl Compiler {
         match statement {
             Statement::Variable(variable) => self.compile_variable_statement(variable),
             Statement::Expression(expression) => self.compile_expressions(expression),
-            Statement::If(_) => todo!(),
+            Statement::If(if_statement) => self.compile_if_statement(if_statement),
             Statement::Return(ret) => self.compile_return(ret),
             Statement::Function(function) => self.compile_function(function),
             Statement::For(_) => todo!(),
@@ -23,6 +23,15 @@ impl Compiler {
             Statement::Package(package) => todo!(),
             Statement::Import(import) => todo!(),
         }
+    }
+
+    pub fn compile_if_statement(&mut self, if_statement: If) -> Option<LLVMValueRef> {
+        // ANCHOR
+        todo!();
+
+        // unsafe  {
+        //     LLVMBuildCondBr(self.builder, If, Then, Else)
+        // }
     }
 
     pub fn compile_return(&mut self, ret: Return) -> Option<LLVMValueRef> {
@@ -38,7 +47,7 @@ impl Compiler {
     }
 
     pub fn compile_function(&mut self, function: Function) -> Option<LLVMValueRef> {
-        let name = function.name.as_ptr() as *const c_char;
+        let name = CString::new(function.name).unwrap();
 
         unsafe {
             if let Some(return_type) = function.return_type {
@@ -58,7 +67,8 @@ impl Compiler {
                     0,
                 );
 
-                let func = LLVMAddFunction(self.module, name, func_type);
+                let func = LLVMAddFunction(self.module, name.as_ptr() as *const i8, func_type);
+
                 let entry_name = CString::new("entry").unwrap();
                 let entry_block =
                     LLVMAppendBasicBlockInContext(self.context, func, entry_name.as_ptr());
@@ -142,7 +152,7 @@ impl Compiler {
                             LLVMSetAlignment(store, var_align);
 
                             self.alloc_table.lock().unwrap().insert(
-                                variable.name,
+                                variable.name.clone(),
                                 AllocTable {
                                     alloc,
                                     ty: var_type.0,

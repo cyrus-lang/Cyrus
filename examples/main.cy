@@ -1,5 +1,6 @@
-fn sample(): i32 {
-    #a: i32 = 10;
+fn main(): i32 {
+    // #a: i32 = 1 + 2;
+    printf("Cyrus version\n");
 
     return 0;
 }

@@ -333,7 +333,7 @@ impl<'a> Parser<'a> {
 
         let name = match identifier.kind {
             TokenKind::Identifier { name } => name,
-            _ => return Err("invalid token given as name of the variable".to_string())
+            _ => return Err("invalid token given as name of the variable".to_string()),
         };
 
         let mut varty: Option<TokenKind> = None;
@@ -445,9 +445,9 @@ impl<'a> Parser<'a> {
         // parse return type
         if self.current_token_is(TokenKind::Colon) {
             self.next_token(); // consume colon
-            
+
             return_type = Some(self.current_token.clone());
-        
+
             if self.current_token_is(TokenKind::LeftBrace) {
                 return Err("expected to get a return type but got left brace".to_string());
             }
@@ -607,14 +607,22 @@ impl<'a> Parser<'a> {
 
         let end = self.current_token.span.end;
 
-        Ok(Expression::FunctionCall(FunctionCall {
-            call: Box::new(left),
-            arguments: arguments.0,
-            span: Span {
-                start: left_start,
-                end,
-            },
-        }))
+        match left {
+            Expression::Identifier(identifier) => Ok(Expression::FunctionCall(FunctionCall {
+                function_name: identifier,
+                arguments: arguments.0,
+                span: Span {
+                    start: left_start,
+                    end,
+                },
+            })),
+            _ => {
+                return Err(format!(
+                    "expected identifer for function call but got {}",
+                    left
+                ))
+            }
+        }
     }
 
     fn parse_expression(

@@ -1,3 +1,4 @@
+use crate::compile_builtins::generate_printf;
 use crate::compiler_error;
 use crate::undefined_expression_error;
 use crate::Compiler;
@@ -6,6 +7,7 @@ use ast::token::*;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::CString;
+use std::ops::Index;
 use std::os::raw::c_char;
 
 impl Compiler {
@@ -19,22 +21,82 @@ impl Compiler {
             Expression::Infix(binary_expression) => {
                 self.compile_infix_expression(binary_expression)
             }
-            Expression::FunctionCall(function_call) => todo!(),
-            Expression::UnaryOperator(unary_operator) => todo!(),
+            Expression::FunctionCall(function_call) => self.compile_function_call(function_call),
+            Expression::UnaryOperator(unary_operator) => {
+                self.compile_unary_operator(unary_operator)
+            }
         }
     }
-    
-    pub fn compile_identifer_expression(&mut self, identifier: Identifier) -> Option<LLVMValueRef> {
-        unsafe {
-            let alloc_table = self.alloc_table.lock().unwrap();
-            let variable = alloc_table.get(&identifier.name);
 
-            if let Some(variable) = variable {
-                let value = LLVMBuildLoad2(self.builder, variable.ty, variable.alloc, "loaded_value".as_ptr() as *const i8);
-                return Some(value);
-            } else {
-                compiler_error!("failed to get the variable from alloc_table by it's name");
+    pub fn compile_function_call(&mut self, function_call: FunctionCall) -> Option<LLVMValueRef> {
+        let function_name = CString::new(function_call.function_name.name.clone()).unwrap();
+
+        unsafe {
+            let mut arguments: Vec<LLVMValueRef> = vec![];
+
+            for expr in function_call.arguments {
+                if let Some(value) = self.compile_expressions(expr) {
+                    arguments.push(value);
+                }
             }
+
+            match function_call.function_name.name.as_str() {
+                "printf" => {
+                    Some(generate_printf(self.module, self.context, self.builder, &arguments))
+                }
+                _ => {
+                    let function = LLVMGetNamedFunction(self.module, function_name.as_ptr());
+
+                    if function.is_null() {
+                        compiler_error!(format!(
+                            "Function '{}' not defined in current module.",
+                            function_name.to_str().unwrap()
+                        ));
+                    }
+
+                    let call_name = CString::new("call_result").unwrap();
+
+                    Some(LLVMBuildCall2(
+                        self.builder,
+                        LLVMTypeOf(function),
+                        function,
+                        arguments.as_mut_ptr(),
+                        arguments.len() as u32,
+                        call_name.as_ptr(),
+                    ))
+                }
+            }
+        }
+    }
+
+    // TODO
+    pub fn compile_unary_operator(
+        &mut self,
+        unary_operator: UnaryOperator,
+    ) -> Option<LLVMValueRef> {
+        match unary_operator.ty {
+            UnaryOperatorType::PreIncrement => todo!(),
+            UnaryOperatorType::PreDecrement => todo!(),
+            UnaryOperatorType::PostIncrement => todo!(),
+            UnaryOperatorType::PostDecrement => todo!(),
+        }
+    }
+
+    pub fn compile_identifer_expression(&mut self, identifier: Identifier) -> Option<LLVMValueRef> {
+        if let Some(variable) = self.alloc_table.lock().unwrap().get(&identifier.name) {
+            unsafe {
+                let name = CString::new(format!("loaded_{}", identifier.name)).unwrap();
+                let value = LLVMBuildLoad2(
+                    self.builder,
+                    variable.ty,
+                    variable.alloc,
+                    name.as_ptr() as *const i8,
+                );
+
+                return Some(value);
+            }
+        } else {
+            compiler_error!("failed to get the variable from alloc_table by it's name");
         }
     }
 
@@ -64,6 +126,11 @@ impl Compiler {
                             let name = CString::new("dev").unwrap();
                             val = LLVMBuildSDiv(self.builder, lhs, rhs, name.as_ptr());
                         }
+                        TokenKind::Equal => {
+                            // ANCHOR
+                            todo!()
+                            // val = LLVMBuilddev
+                        }
 
                         // REVIEW - more operations
                         _ => compiler_error!("invalid operation for infix expression"),
@@ -79,7 +146,10 @@ impl Compiler {
         }
     }
 
-    pub fn compile_prefix_expression(&mut self, unary_expression: UnaryExpression) -> Option<LLVMValueRef> {
+    pub fn compile_prefix_expression(
+        &mut self,
+        unary_expression: UnaryExpression,
+    ) -> Option<LLVMValueRef> {
         unsafe {
             match unary_expression.operator.kind {
                 // REVIEW
@@ -102,7 +172,10 @@ impl Compiler {
                         compiler_error!("minus prefix operator used for invalid expression");
                     }
                 }
-                _ => compiler_error!(format!("unknown operator for unary expression: {}", unary_expression.operator.kind)),
+                _ => compiler_error!(format!(
+                    "unknown operator for unary expression: {}",
+                    unary_expression.operator.kind
+                )),
             }
         }
     }
