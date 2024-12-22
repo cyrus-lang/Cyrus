@@ -5,7 +5,7 @@ edition = "2021"
 resolver = "2"
 
 [workspace]
-members = ["ast", "cyrusc", "lexer", "parser"]
+members = ["ast", "lexer", "parser"]
 
 [[bin]]
 name = "cyrus"

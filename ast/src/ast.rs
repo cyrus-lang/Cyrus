@@ -83,9 +83,8 @@ pub enum IntegerLiteral {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum FloatLiteral {
-    F32(f32),
-    F64(f64),
+pub struct FloatLiteral {
+    pub raw: f64,
 }
 
 #[derive(Debug, Clone)]
