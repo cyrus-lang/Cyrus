@@ -1,6 +1,5 @@
 fn main(): i32 {
-    // #a: i32 = 1 + 2;
-    printf("Cyrus version\n");
+    printf("Cyrus Lang! ✌️\n");
 
     return 0;
 }

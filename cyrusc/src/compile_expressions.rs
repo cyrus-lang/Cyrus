@@ -7,7 +7,6 @@ use ast::token::*;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use std::ffi::CString;
-use std::ops::Index;
 use std::os::raw::c_char;
 
 impl Compiler {
@@ -40,10 +39,8 @@ impl Compiler {
                 }
             }
 
-            match function_call.function_name.name.as_str() {
-                "printf" => {
-                    Some(generate_printf(self.module, self.context, self.builder, &arguments))
-                }
+            let result = match function_call.function_name.name.as_str() {
+                "printf" => generate_printf(self.module, self.context, self.builder, &arguments),
                 _ => {
                     let function = LLVMGetNamedFunction(self.module, function_name.as_ptr());
 
@@ -56,16 +53,18 @@ impl Compiler {
 
                     let call_name = CString::new("call_result").unwrap();
 
-                    Some(LLVMBuildCall2(
+                    LLVMBuildCall2(
                         self.builder,
                         LLVMTypeOf(function),
                         function,
                         arguments.as_mut_ptr(),
                         arguments.len() as u32,
                         call_name.as_ptr(),
-                    ))
+                    )
                 }
-            }
+            };
+
+            Some(result)
         }
     }
 
