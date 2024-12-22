@@ -1,19 +1,9 @@
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
-use core::str;
-use std::ffi::c_char;
 use std::ffi::CStr;
 use std::ffi::CString;
 
 use crate::compiler_error;
-
-fn c_string_to_string(c_str: *const i8) -> Result<String, std::str::Utf8Error> {
-    if c_str.is_null() {
-        return Ok(String::new()); // Or return an error if null is invalid in your context
-    }
-
-    unsafe { CStr::from_ptr(c_str).to_str().map(|s| s.to_string()) }
-}
 
 pub unsafe fn generate_printf(
     module: LLVMModuleRef,

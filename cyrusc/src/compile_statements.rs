@@ -1,4 +1,4 @@
-use std::{ffi::CString, os::raw::c_char};
+use std::ffi::CString;
 
 use ast::{
     ast::{Function, If, Return, Statement, Variable},
@@ -7,7 +7,10 @@ use ast::{
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 
-use crate::{compiler_error, undefined_expression_error, AllocTable, Compiler};
+use crate::{
+    compiler_error, print_llvm_module, undefined_expression_error, verify_module, AllocTable,
+    Compiler,
+};
 
 impl Compiler {
     pub fn compile_statement(&mut self, statement: Statement) -> Option<LLVMValueRef> {
@@ -146,7 +149,7 @@ impl Compiler {
                                 variable.name.as_ptr() as *const i8,
                             );
 
-                            let store = LLVMBuildStore(self.builder, alloc, expr);
+                            let store = LLVMBuildStore(self.builder, expr, alloc);
                             let var_align = LLVMGetAlignment(alloc);
 
                             LLVMSetAlignment(store, var_align);

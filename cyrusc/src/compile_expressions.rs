@@ -28,10 +28,10 @@ impl Compiler {
     }
 
     pub fn compile_function_call(&mut self, function_call: FunctionCall) -> Option<LLVMValueRef> {
-        let function_name = CString::new(function_call.function_name.name.clone()).unwrap();
+        let func_name = CString::new(function_call.function_name.name.clone()).unwrap();
 
         unsafe {
-            let mut arguments: Vec<LLVMValueRef> = vec![];
+            let mut arguments: Vec<LLVMValueRef> = Vec::new();
 
             for expr in function_call.arguments {
                 if let Some(value) = self.compile_expressions(expr) {
@@ -42,21 +42,23 @@ impl Compiler {
             let result = match function_call.function_name.name.as_str() {
                 "printf" => generate_printf(self.module, self.context, self.builder, &arguments),
                 _ => {
-                    let function = LLVMGetNamedFunction(self.module, function_name.as_ptr());
+                    let func = LLVMGetNamedFunction(self.module, func_name.as_ptr());
 
-                    if function.is_null() {
+                    if func.is_null() {
                         compiler_error!(format!(
                             "Function '{}' not defined in current module.",
-                            function_name.to_str().unwrap()
+                            func_name.to_str().unwrap()
                         ));
                     }
+
+                    let func_type = LLVMTypeOf(func);
 
                     let call_name = CString::new("call_result").unwrap();
 
                     LLVMBuildCall2(
                         self.builder,
-                        LLVMTypeOf(function),
-                        function,
+                        func_type,
+                        func,
                         arguments.as_mut_ptr(),
                         arguments.len() as u32,
                         call_name.as_ptr(),

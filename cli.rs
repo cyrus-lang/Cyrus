@@ -30,8 +30,7 @@ pub fn main() {
             let node = CyrusParser::parse(code).unwrap();
 
             unsafe {
-                let result = compile(node, format!("{}\0", file_name).as_str());
-
+                let result = compile(node, format!("{}", file_name).as_str());
                 compile_native(result.0);
             }
         }
@@ -43,7 +42,7 @@ pub fn main() {
             let node = CyrusParser::parse(code).unwrap();
 
             unsafe {
-                let result = compile(node, format!("{}\0", file_name).as_str());
+                let result = compile(node, format!("{}", file_name).as_str());
 
                 print_llvm_module(result.0);
             }
