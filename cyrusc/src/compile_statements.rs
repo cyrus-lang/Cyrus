@@ -52,48 +52,50 @@ impl Compiler {
     pub fn compile_function(&mut self, function: Function) -> Option<LLVMValueRef> {
         let name = CString::new(function.name).unwrap();
 
-        unsafe {
-            if let Some(return_type) = function.return_type {
-                let ret_type = self.determine_llvm_type(return_type.kind);
-                let mut param_types = vec![];
+        if let Some(return_type) = function.return_type {
+            let ret_type = unsafe { self.determine_llvm_type(return_type.kind) };
+            let mut param_types = vec![];
 
-                for param in function.params {
-                    if let Some(token_kind) = param.ty {
-                        param_types.push(self.determine_llvm_type(token_kind));
-                    }
+            for param in function.params {
+                if let Some(token_kind) = param.ty {
+                    param_types.push(unsafe { self.determine_llvm_type(token_kind) });
                 }
+            }
 
-                let func_type = LLVMFunctionType(
+            let func_type = unsafe {
+                LLVMFunctionType(
                     ret_type,
                     param_types.as_mut_ptr(),
                     param_types.len() as u32,
                     0,
-                );
+                )
+            };
 
-                let func = LLVMAddFunction(self.module, name.as_ptr() as *const i8, func_type);
+            let func =
+                unsafe { LLVMAddFunction(self.module, name.as_ptr() as *const i8, func_type) };
 
-                let entry_name = CString::new("entry").unwrap();
-                let entry_block =
-                    LLVMAppendBasicBlockInContext(self.context, func, entry_name.as_ptr());
-                LLVMPositionBuilderAtEnd(self.builder, entry_block);
+            let entry_name = CString::new("entry").unwrap();
+            let entry_block =
+                unsafe { LLVMAppendBasicBlockInContext(self.context, func, entry_name.as_ptr()) };
 
-                self.compile_block_statements(function.body.body);
+            unsafe { LLVMPositionBuilderAtEnd(self.builder, entry_block) };
 
-                return Some(func);
-            } else {
-                compiler_error!("dynamic return type in function declaration not supported yet");
-            }
+            self.compile_block_statements(function.body.body);
+
+            return Some(func);
+        } else {
+            compiler_error!("dynamic return type in function declaration not supported yet");
         }
     }
 
-    pub unsafe fn determine_llvm_type(&mut self, token_kind: TokenKind) -> LLVMTypeRef {
+    pub fn determine_llvm_type(&mut self, token_kind: TokenKind) -> LLVMTypeRef {
         let result = match token_kind {
-            TokenKind::I32 => LLVMInt32Type(),
-            TokenKind::I64 => LLVMInt64Type(),
-            TokenKind::U32 => LLVMInt32Type(),
-            TokenKind::U64 => LLVMInt32Type(),
-            TokenKind::F32 => LLVMFloatType(),
-            TokenKind::F64 => LLVMFloatType(),
+            TokenKind::I32 => unsafe { LLVMInt32Type() },
+            TokenKind::I64 => unsafe { LLVMInt64Type() },
+            TokenKind::U32 => unsafe { LLVMInt32Type() },
+            TokenKind::U64 => unsafe { LLVMInt32Type() },
+            TokenKind::F32 => unsafe { LLVMFloatType() },
+            TokenKind::F64 => unsafe { LLVMFloatType() },
             _ => compiler_error!("unsupported type passed to determine_llvm_type method"),
         };
 
@@ -175,15 +177,13 @@ impl Compiler {
     }
 
     pub fn compile_block_statements(&mut self, statements: Vec<Statement>) -> Option<LLVMValueRef> {
-        unsafe {
-            let void_type = LLVMVoidTypeInContext(self.context);
-            let last_result: LLVMValueRef = LLVMGetUndef(void_type);
+        let void_type = unsafe { LLVMVoidTypeInContext(self.context) };
+        let last_result: LLVMValueRef = unsafe { LLVMGetUndef(void_type) };
 
-            for statement in statements {
-                self.compile_statement(statement.clone()); // REVIEW - consider to remove clone
-            }
-
-            return Some(last_result);
+        for statement in statements {
+            self.compile_statement(statement.clone()); // REVIEW - consider to remove clone
         }
+
+        return Some(last_result);
     }
 }
