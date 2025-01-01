@@ -6,8 +6,8 @@ mod tests {
         token::{Span, TokenKind},
     };
 
-    fn assert_tokens(input: &str, expected_tokens: Option<&Vec<TokenKind>>, spans: Option<&Vec<Span>>) {
-        let lexer = Lexer::new(input.to_string());
+    fn assert_tokens(input: &'static str, expected_tokens: Option<&Vec<TokenKind>>, spans: Option<&Vec<Span>>) {
+        let lexer = Lexer::new(input);
 
         let mut i: usize = 0;
         for token in lexer {
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn test_keywords() {
         assert_tokens(
-            "fn match if else ret for break continue",
+            "fn match if else return for break continue",
             Some(&vec![
                 TokenKind::Function,
                 TokenKind::Match,
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn test_function_declaration() {
         assert_tokens(
-            "fn foo_bar(a, b) { ret a + b; }",
+            "fn foo_bar(a, b) { return a + b; }",
             Some(&vec![
                 TokenKind::Function,
                 TokenKind::Identifier { name: "foo_bar".to_string() },

@@ -34,10 +34,10 @@ impl Lexer {
         if self.next_pos >= self.input.len() {
             ' '
         } else {
-            self.input
-                .chars()
-                .nth(self.next_pos)
-                .expect("Failed to read the char with peeked position")
+            match self.input.chars().nth(self.next_pos) {
+                Some(ch) => return ch,
+                None => lexer_error!("Failed to read the char with peeked position."),
+            }
         }
     }
 
@@ -76,10 +76,22 @@ impl Lexer {
                 if self.peek_char() == '+' {
                     self.read_char();
                     self.read_char();
-                    TokenKind::Increment
+                    return Token {
+                        kind: TokenKind::Increment,
+                        span: Span {
+                            start: self.pos - 2,
+                            end: self.pos - 1,
+                        },
+                    };
                 } else {
                     self.read_char();
-                    TokenKind::Plus
+                    return Token {
+                        kind: TokenKind::Plus,
+                        span: Span {
+                            start: self.pos - 1,
+                            end: self.pos - 1,
+                        },
+                    };
                 }
             }
             '-' => {
@@ -251,9 +263,11 @@ impl Lexer {
             ';' => TokenKind::Semicolon,
             ':' => TokenKind::Colon,
             _ => {
-                if self.ch.is_alphabetic() { return self.read_identifider(); } 
-                else if self.is_numeric(self.ch) { return self.read_integer(); }
-                else {
+                if self.ch.is_alphabetic() {
+                    return self.read_identifider();
+                } else if self.is_numeric(self.ch) {
+                    return self.read_integer();
+                } else {
                     lexer_error!(format!("Invalid character detected '{}'", self.ch));
                 }
             }
@@ -271,7 +285,8 @@ impl Lexer {
     }
 
     fn read_string(&mut self) -> Token {
-        let start: usize = self.pos + 1; // plus one to skip the first double quote
+        let start: usize = self.pos + 1;
+
         loop {
             self.read_char();
 
@@ -293,7 +308,7 @@ impl Lexer {
 
         let end = self.pos;
 
-        let span = Span { start, end };
+        let span = Span { start: start - 1, end };
 
         Token {
             kind: TokenKind::Literal(Literal::String(StringLiteral {
@@ -317,7 +332,10 @@ impl Lexer {
 
         let token_kind = self.lookup_identifier(identifier);
 
-        Token {  kind: token_kind, span: Span { start, end } }
+        Token {
+            kind: token_kind,
+            span: Span { start, end },
+        }
     }
 
     fn read_integer(&mut self) -> Token {
@@ -329,16 +347,17 @@ impl Lexer {
 
         let end = self.pos;
 
-        let token_kind = match self.input[start..end]
-            .to_string()
-            .parse() {
-                Ok(value) => { TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))) },
-                Err(_) => {
-                    lexer_error!(format!("Expected number but got {}.", self.ch));
-                },
-            };
+        let token_kind = match self.input[start..end].to_string().parse() {
+            Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
+            Err(_) => {
+                lexer_error!(format!("Expected number but got {}.", self.ch));
+            }
+        };
 
-        Token { kind: token_kind, span: Span { start, end } }
+        Token {
+            kind: token_kind,
+            span: Span { start, end },
+        }
     }
 
     fn is_numeric(&self, ch: char) -> bool {
@@ -359,14 +378,11 @@ impl Lexer {
             | '\u{000C}' // form feed
             | '\u{000D}' // \r
             | '\u{0020}' // space
-    
             // NEXT LINE from latin1
             | '\u{0085}'
-    
             // Bidi markers
             | '\u{200E}' // LEFT-TO-RIGHT MARK
             | '\u{200F}' // RIGHT-TO-LEFT MARK
-    
             // Dedicated whitespace characters from Unicode
             | '\u{2028}' // LINE SEPARATOR
             | '\u{2029}' // PARAGRAPH SEPARATOR
@@ -386,7 +402,7 @@ impl Lexer {
     fn skip_comments(&mut self) {
         if self.ch == '/' && self.peek_char() == '/' {
             self.read_char();
-            self.read_char(); // consume double slash
+            self.read_char(); 
 
             loop {
                 if self.is_eof() || self.ch == '\n' {
