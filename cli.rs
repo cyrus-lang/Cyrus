@@ -29,10 +29,9 @@ pub fn main() {
 
             let node = CyrusParser::parse(code).unwrap();
 
-            unsafe {
-                let result = compile(node, format!("{}", file_name).as_str());
-                compile_native(result.0);
-            }
+            let result = compile(node, file_name.as_str());
+            
+            compile_native(result.0);
         }
         Commands::LLVM { file_path } => {
             let file = read_file(file_path);
@@ -41,11 +40,9 @@ pub fn main() {
 
             let node = CyrusParser::parse(code).unwrap();
 
-            unsafe {
-                let result = compile(node, format!("{}", file_name).as_str());
+            let result = compile(node, file_name.as_str());
 
-                print_llvm_module(result.0);
-            }
+            print_llvm_module(result.0);
         }
         Commands::Version => {
             println!("Cyrus {}", version)
@@ -68,10 +65,10 @@ fn read_file(file_path: String) -> (String, String) {
     match file.read_to_string(&mut contents) {
         Err(_) => {
             compiler_error!("Failed to read the file content.");
-        },
+        }
         _ => {}
     }
-        
+
     let file_name = path.file_name().unwrap().to_str().unwrap();
 
     (contents, file_name.to_string())

@@ -1,6 +1,7 @@
 fn main(): i32 {
-    
-    printf("Hello World");
+    #my_var: string = "Hello Taha";
+
+    printf(my_var);
 
     return 0;
 }
