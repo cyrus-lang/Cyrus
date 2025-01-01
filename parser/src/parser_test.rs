@@ -2,8 +2,8 @@
 mod tests {
     use std::ops::Index;
 
-    use lexer::Lexer;
     use ast::token::*;
+    use lexer::Lexer;
 
     use crate::Parser;
 
@@ -118,9 +118,7 @@ mod tests {
     fn test_parse_expression_series() {
         let mut lexer = Lexer::new("[1, 2, 3, ]".to_string());
         let mut parser = Parser::new(&mut lexer);
-        let params = parser
-            .parse_expression_series(TokenKind::RightBracket)
-            .unwrap();
+        let params = parser.parse_expression_series(TokenKind::RightBracket).unwrap();
 
         println!("{:#?}", params.0);
     }
