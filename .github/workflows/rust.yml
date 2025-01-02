@@ -19,7 +19,7 @@ jobs:
     - name: Install dependencies
       run:  |
         sudo apt update
-        sudo apt install gcc libgccjit-14 libgccjit-14-dev
+        sudo apt install gcc libgccjit libgccjit-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
