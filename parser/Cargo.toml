@@ -6,3 +6,12 @@ edition = "2021"
 [dependencies]
 lexer = {path = "../lexer", version = "*"}
 ast = {path = "../ast", version = "*"}
+utils = {path = "../utils", version = "*"}
+
+[lib]
+name = "parser"
+path = "./src/lib.rs"
+
+[[bin]]
+name = "parser"
+path = "./src/parser_cli.rs"

@@ -1,5 +1,4 @@
 use clap::Parser;
-use cyrusc::*;
 use parser::Parser as CyrusParser;
 use std::{fs::File, io::Read, path::Path};
 
@@ -13,7 +12,6 @@ struct Args {
 #[derive(clap::Subcommand, Debug, Clone)]
 enum Commands {
     Run { file_path: String },
-    LLVM { file_path: String },
     Version,
 }
 
@@ -23,26 +21,13 @@ pub fn main() {
 
     match args.cmd {
         Commands::Run { file_path } => {
-            let file = read_file(file_path);
-            let code = file.0;
-            let file_name = file.1;
+            // let file = read_file(file_path);
+            // let code = file.0;
+            // let file_name = file.1;
 
-            let node = CyrusParser::parse(code).unwrap();
+            // let node = CyrusParser::parse(code).unwrap();
 
-            let result = compile(node, file_name.as_str());
-            
-            compile_native(result.0);
-        }
-        Commands::LLVM { file_path } => {
-            let file = read_file(file_path);
-            let code = file.0;
-            let file_name = file.1;
-
-            let node = CyrusParser::parse(code).unwrap();
-
-            let result = compile(node, file_name.as_str());
-
-            print_llvm_module(result.0);
+            // let result = compile(node, file_name.as_str());
         }
         Commands::Version => {
             println!("Cyrus {}", version)
@@ -50,6 +35,7 @@ pub fn main() {
     }
 }
 
+// Reads the file and returns the file content and the name of the file.
 fn read_file(file_path: String) -> (String, String) {
     let path = Path::new(file_path.as_str());
 

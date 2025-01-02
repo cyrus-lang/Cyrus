@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::ast::Literal;
 
-#[derive(Debug,  Clone)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,

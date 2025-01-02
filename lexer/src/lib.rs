@@ -1,6 +1,11 @@
-use std::fmt::{self, Debug};
-use ast::{ast::{IntegerLiteral, Literal, StringLiteral}, token::*};
+use ast::{
+    ast::{FloatLiteral, IntegerLiteral, Literal, StringLiteral},
+    token::*,
+};
+use std::fmt::Debug;
+use utils::lexer_error;
 
+mod format;
 mod lexer_test;
 
 #[derive(Debug, Clone)]
@@ -29,15 +34,13 @@ impl Lexer {
         if self.next_pos >= self.input.len() {
             ' '
         } else {
-            self.input
-                .chars()
-                .nth(self.next_pos)
-                .expect("Failed to read the char with peeked position")
+            match self.input.chars().nth(self.next_pos) {
+                Some(ch) => return ch,
+                None => lexer_error!("Failed to read the char with peeked position."),
+            }
         }
     }
 
-    // The most significant section of the lexer is this method
-    // that reads the char with next_pos and returns it.
     fn read_char(&mut self) {
         if self.next_pos >= self.input.len() {
             self.ch = ' ';
@@ -53,64 +56,64 @@ impl Lexer {
         self.next_pos += 1;
     }
 
-    pub fn next_token(&mut self) -> Result<Token, String> {
+    pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
         self.skip_comments();
 
         if self.is_eof() {
-            return Ok(Token {
+            return Token {
                 kind: TokenKind::EOF,
                 span: Span {
                     start: self.pos,
                     end: self.pos,
                 },
-            });
+            };
         }
 
-        let token_kind = match self.ch {
+        let token_kind: TokenKind = match self.ch {
             ' ' => return self.next_token(),
             '+' => {
                 if self.peek_char() == '+' {
                     self.read_char();
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Increment,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                    });  
+                    };
                 } else {
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Plus,
                         span: Span {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 }
             }
             '-' => {
                 if self.peek_char() == '-' {
                     self.read_char();
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Decrement,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                    });                    
+                    };
                 } else {
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Minus,
                         span: Span {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 }
             }
             '*' => TokenKind::Asterisk,
@@ -124,191 +127,166 @@ impl Lexer {
             ']' => TokenKind::RightBracket,
             ',' => TokenKind::Comma,
             '#' => TokenKind::Hashtag,
-            '"' => {
-                let (start, end, content) = self.read_string()?;
-                return Ok(Token {
-                    kind: TokenKind::Literal(Literal::String(StringLiteral{
-                        raw: content,
-                        span: Span { start, end }
-                    })),
-                    span: Span { start, end },
-                });
-            }
+            '"' => return self.read_string(),
             '=' => {
                 if self.peek_char() == '=' {
                     self.read_char(); // consume current equal sign
                     self.read_char(); // consume peeked equal sign
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Equal,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 } else {
                     self.read_char(); // consume current equal sign
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Assign,
                         span: Span {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 }
             }
             '!' => {
                 if self.peek_char() == '=' {
                     self.read_char();
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::NotEqual,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 } else {
                     self.read_char(); // consume current equal sign
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Bang,
                         span: Span {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 }
             }
             '<' => {
                 if self.peek_char() == '=' {
                     self.read_char();
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::LessEqual,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 } else {
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::LessThan,
                         span: Span {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 }
             }
             '>' => {
                 if self.peek_char() == '=' {
                     self.read_char();
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::GreaterEqual,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 } else {
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::GreaterThan,
                         span: Span {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 }
             }
             '&' => {
                 if self.peek_char() == '&' {
                     self.read_char();
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::And,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 } else {
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Ampersand,
                         span: Span {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 }
             }
             '|' => {
                 if self.peek_char() == '|' {
                     self.read_char();
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Or,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 } else {
                     self.read_char();
-                    return Ok(Token {
+                    return Token {
                         kind: TokenKind::Pipe,
                         span: Span {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                    });
+                    };
                 }
             }
             ';' => TokenKind::Semicolon,
             ':' => TokenKind::Colon,
             _ => {
-                // Reading identifiers and integers is happening here
-                let start = self.pos;
-
                 if self.ch.is_alphabetic() {
-                    return Ok(Token {
-                        kind: self.read_identifider(),
-                        span: Span {
-                            start,
-                            end: self.pos - 1,
-                        },
-                    });
+                    return self.read_identifider();
                 } else if self.is_numeric(self.ch) {
-                    return Ok(Token {
-                        kind: self.read_integer(),
-                        span: Span {
-                            start,
-                            end: self.pos - 1,
-                        },
-                    });
+                    return self.read_integer();
                 } else {
-                    #[cfg(test)]
-                    dbg!(self.clone());
-
-                    return Err(format!("Illegal character detected '{}'", self.ch));
+                    lexer_error!(format!("Invalid character detected '{}'", self.ch));
                 }
             }
         };
 
         self.read_char();
-        Ok(Token {
+
+        Token {
             kind: token_kind,
             span: Span {
                 start: self.pos - 1,
                 end: self.pos - 1,
             },
-        })
+        }
     }
 
-    fn read_string(&mut self) -> Result<(usize, usize, String), String> {
-        let start: usize = self.pos + 1; // plus one to skip the first double quote
+    fn read_string(&mut self) -> Token {
+        let start: usize = self.pos + 1;
+
         loop {
             self.read_char();
 
@@ -317,9 +295,7 @@ impl Lexer {
             }
 
             if self.is_eof() {
-                return Err(
-                    "expected closing string with double quotation but got nothing".to_string(),
-                );
+                lexer_error!(format!("Expected closing string with double quotation but got nothing."));
             }
         }
 
@@ -332,10 +308,18 @@ impl Lexer {
 
         let end = self.pos;
 
-        Ok((start - 1, end, content))
+        let span = Span { start: start - 1, end };
+
+        Token {
+            kind: TokenKind::Literal(Literal::String(StringLiteral {
+                raw: content,
+                span: span.clone(),
+            })),
+            span,
+        }
     }
 
-    fn read_identifider(&mut self) -> TokenKind {
+    fn read_identifider(&mut self) -> Token {
         let start = self.pos;
 
         while self.ch.is_alphanumeric() || self.ch == '_' {
@@ -346,24 +330,56 @@ impl Lexer {
 
         let identifier = self.input[start..end].to_string();
 
-        self.lookup_identifier(identifier)
+        let token_kind = self.lookup_identifier(identifier);
+
+        Token {
+            kind: token_kind,
+            span: Span { start, end },
+        }
     }
 
-    fn read_integer(&mut self) -> TokenKind {
+    fn read_integer(&mut self) -> Token {
         let start = self.pos;
 
-        while self.is_numeric(self.ch) {
+        let mut is_float = false;
+
+        while self.is_numeric(self.ch) || self.ch == '.' || self.ch == '_' {
+            if self.ch == '.' {
+                is_float = true;
+            }
+
             self.read_char();
         }
 
         let end = self.pos;
 
-        let value: i32 = self.input[start..end]
-            .to_string()
-            .parse()
-            .expect("expected identifier to be a number but it's something unknown");
+        let token_kind: TokenKind = {
+            if is_float {
+                let literal : Result<f32, _> = self.input[start..end].to_string().parse();
 
-        TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value)))
+                match literal {
+                    Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::F32(value))),
+                    Err(_) => {
+                        lexer_error!(format!("Expected number but got {}.", self.ch));
+                    }
+                }
+
+            } else {
+                let literal : Result<i32, _> = self.input[start..end].to_string().parse();
+                
+                match literal {
+                    Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
+                    Err(_) => {
+                        lexer_error!(format!("Expected number but got {}.", self.ch));
+                    }
+                }
+            }
+        };
+
+        Token {
+            kind: token_kind,
+            span: Span { start, end },
+        }
     }
 
     fn is_numeric(&self, ch: char) -> bool {
@@ -384,14 +400,11 @@ impl Lexer {
             | '\u{000C}' // form feed
             | '\u{000D}' // \r
             | '\u{0020}' // space
-    
             // NEXT LINE from latin1
             | '\u{0085}'
-    
             // Bidi markers
             | '\u{200E}' // LEFT-TO-RIGHT MARK
             | '\u{200F}' // RIGHT-TO-LEFT MARK
-    
             // Dedicated whitespace characters from Unicode
             | '\u{2028}' // LINE SEPARATOR
             | '\u{2029}' // PARAGRAPH SEPARATOR
@@ -411,7 +424,7 @@ impl Lexer {
     fn skip_comments(&mut self) {
         if self.ch == '/' && self.peek_char() == '/' {
             self.read_char();
-            self.read_char(); // consume double slash
+            self.read_char();
 
             loop {
                 if self.is_eof() || self.ch == '\n' {
@@ -423,6 +436,30 @@ impl Lexer {
 
             if self.ch == '\n' {
                 // consume the new line char
+                self.read_char();
+            }
+        } else if self.ch == '/' && self.peek_char() == '*' {
+            self.read_char();
+            self.read_char();
+
+            loop {
+                if self.is_eof() || self.ch == '*' {
+                    if self.peek_char() != '/' {
+                        lexer_error!("Expected to close the multi-line comment with slash.");
+                    }
+
+                    self.read_char();
+                    self.read_char();
+
+                    break;
+                }
+
+                self.read_char();
+            }
+
+            // Skip extra new lines
+
+            while self.ch == '\n' {
                 self.read_char();
             }
         }
@@ -451,9 +488,7 @@ impl Lexer {
             "f64" => TokenKind::F64,
             "array" => TokenKind::Array,
             "string" => TokenKind::String,
-            _ => TokenKind::Identifier {
-                name: ident.to_string(),
-            },
+            _ => TokenKind::Identifier { name: ident.to_string() },
         }
     }
 }
@@ -462,25 +497,11 @@ impl Iterator for Lexer {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.next_token() {
-            Err(str) => panic!("{}", str),
-            Ok(token) => {
-                if token.kind == TokenKind::EOF {
-                    return None;
-                }
-
-                Some(token)
-            }
+        let token = self.next_token();
+        if token.kind == TokenKind::EOF {
+            return None;
         }
-    }
-}
 
-impl fmt::Display for Lexer {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "pos: {}, next_pos: {}, char: {}",
-            self.pos, self.next_pos, self.ch
-        )
+        Some(token)
     }
 }

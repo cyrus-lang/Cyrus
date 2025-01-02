@@ -1,5 +1,5 @@
-use core::fmt;
 use crate::ast::*;
+use core::fmt;
 
 impl fmt::Display for BlockStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -65,17 +65,10 @@ impl fmt::Display for Expression {
             Expression::UnaryOperator(unop) => write!(f, "{}{}", unop.identifer, unop.ty),
             Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
             Expression::Literal(literal) => write!(f, "{}", literal),
-            Expression::Prefix(UnaryExpression {
-                operand, operator, ..
-            }) => {
+            Expression::Prefix(UnaryExpression { operand, operator, .. }) => {
                 write!(f, "({}{})", operator.kind, operand)
             }
-            Expression::Infix(BinaryExpression {
-                operator,
-                left,
-                right,
-                ..
-            }) => {
+            Expression::Infix(BinaryExpression { operator, left, right, .. }) => {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
             Expression::FunctionCall(FunctionCall {
