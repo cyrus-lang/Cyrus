@@ -37,7 +37,9 @@ impl<'a> Parser<'a> {
     fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         match self.current_token.kind {
             TokenKind::If => self.parse_if_statement(),
-            TokenKind::Function => self.parse_function_statement(),
+            TokenKind::Function | TokenKind::Decl | TokenKind::Extern | TokenKind::Pub | TokenKind::Inline => {
+                self.parse_function_statement()
+            }
             TokenKind::Return => self.parse_return_statement(),
             TokenKind::Hashtag => self.parse_variable_declaration(),
             TokenKind::For => self.parse_for_statement(),
@@ -85,7 +87,10 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
 
-        Err(format!("Expected token: {} but got {}.", token_kind, self.peek_token.kind))
+        Err(format!(
+            "Expected token: {} but got {}.",
+            token_kind, self.peek_token.kind
+        ))
     }
 
     fn expect_current(&mut self, token_kind: TokenKind) -> Result<(), ParseError> {
@@ -94,7 +99,10 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
 
-        Err(format!("Expected token: {} but got {}.", token_kind, self.current_token.kind))
+        Err(format!(
+            "Expected token: {} but got {}.",
+            token_kind, self.current_token.kind
+        ))
     }
 
     fn parse_package_declaration(&mut self) -> Result<Statement, ParseError> {
@@ -123,7 +131,10 @@ impl<'a> Parser<'a> {
                         continue;
                     }
                     _ => {
-                        return Err(format!("Expected an identifier as package name but got {}.", self.current_token.kind));
+                        return Err(format!(
+                            "Expected an identifier as package name but got {}.",
+                            self.current_token.kind
+                        ));
                     }
                 }
             }
@@ -135,7 +146,10 @@ impl<'a> Parser<'a> {
 
             return Ok(Statement::Package(Package { sub_packages, span }));
         } else {
-            Err(format!("Invalid token '{}' found in package declaration.", self.current_token.kind))
+            Err(format!(
+                "Invalid token '{}' found in package declaration.",
+                self.current_token.kind
+            ))
         }
     }
 
@@ -385,19 +399,32 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    fn parse_func_vis_type(&mut self, token: Token) -> Result<FuncVisType, ParseError> {
+        let vis_type = match token.kind {
+            TokenKind::Inline => FuncVisType::Inline,
+            TokenKind::Extern => FuncVisType::Extern,
+            TokenKind::Pub => FuncVisType::Pub,
+            _ => return Err(format!("Invalid function visibility detected: '{}'", token.kind))
+        };
+        self.next_token(); // consume vis_type token
+        Ok(vis_type)
+    }
+
     fn parse_function_statement(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+
+        let mut vis_type = FuncVisType::Internal; // internal by default
+
+        if !self.current_token_is(TokenKind::Function) {
+            // Parse visiblity type
+            vis_type = self.parse_func_vis_type(self.current_token.clone())?;
+        }
 
         self.next_token(); // consume the fn token
 
         let function_name = match self.current_token.kind.clone() {
             TokenKind::Identifier { name } => name,
-            _ => {
-                return Err(format!(
-                    "Invalid function name: {}.",
-                    self.current_token.kind
-                ))
-            }
+            _ => return Err(format!("Invalid function name: {}.", self.current_token.kind)),
         }; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
@@ -438,6 +465,7 @@ impl<'a> Parser<'a> {
                 params,
                 body,
                 return_type,
+                vis_type,
                 span: Span { start, end },
             }));
         }
@@ -559,7 +587,11 @@ impl<'a> Parser<'a> {
         Ok(Statement::Expression(expr))
     }
 
-    fn parse_function_call_expression(&mut self, left: Expression, left_start: usize) -> Result<Expression, ParseError> {
+    fn parse_function_call_expression(
+        &mut self,
+        left: Expression,
+        left_start: usize,
+    ) -> Result<Expression, ParseError> {
         let arguments = self.parse_expression_series(TokenKind::RightParen)?;
 
         let end = self.current_token.span.end;
@@ -578,7 +610,9 @@ impl<'a> Parser<'a> {
         let mut left_start = self.current_token.span.start;
         let mut left = self.parse_prefix_expression()?;
 
-        while self.current_token.kind != TokenKind::EOF && precedence < determine_token_precedence(self.peek_token.kind.clone()) {
+        while self.current_token.kind != TokenKind::EOF
+            && precedence < determine_token_precedence(self.peek_token.kind.clone())
+        {
             match self.parse_infix_expression(left.clone(), left_start) {
                 Some(infix) => {
                     left = infix?;
@@ -612,7 +646,12 @@ impl<'a> Parser<'a> {
                 let ty = match token_kind {
                     TokenKind::Increment => UnaryOperatorType::PreIncrement,
                     TokenKind::Decrement => UnaryOperatorType::PreDecrement,
-                    _ => return Err(format!("Expected increment (++) or decrement (--) operator, but found: {}.", self.current_token.kind)),
+                    _ => {
+                        return Err(format!(
+                            "Expected increment (++) or decrement (--) operator, but found: {}.",
+                            self.current_token.kind
+                        ))
+                    }
                 };
 
                 self.next_token(); // consume the operator
@@ -620,7 +659,12 @@ impl<'a> Parser<'a> {
                 match self.current_token.kind.clone() {
                     TokenKind::Identifier { name } => {
                         return Ok(Expression::UnaryOperator(UnaryOperator {
-                            identifer: { Identifier { name, span: span.clone() } },
+                            identifer: {
+                                Identifier {
+                                    name,
+                                    span: span.clone(),
+                                }
+                            },
                             ty,
                             span: Span {
                                 start: span.start,
@@ -654,7 +698,10 @@ impl<'a> Parser<'a> {
                         span,
                     }));
                 } else {
-                    return Ok(Expression::Identifier(Identifier { name: identifier.name, span }));
+                    return Ok(Expression::Identifier(Identifier {
+                        name: identifier.name,
+                        span,
+                    }));
                 }
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
@@ -679,14 +726,21 @@ impl<'a> Parser<'a> {
                 return Ok(expr);
             }
             _ => {
-                return Err(format!("No corresponding prefix function defined for '{}'.", self.current_token.kind));
+                return Err(format!(
+                    "No corresponding prefix function defined for '{}'.",
+                    self.current_token.kind
+                ));
             }
         };
 
         Ok(expr)
     }
 
-    fn parse_infix_expression(&mut self, left: Expression, left_start: usize) -> Option<Result<Expression, ParseError>> {
+    fn parse_infix_expression(
+        &mut self,
+        left: Expression,
+        left_start: usize,
+    ) -> Option<Result<Expression, ParseError>> {
         match &self.peek_token.kind {
             TokenKind::Plus
             | TokenKind::Minus

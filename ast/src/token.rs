@@ -14,7 +14,6 @@ pub enum TokenKind {
     EOF,
     Identifier { name: String },
     Literal(Literal),
-
     // Operators
     Plus,
     Minus,
@@ -23,7 +22,6 @@ pub enum TokenKind {
     Percent,
     Increment,
     Decrement,
-
     // Symbols
     Assign,
     Equal,
@@ -49,9 +47,6 @@ pub enum TokenKind {
     GreaterEqual,
     And,
     Or,
-    True,
-    False,
-
     // Keywords
     Function,
     Match,
@@ -64,6 +59,8 @@ pub enum TokenKind {
     Struct,
     Import,
     Package,
+    Decl,
+    // Types
     I32,
     I64,
     U32,
@@ -74,6 +71,12 @@ pub enum TokenKind {
     Array,
     String,
     Boolean,
+    True,
+    False,
+    // Object Visibility Keywords
+    Extern,
+    Pub,
+    Inline,
 }
 
 impl fmt::Display for TokenKind {

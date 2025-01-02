@@ -213,6 +213,15 @@ pub struct FuncDef {
     pub body: Box<BlockStatement>,
     pub return_type: Option<Token>,
     pub span: Span,
+    pub vis_type: FuncVisType
+}
+
+#[derive(Debug, Clone)]
+pub enum FuncVisType {
+    Extern,
+    Pub,
+    Internal,
+    Inline
 }
 
 #[derive(Debug, Clone)]

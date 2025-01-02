@@ -37,6 +37,11 @@ fn divide(num1: i32, num2: i32): i32 {
     ret num1 / num2;
 }
 
+pub fn public_fn() {}
+inline fn inline_fn() {}
+extern fn extern_fn() {}
+fn internal_fn() {}
+
 // Calling function
 divide(a, i32(b));
 
