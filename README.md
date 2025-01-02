@@ -1,6 +1,6 @@
 # Cyrus Lang
 
-Cyrus is a general-purpose, statically-typed, manually memory-managed programming language designed for performance-critical applications. It leverages LLVM as its compiler backend, providing efficient code generation and optimization capabilities. The language syntax is heavily influenced by C, offering familiarity to developers experienced with C-like languages.
+Cyrus is a general-purpose, statically-typed, manually memory-managed programming language designed for performance-critical applications. It leverages GCCJIT as its compiler backend, providing efficient code generation and optimization capabilities. The language syntax is heavily influenced by C, offering familiarity to developers experienced with C-like languages.
 
 Key Features:
 
@@ -8,7 +8,7 @@ Key Features:
 
  * Statically-typed: Enforces type safety at compile time, reducing runtime errors and improving code reliability.
 
- * LLVM backend: Enables efficient code generation and optimization across various platforms and architectures.
+ * GCCJIT: Enables efficient code generation and optimization across various platforms and architectures.
 
  * C-inspired syntax: Offers a familiar and concise syntax for developers accustomed to C-like languages.
 

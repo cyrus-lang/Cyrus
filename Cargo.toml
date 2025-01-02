@@ -5,15 +5,17 @@ edition = "2021"
 resolver = "2"
 
 [workspace]
-members = ["ast", "lexer", "parser", "utils"]
+members = ["ast", "compiler", "lexer", "parser", "utils"]
 
 [[bin]]
 name = "cyrus"
 path = "./cli.rs"
 
 [dependencies]
-llvm-sys = "181.2.0"
 clap = { version = "4.5.23", features = ["derive"] }
-parser = { path = "./parser", version = "*" }
+lexer = { path = "./lexer", version = "*" }
 ast = { path = "./ast", version = "*" }
+parser = { path = "./parser", version = "*" }
+utils = { path = "./utils", version = "*" }
+compiler = { path = "./compiler", version = "*" }
 

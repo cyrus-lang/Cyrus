@@ -1,0 +1,9 @@
+[package]
+name = "compiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gccjit = "2.4.0"
+ast = { path = "../ast", version = "*" }
+utils = { path = "../utils", version = "*" }
