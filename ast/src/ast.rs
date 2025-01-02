@@ -137,7 +137,7 @@ pub enum Statement {
     Expression(Expression),
     If(If),
     Return(Return),
-    Function(Function),
+    FuncDef(FuncDef),
     For(For),
     Match(Match),
     Struct(Struct),
@@ -172,7 +172,7 @@ pub struct Struct {
     pub name: Identifier,
     pub fields: Option<Field>,
     pub extends: Option<Box<Struct>>,
-    pub methods: Option<Function>,
+    pub methods: Option<FuncDef>,
 }
 
 #[derive(Debug, Clone)]
@@ -207,7 +207,7 @@ pub struct MatchPattern {
 }
 
 #[derive(Debug, Clone)]
-pub struct Function {
+pub struct FuncDef {
     pub name: String,
     pub params: FunctionParams,
     pub body: Box<BlockStatement>,

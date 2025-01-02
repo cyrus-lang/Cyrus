@@ -1,0 +1,7 @@
+extern int
+main ()
+{
+def:
+  return -((int)10) / (int)2 + (int)10;
+}
+

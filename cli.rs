@@ -15,6 +15,7 @@ struct Args {
 #[derive(clap::Subcommand, Debug, Clone)]
 enum Commands {
     Run { file_path: String },
+    Dump { file_path: String, output_path: String },
     Version,
 }
 
@@ -46,15 +47,14 @@ fn parse_program(file_path: String) -> Program {
 }
 
 macro_rules! init_compiler {
-    ($program:expr) => {
-        {
-            let mut compiler = Compiler::new($program);
-            compiler.compile();
-            #[cfg(debug_assertions)]
-            compiler.set_debug_info(true);
-            compiler
-        }
-    };
+    ($file_path:expr) => {{
+        let program = parse_program($file_path);
+        let mut compiler = Compiler::new(program);
+        compiler.compile();
+        #[cfg(debug_assertions)]
+        compiler.set_debug_info(true);
+        compiler
+    }};
 }
 
 pub fn main() {
@@ -63,9 +63,15 @@ pub fn main() {
 
     match args.cmd {
         Commands::Run { file_path } => {
-            let program = parse_program(file_path);
-            let compiler = init_compiler!(program);
+            let compiler = init_compiler!(file_path);
             compiler.execute();
+        }
+        Commands::Dump {
+            file_path,
+            output_path,
+        } => {
+            let compiler = init_compiler!(file_path);
+            compiler.make_dump_file(output_path);
         }
         Commands::Version => {
             println!("Cyrus {}", version)

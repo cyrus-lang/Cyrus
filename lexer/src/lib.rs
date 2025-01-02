@@ -486,6 +486,7 @@ impl Lexer {
             "u64" => TokenKind::U64,
             "f32" => TokenKind::F32,
             "f64" => TokenKind::F64,
+            "void" => TokenKind::Void,
             "array" => TokenKind::Array,
             "string" => TokenKind::String,
             _ => TokenKind::Identifier { name: ident.to_string() },

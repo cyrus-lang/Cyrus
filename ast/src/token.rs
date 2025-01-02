@@ -70,6 +70,7 @@ pub enum TokenKind {
     U64,
     F32,
     F64,
+    Void,
     Array,
     String,
     Boolean,
@@ -125,6 +126,7 @@ impl fmt::Display for TokenKind {
             Self::U64 => write!(f, "u64"),
             Self::F32 => write!(f, "f32"),
             Self::F64 => write!(f, "f64"),
+            Self::Void => write!(f, "void"),
             Self::Array => write!(f, "array"),
             Self::String => write!(f, "string"),
             // ETC

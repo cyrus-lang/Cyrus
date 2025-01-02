@@ -433,7 +433,7 @@ impl<'a> Parser<'a> {
 
             let end = self.current_token.span.end;
 
-            return Ok(Statement::Function(Function {
+            return Ok(Statement::FuncDef(FuncDef {
                 name: function_name,
                 params,
                 body,
