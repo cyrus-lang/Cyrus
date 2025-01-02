@@ -402,7 +402,7 @@ impl Lexer {
     fn skip_comments(&mut self) {
         if self.ch == '/' && self.peek_char() == '/' {
             self.read_char();
-            self.read_char(); 
+            self.read_char();
 
             loop {
                 if self.is_eof() || self.ch == '\n' {
@@ -414,6 +414,30 @@ impl Lexer {
 
             if self.ch == '\n' {
                 // consume the new line char
+                self.read_char();
+            }
+        } else if self.ch == '/' && self.peek_char() == '*' {
+            self.read_char();
+            self.read_char();
+
+            loop {
+                if self.is_eof() || self.ch == '*' {
+                    if self.peek_char() != '/' {
+                        lexer_error!("Expected to close the multi-line comment with slash.");
+                    }
+
+                    self.read_char();
+                    self.read_char();
+
+                    break;
+                }
+
+                self.read_char();
+            }
+
+            // Skip extra new lines
+            
+            while self.ch == '\n' {
                 self.read_char();
             }
         }

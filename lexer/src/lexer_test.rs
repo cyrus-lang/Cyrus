@@ -93,6 +93,29 @@ mod tests {
     #[test]
     fn test_comments() {
         assert_tokens("// Sample comments", None, None);
+        let code = "
+        // Sample comments
+        // Another comment line
+        1 + 2
+        // After expression comments work too!
+        \"It works very well!\"
+
+        /*  Multi 
+            Line 
+            Comments 
+        Also works! */
+
+        1 + 2
+        print();
+
+        // Another comment after multi-line comment.
+        ";
+
+        let lexer = Lexer::new(code);
+
+        for token in lexer {
+            println!("{:?}", token);
+        }
     }
 
     #[test]
