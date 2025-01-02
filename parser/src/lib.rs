@@ -1,7 +1,7 @@
 use ast::ast::*;
 use ast::token::*;
 use lexer::*;
-use precedences::{determine_token_precedence, Precedence};
+use precedences::{token_precedence_of, Precedence};
 
 mod parser_test;
 mod precedences;
@@ -302,7 +302,8 @@ impl<'a> Parser<'a> {
             | TokenKind::U32
             | TokenKind::U64
             | TokenKind::F32
-            | TokenKind::F64 => Ok(self.current_token.kind.clone()),
+            | TokenKind::F64
+            | TokenKind::Array => Ok(self.current_token.kind.clone()),
             _ => Err(format!("Invalid type for variable: {}.", self.current_token.kind)),
         }
     }
@@ -404,7 +405,7 @@ impl<'a> Parser<'a> {
             TokenKind::Inline => FuncVisType::Inline,
             TokenKind::Extern => FuncVisType::Extern,
             TokenKind::Pub => FuncVisType::Pub,
-            _ => return Err(format!("Invalid function visibility detected: '{}'", token.kind))
+            _ => return Err(format!("Invalid function visibility detected: '{}'", token.kind)),
         };
         self.next_token(); // consume vis_type token
         Ok(vis_type)
@@ -611,7 +612,7 @@ impl<'a> Parser<'a> {
         let mut left = self.parse_prefix_expression()?;
 
         while self.current_token.kind != TokenKind::EOF
-            && precedence < determine_token_precedence(self.peek_token.kind.clone())
+            && precedence < token_precedence_of(self.peek_token.kind.clone())
         {
             match self.parse_infix_expression(left.clone(), left_start) {
                 Some(infix) => {
@@ -697,6 +698,8 @@ impl<'a> Parser<'a> {
                         ty: UnaryOperatorType::PostDecrement,
                         span,
                     }));
+                } else if self.peek_token_is(TokenKind::LeftBracket) {
+                    return self.parse_array_index();
                 } else {
                     return Ok(Expression::Identifier(Identifier {
                         name: identifier.name,
@@ -725,6 +728,7 @@ impl<'a> Parser<'a> {
                 self.expect_peek(TokenKind::RightParen)?;
                 return Ok(expr);
             }
+            TokenKind::LeftBracket => self.parse_array_items()?,
             _ => {
                 return Err(format!(
                     "No corresponding prefix function defined for '{}'.",
@@ -758,7 +762,7 @@ impl<'a> Parser<'a> {
 
                 let operator = self.current_token.clone();
 
-                let precedence = determine_token_precedence(self.current_token.kind.clone());
+                let precedence = token_precedence_of(self.current_token.kind.clone());
 
                 self.next_token(); // consume the operator
 
@@ -778,9 +782,62 @@ impl<'a> Parser<'a> {
                 self.next_token(); // consume the identifier token
                 Some(self.parse_function_call_expression(left, left_start))
             }
-
-            // TODO - Implement array index epxression parser
             _ => None,
         }
+    }
+
+    pub fn parse_array_index(&mut self) -> Result<Expression, ParseError> {
+        let start = self.current_token.span.start;
+
+        let identifer = self.current_token.clone();
+
+        if let TokenKind::Identifier { name } = identifer.kind {
+            let mut dimensions: Vec<Array> = Vec::new();
+
+            while self.peek_token_is(TokenKind::LeftBracket) {
+                let expr = self.parse_array_items()?;
+
+                dbg!(expr.clone());
+
+                if let Expression::Array(elements) = expr {
+                    dimensions.push(elements);
+                } else {
+                    return Err(format!(
+                        "Expected array expression to add to the array index dimensions but got '{}'.",
+                        expr
+                    ));
+                }
+            }
+
+            let end = self.current_token.span.end;
+
+            Ok(Expression::ArrayIndex(ArrayIndex {
+                dimensions,
+                span: Span { start, end },
+                identifier: Identifier {
+                    name,
+                    span: identifer.span,
+                },
+            }))
+        } else {
+            return Err(format!(
+                "Expected identifier for array index evaluation but got '{}'.",
+                self.current_token.kind
+            ));
+        }
+    }
+
+    pub fn parse_array_items(&mut self) -> Result<Expression, ParseError> {
+        let start = self.current_token.span.start;
+
+        let elements = self.parse_expression_series(TokenKind::RightBracket)?;
+
+        Ok(Expression::Array(Array {
+            elements: elements.0,
+            span: Span {
+                start,
+                end: elements.1.end,
+            },
+        }))
     }
 }

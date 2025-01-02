@@ -36,6 +36,8 @@ pub enum Expression {
     Infix(BinaryExpression),
     FunctionCall(FunctionCall),
     UnaryOperator(UnaryOperator),
+    Array(Array),
+    ArrayIndex(ArrayIndex)
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +120,13 @@ pub struct StringLiteral {
 #[derive(Debug, Clone)]
 pub struct Array {
     pub elements: Vec<Expression>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayIndex {
+    pub identifier: Identifier,
+    pub dimensions: Vec<Array>,
     pub span: Span,
 }
 

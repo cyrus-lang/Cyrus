@@ -119,6 +119,7 @@ impl<'a> Compiler<'a> {
             Expression::Infix(binary_expression) => self.compile_infix_expression(binary_expression),
             Expression::FunctionCall(function_call) => todo!(),
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(unary_operator),
+            Expression::Array(array) => todo!()
         }
     }
 

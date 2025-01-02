@@ -68,16 +68,43 @@ impl fmt::Display for Expression {
             Expression::Prefix(UnaryExpression { operand, operator, .. }) => {
                 write!(f, "({}{})", operator.kind, operand)
             }
-            Expression::Infix(BinaryExpression { operator, left, right, .. }) => {
+            Expression::Infix(BinaryExpression {
+                operator, left, right, ..
+            }) => {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
             Expression::FunctionCall(FunctionCall {
-                function_name, arguments, ..
+                function_name,
+                arguments,
+                ..
             }) => {
                 write!(f, "{}({})", function_name, format_expressions(arguments))
             }
+            Expression::Array(array) => {
+                write!(f, "[{}]", array_items_to_string(array.clone()))
+            }
+            Expression::ArrayIndex(array_index) => {
+                let mut dimensions_str = String::new();
+
+                for array in array_index.dimensions.clone() {
+                    let arr_str = format!("[{}]", array_items_to_string(array));
+                    dimensions_str += arr_str.as_str();
+                }
+
+                write!(f, "{}{}", array_index.identifier.name, dimensions_str)
+            }
         }
     }
+}
+
+fn array_items_to_string(array: Array) -> String {
+    let arr_str = array
+        .elements
+        .iter()
+        .map(|c| c.to_string())
+        .collect::<Vec<String>>()
+        .join(", ");
+    arr_str
 }
 
 impl fmt::Display for Statement {

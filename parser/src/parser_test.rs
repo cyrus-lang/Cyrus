@@ -217,4 +217,11 @@ mod tests {
         assert_parse("package sample;");
         assert_parse("package root:sub:sub2;");
     }
+
+    #[test]
+    fn test_arrays() {
+        assert_parse("#a: array = [1, 2, 3]");
+        assert_parse("#a: array = [\"Cyrus\", \"Lang\"]");
+        assert_parse("arr[0][1]");
+    }
 }

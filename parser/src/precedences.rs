@@ -14,7 +14,7 @@ pub enum Precedence {
     Index,       // array[index]
 }
 
-pub fn determine_token_precedence(token_kind: TokenKind) -> Precedence {
+pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
     match token_kind {
         TokenKind::Equal => Precedence::Equals,
         TokenKind::NotEqual => Precedence::Equals,
