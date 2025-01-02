@@ -16,6 +16,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install dependencies
+      run:  |
+        apt update
+        apt install gcc libgccjit-14 libgccjit-14-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
