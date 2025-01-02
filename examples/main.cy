@@ -1,5 +1,5 @@
 fn main(): i32 {
-    "Hello World";    
+    #a: i32 = 10;
 
-    return (-10 / 2) + 10;
+    return 0;
 }

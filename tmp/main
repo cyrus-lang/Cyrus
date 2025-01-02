@@ -1,7 +1,10 @@
 extern int
 main ()
 {
+  int a;
+
 def:
-  return -((int)10) / (int)2 + (int)10;
+  a = (int)10;
+  return (int)0;
 }
 

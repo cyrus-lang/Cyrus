@@ -33,8 +33,8 @@ impl<'a> Compiler<'a> {
         self.context.new_type::<f32>()
     }
 
-    pub fn token_to_type(&self, token: Token) -> Type {
-        match token.kind {
+    pub fn token_to_type(&self, token_kind: TokenKind) -> Type {
+        match token_kind {
             TokenKind::I32 => self.i32_type(),
             TokenKind::I64 => self.i64_type(),
             TokenKind::U32 => self.u32_type(),

@@ -20,13 +20,13 @@ impl<'a> Compiler<'a> {
 
     pub fn compile(&self) {
         for stmt in self.program.body.clone() {
-            self.compile_statement(stmt.clone());
+            self.compile_statement(stmt.clone(), None, None);
         }
     }
 
-    pub fn compile_statement(&self, stmt: Statement) {
+    pub fn compile_statement(&self, stmt: Statement, block: Option<Block>, func: Option<Function>) {
         match stmt {
-            Statement::Variable(variable) => self.compile_variable(variable.clone()),
+            Statement::Variable(variable) => self.compile_variable(variable.clone(), block, func),
             Statement::Expression(expr) => {
                 self.compile_expression(expr.clone());
             }
@@ -37,7 +37,38 @@ impl<'a> Compiler<'a> {
             Statement::Struct(_) => todo!(),
             Statement::Package(package) => todo!(),
             Statement::Import(import) => todo!(),
-            Statement::Return(_) => compiler_error!("Incorrect usage of the return statement. It must be used inside a functino declaration."),
+            Statement::Return(ret_stmt) => self.compile_return(ret_stmt, block),
+        }
+    }
+
+    fn compile_return(&self, ret_stmt: Return, block: Option<Block>) {
+        if let Some(block) = block {
+            let ret_value = self.compile_expression(ret_stmt.argument);
+            block.end_with_return(None, ret_value);
+        } else {
+            compiler_error!("Incorrect usage of the return statement. It must be used inside a function declaration.");
+        }
+    }
+
+    fn compile_variable(&self, variable: Variable, block: Option<Block>, func: Option<Function>) {
+        if let Some(func) = func {
+            if let Some(block) = block {
+                let var_ty: Type;
+
+                if let Some(token) = variable.ty {
+                    var_ty = self.token_to_type(token);
+                } else {
+                    var_ty = self.void_type();
+                }
+
+                let lvalue = func.new_local(None, var_ty, variable.name);
+                let rvalue = self.compile_expression(variable.expr);
+                block.add_assignment(None, lvalue, rvalue);
+            } else {
+                compiler_error!("Block required to make a variable declaration but it's null.");
+            }
+        } else {
+            compiler_error!("Local variable declarations must be performed inside a function.");
         }
     }
 
@@ -48,7 +79,7 @@ impl<'a> Compiler<'a> {
         let mut is_return_type_void = false;
 
         if let Some(token) = function.return_type {
-            func_return_type = self.token_to_type(token);
+            func_return_type = self.token_to_type(token.kind);
         } else {
             func_return_type = self.void_type();
             is_return_type_void = true;
@@ -66,16 +97,11 @@ impl<'a> Compiler<'a> {
         let mut return_compiled = false;
 
         for item in function.body.body {
-            match item {
-                Statement::Return(ret_stmt) => {
-                    let ret_value = self.compile_expression(ret_stmt.argument);
-                    block.end_with_return(None, ret_value);
-                    return_compiled = true;
-                }
-                _ => {
-                    self.compile_statement(item);
-                }
+            if let Statement::Return(ret_stmt) = item.clone() {
+                return_compiled = true;
             }
+
+            self.compile_statement(item, Some(block), Some(func));
         }
 
         if !return_compiled && !is_return_type_void {
@@ -159,6 +185,5 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_variable(&self, variable: Variable) {}
     fn compile_if_stmt(&self, if_stmt: If) {}
 }
