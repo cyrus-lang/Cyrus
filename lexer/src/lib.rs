@@ -1,8 +1,8 @@
 use ast::{
-    ast::{IntegerLiteral, Literal, StringLiteral},
+    ast::{FloatLiteral, IntegerLiteral, Literal, StringLiteral},
     token::*,
 };
-use std::fmt::{self, Debug};
+use std::fmt::Debug;
 use utils::lexer_error;
 
 mod format;
@@ -10,16 +10,16 @@ mod lexer_test;
 
 #[derive(Debug, Clone)]
 pub struct Lexer {
-    input: &'static str,
+    input: String,
     pos: usize,
     next_pos: usize,
     ch: char,
 }
 
 impl Lexer {
-    pub fn new(input: &'static str) -> Self {
+    pub fn new(input: String) -> Self {
         let mut lexer = Self {
-            input: input.trim(),
+            input: input.trim().to_string(),
             pos: 0,      // points to current position
             next_pos: 0, // points to next position
             ch: ' ',
@@ -341,16 +341,38 @@ impl Lexer {
     fn read_integer(&mut self) -> Token {
         let start = self.pos;
 
-        while self.is_numeric(self.ch) {
+        let mut is_float = false;
+
+        while self.is_numeric(self.ch) || self.ch == '.' || self.ch == '_' {
+            if self.ch == '.' {
+                is_float = true;
+            }
+
             self.read_char();
         }
 
         let end = self.pos;
 
-        let token_kind = match self.input[start..end].to_string().parse() {
-            Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
-            Err(_) => {
-                lexer_error!(format!("Expected number but got {}.", self.ch));
+        let token_kind: TokenKind = {
+            if is_float {
+                let literal : Result<f32, _> = self.input[start..end].to_string().parse();
+
+                match literal {
+                    Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::F32(value))),
+                    Err(_) => {
+                        lexer_error!(format!("Expected number but got {}.", self.ch));
+                    }
+                }
+
+            } else {
+                let literal : Result<i32, _> = self.input[start..end].to_string().parse();
+                
+                match literal {
+                    Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
+                    Err(_) => {
+                        lexer_error!(format!("Expected number but got {}.", self.ch));
+                    }
+                }
             }
         };
 
@@ -436,7 +458,7 @@ impl Lexer {
             }
 
             // Skip extra new lines
-            
+
             while self.ch == '\n' {
                 self.read_char();
             }

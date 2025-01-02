@@ -6,3 +6,11 @@ edition = "2021"
 [dependencies]
 ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
+
+[lib]
+name = "lexer"
+path = "./src/lib.rs"
+
+[[bin]]
+name = "lexer"
+path = "./src/lexer_cli.rs"

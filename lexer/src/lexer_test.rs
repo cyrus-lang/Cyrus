@@ -2,12 +2,12 @@
 mod tests {
     use crate::Lexer;
     use ast::{
-        ast::{IntegerLiteral, Literal, StringLiteral},
+        ast::{FloatLiteral, IntegerLiteral, Literal, StringLiteral},
         token::{Span, TokenKind},
     };
 
     fn assert_tokens(input: &'static str, expected_tokens: Option<&Vec<TokenKind>>, spans: Option<&Vec<Span>>) {
-        let lexer = Lexer::new(input);
+        let lexer = Lexer::new(input.to_string());
 
         let mut i: usize = 0;
         for token in lexer {
@@ -93,7 +93,8 @@ mod tests {
     #[test]
     fn test_comments() {
         assert_tokens("// Sample comments", None, None);
-        let code = "
+        let code = String::from(
+            "
         // Sample comments
         // Another comment line
         1 + 2
@@ -109,7 +110,8 @@ mod tests {
         print();
 
         // Another comment after multi-line comment.
-        ";
+        ",
+        );
 
         let lexer = Lexer::new(code);
 
@@ -269,6 +271,15 @@ mod tests {
                 raw: "Cyrus-Lang".to_string(),
                 span: Span { start: 0, end: 12 },
             }))]),
+            None,
+        );
+    }
+
+    #[test]
+    fn test_floating_numbers() {
+        assert_tokens(
+            "3.14",
+            Some(&vec![TokenKind::Literal(Literal::Float(FloatLiteral::F32(3.14)))]),
             None,
         );
     }
