@@ -19,7 +19,7 @@ jobs:
     - name: Install dependencies
       run:  |
         sudo apt update
-        sudo apt install gcc libgccjit-12 libgccjit-12-dev
+        sudo apt install gcc libgccjit-12-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
