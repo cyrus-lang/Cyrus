@@ -1,9 +1,6 @@
 use ast::{ast::*, token::TokenKind};
 use gccjit_sys::*;
-use std::{
-    ffi::{c_char, CString},
-    ptr::null_mut,
-};
+use std::{ffi::CString, ptr::null_mut};
 use utils::compiler_error;
 
 mod output;
@@ -95,14 +92,10 @@ impl Compiler {
             FuncVisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
         };
 
-        let ret_type: *mut gcc_jit_type;
-        let mut is_ret_type_void = false;
+        let mut ret_type: *mut gcc_jit_type = self.void_type();
 
         if let Some(token) = function.return_type {
             ret_type = self.token_to_type(token.kind);
-        } else {
-            ret_type = self.void_type();
-            is_ret_type_void = true;
         }
 
         // TODO - Eval params
@@ -135,13 +128,11 @@ impl Compiler {
             self.compile_statement(item, Some(block), Some(func));
         }
 
-        if !return_compiled && !is_ret_type_void {
+        if !return_compiled {
             compiler_error!(format!(
                 "Explicit return statement required for the function '{}'.",
                 function.name
             ));
-        } else if is_ret_type_void && !return_compiled {
-            unsafe { gcc_jit_block_end_with_void_return(block, null_mut()) };
         }
     }
 
@@ -241,6 +232,6 @@ impl Compiler {
 
 impl Drop for Compiler {
     fn drop(&mut self) {
-        unsafe { gcc_jit_context_release(self.context) };
+        // unsafe { gcc_jit_context_release(self.context) };
     }
 }

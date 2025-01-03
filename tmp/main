@@ -2,6 +2,6 @@ extern __int32_t
 main ()
 {
 def:
-  return (__int32_t)0;
+  return (__int32_t)10 / (__int32_t)2;
 }
 

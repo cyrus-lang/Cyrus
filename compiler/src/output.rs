@@ -7,16 +7,16 @@ impl Compiler {
     pub fn execute(&self) {
         let result = unsafe { gcc_jit_context_compile(self.context) };
 
-        let name = CString::new("main").unwrap();
-        let main = unsafe { gcc_jit_result_get_code(result, name.as_ptr()) };
-        if main.is_null() {
-            compiler_error!("A 'main' function required as the entry point.");
-        }
+        // let name = CString::new("main").unwrap();
+        // let main = unsafe { gcc_jit_result_get_code(result, name.as_ptr()) };
+        // if main.is_null() {
+        //     compiler_error!("A 'main' function required as the entry point.");
+        // }
 
-        unsafe {
-            let main_fn: extern "C" fn() = std::mem::transmute(main);
-            main_fn();
-        }
+        // unsafe {
+        //     let main_fn: extern "C" fn() = std::mem::transmute(main);
+        //     main_fn();
+        // }
     }
 
     pub fn make_executable_file(&self, file_path: String) {
