@@ -63,9 +63,18 @@ mod tests {
         for #i = 0; i < 10; i++; {
             puts(\"i -> {i}\");
         }";
+        
+        assert_tokens(code, None, None);
+    }
 
-        // Array definition
-        // #names = [\"Cyrus\", \"Rust\", \"Ruby\", \"Go\", \"C#\"];
+    #[test]
+    fn test_code_4() {
+        let code = "pub fn main(): i32 {
+            printf(\"Emoji 🖤.\");
+            printf(\"another line\");
+            
+
+        }";
 
         assert_tokens(code, None, None);
     }
@@ -334,5 +343,6 @@ mod tests {
     #[test]
     fn test_tokenizing_emoji() {
         assert_tokens("\"This is 🖤 made by a string.\"", None, None);
+        assert_tokens("printf(\"Hello 🖤\");", None, None);
     }
 }

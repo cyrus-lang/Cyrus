@@ -1,6 +1,6 @@
 pub fn main(): i32 {
-    printf("Hello\n");
+    printf("Emoji 🖤.");
     
 
-    return 0;   
+    return 10;
 }

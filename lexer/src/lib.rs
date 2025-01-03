@@ -323,15 +323,16 @@ impl Lexer {
     fn read_identifider(&mut self) -> Token {
         let start = self.pos;
 
+        let mut final_identifier = String::new();
+
         while self.ch.is_alphanumeric() || self.ch == '_' {
+            final_identifier.push(self.ch);
             self.read_char();
         }
 
         let end = self.pos;
 
-        let identifier = self.input[start..end].to_string();
-
-        let token_kind = self.lookup_identifier(identifier);
+        let token_kind = self.lookup_identifier(final_identifier);
 
         Token {
             kind: token_kind,
@@ -344,19 +345,26 @@ impl Lexer {
 
         let mut is_float = false;
 
+        let mut number_str = vec![];
+
         while self.is_numeric(self.ch) || self.ch == '.' || self.ch == '_' {
+            number_str.push(self.ch);
+            self.read_char();
+
             if self.ch == '.' {
                 is_float = true;
             }
 
-            self.read_char();
+            if self.ch == '_' {
+                continue;
+            }
         }
 
         let end = self.pos;
 
         let token_kind: TokenKind = {
             if is_float {
-                let literal: Result<f32, _> = self.input[start..end].to_string().parse();
+                let literal: Result<f32, _> = String::from_iter(number_str).parse();
 
                 match literal {
                     Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::F32(value))),
@@ -365,7 +373,7 @@ impl Lexer {
                     }
                 }
             } else {
-                let literal: Result<i32, _> = self.input[start..end].to_string().parse();
+                let literal: Result<i32, _> = String::from_iter(number_str).parse();
 
                 match literal {
                     Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
@@ -388,32 +396,6 @@ impl Lexer {
 
     fn is_eof(&mut self) -> bool {
         self.pos == self.input.len()
-    }
-
-    fn consume_emoji(&mut self) -> String {
-        let ch = self.input.pop().unwrap();
-        ch.to_string()
-    }
-
-    fn is_emoji(ch: char) -> bool {
-        // Emojis are generally within these ranges in Unicode
-        (ch >= '\u{1F600}' && ch <= '\u{1F64F}')         // Emoticons
-            || (ch >= '\u{1F300}' && ch <= '\u{1F5FF}')  // Miscellaneous Symbols and Pictographs
-            || (ch >= '\u{1F680}' && ch <= '\u{1F6FF}')  // Transport and Map Symbols
-            || (ch >= '\u{1F700}' && ch <= '\u{1F77F}')  // Alchemical Symbols
-            || (ch >= '\u{1F780}' && ch <= '\u{1F7FF}')  // Geometric Shapes Extended
-            || (ch >= '\u{1F800}' && ch <= '\u{1F8FF}')  // Supplemental Arrows-C
-            || (ch >= '\u{1F900}' && ch <= '\u{1F9FF}')  // Supplemental Symbols and Pictographs
-            || (ch >= '\u{1FA00}' && ch <= '\u{1FA6F}')  // Chess Symbols
-            || (ch >= '\u{1FA70}' && ch <= '\u{1FAFF}')  // Symbols and Pictographs Extended-A
-            || (ch >= '\u{2600}' && ch <= '\u{26FF}')    // Miscellaneous Symbols
-            || (ch >= '\u{2700}' && ch <= '\u{27BF}')    // Dingbats
-            || (ch >= '\u{2300}' && ch <= '\u{23FF}')    // Miscellaneous Technical
-            || (ch >= '\u{2B50}' && ch <= '\u{2B50}')    // Star emoji (included for general cases)
-            || (ch == '\u{1F004}' || ch == '\u{1F0CF}')  // Card game symbols
-            || (ch == '\u{1F003}')                       // Mahjong tile emoji
-            || (ch == '\u{1F3C1}' || ch == '\u{1F3C2}')  // Racing flags
-            || (ch == '\u{2764}' || ch == '\u{1F49C}') // Heart emojis
     }
 
     fn is_whitespace(ch: char) -> bool {
