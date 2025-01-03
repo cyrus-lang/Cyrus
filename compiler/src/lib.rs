@@ -1,8 +1,11 @@
 use ast::{ast::*, token::TokenKind};
+use builtin_builder::retrieve_builtin_func;
 use gccjit_sys::*;
 use std::{cell::RefCell, collections::HashMap, ffi::CString, ptr::null_mut};
 use utils::compiler_error;
 
+mod builtin_builder;
+mod builtin_funcs;
 mod output;
 mod types;
 
@@ -172,38 +175,17 @@ impl Compiler {
                 Some(func) => unsafe {
                     gcc_jit_context_new_call(self.context, null_mut(), *func, 0, args.as_mut_ptr())
                 },
-                None => match func_call.function_name.name.as_str() {
-                    "printf" => {
-                        self.compile_builtin_printf_func(cur_block, args);
-                        null_mut()
-                    }
-                    _ => {
-                        compiler_error!(format!(
-                            "Function '{}' not defined at this module.",
-                            func_call.function_name.name
-                        ))
-                    }
+                None => match retrieve_builtin_func(func_call.function_name.name.clone()) {
+                    Some(func_def) => func_def(self.context, cur_block, args),
+                    None => compiler_error!(format!(
+                        "Function '{}' not defined at this module.",
+                        func_call.function_name.name
+                    )),
                 },
             }
         } else {
             compiler_error!("Calling any function at top-level nodes isn't allowed.");
         }
-    }
-
-    pub fn compile_builtin_printf_func(&self, block: *mut gcc_jit_block, mut args: Vec<*mut gcc_jit_rvalue>) {
-        let name = CString::new("printf").unwrap();
-        let func_def = unsafe { gcc_jit_context_get_builtin_function(self.context, name.as_ptr()) };
-
-        let rvalue = unsafe {
-            gcc_jit_context_new_call(
-                self.context,
-                null_mut(),
-                func_def,
-                args.len().try_into().unwrap(),
-                args.as_mut_ptr(),
-            )
-        };
-        unsafe { gcc_jit_block_add_eval(block, null_mut(), rvalue) };
     }
 
     pub fn compile_unary_operator(&mut self, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
