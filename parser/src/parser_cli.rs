@@ -9,13 +9,13 @@ pub fn main() {
     let file_path = args[1].clone();
     let file_content = read_file(file_path).0;
     let mut lexer = Lexer::new(file_content);
-    
+
     match Parser::new(&mut lexer).parse() {
         Ok(result) => println!("{:#?}", result),
         Err(errors) => {
             for err in errors {
                 println!("{}", err);
             }
-        },
+        }
     }
 }

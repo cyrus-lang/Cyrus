@@ -13,5 +13,3 @@ macro_rules! lexer_error {
         std::process::exit(1);
     }};
 }
-
-

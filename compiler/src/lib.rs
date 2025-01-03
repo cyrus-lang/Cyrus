@@ -1,7 +1,7 @@
 use ast::{ast::*, token::TokenKind};
 use builtin_builder::retrieve_builtin_func;
 use gccjit_sys::*;
-use std::{cell::RefCell, collections::HashMap, ffi::CString, ptr::null_mut};
+use std::{cell::RefCell, collections::HashMap, ffi::CString, ptr::null_mut, slice::from_raw_parts};
 use utils::compiler_error;
 
 mod builtin_builder;
@@ -269,6 +269,7 @@ impl Compiler {
             }
             Literal::String(string_literal) => unsafe {
                 let value = CString::new(string_literal.raw).unwrap();
+
                 gcc_jit_context_new_string_literal(self.context, value.as_ptr())
             },
         }

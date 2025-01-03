@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
+unicode-segmentation = "1.9.0"
 
 [lib]
 name = "lexer"

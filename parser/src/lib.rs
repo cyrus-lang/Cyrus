@@ -797,8 +797,6 @@ impl<'a> Parser<'a> {
             while self.peek_token_is(TokenKind::LeftBracket) {
                 let expr = self.parse_array_items()?;
 
-                dbg!(expr.clone());
-
                 if let Expression::Array(elements) = expr {
                     dimensions.push(elements);
                 } else {

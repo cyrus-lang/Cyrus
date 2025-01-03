@@ -53,6 +53,10 @@ impl Compiler {
     }
 
     pub fn cbool(&self, val: bool) -> i32 {
-        if val { 1 } else { 0 }
+        if val {
+            1
+        } else {
+            0
+        }
     }
 }

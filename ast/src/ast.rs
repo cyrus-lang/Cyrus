@@ -37,7 +37,7 @@ pub enum Expression {
     FunctionCall(FunctionCall),
     UnaryOperator(UnaryOperator),
     Array(Array),
-    ArrayIndex(ArrayIndex)
+    ArrayIndex(ArrayIndex),
 }
 
 #[derive(Debug, Clone)]
@@ -222,7 +222,7 @@ pub struct FuncDef {
     pub body: Box<BlockStatement>,
     pub return_type: Option<Token>,
     pub span: Span,
-    pub vis_type: FuncVisType
+    pub vis_type: FuncVisType,
 }
 
 #[derive(Debug, Clone)]
@@ -230,7 +230,7 @@ pub enum FuncVisType {
     Extern,
     Pub,
     Internal,
-    Inline
+    Inline,
 }
 
 #[derive(Debug, Clone)]

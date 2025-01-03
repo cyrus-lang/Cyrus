@@ -8,9 +8,10 @@ mod tests {
 
     fn assert_tokens(input: &'static str, expected_tokens: Option<&Vec<TokenKind>>, spans: Option<&Vec<Span>>) {
         let lexer = Lexer::new(input.to_string());
+        let tokens = lexer;
 
         let mut i: usize = 0;
-        for token in lexer {
+        for token in tokens {
             println!("{:?}", token);
 
             if let Some(list) = expected_tokens {
@@ -71,7 +72,11 @@ mod tests {
 
     #[test]
     fn test_boolean_values() {
-        assert_tokens("true == false", Some(&vec![TokenKind::True, TokenKind::Equal, TokenKind::False]), None);
+        assert_tokens(
+            "true == false",
+            Some(&vec![TokenKind::True, TokenKind::Equal, TokenKind::False]),
+            None,
+        );
     }
 
     #[test]
@@ -114,7 +119,6 @@ mod tests {
         );
 
         let lexer = Lexer::new(code);
-
         for token in lexer {
             println!("{:?}", token);
         }
@@ -139,7 +143,11 @@ mod tests {
 
     #[test]
     fn test_equals() {
-        assert_tokens("!= , ==", Some(&vec![TokenKind::NotEqual, TokenKind::Comma, TokenKind::Equal]), None);
+        assert_tokens(
+            "!= , ==",
+            Some(&vec![TokenKind::NotEqual, TokenKind::Comma, TokenKind::Equal]),
+            None,
+        );
     }
 
     #[test]
@@ -162,7 +170,11 @@ mod tests {
 
     #[test]
     fn test_less_greaters() {
-        assert_tokens("<= >=", Some(&vec![TokenKind::LessEqual, TokenKind::GreaterEqual]), None);
+        assert_tokens(
+            "<= >=",
+            Some(&vec![TokenKind::LessEqual, TokenKind::GreaterEqual]),
+            None,
+        );
     }
 
     #[test]
@@ -176,7 +188,9 @@ mod tests {
             "fn foo() {}",
             Some(&vec![
                 TokenKind::Function,
-                TokenKind::Identifier { name: "foo".to_string() },
+                TokenKind::Identifier {
+                    name: "foo".to_string(),
+                },
                 TokenKind::LeftParen,
                 TokenKind::RightParen,
                 TokenKind::LeftBrace,
@@ -191,8 +205,12 @@ mod tests {
         assert_tokens(
             "hello world",
             Some(&vec![
-                TokenKind::Identifier { name: "hello".to_string() },
-                TokenKind::Identifier { name: "world".to_string() },
+                TokenKind::Identifier {
+                    name: "hello".to_string(),
+                },
+                TokenKind::Identifier {
+                    name: "world".to_string(),
+                },
             ]),
             None,
         );
@@ -204,7 +222,9 @@ mod tests {
             "#my_var = 10;",
             Some(&vec![
                 TokenKind::Hashtag,
-                TokenKind::Identifier { name: "my_var".to_string() },
+                TokenKind::Identifier {
+                    name: "my_var".to_string(),
+                },
                 TokenKind::Assign,
                 TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(10))),
                 TokenKind::Semicolon,
@@ -219,7 +239,9 @@ mod tests {
             "fn foo_bar(a, b) { return a + b; }",
             Some(&vec![
                 TokenKind::Function,
-                TokenKind::Identifier { name: "foo_bar".to_string() },
+                TokenKind::Identifier {
+                    name: "foo_bar".to_string(),
+                },
                 TokenKind::LeftParen,
                 TokenKind::Identifier { name: "a".to_string() },
                 TokenKind::Comma,
@@ -242,7 +264,9 @@ mod tests {
         assert_tokens(
             "foo_bar()",
             Some(&vec![
-                TokenKind::Identifier { name: "foo_bar".to_string() },
+                TokenKind::Identifier {
+                    name: "foo_bar".to_string(),
+                },
                 TokenKind::LeftParen,
                 TokenKind::RightParen,
             ]),
@@ -252,7 +276,9 @@ mod tests {
         assert_tokens(
             "foo_bar(1, 2)",
             Some(&vec![
-                TokenKind::Identifier { name: "foo_bar".to_string() },
+                TokenKind::Identifier {
+                    name: "foo_bar".to_string(),
+                },
                 TokenKind::LeftParen,
                 TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(1))),
                 TokenKind::Comma,
@@ -288,14 +314,25 @@ mod tests {
     fn test_increment_and_decrement() {
         assert_tokens(
             "i++",
-            Some(&vec![TokenKind::Identifier { name: "i".to_string() }, TokenKind::Increment]),
+            Some(&vec![
+                TokenKind::Identifier { name: "i".to_string() },
+                TokenKind::Increment,
+            ]),
             None,
         );
 
         assert_tokens(
             "i--",
-            Some(&vec![TokenKind::Identifier { name: "i".to_string() }, TokenKind::Decrement]),
+            Some(&vec![
+                TokenKind::Identifier { name: "i".to_string() },
+                TokenKind::Decrement,
+            ]),
             None,
         );
+    }
+
+    #[test]
+    fn test_tokenizing_emoji() {
+        assert_tokens("\"This is 🖤 made by a string.\"", None, None);
     }
 }

@@ -2,7 +2,11 @@ use ast::{
     ast::{FloatLiteral, IntegerLiteral, Literal, StringLiteral},
     token::*,
 };
-use std::fmt::Debug;
+use std::{
+    borrow::{Borrow, BorrowMut},
+    fmt::Debug,
+};
+use unicode_segmentation::UnicodeSegmentation;
 use utils::lexer_error;
 
 mod format;
@@ -26,7 +30,6 @@ impl Lexer {
         };
 
         lexer.read_char();
-
         lexer
     }
 
@@ -45,11 +48,7 @@ impl Lexer {
         if self.next_pos >= self.input.len() {
             self.ch = ' ';
         } else {
-            self.ch = self
-                .input
-                .chars()
-                .nth(self.next_pos)
-                .expect("Failed to read the char with current position");
+            self.ch = self.input.chars().nth(self.next_pos).unwrap_or(' ');
         }
 
         self.pos = self.next_pos;
@@ -287,19 +286,21 @@ impl Lexer {
     fn read_string(&mut self) -> Token {
         let start: usize = self.pos + 1;
 
+        let mut final_string = String::new();
+
         loop {
             self.read_char();
 
-            if self.ch == '"' || self.ch == '\u{0}' {
+            if self.ch == '"' {
                 break;
             }
 
+            final_string.push(self.ch);
+
             if self.is_eof() {
-                lexer_error!(format!("Expected closing string with double quotation but got nothing."));
+                lexer_error!(format!("Expected closing double quote but got EOF."));
             }
         }
-
-        let content = self.input[start..self.pos].to_string();
 
         if self.ch == '"' {
             // consume the ending double quote
@@ -312,7 +313,7 @@ impl Lexer {
 
         Token {
             kind: TokenKind::Literal(Literal::String(StringLiteral {
-                raw: content,
+                raw: final_string,
                 span: span.clone(),
             })),
             span,
@@ -355,7 +356,7 @@ impl Lexer {
 
         let token_kind: TokenKind = {
             if is_float {
-                let literal : Result<f32, _> = self.input[start..end].to_string().parse();
+                let literal: Result<f32, _> = self.input[start..end].to_string().parse();
 
                 match literal {
                     Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::F32(value))),
@@ -363,10 +364,9 @@ impl Lexer {
                         lexer_error!(format!("Expected number but got {}.", self.ch));
                     }
                 }
-
             } else {
-                let literal : Result<i32, _> = self.input[start..end].to_string().parse();
-                
+                let literal: Result<i32, _> = self.input[start..end].to_string().parse();
+
                 match literal {
                     Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
                     Err(_) => {
@@ -388,6 +388,32 @@ impl Lexer {
 
     fn is_eof(&mut self) -> bool {
         self.pos == self.input.len()
+    }
+
+    fn consume_emoji(&mut self) -> String {
+        let ch = self.input.pop().unwrap();
+        ch.to_string()
+    }
+
+    fn is_emoji(ch: char) -> bool {
+        // Emojis are generally within these ranges in Unicode
+        (ch >= '\u{1F600}' && ch <= '\u{1F64F}')         // Emoticons
+            || (ch >= '\u{1F300}' && ch <= '\u{1F5FF}')  // Miscellaneous Symbols and Pictographs
+            || (ch >= '\u{1F680}' && ch <= '\u{1F6FF}')  // Transport and Map Symbols
+            || (ch >= '\u{1F700}' && ch <= '\u{1F77F}')  // Alchemical Symbols
+            || (ch >= '\u{1F780}' && ch <= '\u{1F7FF}')  // Geometric Shapes Extended
+            || (ch >= '\u{1F800}' && ch <= '\u{1F8FF}')  // Supplemental Arrows-C
+            || (ch >= '\u{1F900}' && ch <= '\u{1F9FF}')  // Supplemental Symbols and Pictographs
+            || (ch >= '\u{1FA00}' && ch <= '\u{1FA6F}')  // Chess Symbols
+            || (ch >= '\u{1FA70}' && ch <= '\u{1FAFF}')  // Symbols and Pictographs Extended-A
+            || (ch >= '\u{2600}' && ch <= '\u{26FF}')    // Miscellaneous Symbols
+            || (ch >= '\u{2700}' && ch <= '\u{27BF}')    // Dingbats
+            || (ch >= '\u{2300}' && ch <= '\u{23FF}')    // Miscellaneous Technical
+            || (ch >= '\u{2B50}' && ch <= '\u{2B50}')    // Star emoji (included for general cases)
+            || (ch == '\u{1F004}' || ch == '\u{1F0CF}')  // Card game symbols
+            || (ch == '\u{1F003}')                       // Mahjong tile emoji
+            || (ch == '\u{1F3C1}' || ch == '\u{1F3C2}')  // Racing flags
+            || (ch == '\u{2764}' || ch == '\u{1F49C}') // Heart emojis
     }
 
     fn is_whitespace(ch: char) -> bool {
@@ -493,7 +519,9 @@ impl Lexer {
             "inline" => TokenKind::Inline,
             "pub" => TokenKind::Pub,
             "decl" => TokenKind::Decl,
-            _ => TokenKind::Identifier { name: ident.to_string() },
+            _ => TokenKind::Identifier {
+                name: ident.to_string(),
+            },
         }
     }
 }

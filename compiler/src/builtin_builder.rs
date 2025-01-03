@@ -1,5 +1,5 @@
-use gccjit_sys::*;
 use super::builtin_funcs::io::compile_builtin_printf_func;
+use gccjit_sys::*;
 use std::{collections::HashMap, sync::LazyLock};
 
 pub type BuiltinFuncDef =

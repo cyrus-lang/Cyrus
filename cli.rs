@@ -66,10 +66,7 @@ pub fn main() {
             let compiler = init_compiler!(file_path);
             compiler.execute();
         }
-        Commands::Dump {
-            file_path,
-            output_path,
-        } => {
+        Commands::Dump { file_path, output_path } => {
             let compiler = init_compiler!(file_path);
             compiler.make_dump_file(output_path);
         }
