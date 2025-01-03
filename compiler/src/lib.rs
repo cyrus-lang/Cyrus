@@ -1,20 +1,22 @@
-use std::rc::Rc;
-
 use ast::{ast::*, token::TokenKind};
-use gccjit::*;
+use gccjit_sys::*;
+use std::{
+    ffi::{c_char, CString},
+    ptr::null_mut,
+};
 use utils::compiler_error;
 
 mod output;
 mod types;
 
-pub struct Compiler<'a> {
+pub struct Compiler {
     program: Program,
-    context: Rc<Context<'a>>,
+    context: *mut gcc_jit_context,
 }
 
-impl<'a> Compiler<'a> {
+impl Compiler {
     pub fn new(program: Program) -> Self {
-        let context = Rc::new(Context::default());
+        let context = unsafe { gcc_jit_context_acquire() };
         Self { program, context }
     }
 
@@ -24,7 +26,12 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub fn compile_statement(&self, stmt: Statement, block: Option<Block>, func: Option<Function>) {
+    pub fn compile_statement(
+        &self,
+        stmt: Statement,
+        block: Option<*mut gcc_jit_block>,
+        func: Option<*mut gcc_jit_function>,
+    ) {
         match stmt {
             Statement::Variable(variable) => self.compile_variable(variable.clone(), block, func),
             Statement::Expression(expr) => {
@@ -41,19 +48,25 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_return(&self, ret_stmt: Return, block: Option<Block>) {
+    fn compile_return(&self, ret_stmt: Return, block: Option<*mut gcc_jit_block>) {
         if let Some(block) = block {
             let ret_value = self.compile_expression(ret_stmt.argument);
-            block.end_with_return(None, ret_value);
+
+            unsafe { gcc_jit_block_end_with_return(block, std::ptr::null_mut(), ret_value) };
         } else {
             compiler_error!("Incorrect usage of the return statement. It must be used inside a function declaration.");
         }
     }
 
-    fn compile_variable(&self, variable: Variable, block: Option<Block>, func: Option<Function>) {
+    fn compile_variable(
+        &self,
+        variable: Variable,
+        block: Option<*mut gcc_jit_block>,
+        func: Option<*mut gcc_jit_function>,
+    ) {
         if let Some(func) = func {
             if let Some(block) = block {
-                let var_ty: Type;
+                let var_ty: *mut gcc_jit_type;
 
                 if let Some(token) = variable.ty {
                     var_ty = self.token_to_type(token);
@@ -61,11 +74,13 @@ impl<'a> Compiler<'a> {
                     var_ty = self.void_type();
                 }
 
-                let lvalue = func.new_local(None, var_ty, variable.name);
+                let name = CString::new(variable.name).unwrap();
+                let lvalue = unsafe { gcc_jit_function_new_local(func, null_mut(), var_ty, name.as_ptr()) };
                 let rvalue = self.compile_expression(variable.expr);
-                block.add_assignment(None, lvalue, rvalue);
+
+                unsafe { gcc_jit_block_add_assignment(block, null_mut(), lvalue, rvalue) };
             } else {
-                compiler_error!("Block required to make a variable declaration but it's null.");
+                compiler_error!("gcc_jit_block required to make a variable declaration but it's null.");
             }
         } else {
             compiler_error!("Local variable declarations must be performed inside a function.");
@@ -73,45 +88,64 @@ impl<'a> Compiler<'a> {
     }
 
     fn compile_func_def(&self, function: FuncDef) {
-        // TODO - Add func type keywords
-        let func_type = gccjit::FunctionType::Exported;
-        let func_return_type: Type;
-        let mut is_return_type_void = false;
+        let func_type = match function.vis_type {
+            FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
+            FuncVisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
+            FuncVisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
+            FuncVisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
+        };
+
+        let ret_type: *mut gcc_jit_type;
+        let mut is_ret_type_void = false;
 
         if let Some(token) = function.return_type {
-            func_return_type = self.token_to_type(token.kind);
+            ret_type = self.token_to_type(token.kind);
         } else {
-            func_return_type = self.void_type();
-            is_return_type_void = true;
+            ret_type = self.void_type();
+            is_ret_type_void = true;
         }
 
         // TODO - Eval params
-        let params: &[Parameter<'a>] = &[];
+        let params: *mut *mut gcc_jit_param = null_mut();
 
-        let func = self
-            .context
-            .new_function(None, func_type, func_return_type, params, function.name.clone(), false);
+        let func_name = CString::new(function.name.clone()).unwrap();
+        let func = unsafe {
+            gcc_jit_context_new_function(
+                self.context,
+                null_mut(),
+                func_type,
+                ret_type,
+                func_name.as_ptr(),
+                0,
+                params,
+                0,
+            )
+        };
 
         // Build func block
-        let mut block = func.new_block("def");
+        let name = CString::new("def").unwrap();
+        let block = unsafe { gcc_jit_function_new_block(func, name.as_ptr()) };
         let mut return_compiled = false;
 
         for item in function.body.body {
-            if let Statement::Return(ret_stmt) = item.clone() {
+            if let Statement::Return(_) = item.clone() {
                 return_compiled = true;
             }
 
             self.compile_statement(item, Some(block), Some(func));
         }
 
-        if !return_compiled && !is_return_type_void {
-            compiler_error!(format!("Explicit return statement required for the function '{}'.", function.name));
-        } else if is_return_type_void && !return_compiled {
-            block.end_with_void_return(None);
+        if !return_compiled && !is_ret_type_void {
+            compiler_error!(format!(
+                "Explicit return statement required for the function '{}'.",
+                function.name
+            ));
+        } else if is_ret_type_void && !return_compiled {
+            unsafe { gcc_jit_block_end_with_void_return(block, null_mut()) };
         }
     }
 
-    fn compile_expression(&self, expr: Expression) -> RValue {
+    fn compile_expression(&self, expr: Expression) -> *mut gcc_jit_rvalue {
         match expr {
             Expression::Literal(literal) => self.compile_literal(literal),
             Expression::Identifier(identifier) => todo!(),
@@ -119,33 +153,35 @@ impl<'a> Compiler<'a> {
             Expression::Infix(binary_expression) => self.compile_infix_expression(binary_expression),
             Expression::FunctionCall(function_call) => todo!(),
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(unary_operator),
-            Expression::Array(array) => todo!()
+            Expression::Array(array) => todo!(),
+            Expression::ArrayIndex(array_index) => todo!(),
         }
     }
 
-    pub fn compile_unary_operator(&self, unary_operator: UnaryOperator) -> RValue {
+    pub fn compile_unary_operator(&self, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
         todo!()
     }
 
-    fn compile_prefix_expression(&self, unary_expression: UnaryExpression) -> RValue {
+    fn compile_prefix_expression(&self, unary_expression: UnaryExpression) -> *mut gcc_jit_rvalue {
         let op = match unary_expression.operator.kind {
-            TokenKind::Minus => UnaryOp::Minus,
-            TokenKind::Bang => UnaryOp::LogicalNegate,
+            TokenKind::Minus => gcc_jit_unary_op::GCC_JIT_UNARY_OP_MINUS,
+            TokenKind::Bang => gcc_jit_unary_op::GCC_JIT_UNARY_OP_LOGICAL_NEGATE,
             _ => compiler_error!("Invalid operator given for the prefix expression."),
         };
 
         let expr = self.compile_expression(*unary_expression.operand);
+        let ty = unsafe { gcc_jit_rvalue_get_type(expr) };
 
-        self.context.new_unary_op(None, op, expr.get_type(), expr)
+        unsafe { gcc_jit_context_new_unary_op(self.context, null_mut(), op, ty, expr) }
     }
 
-    fn compile_infix_expression(&self, binary_expression: BinaryExpression) -> RValue {
+    fn compile_infix_expression(&self, binary_expression: BinaryExpression) -> *mut gcc_jit_rvalue {
         let op = match binary_expression.operator.kind {
-            TokenKind::Plus => BinaryOp::Plus,
-            TokenKind::Minus => BinaryOp::Minus,
-            TokenKind::Slash => BinaryOp::Divide,
-            TokenKind::Asterisk => BinaryOp::Mult,
-            TokenKind::Percent => BinaryOp::Modulo,
+            TokenKind::Plus => gcc_jit_binary_op::GCC_JIT_BINARY_OP_PLUS,
+            TokenKind::Minus => gcc_jit_binary_op::GCC_JIT_BINARY_OP_MINUS,
+            TokenKind::Slash => gcc_jit_binary_op::GCC_JIT_BINARY_OP_DIVIDE,
+            TokenKind::Asterisk => gcc_jit_binary_op::GCC_JIT_BINARY_OP_MULT,
+            TokenKind::Percent => gcc_jit_binary_op::GCC_JIT_BINARY_OP_MULT,
             _ => compiler_error!("Invalid operator given for the infix expression."),
         };
         let mut is_float = false;
@@ -153,38 +189,58 @@ impl<'a> Compiler<'a> {
         let left = self.compile_expression(*binary_expression.left);
         let right = self.compile_expression(*binary_expression.right);
 
-        if left.get_type() == self.f32_type() || right.get_type() == self.f32_type() {
-            is_float = true
+        unsafe {
+            if gcc_jit_rvalue_get_type(left) == self.f32_type() || gcc_jit_rvalue_get_type(right) == self.f32_type() {
+                is_float = true
+            }
         }
 
         let op_type = if is_float { self.f32_type() } else { self.i32_type() };
 
-        let result = self.context.new_binary_op(None, op, op_type, left, right);
-        return result;
+        unsafe { gcc_jit_context_new_binary_op(self.context, null_mut(), op, op_type, left, right) }
     }
 
-    fn compile_literal(&self, literal: Literal) -> RValue {
+    fn compile_literal(&self, literal: Literal) -> *mut gcc_jit_rvalue {
         match literal {
             Literal::Integer(integer_literal) => match integer_literal {
-                IntegerLiteral::I32(value) => self.context.new_rvalue_from_int(self.i32_type(), value as i32),
-                IntegerLiteral::I64(value) => self.context.new_rvalue_from_int(self.i64_type(), value as i32),
-                IntegerLiteral::U32(value) => self.context.new_rvalue_from_int(self.u32_type(), value as i32),
-                IntegerLiteral::U64(value) => self.context.new_rvalue_from_int(self.u64_type(), value as i32),
+                // IntegerLiteral::I32(value) => self.context.new_rvalue_from_int(self.i32_type(), value as i32),
+                IntegerLiteral::I32(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.i32_type(), value as i32)
+                },
+                IntegerLiteral::I64(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.i64_type(), value as i32)
+                },
+                IntegerLiteral::U32(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.u32_type(), value as i32)
+                },
+                IntegerLiteral::U64(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.u64_type(), value as i32)
+                },
             },
             Literal::Float(float_literal) => match float_literal {
-                FloatLiteral::F32(value) => self.context.new_rvalue_from_double(self.f32_type(), value as f64),
-                FloatLiteral::F64(value) => self.context.new_rvalue_from_double(self.f64_type(), value as f64),
+                FloatLiteral::F32(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_double(self.context, self.f32_type(), value as f64)
+                },
+                FloatLiteral::F64(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_double(self.context, self.f64_type(), value as f64)
+                },
             },
             Literal::Boolean(boolean_literal) => {
-                if boolean_literal.raw {
-                    self.context.new_rvalue_one(self.context.new_int_type(1, false))
-                } else {
-                    self.context.new_rvalue_zero(self.context.new_int_type(1, false))
-                }
+                let value = if boolean_literal.raw { 1 } else { 0 };
+                unsafe { gcc_jit_context_new_rvalue_from_int(self.context, self.i8_type(), value) }
             }
-            Literal::String(string_literal) => self.context.new_string_literal(string_literal.raw),
+            Literal::String(string_literal) => unsafe {
+                let value = CString::new(string_literal.raw).unwrap();
+                gcc_jit_context_new_string_literal(self.context, value.as_ptr())
+            },
         }
     }
 
     fn compile_if_stmt(&self, if_stmt: If) {}
+}
+
+impl Drop for Compiler {
+    fn drop(&mut self) {
+        unsafe { gcc_jit_context_release(self.context) };
+    }
 }

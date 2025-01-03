@@ -49,7 +49,7 @@ fn parse_program(file_path: String) -> Program {
 macro_rules! init_compiler {
     ($file_path:expr) => {{
         let program = parse_program($file_path);
-        let mut compiler = Compiler::new(program);
+        let compiler = Compiler::new(program);
         compiler.compile();
         #[cfg(debug_assertions)]
         compiler.set_debug_info(true);

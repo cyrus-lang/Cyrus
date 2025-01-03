@@ -1,10 +1,14 @@
+use std::ffi::CString;
+use gccjit_sys::*;
 use utils::compiler_error;
 use crate::Compiler;
 
-impl<'a> Compiler<'a> {
+impl Compiler {
     pub fn execute(&self) {
-        let result = self.context.compile();
-        let main = result.get_function("main");
+        let result = unsafe { gcc_jit_context_compile(self.context) };
+
+        let name = CString::new("main").unwrap();
+        let main = unsafe { gcc_jit_result_get_code(result, name.as_ptr()) };
         if main.is_null() {
             compiler_error!("A 'main' function required as the entry point.");
         }
@@ -16,18 +20,41 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn make_executable_file(&self, file_path: String) {
-        self.context.compile_to_file(gccjit::OutputKind::Executable, file_path);
+        unsafe {
+            let file_path = CString::new(file_path).unwrap();
+            gcc_jit_context_compile_to_file(
+                self.context,
+                gccjit_sys::gcc_jit_output_kind::GCC_JIT_OUTPUT_KIND_EXECUTABLE,
+                file_path.as_ptr(),
+            )
+        };
     }
 
     pub fn make_object_file(&self, file_path: String) {
-        self.context.compile_to_file(gccjit::OutputKind::ObjectFile, file_path);
-    }
-
-    pub fn set_debug_info(&self, is_debug_mode: bool) {
-        self.context.set_debug_info(is_debug_mode);
+        unsafe {
+            let file_path = CString::new(file_path).unwrap();
+            gcc_jit_context_compile_to_file(
+                self.context,
+                gccjit_sys::gcc_jit_output_kind::GCC_JIT_OUTPUT_KIND_OBJECT_FILE,
+                file_path.as_ptr(),
+            )
+        };
     }
 
     pub fn make_dump_file(&self, file_path: String) {
-        self.context.dump_to_file(file_path, true);
+        unsafe {
+            let file_path = CString::new(file_path).unwrap();
+            gcc_jit_context_dump_to_file(self.context, file_path.as_ptr(), self.cbool(true))
+        };
+    }
+
+    pub fn set_debug_info(&self, is_debug_mode: bool) {
+        unsafe {
+            gcc_jit_context_set_bool_option(
+                self.context,
+                gccjit_sys::gcc_jit_bool_option::GCC_JIT_BOOL_OPTION_DEBUGINFO,
+                self.cbool(is_debug_mode),
+            )
+        };
     }
 }

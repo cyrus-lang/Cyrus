@@ -106,7 +106,7 @@ name = "compiler"
 version = "0.1.0"
 dependencies = [
  "ast",
- "gccjit",
+ "gccjit_sys",
  "utils",
 ]
 
@@ -120,15 +120,6 @@ dependencies = [
  "lexer",
  "parser",
  "utils",
-]
-
-[[package]]
-name = "gccjit"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72fd91f4adbf02b53cfc73c97bc33c5f253009043f30c56a5ec08dd5c8094dc8"
-dependencies = [
- "gccjit_sys",
 ]
 
 [[package]]
