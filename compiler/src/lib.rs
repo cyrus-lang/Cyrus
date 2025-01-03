@@ -268,8 +268,7 @@ impl Compiler {
                 unsafe { gcc_jit_context_new_rvalue_from_int(self.context, self.i8_type(), value) }
             }
             Literal::String(string_literal) => unsafe {
-                let value = CString::new(string_literal.raw).unwrap();
-
+                let value = CString::new(self.purify_string(string_literal.raw)).unwrap();
                 gcc_jit_context_new_string_literal(self.context, value.as_ptr())
             },
         }

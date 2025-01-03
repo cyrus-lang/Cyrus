@@ -59,4 +59,16 @@ impl Compiler {
             0
         }
     }
+
+    pub fn purify_string(&self, str: String) -> String {
+        str.replace("\\n", "\n")
+        .replace("\\t", "\t")
+        .replace("\\r", "\r")
+        .replace("\\b", r"\b")
+        .replace("\\a", r"\a")
+        .replace("\\v", r"\v")
+        .replace("\\f", r"\f")
+        .replace("\\'", r"\'")
+        .replace("\\0", r"\0")
+    }
 }
