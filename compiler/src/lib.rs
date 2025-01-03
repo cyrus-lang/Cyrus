@@ -1,6 +1,6 @@
 use ast::{ast::*, token::TokenKind};
 use gccjit_sys::*;
-use std::{ffi::CString, ptr::null_mut};
+use std::{cell::RefCell, collections::HashMap, ffi::CString, ptr::null_mut};
 use utils::compiler_error;
 
 mod output;
@@ -9,22 +9,27 @@ mod types;
 pub struct Compiler {
     program: Program,
     context: *mut gcc_jit_context,
+    func_table: RefCell<HashMap<String, *mut gcc_jit_function>>,
 }
 
 impl Compiler {
     pub fn new(program: Program) -> Self {
         let context = unsafe { gcc_jit_context_acquire() };
-        Self { program, context }
+        Self {
+            program,
+            context,
+            func_table: RefCell::new(HashMap::new()),
+        }
     }
 
-    pub fn compile(&self) {
+    pub fn compile(&mut self) {
         for stmt in self.program.body.clone() {
             self.compile_statement(stmt.clone(), None, None);
         }
     }
 
     pub fn compile_statement(
-        &self,
+        &mut self,
         stmt: Statement,
         block: Option<*mut gcc_jit_block>,
         func: Option<*mut gcc_jit_function>,
@@ -32,7 +37,7 @@ impl Compiler {
         match stmt {
             Statement::Variable(variable) => self.compile_variable(variable.clone(), block, func),
             Statement::Expression(expr) => {
-                self.compile_expression(expr.clone());
+                self.compile_expression(block, expr.clone());
             }
             Statement::FuncDef(function) => self.compile_func_def(function.clone()),
             Statement::If(if_stmt) => todo!(),
@@ -45,9 +50,9 @@ impl Compiler {
         }
     }
 
-    fn compile_return(&self, ret_stmt: Return, block: Option<*mut gcc_jit_block>) {
+    fn compile_return(&mut self, ret_stmt: Return, block: Option<*mut gcc_jit_block>) {
         if let Some(block) = block {
-            let ret_value = self.compile_expression(ret_stmt.argument);
+            let ret_value = self.compile_expression(Some(block), ret_stmt.argument);
 
             unsafe { gcc_jit_block_end_with_return(block, std::ptr::null_mut(), ret_value) };
         } else {
@@ -56,7 +61,7 @@ impl Compiler {
     }
 
     fn compile_variable(
-        &self,
+        &mut self,
         variable: Variable,
         block: Option<*mut gcc_jit_block>,
         func: Option<*mut gcc_jit_function>,
@@ -66,14 +71,14 @@ impl Compiler {
                 let var_ty: *mut gcc_jit_type;
 
                 if let Some(token) = variable.ty {
-                    var_ty = self.token_to_type(token);
+                    var_ty = self.as_type(token);
                 } else {
                     var_ty = self.void_type();
                 }
 
                 let name = CString::new(variable.name).unwrap();
                 let lvalue = unsafe { gcc_jit_function_new_local(func, null_mut(), var_ty, name.as_ptr()) };
-                let rvalue = self.compile_expression(variable.expr);
+                let rvalue = self.compile_expression(Some(block), variable.expr);
 
                 unsafe { gcc_jit_block_add_assignment(block, null_mut(), lvalue, rvalue) };
             } else {
@@ -84,7 +89,7 @@ impl Compiler {
         }
     }
 
-    fn compile_func_def(&self, function: FuncDef) {
+    fn compile_func_def(&mut self, function: FuncDef) {
         let func_type = match function.vis_type {
             FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
             FuncVisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
@@ -95,7 +100,7 @@ impl Compiler {
         let mut ret_type: *mut gcc_jit_type = self.void_type();
 
         if let Some(token) = function.return_type {
-            ret_type = self.token_to_type(token.kind);
+            ret_type = self.as_type(token.kind);
         }
 
         // TODO - Eval params
@@ -134,39 +139,99 @@ impl Compiler {
                 function.name
             ));
         }
+
+        self.func_table.borrow_mut().insert(function.name, func);
     }
 
-    fn compile_expression(&self, expr: Expression) -> *mut gcc_jit_rvalue {
+    fn compile_expression(&mut self, block: Option<*mut gcc_jit_block>, expr: Expression) -> *mut gcc_jit_rvalue {
         match expr {
             Expression::Literal(literal) => self.compile_literal(literal),
             Expression::Identifier(identifier) => todo!(),
-            Expression::Prefix(unary_expression) => self.compile_prefix_expression(unary_expression),
-            Expression::Infix(binary_expression) => self.compile_infix_expression(binary_expression),
-            Expression::FunctionCall(function_call) => todo!(),
+            Expression::Prefix(unary_expression) => self.compile_prefix_expression(block, unary_expression),
+            Expression::Infix(binary_expression) => self.compile_infix_expression(block, binary_expression),
+            Expression::FunctionCall(func_call) => self.compile_function_call(block, func_call),
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(unary_operator),
             Expression::Array(array) => todo!(),
             Expression::ArrayIndex(array_index) => todo!(),
         }
     }
 
-    pub fn compile_unary_operator(&self, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
+    pub fn compile_function_call(
+        &mut self,
+        block: Option<*mut gcc_jit_block>,
+        func_call: FunctionCall,
+    ) -> *mut gcc_jit_rvalue {
+        if let Some(cur_block) = block {
+            let mut args: Vec<*mut gcc_jit_rvalue> = Vec::new();
+
+            for expr in func_call.arguments {
+                args.push(self.compile_expression(block, expr));
+            }
+
+            match self.func_table.borrow_mut().get(&func_call.function_name.name) {
+                Some(func) => unsafe {
+                    gcc_jit_context_new_call(self.context, null_mut(), *func, 0, args.as_mut_ptr())
+                },
+                None => match func_call.function_name.name.as_str() {
+                    "printf" => {
+                        self.compile_builtin_printf_func(cur_block, args);
+                        null_mut()
+                    }
+                    _ => {
+                        compiler_error!(format!(
+                            "Function '{}' not defined at this module.",
+                            func_call.function_name.name
+                        ))
+                    }
+                },
+            }
+        } else {
+            compiler_error!("Calling any function at top-level nodes isn't allowed.");
+        }
+    }
+
+    pub fn compile_builtin_printf_func(&self, block: *mut gcc_jit_block, mut args: Vec<*mut gcc_jit_rvalue>) {
+        let name = CString::new("printf").unwrap();
+        let func_def = unsafe { gcc_jit_context_get_builtin_function(self.context, name.as_ptr()) };
+
+        let rvalue = unsafe {
+            gcc_jit_context_new_call(
+                self.context,
+                null_mut(),
+                func_def,
+                args.len().try_into().unwrap(),
+                args.as_mut_ptr(),
+            )
+        };
+        unsafe { gcc_jit_block_add_eval(block, null_mut(), rvalue) };
+    }
+
+    pub fn compile_unary_operator(&mut self, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
         todo!()
     }
 
-    fn compile_prefix_expression(&self, unary_expression: UnaryExpression) -> *mut gcc_jit_rvalue {
+    fn compile_prefix_expression(
+        &mut self,
+        block: Option<*mut gcc_jit_block>,
+        unary_expression: UnaryExpression,
+    ) -> *mut gcc_jit_rvalue {
         let op = match unary_expression.operator.kind {
             TokenKind::Minus => gcc_jit_unary_op::GCC_JIT_UNARY_OP_MINUS,
             TokenKind::Bang => gcc_jit_unary_op::GCC_JIT_UNARY_OP_LOGICAL_NEGATE,
             _ => compiler_error!("Invalid operator given for the prefix expression."),
         };
 
-        let expr = self.compile_expression(*unary_expression.operand);
+        let expr = self.compile_expression(block, *unary_expression.operand);
         let ty = unsafe { gcc_jit_rvalue_get_type(expr) };
 
         unsafe { gcc_jit_context_new_unary_op(self.context, null_mut(), op, ty, expr) }
     }
 
-    fn compile_infix_expression(&self, binary_expression: BinaryExpression) -> *mut gcc_jit_rvalue {
+    fn compile_infix_expression(
+        &mut self,
+        block: Option<*mut gcc_jit_block>,
+        binary_expression: BinaryExpression,
+    ) -> *mut gcc_jit_rvalue {
         let op = match binary_expression.operator.kind {
             TokenKind::Plus => gcc_jit_binary_op::GCC_JIT_BINARY_OP_PLUS,
             TokenKind::Minus => gcc_jit_binary_op::GCC_JIT_BINARY_OP_MINUS,
@@ -177,8 +242,8 @@ impl Compiler {
         };
         let mut is_float = false;
 
-        let left = self.compile_expression(*binary_expression.left);
-        let right = self.compile_expression(*binary_expression.right);
+        let left = self.compile_expression(block, *binary_expression.left);
+        let right = self.compile_expression(block, *binary_expression.right);
 
         unsafe {
             if gcc_jit_rvalue_get_type(left) == self.f32_type() || gcc_jit_rvalue_get_type(right) == self.f32_type() {
@@ -191,7 +256,7 @@ impl Compiler {
         unsafe { gcc_jit_context_new_binary_op(self.context, null_mut(), op, op_type, left, right) }
     }
 
-    fn compile_literal(&self, literal: Literal) -> *mut gcc_jit_rvalue {
+    fn compile_literal(&mut self, literal: Literal) -> *mut gcc_jit_rvalue {
         match literal {
             Literal::Integer(integer_literal) => match integer_literal {
                 // IntegerLiteral::I32(value) => self.context.new_rvalue_from_int(self.i32_type(), value as i32),
@@ -227,11 +292,11 @@ impl Compiler {
         }
     }
 
-    fn compile_if_stmt(&self, if_stmt: If) {}
+    fn compile_if_stmt(&mut self, if_stmt: If) {}
 }
 
 impl Drop for Compiler {
     fn drop(&mut self) {
-        // unsafe { gcc_jit_context_release(self.context) };
+        unsafe { gcc_jit_context_release(self.context) };
     }
 }

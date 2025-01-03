@@ -37,7 +37,11 @@ impl Compiler {
         unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_VOID) }
     }
 
-    pub fn token_to_type(&self, token_kind: TokenKind) -> *mut gcc_jit_type {
+    pub fn string_type(&self) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_CONST_CHAR_PTR) }
+    }
+
+    pub fn as_type(&self, token_kind: TokenKind) -> *mut gcc_jit_type {
         match token_kind {
             TokenKind::I32 => self.i32_type(),
             TokenKind::I64 => self.i64_type(),
