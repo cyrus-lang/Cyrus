@@ -295,14 +295,23 @@ impl<'a> Parser<'a> {
 
     fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
         match self.current_token.kind {
-            TokenKind::Boolean
-            | TokenKind::String
+            | TokenKind::I8
+            | TokenKind::I16
             | TokenKind::I32
             | TokenKind::I64
+            | TokenKind::I128
+            | TokenKind::U8
+            | TokenKind::U16
             | TokenKind::U32
             | TokenKind::U64
+            | TokenKind::U128
             | TokenKind::F32
             | TokenKind::F64
+            | TokenKind::F128
+            | TokenKind::Char
+            | TokenKind::Bool
+            | TokenKind::Void
+            | TokenKind::String
             | TokenKind::Array => Ok(self.current_token.kind.clone()),
             _ => Err(format!("Invalid type for variable: {}.", self.current_token.kind)),
         }

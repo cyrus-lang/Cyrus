@@ -72,22 +72,38 @@ pub struct Identifier {
 pub enum Literal {
     Integer(IntegerLiteral),
     Float(FloatLiteral),
-    Boolean(BooleanLiteral),
+    Bool(BoolLiteral),
     String(StringLiteral),
+    Char(CharLiteral),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct  CharLiteral {
+    pub raw: char,
+    pub span: Span
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum IntegerLiteral {
+    I8(i8),
+    I16(i16),
     I32(i32),
     I64(i64),
+    I128(i128),
+    U8(u8),
+    U16(u16),
     U32(u32),
     U64(u64),
+    U128(u128),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum FloatLiteral {
     F32(f32),
     F64(f64),
+    // NOTE 
+    // Rust's f128 is unstable
+    F128(f64), 
 }
 
 #[derive(Debug, Clone)]
@@ -106,7 +122,7 @@ pub struct BinaryExpression {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct BooleanLiteral {
+pub struct BoolLiteral {
     pub raw: bool,
     pub span: Span,
 }

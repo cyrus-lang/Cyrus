@@ -2,11 +2,7 @@ use ast::{
     ast::{FloatLiteral, IntegerLiteral, Literal, StringLiteral},
     token::*,
 };
-use std::{
-    borrow::{Borrow, BorrowMut},
-    fmt::Debug,
-};
-use unicode_segmentation::UnicodeSegmentation;
+use std::fmt::Debug;
 use utils::lexer_error;
 
 mod format;
@@ -488,12 +484,21 @@ impl Lexer {
             "continue" => TokenKind::Continue,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
+            "i8" => TokenKind::I8,
+            "i16" => TokenKind::I16,
             "i32" => TokenKind::I32,
             "i64" => TokenKind::I64,
+            "i128" => TokenKind::I128,
+            "u8" => TokenKind::U8,
+            "u16" => TokenKind::U16,
             "u32" => TokenKind::U32,
             "u64" => TokenKind::U64,
+            "u128" => TokenKind::U128,
             "f32" => TokenKind::F32,
             "f64" => TokenKind::F64,
+            "f128" => TokenKind::F128,
+            "char" => TokenKind::Char,
+            "bool" => TokenKind::Bool,
             "void" => TokenKind::Void,
             "array" => TokenKind::Array,
             "string" => TokenKind::String,

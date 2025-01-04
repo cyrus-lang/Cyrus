@@ -25,7 +25,7 @@ impl fmt::Display for FloatLiteral {
     }
 }
 
-impl fmt::Display for BooleanLiteral {
+impl fmt::Display for BoolLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.raw)
     }
@@ -37,13 +37,20 @@ impl fmt::Display for StringLiteral {
     }
 }
 
+impl fmt::Display for CharLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.raw)
+    }
+}
+
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Literal::Integer(integer) => write!(f, "{}", integer),
-            Literal::Boolean(boolean) => write!(f, "{}", boolean),
+            Literal::Bool(bool) => write!(f, "{}", bool),
             Literal::String(string_type) => write!(f, "{}", string_type),
             Literal::Float(float) => write!(f, "{}", float),
+            Literal::Char(ch) => write!(f, "{}", ch),
         }
     }
 }

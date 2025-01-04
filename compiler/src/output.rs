@@ -1,16 +1,20 @@
 use crate::Compiler;
 use gccjit_sys::*;
-use std::ffi::CString;
+use std::{ffi::CString, process::exit};
 use utils::compiler_error;
 
 impl Compiler {
     pub fn execute(&self) {
         let result = unsafe { gcc_jit_context_compile(self.context) };
 
+        if result.is_null() {
+            exit(1);
+        }
+
         let name = CString::new("main").unwrap();
         let main = unsafe { gcc_jit_result_get_code(result, name.as_ptr()) };
         if main.is_null() {
-            compiler_error!("A 'main' function required as the entry point.");
+            compiler_error!("A pub 'main' function required as the entry point.");
         }
 
         unsafe {

@@ -1,7 +1,13 @@
 use ast::{ast::*, token::TokenKind};
 use builtin_builder::retrieve_builtin_func;
 use gccjit_sys::*;
-use std::{cell::RefCell, collections::HashMap, ffi::CString, ptr::null_mut, slice::from_raw_parts};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    ffi::CString,
+    ptr::{null, null_mut},
+    slice::from_raw_parts,
+};
 use utils::compiler_error;
 
 mod builtin_builder;
@@ -13,6 +19,7 @@ pub struct Compiler {
     program: Program,
     context: *mut gcc_jit_context,
     func_table: RefCell<HashMap<String, *mut gcc_jit_function>>,
+    var_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
 }
 
 impl Compiler {
@@ -22,6 +29,7 @@ impl Compiler {
             program,
             context,
             func_table: RefCell::new(HashMap::new()),
+            var_table: RefCell::new(HashMap::new()),
         }
     }
 
@@ -79,11 +87,13 @@ impl Compiler {
                     var_ty = self.void_type();
                 }
 
-                let name = CString::new(variable.name).unwrap();
+                let name = CString::new(variable.name.clone()).unwrap();
                 let lvalue = unsafe { gcc_jit_function_new_local(func, null_mut(), var_ty, name.as_ptr()) };
                 let rvalue = self.compile_expression(Some(block), variable.expr);
 
                 unsafe { gcc_jit_block_add_assignment(block, null_mut(), lvalue, rvalue) };
+
+                self.var_table.borrow_mut().insert(variable.name, lvalue);
             } else {
                 compiler_error!("gcc_jit_block required to make a variable declaration but it's null.");
             }
@@ -149,13 +159,23 @@ impl Compiler {
     fn compile_expression(&mut self, block: Option<*mut gcc_jit_block>, expr: Expression) -> *mut gcc_jit_rvalue {
         match expr {
             Expression::Literal(literal) => self.compile_literal(literal),
-            Expression::Identifier(identifier) => todo!(),
+            Expression::Identifier(identifier) => self.compile_identifier(identifier),
             Expression::Prefix(unary_expression) => self.compile_prefix_expression(block, unary_expression),
             Expression::Infix(binary_expression) => self.compile_infix_expression(block, binary_expression),
             Expression::FunctionCall(func_call) => self.compile_function_call(block, func_call),
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(unary_operator),
             Expression::Array(array) => todo!(),
             Expression::ArrayIndex(array_index) => todo!(),
+        }
+    }
+
+    pub fn compile_identifier(&mut self, identifier: Identifier) -> *mut gcc_jit_rvalue {
+        match self.var_table.borrow_mut().get(&identifier.name) {
+            Some(lvalue) => {
+                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.clone()) };
+                return rvalue;
+            }
+            None => compiler_error!(format!("'{}' is not defined in this scope.", identifier.name)),
         }
     }
 
@@ -173,7 +193,9 @@ impl Compiler {
 
             match self.func_table.borrow_mut().get(&func_call.function_name.name) {
                 Some(func) => unsafe {
-                    gcc_jit_context_new_call(self.context, null_mut(), *func, 0, args.as_mut_ptr())
+                    let rvalue = gcc_jit_context_new_call(self.context, null_mut(), *func, 0, args.as_mut_ptr());
+                    gcc_jit_block_add_eval(cur_block, std::ptr::null_mut(), rvalue);
+                    rvalue
                 },
                 None => match retrieve_builtin_func(func_call.function_name.name.clone()) {
                     Some(func_def) => func_def(self.context, cur_block, args),
@@ -226,12 +248,23 @@ impl Compiler {
 
         let left = self.compile_expression(block, *binary_expression.left);
         let right = self.compile_expression(block, *binary_expression.right);
+        let left_type = unsafe { gcc_jit_rvalue_get_type(left) };
+        let right_type = unsafe { gcc_jit_rvalue_get_type(right) };
 
-        unsafe {
-            if gcc_jit_rvalue_get_type(left) == self.f32_type() || gcc_jit_rvalue_get_type(right) == self.f32_type() {
-                is_float = true
-            }
+        dbg!(right_type);
+        dbg!(left_type);
+        if !unsafe { gcc_jit_compatible_types(left_type, right_type) } {
+            compiler_error!("Infix operation failed because of incompatible values.");
         }
+
+        dbg!(left);
+        dbg!(right);
+
+        // unsafe {
+        //     if gcc_jit_rvalue_get_type(left) ==  || gcc_jit_rvalue_get_type(right) == self.f32_type() {
+        //         is_float = true
+        //     }
+        // }
 
         let op_type = if is_float { self.f32_type() } else { self.i32_type() };
 
@@ -241,18 +274,35 @@ impl Compiler {
     fn compile_literal(&mut self, literal: Literal) -> *mut gcc_jit_rvalue {
         match literal {
             Literal::Integer(integer_literal) => match integer_literal {
-                // IntegerLiteral::I32(value) => self.context.new_rvalue_from_int(self.i32_type(), value as i32),
+                IntegerLiteral::I8(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.i8_type(), value as i32)
+                },
+                IntegerLiteral::I16(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.i16_type(), value as i32)
+                },
                 IntegerLiteral::I32(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_int(self.context, self.i32_type(), value as i32)
                 },
                 IntegerLiteral::I64(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_int(self.context, self.i64_type(), value as i32)
                 },
+                IntegerLiteral::I128(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.i128_type(), value as i32)
+                },
+                IntegerLiteral::U8(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.u8_type(), value as i32)
+                },
+                IntegerLiteral::U16(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.u16_type(), value as i32)
+                },
                 IntegerLiteral::U32(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_int(self.context, self.u32_type(), value as i32)
                 },
                 IntegerLiteral::U64(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_int(self.context, self.u64_type(), value as i32)
+                },
+                IntegerLiteral::U128(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, self.u128_type(), value as i32)
                 },
             },
             Literal::Float(float_literal) => match float_literal {
@@ -262,8 +312,11 @@ impl Compiler {
                 FloatLiteral::F64(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_double(self.context, self.f64_type(), value as f64)
                 },
+                FloatLiteral::F128(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_double(self.context, self.f128_type(), value as f64)
+                },
             },
-            Literal::Boolean(boolean_literal) => {
+            Literal::Bool(boolean_literal) => {
                 let value = if boolean_literal.raw { 1 } else { 0 };
                 unsafe { gcc_jit_context_new_rvalue_from_int(self.context, self.i8_type(), value) }
             }
@@ -271,6 +324,7 @@ impl Compiler {
                 let value = CString::new(self.purify_string(string_literal.raw)).unwrap();
                 gcc_jit_context_new_string_literal(self.context, value.as_ptr())
             },
+            Literal::Char(char_literal) => todo!(),
         }
     }
 

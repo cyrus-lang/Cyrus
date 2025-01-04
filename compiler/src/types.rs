@@ -10,7 +10,11 @@ impl Compiler {
     }
 
     pub fn i8_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT) }
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT8_T) }
+    }
+
+    pub fn i16_type(&self) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT16_T) }
     }
 
     pub fn i32_type(&self) -> *mut gcc_jit_type {
@@ -21,6 +25,18 @@ impl Compiler {
         unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT64_T) }
     }
 
+    pub fn i128_type(&self) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT128_T) }
+    }
+
+    pub fn u8_type(&self) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT8_T) }
+    }
+
+    pub fn u16_type(&self) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT16_T) }
+    }
+
     pub fn u32_type(&self) -> *mut gcc_jit_type {
         unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT32_T) }
     }
@@ -29,16 +45,32 @@ impl Compiler {
         unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT64_T) }
     }
 
+    pub fn u128_type(&self) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT128_T) }
+    }
+
     pub fn f32_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_FLOAT32) }
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
     }
 
     pub fn f64_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_VOID) }
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_FLOAT64) }
+    }
+
+    pub fn f128_type(&self) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_FLOAT128) }
     }
 
     pub fn string_type(&self) -> *mut gcc_jit_type {
         unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_CONST_CHAR_PTR) }
+    }
+
+    pub fn char_type(&self) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_CHAR) }
+    }
+
+    pub fn bool_type(&self) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_BOOL) }
     }
 
     pub fn as_type(&self, token_kind: TokenKind) -> *mut gcc_jit_type {
