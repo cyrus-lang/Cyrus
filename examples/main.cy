@@ -1,9 +1,7 @@
 pub fn main(): i32 {
-    /*
-    #a: i32 = 10;
-    */
+    #a: bool = false;
 
-    printf("Hello: %f\n", 1.1);
+    printf("%d\n", a);
 
     return 0;   
 }

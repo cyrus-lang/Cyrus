@@ -295,7 +295,7 @@ impl<'a> Parser<'a> {
 
     fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
         match self.current_token.kind {
-            | TokenKind::I8
+            TokenKind::I8
             | TokenKind::I16
             | TokenKind::I32
             | TokenKind::I64
@@ -715,6 +715,15 @@ impl<'a> Parser<'a> {
                         span,
                     }));
                 }
+            }
+            bool_token @ TokenKind::True | bool_token @ TokenKind::False => {
+                let raw = match bool_token {
+                    TokenKind::True => true,
+                    TokenKind::False => false,
+                    _ => panic!(),
+                };
+
+                return Ok(Expression::Literal(Literal::Bool(BoolLiteral { raw, span })));
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
             TokenKind::Minus | TokenKind::Bang => {

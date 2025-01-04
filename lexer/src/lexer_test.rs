@@ -86,6 +86,11 @@ mod tests {
             Some(&vec![TokenKind::True, TokenKind::Equal, TokenKind::False]),
             None,
         );
+        assert_tokens(
+            "#my_var: bool = true;",
+            None,
+            None,
+        );
     }
 
     #[test]

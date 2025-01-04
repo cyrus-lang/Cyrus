@@ -39,11 +39,11 @@ mod tests {
 
     #[test]
     fn test_parse_bool_expressions() {
-        // assert_parse("false");
-        // assert_parse("true == true");
-        // assert_parse("false == false");
-        // assert_parse("true == false");
-        // assert_parse("false == true");
+        assert_parse("false");
+        assert_parse("true == true");
+        assert_parse("false == false");
+        assert_parse("true == false");
+        assert_parse("false == true");
     }
 
     #[test]
@@ -51,7 +51,7 @@ mod tests {
         assert_parse("#my_var0: i32 = 1 + 2 * 3;");
         assert_parse("#my_var1: i64 = 0;");
         assert_parse("#my_var2: f32 = 0;");
-        assert_parse("#my_var3: usize = 0;");
+        assert_parse("#my_var3: bool = false;");
         assert_parse("#my_var4 = 0;");
     }
 

@@ -91,7 +91,9 @@ impl Compiler {
                 let lvalue = unsafe { gcc_jit_function_new_local(func, null_mut(), var_ty, name.as_ptr()) };
                 let rvalue = self.compile_expression(Some(block), variable.expr);
 
-                unsafe { gcc_jit_block_add_assignment(block, null_mut(), lvalue, rvalue) };
+                let auto_casted = unsafe { gcc_jit_context_new_cast(self.context, null_mut(), rvalue, var_ty) };
+                
+                unsafe { gcc_jit_block_add_assignment(block, null_mut(), lvalue, auto_casted) };
 
                 self.var_table.borrow_mut().insert(variable.name, lvalue);
             } else {
@@ -316,8 +318,10 @@ impl Compiler {
                     gcc_jit_context_new_rvalue_from_double(self.context, self.f128_type(), value as f64)
                 },
             },
-            Literal::Bool(boolean_literal) => {
-                let value = if boolean_literal.raw { 1 } else { 0 };
+            Literal::Bool(bool_literal) => {
+                dbg!(bool_literal.raw.clone());
+
+                let value = if bool_literal.raw { 1 } else { 0 };
                 unsafe { gcc_jit_context_new_rvalue_from_int(self.context, self.i8_type(), value) }
             }
             Literal::String(string_literal) => unsafe {

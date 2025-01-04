@@ -6,7 +6,7 @@ use crate::Compiler;
 
 impl Compiler {
     pub fn void_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT8_T) }
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_VOID) }
     }
 
     pub fn i8_type(&self) -> *mut gcc_jit_type {
@@ -75,11 +75,23 @@ impl Compiler {
 
     pub fn as_type(&self, token_kind: TokenKind) -> *mut gcc_jit_type {
         match token_kind {
+            TokenKind::I8 => self.i8_type(),
+            TokenKind::I16 => self.i16_type(),
             TokenKind::I32 => self.i32_type(),
             TokenKind::I64 => self.i64_type(),
+            TokenKind::I128 => self.i128_type(),
+            TokenKind::U8 => self.u8_type(),
+            TokenKind::U16 => self.u16_type(),
             TokenKind::U32 => self.u32_type(),
             TokenKind::U64 => self.u64_type(),
+            TokenKind::U128 => self.u128_type(),
             TokenKind::Void => self.void_type(),
+            TokenKind::F32 => self.f32_type(),
+            TokenKind::F64 => self.f64_type(),
+            TokenKind::F128 => self.f128_type(),
+            TokenKind::Bool => self.bool_type(),
+            TokenKind::String => self.string_type(),
+            TokenKind::Char => self.char_type(),
             _ => compiler_error!("Invalid token given to cast to a GCCJIT type."),
         }
     }
