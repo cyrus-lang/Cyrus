@@ -101,9 +101,6 @@ pub enum IntegerLiteral {
 pub enum FloatLiteral {
     F32(f32),
     F64(f64),
-    // NOTE 
-    // Rust's f128 is unstable
-    F128(f64), 
 }
 
 #[derive(Debug, Clone)]

@@ -1,7 +1,8 @@
 pub fn main(): i32 {
-    #a: bool = false;
+    #a: f64 = 3.14;
+    #b: i32 = 5;
 
-    printf("%d\n", a);
+    printf("Result: %f \n", a + b);
 
     return 0;   
 }

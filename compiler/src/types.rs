@@ -51,14 +51,11 @@ impl Compiler {
 
     pub fn f32_type(&self) -> *mut gcc_jit_type {
         unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
+        // FIXME
     }
 
     pub fn f64_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_FLOAT64) }
-    }
-
-    pub fn f128_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_FLOAT128) }
+        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
     }
 
     pub fn string_type(&self) -> *mut gcc_jit_type {
@@ -88,7 +85,6 @@ impl Compiler {
             TokenKind::Void => self.void_type(),
             TokenKind::F32 => self.f32_type(),
             TokenKind::F64 => self.f64_type(),
-            TokenKind::F128 => self.f128_type(),
             TokenKind::Bool => self.bool_type(),
             TokenKind::String => self.string_type(),
             TokenKind::Char => self.char_type(),
@@ -106,13 +102,40 @@ impl Compiler {
 
     pub fn purify_string(&self, str: String) -> String {
         str.replace("\\n", "\n")
-        .replace("\\t", "\t")
-        .replace("\\r", "\r")
-        .replace("\\b", r"\b")
-        .replace("\\a", r"\a")
-        .replace("\\v", r"\v")
-        .replace("\\f", r"\f")
-        .replace("\\'", r"\'")
-        .replace("\\0", r"\0")
+            .replace("\\t", "\t")
+            .replace("\\r", "\r")
+            .replace("\\b", r"\b")
+            .replace("\\a", r"\a")
+            .replace("\\v", r"\v")
+            .replace("\\f", r"\f")
+            .replace("\\'", r"\'")
+            .replace("\\0", r"\0")
+    }
+
+    pub fn is_float_data_type(&mut self, type1: *mut gcc_jit_type) -> bool {
+        type1 == self.f32_type() || type1 == self.f64_type()
+    }
+
+    pub fn widest_data_type(&mut self, type1: *mut gcc_jit_type, type2: *mut gcc_jit_type) -> *mut gcc_jit_type {
+        if self.is_float_data_type(type1) && self.is_float_data_type(type2) {
+            // compare floats
+            if type1 > type2 {
+                type1
+            } else {
+                type2
+            }
+        } else if self.is_float_data_type(type1) {
+            type1
+        } else if self.is_float_data_type(type2) {
+            type2
+        } else if type1 > type2 {
+            type1
+        } else if type1 < type2 {
+            type2
+        } else if type1 == type2 {
+            type1
+        } else {
+            compiler_error!("Failed to determine widest data type when comparing type1 with type2.");
+        }
     }
 }

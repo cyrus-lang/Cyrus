@@ -74,7 +74,6 @@ pub enum TokenKind {
     Char,
     F32,
     F64,
-    F128,
     Void,
     Array,
     String,

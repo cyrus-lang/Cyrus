@@ -92,7 +92,7 @@ impl Compiler {
                 let rvalue = self.compile_expression(Some(block), variable.expr);
 
                 let auto_casted = unsafe { gcc_jit_context_new_cast(self.context, null_mut(), rvalue, var_ty) };
-                
+
                 unsafe { gcc_jit_block_add_assignment(block, null_mut(), lvalue, auto_casted) };
 
                 self.var_table.borrow_mut().insert(variable.name, lvalue);
@@ -243,34 +243,21 @@ impl Compiler {
             TokenKind::Minus => gcc_jit_binary_op::GCC_JIT_BINARY_OP_MINUS,
             TokenKind::Slash => gcc_jit_binary_op::GCC_JIT_BINARY_OP_DIVIDE,
             TokenKind::Asterisk => gcc_jit_binary_op::GCC_JIT_BINARY_OP_MULT,
-            TokenKind::Percent => gcc_jit_binary_op::GCC_JIT_BINARY_OP_MULT,
+            TokenKind::Percent => gcc_jit_binary_op::GCC_JIT_BINARY_OP_MODULO,
             _ => compiler_error!("Invalid operator given for the infix expression."),
         };
-        let mut is_float = false;
 
         let left = self.compile_expression(block, *binary_expression.left);
         let right = self.compile_expression(block, *binary_expression.right);
         let left_type = unsafe { gcc_jit_rvalue_get_type(left) };
         let right_type = unsafe { gcc_jit_rvalue_get_type(right) };
 
-        dbg!(right_type);
-        dbg!(left_type);
-        if !unsafe { gcc_jit_compatible_types(left_type, right_type) } {
-            compiler_error!("Infix operation failed because of incompatible values.");
-        }
+        let widest_data_type = self.widest_data_type(left_type, right_type);
 
-        dbg!(left);
-        dbg!(right);
+        let casted_left = unsafe { gcc_jit_context_new_cast(self.context, null_mut(), left, widest_data_type) };
+        let casted_right= unsafe { gcc_jit_context_new_cast(self.context,  null_mut(), right, widest_data_type) };
 
-        // unsafe {
-        //     if gcc_jit_rvalue_get_type(left) ==  || gcc_jit_rvalue_get_type(right) == self.f32_type() {
-        //         is_float = true
-        //     }
-        // }
-
-        let op_type = if is_float { self.f32_type() } else { self.i32_type() };
-
-        unsafe { gcc_jit_context_new_binary_op(self.context, null_mut(), op, op_type, left, right) }
+        unsafe { gcc_jit_context_new_binary_op(self.context, null_mut(), op, widest_data_type, casted_left, casted_right) }
     }
 
     fn compile_literal(&mut self, literal: Literal) -> *mut gcc_jit_rvalue {
@@ -313,9 +300,6 @@ impl Compiler {
                 },
                 FloatLiteral::F64(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_double(self.context, self.f64_type(), value as f64)
-                },
-                FloatLiteral::F128(value) => unsafe {
-                    gcc_jit_context_new_rvalue_from_double(self.context, self.f128_type(), value as f64)
                 },
             },
             Literal::Bool(bool_literal) => {
