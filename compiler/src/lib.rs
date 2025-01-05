@@ -4,7 +4,6 @@ use ast::{ast::*, token::TokenKind};
 use builtins::macros::retrieve_builtin_func;
 use std::{cell::RefCell, collections::HashMap, ffi::CString, ptr::null_mut};
 
-mod builtin_funcs;
 mod builtins;
 mod output;
 mod types;
