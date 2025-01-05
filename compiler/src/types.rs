@@ -5,89 +5,89 @@ use utils::compiler_error;
 use crate::Compiler;
 
 impl Compiler {
-    pub fn void_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_VOID) }
+    pub fn void_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_VOID) }
     }
 
-    pub fn i8_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT8_T) }
+    pub fn i8_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_INT8_T) }
     }
 
-    pub fn i16_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT16_T) }
+    pub fn i16_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_INT16_T) }
     }
 
-    pub fn i32_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT32_T) }
+    pub fn i32_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_INT32_T) }
     }
 
-    pub fn i64_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT64_T) }
+    pub fn i64_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_INT64_T) }
     }
 
-    pub fn i128_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_INT128_T) }
+    pub fn i128_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_INT128_T) }
     }
 
-    pub fn u8_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT8_T) }
+    pub fn u8_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_UINT8_T) }
     }
 
-    pub fn u16_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT16_T) }
+    pub fn u16_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_UINT16_T) }
     }
 
-    pub fn u32_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT32_T) }
+    pub fn u32_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_UINT32_T) }
     }
 
-    pub fn u64_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT64_T) }
+    pub fn u64_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_UINT64_T) }
     }
 
-    pub fn u128_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_UINT128_T) }
+    pub fn u128_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_UINT128_T) }
     }
 
-    pub fn f32_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
+    pub fn f32_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
         // FIXME
     }
 
-    pub fn f64_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
+    pub fn f64_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
     }
 
-    pub fn string_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_CONST_CHAR_PTR) }
+    pub fn string_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_CONST_CHAR_PTR) }
     }
 
-    pub fn char_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_CHAR) }
+    pub fn char_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_CHAR) }
     }
 
-    pub fn bool_type(&self) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(self.context, gcc_jit_types::GCC_JIT_TYPE_BOOL) }
+    pub fn bool_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_BOOL) }
     }
 
-    pub fn as_type(&self, token_kind: TokenKind) -> *mut gcc_jit_type {
+    pub fn token_as_data_type(context: *mut gcc_jit_context, token_kind: TokenKind) -> *mut gcc_jit_type {
         match token_kind {
-            TokenKind::I8 => self.i8_type(),
-            TokenKind::I16 => self.i16_type(),
-            TokenKind::I32 => self.i32_type(),
-            TokenKind::I64 => self.i64_type(),
-            TokenKind::I128 => self.i128_type(),
-            TokenKind::U8 => self.u8_type(),
-            TokenKind::U16 => self.u16_type(),
-            TokenKind::U32 => self.u32_type(),
-            TokenKind::U64 => self.u64_type(),
-            TokenKind::U128 => self.u128_type(),
-            TokenKind::Void => self.void_type(),
-            TokenKind::F32 => self.f32_type(),
-            TokenKind::F64 => self.f64_type(),
-            TokenKind::Bool => self.bool_type(),
-            TokenKind::String => self.string_type(),
-            TokenKind::Char => self.char_type(),
+            TokenKind::I8 => Compiler::i8_type(context),
+            TokenKind::I16 => Compiler::i16_type(context),
+            TokenKind::I32 => Compiler::i32_type(context),
+            TokenKind::I64 => Compiler::i64_type(context),
+            TokenKind::I128 => Compiler::i128_type(context),
+            TokenKind::U8 => Compiler::u8_type(context),
+            TokenKind::U16 => Compiler::u16_type(context),
+            TokenKind::U32 => Compiler::u32_type(context),
+            TokenKind::U64 => Compiler::u64_type(context),
+            TokenKind::U128 => Compiler::u128_type(context),
+            TokenKind::Void => Compiler::void_type(context),
+            TokenKind::F32 => Compiler::f32_type(context),
+            TokenKind::F64 => Compiler::f64_type(context),
+            TokenKind::Bool => Compiler::bool_type(context),
+            TokenKind::String => Compiler::string_type(context),
+            TokenKind::Char => Compiler::char_type(context),
             _ => compiler_error!("Invalid token given to cast to a GCCJIT type."),
         }
     }
@@ -113,7 +113,7 @@ impl Compiler {
     }
 
     pub fn is_float_data_type(&mut self, type1: *mut gcc_jit_type) -> bool {
-        type1 == self.f32_type() || type1 == self.f64_type()
+        type1 == Compiler::f32_type(self.context) || type1 == Compiler::f64_type(self.context)
     }
 
     pub fn widest_data_type(&mut self, type1: *mut gcc_jit_type, type2: *mut gcc_jit_type) -> *mut gcc_jit_type {
@@ -137,5 +137,26 @@ impl Compiler {
         } else {
             compiler_error!("Failed to determine widest data type when comparing type1 with type2.");
         }
+    }
+
+    pub fn init_func_cast(&mut self) {
+        // let func_def = FuncDef {
+        //     name: String::from("cast"),
+        //     params: vec![FunctionParam {
+        //         identifier: Identifier {
+        //             name: String::from("to"),
+        //             span: Span::new_empty_span(),
+        //         },
+        //         ty: Some(TokenKind::Void),
+        //         default_value: None,
+        //         span: Span::new_empty_span(),
+        //     }],
+        //     body: todo!(),
+        //     return_type: todo!(),
+        //     span: todo!(),
+        //     vis_type: todo!(),
+        // };
+
+        // let (func, block) = func_def!(self.context, func_def);
     }
 }

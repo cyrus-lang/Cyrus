@@ -1,6 +1,7 @@
-use super::builtin_funcs::io::compile_builtin_printf_func;
 use gccjit_sys::*;
 use std::{collections::HashMap, sync::LazyLock};
+
+use crate::builtin_funcs::io::compile_builtin_printf_func;
 
 pub type BuiltinFuncDef =
     fn(context: *mut gcc_jit_context, block: *mut gcc_jit_block, args: Vec<*mut gcc_jit_rvalue>) -> *mut gcc_jit_rvalue;
