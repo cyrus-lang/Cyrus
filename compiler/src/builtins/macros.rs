@@ -1,5 +1,27 @@
-use crate::Compiler;
+use std::collections::HashMap;
 
+use super::builtins::BUILT_INS;
+
+pub type BuiltinFuncDef = fn(
+    context: *mut gccjit_sys::gcc_jit_context,
+    block: *mut gccjit_sys::gcc_jit_block,
+    args: &mut Vec<*mut gccjit_sys::gcc_jit_rvalue>,
+) -> *mut gccjit_sys::gcc_jit_rvalue;
+
+pub type BuiltinFuncsTable = HashMap<String, BuiltinFuncDef>;
+
+#[macro_export]
+macro_rules! build_builtin_funcs {
+    ($( $key:expr => $val:expr ),*) => {
+        {
+            let mut map: super::macros::BuiltinFuncsTable = std::collections::HashMap::new();
+            $(map.insert($key.to_string(), $val);)*
+            map
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! compile_shared_library_func {
     ($def_name:ident, $func:expr, $return_type:expr, $($type:expr),*) => {
         pub fn $def_name(
@@ -46,11 +68,7 @@ macro_rules! compile_shared_library_func {
     };
 }
 
-
-extern "C" {
-    fn cyrus_builtin__print(fmt: *const i8);
+pub fn retrieve_builtin_func(func_name: String) -> Option<BuiltinFuncDef> {
+    let builtins_ref: &BuiltinFuncsTable = &*BUILT_INS;
+    builtins_ref.get(&func_name).copied()
 }
-
-compile_shared_library_func!(builtin_print_func, cyrus_builtin__print, Compiler::void_type, 
-                        Compiler::string_type
-                        );

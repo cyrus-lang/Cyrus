@@ -1,8 +1,8 @@
-use ast::{ast::*, token::TokenKind};
-use builtins::builtin_builder::retrieve_builtin_func;
 use gccjit_sys::*;
-use std::{cell::RefCell, collections::HashMap, ffi::CString, ptr::null_mut};
 use utils::compiler_error;
+use ast::{ast::*, token::TokenKind};
+use builtins::macros::retrieve_builtin_func;
+use std::{cell::RefCell, collections::HashMap, ffi::CString, ptr::null_mut};
 
 mod builtin_funcs;
 mod builtins;
