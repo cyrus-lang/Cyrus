@@ -7,3 +7,6 @@ edition = "2021"
 gccjit_sys = "0.5.0"
 ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
+
+[build-dependencies]
+cc = "1.2.7"

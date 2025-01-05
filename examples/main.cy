@@ -1,7 +1,5 @@
 pub fn main(): i32 {
-    #val = 15;
-
-    printf("result->%d\n", val);
+    print("This print func comes from a C library =)");
 
     return 0;   
 }

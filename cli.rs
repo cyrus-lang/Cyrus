@@ -1,3 +1,5 @@
+use std::ffi::CString;
+
 use ast::ast::{Node, Program};
 use clap::Parser as ClapParser;
 use compiler::Compiler;
@@ -16,6 +18,7 @@ struct Args {
 enum Commands {
     Run { file_path: String },
     Dump { file_path: String, output_path: String },
+    Build { file_path: String, output_path: String },
     Version,
 }
 
@@ -69,6 +72,10 @@ pub fn main() {
         Commands::Dump { file_path, output_path } => {
             let compiler = init_compiler!(file_path);
             compiler.make_dump_file(output_path);
+        }
+        Commands::Build { file_path, output_path } => {
+            let compiler = init_compiler!(file_path);
+            compiler.make_executable_file(output_path);
         }
         Commands::Version => {
             println!("Cyrus {}", version)

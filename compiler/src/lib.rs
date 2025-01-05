@@ -1,20 +1,11 @@
-use ast::{
-    ast::*,
-    token::{Token, TokenKind},
-};
-use builtin_builder::retrieve_builtin_func;
+use ast::{ast::*, token::TokenKind};
+use builtins::builtin_builder::retrieve_builtin_func;
 use gccjit_sys::*;
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    ffi::CString,
-    ptr::{null, null_mut},
-    slice::from_raw_parts,
-};
+use std::{cell::RefCell, collections::HashMap, ffi::CString, ptr::null_mut};
 use utils::compiler_error;
 
-mod builtin_builder;
 mod builtin_funcs;
+mod builtins;
 mod output;
 mod types;
 
@@ -23,6 +14,7 @@ type BlockFuncRef = (Option<*mut gcc_jit_block>, Option<*mut gcc_jit_function>);
 struct FuncParamRecord {
     param_index: i32,
     param_name: String,
+    param_type: *mut gcc_jit_type,
 }
 
 type FuncParamsRecords = Vec<FuncParamRecord>;
@@ -84,7 +76,7 @@ impl Compiler {
         if let Some(func) = block_func_ref.1 {
             if let Some(block) = block_func_ref.0 {
                 let rvalue = self.compile_expression(block_func_ref, variable.expr);
-                
+
                 let var_ty: *mut gcc_jit_type;
 
                 if let Some(token) = variable.ty {
@@ -144,6 +136,7 @@ impl Compiler {
             func_param_records.push(FuncParamRecord {
                 param_index: idx as i32,
                 param_name: func_def_param.identifier.name.clone(),
+                param_type: ty,
             });
         }
 
@@ -245,7 +238,9 @@ impl Compiler {
                     rvalue
                 },
                 None => match retrieve_builtin_func(func_call.function_name.name.clone()) {
-                    Some(func_def) => func_def(self.context, block, args),
+                    Some(func_def) => {
+                        func_def(self.context, block, &mut args)
+                    }
                     None => compiler_error!(format!(
                         "Function '{}' not defined at this module.",
                         func_call.function_name.name

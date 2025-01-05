@@ -1,10 +1,12 @@
-use gccjit_sys::*;
 use std::{collections::HashMap, sync::LazyLock};
 
-use crate::builtin_funcs::io::compile_builtin_printf_func;
+use crate::builtins::shared_library;
 
-pub type BuiltinFuncDef =
-    fn(context: *mut gcc_jit_context, block: *mut gcc_jit_block, args: Vec<*mut gcc_jit_rvalue>) -> *mut gcc_jit_rvalue;
+pub type BuiltinFuncDef = fn(
+    context: *mut gccjit_sys::gcc_jit_context,
+    block: *mut gccjit_sys::gcc_jit_block,
+    args: &mut Vec<*mut gccjit_sys::gcc_jit_rvalue>,
+) -> *mut gccjit_sys::gcc_jit_rvalue;
 
 type BuiltinFuncsTable = HashMap<String, BuiltinFuncDef>;
 
@@ -20,7 +22,7 @@ macro_rules! builtin_builder {
 
 static BUILT_INS: LazyLock<BuiltinFuncsTable> = LazyLock::new(|| {
     builtin_builder! {
-        "printf" => compile_builtin_printf_func
+        "print" => shared_library::builtin_print_func
     }
 });
 

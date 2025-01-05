@@ -109,7 +109,6 @@ impl Compiler {
             .replace("\\v", r"\v")
             .replace("\\f", r"\f")
             .replace("\\'", r"\'")
-            .replace("\\0", r"\0")
     }
 
     pub fn is_float_data_type(&mut self, type1: *mut gcc_jit_type) -> bool {
