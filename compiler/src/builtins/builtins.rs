@@ -1,17 +1,17 @@
-use std::sync::LazyLock;
-use crate::{build_builtin_funcs, compile_shared_library_func, Compiler};
 use super::macros::BuiltinFuncsTable;
+use crate::{build_builtin_funcs, compile_shared_library_func, Compiler};
+use std::{ffi::c_void, os::raw::c_char, sync::LazyLock};
 
-extern "C" {
-    fn cyrus_builtin__print(fmt: *const i8);
-}
-
-compile_shared_library_func!(builtin_print_func, cyrus_builtin__print, Compiler::void_type, 
-                        Compiler::string_type
-                        );
+compile_shared_library_func!(
+    builtin_print_func,
+    fn cyrus_builtin__printf(fmt: *const c_char) -> *mut c_void,
+    Compiler::void_type,
+    1,
+    Compiler::string_type
+);
 
 pub static BUILT_INS: LazyLock<BuiltinFuncsTable> = LazyLock::new(|| {
     build_builtin_funcs! {
-        "print" => builtin_print_func
+        "printf" => builtin_print_func
     }
 });

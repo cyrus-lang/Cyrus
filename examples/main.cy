@@ -1,5 +1,5 @@
 pub fn main(): i32 {
-    print("This print func comes from a C library =)");
+    printf("Hello");
 
     return 0;   
 }

@@ -23,15 +23,28 @@ macro_rules! build_builtin_funcs {
 
 #[macro_export]
 macro_rules! compile_shared_library_func {
-    ($def_name:ident, $func:expr, $return_type:expr, $($type:expr),*) => {
+    (
+        $def_name:ident,
+        fn $func_name:ident($($arg_name:ident: $arg_type:ty),*) -> $ret_type:ty,
+        $func_ret_type:expr,
+        $variadic:expr,
+        $($type:expr),*
+    ) => {
         pub fn $def_name(
             context: *mut gccjit_sys::gcc_jit_context,
             block: *mut gccjit_sys::gcc_jit_block,
             args: &mut Vec<*mut gccjit_sys::gcc_jit_rvalue>,
         ) -> *mut gccjit_sys::gcc_jit_rvalue {
-            let return_type = $return_type(context);
+            extern "C" {
+                fn $func_name($($arg_name: $arg_type),*) -> $ret_type;
+            }
+        
+            let func_ptr: unsafe extern "C" fn($($arg_name: $arg_type),*) -> $ret_type = unsafe {
+                std::mem::transmute($func_name as unsafe extern "C" fn($($arg_name: $arg_type),*) -> $ret_type)
+            };
+            let func_ptr_c_void: *mut c_void = func_ptr as *mut c_void;
 
-            let func_ptr = unsafe { std::mem::transmute::<*mut (), *mut core::ffi::c_void>($func as *mut ()) };
+            let return_type = $func_ret_type(context);
 
             let mut param_types: Vec<*mut gccjit_sys::gcc_jit_type> = Vec::new();
 
@@ -46,11 +59,11 @@ macro_rules! compile_shared_library_func {
                     return_type,
                     args.len().try_into().unwrap(),
                     param_types.as_mut_ptr(),
-                    0,
+                    $variadic,
                 )
             };
 
-            let func = unsafe { gccjit_sys::gcc_jit_context_new_rvalue_from_ptr(context, func_type, func_ptr) };
+            let func = unsafe { gccjit_sys::gcc_jit_context_new_rvalue_from_ptr(context, func_type, func_ptr_c_void) };
 
             let rvalue = unsafe {
                 gccjit_sys::gcc_jit_context_new_call_through_ptr(
