@@ -1,5 +1,6 @@
 fn main() {
     cc::Build::new()
         .file("../shared_library/io.c")
-        .compile("cyrus_io");
+        .file("../shared_library/fmt.c")
+        .compile("cyrus_shared_library");
 }

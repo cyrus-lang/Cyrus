@@ -75,6 +75,7 @@ macro_rules! compile_shared_library_variadic_func {
                     args.as_mut_ptr(),
                 )
             };
+            
             unsafe { gccjit_sys::gcc_jit_block_add_eval(block, std::ptr::null_mut(), rvalue) };
             return rvalue;
         }

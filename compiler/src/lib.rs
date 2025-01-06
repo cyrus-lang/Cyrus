@@ -12,8 +12,7 @@ type BlockFuncRef = (Option<*mut gcc_jit_block>, Option<*mut gcc_jit_function>);
 
 struct FuncParamRecord {
     param_index: i32,
-    param_name: String,
-    param_type: *mut gcc_jit_type,
+    param_name: String
 }
 
 type FuncParamsRecords = Vec<FuncParamRecord>;
@@ -135,7 +134,6 @@ impl Compiler {
             func_param_records.push(FuncParamRecord {
                 param_index: idx as i32,
                 param_name: func_def_param.identifier.name.clone(),
-                param_type: ty,
             });
         }
 
