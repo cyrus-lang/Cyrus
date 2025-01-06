@@ -3,6 +3,6 @@
 
 #include <stdarg.h>
 
-void cyrus_builtin__printf(int argc, ...);
+void cyrus_builtin__cprintf(int argc, ...);
 
 #endif

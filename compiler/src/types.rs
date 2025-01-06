@@ -5,6 +5,10 @@ use utils::compiler_error;
 use crate::Compiler;
 
 impl Compiler {
+    pub fn void_ptr_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_VOID_PTR) }
+    }
+
     pub fn void_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_VOID) }
     }
@@ -136,26 +140,5 @@ impl Compiler {
         } else {
             compiler_error!("Failed to determine widest data type when comparing type1 with type2.");
         }
-    }
-
-    pub fn init_func_cast(&mut self) {
-        // let func_def = FuncDef {
-        //     name: String::from("cast"),
-        //     params: vec![FunctionParam {
-        //         identifier: Identifier {
-        //             name: String::from("to"),
-        //             span: Span::new_empty_span(),
-        //         },
-        //         ty: Some(TokenKind::Void),
-        //         default_value: None,
-        //         span: Span::new_empty_span(),
-        //     }],
-        //     body: todo!(),
-        //     return_type: todo!(),
-        //     span: todo!(),
-        //     vis_type: todo!(),
-        // };
-
-        // let (func, block) = func_def!(self.context, func_def);
     }
 }

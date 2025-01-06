@@ -4,6 +4,7 @@
         "*.dbclient-js": "javascript",
         "stdio.h": "c",
         "io.h": "c",
-        "stdarg.h": "c"
+        "stdarg.h": "c",
+        "fmt.h": "c"
     }
 }

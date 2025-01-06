@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 
 use super::builtins::BUILT_INS;
@@ -50,10 +52,10 @@ macro_rules! compile_shared_library_variadic_func {
             for arg in args.clone() {
                 param_types.push(unsafe { gcc_jit_rvalue_get_type(arg) });
             }
-        
+
             args.insert(0, unsafe {
                 gcc_jit_context_new_rvalue_from_int(context, Compiler::i32_type(context), args_count)
-            });        
+            });
 
             let func_type = unsafe {
                 gccjit_sys::gcc_jit_context_new_function_ptr_type(
@@ -75,7 +77,7 @@ macro_rules! compile_shared_library_variadic_func {
                     args.as_mut_ptr(),
                 )
             };
-            
+
             unsafe { gccjit_sys::gcc_jit_block_add_eval(block, std::ptr::null_mut(), rvalue) };
             return rvalue;
         }

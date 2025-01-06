@@ -1,9 +1,5 @@
 pub fn main(): i32 {
-    printf("{} {}\n", "Cyrus", "Lang!");
-
-    #fmt: string = format("{} {}", "Achaemenid", "💀");
-
-    printf("{}\n", fmt);
+    cprintf("Hello %s\n", "world");
 
     return 0; 
 }
