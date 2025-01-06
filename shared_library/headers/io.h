@@ -1,6 +1,8 @@
 #ifndef CYRUS_IO_H
 #define CYRUS_IO_H
 
-void cyrus_builtin__printf(const char* fmt);
+#include <stdarg.h>
+
+void cyrus_builtin__printf(int argc, ...);
 
 #endif
