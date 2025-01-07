@@ -493,63 +493,6 @@ impl Compiler {
             }
         }
     }
-
-    // fn compile_if_statement(&mut self, statement: If) {
-    //     let guard = self.block_func_ref.lock().unwrap();
-
-    //     unsafe {
-    //         if let (Some(current_block), Some(func)) = (guard.block, guard.func) {
-    //             let then_block_name = CString::new("if_then").unwrap();
-    //             let else_block_name = CString::new("if_else").unwrap();
-    //             let end_block_name = CString::new("if_end").unwrap();
-
-    //             let then_block = gcc_jit_function_new_block(func, then_block_name.as_ptr());
-    //             let else_block = gcc_jit_function_new_block(func, else_block_name.as_ptr());
-    //             let end_block = gcc_jit_function_new_block(func, end_block_name.as_ptr());
-
-    //             drop(guard);
-
-    //             let cond = self.compile_expression(statement.condition);
-
-    //             // Build then block
-    //             let mut guard = self.block_func_ref.lock().unwrap();
-    //             guard.block = Some(then_block);
-    //             drop(guard);
-
-    //             self.compile_statements(statement.consequent.body);
-    //             gcc_jit_block_end_with_jump(then_block, std::ptr::null_mut(), end_block);
-
-    //             // Build else block (optional)
-    //             if let Some(alternate) = statement.alternate {
-    //                 if statement.branches.len() > 0 {
-    //                     // let mut guard = self.block_func_ref.lock().unwrap();
-    //                     // guard.block = Some(else_block);
-    //                     // drop(guard);
-    //                     // // self.compile_if_statement(nested_if);
-    //                     // // let guard = self.block_func_ref.lock().unwrap();
-    //                     // // if let Some(new_end_block) = guard.block{
-    //                     // //     end_block = new_end_block;
-    //                     // // }
-    //                     todo!("recursuive if else compilation");
-    //                 } else {
-    //                     let mut guard = self.block_func_ref.lock().unwrap();
-    //                     guard.block = Some(else_block);
-    //                     drop(guard);
-
-    //                     self.compile_statements(alternate.body);
-    //                     gcc_jit_block_end_with_jump(else_block, std::ptr::null_mut(), end_block);
-    //                 }
-    //             } else {
-    //                 gcc_jit_block_end_with_jump(else_block, std::ptr::null_mut(), end_block);
-    //             }
-
-    //             gcc_jit_block_end_with_conditional(current_block, std::ptr::null_mut(), cond, then_block, else_block);
-
-    //             let mut guard = self.block_func_ref.lock().unwrap();
-    //             guard.block = Some(end_block); // Continue compilation after the if
-    //         }
-    //     }
-    // }
 }
 
 impl Drop for Compiler {
