@@ -119,6 +119,14 @@ impl Compiler {
         type1 == Compiler::f32_type(self.context) || type1 == Compiler::f64_type(self.context)
     }
 
+    pub fn is_int_data_type(&self, type1: *mut gcc_jit_type) -> bool {
+        type1 == Compiler::i8_type(self.context)
+            || type1 == Compiler::i16_type(self.context)
+            || type1 == Compiler::i32_type(self.context)
+            || type1 == Compiler::i64_type(self.context)
+            || type1 == Compiler::i128_type(self.context)
+    }
+
     pub fn widest_data_type(&mut self, type1: *mut gcc_jit_type, type2: *mut gcc_jit_type) -> *mut gcc_jit_type {
         if self.is_float_data_type(type1) && self.is_float_data_type(type2) {
             // compare floats

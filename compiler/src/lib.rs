@@ -5,7 +5,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::CString,
-    ptr::null_mut,
+    ptr::{null, null_mut},
     sync::{Arc, Mutex},
 };
 use utils::compiler_error;
@@ -282,7 +282,71 @@ impl Compiler {
     }
 
     pub fn compile_unary_operator(&mut self, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
-        todo!()
+        match self.var_table.borrow_mut().get(&unary_operator.identifer.name) {
+            Some(lvalue) => {
+                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.clone()) };
+                let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+
+                if !self.is_int_data_type(rvalue_type) {
+                    compiler_error!("Unary operations are only valid for integer types.");
+                }
+
+                let fixed_number = unsafe { gcc_jit_context_new_rvalue_from_int(self.context, rvalue_type, 1) };
+
+                let bin_op = match unary_operator.ty.clone() {
+                    UnaryOperatorType::PostIncrement | UnaryOperatorType::PreIncrement => {
+                        gcc_jit_binary_op::GCC_JIT_BINARY_OP_PLUS
+                    }
+                    UnaryOperatorType::PostDecrement | UnaryOperatorType::PreDecrement => {
+                        gcc_jit_binary_op::GCC_JIT_BINARY_OP_MINUS
+                    }
+                };
+
+                let guard = self.block_func_ref.lock().unwrap();
+
+                let tmp_local: *mut gcc_jit_lvalue;
+                if let (Some(block), Some(func)) = (guard.block, guard.func) {
+                    let tmp_local_name = CString::new("temp").unwrap();
+                    tmp_local =
+                        unsafe { gcc_jit_function_new_local(func, null_mut(), rvalue_type, tmp_local_name.as_ptr()) };
+                    unsafe { gcc_jit_block_add_assignment(block, null_mut(), tmp_local, rvalue) };
+                } else {
+                    compiler_error!("Unary operators (++, --, etc.) are only allowed inside functions.");
+                }
+
+                let tmp_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(tmp_local) };
+
+                // Assign incremented/decremented value in the variable
+                if let Some(block) = guard.block {
+                    unsafe {
+                        gcc_jit_block_add_assignment_op(
+                            block,
+                            null_mut(),
+                            lvalue.clone(),
+                            bin_op,
+                            gcc_jit_context_new_cast(self.context, null_mut(), fixed_number, rvalue_type),
+                        )
+                    };
+                }
+
+                let result = rvalue.clone();
+
+                let result = match unary_operator.ty {
+                    UnaryOperatorType::PreIncrement => result,
+                    UnaryOperatorType::PostIncrement => tmp_rvalue,
+                    UnaryOperatorType::PreDecrement => result,
+                    UnaryOperatorType::PostDecrement => tmp_rvalue,
+                };
+
+                result
+            }
+            None => {
+                compiler_error!(format!(
+                    "'{}' is not defined in this scope.",
+                    &unary_operator.identifer.name
+                ))
+            }
+        }
     }
 
     fn compile_prefix_expression(&mut self, unary_expression: UnaryExpression) -> *mut gcc_jit_rvalue {
@@ -432,8 +496,8 @@ impl Compiler {
                 let else_block_name = CString::new("if_else").unwrap();
                 let else_block = gcc_jit_function_new_block(func, else_block_name.as_ptr());
 
-                let mut next_block = else_block; 
-                
+                let mut next_block = else_block;
+
                 for branch in statement.branches.iter() {
                     let branch_cond = self.compile_expression(branch.condition.clone());
                     let elseif_then_name = CString::new("branch_then").unwrap();
@@ -483,7 +547,7 @@ impl Compiler {
                 if let Some(alternate) = statement.alternate {
                     let mut guard = self.block_func_ref.lock().unwrap();
                     guard.block = Some(else_block);
-                    drop(guard);    
+                    drop(guard);
                     self.compile_statements(alternate.body);
                     gcc_jit_block_end_with_jump(else_block, std::ptr::null_mut(), end_block);
                 }
