@@ -536,12 +536,17 @@ impl<'a> Parser<'a> {
 
         let consequent = Box::new(self.parse_block_statement()?);
 
-        self.expect_current(TokenKind::RightBrace)?;
+        if !self.current_token_is(TokenKind::RightBrace) {
+            return Err("Missing closing brace '}'".to_string());
+        }
+
+        if self.peek_token_is(TokenKind::Else) {
+            self.next_token(); // consume closing brace    
+        }
 
         while self.current_token_is(TokenKind::Else) {
             self.next_token(); // consume else token
 
-            // lets parse branches
             if self.current_token_is(TokenKind::If) {
                 self.next_token(); // consume if token
                 let start = self.current_token.span.start;
@@ -550,6 +555,7 @@ impl<'a> Parser<'a> {
                 self.expect_peek(TokenKind::RightParen)?; // biggening of the block
                 self.expect_peek(TokenKind::LeftBrace)?; // biggening of the block
                 let consequent = Box::new(self.parse_block_statement()?);
+
                 self.expect_current(TokenKind::RightBrace)?; // end of the block
                 let end = self.current_token.span.end;
 
