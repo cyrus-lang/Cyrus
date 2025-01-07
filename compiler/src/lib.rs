@@ -425,16 +425,19 @@ impl Compiler {
             if let (Some(current_block), Some(func)) = (guard.block, guard.func) {
                 drop(guard);
 
+                // Handle ending block
                 let if_end_name = CString::new("if_end").unwrap();
                 let end_block = gcc_jit_function_new_block(func, if_end_name.as_ptr());
 
-                let mut next_block = end_block; // Initially, the next block is the end block
+                let else_block_name = CString::new("if_else").unwrap();
+                let else_block = gcc_jit_function_new_block(func, else_block_name.as_ptr());
 
-                // Iterate through branches in reverse order to chain them correctly.
+                let mut next_block = else_block; 
+                
                 for branch in statement.branches.iter() {
                     let branch_cond = self.compile_expression(branch.condition.clone());
-                    let elseif_then_name = CString::new("elseif_then").unwrap();
-                    let elseif_else_name = CString::new("elseif_else").unwrap();
+                    let elseif_then_name = CString::new("branch_then").unwrap();
+                    let elseif_else_name = CString::new("branch_else").unwrap();
                     let branch_then_block = gcc_jit_function_new_block(func, elseif_then_name.as_ptr());
                     let branch_else_block = gcc_jit_function_new_block(func, elseif_else_name.as_ptr());
 
@@ -452,7 +455,7 @@ impl Compiler {
                         branch_then_block,
                         next_block,
                     );
-                    
+
                     next_block = branch_else_block; // Chain the else blocks
                 }
 
@@ -479,10 +482,10 @@ impl Compiler {
                 // Handle the final 'else' statement
                 if let Some(alternate) = statement.alternate {
                     let mut guard = self.block_func_ref.lock().unwrap();
-                    guard.block = Some(next_block);
-                    drop(guard);
+                    guard.block = Some(else_block);
+                    drop(guard);    
                     self.compile_statements(alternate.body);
-                    gcc_jit_block_end_with_jump(next_block, std::ptr::null_mut(), end_block);
+                    gcc_jit_block_end_with_jump(else_block, std::ptr::null_mut(), end_block);
                 }
 
                 let mut guard = self.block_func_ref.lock().unwrap();

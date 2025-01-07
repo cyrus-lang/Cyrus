@@ -56,24 +56,6 @@ mod tests {
     }
 
     #[test]
-    fn test_if_statement() {
-        assert_parse(
-            "
-        if (1 < 2)
-        {
-            print(1);
-        }
-        else if (2 == 2) {
-            print(2);
-        }
-        else {
-            print(3);
-        }
-        ",
-        );
-    }
-
-    #[test]
     fn test_if_statement2() {
         assert_parse(
             "

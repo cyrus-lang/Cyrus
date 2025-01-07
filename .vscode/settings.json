@@ -5,6 +5,7 @@
         "stdio.h": "c",
         "io.h": "c",
         "stdarg.h": "c",
-        "fmt.h": "c"
+        "fmt.h": "c",
+        "main": "cpp"
     }
 }

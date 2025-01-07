@@ -1,20 +1,20 @@
 pub fn main(): i32 {
-    #a: i32 = 25;
+    #a: i32 = 15;
     #b: i32 = 20;
 
     if (a == b) {
-        cprintf("yes\n");
+        cprintf("if\n");
     }
-    else if (a < b)
+    else if (a < b)                 
     {
-        cprintf("a is smaller than b\n");
+        cprintf("branch\n");
     }
     else 
     {
-        cprintf("no\n");
+        cprintf("you must find this\n");
     }
 
-    cprintf("This line is executed at end block.\n");
+    cprintf("end.\n");
     
     return 0;
 }
