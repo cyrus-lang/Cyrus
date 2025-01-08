@@ -23,10 +23,10 @@ enum Commands {
 }
 
 fn parse_program(file_path: String) -> Program {
-    let file = read_file(file_path);
+    let file = read_file(file_path.clone());
     let code = file.0;
 
-    let mut lexer = Lexer::new(code);
+    let mut lexer = Lexer::new(code, file_path);
     let mut parser = Parser::new(&mut lexer);
 
     let program = match parser.parse() {
