@@ -1,5 +1,6 @@
 use ast::token::TokenKind;
 use gccjit_sys::*;
+use rand::{distributions::Alphanumeric, Rng};
 use utils::compiler_error;
 
 use crate::Compiler;
@@ -149,4 +150,13 @@ impl Compiler {
             compiler_error!("Failed to determine widest data type when comparing type1 with type2.");
         }
     }
+
+    pub fn new_block_name(&mut self) -> String {
+        rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(12)
+            .map(char::from)
+            .collect()
+    }
+    
 }

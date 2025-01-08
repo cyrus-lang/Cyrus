@@ -1,10 +1,14 @@
 pub fn main(): i32 {
-    for #i = 0; i < 10; {
-        cprintf("%d\n", i);
+    #a = 10;
 
-        // break;
+    if (a == 10) {
+        cprintf("first if %d\n", a);
+    } else {
+        cprintf("first else\n");
+        if (a > 5) {
+            cprintf("chained if\n");
+        }
     }
-    
-    
+
     return 0;   
 }

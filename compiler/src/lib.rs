@@ -76,9 +76,14 @@ impl Compiler {
             Statement::Package(statement) => todo!(),
             Statement::Import(statement) => todo!(),
             Statement::Return(statement) => self.compile_return(statement),
+            _ => compiler_error!("Invalid statement."),
         }
     }
 
+    // FIXME 
+    // Not works fine in chained situation
+    // TODO 
+    // Impl break and continue after fixing chaining
     fn compile_for_statement(&mut self, statement: For) {
         let guard = self.block_func_ref.lock().unwrap();
 
@@ -110,17 +115,34 @@ impl Compiler {
             let after_for_name = CString::new("after_for").unwrap();
             let after_for_block = unsafe { gcc_jit_function_new_block(func, after_for_name.as_ptr()) };
 
+            let mut for_breaked = false;
             // Custom statement compilation because of existence of the continue and break keyword.
-            self.compile_statements(statement.body.body);
+            for body_statement in statement.body.body {
+                match body_statement {
+                    Statement::Break => {
+                        unsafe {
+                            gcc_jit_block_end_with_jump(body_block, null_mut(), after_for_block);
+                        }
+                        for_breaked = true;
+                        break;
+                    }
+                    Statement::Continue => todo!(),
+                    _ => self.compile_statement(body_statement),
+                }
+            }
 
             if let Some(increment) = statement.increment {
                 self.compile_expression(increment);
             }
 
             if let Some(_) = statement.condition {
-                unsafe { gcc_jit_block_end_with_conditional(body_block, null_mut(), cond, body_block, after_for_block) };
+                unsafe {
+                    gcc_jit_block_end_with_conditional(body_block, null_mut(), cond, body_block, after_for_block)
+                };
             } else {
-                unsafe { gcc_jit_block_end_with_jump(body_block, null_mut(), after_for_block); }
+                unsafe {
+                    gcc_jit_block_end_with_jump(body_block, null_mut(), after_for_block);
+                }
             }
 
             let mut guard = self.block_func_ref.lock().unwrap();
@@ -535,6 +557,8 @@ impl Compiler {
         }
     }
 
+    // FIXME 
+    // Not works fine in chained situation
     fn compile_if_statement(&mut self, statement: If) {
         let guard = self.block_func_ref.lock().unwrap();
         unsafe {
@@ -617,6 +641,108 @@ impl Compiler {
             }
         }
     }
+
+    // FIXME 
+    // Not works fine in chained situation
+    // fn compile_if_statement(&mut self, statement: If) {
+    //     let guard = self.block_func_ref.lock().unwrap();
+    //     unsafe {
+    //         if let (Some(current_block), Some(func)) = (guard.block, guard.func) {
+    //             drop(guard);
+
+    //             // Handle ending block
+    //             let if_end_name = CString::new(format!("if_end_{}", self.new_block_name())).unwrap();
+
+    //             let end_block: *mut gcc_jit_block;
+    //             if let Some(block) = final_block {
+    //                 dbg!("first final_block set as end_block");
+    //                 end_block = block;
+    //             } else {
+    //                 end_block = gcc_jit_function_new_block(func, if_end_name.as_ptr());
+    //                 dbg!("new end block created");
+    //             }
+
+    //             let else_block_name = CString::new(format!("if_else_{}", self.new_block_name())).unwrap();
+    //             let mut else_block = null_mut();
+    //             let next_block;
+
+    //             if let Some(_) = statement.alternate {
+    //                 else_block = gcc_jit_function_new_block(func, else_block_name.as_ptr());
+    //                 next_block = else_block.clone();
+    //             } else {
+    //                 next_block = end_block.clone();
+    //             }
+
+    //             // for branch in statement.branches.iter() {
+    //             //     dbg!("branch compilation");
+
+    //             //     let branch_cond = self.compile_expression(branch.condition.clone());
+    //             //     let elseif_then_name = CString::new(format!("branch_then_{}", self.new_block_name())).unwrap();
+    //             //     let elseif_else_name = CString::new(format!("branch_else_{}", self.new_block_name())).unwrap();
+    //             //     let branch_then_block = gcc_jit_function_new_block(func, elseif_then_name.as_ptr());
+    //             //     let branch_else_block = gcc_jit_function_new_block(func, elseif_else_name.as_ptr());
+
+    //             //     let mut guard = self.block_func_ref.lock().unwrap();
+    //             //     guard.block = Some(branch_then_block);
+    //             //     drop(guard);
+
+    //             //     self.compile_statements(branch.consequent.body.clone());
+    //             //     gcc_jit_block_end_with_jump(branch_then_block, std::ptr::null_mut(), end_block);
+
+    //             //     gcc_jit_block_end_with_conditional(
+    //             //         branch_else_block,
+    //             //         std::ptr::null_mut(),
+    //             //         branch_cond,
+    //             //         branch_then_block,
+    //             //         next_block,
+    //             //     );
+
+    //             //     next_block = branch_else_block; // Chain the else blocks
+    //             // }
+
+    //             // Handle the initial 'if'
+    //             let initial_cond = self.compile_expression(statement.condition);
+    //             let initial_then_name = CString::new(format!("if_then_{}", self.new_block_name())).unwrap();
+    //             let initial_then_block = gcc_jit_function_new_block(func, initial_then_name.as_ptr());
+
+    //             let mut guard = self.block_func_ref.lock().unwrap();
+    //             guard.block = Some(initial_then_block);
+    //             drop(guard);
+
+    //             for item in statement.consequent.body {
+    //                 match item {
+    //                     Statement::If(chain) => {
+    //                         self.compile_if_statement(Some(end_block), chain);
+    //                     }
+    //                     _ => self.compile_statement(item),
+    //                 }
+    //             }
+    //             gcc_jit_block_end_with_jump(initial_then_block, std::ptr::null_mut(), end_block);
+
+    //             gcc_jit_block_end_with_conditional(
+    //                 current_block,
+    //                 std::ptr::null_mut(),
+    //                 initial_cond,
+    //                 initial_then_block,
+    //                 next_block,
+    //             );
+
+    //             // Handle the final 'else' statement
+    //             if !else_block.is_null() {
+    //                 if let Some(alternate) = statement.alternate {
+    //                     let mut guard = self.block_func_ref.lock().unwrap();
+    //                     guard.block = Some(else_block);
+    //                     drop(guard);
+    //                     self.compile_statements(alternate.body);
+    //                     gcc_jit_block_end_with_jump(else_block, std::ptr::null_mut(), end_block);
+    //                 }
+    //             }
+
+    //             let mut guard = self.block_func_ref.lock().unwrap();
+    //             guard.block = Some(end_block);
+    //         }
+    //     }
+    // }
 }
 
 impl Drop for Compiler {

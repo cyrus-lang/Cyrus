@@ -44,6 +44,8 @@ impl<'a> Parser<'a> {
             TokenKind::Hashtag => self.parse_variable_declaration(),
             TokenKind::For => self.parse_for_statement(),
             TokenKind::Package => self.parse_package_declaration(),
+            TokenKind::Break => self.parse_break_statement(),
+            TokenKind::Continue => self.parse_continue_statement(),
             _ => self.parse_expression_statement(),
         }
     }
@@ -103,6 +105,24 @@ impl<'a> Parser<'a> {
             "Expected token: {} but got {}.",
             token_kind, self.current_token.kind
         ))
+    }
+
+    fn parse_break_statement(&mut self) -> Result<Statement, ParseError> {
+        self.next_token();
+        if !self.current_token_is(TokenKind::Semicolon) {
+            Err(format!("Missing semicolon"))
+        } else {
+            Ok(Statement::Break)
+        }
+    }
+
+    fn parse_continue_statement(&mut self) -> Result<Statement, ParseError> {
+        self.next_token();
+        if !self.current_token_is(TokenKind::Semicolon) {
+            Err(format!("Missing semicolon"))
+        } else {
+            Ok(Statement::Continue)
+        }
     }
 
     fn parse_package_declaration(&mut self) -> Result<Statement, ParseError> {
@@ -271,9 +291,7 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::Semicolon)?;
 
         if self.current_token_is(TokenKind::LeftBrace) {
-            return Err(format!(
-                "Defined a conditional for loop without any condition."
-            ));
+            return Err(format!("Defined a conditional for loop without any condition."));
         }
 
         let condition: Option<Expression>;

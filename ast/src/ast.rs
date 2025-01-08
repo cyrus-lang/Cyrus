@@ -165,6 +165,8 @@ pub enum Statement {
     Struct(Struct),
     Package(Package),
     Import(Import),
+    Break,
+    Continue,
 }
 
 pub fn format_statements(stmts: &Vec<Statement>) -> String {
