@@ -234,12 +234,47 @@ impl<'a> Parser<'a> {
         let start = self.current_token.span.start;
         self.next_token(); // consume for token
 
+        // Check for non-conditional for loop
+        if self.current_token_is(TokenKind::LeftBrace) {
+            let body: Box<BlockStatement>;
+            if self.current_token_is(TokenKind::LeftBrace) {
+                body = Box::new(self.parse_block_statement()?);
+
+                if !self.current_token_is(TokenKind::RightBrace) {
+                    return Err("Missing closing brace '}'.".to_string());
+                }
+
+                if self.peek_token_is(TokenKind::Semicolon) {
+                    self.next_token();
+                }
+            } else {
+                return Err(format!("Missing opening brace '{{'."));
+            }
+
+            return Ok(Statement::For(For {
+                initializer: None,
+                condition: None,
+                increment: None,
+                body,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+            }));
+        }
+
         let mut initializer: Option<Variable> = None;
         if let Statement::Variable(var) = self.parse_variable_declaration()? {
             initializer = Some(var);
         }
 
         self.expect_current(TokenKind::Semicolon)?;
+
+        if self.current_token_is(TokenKind::LeftBrace) {
+            return Err(format!(
+                "Defined a conditional for loop without any condition."
+            ));
+        }
 
         let condition: Option<Expression>;
         match self.parse_expression(Precedence::Lowest) {
@@ -254,17 +289,19 @@ impl<'a> Parser<'a> {
         self.expect_peek(TokenKind::Semicolon)?;
         self.next_token();
 
-        let increment: Option<Expression>;
-        match self.parse_expression(Precedence::Lowest) {
-            Ok(result) => {
-                increment = Some(result.0);
+        let mut increment: Option<Expression> = None;
+        if !self.current_token_is(TokenKind::LeftBrace) {
+            match self.parse_expression(Precedence::Lowest) {
+                Ok(result) => {
+                    increment = Some(result.0);
+                }
+                Err(e) => {
+                    return Err(e);
+                }
             }
-            Err(e) => {
-                return Err(e);
-            }
-        }
 
-        self.next_token(); // consume increment token
+            self.next_token(); // consume increment token
+        }
 
         let body: Box<BlockStatement>;
         if self.current_token_is(TokenKind::LeftBrace) {
@@ -541,7 +578,7 @@ impl<'a> Parser<'a> {
         }
 
         if self.peek_token_is(TokenKind::Else) {
-            self.next_token(); // consume closing brace    
+            self.next_token(); // consume closing brace
         }
 
         while self.current_token_is(TokenKind::Else) {

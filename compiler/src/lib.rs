@@ -70,12 +70,64 @@ impl Compiler {
             }
             Statement::FuncDef(function) => self.compile_func_def(function.clone()),
             Statement::If(statement) => self.compile_if_statement(statement),
-            Statement::For(_) => todo!(),
+            Statement::For(statement) => self.compile_for_statement(statement),
             Statement::Match(_) => todo!(),
             Statement::Struct(_) => todo!(),
-            Statement::Package(package) => todo!(),
-            Statement::Import(import) => todo!(),
-            Statement::Return(ret_stmt) => self.compile_return(ret_stmt),
+            Statement::Package(statement) => todo!(),
+            Statement::Import(statement) => todo!(),
+            Statement::Return(statement) => self.compile_return(statement),
+        }
+    }
+
+    fn compile_for_statement(&mut self, statement: For) {
+        let guard = self.block_func_ref.lock().unwrap();
+
+        if let (Some(block), Some(func)) = (guard.block, guard.func) {
+            drop(guard);
+
+            if let Some(initializer) = statement.initializer {
+                let init_value = self.compile_expression(initializer.expr);
+                let init_type = unsafe { gcc_jit_rvalue_get_type(init_value) };
+                let init_name = CString::new(initializer.name.clone()).unwrap();
+                let init = unsafe { gcc_jit_function_new_local(func, null_mut(), init_type, init_name.as_ptr()) };
+                unsafe { gcc_jit_block_add_assignment(block, null_mut(), init, init_value) };
+
+                self.var_table.borrow_mut().insert(initializer.name, init);
+            }
+
+            let mut cond =
+                unsafe { gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), 1) };
+            if let Some(expr) = statement.condition.clone() {
+                cond = self.compile_expression(expr);
+            }
+
+            let body_block_name = CString::new("for_body").unwrap();
+            let body_block = unsafe { gcc_jit_function_new_block(func, body_block_name.as_ptr()) };
+            let mut guard = self.block_func_ref.lock().unwrap();
+            guard.block = Some(body_block);
+            drop(guard);
+
+            let after_for_name = CString::new("after_for").unwrap();
+            let after_for_block = unsafe { gcc_jit_function_new_block(func, after_for_name.as_ptr()) };
+
+            // Custom statement compilation because of existence of the continue and break keyword.
+            self.compile_statements(statement.body.body);
+
+            if let Some(increment) = statement.increment {
+                self.compile_expression(increment);
+            }
+
+            if let Some(_) = statement.condition {
+                unsafe { gcc_jit_block_end_with_conditional(body_block, null_mut(), cond, body_block, after_for_block) };
+            } else {
+                unsafe { gcc_jit_block_end_with_jump(body_block, null_mut(), after_for_block); }
+            }
+
+            let mut guard = self.block_func_ref.lock().unwrap();
+            guard.block = Some(after_for_block);
+            drop(guard);
+
+            unsafe { gcc_jit_block_end_with_conditional(block, null_mut(), cond, body_block, after_for_block) };
         }
     }
 

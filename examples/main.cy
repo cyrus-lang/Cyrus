@@ -1,11 +1,10 @@
 pub fn main(): i32 {
-    #a: i64 = 10;
+    for #i = 0; i < 10; {
+        cprintf("%d\n", i);
 
-    if (++a == 11) {
-        cprintf("%d\n", a);
-    } else {
-        cprintf("a is 11 now\n");
+        // break;
     }
+    
     
     return 0;   
 }
