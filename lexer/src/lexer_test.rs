@@ -7,7 +7,7 @@ mod tests {
     };
 
     fn assert_tokens(input: &'static str, expected_tokens: Option<&Vec<TokenKind>>, spans: Option<&Vec<Span>>) {
-        let lexer = Lexer::new(input.to_string());
+        let lexer = Lexer::new(input.to_string(), String::from("test_package.cy"));
         let tokens = lexer;
 
         let mut i: usize = 0;
@@ -132,7 +132,7 @@ mod tests {
         ",
         );
 
-        let lexer = Lexer::new(code);
+        let lexer = Lexer::new(code, String::from("test_package.cy"));
         for token in lexer {
             println!("{:?}", token);
         }

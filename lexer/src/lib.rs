@@ -2,31 +2,47 @@ use ast::{
     ast::{FloatLiteral, IntegerLiteral, Literal, StringLiteral},
     token::*,
 };
-use std::fmt::Debug;
-use utils::lexer_error;
+use core::panic;
+use errors::{lexer_invalid_char_error, lexer_unknown_char_error, LexicalError};
+use std::{fmt::Debug, ops::Range, process::exit};
 
+mod errors;
 mod format;
 mod lexer_test;
 
 #[derive(Debug, Clone)]
 pub struct Lexer {
     input: String,
+    file_name: String,
     pos: usize,
     next_pos: usize,
     ch: char,
+    line: usize,
 }
 
 impl Lexer {
-    pub fn new(input: String) -> Self {
+    pub fn new(input: String, file_name: String) -> Self {
         let mut lexer = Self {
-            input: input.trim().to_string(),
+            input: input.to_string(),
             pos: 0,      // points to current position
             next_pos: 0, // points to next position
             ch: ' ',
+            line: 0,
+            file_name,
         };
 
         lexer.read_char();
         lexer
+    }
+
+    pub fn select(&self, range: Range<usize>) -> String {
+        let len = self.input.len();
+
+        if range.start > len || range.end > len || range.start > range.end {
+            panic!("Range {:?} is out of bounds for string of length {}", range, len);
+        }
+
+        self.input[range].to_string()
     }
 
     fn peek_char(&self) -> char {
@@ -35,7 +51,10 @@ impl Lexer {
         } else {
             match self.input.chars().nth(self.next_pos) {
                 Some(ch) => return ch,
-                None => lexer_error!("Failed to read the char with peeked position."),
+                None => {
+                    lexer_unknown_char_error(self.file_name.clone(), self.line, self.pos.try_into().unwrap());
+                    std::process::exit(1);
+                }
             }
         }
     }
@@ -263,7 +282,8 @@ impl Lexer {
                 } else if self.is_numeric(self.ch) {
                     return self.read_integer();
                 } else {
-                    lexer_error!(format!("Invalid character detected '{}'", self.ch));
+                    lexer_invalid_char_error(self.file_name.clone(), self.line, self.pos.try_into().unwrap(), self.ch);
+                    exit(1);
                 }
             }
         };
@@ -294,7 +314,17 @@ impl Lexer {
             final_string.push(self.ch);
 
             if self.is_eof() {
-                lexer_error!(format!("Expected closing double quote but got EOF."));
+                LexicalError {
+                    line: self.line,
+                    column: self.pos,
+                    code_raw: Some(self.select(start - 1 ..self.pos)), // -1 for encounter "
+                    etype: errors::LexicalErrorType::UnterminatedStringLiteral,
+                    verbose: None,
+                    caret: true,
+                    file_name: Some(self.file_name.clone())
+                }
+                .print();
+                exit(1);
             }
         }
 
@@ -365,7 +395,17 @@ impl Lexer {
                 match literal {
                     Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::F32(value))),
                     Err(_) => {
-                        lexer_error!(format!("Expected number but got {}.", self.ch));
+                        LexicalError {
+                            line: self.line,
+                            column: self.pos,
+                            code_raw: Some(self.select(start..end)),
+                            etype: errors::LexicalErrorType::InvalidFloatLiteral,
+                            verbose: None,
+                            caret: true,
+                            file_name: Some(self.file_name.clone())
+                        }
+                        .print();
+                        exit(1);
                     }
                 }
             } else {
@@ -374,7 +414,17 @@ impl Lexer {
                 match literal {
                     Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
                     Err(_) => {
-                        lexer_error!(format!("Expected number but got {}.", self.ch));
+                        LexicalError {
+                            line: self.line,
+                            column: self.pos,
+                            code_raw: Some(self.select(start..end)),
+                            etype: errors::LexicalErrorType::InvalidIntegerLiteral,
+                            verbose: None,
+                            caret: true,
+                            file_name: Some(self.file_name.clone())
+                        }
+                        .print();
+                        exit(1);
                     }
                 }
             }
@@ -426,6 +476,8 @@ impl Lexer {
     }
 
     fn skip_comments(&mut self) {
+        let start = self.pos.clone();
+
         if self.ch == '/' && self.peek_char() == '/' {
             self.read_char();
             self.read_char();
@@ -449,7 +501,17 @@ impl Lexer {
             loop {
                 if self.is_eof() || self.ch == '*' {
                     if self.peek_char() != '/' {
-                        lexer_error!("Expected to close the multi-line comment with slash.");
+                        LexicalError {
+                            line: self.line,
+                            column: self.pos,
+                            code_raw: Some(self.select(start..self.pos)),
+                            etype: errors::LexicalErrorType::UnterminatedMultiLineComment,
+                            verbose: None,
+                            caret: true,
+                            file_name: Some(self.file_name.clone())
+                        }
+                        .print();
+                        exit(1);
                     }
 
                     self.read_char();
