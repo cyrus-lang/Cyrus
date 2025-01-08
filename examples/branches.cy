@@ -1,6 +1,6 @@
 pub fn main(): i32 {
-    #a: i32 = 35;
-    #b: i32 = 20;
+    #a: i32 = 20;
+    #b: i32 = 25;
 
     if (a == b) {
         cprintf("a is equal to b\n");

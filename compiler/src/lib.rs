@@ -494,9 +494,15 @@ impl Compiler {
                 let end_block = gcc_jit_function_new_block(func, if_end_name.as_ptr());
 
                 let else_block_name = CString::new("if_else").unwrap();
-                let else_block = gcc_jit_function_new_block(func, else_block_name.as_ptr());
+                let mut else_block = null_mut();
+                let mut next_block;
 
-                let mut next_block = else_block;
+                if let Some(_) = statement.alternate {
+                    else_block = gcc_jit_function_new_block(func, else_block_name.as_ptr());
+                    next_block = else_block.clone();
+                } else {
+                    next_block = end_block.clone();
+                }
 
                 for branch in statement.branches.iter() {
                     let branch_cond = self.compile_expression(branch.condition.clone());
@@ -544,12 +550,14 @@ impl Compiler {
                 );
 
                 // Handle the final 'else' statement
-                if let Some(alternate) = statement.alternate {
-                    let mut guard = self.block_func_ref.lock().unwrap();
-                    guard.block = Some(else_block);
-                    drop(guard);
-                    self.compile_statements(alternate.body);
-                    gcc_jit_block_end_with_jump(else_block, std::ptr::null_mut(), end_block);
+                if !else_block.is_null() {
+                    if let Some(alternate) = statement.alternate {
+                        let mut guard = self.block_func_ref.lock().unwrap();
+                        guard.block = Some(else_block);
+                        drop(guard);
+                        self.compile_statements(alternate.body);
+                        gcc_jit_block_end_with_jump(else_block, std::ptr::null_mut(), end_block);
+                    }
                 }
 
                 let mut guard = self.block_func_ref.lock().unwrap();
