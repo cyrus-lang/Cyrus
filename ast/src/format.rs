@@ -100,6 +100,7 @@ impl fmt::Display for Expression {
 
                 write!(f, "{}{}", array_index.identifier.name, dimensions_str)
             }
+            Expression::Assignment(assignment) => write!(f, "{} = {}", assignment.identifier, assignment.expr),
         }
     }
 }

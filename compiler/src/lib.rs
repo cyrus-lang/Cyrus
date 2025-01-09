@@ -81,12 +81,10 @@ impl Compiler {
             Statement::Package(statement) => todo!(),
             Statement::Import(statement) => todo!(),
             Statement::Return(statement) => self.compile_return(scope, statement),
-            Statement::BlockStatement(statement) => {
-                self.compile_statements(
+            Statement::BlockStatement(statement) => self.compile_statements(
                 Rc::new(RefCell::new(scope.borrow_mut().clone_immutable())),
                 statement.body,
-            )
-        },
+            ),
             _ => compiler_error!(format!("Invalid statement: {:?}", stmt)),
         }
     }
@@ -289,11 +287,15 @@ impl Compiler {
         self.func_table.borrow_mut().insert(func_def.name, func);
     }
 
-    pub fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
+    pub fn load_lvalue_rvalue(
+        &mut self,
+        scope: ScopeRef,
+        identifier: Identifier,
+    ) -> (*mut gcc_jit_lvalue, *mut gcc_jit_rvalue) {
         match scope.borrow_mut().get(identifier.name.clone()) {
             Some(lvalue) => {
                 let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(*lvalue.borrow_mut()) };
-                return rvalue;
+                return (*lvalue.borrow_mut(), rvalue);
             }
             None => {
                 let guard = self.block_func_ref.lock().unwrap();
@@ -304,7 +306,8 @@ impl Compiler {
                             if param.param_name == identifier.name {
                                 let param = unsafe { gcc_jit_function_get_param(func, param.param_index) };
                                 let rvalue = unsafe { gcc_jit_param_as_rvalue(param) };
-                                return rvalue;
+                                let lvalue = unsafe { gcc_jit_param_as_lvalue(param) };
+                                return (lvalue, rvalue);
                             }
                         }
                     }
@@ -313,6 +316,10 @@ impl Compiler {
                 compiler_error!(format!("'{}' is not defined in this scope.", identifier.name))
             }
         }
+    }
+
+    pub fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
+        self.load_lvalue_rvalue(scope, identifier).1
     }
 
     fn compile_expression(&mut self, scope: ScopeRef, expr: Expression) -> *mut gcc_jit_rvalue {
@@ -325,6 +332,26 @@ impl Compiler {
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => todo!(),
             Expression::ArrayIndex(array_index) => todo!(),
+            Expression::Assignment(assignment) => self.compile_assignment(scope, *assignment),
+        }
+    }
+
+    pub fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
+        let (lvalue, _) = self.load_lvalue_rvalue(Rc::clone(&scope), assignment.identifier);
+
+        let block_func = self.block_func_ref.lock().unwrap();
+        if let Some(block) = block_func.block {
+            drop(block_func);
+
+            let new_rvalue = self.compile_expression(scope, assignment.expr);
+
+            unsafe {
+                gcc_jit_block_add_assignment(block, null_mut(), lvalue, new_rvalue);
+            };
+
+            return new_rvalue;
+        } else {
+            compiler_error!("Incorrect usage of the assignment. Assignments must be performed inside a valid block.");
         }
     }
 

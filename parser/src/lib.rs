@@ -768,6 +768,8 @@ impl<'a> Parser<'a> {
                         ty: UnaryOperatorType::PostDecrement,
                         span,
                     }));
+                } else if self.peek_token_is(TokenKind::Assign) {
+                    return self.parse_assignment();
                 } else if self.peek_token_is(TokenKind::LeftBracket) {
                     return self.parse_array_index();
                 } else {
@@ -817,6 +819,31 @@ impl<'a> Parser<'a> {
         };
 
         Ok(expr)
+    }
+
+    fn parse_assignment(&mut self) -> Result<Expression, ParseError> {
+        let start = self.current_token.span.start;
+
+        if let TokenKind::Identifier { name } = self.current_token.kind.clone() {
+            let identifier = Identifier {
+                name,
+                span: self.current_token.span.clone(),
+            };
+            self.next_token(); // consume identifier
+            self.next_token(); // consume assign
+
+            let expr = self.parse_expression(Precedence::Lowest)?.0;
+
+            let end = self.current_token.span.end;
+
+            Ok(Expression::Assignment(Box::new(Assignment {
+                identifier,
+                expr,
+                span: Span { start, end },
+            })))
+        } else {
+            return Err(format!("Invalid identifier given for assignment."));
+        }
     }
 
     fn parse_infix_expression(

@@ -2,7 +2,7 @@ pub fn main(): i32 {
     #a: i32 = 10;
 
     {
-        #a: i32 = 15;
+        a = 15;
         cprintf("result: %d\n", a);
     }  
 

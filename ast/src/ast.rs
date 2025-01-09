@@ -31,6 +31,7 @@ impl Program {
 #[derive(Debug, Clone)]
 pub enum Expression {
     Identifier(Identifier),
+    Assignment(Box<Assignment>),
     Literal(Literal),
     Prefix(UnaryExpression),
     Infix(BinaryExpression),
@@ -78,9 +79,9 @@ pub enum Literal {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct  CharLiteral {
+pub struct CharLiteral {
     pub raw: char,
-    pub span: Span
+    pub span: Span,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -259,6 +260,13 @@ pub struct BlockStatement {
 pub struct Variable {
     pub name: String,
     pub ty: Option<TokenKind>,
+    pub expr: Expression,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Assignment {
+    pub identifier: Identifier,
     pub expr: Expression,
     pub span: Span,
 }
