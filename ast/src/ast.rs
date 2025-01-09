@@ -165,6 +165,7 @@ pub enum Statement {
     Struct(Struct),
     Package(Package),
     Import(Import),
+    BlockStatement(BlockStatement),
     Break,
     Continue,
 }

@@ -1,17 +1,21 @@
 use ast::{ast::*, token::TokenKind};
 use builtins::macros::retrieve_builtin_func;
 use gccjit_sys::*;
+use scope::{Scope, ScopeRef};
 use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::CString,
-    ptr::{null, null_mut},
+    ops::Deref,
+    ptr::null_mut,
+    rc::Rc,
     sync::{Arc, Mutex},
 };
 use utils::compiler_error;
 
 mod builtins;
 mod output;
+mod scope;
 mod types;
 
 // Tracks the current GCC JIT block and function being compiled.
@@ -31,7 +35,7 @@ pub struct Compiler {
     program: Program,
     context: *mut gcc_jit_context,
     func_table: RefCell<HashMap<String, *mut gcc_jit_function>>,
-    var_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
+    global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
     param_table: RefCell<HashMap<*mut gcc_jit_function, FuncParamsRecords>>,
     block_func_ref: Arc<Mutex<Box<BlockFuncPair>>>,
 }
@@ -43,7 +47,7 @@ impl Compiler {
             program,
             context,
             func_table: RefCell::new(HashMap::new()),
-            var_table: RefCell::new(HashMap::new()),
+            global_vars_table: RefCell::new(HashMap::new()),
             param_table: RefCell::new(HashMap::new()),
             block_func_ref: Arc::new(Mutex::new(Box::new(BlockFuncPair {
                 block: None,
@@ -53,57 +57,64 @@ impl Compiler {
     }
 
     pub fn compile(&mut self) {
-        self.compile_statements(self.program.body.clone());
+        let scope = Rc::new(RefCell::new(Scope::new()));
+        self.compile_statements(scope, self.program.body.clone());
     }
 
-    pub fn compile_statements(&mut self, stmts: Vec<Statement>) {
+    pub fn compile_statements(&mut self, scope: ScopeRef, stmts: Vec<Statement>) {
         for stmt in stmts {
-            self.compile_statement(stmt.clone());
+            self.compile_statement(Rc::clone(&scope), stmt.clone());
         }
     }
 
-    pub fn compile_statement(&mut self, stmt: Statement) {
+    pub fn compile_statement(&mut self, scope: ScopeRef, stmt: Statement) {
         match stmt {
-            Statement::Variable(variable) => self.compile_variable(variable.clone()),
+            Statement::Variable(variable) => self.compile_variable(scope, variable.clone()),
             Statement::Expression(expr) => {
-                self.compile_expression(expr.clone());
+                self.compile_expression(scope, expr.clone());
             }
-            Statement::FuncDef(function) => self.compile_func_def(function.clone()),
-            Statement::If(statement) => self.compile_if_statement(statement),
-            Statement::For(statement) => self.compile_for_statement(statement),
+            Statement::FuncDef(function) => self.compile_func_def(scope, function.clone()),
+            Statement::If(statement) => self.compile_if_statement(scope, statement),
+            Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
             Statement::Struct(_) => todo!(),
             Statement::Package(statement) => todo!(),
             Statement::Import(statement) => todo!(),
-            Statement::Return(statement) => self.compile_return(statement),
-            _ => compiler_error!("Invalid statement."),
+            Statement::Return(statement) => self.compile_return(scope, statement),
+            Statement::BlockStatement(statement) => {
+                self.compile_statements(
+                Rc::new(RefCell::new(scope.borrow_mut().clone_immutable())),
+                statement.body,
+            )
+        },
+            _ => compiler_error!(format!("Invalid statement: {:?}", stmt)),
         }
     }
 
-    // FIXME 
+    // FIXME
     // Not works fine in chained situation
-    // TODO 
+    // TODO
     // Impl break and continue after fixing chaining
-    fn compile_for_statement(&mut self, statement: For) {
+    fn compile_for_statement(&mut self, scope: ScopeRef, statement: For) {
         let guard = self.block_func_ref.lock().unwrap();
 
         if let (Some(block), Some(func)) = (guard.block, guard.func) {
             drop(guard);
 
             if let Some(initializer) = statement.initializer {
-                let init_value = self.compile_expression(initializer.expr);
+                let init_value = self.compile_expression(Rc::clone(&scope), initializer.expr);
                 let init_type = unsafe { gcc_jit_rvalue_get_type(init_value) };
                 let init_name = CString::new(initializer.name.clone()).unwrap();
                 let init = unsafe { gcc_jit_function_new_local(func, null_mut(), init_type, init_name.as_ptr()) };
                 unsafe { gcc_jit_block_add_assignment(block, null_mut(), init, init_value) };
 
-                self.var_table.borrow_mut().insert(initializer.name, init);
+                Rc::clone(&scope).borrow_mut().insert(initializer.name, init);
             }
 
             let mut cond =
                 unsafe { gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), 1) };
             if let Some(expr) = statement.condition.clone() {
-                cond = self.compile_expression(expr);
+                cond = self.compile_expression(Rc::clone(&scope), expr);
             }
 
             let body_block_name = CString::new("for_body").unwrap();
@@ -127,12 +138,12 @@ impl Compiler {
                         break;
                     }
                     Statement::Continue => todo!(),
-                    _ => self.compile_statement(body_statement),
+                    _ => self.compile_statement(Rc::clone(&scope), body_statement),
                 }
             }
 
             if let Some(increment) = statement.increment {
-                self.compile_expression(increment);
+                self.compile_expression(Rc::clone(&scope), increment);
             }
 
             if let Some(_) = statement.condition {
@@ -153,13 +164,13 @@ impl Compiler {
         }
     }
 
-    fn compile_return(&mut self, ret_stmt: Return) {
+    fn compile_return(&mut self, scope: ScopeRef, ret_stmt: Return) {
         let guard = self.block_func_ref.lock().unwrap();
 
         if let Some(block) = guard.block {
             drop(guard);
 
-            let ret_value = self.compile_expression(ret_stmt.argument);
+            let ret_value = self.compile_expression(scope, ret_stmt.argument);
 
             unsafe { gcc_jit_block_end_with_return(block, std::ptr::null_mut(), ret_value) };
         } else {
@@ -167,13 +178,13 @@ impl Compiler {
         }
     }
 
-    fn compile_variable(&mut self, variable: Variable) {
+    fn compile_variable(&mut self, scope: ScopeRef, variable: Variable) {
         let guard = self.block_func_ref.lock().unwrap();
 
         if let (Some(block), Some(func)) = (guard.block, guard.func) {
             drop(guard);
 
-            let rvalue = self.compile_expression(variable.expr);
+            let rvalue = self.compile_expression(Rc::clone(&scope), variable.expr);
 
             let var_ty: *mut gcc_jit_type;
 
@@ -190,13 +201,13 @@ impl Compiler {
 
             unsafe { gcc_jit_block_add_assignment(block, null_mut(), lvalue, auto_casted) };
 
-            self.var_table.borrow_mut().insert(variable.name, lvalue);
+            scope.borrow_mut().insert(variable.name, lvalue);
         } else {
             compiler_error!("Invalid usage of local variable.");
         }
     }
 
-    fn compile_func_def(&mut self, func_def: FuncDef) {
+    fn compile_func_def(&mut self, scope: ScopeRef, func_def: FuncDef) {
         let func_type = match func_def.vis_type {
             FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
             FuncVisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
@@ -265,7 +276,7 @@ impl Compiler {
                 return_compiled = true;
             }
 
-            self.compile_statement(item);
+            self.compile_statement(Rc::clone(&scope), item);
         }
 
         if !return_compiled {
@@ -278,10 +289,10 @@ impl Compiler {
         self.func_table.borrow_mut().insert(func_def.name, func);
     }
 
-    pub fn compile_identifier(&mut self, identifier: Identifier) -> *mut gcc_jit_rvalue {
-        match self.var_table.borrow_mut().get(&identifier.name) {
+    pub fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
+        match scope.borrow_mut().get(identifier.name.clone()) {
             Some(lvalue) => {
-                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.clone()) };
+                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(*lvalue.borrow_mut()) };
                 return rvalue;
             }
             None => {
@@ -304,20 +315,20 @@ impl Compiler {
         }
     }
 
-    fn compile_expression(&mut self, expr: Expression) -> *mut gcc_jit_rvalue {
+    fn compile_expression(&mut self, scope: ScopeRef, expr: Expression) -> *mut gcc_jit_rvalue {
         match expr {
             Expression::Literal(literal) => self.compile_literal(literal),
-            Expression::Identifier(identifier) => self.compile_identifier(identifier),
-            Expression::Prefix(unary_expression) => self.compile_prefix_expression(unary_expression),
-            Expression::Infix(binary_expression) => self.compile_infix_expression(binary_expression),
-            Expression::FunctionCall(func_call) => self.compile_func_call(func_call),
-            Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(unary_operator),
+            Expression::Identifier(identifier) => self.compile_identifier(scope, identifier),
+            Expression::Prefix(unary_expression) => self.compile_prefix_expression(scope, unary_expression),
+            Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
+            Expression::FunctionCall(func_call) => self.compile_func_call(scope, func_call),
+            Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => todo!(),
             Expression::ArrayIndex(array_index) => todo!(),
         }
     }
 
-    pub fn compile_func_call(&mut self, func_call: FunctionCall) -> *mut gcc_jit_rvalue {
+    pub fn compile_func_call(&mut self, scope: ScopeRef, func_call: FunctionCall) -> *mut gcc_jit_rvalue {
         let guard = self.block_func_ref.lock().unwrap();
 
         if let Some(block) = guard.block {
@@ -326,7 +337,7 @@ impl Compiler {
             let mut args: Vec<*mut gcc_jit_rvalue> = Vec::new();
 
             for arg_expr in func_call.arguments {
-                let arg_rvalue = self.compile_expression(arg_expr);
+                let arg_rvalue = self.compile_expression(Rc::clone(&scope), arg_expr);
                 args.push(arg_rvalue);
             }
 
@@ -355,10 +366,10 @@ impl Compiler {
         }
     }
 
-    pub fn compile_unary_operator(&mut self, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
-        match self.var_table.borrow_mut().get(&unary_operator.identifer.name) {
+    pub fn compile_unary_operator(&mut self, scope: ScopeRef, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
+        match scope.borrow_mut().get(unary_operator.identifer.name.clone()) {
             Some(lvalue) => {
-                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.clone()) };
+                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(*lvalue.borrow_mut()) };
                 let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
 
                 if !self.is_int_data_type(rvalue_type) {
@@ -396,7 +407,7 @@ impl Compiler {
                         gcc_jit_block_add_assignment_op(
                             block,
                             null_mut(),
-                            lvalue.clone(),
+                            *lvalue.borrow_mut(),
                             bin_op,
                             gcc_jit_context_new_cast(self.context, null_mut(), fixed_number, rvalue_type),
                         )
@@ -417,28 +428,32 @@ impl Compiler {
             None => {
                 compiler_error!(format!(
                     "'{}' is not defined in this scope.",
-                    &unary_operator.identifer.name
+                    unary_operator.identifer.name
                 ))
             }
         }
     }
 
-    fn compile_prefix_expression(&mut self, unary_expression: UnaryExpression) -> *mut gcc_jit_rvalue {
+    fn compile_prefix_expression(&mut self, scope: ScopeRef, unary_expression: UnaryExpression) -> *mut gcc_jit_rvalue {
         let op = match unary_expression.operator.kind {
             TokenKind::Minus => gcc_jit_unary_op::GCC_JIT_UNARY_OP_MINUS,
             TokenKind::Bang => gcc_jit_unary_op::GCC_JIT_UNARY_OP_LOGICAL_NEGATE,
             _ => compiler_error!("Invalid operator given for the prefix expression."),
         };
 
-        let expr = self.compile_expression(*unary_expression.operand);
+        let expr = self.compile_expression(scope, *unary_expression.operand);
         let ty = unsafe { gcc_jit_rvalue_get_type(expr) };
 
         unsafe { gcc_jit_context_new_unary_op(self.context, null_mut(), op, ty, expr) }
     }
 
-    fn compile_infix_expression(&mut self, binary_expression: BinaryExpression) -> *mut gcc_jit_rvalue {
-        let left = self.compile_expression(*binary_expression.left);
-        let right = self.compile_expression(*binary_expression.right);
+    fn compile_infix_expression(
+        &mut self,
+        scope: ScopeRef,
+        binary_expression: BinaryExpression,
+    ) -> *mut gcc_jit_rvalue {
+        let left = self.compile_expression(Rc::clone(&scope), *binary_expression.left);
+        let right = self.compile_expression(Rc::clone(&scope), *binary_expression.right);
         let left_type = unsafe { gcc_jit_rvalue_get_type(left) };
         let right_type = unsafe { gcc_jit_rvalue_get_type(right) };
 
@@ -557,10 +572,11 @@ impl Compiler {
         }
     }
 
-    // FIXME 
+    // FIXME
     // Not works fine in chained situation
-    fn compile_if_statement(&mut self, statement: If) {
+    fn compile_if_statement(&mut self, scope: ScopeRef, statement: If) {
         let guard = self.block_func_ref.lock().unwrap();
+
         unsafe {
             if let (Some(current_block), Some(func)) = (guard.block, guard.func) {
                 drop(guard);
@@ -580,33 +596,8 @@ impl Compiler {
                     next_block = end_block.clone();
                 }
 
-                for branch in statement.branches.iter() {
-                    let branch_cond = self.compile_expression(branch.condition.clone());
-                    let elseif_then_name = CString::new("branch_then").unwrap();
-                    let elseif_else_name = CString::new("branch_else").unwrap();
-                    let branch_then_block = gcc_jit_function_new_block(func, elseif_then_name.as_ptr());
-                    let branch_else_block = gcc_jit_function_new_block(func, elseif_else_name.as_ptr());
-
-                    let mut guard = self.block_func_ref.lock().unwrap();
-                    guard.block = Some(branch_then_block);
-                    drop(guard);
-
-                    self.compile_statements(branch.consequent.body.clone());
-                    gcc_jit_block_end_with_jump(branch_then_block, std::ptr::null_mut(), end_block);
-
-                    gcc_jit_block_end_with_conditional(
-                        branch_else_block,
-                        std::ptr::null_mut(),
-                        branch_cond,
-                        branch_then_block,
-                        next_block,
-                    );
-
-                    next_block = branch_else_block; // Chain the else blocks
-                }
-
                 // Handle the initial 'if'
-                let initial_cond = self.compile_expression(statement.condition);
+                let initial_cond = self.compile_expression(Rc::clone(&scope), statement.condition);
                 let initial_then_name = CString::new("if_then").unwrap();
                 let initial_then_block = gcc_jit_function_new_block(func, initial_then_name.as_ptr());
 
@@ -614,7 +605,7 @@ impl Compiler {
                 guard.block = Some(initial_then_block);
                 drop(guard);
 
-                self.compile_statements(statement.consequent.body);
+                self.compile_statements(scope, statement.consequent.body);
                 gcc_jit_block_end_with_jump(initial_then_block, std::ptr::null_mut(), end_block);
 
                 gcc_jit_block_end_with_conditional(
@@ -631,7 +622,9 @@ impl Compiler {
                         let mut guard = self.block_func_ref.lock().unwrap();
                         guard.block = Some(else_block);
                         drop(guard);
-                        self.compile_statements(alternate.body);
+
+                        // FIXME
+                        // self.compile_statements(Rc::clone(scope.clone()), alternate.body);
                         gcc_jit_block_end_with_jump(else_block, std::ptr::null_mut(), end_block);
                     }
                 }
@@ -642,7 +635,32 @@ impl Compiler {
         }
     }
 
-    // FIXME 
+    // for branch in statement.branches.iter() {
+    //     let branch_cond = self.compile_expression(branch.condition.clone());
+    //     let elseif_then_name = CString::new("branch_then").unwrap();
+    //     let elseif_else_name = CString::new("branch_else").unwrap();
+    //     let branch_then_block = gcc_jit_function_new_block(func, elseif_then_name.as_ptr());
+    //     let branch_else_block = gcc_jit_function_new_block(func, elseif_else_name.as_ptr());
+
+    //     let mut guard = self.block_func_ref.lock().unwrap();
+    //     guard.block = Some(branch_then_block);
+    //     drop(guard);
+
+    //     self.compile_statements(branch.consequent.body.clone());
+    //     gcc_jit_block_end_with_jump(branch_then_block, std::ptr::null_mut(), end_block);
+
+    //     gcc_jit_block_end_with_conditional(
+    //         branch_else_block,
+    //         std::ptr::null_mut(),
+    //         branch_cond,
+    //         branch_then_block,
+    //         next_block,
+    //     );
+
+    //     next_block = branch_else_block; // Chain the else blocks
+    // }
+
+    // FIXME
     // Not works fine in chained situation
     // fn compile_if_statement(&mut self, statement: If) {
     //     let guard = self.block_func_ref.lock().unwrap();

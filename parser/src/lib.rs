@@ -46,6 +46,7 @@ impl<'a> Parser<'a> {
             TokenKind::Package => self.parse_package_declaration(),
             TokenKind::Break => self.parse_break_statement(),
             TokenKind::Continue => self.parse_continue_statement(),
+            TokenKind::LeftBrace => Ok(Statement::BlockStatement(self.parse_block_statement()?)),
             _ => self.parse_expression_statement(),
         }
     }
