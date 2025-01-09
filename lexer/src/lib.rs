@@ -18,6 +18,7 @@ pub struct Lexer {
     next_pos: usize,
     ch: char,
     line: usize,
+    column: usize,
 }
 
 impl Lexer {
@@ -27,8 +28,9 @@ impl Lexer {
             pos: 0,      // points to current position
             next_pos: 0, // points to next position
             ch: ' ',
-            line: 0,
             file_name,
+            line: 1,
+            column: 0,
         };
 
         lexer.read_char();
@@ -52,7 +54,7 @@ impl Lexer {
             match self.input.chars().nth(self.next_pos) {
                 Some(ch) => return ch,
                 None => {
-                    lexer_unknown_char_error(self.file_name.clone(), self.line, self.pos.try_into().unwrap());
+                    lexer_unknown_char_error(self.file_name.clone(), self.line, self.column - 1);
                     std::process::exit(1);
                 }
             }
@@ -64,10 +66,16 @@ impl Lexer {
             self.ch = ' ';
         } else {
             self.ch = self.input.chars().nth(self.next_pos).unwrap_or(' ');
+
+            if self.ch == '\n' {
+                self.line += 1;
+                self.column = 0;
+            }
         }
 
         self.pos = self.next_pos;
         self.next_pos += 1;
+        self.column += 1;
     }
 
     pub fn next_token(&mut self) -> Token {
@@ -282,7 +290,7 @@ impl Lexer {
                 } else if self.is_numeric(self.ch) {
                     return self.read_integer();
                 } else {
-                    lexer_invalid_char_error(self.file_name.clone(), self.line, self.pos.try_into().unwrap(), self.ch);
+                    lexer_invalid_char_error(self.file_name.clone(), self.line, self.column - 1, self.ch);
                     exit(1);
                 }
             }
@@ -316,12 +324,12 @@ impl Lexer {
             if self.is_eof() {
                 LexicalError {
                     line: self.line,
-                    column: self.pos,
-                    code_raw: Some(self.select(start - 1 ..self.pos)), // -1 for encounter "
+                    column: self.column - 1,
+                    code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
                     etype: errors::LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
                     caret: true,
-                    file_name: Some(self.file_name.clone())
+                    file_name: Some(self.file_name.clone()),
                 }
                 .print();
                 exit(1);
@@ -397,12 +405,12 @@ impl Lexer {
                     Err(_) => {
                         LexicalError {
                             line: self.line,
-                            column: self.pos,
+                            column: self.column - 1,
                             code_raw: Some(self.select(start..end)),
                             etype: errors::LexicalErrorType::InvalidFloatLiteral,
                             verbose: None,
                             caret: true,
-                            file_name: Some(self.file_name.clone())
+                            file_name: Some(self.file_name.clone()),
                         }
                         .print();
                         exit(1);
@@ -416,12 +424,12 @@ impl Lexer {
                     Err(_) => {
                         LexicalError {
                             line: self.line,
-                            column: self.pos,
+                            column: self.column - 1,
                             code_raw: Some(self.select(start..end)),
                             etype: errors::LexicalErrorType::InvalidIntegerLiteral,
                             verbose: None,
                             caret: true,
-                            file_name: Some(self.file_name.clone())
+                            file_name: Some(self.file_name.clone()),
                         }
                         .print();
                         exit(1);
@@ -503,12 +511,12 @@ impl Lexer {
                     if self.peek_char() != '/' {
                         LexicalError {
                             line: self.line,
-                            column: self.pos,
+                            column: self.column - 1,
                             code_raw: Some(self.select(start..self.pos)),
                             etype: errors::LexicalErrorType::UnterminatedMultiLineComment,
                             verbose: None,
                             caret: true,
-                            file_name: Some(self.file_name.clone())
+                            file_name: Some(self.file_name.clone()),
                         }
                         .print();
                         exit(1);

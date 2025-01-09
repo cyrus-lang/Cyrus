@@ -49,13 +49,13 @@ impl LexicalError {
 
 impl fmt::Display for LexicalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error: {} {}\n", self.etype.to_string(), ERROR_PIPE_STR)?;
+        write!(f, "| Error: {} {}\n", self.etype.to_string(), ERROR_PIPE_STR)?;
 
         if let Some(file_name) = &self.file_name {
-            write!(f, "Path: {}\n", file_name)?;
+            write!(f, "| Path: {}\n", file_name)?;
         }
 
-        write!(f, "At: {}:{}\n\n", self.line, self.column)?;
+        write!(f, "| At: {}:{}\n\n", self.line, self.column)?;
 
         if let Some(code_raw) = &self.code_raw {
             write!(f, "\t{}", code_raw)?;
@@ -81,9 +81,9 @@ impl fmt::Display for LexicalError {
 }
 
 pub fn lexer_invalid_char_error(file_name: String, line: usize, column: usize, ch: char) {
-    println!("Error: Lexination Failed {}", ERROR_PIPE_STR);
-    println!("Path: {}", file_name);
-    println!("At: {}:{}\n", line, column);
+    println!("| Error: Lexination Failed {}", ERROR_PIPE_STR);
+    println!("| Path: {}", file_name);
+    println!("| At: {}:{}\n", line, column);
     println!(
         "\tLexical error at line {}, column {} because of invalid char '{}'.\n",
         line, column, ch
@@ -91,9 +91,9 @@ pub fn lexer_invalid_char_error(file_name: String, line: usize, column: usize, c
 }
 
 pub fn lexer_unknown_char_error(file_name: String, line: usize, column: usize) {
-    println!("Error: Lexination Failed {}", ERROR_PIPE_STR);
-    println!("Path: {}", file_name);
-    println!("At: {}:{}\n", line, column);
+    println!("| Error: Lexination Failed {}", ERROR_PIPE_STR);
+    println!("| Path: {}", file_name);
+    println!("| At: {}:{}\n", line, column);
     println!(
         "\tLexical error at line {}, column {} because of invalid char.\n",
         line, column
