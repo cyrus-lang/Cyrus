@@ -7,5 +7,6 @@
         "stdarg.h": "c",
         "fmt.h": "c",
         "main": "cpp"
-    }
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }
