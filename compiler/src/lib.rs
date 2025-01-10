@@ -133,6 +133,43 @@ impl Compiler {
                 self.compile_statements(Rc::clone(&scope), statements.body);
             }
 
+            // ANCHOR | Handle `else if` branches
+            for statement in statement.branches {
+                self.mark_block_terminated(false_block);
+                
+                let cond = self.compile_expression(Rc::clone(&scope), statement.condition);
+
+                let true_block_name = CString::new(format!("else_if_true_block_{}", self.new_block_name())).unwrap();
+                let false_block_name = CString::new(format!("else_if_false_block_{}", self.new_block_name())).unwrap();
+                let else_if_true_block = unsafe { gcc_jit_function_new_block(func, true_block_name.as_ptr()) };
+                let else_if_false_block = unsafe { gcc_jit_function_new_block(func, false_block_name.as_ptr()) };
+
+                unsafe {
+                    gcc_jit_block_end_with_conditional(
+                        false_block,
+                        null_mut(),
+                        cond,
+                        else_if_true_block,
+                        else_if_false_block,
+                    );
+                }
+                self.mark_block_terminated(active_block);
+
+                // Process `else if` true block
+                self.switch_active_block(else_if_true_block);
+                self.compile_statements(Rc::clone(&scope), statement.consequent.body);
+                unsafe {
+                    gcc_jit_block_end_with_jump(else_if_true_block, null_mut(), final_block);
+                }
+
+                unsafe {
+                    gcc_jit_block_end_with_jump(else_if_false_block, null_mut(), final_block);
+                }
+
+                self.mark_block_terminated(else_if_false_block);
+                self.mark_block_terminated(else_if_true_block);
+            }
+
             // Jump to final block
             if !self.block_is_terminated(true_block) {
                 unsafe {
@@ -168,7 +205,9 @@ impl Compiler {
     }
 
     fn mark_block_terminated(&mut self, block: *mut gcc_jit_block) {
-        self.terminated_blocks.push(block);
+        if !self.block_is_terminated(block) {
+            self.terminated_blocks.push(block);
+        }
     }
 
     fn block_is_terminated(&self, block: *mut gcc_jit_block) -> bool {
