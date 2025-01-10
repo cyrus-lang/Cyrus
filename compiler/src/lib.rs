@@ -1,6 +1,7 @@
 use ast::{ast::*, token::TokenKind};
 use builtins::macros::retrieve_builtin_func;
 use gccjit_sys::*;
+use rand::{distributions::Alphanumeric, Rng};
 use scope::{Scope, ScopeRef};
 use std::{
     cell::RefCell,
@@ -38,21 +39,20 @@ pub struct Compiler {
     global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
     param_table: RefCell<HashMap<*mut gcc_jit_function, FuncParamsRecords>>,
     block_func_ref: Arc<Mutex<Box<BlockFuncPair>>>,
-    block_count: i32,
     terminated_blocks: Vec<*mut gcc_jit_block>,
     parent_block: Option<*mut gcc_jit_block>,
 }
 
 impl Compiler {
     pub fn new_block_name(&mut self) -> String {
-        self.block_count += 1;
-        self.block_count.to_string()
+        let rng = rand::thread_rng();
+        let rand_string: String = rng.sample_iter(&Alphanumeric).take(10).map(char::from).collect();
+        rand_string
     }
 
     pub fn new(program: Program) -> Self {
         let context = unsafe { gcc_jit_context_acquire() };
         Self {
-            block_count: 0,
             program,
             context,
             func_table: RefCell::new(HashMap::new()),
@@ -133,16 +133,15 @@ impl Compiler {
             for else_if_statement in statement.branches {
                 let else_if_cond = self.compile_expression(Rc::clone(&scope), else_if_statement.condition);
 
-                let else_if_true_block_name = CString::new(format!("else_if_true_block_{}", self.new_block_name())).unwrap();
-                let else_if_false_block_name = CString::new(format!("else_if_false_block_{}", self.new_block_name())).unwrap();
+                let else_if_true_block_name =
+                    CString::new(format!("else_if_true_block_{}", self.new_block_name())).unwrap();
+                let else_if_false_block_name =
+                    CString::new(format!("else_if_false_block_{}", self.new_block_name())).unwrap();
 
-                let else_if_true_block = unsafe {
-                    gcc_jit_function_new_block(func, else_if_true_block_name.as_ptr())
-                };
+                let else_if_true_block = unsafe { gcc_jit_function_new_block(func, else_if_true_block_name.as_ptr()) };
 
-                let else_if_false_block = unsafe {
-                    gcc_jit_function_new_block(func, else_if_false_block_name.as_ptr())
-                };
+                let else_if_false_block =
+                    unsafe { gcc_jit_function_new_block(func, else_if_false_block_name.as_ptr()) };
 
                 unsafe {
                     gcc_jit_block_end_with_conditional(
@@ -207,7 +206,6 @@ impl Compiler {
             self.switch_active_block(final_block);
         }
     }
-
 
     fn switch_active_block(&mut self, active_block: *mut gcc_jit_block) {
         let mut guard = self.block_func_ref.lock().unwrap();
