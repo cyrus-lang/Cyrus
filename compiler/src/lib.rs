@@ -39,7 +39,8 @@ pub struct Compiler {
     param_table: RefCell<HashMap<*mut gcc_jit_function, FuncParamsRecords>>,
     block_func_ref: Arc<Mutex<Box<BlockFuncPair>>>,
     block_count: i32,
-    jumped_blocks: Vec<*mut gcc_jit_block>
+    terminated_blocks: Vec<*mut gcc_jit_block>,
+    parent_block: Option<*mut gcc_jit_block>,
 }
 
 impl Compiler {
@@ -62,7 +63,8 @@ impl Compiler {
                 block: None,
                 func: None,
             }))),
-            jumped_blocks: Vec::new()
+            terminated_blocks: Vec::new(),
+            parent_block: None,
         }
     }
 
@@ -84,7 +86,7 @@ impl Compiler {
                 self.compile_expression(scope, expr.clone());
             }
             Statement::FuncDef(function) => self.compile_func_def(scope, function.clone()),
-            Statement::If(statement) => self.compile_if_statement(scope, None, statement),
+            Statement::If(statement) => self.compile_if_statement(scope, statement),
             Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
             Statement::Struct(_) => todo!(),
@@ -99,86 +101,78 @@ impl Compiler {
         }
     }
 
-    // FIXME
-    // Not works fine in chained situation
-    fn compile_if_statement(
-        &mut self,
-        scope: ScopeRef,
-        mut parent_block: Option<Rc<RefCell<*mut gcc_jit_block>>>,
-        statement: If,
-    ) {
+    fn compile_if_statement(&mut self, scope: ScopeRef, statement: If) {
         let guard = self.block_func_ref.lock().unwrap();
 
-        if let (Some(block), Some(func)) = (guard.block, guard.func) {
+        if let (Some(active_block), Some(func)) = (guard.block, guard.func) {
             drop(guard);
 
             // Build blocks
             let true_block_name = CString::new(format!("true_block_{}", self.new_block_name())).unwrap();
+            let false_block_name = CString::new(format!("false_block_{}", self.new_block_name())).unwrap();
             let final_block_name = CString::new(format!("final_block_{}", self.new_block_name())).unwrap();
-
-            let else_block: Option<*mut gcc_jit_block> = None;
             let true_block = unsafe { gcc_jit_function_new_block(func, true_block_name.as_ptr()) };
+            let false_block = unsafe { gcc_jit_function_new_block(func, false_block_name.as_ptr()) };
             let final_block = unsafe { gcc_jit_function_new_block(func, final_block_name.as_ptr()) };
-
             let cond = self.compile_expression(Rc::clone(&scope), statement.condition);
 
-            unsafe {
-                gcc_jit_block_end_with_conditional(
-                    block,
-                    null_mut(),
-                    cond,
-                    then_block,
-                    if let Some(else_block) = else_block {
-                        else_block
-                    } else {
-                        end_block
-                    },
-                )
-            };
+            // Store the current block as the parent block for nested structures
+            let previous_parent_block = self.parent_block;
+            self.parent_block = Some(final_block);
 
-            // Build blocks body
-            let mut guard = self.block_func_ref.lock().unwrap();
-            guard.block = Some(true_block);
-            drop(guard);
+            unsafe { gcc_jit_block_end_with_conditional(active_block, null_mut(), cond, true_block, false_block) };
+            self.mark_block_terminated(active_block);
 
-            for item in statement.consequent.body {
-                match item {
-                    Statement::If(stmt) => {
-                        // We are entering a new nested if statement
-                        self.compile_if_statement(Rc::clone(&scope), Some(Rc::new(RefCell::new(final_block))), stmt);
-                        parent_block = Some(Rc::new(RefCell::new(final_block)));
-                    }
-                    _ => {
-                        self.compile_statement(Rc::clone(&scope), item);
-                    }
-                }
+            // Build true_block body
+            self.switch_active_block(true_block);
+            self.compile_statements(Rc::clone(&scope), statement.consequent.body);
+
+            // Build false_block body if it exists
+            self.switch_active_block(false_block);
+            if let Some(statements) = statement.alternate {
+                self.compile_statements(Rc::clone(&scope), statements.body);
             }
 
-            if let Some(ref parent_block) = parent_block {
-                if !self.jumped_blocks.contains(&true_block)  {
-                    unsafe { gcc_jit_block_end_with_jump(true_block, null_mut(), final_block) }
-                    self.jumped_blocks.push(true_block);
+            // Jump to final block
+            if !self.block_is_terminated(true_block) {
+                unsafe {
+                    gcc_jit_block_end_with_jump(true_block, null_mut(), final_block);
                 }
-
-                let parent_block = *parent_block.borrow_mut();
-
-                if !self.jumped_blocks.contains(&final_block)  {
-                    unsafe { gcc_jit_block_end_with_jump(final_block, null_mut(), parent_block) }
-                    self.jumped_blocks.push(true_block);
-                }
-                
-                let mut guard = self.block_func_ref.lock().unwrap();
-                guard.block = Some(parent_block);
-                drop(guard);
+                self.mark_block_terminated(true_block);
             }
 
+            if !self.block_is_terminated(false_block) {
+                unsafe { gcc_jit_block_end_with_jump(false_block, null_mut(), final_block) };
+                self.mark_block_terminated(false_block);
+            }
 
-            // NOTE
-            // Track the parent_block's block-id
-            // Then jump it to parent_block(if_end) if it is a nested if_end
-        } else {
-            panic!(); // FIXME
+            // Restore the parent block after finishing nested structures
+            self.parent_block = previous_parent_block;
+
+            // If there is a parent block, ensure the final block jumps back to it
+            if let Some(parent_block) = self.parent_block {
+                unsafe {
+                    gcc_jit_block_end_with_jump(final_block, null_mut(), parent_block);
+                }
+                self.mark_block_terminated(final_block);
+            }
+
+            self.switch_active_block(final_block);
         }
+    }
+
+    fn switch_active_block(&mut self, active_block: *mut gcc_jit_block) {
+        let mut guard = self.block_func_ref.lock().unwrap();
+        guard.block = Some(active_block);
+        drop(guard);
+    }
+
+    fn mark_block_terminated(&mut self, block: *mut gcc_jit_block) {
+        self.terminated_blocks.push(block);
+    }
+
+    fn block_is_terminated(&self, block: *mut gcc_jit_block) -> bool {
+        self.terminated_blocks.contains(&block)
     }
 
     // FIXME
@@ -262,7 +256,7 @@ impl Compiler {
 
             let ret_value = self.compile_expression(scope, ret_stmt.argument);
 
-            if !self.jumped_blocks.contains(&block) {
+            if !self.block_is_terminated(block) {
                 unsafe { gcc_jit_block_end_with_return(block, std::ptr::null_mut(), ret_value) };
             }
         } else {
