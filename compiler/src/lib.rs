@@ -6,7 +6,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::CString,
-    ptr::{null, null_mut},
+    ptr::null_mut,
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -38,13 +38,20 @@ pub struct Compiler {
     global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
     param_table: RefCell<HashMap<*mut gcc_jit_function, FuncParamsRecords>>,
     block_func_ref: Arc<Mutex<Box<BlockFuncPair>>>,
-    parent_block: Option<*mut gcc_jit_block>,
+    block_count: i32,
+    jumped_blocks: Vec<*mut gcc_jit_block>
 }
 
 impl Compiler {
+    pub fn new_block_name(&mut self) -> String {
+        self.block_count += 1;
+        self.block_count.to_string()
+    }
+
     pub fn new(program: Program) -> Self {
         let context = unsafe { gcc_jit_context_acquire() };
         Self {
+            block_count: 0,
             program,
             context,
             func_table: RefCell::new(HashMap::new()),
@@ -55,7 +62,7 @@ impl Compiler {
                 block: None,
                 func: None,
             }))),
-            parent_block: None,
+            jumped_blocks: Vec::new()
         }
     }
 
@@ -68,17 +75,6 @@ impl Compiler {
         for stmt in stmts {
             self.compile_statement(Rc::clone(&scope), stmt.clone());
         }
-
-        let guard = self.block_func_ref.lock().unwrap();
-        if let Some(current_block) = guard.block {
-            if let Some(parent_block) = &self.parent_block {
-                println!("jumping to block: {:?}", parent_block.clone());
-                unsafe { gcc_jit_block_end_with_jump(current_block, null_mut(), parent_block.clone()) };
-                self.parent_block = None;
-            } else {
-                println!("no parent block to jump");
-            }
-        }
     }
 
     pub fn compile_statement(&mut self, scope: ScopeRef, stmt: Statement) {
@@ -88,7 +84,7 @@ impl Compiler {
                 self.compile_expression(scope, expr.clone());
             }
             Statement::FuncDef(function) => self.compile_func_def(scope, function.clone()),
-            Statement::If(statement) => self.compile_if_statement(scope, statement),
+            Statement::If(statement) => self.compile_if_statement(scope, None, statement),
             Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
             Statement::Struct(_) => todo!(),
@@ -105,19 +101,24 @@ impl Compiler {
 
     // FIXME
     // Not works fine in chained situation
-    fn compile_if_statement(&mut self, scope: ScopeRef, statement: If) {
+    fn compile_if_statement(
+        &mut self,
+        scope: ScopeRef,
+        mut parent_block: Option<Rc<RefCell<*mut gcc_jit_block>>>,
+        statement: If,
+    ) {
         let guard = self.block_func_ref.lock().unwrap();
 
         if let (Some(block), Some(func)) = (guard.block, guard.func) {
             drop(guard);
 
             // Build blocks
-            let then_block_name = CString::new(format!("then_{}", self.new_block_name())).unwrap();
-            let end_block_name = CString::new(format!("end_{}", self.new_block_name())).unwrap();
+            let true_block_name = CString::new(format!("true_block_{}", self.new_block_name())).unwrap();
+            let final_block_name = CString::new(format!("final_block_{}", self.new_block_name())).unwrap();
 
-            let then_block = unsafe { gcc_jit_function_new_block(func, then_block_name.as_ptr()) };
             let else_block: Option<*mut gcc_jit_block> = None;
-            let end_block = unsafe { gcc_jit_function_new_block(func, end_block_name.as_ptr()) };
+            let true_block = unsafe { gcc_jit_function_new_block(func, true_block_name.as_ptr()) };
+            let final_block = unsafe { gcc_jit_function_new_block(func, final_block_name.as_ptr()) };
 
             let cond = self.compile_expression(Rc::clone(&scope), statement.condition);
 
@@ -137,33 +138,40 @@ impl Compiler {
 
             // Build blocks body
             let mut guard = self.block_func_ref.lock().unwrap();
-            guard.block = Some(then_block);
+            guard.block = Some(true_block);
             drop(guard);
-            // self.compile_statements(Rc::clone(&scope), statement.consequent.body);
 
             for item in statement.consequent.body {
                 match item {
                     Statement::If(stmt) => {
                         // We are entering a new nested if statement
-                        self.set_as_parent_block(end_block);
-                        self.compile_if_statement(Rc::clone(&scope), stmt);
-
-                        let guard = self.block_func_ref.lock().unwrap();
-                        unsafe  {
-                            gcc_jit_block_end_with_jump(guard.block.unwrap(), null_mut(), self.parent_block.unwrap());
-                        }
-                        drop(guard);
+                        self.compile_if_statement(Rc::clone(&scope), Some(Rc::new(RefCell::new(final_block))), stmt);
+                        parent_block = Some(Rc::new(RefCell::new(final_block)));
                     }
                     _ => {
                         self.compile_statement(Rc::clone(&scope), item);
-                        unsafe { gcc_jit_block_end_with_jump(then_block, null_mut(), end_block) }
-                    },
+                    }
                 }
             }
 
-            let mut guard = self.block_func_ref.lock().unwrap();
-            guard.block = Some(end_block);
-            drop(guard);
+            if let Some(ref parent_block) = parent_block {
+                if !self.jumped_blocks.contains(&true_block)  {
+                    unsafe { gcc_jit_block_end_with_jump(true_block, null_mut(), final_block) }
+                    self.jumped_blocks.push(true_block);
+                }
+
+                let parent_block = *parent_block.borrow_mut();
+
+                if !self.jumped_blocks.contains(&final_block)  {
+                    unsafe { gcc_jit_block_end_with_jump(final_block, null_mut(), parent_block) }
+                    self.jumped_blocks.push(true_block);
+                }
+                
+                let mut guard = self.block_func_ref.lock().unwrap();
+                guard.block = Some(parent_block);
+                drop(guard);
+            }
+
 
             // NOTE
             // Track the parent_block's block-id
@@ -171,10 +179,6 @@ impl Compiler {
         } else {
             panic!(); // FIXME
         }
-    }
-
-    fn set_as_parent_block(&mut self, block: *mut gcc_jit_block) {
-        self.parent_block = Some(block);
     }
 
     // FIXME
@@ -258,11 +262,9 @@ impl Compiler {
 
             let ret_value = self.compile_expression(scope, ret_stmt.argument);
 
-            dbg!("ending block with return");
-
-            unsafe { gcc_jit_block_end_with_return(block, std::ptr::null_mut(), ret_value) };
-
-            self.parent_block = None;
+            if !self.jumped_blocks.contains(&block) {
+                unsafe { gcc_jit_block_end_with_return(block, std::ptr::null_mut(), ret_value) };
+            }
         } else {
             compiler_error!("Incorrect usage of the return statement. It must be used inside a function declaration.");
         }
