@@ -1,13 +1,12 @@
 pub fn main(): i32 {
-    for #i = 0; i < 10; i++ {
-        cprintf("%d\n", i);
+    #rows = 5;
+    #cols = 5;
 
-        i + 1;
-        if (i == 5) {
-            cprintf("i is 5\n");
+    for #i = 0; i <= rows; i++ {
+        if (i == 2) {
+            break;
         }
     }
-    
     
     return 0;   
 }

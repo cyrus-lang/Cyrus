@@ -20,7 +20,6 @@ mod types;
 
 // Tracks the current GCC JIT block and function being compiled.
 struct BlockFuncPair {
-    block_name: Option<String>,
     block: Option<*mut gcc_jit_block>,
     func: Option<*mut gcc_jit_function>,
 }
@@ -59,7 +58,6 @@ impl Compiler {
             global_vars_table: RefCell::new(HashMap::new()),
             param_table: RefCell::new(HashMap::new()),
             block_func_ref: Arc::new(Mutex::new(Box::new(BlockFuncPair {
-                block_name: None,
                 block: None,
                 func: None,
             }))),
@@ -93,6 +91,8 @@ impl Compiler {
             Statement::Package(statement) => todo!(),
             Statement::Import(statement) => todo!(),
             Statement::Return(statement) => self.compile_return(scope, statement),
+            Statement::Break => self.compile_break_statement(scope),
+            Statement::Continue => self.compile_continue_staement(scope),
             Statement::BlockStatement(statement) => self.compile_statements(
                 Rc::new(RefCell::new(scope.borrow_mut().clone_immutable())),
                 statement.body,
@@ -100,6 +100,18 @@ impl Compiler {
             _ => compiler_error!(format!("Invalid statement: {:?}", stmt)),
         }
     }
+
+    fn compile_break_statement(&mut self, scope: ScopeRef) {
+        if let (Some(active_block), Some(parent_block)) = (self.active_block(), self.parent_block) {
+            if !self.block_is_terminated(active_block) {
+                unsafe {
+                    gcc_jit_block_end_with_jump(active_block, null_mut(), parent_block);
+                    self.mark_block_terminated(active_block);
+                }
+            }
+        }
+    }
+    fn compile_continue_staement(&mut self, scope: ScopeRef) {}
 
     fn compile_if_statement(&mut self, scope: ScopeRef, statement: If) {
         let guard = self.block_func_ref.lock().unwrap();
@@ -213,6 +225,11 @@ impl Compiler {
         drop(guard);
     }
 
+    fn active_block(&mut self) -> Option<*mut gccjit_sys::gcc_jit_block> {
+        let guard = self.block_func_ref.lock().unwrap();
+        return guard.block;
+    }
+
     fn mark_block_terminated(&mut self, block: *mut gcc_jit_block) {
         if !self.block_is_terminated(block) {
             self.terminated_blocks.push(block);
@@ -223,14 +240,10 @@ impl Compiler {
         self.terminated_blocks.contains(&block)
     }
 
-    // FIXME
-    // Not works fine in chained situation
-    // TODO
-    // Impl break and continue after fixing chaining
     fn compile_for_statement(&mut self, scope: ScopeRef, statement: For) {
         let guard = self.block_func_ref.lock().unwrap();
 
-        if let (Some(block), Some(func)) = (guard.block, guard.func) {
+        if let (Some(active_block), Some(func)) = (guard.block, guard.func) {
             drop(guard);
 
             if let Some(initializer) = statement.initializer {
@@ -238,63 +251,163 @@ impl Compiler {
                 let init_type = unsafe { gcc_jit_rvalue_get_type(init_value) };
                 let init_name = CString::new(initializer.name.clone()).unwrap();
                 let init = unsafe { gcc_jit_function_new_local(func, null_mut(), init_type, init_name.as_ptr()) };
-                unsafe { gcc_jit_block_add_assignment(block, null_mut(), init, init_value) };
+                unsafe { gcc_jit_block_add_assignment(active_block, null_mut(), init, init_value) };
 
                 Rc::clone(&scope).borrow_mut().insert(initializer.name, init);
             }
 
+            // Always true condition for infinite-like loop until condition is set
             let mut cond =
                 unsafe { gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), 1) };
+
             if let Some(expr) = statement.condition.clone() {
                 cond = self.compile_expression(Rc::clone(&scope), expr);
             }
 
-            let body_block_name = CString::new("for_body").unwrap();
+            let body_block_name = CString::new(format!("for_body_block_{}", self.new_block_name())).unwrap();
+            let finished_block_name = CString::new(format!("for_finished_block_{}", self.new_block_name())).unwrap();
             let body_block = unsafe { gcc_jit_function_new_block(func, body_block_name.as_ptr()) };
-            let mut guard = self.block_func_ref.lock().unwrap();
-            guard.block = Some(body_block);
-            drop(guard);
+            let finished_block = unsafe { gcc_jit_function_new_block(func, finished_block_name.as_ptr()) };
 
-            let after_for_name = CString::new("after_for").unwrap();
-            let after_for_block = unsafe { gcc_jit_function_new_block(func, after_for_name.as_ptr()) };
+            self.switch_active_block(body_block);
 
-            let mut for_breaked = false;
-            // Custom statement compilation because of existence of the continue and break keyword.
+            // Compile body statements (including Break and Continue)
             for body_statement in statement.body.body {
                 match body_statement {
                     Statement::Break => {
                         unsafe {
-                            gcc_jit_block_end_with_jump(body_block, null_mut(), after_for_block);
+                            gcc_jit_block_end_with_jump(body_block, null_mut(), finished_block);
                         }
-                        for_breaked = true;
-                        break;
+                        self.mark_block_terminated(body_block);
+                        break; // Exit loop body once break is encountered
                     }
-                    Statement::Continue => todo!(),
-                    _ => self.compile_statement(Rc::clone(&scope), body_statement),
+                    Statement::Continue => {
+                        // Handle continue by jumping to the loop condition evaluation
+                        unsafe {
+                            gcc_jit_block_end_with_jump(body_block, null_mut(), active_block);
+                        }
+                        self.mark_block_terminated(body_block);
+                        break; // Exit loop body to prevent further execution of statements below
+                    }
+                    _ => {
+                        self.compile_statement(Rc::clone(&scope), body_statement);
+                    }
                 }
             }
 
+            // Evaluate increment/decrement expression
             if let Some(increment) = statement.increment {
                 self.compile_expression(Rc::clone(&scope), increment);
             }
 
+            // End of loop body logic: either conditional (for) or unconditional (while)
             if let Some(_) = statement.condition {
-                unsafe {
-                    gcc_jit_block_end_with_conditional(body_block, null_mut(), cond, body_block, after_for_block)
-                };
+                if !self.block_is_terminated(body_block) {
+                    unsafe {
+                        gcc_jit_block_end_with_conditional(body_block, null_mut(), cond, body_block, finished_block);
+                        self.mark_block_terminated(body_block);
+                    }
+                }
             } else {
                 unsafe {
-                    gcc_jit_block_end_with_jump(body_block, null_mut(), after_for_block);
+                    gcc_jit_block_end_with_jump(body_block, null_mut(), finished_block);
                 }
             }
 
-            let mut guard = self.block_func_ref.lock().unwrap();
-            guard.block = Some(after_for_block);
-            drop(guard);
+            self.switch_active_block(finished_block);
 
-            unsafe { gcc_jit_block_end_with_conditional(block, null_mut(), cond, body_block, after_for_block) };
+            // Terminate the loop block correctly based on condition
+            if !self.block_is_terminated(body_block) {
+                unsafe {
+                    gcc_jit_block_end_with_conditional(body_block, null_mut(), cond, body_block, finished_block);
+                    self.mark_block_terminated(body_block);
+                }
+            } else {
+                unsafe {
+                    gcc_jit_block_end_with_jump(active_block, null_mut(), body_block);
+                }
+            }
         }
     }
+
+    // TODO
+    // Impl break and continue after fixing chaining
+    // fn compile_for_statement(&mut self, scope: ScopeRef, statement: For) {
+    //     let guard = self.block_func_ref.lock().unwrap();
+
+    //     if let (Some(active_block), Some(func)) = (guard.block, guard.func) {
+    //         drop(guard);
+
+    //         if let Some(initializer) = statement.initializer {
+    //             let init_value = self.compile_expression(Rc::clone(&scope), initializer.expr);
+    //             let init_type = unsafe { gcc_jit_rvalue_get_type(init_value) };
+    //             let init_name = CString::new(initializer.name.clone()).unwrap();
+    //             let init = unsafe { gcc_jit_function_new_local(func, null_mut(), init_type, init_name.as_ptr()) };
+    //             unsafe { gcc_jit_block_add_assignment(active_block, null_mut(), init, init_value) };
+
+    //             Rc::clone(&scope).borrow_mut().insert(initializer.name, init);
+    //         }
+
+    //         // Always true condition
+    //         let mut cond =
+    //             unsafe { gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), 1) };
+
+    //         // Update condition if it's set
+    //         if let Some(expr) = statement.condition.clone() {
+    //             cond = self.compile_expression(Rc::clone(&scope), expr);
+    //         }
+
+    //         let body_block_name = CString::new(format!("for_body_block_{}", self.new_block_name())).unwrap();
+    //         let finished_block_name = CString::new(format!("for_finished_block_{}", self.new_block_name())).unwrap();
+    //         let body_block = unsafe { gcc_jit_function_new_block(func, body_block_name.as_ptr()) };
+    //         self.switch_active_block(body_block);
+
+    //         let finished_block = unsafe { gcc_jit_function_new_block(func, finished_block_name.as_ptr()) };
+
+    //         // Custom statement compilation because of existence of the continue and break keyword.
+    //         for body_statement in statement.body.body {
+    //             match body_statement {
+    //                 Statement::Break => {
+    //                     unsafe {
+    //                         gcc_jit_block_end_with_jump(body_block, null_mut(), finished_block);
+    //                     }
+    //                     break;
+    //                 }
+    //                 Statement::Continue => todo!(),
+    //                 _ => self.compile_statement(Rc::clone(&scope), body_statement),
+    //             }
+    //         }
+
+    //         // Evalute increment/decrement expression
+    //         if let Some(increment) = statement.increment {
+    //             self.compile_expression(Rc::clone(&scope), increment);
+    //         }
+
+    //         // Recursive loop body
+    //         if let Some(_) = statement.condition {
+    //             if !self.block_is_terminated(body_block) {
+    //                 unsafe {
+    //                     gcc_jit_block_end_with_conditional(body_block, null_mut(), cond, body_block, finished_block);
+    //                     self.mark_block_terminated(body_block);
+    //                 };
+    //             }
+    //         } else {
+    //             unsafe {
+    //                 gcc_jit_block_end_with_jump(active_block, null_mut(), finished_block);
+    //             }
+    //         }
+
+    //         self.switch_active_block(finished_block);
+
+    //         // Initiate for loop
+    //         if !self.block_is_terminated(body_block) {
+    //             unsafe { gcc_jit_block_end_with_conditional(body_block, null_mut(), cond, body_block, finished_block) };
+    //             self.mark_block_terminated(body_block);
+    //         } else {
+    //             unsafe { gcc_jit_block_end_with_jump(active_block, null_mut(), body_block) };
+    //         }
+    //     }
+    // }
 
     fn compile_return(&mut self, scope: ScopeRef, ret_stmt: Return) {
         let guard = self.block_func_ref.lock().unwrap();
@@ -555,9 +668,13 @@ impl Compiler {
                 let tmp_local: *mut gcc_jit_lvalue;
                 if let (Some(block), Some(func)) = (guard.block, guard.func) {
                     let tmp_local_name = CString::new("temp").unwrap();
+
                     tmp_local =
                         unsafe { gcc_jit_function_new_local(func, null_mut(), rvalue_type, tmp_local_name.as_ptr()) };
-                    unsafe { gcc_jit_block_add_assignment(block, null_mut(), tmp_local, rvalue) };
+
+                    if !self.block_is_terminated(block) {
+                        unsafe { gcc_jit_block_add_assignment(block, null_mut(), tmp_local, rvalue) };
+                    }
                 } else {
                     compiler_error!("Unary operators (++, --, etc.) are only allowed inside functions.");
                 }
@@ -566,15 +683,17 @@ impl Compiler {
 
                 // Assign incremented/decremented value in the variable
                 if let Some(block) = guard.block {
-                    unsafe {
-                        gcc_jit_block_add_assignment_op(
-                            block,
-                            null_mut(),
-                            *lvalue.borrow_mut(),
-                            bin_op,
-                            gcc_jit_context_new_cast(self.context, null_mut(), fixed_number, rvalue_type),
-                        )
-                    };
+                    if !self.block_is_terminated(block) {
+                        unsafe {
+                            gcc_jit_block_add_assignment_op(
+                                block,
+                                null_mut(),
+                                *lvalue.borrow_mut(),
+                                bin_op,
+                                gcc_jit_context_new_cast(self.context, null_mut(), fixed_number, rvalue_type),
+                            )
+                        };
+                    }
                 }
 
                 let result = rvalue.clone();
