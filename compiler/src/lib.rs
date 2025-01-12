@@ -101,17 +101,20 @@ impl Compiler {
         }
     }
 
+    fn compile_continue_staement(&mut self) {}
+
     fn compile_break_statement(&mut self) {
         if let (Some(active_block), Some(parent_block)) = (self.active_block(), self.parent_block) {
-            if !self.block_is_terminated(active_block) {
-                unsafe {
-                    gcc_jit_block_end_with_jump(active_block, null_mut(), parent_block);
-                    self.mark_block_terminated(active_block);
-                }
+            unsafe {
+                gcc_jit_block_end_with_jump(active_block, null_mut(), parent_block);
             }
+            self.mark_block_terminated(active_block);
+
+            let mut guard = self.block_func_ref.lock().unwrap();
+            guard.block = Some(parent_block);
+            drop(guard);
         }
     }
-    fn compile_continue_staement(&mut self) {}
 
     fn compile_if_statement(&mut self, scope: ScopeRef, statement: If) {
         let guard = self.block_func_ref.lock().unwrap();
@@ -136,8 +139,10 @@ impl Compiler {
             self.mark_block_terminated(active_block);
 
             // Build true_block body
-            self.switch_active_block(true_block);
-            self.compile_statements(Rc::clone(&scope), statement.consequent.body);
+            if !self.block_is_terminated(true_block) {
+                self.switch_active_block(true_block);
+                self.compile_statements(Rc::clone(&scope), statement.consequent.body);
+            }
 
             // Build else-if and else branches
             let mut current_block = false_block;
@@ -198,6 +203,7 @@ impl Compiler {
 
             // Ensure true block ends with jump to final block
             if !self.block_is_terminated(true_block) {
+                self.switch_active_block(true_block);
                 unsafe {
                     gcc_jit_block_end_with_jump(true_block, null_mut(), final_block);
                 }
@@ -209,35 +215,17 @@ impl Compiler {
 
             // If there is a parent block, ensure the final block jumps back to it
             if let Some(parent_block) = self.parent_block {
-                unsafe {
-                    gcc_jit_block_end_with_jump(final_block, null_mut(), parent_block);
+                dbg!(self.block_is_terminated(final_block));
+
+                if !self.block_is_terminated(final_block) {
+                    unsafe {
+                        gcc_jit_block_end_with_jump(final_block, null_mut(), parent_block);
+                    }
+                    self.mark_block_terminated(final_block);
+                    self.switch_active_block(final_block);
                 }
-                self.mark_block_terminated(final_block);
-            }
-
-            self.switch_active_block(final_block);
+            } 
         }
-    }
-
-    fn switch_active_block(&mut self, active_block: *mut gcc_jit_block) {
-        let mut guard = self.block_func_ref.lock().unwrap();
-        guard.block = Some(active_block);
-        drop(guard);
-    }
-
-    fn active_block(&mut self) -> Option<*mut gccjit_sys::gcc_jit_block> {
-        let guard = self.block_func_ref.lock().unwrap();
-        return guard.block;
-    }
-
-    fn mark_block_terminated(&mut self, block: *mut gcc_jit_block) {
-        if !self.block_is_terminated(block) {
-            self.terminated_blocks.push(block);
-        }
-    }
-
-    fn block_is_terminated(&self, block: *mut gcc_jit_block) -> bool {
-        self.terminated_blocks.contains(&block)
     }
 
     fn compile_for_statement(&mut self, scope: ScopeRef, statement: For) {
@@ -278,15 +266,25 @@ impl Compiler {
             }
 
             self.switch_active_block(for_body);
+            self.parent_block = Some(for_end);
 
             // Compile the body of the loop
             for stmt in statement.body.body {
-                self.compile_statement(Rc::clone(&scope), stmt);
+                match stmt {
+                    Statement::Break => {
+                        self.compile_break_statement();
+
+                        break;
+                    }
+                    _ => self.compile_statement(Rc::clone(&scope), stmt),
+                }
             }
 
             // Evaluate increment/decrement expression
-            if let Some(increment) = statement.increment {
-                self.compile_expression(Rc::clone(&scope), increment);
+            if !self.block_is_terminated(active_block) {
+                if let Some(increment) = statement.increment {
+                    self.compile_expression(Rc::clone(&scope), increment);
+                }
             }
 
             // Safely terminate active_block as a recurisve-jump that points into current for_loop
@@ -303,6 +301,27 @@ impl Compiler {
             // End the loop
             self.switch_active_block(for_end);
         }
+    }
+
+    fn switch_active_block(&mut self, active_block: *mut gcc_jit_block) {
+        let mut guard = self.block_func_ref.lock().unwrap();
+        guard.block = Some(active_block);
+        drop(guard);
+    }
+
+    fn active_block(&mut self) -> Option<*mut gccjit_sys::gcc_jit_block> {
+        let guard = self.block_func_ref.lock().unwrap();
+        return guard.block;
+    }
+
+    fn mark_block_terminated(&mut self, block: *mut gcc_jit_block) {
+        if !self.block_is_terminated(block) {
+            self.terminated_blocks.push(block);
+        }
+    }
+
+    fn block_is_terminated(&self, block: *mut gcc_jit_block) -> bool {
+        self.terminated_blocks.contains(&block)
     }
 
     fn compile_return(&mut self, scope: ScopeRef, ret_stmt: Return) {
