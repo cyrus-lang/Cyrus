@@ -1,11 +1,6 @@
 pub fn main(): i32 {
-    #rows = 5;
-    #cols = 5;
-
-    for #i = 0; i <= rows; i++ {
-        if (i == 2) {
-            break;
-        }
+    for #i = 0; i < 10; i++ {
+        cprintf("Cyrus: %d\n", i);
     }
     
     return 0;   
