@@ -31,6 +31,12 @@ struct FuncParamRecord {
 
 type FuncParamsRecords = Vec<FuncParamRecord>;
 
+#[derive(Debug, Clone)]
+struct LoopBlockPair {
+    loop_body: *mut gcc_jit_block,
+    loop_end: *mut gcc_jit_block
+}
+
 pub struct Compiler {
     program: Program,
     context: *mut gcc_jit_context,
@@ -40,6 +46,7 @@ pub struct Compiler {
     block_func_ref: Arc<Mutex<Box<BlockFuncPair>>>,
     terminated_blocks: Vec<*mut gcc_jit_block>,
     parent_block: Option<*mut gcc_jit_block>,
+    active_loop: Option<LoopBlockPair>,
 }
 
 impl Compiler {
@@ -63,6 +70,7 @@ impl Compiler {
             }))),
             terminated_blocks: Vec::new(),
             parent_block: None,
+            active_loop: None,
         }
     }
 
@@ -92,7 +100,7 @@ impl Compiler {
             Statement::Import(statement) => todo!(),
             Statement::Return(statement) => self.compile_return(scope, statement),
             Statement::Break => self.compile_break_statement(),
-            Statement::Continue => self.compile_continue_staement(),
+            Statement::Continue => self.compile_continue_statement(),
             Statement::BlockStatement(statement) => self.compile_statements(
                 Rc::new(RefCell::new(scope.borrow_mut().clone_immutable())),
                 statement.body,
@@ -101,18 +109,14 @@ impl Compiler {
         }
     }
 
-    fn compile_continue_staement(&mut self) {}
+    fn compile_continue_statement(&mut self) {}
 
     fn compile_break_statement(&mut self) {
-        if let (Some(active_block), Some(parent_block)) = (self.active_block(), self.parent_block) {
-            unsafe {
-                gcc_jit_block_end_with_jump(active_block, null_mut(), parent_block);
+        if let (Some(active_loop), Some(active_block)) = (self.active_loop.clone(), self.active_block()) {
+            if !self.block_is_terminated(active_block) {
+                unsafe { gcc_jit_block_end_with_jump(active_block, null_mut(), active_loop.loop_end) }
+                self.mark_block_terminated(active_block);
             }
-            self.mark_block_terminated(active_block);
-
-            let mut guard = self.block_func_ref.lock().unwrap();
-            guard.block = Some(parent_block);
-            drop(guard);
         }
     }
 
@@ -247,6 +251,11 @@ impl Compiler {
             let for_body = unsafe { gcc_jit_function_new_block(func, for_body_name.as_ptr()) };
             let for_end = unsafe { gcc_jit_function_new_block(func, for_end_name.as_ptr()) };
 
+            self.active_loop = Some(LoopBlockPair {
+                loop_body: for_body,
+                loop_end: for_end,
+            });
+        
             // Initialize incremental variable
             if let Some(initializer) = statement.initializer {
                 let init_rvalue = self.compile_expression(Rc::clone(&scope), initializer.expr);
@@ -269,30 +278,31 @@ impl Compiler {
             if !self.block_is_terminated(active_block) {
                 unsafe {
                     gcc_jit_block_end_with_conditional(active_block, null_mut(), cond, for_body, for_end);
-                }
+                }                
             }
 
             self.switch_active_block(for_body);
-            self.parent_block = Some(for_end);
 
             // Compile the body of the loop
             for stmt in statement.body.body {
                 match stmt {
                     Statement::Break => {
                         self.compile_break_statement();
-
                         break;
                     }
-                    _ => self.compile_statement(Rc::clone(&scope), stmt),
+                    _ => {
+                        self.compile_statement(Rc::clone(&scope), stmt)
+                    },
                 }
             }
 
+            // FIXME | Check termination aptly!
             // Evaluate increment/decrement expression
-            if !self.block_is_terminated(active_block) {
+            // if !self.block_is_terminated(for_body) {
                 if let Some(increment) = statement.increment {
                     self.compile_expression(Rc::clone(&scope), increment);
                 }
-            }
+            // }
 
             // Safely terminate active_block as a recurisve-jump that points into current for_loop
             let guard = self.block_func_ref.lock().unwrap();
