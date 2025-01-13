@@ -34,7 +34,8 @@ type FuncParamsRecords = Vec<FuncParamRecord>;
 #[derive(Debug, Clone)]
 struct LoopBlockPair {
     loop_body: *mut gcc_jit_block,
-    loop_end: *mut gcc_jit_block
+    loop_end: *mut gcc_jit_block,
+    increment_block: *mut gcc_jit_block,
 }
 
 pub struct Compiler {
@@ -109,7 +110,14 @@ impl Compiler {
         }
     }
 
-    fn compile_continue_statement(&mut self) {}
+    fn compile_continue_statement(&mut self) {
+        if let (Some(active_loop), Some(active_block)) = (self.active_loop.clone(), self.active_block()) {
+            if !self.block_is_terminated(active_block) {
+                unsafe { gcc_jit_block_end_with_jump(active_block, null_mut(), active_loop.increment_block) }
+                self.mark_block_terminated(active_block);
+            }
+        }
+    }
 
     fn compile_break_statement(&mut self) {
         if let (Some(active_loop), Some(active_block)) = (self.active_loop.clone(), self.active_block()) {
@@ -248,14 +256,17 @@ impl Compiler {
             // Create blocks
             let for_body_name = CString::new("for_body_block").unwrap();
             let for_end_name = CString::new("for_end_block").unwrap();
+            let for_increment_name = CString::new("for_increment_block").unwrap();
             let for_body = unsafe { gcc_jit_function_new_block(func, for_body_name.as_ptr()) };
             let for_end = unsafe { gcc_jit_function_new_block(func, for_end_name.as_ptr()) };
+            let for_increment_block = unsafe { gcc_jit_function_new_block(func, for_increment_name.as_ptr()) };
 
             self.active_loop = Some(LoopBlockPair {
                 loop_body: for_body,
                 loop_end: for_end,
+                increment_block: for_increment_block,
             });
-        
+
             // Initialize incremental variable
             if let Some(initializer) = statement.initializer {
                 let init_rvalue = self.compile_expression(Rc::clone(&scope), initializer.expr);
@@ -278,7 +289,13 @@ impl Compiler {
             if !self.block_is_terminated(active_block) {
                 unsafe {
                     gcc_jit_block_end_with_conditional(active_block, null_mut(), cond, for_body, for_end);
-                }                
+                }
+            }
+
+            // Evaluate increment
+            self.switch_active_block(for_increment_block);
+            if let Some(ref increment) = statement.increment {
+                self.compile_expression(Rc::clone(&scope), increment.clone());
             }
 
             self.switch_active_block(for_body);
@@ -290,26 +307,24 @@ impl Compiler {
                         self.compile_break_statement();
                         break;
                     }
-                    _ => {
-                        self.compile_statement(Rc::clone(&scope), stmt)
-                    },
+                    Statement::Continue => {
+                        self.compile_continue_statement();
+                        break;
+                    }
+                    _ => self.compile_statement(Rc::clone(&scope), stmt),
                 }
             }
-
-            // FIXME | Check termination aptly!
-            // Evaluate increment/decrement expression
-            // if !self.block_is_terminated(for_body) {
-                if let Some(increment) = statement.increment {
-                    self.compile_expression(Rc::clone(&scope), increment);
-                }
-            // }
 
             // Safely terminate active_block as a recurisve-jump that points into current for_loop
             let guard = self.block_func_ref.lock().unwrap();
             if let Some(active_block) = guard.block {
                 if !self.block_is_terminated(active_block) {
                     unsafe {
-                        gcc_jit_block_end_with_conditional(active_block, null_mut(), cond, for_body, for_end);
+                        gcc_jit_block_end_with_conditional(active_block, null_mut(), cond, for_increment_block, for_end)
+                    }
+
+                    unsafe {
+                        gcc_jit_block_end_with_conditional(for_increment_block, null_mut(), cond, for_body, for_end)
                     }
                 }
             }
