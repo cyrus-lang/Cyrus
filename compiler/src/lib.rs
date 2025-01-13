@@ -160,45 +160,53 @@ impl Compiler {
                 let else_if_false_block =
                     unsafe { gcc_jit_function_new_block(func, else_if_false_block_name.as_ptr()) };
 
-                unsafe {
-                    gcc_jit_block_end_with_conditional(
-                        current_block,
-                        null_mut(),
-                        else_if_cond,
-                        else_if_true_block,
-                        else_if_false_block,
-                    );
+                if !self.block_is_terminated(current_block) {
+                    unsafe {
+                        gcc_jit_block_end_with_conditional(
+                            current_block,
+                            null_mut(),
+                            else_if_cond,
+                            else_if_true_block,
+                            else_if_false_block,
+                        );
+                    }
+                    self.mark_block_terminated(current_block);
                 }
-                self.mark_block_terminated(current_block);
 
                 // Process true block for else-if
-                self.switch_active_block(else_if_true_block);
-                self.compile_statements(Rc::clone(&scope), else_if_statement.consequent.body);
-
-                unsafe {
-                    gcc_jit_block_end_with_jump(else_if_true_block, null_mut(), final_block);
+                if !self.block_is_terminated(else_if_true_block) {
+                    self.switch_active_block(else_if_true_block);
+                    self.compile_statements(Rc::clone(&scope), else_if_statement.consequent.body);
                 }
 
-                self.mark_block_terminated(else_if_true_block);
+                if !self.block_is_terminated(else_if_true_block) {
+                    unsafe {
+                        gcc_jit_block_end_with_jump(else_if_true_block, null_mut(), final_block);
+                    }
+
+                    self.mark_block_terminated(else_if_true_block);
+                }
 
                 current_block = else_if_false_block;
             }
 
             // Process else block if no conditions matched
-            if let Some(else_statements) = statement.alternate {
-                self.switch_active_block(current_block);
-                self.compile_statements(Rc::clone(&scope), else_statements.body);
+            if !self.block_is_terminated(current_block) {
+                if let Some(else_statements) = statement.alternate {
+                    self.switch_active_block(current_block);
+                    self.compile_statements(Rc::clone(&scope), else_statements.body);
 
-                unsafe {
-                    gcc_jit_block_end_with_jump(current_block, null_mut(), final_block);
-                }
+                    unsafe {
+                        gcc_jit_block_end_with_jump(current_block, null_mut(), final_block);
+                    }
 
-                self.mark_block_terminated(current_block);
-            } else if !self.block_is_terminated(current_block) {
-                unsafe {
-                    gcc_jit_block_end_with_jump(current_block, null_mut(), final_block);
+                    self.mark_block_terminated(current_block);
+                } else if !self.block_is_terminated(current_block) {
+                    unsafe {
+                        gcc_jit_block_end_with_jump(current_block, null_mut(), final_block);
+                    }
+                    self.mark_block_terminated(current_block);
                 }
-                self.mark_block_terminated(current_block);
             }
 
             // Ensure true block ends with jump to final block
@@ -215,16 +223,15 @@ impl Compiler {
 
             // If there is a parent block, ensure the final block jumps back to it
             if let Some(parent_block) = self.parent_block {
-                dbg!(self.block_is_terminated(final_block));
-
                 if !self.block_is_terminated(final_block) {
-                    unsafe {
-                        gcc_jit_block_end_with_jump(final_block, null_mut(), parent_block);
-                    }
+                    unsafe { gcc_jit_block_end_with_jump(final_block, null_mut(), parent_block) }
                     self.mark_block_terminated(final_block);
-                    self.switch_active_block(final_block);
+                    self.switch_active_block(parent_block);
+                    return;
                 }
-            } 
+            }
+
+            self.switch_active_block(final_block);
         }
     }
 

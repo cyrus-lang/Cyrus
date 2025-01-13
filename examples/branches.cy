@@ -3,6 +3,9 @@ pub fn main(): i32 {
     #b: i32 = 25;
 
     if (a == b) {
+        if ( 1==1 ) { 
+            cprintf("alaways true\n");    
+        }
         cprintf("a is equal to b\n");
     }
     else if (a < b)                 
