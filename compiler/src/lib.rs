@@ -59,6 +59,7 @@ impl Compiler {
 
     pub fn new(program: Program) -> Self {
         let context = unsafe { gcc_jit_context_acquire() };
+        
         unsafe { gcc_jit_context_set_bool_allow_unreachable_blocks(context, 1) };
 
         Self {

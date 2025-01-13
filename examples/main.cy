@@ -8,7 +8,7 @@ pub fn main(): i32 {
             break;
         }
 
-        break;
+        break; // ANCHOR
     }
 
     cprintf("Program finished.\n");
