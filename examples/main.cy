@@ -1,13 +1,14 @@
 pub fn main(): i32 {
     cprintf("Program started.\n");
     
-    for #i = 0; i < 5; i++ {
-        if (i == 3) {
-            cprintf("blbllblblblbl\n");
-            continue;
+    for #i = 0; i < 8; i++ {
+        for #j = 0; j < 20; j++ {
+            cprintf("j: %d\n", j);
+            
+            break;
         }
 
-        cprintf("i->%d\n", i);
+        break;
     }
 
     cprintf("Program finished.\n");

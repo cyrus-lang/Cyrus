@@ -59,6 +59,8 @@ impl Compiler {
 
     pub fn new(program: Program) -> Self {
         let context = unsafe { gcc_jit_context_acquire() };
+        unsafe { gcc_jit_context_set_bool_allow_unreachable_blocks(context, 1) };
+
         Self {
             program,
             context,
@@ -254,9 +256,9 @@ impl Compiler {
             drop(guard);
 
             // Create blocks
-            let for_body_name = CString::new("for_body_block").unwrap();
-            let for_end_name = CString::new("for_end_block").unwrap();
-            let for_increment_name = CString::new("for_increment_block").unwrap();
+            let for_body_name = CString::new(format!("for_body_block_{}", self.new_block_name())).unwrap();
+            let for_end_name = CString::new(format!("for_end_block_{}", self.new_block_name())).unwrap();
+            let for_increment_name = CString::new(format!("for_increment_block_{}", self.new_block_name())).unwrap();
             let for_body = unsafe { gcc_jit_function_new_block(func, for_body_name.as_ptr()) };
             let for_end = unsafe { gcc_jit_function_new_block(func, for_end_name.as_ptr()) };
             let for_increment_block = unsafe { gcc_jit_function_new_block(func, for_increment_name.as_ptr()) };
@@ -325,6 +327,10 @@ impl Compiler {
 
                     unsafe {
                         gcc_jit_block_end_with_conditional(for_increment_block, null_mut(), cond, for_body, for_end)
+                    }
+                } else {
+                    unsafe {
+                        gcc_jit_block_end_with_jump(for_increment_block, null_mut(), for_end)
                     }
                 }
             }
