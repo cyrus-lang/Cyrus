@@ -284,6 +284,8 @@ impl<'a> Parser<'a> {
             }));
         }
 
+        self.expect_current(TokenKind::LeftParen)?;
+
         let mut initializer: Option<Variable> = None;
         if let Statement::Variable(var) = self.parse_variable_declaration()? {
             initializer = Some(var);
@@ -321,6 +323,8 @@ impl<'a> Parser<'a> {
 
             self.next_token(); // consume increment token
         }
+
+        self.expect_current(TokenKind::RightParen)?;
 
         let body: Box<BlockStatement>;
         if self.current_token_is(TokenKind::LeftBrace) {
