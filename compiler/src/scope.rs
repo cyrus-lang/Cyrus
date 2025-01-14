@@ -41,30 +41,3 @@ impl Scope {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::{cell::RefCell, ptr::null_mut, rc::Rc};
-
-    use crate::scope::ScopeRef;
-
-    use super::Scope;
-
-    #[test]
-    fn test_scope() {
-        let func_scope_ref: ScopeRef = Rc::new(RefCell::new(Scope::new()));
-        let child_scope_ref: ScopeRef = Rc::new(RefCell::new(Scope::new()));
-
-        let mut func_scope = func_scope_ref.borrow_mut();
-        let mut child_scope = child_scope_ref.borrow_mut();
-
-        func_scope.insert(String::from("my_var"), null_mut());
-        child_scope.parent = Some(Box::new(Rc::new(RefCell::new(func_scope.to_owned()))));
-
-
-        drop(func_scope);
-
-        let my_var = child_scope.get(String::from("my_var"));
-        dbg!(my_var);
-    }
-}

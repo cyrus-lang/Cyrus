@@ -147,8 +147,6 @@ impl fmt::Display for TokenKind {
     }
 }
 
-// Span essentially pinpoints the token's exact location within the source file.
-// That is really useful for error-reporting, syntax-hightlighting, and etc.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Span {
     pub start: usize,
@@ -163,4 +161,10 @@ impl Span {
     pub fn new_empty_span() -> Self {
         Self { start: 0, end: 0 }
     }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Location {
+    pub line: usize,
+    pub column: usize,
 }

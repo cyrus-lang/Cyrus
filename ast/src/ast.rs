@@ -54,6 +54,7 @@ pub struct UnaryOperator {
     pub identifer: Identifier,
     pub ty: UnaryOperatorType,
     pub span: Span,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone)]
@@ -61,12 +62,14 @@ pub struct FunctionCall {
     pub function_name: Identifier,
     pub arguments: Vec<Expression>,
     pub span: Span,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone)]
 pub struct Identifier {
     pub name: String,
     pub span: Span,
+    pub loc: Location
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -109,6 +112,7 @@ pub struct UnaryExpression {
     pub operator: Token,
     pub operand: Box<Expression>,
     pub span: Span,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +121,7 @@ pub struct BinaryExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: Span,
+    pub loc: Location
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -135,6 +140,7 @@ pub struct StringLiteral {
 pub struct Array {
     pub elements: Vec<Expression>,
     pub span: Span,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone)]
@@ -142,12 +148,14 @@ pub struct ArrayIndex {
     pub identifier: Identifier,
     pub dimensions: Vec<Array>,
     pub span: Span,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone)]
 pub struct Hash {
     pub pairs: Vec<(Expression, Expression)>,
     pub span: Span,
+    pub loc: Location
 }
 
 pub fn format_expressions(exprs: &Vec<Expression>) -> String {
@@ -167,8 +175,8 @@ pub enum Statement {
     Package(Package),
     Import(Import),
     BlockStatement(BlockStatement),
-    Break,
-    Continue,
+    Break(Location),
+    Continue(Location),
 }
 
 pub fn format_statements(stmts: &Vec<Statement>) -> String {
@@ -179,18 +187,21 @@ pub fn format_statements(stmts: &Vec<Statement>) -> String {
 pub struct Return {
     pub argument: Expression,
     pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct Package {
     pub sub_packages: Vec<Identifier>,
     pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct Import {
     pub name: Identifier,
     pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +210,7 @@ pub struct Struct {
     pub fields: Option<Field>,
     pub extends: Option<Box<Struct>>,
     pub methods: Option<FuncDef>,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -206,6 +218,7 @@ pub struct Field {
     pub name: Identifier,
     pub ty: Literal,
     pub default_value: Literal,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -215,6 +228,7 @@ pub struct For {
     pub increment: Option<Expression>,
     pub body: Box<BlockStatement>,
     pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -224,12 +238,14 @@ pub struct Match {
     pub default: BlockStatement,
     pub body: Box<BlockStatement>,
     pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct MatchPattern {
     pub raw: Expression,
     pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -240,6 +256,7 @@ pub struct FuncDef {
     pub return_type: Option<Token>,
     pub span: Span,
     pub vis_type: FuncVisType,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +271,7 @@ pub enum FuncVisType {
 pub struct BlockStatement {
     pub body: Vec<Statement>,
     pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -262,6 +280,7 @@ pub struct Variable {
     pub ty: Option<TokenKind>,
     pub expr: Expression,
     pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -269,6 +288,7 @@ pub struct Assignment {
     pub identifier: Identifier,
     pub expr: Expression,
     pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -277,6 +297,7 @@ pub struct FunctionParam {
     pub ty: Option<TokenKind>,
     pub default_value: Option<Expression>,
     pub span: Span,
+    pub loc: Location,
 }
 
 pub type FunctionParams = Vec<FunctionParam>;
@@ -288,4 +309,5 @@ pub struct If {
     pub branches: Vec<If>,
     pub alternate: Option<Box<BlockStatement>>,
     pub span: Span,
+    pub loc: Location,
 }
