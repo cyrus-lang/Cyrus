@@ -120,7 +120,9 @@ impl Compiler {
     fn compile_continue_statement(&mut self, loc: Location) {
         if let (Some(active_loop), Some(active_block)) = (self.active_loop.clone(), self.active_block()) {
             if !self.block_is_terminated(active_block) {
-                unsafe { gcc_jit_block_end_with_jump(active_block, self.gccjit_location(loc), active_loop.increment_block) }
+                unsafe {
+                    gcc_jit_block_end_with_jump(active_block, self.gccjit_location(loc), active_loop.increment_block)
+                }
                 self.mark_block_terminated(active_block);
             }
         }
@@ -222,11 +224,11 @@ impl Compiler {
             }
 
             // Process else block if no conditions matched
-            if !self.block_is_terminated(current_block) {
-                if let Some(else_statements) = statement.alternate {
-                    self.switch_active_block(current_block);
-                    self.compile_statements(Rc::clone(&scope), else_statements.body);
+            if let Some(else_statements) = statement.alternate {
+                self.switch_active_block(current_block);
+                self.compile_statements(Rc::clone(&scope), else_statements.body);
 
+                if !self.block_is_terminated(current_block) {
                     unsafe {
                         gcc_jit_block_end_with_jump(
                             current_block,
@@ -236,16 +238,16 @@ impl Compiler {
                     }
 
                     self.mark_block_terminated(current_block);
-                } else if !self.block_is_terminated(current_block) {
-                    unsafe {
-                        gcc_jit_block_end_with_jump(
-                            current_block,
-                            self.gccjit_location(statement.loc.clone()),
-                            final_block,
-                        );
-                    }
-                    self.mark_block_terminated(current_block);
                 }
+            } else if !self.block_is_terminated(current_block) {
+                unsafe {
+                    gcc_jit_block_end_with_jump(
+                        current_block,
+                        self.gccjit_location(statement.loc.clone()),
+                        final_block,
+                    );
+                }
+                self.mark_block_terminated(current_block);
             }
 
             // Ensure true block ends with jump to final block
