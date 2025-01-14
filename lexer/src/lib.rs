@@ -17,8 +17,8 @@ pub struct Lexer {
     pos: usize,
     next_pos: usize,
     ch: char,
-    line: usize,
-    column: usize,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl Lexer {

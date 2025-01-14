@@ -70,6 +70,13 @@ impl<'a> Parser<'a> {
         Ok(program)
     }
 
+    fn current_location(&mut self) -> Location {
+        Location {
+            line: self.lexer.line,
+            column: self.lexer.column,
+        }
+    }
+
     fn next_token(&mut self) -> Token {
         self.current_token = self.peek_token.clone();
         self.peek_token = self.lexer.next_token();
@@ -113,7 +120,7 @@ impl<'a> Parser<'a> {
         if !self.current_token_is(TokenKind::Semicolon) {
             Err(format!("Missing semicolon"))
         } else {
-            Ok(Statement::Break)
+            Ok(Statement::Break(self.current_location()))
         }
     }
 
@@ -122,7 +129,7 @@ impl<'a> Parser<'a> {
         if !self.current_token_is(TokenKind::Semicolon) {
             Err(format!("Missing semicolon"))
         } else {
-            Ok(Statement::Continue)
+            Ok(Statement::Continue(self.current_location()))
         }
     }
 
@@ -143,6 +150,7 @@ impl<'a> Parser<'a> {
                                 start,
                                 end: self.current_token.span.end,
                             },
+                            loc: self.current_location()
                         });
 
                         self.next_token(); // consume identifier
@@ -165,7 +173,11 @@ impl<'a> Parser<'a> {
                 end: self.current_token.span.end,
             };
 
-            return Ok(Statement::Package(Package { sub_packages, span }));
+            return Ok(Statement::Package(Package {
+                sub_packages,
+                span,
+                loc: self.current_location(),
+            }));
         } else {
             Err(format!(
                 "Invalid token '{}' found in package declaration.",
@@ -211,6 +223,7 @@ impl<'a> Parser<'a> {
                         identifier: Identifier {
                             name: name,
                             span: self.current_token.span.clone(),
+                            loc: self.current_location()
                         },
                         ty: varty,
                         default_value: default_value,
@@ -218,6 +231,7 @@ impl<'a> Parser<'a> {
                             start: start,
                             end: self.current_token.span.end,
                         },
+                        loc: self.current_location(),
                     });
 
                     // after reading
@@ -281,6 +295,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
+                loc: self.current_location(),
             }));
         }
 
@@ -350,6 +365,7 @@ impl<'a> Parser<'a> {
                 start,
                 end: self.current_token.span.end,
             },
+            loc: self.current_location(),
         }))
     }
 
@@ -410,6 +426,7 @@ impl<'a> Parser<'a> {
             expr,
             span: Span { start, end: span.end },
             ty: varty,
+            loc: self.current_location(),
         }))
     }
 
@@ -536,6 +553,7 @@ impl<'a> Parser<'a> {
                 return_type,
                 vis_type,
                 span: Span { start, end },
+                loc: self.current_location(),
             }));
         }
 
@@ -557,6 +575,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::Return(Return {
             argument,
             span: Span { start, end },
+            loc: self.current_location(),
         }))
     }
 
@@ -577,6 +596,7 @@ impl<'a> Parser<'a> {
         Ok(BlockStatement {
             body: block_statement,
             span: Span { start, end },
+            loc: self.current_location(),
         })
     }
 
@@ -625,6 +645,7 @@ impl<'a> Parser<'a> {
                     branches: vec![],
                     alternate: None,
                     span: Span { start, end },
+                    loc: self.current_location(),
                 });
             } else {
                 // parse alternate
@@ -649,6 +670,7 @@ impl<'a> Parser<'a> {
             branches,
             alternate,
             span: Span { start, end },
+            loc: self.current_location(),
         }))
     }
 
@@ -676,6 +698,7 @@ impl<'a> Parser<'a> {
                 function_name: identifier,
                 arguments: arguments.0,
                 span: Span { start: left_start, end },
+                loc: self.current_location(),
             })),
             _ => return Err(format!("Expected identifier in function call but found: {}.", left)),
         }
@@ -738,6 +761,7 @@ impl<'a> Parser<'a> {
                                 Identifier {
                                     name,
                                     span: span.clone(),
+                                    loc: self.current_location(),
                                 }
                             },
                             ty,
@@ -745,6 +769,7 @@ impl<'a> Parser<'a> {
                                 start: span.start,
                                 end: self.current_token.span.end,
                             },
+                            loc: self.current_location(),
                         }));
                     }
                     _ => {
@@ -756,6 +781,7 @@ impl<'a> Parser<'a> {
                 let identifier = Identifier {
                     name: name.clone(),
                     span: span.clone(),
+                    loc: self.current_location(),
                 };
 
                 if self.peek_token_is(TokenKind::Increment) {
@@ -764,6 +790,7 @@ impl<'a> Parser<'a> {
                         identifer: identifier.clone(),
                         ty: UnaryOperatorType::PostIncrement,
                         span,
+                        loc: self.current_location(),
                     }));
                 } else if self.peek_token_is(TokenKind::Decrement) {
                     self.next_token();
@@ -771,6 +798,7 @@ impl<'a> Parser<'a> {
                         identifer: identifier.clone(),
                         ty: UnaryOperatorType::PostDecrement,
                         span,
+                        loc: self.current_location(),
                     }));
                 } else if self.peek_token_is(TokenKind::Assign) {
                     return self.parse_assignment();
@@ -780,6 +808,7 @@ impl<'a> Parser<'a> {
                     return Ok(Expression::Identifier(Identifier {
                         name: identifier.name,
                         span,
+                        loc: self.current_location(),
                     }));
                 }
             }
@@ -805,6 +834,7 @@ impl<'a> Parser<'a> {
                     operator: prefix_operator,
                     operand: Box::new(expr),
                     span: Span { start, end: span.end },
+                    loc: self.current_location(),
                 })
             }
             TokenKind::LeftParen => {
@@ -832,6 +862,7 @@ impl<'a> Parser<'a> {
             let identifier = Identifier {
                 name,
                 span: self.current_token.span.clone(),
+                loc: self.current_location(),
             };
             self.next_token(); // consume identifier
             self.next_token(); // consume assign
@@ -844,6 +875,7 @@ impl<'a> Parser<'a> {
                 identifier,
                 expr,
                 span: Span { start, end },
+                loc: self.current_location(),
             })))
         } else {
             return Err(format!("Invalid identifier given for assignment."));
@@ -886,6 +918,7 @@ impl<'a> Parser<'a> {
                         start: left_start,
                         end: span.end,
                     },
+                    loc: self.current_location(),
                 })))
             }
             TokenKind::LeftParen => {
@@ -925,7 +958,9 @@ impl<'a> Parser<'a> {
                 identifier: Identifier {
                     name,
                     span: identifer.span,
+                    loc: self.current_location(),
                 },
+                loc: self.current_location(),
             }))
         } else {
             return Err(format!(
@@ -946,6 +981,7 @@ impl<'a> Parser<'a> {
                 start,
                 end: elements.1.end,
             },
+            loc: self.current_location(),
         }))
     }
 }

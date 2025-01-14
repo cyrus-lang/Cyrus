@@ -22,7 +22,7 @@ enum Commands {
     Version,
 }
 
-fn parse_program(file_path: String) -> Program {
+fn parse_program(file_path: String) -> (Program, String) {
     let file = read_file(file_path.clone());
     let code = file.0;
 
@@ -46,13 +46,13 @@ fn parse_program(file_path: String) -> Program {
         }
     };
 
-    program
+    (program, file.1)
 }
 
 macro_rules! init_compiler {
     ($file_path:expr) => {{
-        let program = parse_program($file_path);
-        let mut compiler = Compiler::new(program);
+        let (program, file_name) = parse_program($file_path);
+        let mut compiler = Compiler::new(program, file_name);
         compiler.compile();
         #[cfg(debug_assertions)]
         compiler.set_debug_info(true);
