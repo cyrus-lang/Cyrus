@@ -150,7 +150,7 @@ impl<'a> Parser<'a> {
                                 start,
                                 end: self.current_token.span.end,
                             },
-                            loc: self.current_location()
+                            loc: self.current_location(),
                         });
 
                         self.next_token(); // consume identifier
@@ -205,8 +205,6 @@ impl<'a> Parser<'a> {
                         self.next_token(); // consume the colon
 
                         varty = Some(self.parse_type_token()?);
-
-                        self.next_token(); // consume the type
                     }
 
                     let mut default_value: Option<Expression> = None;
@@ -223,7 +221,7 @@ impl<'a> Parser<'a> {
                         identifier: Identifier {
                             name: name,
                             span: self.current_token.span.clone(),
-                            loc: self.current_location()
+                            loc: self.current_location(),
                         },
                         ty: varty,
                         default_value: default_value,
@@ -370,7 +368,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
-        match self.current_token.kind {
+        let data_type = match self.current_token.kind {
             TokenKind::I8
             | TokenKind::I16
             | TokenKind::I32
@@ -386,9 +384,25 @@ impl<'a> Parser<'a> {
             | TokenKind::Char
             | TokenKind::Bool
             | TokenKind::Void
-            | TokenKind::String
-            | TokenKind::Array => Ok(self.current_token.kind.clone()),
-            _ => Err(format!("Invalid type for variable: {}.", self.current_token.kind)),
+            | TokenKind::String => self.current_token.kind.clone(),
+            _ => return Err(format!("Invalid type: {}.", self.current_token.kind)),
+        };
+
+        self.next_token(); // consume the data type
+
+        if self.current_token_is(TokenKind::LeftBracket) {
+            self.next_token();
+            
+            let mut capacity: Option<Box<TokenKind>> = None;
+            if let TokenKind::Literal(_) = self.current_token.kind.clone() {
+                capacity = Some(Box::new(self.current_token.kind.clone()));
+                self.next_token();
+            }
+
+            self.expect_current(TokenKind::RightBracket)?;
+            Ok(TokenKind::Array(Box::new(data_type), capacity))
+        } else {
+            Ok(data_type)
         }
     }
 
@@ -404,13 +418,18 @@ impl<'a> Parser<'a> {
             _ => return Err(format!("Invalid variable name: {}.", identifier.kind)),
         };
 
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::Variable(Variable { name, ty: None, expr: None, span: Span {
+                start, 
+                end: self.current_token.span.end
+            }, loc: self.current_location() }));
+        }
+
         let mut varty: Option<TokenKind> = None;
         if self.current_token_is(TokenKind::Colon) {
             self.next_token(); // consume the colon
 
             varty = Some(self.parse_type_token()?);
-
-            self.next_token(); // consume the type token
         }
 
         self.expect_current(TokenKind::Assign)?;

@@ -569,7 +569,6 @@ impl Lexer {
             "char" => TokenKind::Char,
             "bool" => TokenKind::Bool,
             "void" => TokenKind::Void,
-            "array" => TokenKind::Array,
             "string" => TokenKind::String,
             "extern" => TokenKind::Extern,
             "inline" => TokenKind::Inline,

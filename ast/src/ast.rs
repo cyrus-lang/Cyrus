@@ -278,7 +278,7 @@ pub struct BlockStatement {
 pub struct Variable {
     pub name: String,
     pub ty: Option<TokenKind>,
-    pub expr: Expression,
+    pub expr: Option<Expression>,
     pub span: Span,
     pub loc: Location,
 }

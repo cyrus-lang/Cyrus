@@ -75,11 +75,14 @@ pub enum TokenKind {
     F32,
     F64,
     Void,
-    Array,
     String,
     Bool,
     True,
     False,
+
+    // DataType, Capacity 
+    Array(Box<TokenKind>, Option<Box<TokenKind>>),
+
     // Object Visibility Keywords
     Extern,
     Pub,
@@ -137,7 +140,13 @@ impl fmt::Display for TokenKind {
             Self::F32 => write!(f, "f32"),
             Self::F64 => write!(f, "f64"),
             Self::Void => write!(f, "void"),
-            Self::Array => write!(f, "array"),
+            Self::Array(data_type, capacity) => {
+                if let Some(capacity) = capacity {
+                    write!(f, "{}[{}]", *data_type, capacity)
+                } else {
+                    write!(f, "{}[]", *data_type)
+                }
+            },
             Self::String => write!(f, "string"),
             // ETC
             Self::Illegal => write!(f, "ILLEGAL"),

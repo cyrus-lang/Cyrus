@@ -10,6 +10,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::CString,
+    ptr::null_mut,
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -420,27 +421,42 @@ impl Compiler {
         if let (Some(block), Some(func)) = (guard.block, guard.func) {
             drop(guard);
 
-            let rvalue = self.compile_expression(Rc::clone(&scope), variable.expr);
-
-            let var_ty: *mut gcc_jit_type;
-
+            let variable_type: *mut gcc_jit_type;
             if let Some(token) = variable.ty {
-                var_ty = Compiler::token_as_data_type(self.context, token);
+                variable_type = Compiler::token_as_data_type(self.context, token);
             } else {
-                var_ty = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+                variable_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+            }
+            
+            if let Some(expr) = variable.expr {
+                let rvalue = self.compile_expression(Rc::clone(&scope), expr);
+                
             }
 
+
             let name = CString::new(variable.name.clone()).unwrap();
+
             let lvalue = unsafe {
-                gcc_jit_function_new_local(func, self.gccjit_location(variable.loc.clone()), var_ty, name.as_ptr())
+                gcc_jit_function_new_local(
+                    func,
+                    self.gccjit_location(variable.loc.clone()),
+                    variable_type,
+                    name.as_ptr(),
+                )
             };
 
-            let auto_casted = unsafe {
-                gcc_jit_context_new_cast(self.context, self.gccjit_location(variable.loc.clone()), rvalue, var_ty)
-            };
+            // FIXME
+            // let auto_casted = unsafe {
+            //     gcc_jit_context_new_cast(
+            //         self.context,
+            //         self.gccjit_location(variable.loc.clone()),
+            //         rvalue,
+            //         variable_type,
+            //     )
+            // };
 
             unsafe {
-                gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, auto_casted)
+                gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, rvalue)
             };
 
             scope.borrow_mut().insert(variable.name, lvalue);
@@ -538,7 +554,7 @@ impl Compiler {
         self.func_table.borrow_mut().insert(func_def.name, func);
     }
 
-    pub fn load_lvalue_rvalue(
+    fn load_lvalue_rvalue(
         &mut self,
         scope: ScopeRef,
         identifier: Identifier,
@@ -569,7 +585,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
+    fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
         self.load_lvalue_rvalue(scope, identifier).1
     }
 
@@ -581,13 +597,43 @@ impl Compiler {
             Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
             Expression::FunctionCall(func_call) => self.compile_func_call(scope, func_call),
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
-            Expression::Array(array) => todo!(),
+            Expression::Array(array) => self.compile_array(Rc::clone(&scope), array),
             Expression::ArrayIndex(array_index) => todo!(),
             Expression::Assignment(assignment) => self.compile_assignment(scope, *assignment),
         }
     }
 
-    pub fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
+    fn compile_array(&mut self, scope: ScopeRef, array: Array) -> *mut gcc_jit_rvalue {
+        let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
+        for expr in array.elements {
+            array_elements.push(self.compile_expression(Rc::clone(&scope), expr));
+        }
+
+        let mut element_type = Compiler::void_type(self.context);
+        if array_elements.len() > 0 {
+            element_type = unsafe { gcc_jit_rvalue_get_type(array_elements[0]) };
+
+            for element in array_elements.clone() {
+                if unsafe { gcc_jit_rvalue_get_type(element) } != element_type {
+                    compiler_error!("Array elements must have the same data type.");
+                }
+            }
+        }
+
+        let array_type = Compiler::array_type(self.context, element_type, array_elements.len() as u64);
+
+        unsafe {
+            gcc_jit_context_new_array_constructor(
+                self.context,
+                self.gccjit_location(array.loc),
+                array_type,
+                array_elements.len() as i32,
+                array_elements.as_mut_ptr(),
+            )
+        }
+    }
+
+    fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
         let (lvalue, _) = self.load_lvalue_rvalue(Rc::clone(&scope), assignment.identifier);
 
         let block_func = self.block_func_ref.lock().unwrap();
@@ -606,7 +652,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile_func_call(&mut self, scope: ScopeRef, func_call: FunctionCall) -> *mut gcc_jit_rvalue {
+    fn compile_func_call(&mut self, scope: ScopeRef, func_call: FunctionCall) -> *mut gcc_jit_rvalue {
         let guard = self.block_func_ref.lock().unwrap();
 
         if let Some(block) = guard.block {
@@ -649,7 +695,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile_unary_operator(&mut self, scope: ScopeRef, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
+    fn compile_unary_operator(&mut self, scope: ScopeRef, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
         let loc = self.gccjit_location(unary_operator.loc.clone());
 
         match scope.borrow_mut().get(unary_operator.identifer.name.clone()) {

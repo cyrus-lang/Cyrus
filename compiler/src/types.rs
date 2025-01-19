@@ -1,3 +1,5 @@
+use std::ptr::null_mut;
+
 use ast::token::TokenKind;
 use gccjit_sys::*;
 use rand::{distributions::Alphanumeric, Rng};
@@ -73,6 +75,12 @@ impl Compiler {
 
     pub fn bool_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_BOOL) }
+    }
+
+    pub fn array_type(context: *mut gcc_jit_context, data_type: *mut gcc_jit_type, num_elements: u64) -> *mut gcc_jit_type {
+        unsafe {
+            gcc_jit_context_new_array_type(context, null_mut(), data_type, num_elements)
+        }
     }
 
     pub fn token_as_data_type(context: *mut gcc_jit_context, token_kind: TokenKind) -> *mut gcc_jit_type {
