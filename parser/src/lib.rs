@@ -411,7 +411,7 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume sharp token
 
         let identifier = self.current_token.clone(); // export the name of the identifier
-        self.next_token(); // consume thte identifier
+        self.next_token(); // consume identifier
 
         let name = match identifier.kind {
             TokenKind::Identifier { name } => name,
@@ -442,7 +442,7 @@ impl<'a> Parser<'a> {
 
         Ok(Statement::Variable(Variable {
             name,
-            expr,
+            expr: Some(expr),
             span: Span { start, end: span.end },
             ty: varty,
             loc: self.current_location(),

@@ -2,7 +2,6 @@ use std::ptr::null_mut;
 
 use ast::token::TokenKind;
 use gccjit_sys::*;
-use rand::{distributions::Alphanumeric, Rng};
 use utils::compiler_error;
 
 use crate::Compiler;

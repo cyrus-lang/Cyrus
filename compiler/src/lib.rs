@@ -305,13 +305,17 @@ impl Compiler {
 
             // Initialize incremental variable
             if let Some(initializer) = statement.initializer {
-                let init_rvalue = self.compile_expression(Rc::clone(&scope), initializer.expr);
-                let init_type = unsafe { gcc_jit_rvalue_get_type(init_rvalue) };
-                let init_name = CString::new(initializer.name.clone()).unwrap();
-                let init_lvalue = unsafe { gcc_jit_function_new_local(func, loc, init_type, init_name.as_ptr()) };
-
-                unsafe { gcc_jit_block_add_assignment(active_block, loc.clone(), init_lvalue, init_rvalue) };
-                Rc::clone(&scope).borrow_mut().insert(initializer.name, init_lvalue);
+                if let Some(expr) = initializer.expr {
+                    let init_rvalue = self.compile_expression(Rc::clone(&scope), expr);
+                    let init_type = unsafe { gcc_jit_rvalue_get_type(init_rvalue) };
+                    let init_name = CString::new(initializer.name.clone()).unwrap();
+                    let init_lvalue = unsafe { gcc_jit_function_new_local(func, loc, init_type, init_name.as_ptr()) };
+    
+                    unsafe { gcc_jit_block_add_assignment(active_block, loc.clone(), init_lvalue, init_rvalue) };
+                    Rc::clone(&scope).borrow_mut().insert(initializer.name, init_lvalue);
+                } else {
+                    compiler_error!("For statement variable must be initialized with a valid value.");
+                }
             }
 
             let cond = if let Some(expr) = statement.condition.clone() {
@@ -422,20 +426,21 @@ impl Compiler {
             drop(guard);
 
             let variable_type: *mut gcc_jit_type;
-            if let Some(token) = variable.ty {
-                variable_type = Compiler::token_as_data_type(self.context, token);
+
+            let mut rvalue = null_mut();
+            if let Some(expr) = variable.expr {
+                rvalue = self.compile_expression(Rc::clone(&scope), expr);
+
+                if let Some(token) = variable.ty {
+                    variable_type = Compiler::token_as_data_type(self.context, token);
+                } else {
+                    variable_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+                }
             } else {
-                variable_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+                variable_type = Compiler::void_ptr_type(self.context)
             }
             
-            if let Some(expr) = variable.expr {
-                let rvalue = self.compile_expression(Rc::clone(&scope), expr);
-                
-            }
-
-
             let name = CString::new(variable.name.clone()).unwrap();
-
             let lvalue = unsafe {
                 gcc_jit_function_new_local(
                     func,
@@ -445,19 +450,9 @@ impl Compiler {
                 )
             };
 
-            // FIXME
-            // let auto_casted = unsafe {
-            //     gcc_jit_context_new_cast(
-            //         self.context,
-            //         self.gccjit_location(variable.loc.clone()),
-            //         rvalue,
-            //         variable_type,
-            //     )
-            // };
-
-            unsafe {
-                gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, rvalue)
-            };
+            if !rvalue.is_null() {
+                unsafe { gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, rvalue) };
+            }
 
             scope.borrow_mut().insert(variable.name, lvalue);
         } else {
