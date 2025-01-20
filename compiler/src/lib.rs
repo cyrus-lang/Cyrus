@@ -433,7 +433,10 @@ impl Compiler {
             }
 
             if let Some(expr) = variable.expr {
-                rvalue = self.compile_expression(Rc::clone(&scope), expr);
+                rvalue = match expr {
+                    Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, variable_type),
+                    _ => self.compile_expression(Rc::clone(&scope), expr),
+                };
 
                 if variable.ty.is_none() {
                     variable_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };   
@@ -596,13 +599,13 @@ impl Compiler {
             Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
             Expression::FunctionCall(func_call) => self.compile_func_call(scope, func_call),
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
-            Expression::Array(array) => self.compile_array(Rc::clone(&scope), array),
+            Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
             Expression::ArrayIndex(array_index) => todo!(),
             Expression::Assignment(assignment) => self.compile_assignment(scope, *assignment),
         }
     }
 
-    fn compile_array(&mut self, scope: ScopeRef, array: Array) -> *mut gcc_jit_rvalue {
+    fn compile_array(&mut self, scope: ScopeRef, array: Array, mut array_type: *mut gcc_jit_type) -> *mut gcc_jit_rvalue {
         let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
         for expr in array.elements {
             array_elements.push(self.compile_expression(Rc::clone(&scope), expr));
@@ -619,7 +622,9 @@ impl Compiler {
             }
         }
 
-        let array_type = Compiler::array_type(self.context, element_type, array_elements.len() as u64);
+        if array_type.is_null() {
+            array_type = Compiler::array_type(self.context, element_type, array_elements.len() as u64);
+        }
 
         unsafe {
             gcc_jit_context_new_array_constructor(

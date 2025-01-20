@@ -311,3 +311,18 @@ pub struct If {
     pub span: Span,
     pub loc: Location,
 }
+
+pub fn integer_literal_as_value(integer_literal: IntegerLiteral) -> i64 {
+    match integer_literal {
+        IntegerLiteral::I8(value) => value.into(),
+        IntegerLiteral::I16(value ) => value.into(),
+        IntegerLiteral::I32(value) => value.into(),
+        IntegerLiteral::I64(value) => value,
+        IntegerLiteral::I128(value) => value.try_into().unwrap(),
+        IntegerLiteral::U8(value) => value.into(),
+        IntegerLiteral::U16(value) => value.into(),
+        IntegerLiteral::U32(value) => value.into(),
+        IntegerLiteral::U64(value) => value.try_into().unwrap(),
+        IntegerLiteral::U128(value) => value.try_into().unwrap(),
+    }
+}

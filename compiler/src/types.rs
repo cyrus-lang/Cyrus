@@ -1,6 +1,6 @@
 use std::ptr::null_mut;
 
-use ast::token::TokenKind;
+use ast::{ast::integer_literal_as_value, token::TokenKind};
 use gccjit_sys::*;
 use utils::compiler_error;
 
@@ -76,10 +76,12 @@ impl Compiler {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_BOOL) }
     }
 
-    pub fn array_type(context: *mut gcc_jit_context, data_type: *mut gcc_jit_type, num_elements: u64) -> *mut gcc_jit_type {
-        unsafe {
-            gcc_jit_context_new_array_type(context, null_mut(), data_type, num_elements)
-        }
+    pub fn array_type(
+        context: *mut gcc_jit_context,
+        data_type: *mut gcc_jit_type,
+        num_elements: u64,
+    ) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_new_array_type(context, null_mut(), data_type, num_elements) }
     }
 
     pub fn token_as_data_type(context: *mut gcc_jit_context, token_kind: TokenKind) -> *mut gcc_jit_type {
@@ -100,6 +102,29 @@ impl Compiler {
             TokenKind::Bool => Compiler::bool_type(context),
             TokenKind::String => Compiler::string_type(context),
             TokenKind::Char => Compiler::char_type(context),
+            TokenKind::Array(data_type, capacity) => {
+                // TODO
+                // FIXME
+                // This should be fixed when implementing dynamic arrays using by Vector.
+
+                if let Some(capacity) = capacity {
+                    let capacity_raw: u64 = match *capacity {
+                        TokenKind::Literal(literal) => {
+                            match literal {
+                                ast::ast::Literal::Integer(integer_literal) => integer_literal_as_value(integer_literal).try_into().unwrap(),
+                                _ => compiler_error!("Invalid capacity for array data type.")
+                            }
+                        }
+                        _ => {
+                            compiler_error!("Invalid token given as capacity for array data type.")
+                        }
+                    };
+
+                    return Compiler::array_type(context, Compiler::token_as_data_type(context, *data_type), capacity_raw);
+                } else{ 
+                    compiler_error!("dynamic arrays not implemented yet")
+                }
+            }
             _ => compiler_error!("Invalid token given to cast to a GCCJIT type."),
         }
     }
@@ -156,5 +181,5 @@ impl Compiler {
         } else {
             compiler_error!("Failed to determine widest data type when comparing type1 with type2.");
         }
-    }    
+    }
 }
