@@ -9,6 +9,7 @@ use scope::{Scope, ScopeRef};
 use std::{
     cell::RefCell,
     collections::HashMap,
+    env::var,
     ffi::CString,
     ptr::null_mut,
     rc::Rc,
@@ -310,7 +311,7 @@ impl Compiler {
                     let init_type = unsafe { gcc_jit_rvalue_get_type(init_rvalue) };
                     let init_name = CString::new(initializer.name.clone()).unwrap();
                     let init_lvalue = unsafe { gcc_jit_function_new_local(func, loc, init_type, init_name.as_ptr()) };
-    
+
                     unsafe { gcc_jit_block_add_assignment(active_block, loc.clone(), init_lvalue, init_rvalue) };
                     Rc::clone(&scope).borrow_mut().insert(initializer.name, init_lvalue);
                 } else {
@@ -439,14 +440,14 @@ impl Compiler {
                 };
 
                 if variable.ty.is_none() {
-                    variable_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };   
+                    variable_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
                 }
             }
 
             if variable_type.is_null() {
                 compiler_error!("Undefined behaviour in variable declaration. Explicit type definition required.");
             }
-            
+
             let name = CString::new(variable.name.clone()).unwrap();
             let lvalue = unsafe {
                 gcc_jit_function_new_local(
@@ -458,7 +459,9 @@ impl Compiler {
             };
 
             if !rvalue.is_null() {
-                unsafe { gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, rvalue) };
+                unsafe {
+                    gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, rvalue)
+                };
             }
 
             scope.borrow_mut().insert(variable.name, lvalue);
@@ -600,12 +603,38 @@ impl Compiler {
             Expression::FunctionCall(func_call) => self.compile_func_call(scope, func_call),
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
-            Expression::ArrayIndex(array_index) => todo!(),
+            Expression::ArrayIndex(array_index) => self.compile_array_index(Rc::clone(&scope), array_index),
             Expression::Assignment(assignment) => self.compile_assignment(scope, *assignment),
         }
     }
 
-    fn compile_array(&mut self, scope: ScopeRef, array: Array, mut array_type: *mut gcc_jit_type) -> *mut gcc_jit_rvalue {
+    fn compile_array_index(&mut self, scope: ScopeRef, array_index: ArrayIndex) -> *mut gcc_jit_rvalue {
+        match scope.borrow_mut().get(array_index.identifier.name.clone()) {
+            Some(variable) => {
+                let lvalue = unsafe {
+                    gcc_jit_context_new_array_access(
+                        self.context,
+                        self.gccjit_location(array_index.loc.clone()),
+                        gcc_jit_lvalue_as_rvalue(*variable.borrow_mut()),
+                        gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), 1),
+                    )
+                };
+
+                unsafe{ gcc_jit_lvalue_as_rvalue(lvalue) }
+            }
+            None => compiler_error!(format!(
+                "'{}' is not defined in this scope.",
+                array_index.identifier.name
+            )),
+        }
+    }
+
+    fn compile_array(
+        &mut self,
+        scope: ScopeRef,
+        array: Array,
+        mut array_type: *mut gcc_jit_type,
+    ) -> *mut gcc_jit_rvalue {
         let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
         for expr in array.elements {
             array_elements.push(self.compile_expression(Rc::clone(&scope), expr));
