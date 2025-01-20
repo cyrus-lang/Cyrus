@@ -629,7 +629,17 @@ impl Compiler {
                     )
                 };
 
-                todo!()
+                let rvalue= self.compile_expression(Rc::clone(&scope), array_index_assign.expr);
+
+                let block_func= self.block_func_ref.lock().unwrap();
+                if let Some(block) = block_func.block {
+                    drop(block_func);
+
+                    unsafe { gcc_jit_block_add_assignment(block, self.gccjit_location(array_index_assign.loc.clone()), lvalue, rvalue) };
+                    rvalue
+                } else {
+                    panic!();
+                }
             }
             None => compiler_error!(format!(
                 "'{}' is not defined in this scope.",
@@ -646,7 +656,7 @@ impl Compiler {
                         self.context,
                         self.gccjit_location(array_index.loc.clone()),
                         gcc_jit_lvalue_as_rvalue(*variable.borrow_mut()),
-                        gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), 1),
+                        gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), 0),
                     )
                 };
 
