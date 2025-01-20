@@ -605,6 +605,36 @@ impl Compiler {
             Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
             Expression::ArrayIndex(array_index) => self.compile_array_index(Rc::clone(&scope), array_index),
             Expression::Assignment(assignment) => self.compile_assignment(scope, *assignment),
+            Expression::ArrayIndexAssign(array_index_assign) => {
+                self.compile_array_index_assign(Rc::clone(&scope), *array_index_assign)
+            }
+        }
+    }
+
+    fn compile_array_index_assign(
+        &mut self,
+        scope: ScopeRef,
+        array_index_assign: ArrayIndexAssign,
+    ) -> *mut gcc_jit_rvalue {
+        match scope.borrow_mut().get(array_index_assign.identifier.name.clone()) {
+            Some(variable) => {
+                let idx = 0;
+
+                let lvalue = unsafe {
+                    gcc_jit_context_new_array_access(
+                        self.context,
+                        self.gccjit_location(array_index_assign.loc.clone()),
+                        gcc_jit_lvalue_as_rvalue(*variable.borrow_mut()),
+                        gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), idx),
+                    )
+                };
+
+                todo!()
+            }
+            None => compiler_error!(format!(
+                "'{}' is not defined in this scope.",
+                array_index_assign.identifier.name
+            )),
         }
     }
 
@@ -620,7 +650,7 @@ impl Compiler {
                     )
                 };
 
-                unsafe{ gcc_jit_lvalue_as_rvalue(lvalue) }
+                unsafe { gcc_jit_lvalue_as_rvalue(lvalue) }
             }
             None => compiler_error!(format!(
                 "'{}' is not defined in this scope.",

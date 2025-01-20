@@ -206,4 +206,9 @@ mod tests {
         assert_parse("#a: array = [\"Cyrus\", \"Lang\"]");
         assert_parse("arr[0][1]");
     }
+
+    #[test]
+    fn test_array_index_assign() {
+        assert_parse("my_var[1] = 555;");
+    }
 }

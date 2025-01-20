@@ -101,6 +101,21 @@ impl fmt::Display for Expression {
                 write!(f, "{}{}", array_index.identifier.name, dimensions_str)
             }
             Expression::Assignment(assignment) => write!(f, "{} = {}", assignment.identifier, assignment.expr),
+            Expression::ArrayIndexAssign(array_index_assign) => {
+                let array_index = ArrayIndex {
+                    identifier: array_index_assign.identifier.clone(),
+                    dimensions: array_index_assign.dimensions.clone(),
+                    span: array_index_assign.span.clone(),
+                    loc: array_index_assign.loc.clone(),
+                };
+
+                write!(
+                    f,
+                    "{} = {}",
+                    Expression::ArrayIndex(array_index).to_string(),
+                    array_index_assign.expr.to_string()
+                )
+            }
         }
     }
 }

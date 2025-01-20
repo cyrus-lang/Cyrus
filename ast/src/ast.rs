@@ -39,6 +39,7 @@ pub enum Expression {
     UnaryOperator(UnaryOperator),
     Array(Array),
     ArrayIndex(ArrayIndex),
+    ArrayIndexAssign(Box<ArrayIndexAssign>),
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +148,15 @@ pub struct Array {
 pub struct ArrayIndex {
     pub identifier: Identifier,
     pub dimensions: Vec<Array>,
+    pub span: Span,
+    pub loc: Location
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayIndexAssign {
+    pub identifier: Identifier,
+    pub dimensions: Vec<Array>,
+    pub expr: Expression,
     pub span: Span,
     pub loc: Location
 }

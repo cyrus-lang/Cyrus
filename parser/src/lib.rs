@@ -392,7 +392,7 @@ impl<'a> Parser<'a> {
 
         if self.current_token_is(TokenKind::LeftBracket) {
             self.next_token();
-            
+
             let mut capacity: Option<Box<TokenKind>> = None;
             if let TokenKind::Literal(_) = self.current_token.kind.clone() {
                 capacity = Some(Box::new(self.current_token.kind.clone()));
@@ -419,10 +419,16 @@ impl<'a> Parser<'a> {
         };
 
         if self.current_token_is(TokenKind::Semicolon) {
-            return Ok(Statement::Variable(Variable { name, ty: None, expr: None, span: Span {
-                start, 
-                end: self.current_token.span.end
-            }, loc: self.current_location() }));
+            return Ok(Statement::Variable(Variable {
+                name,
+                ty: None,
+                expr: None,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc: self.current_location(),
+            }));
         }
 
         let mut variable_type: Option<TokenKind> = None;
@@ -433,10 +439,16 @@ impl<'a> Parser<'a> {
         }
 
         if self.current_token_is(TokenKind::Semicolon) {
-            return Ok(Statement::Variable(Variable { name, ty: variable_type, expr: None, span: Span {
-                start, 
-                end: self.current_token.span.end
-            }, loc: self.current_location() }));
+            return Ok(Statement::Variable(Variable {
+                name,
+                ty: variable_type,
+                expr: None,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc: self.current_location(),
+            }));
         }
 
         self.expect_current(TokenKind::Assign)?;
@@ -762,6 +774,25 @@ impl<'a> Parser<'a> {
         Ok((left, Span { start: left_start, end }))
     }
 
+    fn parse_array_index_assign(&mut self, array_index: ArrayIndex) -> Result<Expression, ParseError> {
+        self.next_token(); // consume right bracket
+
+        self.expect_current(TokenKind::Assign)?;
+
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
+
+        Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
+            identifier: array_index.identifier,
+            dimensions: array_index.dimensions,
+            span: Span {
+                start: array_index.span.start,
+                end: self.current_token.span.end,
+            },
+            loc: self.current_location(),
+            expr,
+        })))
+    }
+
     fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
         let span = self.current_token.span.clone();
 
@@ -829,7 +860,13 @@ impl<'a> Parser<'a> {
                 } else if self.peek_token_is(TokenKind::Assign) {
                     return self.parse_assignment();
                 } else if self.peek_token_is(TokenKind::LeftBracket) {
-                    return self.parse_array_index();
+                    let array_index = self.parse_array_index()?;
+
+                    if self.peek_token_is(TokenKind::Assign) {
+                        return self.parse_array_index_assign(array_index);
+                    }
+
+                    return Ok(Expression::ArrayIndex(array_index));
                 } else {
                     return Ok(Expression::Identifier(Identifier {
                         name: identifier.name,
@@ -955,7 +992,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_array_index(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_array_index(&mut self) -> Result<ArrayIndex, ParseError> {
         let start = self.current_token.span.start;
 
         let identifer = self.current_token.clone();
@@ -978,7 +1015,7 @@ impl<'a> Parser<'a> {
 
             let end = self.current_token.span.end;
 
-            Ok(Expression::ArrayIndex(ArrayIndex {
+            Ok(ArrayIndex {
                 dimensions,
                 span: Span { start, end },
                 identifier: Identifier {
@@ -987,7 +1024,7 @@ impl<'a> Parser<'a> {
                     loc: self.current_location(),
                 },
                 loc: self.current_location(),
-            }))
+            })
         } else {
             return Err(format!(
                 "Expected identifier for array index evaluation but got '{}'.",
