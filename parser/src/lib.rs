@@ -425,11 +425,18 @@ impl<'a> Parser<'a> {
             }, loc: self.current_location() }));
         }
 
-        let mut varty: Option<TokenKind> = None;
+        let mut variable_type: Option<TokenKind> = None;
         if self.current_token_is(TokenKind::Colon) {
             self.next_token(); // consume the colon
 
-            varty = Some(self.parse_type_token()?);
+            variable_type = Some(self.parse_type_token()?);
+        }
+
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::Variable(Variable { name, ty: variable_type, expr: None, span: Span {
+                start, 
+                end: self.current_token.span.end
+            }, loc: self.current_location() }));
         }
 
         self.expect_current(TokenKind::Assign)?;
@@ -444,7 +451,7 @@ impl<'a> Parser<'a> {
             name,
             expr: Some(expr),
             span: Span { start, end: span.end },
-            ty: varty,
+            ty: variable_type,
             loc: self.current_location(),
         }))
     }

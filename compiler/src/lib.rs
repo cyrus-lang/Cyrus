@@ -425,19 +425,23 @@ impl Compiler {
         if let (Some(block), Some(func)) = (guard.block, guard.func) {
             drop(guard);
 
-            let variable_type: *mut gcc_jit_type;
-
+            let mut variable_type: *mut gcc_jit_type = null_mut();
             let mut rvalue = null_mut();
+
+            if let Some(token) = variable.ty.clone() {
+                variable_type = Compiler::token_as_data_type(self.context, token);
+            }
+
             if let Some(expr) = variable.expr {
                 rvalue = self.compile_expression(Rc::clone(&scope), expr);
 
-                if let Some(token) = variable.ty {
-                    variable_type = Compiler::token_as_data_type(self.context, token);
-                } else {
-                    variable_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+                if variable.ty.is_none() {
+                    variable_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };   
                 }
-            } else {
-                variable_type = Compiler::void_ptr_type(self.context)
+            }
+
+            if variable_type.is_null() {
+                compiler_error!("Undefined behaviour in variable declaration. Explicit type definition required.");
             }
             
             let name = CString::new(variable.name.clone()).unwrap();
