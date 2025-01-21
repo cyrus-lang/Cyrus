@@ -76,14 +76,6 @@ impl Compiler {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_BOOL) }
     }
 
-    pub fn array_type(
-        context: *mut gcc_jit_context,
-        data_type: *mut gcc_jit_type,
-        num_elements: u64,
-    ) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_new_array_type(context, null_mut(), data_type, num_elements) }
-    }
-
     pub fn token_as_data_type(context: *mut gcc_jit_context, token_kind: TokenKind) -> *mut gcc_jit_type {
         match token_kind {
             TokenKind::I8 => Compiler::i8_type(context),
@@ -107,14 +99,28 @@ impl Compiler {
                 // FIXME
                 // This should be fixed when implementing dynamic arrays using by Vector.
 
+                let mut array_type: *mut gcc_jit_type = null_mut();
+                let mut multi_dimensional = false;
+
                 for item in dimensions {
                     if let Some(capacity) = item {
                         match capacity {
                             TokenKind::Literal(literal) => {
-                                // match literal {
-                                //     ast::ast::Literal::Integer(integer_literal) => integer_literal_as_value(integer_literal).try_into().unwrap(),
-                                //     _ => compiler_error!("Invalid capacity for array data type.")
-                                // };
+                                match literal {
+                                    ast::ast::Literal::Integer(integer_literal) => 
+                                    {
+                                        let capacity_raw = integer_literal_as_value(integer_literal).try_into().unwrap();
+
+                                        if !multi_dimensional {
+                                            let elements_data_type = Compiler::token_as_data_type(context, *data_type.clone());
+                                            array_type = unsafe { gcc_jit_context_new_array_type(context, null_mut(), elements_data_type, capacity_raw) };
+                                            multi_dimensional = true;
+                                        } else {
+                                            array_type = unsafe { gcc_jit_context_new_array_type(context, null_mut(), array_type, capacity_raw) };
+                                        }
+                                    },
+                                    _ => compiler_error!("Invalid capacity for array data type.")
+                                };
 
                             }
                             _ => compiler_error!("Invalid token given to cast to a GCCJIT type.")
@@ -122,8 +128,7 @@ impl Compiler {
                     }
                 }
 
-                // return Compiler::array_type(context, Compiler::token_as_data_type(context, *data_type), capacity_raw);
-                todo!()
+                array_type
             }
             _ => compiler_error!("Invalid token given to cast to a GCCJIT type."),
         }

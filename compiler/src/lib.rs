@@ -675,35 +675,36 @@ impl Compiler {
         array: Array,
         mut array_type: *mut gcc_jit_type,
     ) -> *mut gcc_jit_rvalue {
-        let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
-        for expr in array.elements {
-            array_elements.push(self.compile_expression(Rc::clone(&scope), expr));
-        }
+        todo!()
+        // let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
+        // for expr in array.elements {
+        //     array_elements.push(self.compile_expression(Rc::clone(&scope), expr));
+        // }
 
-        let mut element_type = Compiler::void_type(self.context);
-        if array_elements.len() > 0 {
-            element_type = unsafe { gcc_jit_rvalue_get_type(array_elements[0]) };
+        // let mut element_type = Compiler::void_type(self.context);
+        // if array_elements.len() > 0 {
+        //     element_type = unsafe { gcc_jit_rvalue_get_type(array_elements[0]) };
 
-            for element in array_elements.clone() {
-                if unsafe { gcc_jit_rvalue_get_type(element) } != element_type {
-                    compiler_error!("Array elements must have the same data type.");
-                }
-            }
-        }
+        //     for element in array_elements.clone() {
+        //         if unsafe { gcc_jit_rvalue_get_type(element) } != element_type {
+        //             compiler_error!("Array elements must have the same data type.");
+        //         }
+        //     }
+        // }
 
-        if array_type.is_null() {
-            array_type = Compiler::array_type(self.context, element_type, array_elements.len() as u64);
-        }
+        // if array_type.is_null() {
+        //     array_type = Compiler::array_type(self.context, element_type, array_elements.len() as u64);
+        // }
 
-        unsafe {
-            gcc_jit_context_new_array_constructor(
-                self.context,
-                self.gccjit_location(array.loc),
-                array_type,
-                array_elements.len() as i32,
-                array_elements.as_mut_ptr(),
-            )
-        }
+        // unsafe {
+        //     gcc_jit_context_new_array_constructor(
+        //         self.context,
+        //         self.gccjit_location(array.loc),
+        //         array_type,
+        //         array_elements.len() as i32,
+        //         array_elements.as_mut_ptr(),
+        //     )
+        // }
     }
 
     fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
