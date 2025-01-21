@@ -168,10 +168,6 @@ pub struct Hash {
     pub loc: Location
 }
 
-pub fn format_expressions(exprs: &Vec<Expression>) -> String {
-    exprs.iter().map(|expr| expr.to_string()).collect()
-}
-
 #[derive(Debug, Clone)]
 pub enum Statement {
     Variable(Variable),
@@ -187,6 +183,10 @@ pub enum Statement {
     BlockStatement(BlockStatement),
     Break(Location),
     Continue(Location),
+}
+
+pub fn format_expressions(exprs: &Vec<Expression>) -> String {
+    exprs.iter().map(|expr| expr.to_string()).collect()
 }
 
 pub fn format_statements(stmts: &Vec<Statement>) -> String {

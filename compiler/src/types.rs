@@ -102,28 +102,28 @@ impl Compiler {
             TokenKind::Bool => Compiler::bool_type(context),
             TokenKind::String => Compiler::string_type(context),
             TokenKind::Char => Compiler::char_type(context),
-            TokenKind::Array(data_type, capacity) => {
+            TokenKind::Array(data_type, dimensions) => {
                 // TODO
                 // FIXME
                 // This should be fixed when implementing dynamic arrays using by Vector.
 
-                if let Some(capacity) = capacity {
-                    let capacity_raw: u64 = match *capacity {
-                        TokenKind::Literal(literal) => {
-                            match literal {
-                                ast::ast::Literal::Integer(integer_literal) => integer_literal_as_value(integer_literal).try_into().unwrap(),
-                                _ => compiler_error!("Invalid capacity for array data type.")
-                            }
-                        }
-                        _ => {
-                            compiler_error!("Invalid token given as capacity for array data type.")
-                        }
-                    };
+                for item in dimensions {
+                    if let Some(capacity) = item {
+                        match capacity {
+                            TokenKind::Literal(literal) => {
+                                // match literal {
+                                //     ast::ast::Literal::Integer(integer_literal) => integer_literal_as_value(integer_literal).try_into().unwrap(),
+                                //     _ => compiler_error!("Invalid capacity for array data type.")
+                                // };
 
-                    return Compiler::array_type(context, Compiler::token_as_data_type(context, *data_type), capacity_raw);
-                } else{ 
-                    compiler_error!("dynamic arrays not implemented yet")
+                            }
+                            _ => compiler_error!("Invalid token given to cast to a GCCJIT type.")
+                        }
+                    }
                 }
+
+                // return Compiler::array_type(context, Compiler::token_as_data_type(context, *data_type), capacity_raw);
+                todo!()
             }
             _ => compiler_error!("Invalid token given to cast to a GCCJIT type."),
         }

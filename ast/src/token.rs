@@ -1,8 +1,7 @@
+use crate::ast::{Identifier, Literal};
 use std::fmt;
 
-use crate::ast::Literal;
-
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
@@ -80,8 +79,8 @@ pub enum TokenKind {
     True,
     False,
 
-    // DataType, Capacity 
-    Array(Box<TokenKind>, Option<Box<TokenKind>>),
+    // Identifier, DataType, Dimensions
+    Array(Box<TokenKind>, Vec<Option<TokenKind>>),
 
     // Object Visibility Keywords
     Extern,
@@ -140,13 +139,10 @@ impl fmt::Display for TokenKind {
             Self::F32 => write!(f, "f32"),
             Self::F64 => write!(f, "f64"),
             Self::Void => write!(f, "void"),
-            Self::Array(data_type, capacity) => {
-                if let Some(capacity) = capacity {
-                    write!(f, "{}[{}]", *data_type, capacity)
-                } else {
-                    write!(f, "{}[]", *data_type)
-                }
-            },
+            Self::Array(data_type, array) => {
+                // TODO
+                todo!()
+            }
             Self::String => write!(f, "string"),
             // ETC
             Self::Illegal => write!(f, "ILLEGAL"),

@@ -390,17 +390,26 @@ impl<'a> Parser<'a> {
 
         self.next_token(); // consume the data type
 
+        // Check for array data type
         if self.current_token_is(TokenKind::LeftBracket) {
-            self.next_token();
+            let mut dimensions: Vec<Option<TokenKind>> = Vec::new();
 
-            let mut capacity: Option<Box<TokenKind>> = None;
-            if let TokenKind::Literal(_) = self.current_token.kind.clone() {
-                capacity = Some(Box::new(self.current_token.kind.clone()));
+            while self.current_token_is(TokenKind::LeftBracket) {
+                let mut capacity: Option<TokenKind> = None;
+
                 self.next_token();
+
+                if let TokenKind::Literal(_) = self.current_token.kind.clone() {
+                    capacity = Some(self.current_token.kind.clone());
+                    self.next_token();
+                }
+
+                self.expect_current(TokenKind::RightBracket)?;
+
+                dimensions.push(capacity);
             }
 
-            self.expect_current(TokenKind::RightBracket)?;
-            Ok(TokenKind::Array(Box::new(data_type), capacity))
+            Ok(TokenKind::Array(Box::new(data_type), dimensions))
         } else {
             Ok(data_type)
         }
@@ -435,7 +444,6 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::Colon) {
             self.next_token(); // consume the colon
 
-            
             variable_type = Some(self.parse_type_token()?);
         }
 
@@ -998,8 +1006,6 @@ impl<'a> Parser<'a> {
 
         let identifer = self.current_token.clone();
 
-        dbg!("parse array index");
-
         if let TokenKind::Identifier { name } = identifer.kind {
             let mut dimensions: Vec<Array> = Vec::new();
 
@@ -1037,18 +1043,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_single_array_items(&mut self) -> Result<(), ParseError> {
-
         todo!()
     }
 
     fn parse_array_items(&mut self) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
 
-
-        dbg!(self.current_token.kind.clone());
-
         let elements = self.parse_expression_series(TokenKind::RightBracket)?;
-        dbg!(elements.clone());
 
         Ok(Expression::Array(Array {
             elements: elements.0,
