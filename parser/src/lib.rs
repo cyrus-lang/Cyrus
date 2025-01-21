@@ -435,6 +435,7 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::Colon) {
             self.next_token(); // consume the colon
 
+            
             variable_type = Some(self.parse_type_token()?);
         }
 
@@ -997,6 +998,8 @@ impl<'a> Parser<'a> {
 
         let identifer = self.current_token.clone();
 
+        dbg!("parse array index");
+
         if let TokenKind::Identifier { name } = identifer.kind {
             let mut dimensions: Vec<Array> = Vec::new();
 
@@ -1033,10 +1036,19 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_array_items(&mut self) -> Result<Expression, ParseError> {
+    fn parse_single_array_items(&mut self) -> Result<(), ParseError> {
+
+        todo!()
+    }
+
+    fn parse_array_items(&mut self) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
 
+
+        dbg!(self.current_token.kind.clone());
+
         let elements = self.parse_expression_series(TokenKind::RightBracket)?;
+        dbg!(elements.clone());
 
         Ok(Expression::Array(Array {
             elements: elements.0,

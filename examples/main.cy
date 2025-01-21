@@ -1,4 +1,1 @@
-pub fn main(): i32 {
-   
-    return 0;   
-}
+#my_varl: i32[2] = [0];

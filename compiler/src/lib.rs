@@ -638,7 +638,7 @@ impl Compiler {
                     unsafe { gcc_jit_block_add_assignment(block, self.gccjit_location(array_index_assign.loc.clone()), lvalue, rvalue) };
                     rvalue
                 } else {
-                    panic!();
+                    compiler_error!("Array index assignment in invalid block.");
                 }
             }
             None => compiler_error!(format!(
