@@ -9,7 +9,6 @@ imoprt assert;
 #b: i64 = 20;
 #c: u32 = 30;
 #d: u64 = 40;
-#e: usize = 2;
 #f: f32 = 20.5;
 #g: f64 = 30.5;
 #h: string = "Cyrus";
@@ -103,14 +102,13 @@ println(my_range.include(0)); //=> false
 #input: string = "Cyrus";
 
 match input {
-    "Cyrus" {
+    case "Cyrus" {
         println("Hi Cyrus !_!");
     }
-    "Rust" {
+    case "Rust" {
         println("Hi Rust 0.0");
     }
-    "Python" | 
-    "Ruby" {
+    case "Python" | "Ruby" {
         println("Hi Hi");
     }
     default {
