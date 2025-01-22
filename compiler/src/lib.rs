@@ -618,16 +618,7 @@ impl Compiler {
     ) -> *mut gcc_jit_rvalue {
         match scope.borrow_mut().get(array_index_assign.identifier.name.clone()) {
             Some(variable) => {
-                let idx = 0;
-
-                let lvalue = unsafe {
-                    gcc_jit_context_new_array_access(
-                        self.context,
-                        self.gccjit_location(array_index_assign.loc.clone()),
-                        gcc_jit_lvalue_as_rvalue(*variable.borrow_mut()),
-                        gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), idx),
-                    )
-                };
+                let lvalue = self.array_dimension_as_lvalue(Rc::clone(&scope), *variable.borrow_mut(), array_index_assign.dimensions);
 
                 let rvalue = self.compile_expression(Rc::clone(&scope), array_index_assign.expr);
 
@@ -643,6 +634,7 @@ impl Compiler {
                             rvalue,
                         )
                     };
+                    
                     rvalue
                 } else {
                     compiler_error!("Array index assignment in invalid block.");
@@ -655,33 +647,44 @@ impl Compiler {
         }
     }
 
+    fn array_dimension_as_lvalue(
+        &mut self,
+        scope: ScopeRef,
+        variable: *mut gcc_jit_lvalue,
+        dimensions: Vec<Expression>,
+    ) -> *mut gcc_jit_lvalue {
+        let mut result: *mut gcc_jit_lvalue = variable;
+
+        for dim in dimensions {
+            if let Expression::Array(index_expr) = dim {
+                if let Expression::Array(value) = index_expr.elements[0].clone() {
+                    // TODO Implement ranges here
+
+                    let idx = self.compile_expression(Rc::clone(&scope), value.elements[0].clone());
+
+                    let lvalue = unsafe {
+                        gcc_jit_context_new_array_access(
+                            self.context,
+                            null_mut(),
+                            gcc_jit_lvalue_as_rvalue(result),
+                            idx,
+                        )
+                    };
+
+                    result = lvalue;
+                }
+            }
+        }
+
+        result
+    }
+
     fn compile_array_index(&mut self, scope: ScopeRef, array_index: ArrayIndex) -> *mut gcc_jit_rvalue {
         match scope.borrow_mut().get(array_index.identifier.name.clone()) {
             Some(variable) => {
-                let mut result: *mut gcc_jit_rvalue = unsafe{ gcc_jit_lvalue_as_rvalue(*variable.borrow_mut()) };
+                let lvalue= self.array_dimension_as_lvalue(Rc::clone(&scope), *variable.borrow_mut(), array_index.dimensions);
 
-                for dim in array_index.dimensions {
-                    if let Expression::Array(index_expr) = dim {
-                        if let Expression::Array(value) = index_expr.elements[0].clone() {
-                            // TODO Implement ranges here
-                            
-                            let idx = self.compile_expression(Rc::clone(&scope), value.elements[0].clone());
-
-                            let lvalue = unsafe {
-                                gcc_jit_context_new_array_access(
-                                    self.context,
-                                    self.gccjit_location(array_index.loc.clone()),
-                                    result, 
-                                    idx,
-                                )
-                            };
-
-                            result = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
-                        }
-                    }
-                }
-
-                result
+                unsafe{ gcc_jit_lvalue_as_rvalue(lvalue) }
             }
             None => compiler_error!(format!(
                 "'{}' is not defined in this scope.",
