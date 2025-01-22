@@ -1007,19 +1007,11 @@ impl<'a> Parser<'a> {
         let identifer = self.current_token.clone();
 
         if let TokenKind::Identifier { name } = identifer.kind {
-            let mut dimensions: Vec<Array> = Vec::new();
+            let mut dimensions: Vec<Expression> = Vec::new();
 
             while self.peek_token_is(TokenKind::LeftBracket) {
                 let expr = self.parse_array_items()?;
-
-                if let Expression::Array(elements) = expr {
-                    dimensions.push(elements);
-                } else {
-                    return Err(format!(
-                        "Expected array expression to add to the array index dimensions but got '{}'.",
-                        expr
-                    ));
-                }
+                dimensions.push(expr);
             }
 
             let end = self.current_token.span.end;
@@ -1040,10 +1032,6 @@ impl<'a> Parser<'a> {
                 self.current_token.kind
             ));
         }
-    }
-
-    fn parse_single_array_items(&mut self) -> Result<(), ParseError> {
-        todo!()
     }
 
     fn parse_array_items(&mut self) -> Result<Expression, ParseError> {

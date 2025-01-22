@@ -91,14 +91,7 @@ impl fmt::Display for Expression {
                 write!(f, "[{}]", array_items_to_string(array.clone()))
             }
             Expression::ArrayIndex(array_index) => {
-                let mut dimensions_str = String::new();
-
-                for array in array_index.dimensions.clone() {
-                    let arr_str = format!("[{}]", array_items_to_string(array));
-                    dimensions_str += arr_str.as_str();
-                }
-
-                write!(f, "{}{}", array_index.identifier.name, dimensions_str)
+                todo!()
             }
             Expression::Assignment(assignment) => write!(f, "{} = {}", assignment.identifier, assignment.expr),
             Expression::ArrayIndexAssign(array_index_assign) => {

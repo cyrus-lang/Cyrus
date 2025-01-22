@@ -4,14 +4,14 @@ use ast::{
 };
 use builtins::macros::retrieve_builtin_func;
 use gccjit_sys::*;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distributions::Alphanumeric, seq::index, Rng};
 use scope::{Scope, ScopeRef};
 use std::{
     cell::RefCell,
     collections::HashMap,
     env::var,
     ffi::CString,
-    ptr::null_mut,
+    ptr::{null, null_mut},
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -629,13 +629,20 @@ impl Compiler {
                     )
                 };
 
-                let rvalue= self.compile_expression(Rc::clone(&scope), array_index_assign.expr);
+                let rvalue = self.compile_expression(Rc::clone(&scope), array_index_assign.expr);
 
-                let block_func= self.block_func_ref.lock().unwrap();
+                let block_func = self.block_func_ref.lock().unwrap();
                 if let Some(block) = block_func.block {
                     drop(block_func);
 
-                    unsafe { gcc_jit_block_add_assignment(block, self.gccjit_location(array_index_assign.loc.clone()), lvalue, rvalue) };
+                    unsafe {
+                        gcc_jit_block_add_assignment(
+                            block,
+                            self.gccjit_location(array_index_assign.loc.clone()),
+                            lvalue,
+                            rvalue,
+                        )
+                    };
                     rvalue
                 } else {
                     compiler_error!("Array index assignment in invalid block.");
@@ -651,16 +658,30 @@ impl Compiler {
     fn compile_array_index(&mut self, scope: ScopeRef, array_index: ArrayIndex) -> *mut gcc_jit_rvalue {
         match scope.borrow_mut().get(array_index.identifier.name.clone()) {
             Some(variable) => {
-                let lvalue = unsafe {
-                    gcc_jit_context_new_array_access(
-                        self.context,
-                        self.gccjit_location(array_index.loc.clone()),
-                        gcc_jit_lvalue_as_rvalue(*variable.borrow_mut()),
-                        gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i32_type(self.context), 0),
-                    )
-                };
+                let mut result: *mut gcc_jit_rvalue = unsafe{ gcc_jit_lvalue_as_rvalue(*variable.borrow_mut()) };
 
-                unsafe { gcc_jit_lvalue_as_rvalue(lvalue) }
+                for dim in array_index.dimensions {
+                    if let Expression::Array(index_expr) = dim {
+                        if let Expression::Array(value) = index_expr.elements[0].clone() {
+                            // TODO Implement ranges here
+                            
+                            let idx = self.compile_expression(Rc::clone(&scope), value.elements[0].clone());
+
+                            let lvalue = unsafe {
+                                gcc_jit_context_new_array_access(
+                                    self.context,
+                                    self.gccjit_location(array_index.loc.clone()),
+                                    result, 
+                                    idx,
+                                )
+                            };
+
+                            result = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
+                        }
+                    }
+                }
+
+                result
             }
             None => compiler_error!(format!(
                 "'{}' is not defined in this scope.",
@@ -675,36 +696,33 @@ impl Compiler {
         array: Array,
         mut array_type: *mut gcc_jit_type,
     ) -> *mut gcc_jit_rvalue {
-        todo!()
-        // let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
-        // for expr in array.elements {
-        //     array_elements.push(self.compile_expression(Rc::clone(&scope), expr));
-        // }
+        let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
+        for expr in array.elements {
+            array_elements.push(self.compile_expression(Rc::clone(&scope), expr));
+        }
 
-        // let mut element_type = Compiler::void_type(self.context);
-        // if array_elements.len() > 0 {
-        //     element_type = unsafe { gcc_jit_rvalue_get_type(array_elements[0]) };
+        let element_type = unsafe { gcc_jit_rvalue_get_type(array_elements[0]) };
 
-        //     for element in array_elements.clone() {
-        //         if unsafe { gcc_jit_rvalue_get_type(element) } != element_type {
-        //             compiler_error!("Array elements must have the same data type.");
-        //         }
-        //     }
-        // }
+        if array_type.is_null() {
+            array_type = unsafe {
+                gcc_jit_context_new_array_type(
+                    self.context,
+                    self.gccjit_location(array.loc.clone()),
+                    element_type,
+                    array_elements.len() as u64,
+                )
+            }
+        }
 
-        // if array_type.is_null() {
-        //     array_type = Compiler::array_type(self.context, element_type, array_elements.len() as u64);
-        // }
-
-        // unsafe {
-        //     gcc_jit_context_new_array_constructor(
-        //         self.context,
-        //         self.gccjit_location(array.loc),
-        //         array_type,
-        //         array_elements.len() as i32,
-        //         array_elements.as_mut_ptr(),
-        //     )
-        // }
+        unsafe {
+            gcc_jit_context_new_array_constructor(
+                self.context,
+                self.gccjit_location(array.loc),
+                array_type,
+                array_elements.len() as i32,
+                array_elements.as_mut_ptr(),
+            )
+        }
     }
 
     fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
