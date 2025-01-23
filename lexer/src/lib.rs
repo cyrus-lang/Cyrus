@@ -545,7 +545,6 @@ impl Lexer {
             "match" => TokenKind::Match,
             "struct" => TokenKind::Struct,
             "import" => TokenKind::Import,
-            "package" => TokenKind::Package,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "return" => TokenKind::Return,

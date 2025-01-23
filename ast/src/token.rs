@@ -57,7 +57,6 @@ pub enum TokenKind {
     Continue,
     Struct,
     Import,
-    Package,
     Decl,
     // Types
     I8,
@@ -123,7 +122,6 @@ impl fmt::Display for TokenKind {
             Self::Match => write!(f, "match"),
             Self::Struct => write!(f, "struct"),
             Self::Import => write!(f, "import"),
-            Self::Package => write!(f, "package"),
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
             Self::Return => write!(f, "return"),

@@ -195,12 +195,6 @@ mod tests {
     }
 
     #[test]
-    fn test_package_declaration() {
-        assert_parse("package sample;");
-        assert_parse("package root:sub:sub2;");
-    }
-
-    #[test]
     fn test_arrays() {
         assert_parse("#a: array = [1, 2, 3]");
         assert_parse("#a: array = [\"Cyrus\", \"Lang\"]");
