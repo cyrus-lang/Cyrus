@@ -46,8 +46,10 @@ struct LoopBlockPair {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct FuncMetadata {
-    pub func_type: FuncVisType,
-    pub ptr: *mut gcc_jit_function,
+    func_type: FuncVisType,
+    ptr: *mut gcc_jit_function,
+    return_type: *mut gcc_jit_type,
+    params: Vec<*mut gcc_jit_param>,
 }
 
 pub struct Compiler {
@@ -145,12 +147,25 @@ impl Compiler {
 
         for sb in import.sub_packages {
             let package_file_name = if sb.is_relative {
-                todo!()
+                sb.package_name.name.clone()
             } else {
                 format!("{}.cy", sb.package_name.name)
             };
-            let package_file_path = format!("{}/{}", dir_path, package_file_name);
-            let object_file_path = format!("{}/{}{}", dir_path, sb.package_name.name, ".o");
+
+            let package_file_path = if sb.is_relative {
+                sb.package_name.name.clone()
+            } else {
+                format!("{}/{}", dir_path, package_file_name)
+            };
+
+            let object_file_path = if sb.is_relative {
+                Path::new(&sb.package_name.name)
+                    .with_extension("o")
+                    .to_string_lossy()
+                    .to_string()
+            } else {
+                format!("{}/{}{}", dir_path, sb.package_name.name, ".o")
+            };
 
             let (program, file_name) = parse_program(package_file_path.clone());
             let mut compiler = Compiler::new(program, package_file_path.clone(), file_name);
@@ -159,19 +174,20 @@ impl Compiler {
             compiler.make_dump_file("./tmp/sample".to_string());
             compiler.make_object_file(object_file_path.clone());
 
-            for (key, value) in compiler.func_table.borrow_mut().clone() {
-                if value.func_type == FuncVisType::Pub {
+            for (key, mut value) in compiler.func_table.borrow_mut().clone() {
+                if value.func_type == FuncVisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
                     let imported_func_name = CString::new(key.clone()).unwrap();
+
                     let decl_func = unsafe {
                         gcc_jit_context_new_function(
                             self.context,
-                            null_mut(),
+                            self.gccjit_location(import.loc.clone()),
                             gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED,
-                            Compiler::i32_type(self.context),
+                            value.return_type,
                             imported_func_name.as_ptr(),
-                            0,
-                            [].as_mut_ptr(),
-                            0,
+                            value.params.len().try_into().unwrap(),
+                            value.params.as_mut_ptr(),
+                            0, // FIXME
                         )
                     };
 
@@ -180,6 +196,8 @@ impl Compiler {
                         FuncMetadata {
                             func_type: FuncVisType::Extern,
                             ptr: decl_func,
+                            params: value.params,
+                            return_type: value.return_type,
                         },
                     );
                 }
@@ -550,14 +568,14 @@ impl Compiler {
             FuncVisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
         };
 
-        let mut ret_type: *mut gcc_jit_type = Compiler::void_type(self.context);
+        let mut return_type: *mut gcc_jit_type = Compiler::void_type(self.context);
 
         if let Some(token) = func_def.return_type {
-            ret_type = Compiler::token_as_data_type(self.context, token.kind);
+            return_type = Compiler::token_as_data_type(self.context, token.kind);
         }
 
         let mut params: Vec<*mut gcc_jit_param> = Vec::new();
-        let mut func_param_records = FuncParamsRecords::new();
+        let mut func_params = FuncParamsRecords::new();
 
         for (idx, func_def_param) in func_def.params.iter().enumerate() {
             let name = CString::new(func_def_param.identifier.name.clone()).unwrap();
@@ -581,7 +599,7 @@ impl Compiler {
 
             params.push(param);
 
-            func_param_records.push(FuncParamRecord {
+            func_params.push(FuncParamRecord {
                 param_index: idx as i32,
                 param_name: func_def_param.identifier.name.clone(),
             });
@@ -593,7 +611,7 @@ impl Compiler {
                 self.context,
                 self.gccjit_location(func_def.loc.clone()),
                 func_type,
-                ret_type,
+                return_type,
                 func_name.as_ptr(),
                 params.len().try_into().unwrap(),
                 params.as_mut_ptr(),
@@ -601,7 +619,7 @@ impl Compiler {
             )
         };
 
-        self.param_table.borrow_mut().insert(func, func_param_records);
+        self.param_table.borrow_mut().insert(func, func_params);
 
         // Build func block
         let name = CString::new("entry").unwrap();
@@ -633,6 +651,8 @@ impl Compiler {
             FuncMetadata {
                 func_type: func_def.vis_type,
                 ptr: func,
+                params,
+                return_type,
             },
         );
     }
