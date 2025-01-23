@@ -46,6 +46,17 @@ impl Compiler {
             )
         };
     }
+    
+    pub fn make_dynamic_library(&self, file_path: String) {
+        unsafe {
+            let file_path = CString::new(file_path).unwrap();
+            gcc_jit_context_compile_to_file(
+                self.context,
+                gccjit_sys::gcc_jit_output_kind::GCC_JIT_OUTPUT_KIND_DYNAMIC_LIBRARY,
+                file_path.as_ptr(),
+            )
+        };
+    }
 
     pub fn make_dump_file(&self, file_path: String) {
         unsafe {
