@@ -4,13 +4,12 @@ use ast::{
 };
 use builtins::macros::retrieve_builtin_func;
 use gccjit_sys::*;
-use parser::{parse_program, Parser};
+use parser::parse_program;
 use rand::{distributions::Alphanumeric, Rng};
 use scope::{Scope, ScopeRef};
 use std::{
     cell::RefCell,
     collections::HashMap,
-    env::current_dir,
     ffi::CString,
     fs::remove_file,
     path::Path,
@@ -45,18 +44,25 @@ struct LoopBlockPair {
     increment_block: *mut gcc_jit_block,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct FuncMetadata {
+    pub func_type: FuncVisType,
+    pub ptr: *mut gcc_jit_function,
+}
+
 pub struct Compiler {
     file_name: String,
     file_path: String,
     program: Program,
     context: *mut gcc_jit_context,
-    func_table: RefCell<HashMap<String, *mut gcc_jit_function>>,
+    func_table: RefCell<HashMap<String, FuncMetadata>>,
     global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
     param_table: RefCell<HashMap<*mut gcc_jit_function, FuncParamsRecords>>,
     block_func_ref: Arc<Mutex<Box<BlockFuncPair>>>,
     terminated_blocks: Vec<*mut gcc_jit_block>,
     parent_block: Option<*mut gcc_jit_block>,
     active_loop: Option<LoopBlockPair>,
+    compiled_object_files: Vec<String>,
 }
 
 impl Compiler {
@@ -77,6 +83,7 @@ impl Compiler {
                 file_name_cstr.as_ptr(),
             );
         }
+
         unsafe { gcc_jit_context_set_bool_allow_unreachable_blocks(context, 1) };
 
         Self {
@@ -94,6 +101,7 @@ impl Compiler {
             active_loop: None,
             file_name,
             file_path,
+            compiled_object_files: Vec::new(),
         }
     }
 
@@ -142,22 +150,44 @@ impl Compiler {
                 format!("{}.cy", sb.package_name.name)
             };
             let package_file_path = format!("{}/{}", dir_path, package_file_name);
-            let object_file_path = format!(
-                "{}/{}_{}{}",
-                dir_path,
-                self.new_block_name(),
-                sb.package_name.name,
-                ".o"
-            );
+            let object_file_path = format!("{}/{}{}", dir_path, sb.package_name.name, ".o");
 
             let (program, file_name) = parse_program(package_file_path.clone());
-            let compiler = Compiler::new(program, package_file_path, file_name);
+            let mut compiler = Compiler::new(program, package_file_path.clone(), file_name);
+
+            compiler.compile();
+            compiler.make_dump_file("./tmp/sample".to_string());
             compiler.make_object_file(object_file_path.clone());
 
-            remove_file(object_file_path).unwrap();
+            for (key, value) in compiler.func_table.borrow_mut().clone() {
+                if value.func_type == FuncVisType::Pub {
+                    let imported_func_name = CString::new(key.clone()).unwrap();
+                    let decl_func = unsafe {
+                        gcc_jit_context_new_function(
+                            self.context,
+                            null_mut(),
+                            gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED,
+                            Compiler::i32_type(self.context),
+                            imported_func_name.as_ptr(),
+                            0,
+                            [].as_mut_ptr(),
+                            0,
+                        )
+                    };
 
-            // TODO
-            // Add genereated object file to GCCJTT compiler arguments (linkage stage)
+                    self.func_table.borrow_mut().insert(
+                        key,
+                        FuncMetadata {
+                            func_type: FuncVisType::Extern,
+                            ptr: decl_func,
+                        },
+                    );
+                }
+            }
+            self.compiled_object_files.push(object_file_path.clone());
+
+            let optname = CString::new(object_file_path).unwrap();
+            unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
         }
     }
 
@@ -514,7 +544,7 @@ impl Compiler {
 
     fn compile_func_def(&mut self, scope: ScopeRef, func_def: FuncDef) {
         let func_type = match func_def.vis_type {
-            FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
+            FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED,
             FuncVisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
             FuncVisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
             FuncVisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
@@ -598,7 +628,13 @@ impl Compiler {
             ));
         }
 
-        self.func_table.borrow_mut().insert(func_def.name, func);
+        self.func_table.borrow_mut().insert(
+            func_def.name,
+            FuncMetadata {
+                func_type: func_def.vis_type,
+                ptr: func,
+            },
+        );
     }
 
     fn load_lvalue_rvalue(
@@ -815,7 +851,7 @@ impl Compiler {
                     let rvalue = gcc_jit_context_new_call(
                         self.context,
                         loc.clone(),
-                        *func,
+                        func.ptr,
                         args.len().try_into().unwrap(),
                         args.as_mut_ptr(),
                     );
@@ -1076,5 +1112,9 @@ impl Compiler {
 impl Drop for Compiler {
     fn drop(&mut self) {
         unsafe { gcc_jit_context_release(self.context) };
+
+        for item in self.compiled_object_files.clone() {
+            remove_file(item).unwrap();
+        }
     }
 }

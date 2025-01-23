@@ -270,7 +270,7 @@ pub struct FuncDef {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum FuncVisType {
     Extern,
     Pub,
