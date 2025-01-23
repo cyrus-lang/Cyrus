@@ -2,11 +2,40 @@ use ast::ast::*;
 use ast::token::*;
 use lexer::*;
 use precedences::{token_precedence_of, Precedence};
+use utils::compiler_error;
+use utils::fs::read_file;
 
 mod parser_test;
 mod precedences;
 
 type ParseError = String;
+
+pub fn parse_program(file_path: String) -> (Program, String) {
+    let file = read_file(file_path.clone());
+    let code = file.0;
+
+    let mut lexer = Lexer::new(code, file_path);
+    let mut parser = Parser::new(&mut lexer);
+
+    let program = match parser.parse() {
+        Ok(result) => {
+            if let Node::Program(program) = result {
+                program
+            } else {
+                compiler_error!("Expected a program given as input to the compiler but got unknown.");
+            }
+        }
+        Err(errors) => {
+            for error in errors {
+                println!("{}", error);
+            }
+
+            std::process::exit(1);
+        }
+    };
+
+    (program, file.1)
+}
 
 #[derive(Debug)]
 pub struct Parser<'a> {
@@ -43,10 +72,10 @@ impl<'a> Parser<'a> {
             TokenKind::Return => self.parse_return_statement(),
             TokenKind::Hashtag => self.parse_variable_declaration(),
             TokenKind::For => self.parse_for_statement(),
-            TokenKind::Package => self.parse_package_declaration(),
             TokenKind::Break => self.parse_break_statement(),
             TokenKind::Continue => self.parse_continue_statement(),
             TokenKind::LeftBrace => Ok(Statement::BlockStatement(self.parse_block_statement()?)),
+            TokenKind::Import => self.parse_import_statment(),
             _ => self.parse_expression_statement(),
         }
     }
@@ -133,19 +162,41 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_package_declaration(&mut self) -> Result<Statement, ParseError> {
+    fn parse_import_statment(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
 
-        if self.current_token_is(TokenKind::Package) {
-            self.next_token(); // consume package keyword
+        if self.current_token_is(TokenKind::Import) {
+            self.next_token(); // consume import keyword
 
-            let mut sub_packages: Vec<Identifier> = vec![];
+            let mut package_paths: Vec<PackagePath> = vec![];
 
             while !self.current_token_is(TokenKind::Semicolon) {
                 match self.current_token.kind.clone() {
                     TokenKind::Identifier { name } => {
-                        sub_packages.push(Identifier {
-                            name,
+                        package_paths.push(PackagePath {
+                            package_name: Identifier {
+                                name,
+                                span: self.current_token.span.clone(),
+                                loc: self.current_location(),
+                            },
+                            is_relative: false,
+                            span: Span {
+                                start,
+                                end: self.current_token.span.end,
+                            },
+                            loc: self.current_location(),
+                        });
+
+                        self.next_token(); // consume identifier
+                    }
+                    TokenKind::Literal(Literal::String(value)) => {
+                        package_paths.push(PackagePath {
+                            package_name: Identifier {
+                                name: value.raw,
+                                span: value.span,
+                                loc: self.current_location(),
+                            },
+                            is_relative: true,
                             span: Span {
                                 start,
                                 end: self.current_token.span.end,
@@ -173,14 +224,14 @@ impl<'a> Parser<'a> {
                 end: self.current_token.span.end,
             };
 
-            return Ok(Statement::Package(Package {
-                sub_packages,
+            return Ok(Statement::Import(Import {
+                sub_packages: package_paths,
                 span,
                 loc: self.current_location(),
             }));
         } else {
             Err(format!(
-                "Invalid token '{}' found in package declaration.",
+                "Invalid token '{}' found in import statement.",
                 self.current_token.kind
             ))
         }

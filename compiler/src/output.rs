@@ -6,7 +6,7 @@ use utils::compiler_error;
 impl Compiler {
     pub fn execute(&self) {
         let result = unsafe { gcc_jit_context_compile(self.context) };
-
+    
         if result.is_null() {
             exit(1);
         }

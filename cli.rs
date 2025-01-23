@@ -1,11 +1,6 @@
-use std::ffi::CString;
-
-use ast::ast::{Node, Program};
 use clap::Parser as ClapParser;
 use compiler::Compiler;
-use lexer::Lexer;
-use parser::Parser;
-use utils::{compiler_error, fs::read_file};
+use parser::parse_program;
 
 #[derive(clap::Parser, Clone)]
 #[command(author, version, about, long_about = None)]
@@ -22,40 +17,15 @@ enum Commands {
     Version,
 }
 
-fn parse_program(file_path: String) -> (Program, String) {
-    let file = read_file(file_path.clone());
-    let code = file.0;
-
-    let mut lexer = Lexer::new(code, file_path);
-    let mut parser = Parser::new(&mut lexer);
-
-    let program = match parser.parse() {
-        Ok(result) => {
-            if let Node::Program(program) = result {
-                program
-            } else {
-                compiler_error!("Expected a program given as input to the compiler but got unknown.");
-            }
-        }
-        Err(errors) => {
-            for error in errors {
-                println!("{}", error);
-            }
-
-            std::process::exit(1);
-        }
-    };
-
-    (program, file.1)
-}
-
 macro_rules! init_compiler {
     ($file_path:expr) => {{
         let (program, file_name) = parse_program($file_path);
-        let mut compiler = Compiler::new(program, file_name);
-        compiler.compile();
+        let mut compiler = Compiler::new(program, $file_path, file_name);
+
         #[cfg(debug_assertions)]
         compiler.set_debug_info(true);
+
+        compiler.compile();
         compiler
     }};
 }
@@ -66,15 +36,15 @@ pub fn main() {
 
     match args.cmd {
         Commands::Run { file_path } => {
-            let compiler = init_compiler!(file_path);
+            let compiler = init_compiler!(file_path.clone());
             compiler.execute();
         }
         Commands::Dump { file_path, output_path } => {
-            let compiler = init_compiler!(file_path);
+            let compiler = init_compiler!(file_path.clone());
             compiler.make_dump_file(output_path);
         }
         Commands::Build { file_path, output_path } => {
-            let compiler = init_compiler!(file_path);
+            let compiler = init_compiler!(file_path.clone());
             compiler.make_executable_file(output_path);
         }
         Commands::Version => {

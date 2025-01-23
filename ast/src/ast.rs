@@ -178,7 +178,6 @@ pub enum Statement {
     For(For),
     Match(Match),
     Struct(Struct),
-    Package(Package),
     Import(Import),
     BlockStatement(BlockStatement),
     Break(Location),
@@ -201,15 +200,17 @@ pub struct Return {
 }
 
 #[derive(Debug, Clone)]
-pub struct Package {
-    pub sub_packages: Vec<Identifier>,
+pub struct PackagePath {
+    pub package_name: Identifier,
+    pub is_relative: bool,
     pub span: Span,
     pub loc: Location,
 }
 
+
 #[derive(Debug, Clone)]
 pub struct Import {
-    pub name: Identifier,
+    pub sub_packages: Vec<PackagePath>,
     pub span: Span,
     pub loc: Location,
 }

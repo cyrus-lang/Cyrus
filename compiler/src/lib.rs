@@ -4,14 +4,17 @@ use ast::{
 };
 use builtins::macros::retrieve_builtin_func;
 use gccjit_sys::*;
-use rand::{distributions::Alphanumeric, seq::index, Rng};
+use parser::{parse_program, Parser};
+use rand::{distributions::Alphanumeric, Rng};
 use scope::{Scope, ScopeRef};
 use std::{
     cell::RefCell,
     collections::HashMap,
-    env::var,
+    env::current_dir,
     ffi::CString,
-    ptr::{null, null_mut},
+    fs::remove_file,
+    path::Path,
+    ptr::null_mut,
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -44,6 +47,7 @@ struct LoopBlockPair {
 
 pub struct Compiler {
     file_name: String,
+    file_path: String,
     program: Program,
     context: *mut gcc_jit_context,
     func_table: RefCell<HashMap<String, *mut gcc_jit_function>>,
@@ -62,9 +66,17 @@ impl Compiler {
         rand_string
     }
 
-    pub fn new(program: Program, file_name: String) -> Self {
+    pub fn new(program: Program, file_path: String, file_name: String) -> Self {
         let context = unsafe { gcc_jit_context_acquire() };
 
+        let file_name_cstr = CString::new(file_name.clone()).unwrap();
+        unsafe {
+            gcc_jit_context_set_str_option(
+                context,
+                gcc_jit_str_option::GCC_JIT_STR_OPTION_PROGNAME,
+                file_name_cstr.as_ptr(),
+            );
+        }
         unsafe { gcc_jit_context_set_bool_allow_unreachable_blocks(context, 1) };
 
         Self {
@@ -81,6 +93,7 @@ impl Compiler {
             parent_block: None,
             active_loop: None,
             file_name,
+            file_path,
         }
     }
 
@@ -106,8 +119,7 @@ impl Compiler {
             Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
             Statement::Struct(_) => todo!(),
-            Statement::Package(statement) => todo!(),
-            Statement::Import(statement) => todo!(),
+            Statement::Import(statement) => self.compile_import(statement),
             Statement::Return(statement) => self.compile_return(scope, statement),
             Statement::Break(loc) => self.compile_break_statement(loc),
             Statement::Continue(loc) => self.compile_continue_statement(loc),
@@ -116,6 +128,36 @@ impl Compiler {
                 statement.body,
             ),
             _ => compiler_error!(format!("Invalid statement: {:?}", stmt)),
+        }
+    }
+
+    fn compile_import(&mut self, import: Import) {
+        let file_path = self.file_path.clone();
+        let dir_path = Path::new(&file_path).parent().unwrap().to_str().unwrap();
+
+        for sb in import.sub_packages {
+            let package_file_name = if sb.is_relative {
+                todo!()
+            } else {
+                format!("{}.cy", sb.package_name.name)
+            };
+            let package_file_path = format!("{}/{}", dir_path, package_file_name);
+            let object_file_path = format!(
+                "{}/{}_{}{}",
+                dir_path,
+                self.new_block_name(),
+                sb.package_name.name,
+                ".o"
+            );
+
+            let (program, file_name) = parse_program(package_file_path.clone());
+            let compiler = Compiler::new(program, package_file_path, file_name);
+            compiler.make_object_file(object_file_path.clone());
+
+            remove_file(object_file_path).unwrap();
+
+            // TODO
+            // Add genereated object file to GCCJTT compiler arguments (linkage stage)
         }
     }
 
@@ -618,7 +660,11 @@ impl Compiler {
     ) -> *mut gcc_jit_rvalue {
         match scope.borrow_mut().get(array_index_assign.identifier.name.clone()) {
             Some(variable) => {
-                let lvalue = self.array_dimension_as_lvalue(Rc::clone(&scope), *variable.borrow_mut(), array_index_assign.dimensions);
+                let lvalue = self.array_dimension_as_lvalue(
+                    Rc::clone(&scope),
+                    *variable.borrow_mut(),
+                    array_index_assign.dimensions,
+                );
 
                 let rvalue = self.compile_expression(Rc::clone(&scope), array_index_assign.expr);
 
@@ -634,7 +680,7 @@ impl Compiler {
                             rvalue,
                         )
                     };
-                    
+
                     rvalue
                 } else {
                     compiler_error!("Array index assignment in invalid block.");
@@ -682,9 +728,10 @@ impl Compiler {
     fn compile_array_index(&mut self, scope: ScopeRef, array_index: ArrayIndex) -> *mut gcc_jit_rvalue {
         match scope.borrow_mut().get(array_index.identifier.name.clone()) {
             Some(variable) => {
-                let lvalue= self.array_dimension_as_lvalue(Rc::clone(&scope), *variable.borrow_mut(), array_index.dimensions);
+                let lvalue =
+                    self.array_dimension_as_lvalue(Rc::clone(&scope), *variable.borrow_mut(), array_index.dimensions);
 
-                unsafe{ gcc_jit_lvalue_as_rvalue(lvalue) }
+                unsafe { gcc_jit_lvalue_as_rvalue(lvalue) }
             }
             None => compiler_error!(format!(
                 "'{}' is not defined in this scope.",
