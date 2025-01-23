@@ -243,9 +243,6 @@ impl Compiler {
             }
             self.compiled_object_files.push(library_path.clone());
 
-            // let optname = CString::new("-shared -fPIC").unwrap();
-            // unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
-
             let optname = CString::new(library_path).unwrap();
             unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
         }
