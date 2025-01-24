@@ -68,6 +68,7 @@ pub struct Compiler {
     parent_block: Option<*mut gcc_jit_block>,
     active_loop: Option<LoopBlockPair>,
     compiled_object_files: Vec<String>,
+    opts: CompilerOptions
 }
 
 impl Compiler {
@@ -78,7 +79,17 @@ impl Compiler {
     }
 
     pub fn set_opts(&mut self, opts: CompilerOptions) {
+        self.opts = opts.clone();
 
+        for item in opts.library_path {
+            let optname = CString::new(format!("-L{}", item)).unwrap();
+            unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
+        }
+
+        for item in opts.libraries {
+            let optname = CString::new(format!("-l{}", item)).unwrap();
+            unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
+        }
     }
 
     pub fn new(program: Program, file_path: String, file_name: String) -> Self {
@@ -111,6 +122,7 @@ impl Compiler {
             file_name,
             file_path,
             compiled_object_files: Vec::new(),
+            opts: CompilerOptions::default(),
         }
     }
 
