@@ -58,10 +58,17 @@ impl Compiler {
         };
     }
 
-    pub fn make_dump_file(&self, file_path: String) {
+    pub fn make_dump_ir(&self, file_path: String) {
         unsafe {
             let file_path = CString::new(file_path).unwrap();
             gcc_jit_context_dump_to_file(self.context, file_path.as_ptr(), self.cbool(true))
+        };
+    }
+
+    pub fn make_dump_asm(&self, file_path: String) {
+        unsafe {
+            let file_path = CString::new(file_path).unwrap();
+            gcc_jit_context_compile_to_file(self.context, gcc_jit_output_kind::GCC_JIT_OUTPUT_KIND_ASSEMBLER, file_path.as_ptr())
         };
     }
 

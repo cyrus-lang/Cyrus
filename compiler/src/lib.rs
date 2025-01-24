@@ -4,6 +4,7 @@ use ast::{
 };
 use builtins::macros::retrieve_builtin_func;
 use gccjit_sys::*;
+use options::CompilerOptions;
 use parser::parse_program;
 use rand::{distributions::Alphanumeric, Rng};
 use scope::{Scope, ScopeRef};
@@ -24,6 +25,7 @@ mod location;
 mod output;
 mod scope;
 mod types;
+pub mod options;
 
 // Tracks the current GCC JIT block and function being compiled.
 struct BlockFuncPair {
@@ -73,6 +75,10 @@ impl Compiler {
         let rng = rand::thread_rng();
         let rand_string: String = rng.sample_iter(&Alphanumeric).take(10).map(char::from).collect();
         rand_string
+    }
+
+    pub fn set_opts(&mut self, opts: CompilerOptions) {
+
     }
 
     pub fn new(program: Program, file_path: String, file_name: String) -> Self {
@@ -126,6 +132,7 @@ impl Compiler {
                 self.compile_expression(scope, expr.clone());
             }
             Statement::FuncDef(function) => self.compile_func_def(scope, function.clone()),
+            Statement::FuncDecl(function) => self.compile_func_decl(scope, function.clone()),
             Statement::If(statement) => self.compile_if_statement(scope, statement),
             Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
@@ -142,17 +149,8 @@ impl Compiler {
         }
     }
 
-    fn get_dynamic_library_extension(&self) -> &'static str {
+    fn object_file_extension(&self) -> &'static str {
         "o"
-        // if cfg!(target_os = "windows") {
-        //     "dll"
-        // } else if cfg!(target_os = "macos") {
-        //     "dylib"
-        // } else if cfg!(target_os = "linux") {
-        //     "so"
-        // } else {
-        //     panic!("Unsupported operating system");
-        // }
     }
 
     fn compile_import(&mut self, import: Import) {
@@ -174,16 +172,11 @@ impl Compiler {
 
             let library_path = if sb.is_relative {
                 Path::new(&sb.package_name.name)
-                    .with_extension(self.get_dynamic_library_extension())
+                    .with_extension(self.object_file_extension())
                     .to_string_lossy()
                     .to_string()
             } else {
-                format!(
-                    "{}/{}.{}",
-                    dir_path,
-                    sb.package_name.name,
-                    self.get_dynamic_library_extension()
-                )
+                format!("{}/{}.{}", dir_path, sb.package_name.name, self.object_file_extension())
             };
 
             let (program, file_name) = parse_program(package_file_path.clone());
@@ -191,7 +184,6 @@ impl Compiler {
 
             compiler.compile();
             compiler.make_object_file(library_path.clone());
-            compiler.make_dump_file("./tmp/sample".to_string());
 
             for (key, value) in compiler.func_table.borrow_mut().clone() {
                 if value.func_type == FuncVisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
@@ -256,11 +248,14 @@ impl Compiler {
             FuncVisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
         };
 
-        let return_type_token = func_def.return_type.unwrap_or(Token {
-            kind: TokenKind::Void,
-            span: Span::new_empty_span(),
-        }).kind;
-        let return_type= Compiler::token_as_data_type(self.context, return_type_token.clone());
+        let return_type_token = func_def
+            .return_type
+            .unwrap_or(Token {
+                kind: TokenKind::Void,
+                span: Span::new_empty_span(),
+            })
+            .kind;
+        let return_type = Compiler::token_as_data_type(self.context, return_type_token.clone());
 
         let mut params: Vec<*mut gcc_jit_param> = Vec::new();
         let mut func_params = FuncParamsRecords::new();
@@ -340,6 +335,81 @@ impl Compiler {
                 func_type: func_def.vis_type,
                 ptr: func,
                 params: func_def.params,
+                return_type: return_type_token,
+            },
+        );
+    }
+
+    fn compile_func_decl(&mut self, scope: ScopeRef, func_decl: FuncDecl) {
+        let func_type = match func_decl.vis_type {
+            FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
+            FuncVisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
+            FuncVisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
+            FuncVisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
+        };
+
+        let return_type_token = func_decl
+            .return_type
+            .unwrap_or(Token {
+                kind: TokenKind::Void,
+                span: Span::new_empty_span(),
+            })
+            .kind;
+        let return_type = Compiler::token_as_data_type(self.context, return_type_token.clone());
+
+        let mut params: Vec<*mut gcc_jit_param> = Vec::new();
+        let mut func_params = FuncParamsRecords::new();
+
+        for (idx, func_decl_param) in func_decl.params.iter().enumerate() {
+            let name = CString::new(func_decl_param.identifier.name.clone()).unwrap();
+
+            let ty_token = if let Some(user_def) = &func_decl_param.ty {
+                user_def
+            } else {
+                &TokenKind::Void
+            };
+
+            let ty = Compiler::token_as_data_type(self.context, ty_token.clone());
+
+            let param = unsafe {
+                gcc_jit_context_new_param(
+                    self.context,
+                    self.gccjit_location(func_decl_param.loc.clone()),
+                    ty,
+                    name.as_ptr(),
+                )
+            };
+
+            params.push(param);
+
+            func_params.push(FuncParamRecord {
+                param_index: idx as i32,
+                param_name: func_decl_param.identifier.name.clone(),
+            });
+        }
+
+        let func_name = CString::new(func_decl.name.clone()).unwrap();
+        let func = unsafe {
+            gcc_jit_context_new_function(
+                self.context,
+                self.gccjit_location(func_decl.loc.clone()),
+                func_type,
+                return_type.clone(),
+                func_name.as_ptr(),
+                params.len().try_into().unwrap(),
+                params.as_mut_ptr(),
+                0,
+            )
+        };
+
+        self.param_table.borrow_mut().insert(func, func_params.clone());
+
+        self.func_table.borrow_mut().insert(
+            func_decl.name,
+            FuncMetadata {
+                func_type: func_decl.vis_type,
+                ptr: func,
+                params: func_decl.params,
                 return_type: return_type_token,
             },
         );

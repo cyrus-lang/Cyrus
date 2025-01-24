@@ -175,6 +175,7 @@ pub enum Statement {
     If(If),
     Return(Return),
     FuncDef(FuncDef),
+    FuncDecl(FuncDecl),
     For(For),
     Match(Match),
     Struct(Struct),
@@ -265,8 +266,18 @@ pub struct FuncDef {
     pub params: FunctionParams,
     pub body: Box<BlockStatement>,
     pub return_type: Option<Token>,
-    pub span: Span,
     pub vis_type: FuncVisType,
+    pub span: Span,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncDecl {
+    pub name: String,
+    pub params: FunctionParams,
+    pub return_type: Option<Token>,
+    pub vis_type: FuncVisType,
+    pub span: Span,
     pub loc: Location,
 }
 

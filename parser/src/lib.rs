@@ -629,6 +629,17 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::FuncDecl(FuncDecl {
+                name: function_name,
+                params,
+                return_type,
+                vis_type,
+                span: Span { start, end: self.current_token.span.end },
+                loc: self.current_location(),
+            }));
+        }
+
         // we used current_token_is because we don't want to consume it,
         // we pass this statement that is inside a brace to parse_block_statement.
         if self.current_token_is(TokenKind::LeftBrace) {
