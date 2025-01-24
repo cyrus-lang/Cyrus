@@ -553,6 +553,7 @@ impl Lexer {
             "continue" => TokenKind::Continue,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
+            "null" => TokenKind::Null,
             "i8" => TokenKind::I8,
             "i16" => TokenKind::I16,
             "i32" => TokenKind::I32,

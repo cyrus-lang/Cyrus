@@ -51,6 +51,7 @@ impl fmt::Display for Literal {
             Literal::String(string_type) => write!(f, "{}", string_type),
             Literal::Float(float) => write!(f, "{}", float),
             Literal::Char(ch) => write!(f, "{}", ch),
+            Literal::Null => write!(f, "null"),
         }
     }
 }

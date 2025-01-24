@@ -767,8 +767,13 @@ impl Compiler {
             };
 
             if !rvalue.is_null() {
+                // FIXME Array cast must be performed here
+                let casted_rvalue = unsafe { 
+                    gcc_jit_context_new_cast(self.context, self.gccjit_location(variable.loc.clone()), rvalue, variable_type)
+                };
+
                 unsafe {
-                    gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, rvalue)
+                    gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, casted_rvalue)
                 };
             }
 
@@ -1246,6 +1251,10 @@ impl Compiler {
                 gcc_jit_context_new_string_literal(self.context, value.as_ptr())
             },
             Literal::Char(char_literal) => todo!(),
+            Literal::Null => {
+                unsafe { gcc_jit_context_null(self.context, Compiler::void_ptr_type(self.context)) }
+            },
+            
         }
     }
 }

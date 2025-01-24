@@ -77,6 +77,7 @@ pub enum TokenKind {
     Bool,
     True,
     False,
+    Null,
 
     // Identifier, DataType, Dimensions
     Array(Box<TokenKind>, Vec<Option<TokenKind>>),
@@ -130,6 +131,7 @@ impl fmt::Display for TokenKind {
             Self::Continue => write!(f, "continue"),
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
+            Self::Null => write!(f, "null"),
             Self::I32 => write!(f, "i32"),
             Self::I64 => write!(f, "i64"),
             Self::U32 => write!(f, "u32"),

@@ -868,6 +868,7 @@ impl<'a> Parser<'a> {
         let span = self.current_token.span.clone();
 
         let expr = match &self.current_token.clone().kind {
+            TokenKind::Null => return Ok(Expression::Literal(Literal::Null)),
             token_kind @ TokenKind::Increment | token_kind @ TokenKind::Decrement => {
                 let ty = match token_kind {
                     TokenKind::Increment => UnaryOperatorType::PreIncrement,

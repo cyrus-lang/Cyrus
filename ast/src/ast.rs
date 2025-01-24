@@ -80,6 +80,7 @@ pub enum Literal {
     Bool(BoolLiteral),
     String(StringLiteral),
     Char(CharLiteral),
+    Null,
 }
 
 #[derive(Debug, PartialEq, Clone)]
