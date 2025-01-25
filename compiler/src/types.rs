@@ -94,6 +94,9 @@ impl Compiler {
             TokenKind::Bool => Compiler::bool_type(context),
             TokenKind::String => Compiler::string_type(context),
             TokenKind::Char => Compiler::char_type(context),
+            TokenKind::Dereference(data_type) => {
+                unsafe { gcc_jit_type_get_pointer(Compiler::token_as_data_type(context, *data_type)) }
+            }
             TokenKind::Array(data_type, dimensions) => {
                 // TODO
                 // FIXME

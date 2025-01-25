@@ -1,5 +1,5 @@
 dump:
-	cargo run -- dump ./examples/main.cy ./tmp/main
+	cargo run -- dump --dump-type=ir ./examples/main.cy ./tmp/main
 
 run:
 	cargo run -- run ./examples/main.cy

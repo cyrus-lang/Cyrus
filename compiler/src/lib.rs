@@ -22,10 +22,10 @@ use utils::compiler_error;
 
 mod builtins;
 mod location;
+pub mod options;
 mod output;
 mod scope;
 mod types;
-pub mod options;
 
 // Tracks the current GCC JIT block and function being compiled.
 struct BlockFuncPair {
@@ -68,7 +68,7 @@ pub struct Compiler {
     parent_block: Option<*mut gcc_jit_block>,
     active_loop: Option<LoopBlockPair>,
     compiled_object_files: Vec<String>,
-    opts: CompilerOptions
+    opts: CompilerOptions,
 }
 
 impl Compiler {
@@ -768,12 +768,22 @@ impl Compiler {
 
             if !rvalue.is_null() {
                 // FIXME Array cast must be performed here
-                let casted_rvalue = unsafe { 
-                    gcc_jit_context_new_cast(self.context, self.gccjit_location(variable.loc.clone()), rvalue, variable_type)
+                let casted_rvalue = unsafe {
+                    gcc_jit_context_new_cast(
+                        self.context,
+                        self.gccjit_location(variable.loc.clone()),
+                        rvalue,
+                        variable_type,
+                    )
                 };
 
                 unsafe {
-                    gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, casted_rvalue)
+                    gcc_jit_block_add_assignment(
+                        block,
+                        self.gccjit_location(variable.loc.clone()),
+                        lvalue,
+                        casted_rvalue,
+                    )
                 };
             }
 
@@ -832,6 +842,24 @@ impl Compiler {
             Expression::ArrayIndexAssign(array_index_assign) => {
                 self.compile_array_index_assign(Rc::clone(&scope), *array_index_assign)
             }
+            Expression::AddressOf(expression) => self.compile_address_of(Rc::clone(&scope), expression),
+            Expression::Dereference(expression) => self.compile_dereference(Rc::clone(&scope), expression),
+        }
+    }
+
+    fn compile_dereference(&mut self, scope: ScopeRef, expression: Box<Expression>) -> *mut gcc_jit_rvalue {
+        let rvalue = self.compile_expression(scope, *expression.clone());
+
+        unsafe { gcc_jit_lvalue_as_rvalue(gcc_jit_rvalue_dereference(rvalue, null_mut())) }
+    }
+
+    fn compile_address_of(&mut self, scope: ScopeRef, expression: Box<Expression>) -> *mut gcc_jit_rvalue {
+        match *expression {
+            Expression::Identifier(identifier) => {
+                let lvalue = self.load_lvalue_rvalue(Rc::clone(&scope), identifier).0;
+                unsafe { gcc_jit_lvalue_get_address(lvalue, null_mut()) }
+            },
+            _ => self.compile_expression(scope, *expression)
         }
     }
 
@@ -1251,10 +1279,7 @@ impl Compiler {
                 gcc_jit_context_new_string_literal(self.context, value.as_ptr())
             },
             Literal::Char(char_literal) => todo!(),
-            Literal::Null => {
-                unsafe { gcc_jit_context_null(self.context, Compiler::void_ptr_type(self.context)) }
-            },
-            
+            Literal::Null => unsafe { gcc_jit_context_null(self.context, Compiler::void_ptr_type(self.context)) },
         }
     }
 }

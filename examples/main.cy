@@ -1,5 +1,8 @@
 pub fn main(): i32 {
-    cprintf("Program executed.\n");
+    #value = 10;
+    #my_var: *i32 = &value;
+
+    cprintf("%d\n", *my_var);
 
     return 0;
 }

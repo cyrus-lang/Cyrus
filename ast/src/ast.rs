@@ -40,6 +40,8 @@ pub enum Expression {
     Array(Array),
     ArrayIndex(ArrayIndex),
     ArrayIndexAssign(Box<ArrayIndexAssign>),
+    AddressOf(Box<Expression>),
+    Dereference(Box<Expression>)
 }
 
 #[derive(Debug, Clone)]

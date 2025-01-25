@@ -419,7 +419,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
-        let data_type = match self.current_token.kind {
+        let data_type = match &self.current_token.kind {
             TokenKind::I8
             | TokenKind::I16
             | TokenKind::I32
@@ -436,7 +436,17 @@ impl<'a> Parser<'a> {
             | TokenKind::Bool
             | TokenKind::Void
             | TokenKind::String => self.current_token.kind.clone(),
-            _ => return Err(format!("Invalid type: {}.", self.current_token.kind)),
+            token_kind => match token_kind {
+                TokenKind::Asterisk => {
+                    self.next_token();
+                    return Ok(TokenKind::Dereference(Box::new(self.parse_type_token()?)));
+                }
+                TokenKind::Ampersand => {
+                    self.next_token();
+                    return Ok(TokenKind::AddressOf(Box::new(self.parse_type_token()?)));
+                }
+                _ => return Err(format!("Invalid type: {}.", self.current_token.kind)),
+            },
         };
 
         self.next_token(); // consume the data type
@@ -635,7 +645,10 @@ impl<'a> Parser<'a> {
                 params,
                 return_type,
                 vis_type,
-                span: Span { start, end: self.current_token.span.end },
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
                 loc: self.current_location(),
             }));
         }
@@ -868,6 +881,14 @@ impl<'a> Parser<'a> {
         let span = self.current_token.span.clone();
 
         let expr = match &self.current_token.clone().kind {
+            TokenKind::Ampersand => {
+                self.next_token();
+                return Ok(Expression::AddressOf(Box::new(self.parse_prefix_expression()?)));
+            },
+            TokenKind::Asterisk => {
+                self.next_token();
+                return Ok(Expression::Dereference(Box::new(self.parse_prefix_expression()?)));
+            },
             TokenKind::Null => return Ok(Expression::Literal(Literal::Null)),
             token_kind @ TokenKind::Increment | token_kind @ TokenKind::Decrement => {
                 let ty = match token_kind {

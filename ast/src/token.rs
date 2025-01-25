@@ -79,6 +79,9 @@ pub enum TokenKind {
     False,
     Null,
 
+    AddressOf(Box<TokenKind>),
+    Dereference(Box<TokenKind>),
+
     // Identifier, DataType, Dimensions
     Array(Box<TokenKind>, Vec<Option<TokenKind>>),
 
