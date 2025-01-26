@@ -148,6 +148,7 @@ impl Lexer {
             '[' => TokenKind::LeftBracket,
             ']' => TokenKind::RightBracket,
             ',' => TokenKind::Comma,
+            '.' => TokenKind::Dot,
             '#' => TokenKind::Hashtag,
             '"' => return self.read_string(),
             '\'' => return self.read_char_literal(),

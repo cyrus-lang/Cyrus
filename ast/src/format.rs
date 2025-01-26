@@ -70,7 +70,6 @@ impl fmt::Display for UnaryOperatorType {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            
             Expression::UnaryOperator(unop) => write!(f, "{}{}", unop.identifer, unop.ty),
             Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
             Expression::Literal(literal) => write!(f, "{}", literal),
@@ -113,7 +112,8 @@ impl fmt::Display for Expression {
             }
             Expression::AddressOf(expression) => write!(f, "&({})", expression),
             Expression::Dereference(expression) => write!(f, "*({})", expression),
-            
+            Expression::StructInit(struct_init) => todo!(),
+            Expression::MethodCall(struct_init) => todo!(),
         }
     }
 }

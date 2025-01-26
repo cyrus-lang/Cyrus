@@ -1,8 +1,1 @@
-fn sample() {
-    cprintf("Sample\n");
-}
-
-pub fn main() {
-    cprintf("Hello World\n");
-    sample();
-}
+my_prod.method1().method2();

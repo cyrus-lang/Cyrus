@@ -146,8 +146,119 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_struct_statement(&mut self) -> Result<Statement, ParseError> {
-        dbg!(self.current_token.kind.clone());
-        todo!()
+        let loc = self.current_location();
+
+        self.next_token();
+
+        match self.current_token.kind.clone() {
+            TokenKind::Identifier { name: struct_name } => {
+                self.next_token(); // consume identifier
+
+                let mut inherits: Vec<Identifier> = Vec::new();
+
+                if self.current_token_is(TokenKind::Colon) {
+                    self.next_token();
+
+                    loop {
+                        dbg!(self.current_token.kind.clone());
+                        match self.current_token.kind.clone() {
+                            TokenKind::LeftBrace => {
+                                self.next_token();
+                                break;
+                            }
+                            TokenKind::EOF => {
+                                return Err("Missing opening brace '{'.".to_string());
+                            }
+                            TokenKind::Identifier { name: inherit_struct } => {
+                                self.next_token();
+                                inherits.push(Identifier {
+                                    name: inherit_struct,
+                                    span: self.current_token.span.clone(),
+                                    loc: self.current_location(),
+                                });
+                            }
+                            TokenKind::Comma => {
+                                self.next_token();
+                                continue;
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "Inherit struct expects an identifier but got {}",
+                                    self.current_token.kind.clone()
+                                ))
+                            }
+                        }
+                    }
+                } else {
+                    self.expect_current(TokenKind::LeftBrace)?;
+                }
+
+                let mut fields: Vec<Field> = Vec::new();
+                let mut methods: Vec<FuncDef> = Vec::new();
+
+                loop {
+                    match self.current_token.kind.clone() {
+                        TokenKind::RightBrace => {
+                            self.next_token();
+                            break;
+                        }
+                        TokenKind::EOF => {
+                            return Err("Missing closing brace '}'.".to_string());
+                        }
+                        TokenKind::Function
+                        | TokenKind::Decl
+                        | TokenKind::Extern
+                        | TokenKind::Pub
+                        | TokenKind::Inline => {
+                            if let Statement::FuncDef(method) = self.parse_function_statement()? {
+                                methods.push(method);
+                                self.next_token(); // consume the right brace
+                                dbg!(self.current_token.kind.clone());
+                            } else {
+                                return Err(format!(
+                                    "Invalid func definition given as method to struct '{}'",
+                                    struct_name.clone()
+                                ));
+                            }
+                        }
+                        TokenKind::Identifier { name: field_name } => {
+                            self.next_token(); // consume identifier
+                            self.expect_current(TokenKind::Colon)?;
+                            let type_token = self.parse_type_token()?;
+                            self.expect_current(TokenKind::Semicolon)?;
+
+                            let field = Field {
+                                name: field_name,
+                                ty: type_token,
+                                loc: self.current_location(),
+                            };
+
+                            fields.push(field);
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Invalid statement definition inside struct '{}'",
+                                struct_name.clone()
+                            ))
+                        }
+                    }
+                }
+
+                Ok(Statement::Struct(Struct {
+                    name: struct_name,
+                    inherits,
+                    fields,
+                    methods,
+                    loc,
+                }))
+            }
+            _ => {
+                return Err(format!(
+                    "Struct name must be an identifier but got {}",
+                    self.current_token.kind.clone()
+                ))
+            }
+        }
     }
 
     fn parse_break_statement(&mut self) -> Result<Statement, ParseError> {
@@ -452,6 +563,11 @@ impl<'a> Parser<'a> {
                     self.next_token();
                     return Ok(TokenKind::AddressOf(Box::new(self.parse_type_token()?)));
                 }
+                TokenKind::Identifier { name: type_name } => TokenKind::UserDefinedType(Identifier {
+                    name: type_name.clone(),
+                    span: self.current_token.span.clone(),
+                    loc: self.current_location(),
+                }),
                 _ => return Err(format!("Invalid type: {}.", self.current_token.kind)),
             },
         };
@@ -823,12 +939,16 @@ impl<'a> Parser<'a> {
         let end = self.current_token.span.end;
 
         match left {
-            Expression::Identifier(identifier) => Ok(Expression::FunctionCall(FunctionCall {
-                function_name: identifier,
-                arguments: arguments.0,
-                span: Span { start: left_start, end },
-                loc: self.current_location(),
-            })),
+            Expression::Identifier(identifier) => {
+                self.next_token();
+                self.expect_current(TokenKind::Semicolon)?;
+                Ok(Expression::FunctionCall(FunctionCall {
+                    function_name: identifier,
+                    arguments: arguments.0,
+                    span: Span { start: left_start, end },
+                    loc: self.current_location(),
+                }))
+            }
             _ => return Err(format!("Expected identifier in function call but found: {}.", left)),
         }
     }
@@ -891,11 +1011,11 @@ impl<'a> Parser<'a> {
             TokenKind::Ampersand => {
                 self.next_token();
                 return Ok(Expression::AddressOf(Box::new(self.parse_prefix_expression()?)));
-            },
+            }
             TokenKind::Asterisk => {
                 self.next_token();
                 return Ok(Expression::Dereference(Box::new(self.parse_prefix_expression()?)));
-            },
+            }
             TokenKind::Null => return Ok(Expression::Literal(Literal::Null)),
             token_kind @ TokenKind::Increment | token_kind @ TokenKind::Decrement => {
                 let ty = match token_kind {
@@ -967,6 +1087,10 @@ impl<'a> Parser<'a> {
                     }
 
                     return Ok(Expression::ArrayIndex(array_index));
+                } else if self.peek_token_is(TokenKind::LeftBrace) {
+                    return self.parse_struct_init();
+                } else if self.peek_token_is(TokenKind::Dot) {
+                    return self.parse_method_call();
                 } else {
                     return Ok(Expression::Identifier(Identifier {
                         name: identifier.name,
@@ -1016,6 +1140,158 @@ impl<'a> Parser<'a> {
         };
 
         Ok(expr)
+    }
+
+    fn parse_method_call(&mut self) -> Result<Expression, ParseError> {
+        match self.current_token.kind.clone() {
+            TokenKind::Identifier { name } => {
+                let method_call_start = self.current_token.span.start.clone();
+
+                let identifier = Identifier {
+                    name,
+                    span: self.current_token.span.clone(),
+                    loc: self.current_location(),
+                };
+                let mut chains: Vec<FunctionCall> = Vec::new();
+                self.next_token(); // consume identifer
+                self.expect_current(TokenKind::Dot)?;
+
+                loop {
+                    let start = self.current_token.span.start.clone();
+                    let method_name = match self.current_token.kind.clone() {
+                        TokenKind::Identifier { name } => Identifier {
+                            name,
+                            span: self.current_token.span.clone(),
+                            loc: self.current_location(),
+                        },
+                        _ => {
+                            return Err(format!(
+                                "Expected identifier as method name but got '{}'",
+                                self.current_token.kind.clone()
+                            ))
+                        }
+                    };
+
+                    self.next_token(); // consume method name
+                    if !self.current_token_is(TokenKind::LeftParen) {
+                        return Err(format!(
+                            "Expected to be a method call with opening paren but got '{}'",
+                            self.current_token.kind.clone()
+                        ))
+                    }
+                    let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
+                    self.expect_current(TokenKind::RightParen)?;
+
+                    let method_call = FunctionCall {
+                        function_name: method_name,
+                        arguments,
+                        span: Span {
+                            start,
+                            end: self.current_token.span.end,
+                        },
+                        loc: self.current_location(),
+                    };
+
+                    chains.push(method_call);
+
+                    match self.current_token.kind {
+                        TokenKind::Dot => {
+                            self.next_token();
+                            continue;
+                        }
+                        TokenKind::Semicolon => {
+                            self.next_token();
+                            break;
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Expected to end method call chain with semicolon but got '{}'",
+                                self.current_token.kind.clone()
+                            ))
+                        }
+                    }
+                }
+
+                return Ok(Expression::MethodCall(MethodCall {
+                    identifier,
+                    chains,
+                    span: Span {
+                        start: method_call_start,
+                        end: self.current_token.span.end,
+                    },
+                    loc: self.current_location(),
+                }));
+            }
+            _ => {
+                return Err(format!(
+                    "Expected identifier but got '{}'",
+                    self.current_token.kind.clone()
+                ))
+            }
+        }
+    }
+
+    fn parse_struct_init(&mut self) -> Result<Expression, ParseError> {
+        let mut field_inits: Vec<FieldInit> = Vec::new();
+
+        match self.current_token.kind.clone() {
+            TokenKind::Identifier { name: struct_name } => {
+                self.next_token(); // consume struct name
+                self.expect_current(TokenKind::LeftBrace)?;
+
+                loop {
+                    let field_name = match self.current_token.kind.clone() {
+                        TokenKind::Identifier { name } => {
+                            self.next_token(); // consume identifier
+                            name
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Expected identifier as field name but got '{}'",
+                                self.current_token.kind
+                            ))
+                        }
+                    };
+                    self.expect_current(TokenKind::Colon)?;
+
+                    let value = self.parse_expression(Precedence::Lowest)?.0;
+                    self.next_token(); // consume expr
+
+                    field_inits.push(FieldInit {
+                        name: field_name,
+                        value,
+                        loc: self.current_location(),
+                    });
+
+                    match self.current_token.kind.clone() {
+                        TokenKind::EOF => {
+                            return Err(format!("Missing closing brace"));
+                        }
+                        TokenKind::Comma => {
+                            self.next_token();
+                            continue;
+                        }
+                        TokenKind::RightBrace => {
+                            self.next_token();
+                            break;
+                        }
+                        _ => return Err(format!("Invalid token recognized in struct init")),
+                    }
+                }
+
+                return Ok(Expression::StructInit(StructInit {
+                    name: struct_name,
+                    field_inits,
+                    loc: self.current_location(),
+                }));
+            }
+            _ => {
+                return Err(format!(
+                    "Expected identifer to struct init but got '{}'",
+                    self.current_token.kind
+                ))
+            }
+        }
     }
 
     fn parse_assignment(&mut self) -> Result<Expression, ParseError> {

@@ -34,6 +34,7 @@ pub enum TokenKind {
     RightBracket,
     Comma,
     Hashtag,
+    Dot,
     DoubleQuote,
     SingleQuote,
     Pipe,
@@ -59,6 +60,7 @@ pub enum TokenKind {
     Import,
     Decl,
     // Types
+    UserDefinedType(Identifier),
     I8,
     I16,
     I32,
@@ -110,6 +112,7 @@ impl fmt::Display for TokenKind {
             Self::RightBracket => write!(f, "]]"),
             Self::Comma => write!(f, ","),
             Self::Hashtag => write!(f, "#"),
+            Self::Dot => write!(f, "."),
             Self::DoubleQuote => write!(f, "\""),
             Self::SingleQuote => write!(f, "'"),
             Self::Pipe => write!(f, "|"),

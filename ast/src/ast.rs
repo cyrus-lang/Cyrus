@@ -41,7 +41,9 @@ pub enum Expression {
     ArrayIndex(ArrayIndex),
     ArrayIndexAssign(Box<ArrayIndexAssign>),
     AddressOf(Box<Expression>),
-    Dereference(Box<Expression>)
+    Dereference(Box<Expression>),
+    StructInit(StructInit),
+    MethodCall(MethodCall),
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +71,14 @@ pub struct FunctionCall {
 }
 
 #[derive(Debug, Clone)]
+pub struct MethodCall {
+    pub identifier: Identifier,
+    pub chains: Vec<FunctionCall>,
+    pub span: Span,
+    pub loc: Location
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Identifier {
     pub name: String,
     pub span: Span,
@@ -222,18 +232,31 @@ pub struct Import {
 
 #[derive(Debug, Clone)]
 pub struct Struct {
-    pub name: Identifier,
-    pub fields: Option<Field>,
-    pub extends: Option<Box<Struct>>,
-    pub methods: Option<FuncDef>,
+    pub name: String,
+    pub inherits: Vec<Identifier>,
+    pub fields: Vec<Field>,
+    pub methods: Vec<FuncDef>,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructInit {
+    pub name: String,
+    pub field_inits: Vec<FieldInit>,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct Field {
-    pub name: Identifier,
-    pub ty: Literal,
-    pub default_value: Literal,
+    pub name: String,
+    pub ty: TokenKind,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldInit {
+    pub name: String,
+    pub value: Expression,
     pub loc: Location,
 }
 

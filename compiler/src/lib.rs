@@ -144,7 +144,7 @@ impl Compiler {
                 self.compile_expression(scope, expr.clone());
             }
             Statement::FuncDef(function) => self.compile_func_def(scope, function.clone()),
-            Statement::FuncDecl(function) => self.compile_func_decl(scope, function.clone()),
+            Statement::FuncDecl(function) => self.compile_func_decl(function.clone()),
             Statement::If(statement) => self.compile_if_statement(scope, statement),
             Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
@@ -230,7 +230,7 @@ impl Compiler {
                             imported_func_name.as_ptr(),
                             func_params.len().try_into().unwrap(),
                             func_params.as_mut_ptr(),
-                            0, // FIXME
+                            0, // FIXME Variadic 
                         )
                     };
 
@@ -357,7 +357,7 @@ impl Compiler {
         );
     }
 
-    fn compile_func_decl(&mut self, scope: ScopeRef, func_decl: FuncDecl) {
+    fn compile_func_decl(&mut self, func_decl: FuncDecl) {
         let func_type = match func_decl.vis_type {
             FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
             FuncVisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
@@ -849,6 +849,8 @@ impl Compiler {
             }
             Expression::AddressOf(expression) => self.compile_address_of(Rc::clone(&scope), expression),
             Expression::Dereference(expression) => self.compile_dereference(Rc::clone(&scope), expression),
+            Expression::StructInit(struct_init) => todo!(), // ANCHOR 
+            Expression::MethodCall(method_call) => todo!(),
         }
     }
 
