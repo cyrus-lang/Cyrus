@@ -566,6 +566,7 @@ impl Lexer {
             "u128" => TokenKind::U128,
             "f32" => TokenKind::F32,
             "f64" => TokenKind::F64,
+            "csize" => TokenKind::CSize,
             "char" => TokenKind::Char,
             "bool" => TokenKind::Bool,
             "void" => TokenKind::Void,

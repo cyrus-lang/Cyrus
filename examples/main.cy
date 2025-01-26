@@ -1,8 +1,6 @@
 pub fn main(): i32 {
-    #value = 10;
-    #my_var: *i32 = &value;
-
-    cprintf("%d\n", *my_var);
-
+    #size: csize = 10;
+    cprintf("%d\n", size);
+    
     return 0;
 }

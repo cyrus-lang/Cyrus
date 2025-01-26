@@ -1261,6 +1261,9 @@ impl Compiler {
                 IntegerLiteral::U128(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_int(self.context, Compiler::u128_type(self.context), value as i32)
                 },
+                IntegerLiteral::CSize(value) =>  unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, Compiler::csize_type(self.context), value as i32)
+                },
             },
             Literal::Float(float_literal) => match float_literal {
                 FloatLiteral::F32(value) => unsafe {

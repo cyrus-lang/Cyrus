@@ -72,6 +72,7 @@ pub enum TokenKind {
     Char,
     F32,
     F64,
+    CSize,
     Void,
     String,
     Bool,

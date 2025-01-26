@@ -56,12 +56,15 @@ impl Compiler {
     }
 
     pub fn f32_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
-        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
-        // FIXME
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_FLOAT) }
     }
 
     pub fn f64_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
+    }
+
+    pub fn csize_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+        unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_SIZE_T) }
     }
 
     pub fn string_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
@@ -94,6 +97,7 @@ impl Compiler {
             TokenKind::Bool => Compiler::bool_type(context),
             TokenKind::String => Compiler::string_type(context),
             TokenKind::Char => Compiler::char_type(context),
+            TokenKind::CSize => Compiler::csize_type(context),
             TokenKind::Dereference(data_type) => {
                 unsafe { gcc_jit_type_get_pointer(Compiler::token_as_data_type(context, *data_type)) }
             }

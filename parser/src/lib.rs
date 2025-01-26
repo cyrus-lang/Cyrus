@@ -432,6 +432,7 @@ impl<'a> Parser<'a> {
             | TokenKind::U128
             | TokenKind::F32
             | TokenKind::F64
+            | TokenKind::CSize
             | TokenKind::Char
             | TokenKind::Bool
             | TokenKind::Void
