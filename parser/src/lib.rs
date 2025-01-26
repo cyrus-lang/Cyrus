@@ -941,7 +941,9 @@ impl<'a> Parser<'a> {
         match left {
             Expression::Identifier(identifier) => {
                 self.next_token();
-                self.expect_current(TokenKind::Semicolon)?;
+                if !self.current_token_is(TokenKind::Semicolon) {
+                    return Err(format!("Expected to end with semicolon"))
+                }
                 Ok(Expression::FunctionCall(FunctionCall {
                     function_name: identifier,
                     arguments: arguments.0,
@@ -1239,6 +1241,10 @@ impl<'a> Parser<'a> {
                 self.next_token(); // consume struct name
                 self.expect_current(TokenKind::LeftBrace)?;
 
+                if self.current_token_is(TokenKind::RightBrace) {
+                    return Ok(Expression::StructInit(StructInit { name: struct_name, field_inits: Vec::new(), loc: self.current_location() }));
+                }
+
                 loop {
                     let field_name = match self.current_token.kind.clone() {
                         TokenKind::Identifier { name } => {
@@ -1269,7 +1275,9 @@ impl<'a> Parser<'a> {
                         }
                         TokenKind::Comma => {
                             self.next_token();
-                            continue;
+                            if self.current_token_is(TokenKind::RightBrace) {
+                                break;
+                            }
                         }
                         TokenKind::RightBrace => {
                             self.next_token();

@@ -79,7 +79,7 @@ impl Compiler {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_BOOL) }
     }
 
-    pub fn token_as_data_type(context: *mut gcc_jit_context, token_kind: TokenKind) -> *mut gcc_jit_type {
+    pub fn token_as_data_type(&mut self, context: *mut gcc_jit_context, token_kind: TokenKind) -> *mut gcc_jit_type {
         match token_kind {
             TokenKind::I8 => Compiler::i8_type(context),
             TokenKind::I16 => Compiler::i16_type(context),
@@ -99,7 +99,15 @@ impl Compiler {
             TokenKind::Char => Compiler::char_type(context),
             TokenKind::CSize => Compiler::csize_type(context),
             TokenKind::Dereference(data_type) => {
-                unsafe { gcc_jit_type_get_pointer(Compiler::token_as_data_type(context, *data_type)) }
+                unsafe { gcc_jit_type_get_pointer(self.token_as_data_type(context, *data_type)) }
+            }
+            TokenKind::UserDefinedType(identifier) => {
+                match self.global_struct_table.borrow_mut().get(&identifier.name) {
+                    Some(struct_statement) => {
+                        unsafe { gcc_jit_struct_as_type(struct_statement.struct_type) }
+                    },
+                    None => compiler_error!("Unknown data type."),
+                }
             }
             TokenKind::Array(data_type, dimensions) => {
                 // TODO
@@ -119,7 +127,7 @@ impl Compiler {
                                         let capacity_raw = integer_literal_as_value(integer_literal).try_into().unwrap();
 
                                         if !multi_dimensional {
-                                            let elements_data_type = Compiler::token_as_data_type(context, *data_type.clone());
+                                            let elements_data_type = self.token_as_data_type(context, *data_type.clone());
                                             array_type = unsafe { gcc_jit_context_new_array_type(context, null_mut(), elements_data_type, capacity_raw) };
                                             multi_dimensional = true;
                                         } else {

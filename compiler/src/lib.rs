@@ -15,7 +15,7 @@ use std::{
     fs::remove_file,
     path::Path,
     ptr::null_mut,
-    rc::Rc,
+    rc::{self, Rc},
     sync::{Arc, Mutex},
 };
 use utils::compiler_error;
@@ -55,12 +55,21 @@ struct FuncMetadata {
     params: Vec<FunctionParam>,
 }
 
+#[derive(Debug, Clone)]
+struct StructMetadata {
+    struct_type: *mut gcc_jit_struct,
+    fields: Vec<Field>,
+    gcc_jit_fields: Vec<*mut gcc_jit_field>,
+    methods: Vec<FuncDef>,
+}
+
 pub struct Compiler {
     file_name: String,
     file_path: String,
     program: Program,
     context: *mut gcc_jit_context,
     func_table: RefCell<HashMap<String, FuncMetadata>>,
+    global_struct_table: RefCell<HashMap<String, StructMetadata>>,
     global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
     param_table: RefCell<HashMap<*mut gcc_jit_function, FuncParamsRecords>>,
     block_func_ref: Arc<Mutex<Box<BlockFuncPair>>>,
@@ -110,6 +119,7 @@ impl Compiler {
             program,
             context,
             func_table: RefCell::new(HashMap::new()),
+            global_struct_table: RefCell::new(HashMap::new()),
             global_vars_table: RefCell::new(HashMap::new()),
             param_table: RefCell::new(HashMap::new()),
             block_func_ref: Arc::new(Mutex::new(Box::new(BlockFuncPair {
@@ -148,7 +158,7 @@ impl Compiler {
             Statement::If(statement) => self.compile_if_statement(scope, statement),
             Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
-            Statement::Struct(_) => todo!(),
+            Statement::Struct(statement) => self.compile_struct(scope, statement),
             Statement::Import(statement) => self.compile_import(statement),
             Statement::Return(statement) => self.compile_return(scope, statement),
             Statement::Break(loc) => self.compile_break_statement(loc),
@@ -159,6 +169,88 @@ impl Compiler {
             ),
             _ => compiler_error!(format!("Invalid statement: {:?}", stmt)),
         }
+    }
+
+    fn compile_struct_init(&mut self, scope: ScopeRef, struct_init: StructInit) -> *mut gcc_jit_rvalue {
+        let mut struct_metadata = {
+            let struct_table = self.global_struct_table.borrow();
+            match struct_table.get(&struct_init.name) {
+                Some(struct_statement) => struct_statement.clone(),
+                None => compiler_error!(format!("Undefined object '{}'", struct_init.name)),
+            }
+        };
+
+        let struct_type = unsafe { gcc_jit_struct_as_type(struct_metadata.struct_type.clone()) };
+        let mut values: Vec<*mut gcc_jit_rvalue> = Vec::new();
+
+        for field in struct_metadata.fields.clone() {
+            match struct_init.field_inits.iter().find(|&item| item.name == field.name) {
+                Some(field_init) => {
+                    let expr = self.compile_expression(Rc::clone(&scope), field_init.value.clone());
+                    values.push(expr);
+                }
+                None => compiler_error!(format!(
+                    "Field '{}' required to be set in struct '{}'",
+                    field.name, struct_init.name
+                )),
+            }
+        }
+
+        unsafe {
+            gcc_jit_context_new_struct_constructor(
+                self.context,
+                self.gccjit_location(struct_init.loc),
+                struct_type,
+                values.len().try_into().unwrap(),
+                struct_metadata.gcc_jit_fields.as_mut_ptr(),
+                values.as_mut_ptr()
+            )
+        }
+    }
+
+    fn compile_struct_fields(&mut self, fields: Vec<Field>) -> Vec<*mut gcc_jit_field> {
+        let mut final_fields: Vec<*mut gcc_jit_field> = Vec::new();
+        for item in fields {
+            let field_name = CString::new(item.name).unwrap();
+            let field_type = self.token_as_data_type(self.context, item.ty);
+            let field = unsafe {
+                gcc_jit_context_new_field(
+                    self.context,
+                    self.gccjit_location(item.loc),
+                    field_type,
+                    field_name.as_ptr(),
+                )
+            };
+            final_fields.push(field);
+        }
+        final_fields
+    }
+
+    fn compile_struct(&mut self, scope: ScopeRef, statement: Struct) {
+        let mut fields = self.compile_struct_fields(statement.fields.clone());
+
+        let num_fields = statement.fields.len().try_into().unwrap();
+        let struct_name = CString::new(statement.name.clone()).unwrap();
+        let struct_type = unsafe {
+            gcc_jit_context_new_struct_type(
+                self.context,
+                self.gccjit_location(statement.loc),
+                struct_name.as_ptr(),
+                num_fields,
+                fields.as_mut_ptr(),
+            )
+        };
+
+        let struct_metadata = StructMetadata {
+            struct_type,
+            fields: statement.fields,
+            methods: statement.methods,
+            gcc_jit_fields: fields,
+        };
+
+        self.global_struct_table
+            .borrow_mut()
+            .insert(statement.name, struct_metadata);
     }
 
     fn object_file_extension(&self) -> &'static str {
@@ -206,7 +298,7 @@ impl Compiler {
                             gcc_jit_context_new_param(
                                 self.context,
                                 self.gccjit_location(import.loc.clone()),
-                                Compiler::token_as_data_type(
+                                self.token_as_data_type(
                                     self.context,
                                     item.ty.expect(&format!(
                                         "Function '{}' has an untyped param '{}' that is invalid.",
@@ -226,11 +318,11 @@ impl Compiler {
                             self.context,
                             self.gccjit_location(import.loc.clone()),
                             gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED,
-                            Compiler::token_as_data_type(self.context, value.return_type.clone()),
+                            self.token_as_data_type(self.context, value.return_type.clone()),
                             imported_func_name.as_ptr(),
                             func_params.len().try_into().unwrap(),
                             func_params.as_mut_ptr(),
-                            0, // FIXME Variadic 
+                            0, // FIXME Variadic
                         )
                     };
 
@@ -268,7 +360,7 @@ impl Compiler {
                 span: Span::new_empty_span(),
             })
             .kind;
-        let return_type = Compiler::token_as_data_type(self.context, return_type_token.clone());
+        let return_type = self.token_as_data_type(self.context, return_type_token.clone());
 
         let mut params: Vec<*mut gcc_jit_param> = Vec::new();
         let mut func_params = FuncParamsRecords::new();
@@ -282,7 +374,7 @@ impl Compiler {
                 &TokenKind::Void
             };
 
-            let ty = Compiler::token_as_data_type(self.context, ty_token.clone());
+            let ty = self.token_as_data_type(self.context, ty_token.clone());
 
             let param = unsafe {
                 gcc_jit_context_new_param(
@@ -372,7 +464,7 @@ impl Compiler {
                 span: Span::new_empty_span(),
             })
             .kind;
-        let return_type = Compiler::token_as_data_type(self.context, return_type_token.clone());
+        let return_type = self.token_as_data_type(self.context, return_type_token.clone());
 
         let mut params: Vec<*mut gcc_jit_param> = Vec::new();
         let mut func_params = FuncParamsRecords::new();
@@ -386,7 +478,7 @@ impl Compiler {
                 &TokenKind::Void
             };
 
-            let ty = Compiler::token_as_data_type(self.context, ty_token.clone());
+            let ty = self.token_as_data_type(self.context, ty_token.clone());
 
             let param = unsafe {
                 gcc_jit_context_new_param(
@@ -743,7 +835,7 @@ impl Compiler {
             let mut rvalue = null_mut();
 
             if let Some(token) = variable.ty.clone() {
-                variable_type = Compiler::token_as_data_type(self.context, token);
+                variable_type = self.token_as_data_type(self.context, token);
             }
 
             if let Some(expr) = variable.expr {
@@ -773,21 +865,21 @@ impl Compiler {
 
             if !rvalue.is_null() {
                 // FIXME Array cast must be performed here
-                let casted_rvalue = unsafe {
-                    gcc_jit_context_new_cast(
-                        self.context,
-                        self.gccjit_location(variable.loc.clone()),
-                        rvalue,
-                        variable_type,
-                    )
-                };
+                // let casted_rvalue = unsafe {
+                //     gcc_jit_context_new_cast(
+                //         self.context,
+                //         self.gccjit_location(variable.loc.clone()),
+                //         rvalue,
+                //         variable_type,
+                //     )
+                // };
 
                 unsafe {
                     gcc_jit_block_add_assignment(
                         block,
                         self.gccjit_location(variable.loc.clone()),
                         lvalue,
-                        casted_rvalue,
+                        rvalue,
                     )
                 };
             }
@@ -849,7 +941,7 @@ impl Compiler {
             }
             Expression::AddressOf(expression) => self.compile_address_of(Rc::clone(&scope), expression),
             Expression::Dereference(expression) => self.compile_dereference(Rc::clone(&scope), expression),
-            Expression::StructInit(struct_init) => todo!(), // ANCHOR 
+            Expression::StructInit(struct_init) => self.compile_struct_init(scope, struct_init),
             Expression::MethodCall(method_call) => todo!(),
         }
     }

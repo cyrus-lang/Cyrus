@@ -37,7 +37,7 @@ impl Scope {
     pub fn clone_immutable(&self) -> Self {
         Scope {
             table: self.table.clone(),
-            parent: self.parent.clone(),
+            parent: self.parent.clone()
         }
     }
 }
