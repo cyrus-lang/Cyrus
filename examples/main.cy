@@ -1,7 +1,8 @@
-pub fn main(): i32 {
-    #var: char = 'a';
+fn sample() {
+    cprintf("Sample\n");
+}
 
-    cprintf("%c\n", var);
-
-    return 0;
+pub fn main() {
+    cprintf("Hello World\n");
+    sample();
 }

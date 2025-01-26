@@ -262,6 +262,7 @@ impl Compiler {
 
         let return_type_token = func_def
             .return_type
+            .clone()
             .unwrap_or(Token {
                 kind: TokenKind::Void,
                 span: Span::new_empty_span(),
@@ -334,11 +335,15 @@ impl Compiler {
             self.compile_statement(Rc::clone(&scope), item);
         }
 
-        if !return_compiled {
-            compiler_error!(format!(
-                "Explicit return statement required for the function '{}'.",
-                func_def.name
-            ));
+        if func_def.return_type.is_some() {
+            if !return_compiled {
+                compiler_error!(format!(
+                    "Explicit return statement required for the function '{}'.",
+                    func_def.name
+                ));
+            }
+        } else {
+            unsafe { gcc_jit_block_end_with_void_return(block, null_mut()) };
         }
 
         self.func_table.borrow_mut().insert(
@@ -858,8 +863,8 @@ impl Compiler {
             Expression::Identifier(identifier) => {
                 let lvalue = self.load_lvalue_rvalue(Rc::clone(&scope), identifier).0;
                 unsafe { gcc_jit_lvalue_get_address(lvalue, null_mut()) }
-            },
-            _ => self.compile_expression(scope, *expression)
+            }
+            _ => self.compile_expression(scope, *expression),
         }
     }
 
@@ -1261,7 +1266,7 @@ impl Compiler {
                 IntegerLiteral::U128(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_int(self.context, Compiler::u128_type(self.context), value as i32)
                 },
-                IntegerLiteral::CSize(value) =>  unsafe {
+                IntegerLiteral::CSize(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_int(self.context, Compiler::csize_type(self.context), value as i32)
                 },
             },
@@ -1282,7 +1287,11 @@ impl Compiler {
                 gcc_jit_context_new_string_literal(self.context, value.as_ptr())
             },
             Literal::Char(char_literal) => unsafe {
-                gcc_jit_context_new_rvalue_from_int(self.context, Compiler::char_type(self.context), char_literal.raw as i32)
+                gcc_jit_context_new_rvalue_from_int(
+                    self.context,
+                    Compiler::char_type(self.context),
+                    char_literal.raw as i32,
+                )
             },
             Literal::Null => unsafe { gcc_jit_context_null(self.context, Compiler::void_ptr_type(self.context)) },
         }

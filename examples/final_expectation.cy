@@ -61,18 +61,26 @@ println("It works excellently!");
 struct Point {
     x: i32 = 1, // set def val
     y: i32, // def val of i32 is zero for e.g
+
+    fn some_method() {
+        
+    }
 }
 
-#point: Point = {
+#point: Point = Point {
     x: 10,
     y: 15
 };
 
-struct ThreeDPoint > Point { // extends Point struct
+struct ThreeDPoint : Point { // inherits Point struct
     z: i32
+
+    fn to_string(): string {
+        ret "x:" + string(self.x) + " y:" + string(self.y);
+    }
 }
 
-impl Point {
+struct Point {
     fn to_string(): string {
         ret "x:" + string(self.x) + " y:" + string(self.y);
     }

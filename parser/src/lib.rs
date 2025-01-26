@@ -76,6 +76,7 @@ impl<'a> Parser<'a> {
             TokenKind::Continue => self.parse_continue_statement(),
             TokenKind::LeftBrace => Ok(Statement::BlockStatement(self.parse_block_statement()?)),
             TokenKind::Import => self.parse_import_statment(),
+            TokenKind::Struct => self.parse_struct_statement(),
             _ => self.parse_expression_statement(),
         }
     }
@@ -142,6 +143,11 @@ impl<'a> Parser<'a> {
             "Expected token: {} but got {}.",
             token_kind, self.current_token.kind
         ))
+    }
+
+    fn parse_struct_statement(&mut self) -> Result<Statement, ParseError> {
+        dbg!(self.current_token.kind.clone());
+        todo!()
     }
 
     fn parse_break_statement(&mut self) -> Result<Statement, ParseError> {
