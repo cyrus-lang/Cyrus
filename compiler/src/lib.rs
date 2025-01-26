@@ -1281,7 +1281,9 @@ impl Compiler {
                 let value = CString::new(self.purify_string(string_literal.raw)).unwrap();
                 gcc_jit_context_new_string_literal(self.context, value.as_ptr())
             },
-            Literal::Char(char_literal) => todo!(),
+            Literal::Char(char_literal) => unsafe {
+                gcc_jit_context_new_rvalue_from_int(self.context, Compiler::char_type(self.context), char_literal.raw as i32)
+            },
             Literal::Null => unsafe { gcc_jit_context_null(self.context, Compiler::void_ptr_type(self.context)) },
         }
     }

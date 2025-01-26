@@ -16,7 +16,8 @@ pub enum LexicalErrorType {
     UnterminatedStringLiteral,
     InvalidFloatLiteral,
     InvalidIntegerLiteral,
-    UnterminatedMultiLineComment
+    UnterminatedMultiLineComment,
+    EmptyCharLiteral,
 }
 
 impl fmt::Display for LexicalErrorType {
@@ -26,6 +27,7 @@ impl fmt::Display for LexicalErrorType {
             LexicalErrorType::InvalidFloatLiteral => write!(f, "InvalidFloatLiteral"),
             LexicalErrorType::InvalidIntegerLiteral => write!(f, "InvalidIntegerLiteral"),
             LexicalErrorType::UnterminatedMultiLineComment => write!(f, "UnterminatedMultiLineComment"),
+            LexicalErrorType::EmptyCharLiteral => write!(f, "EmptyCharLiteral"),
         }
     }
 }
@@ -37,6 +39,7 @@ impl LexicalErrorType {
             LexicalErrorType::InvalidFloatLiteral => "invalid float literal",
             LexicalErrorType::InvalidIntegerLiteral => "invalid integer literal",
             LexicalErrorType::UnterminatedMultiLineComment => "unterminated multi-line comment",
+            LexicalErrorType::EmptyCharLiteral => "empty char literal is invalid",
         })
     }
 }

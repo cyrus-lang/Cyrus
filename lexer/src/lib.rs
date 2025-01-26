@@ -1,5 +1,5 @@
 use ast::{
-    ast::{FloatLiteral, IntegerLiteral, Literal, StringLiteral},
+    ast::{CharLiteral, FloatLiteral, IntegerLiteral, Literal, StringLiteral},
     token::*,
 };
 use core::panic;
@@ -150,6 +150,7 @@ impl Lexer {
             ',' => TokenKind::Comma,
             '#' => TokenKind::Hashtag,
             '"' => return self.read_string(),
+            '\'' => return self.read_char_literal(),
             '=' => {
                 if self.peek_char() == '=' {
                     self.read_char(); // consume current equal sign
@@ -304,6 +305,64 @@ impl Lexer {
                 start: self.pos - 1,
                 end: self.pos - 1,
             },
+        }
+    }
+
+    fn read_char_literal(&mut self) -> Token {
+        let start: usize = self.pos + 1;
+
+        let mut final_char: Option<char> = None;
+
+        loop {
+            self.read_char();
+
+            if self.ch == '\'' {
+                break;
+            }
+
+            final_char = Some(self.ch);
+
+            if self.is_eof() {
+                LexicalError {
+                    line: self.line,
+                    column: self.column - 1,
+                    code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
+                    etype: errors::LexicalErrorType::UnterminatedStringLiteral,
+                    verbose: None,
+                    caret: true,
+                    file_name: Some(self.file_name.clone()),
+                }
+                .print();
+                exit(1);
+            }
+        }
+
+        if self.ch == '\'' {
+            // consume the ending single quote
+            self.read_char();
+        }
+
+        let end = self.pos;
+
+        let span = Span { start: start - 1, end };
+
+        if let Some(raw)  = final_char {
+            Token {
+                kind: TokenKind::Literal(Literal::Char(CharLiteral { raw, span: span.clone() })),
+                span,
+            }
+        } else {
+            LexicalError {
+                line: self.line,
+                column: self.column - 1,
+                code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
+                etype: errors::LexicalErrorType::EmptyCharLiteral,
+                verbose: None,
+                caret: true,
+                file_name: Some(self.file_name.clone()),
+            }
+            .print();
+            exit(1);
         }
     }
 
