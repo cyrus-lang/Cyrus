@@ -158,7 +158,7 @@ impl Compiler {
             Statement::If(statement) => self.compile_if_statement(scope, statement),
             Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
-            Statement::Struct(statement) => self.compile_struct(scope, statement),
+            Statement::Struct(statement) => self.compile_struct(statement),
             Statement::Import(statement) => self.compile_import(statement),
             Statement::Return(statement) => self.compile_return(scope, statement),
             Statement::Break(loc) => self.compile_break_statement(loc),
@@ -226,7 +226,7 @@ impl Compiler {
         final_fields
     }
 
-    fn compile_struct(&mut self, scope: ScopeRef, statement: Struct) {
+    fn compile_struct(&mut self, statement: Struct) {
         let mut fields = self.compile_struct_fields(statement.fields.clone());
 
         let num_fields = statement.fields.len().try_into().unwrap();

@@ -4,10 +4,15 @@ struct Product {
 };
 
 pub fn main() {
-    #a: Product = Product {
+    #a = Product {
         name: "Taha",
         age: 17
     };
 
-    cprintf("Hello World\n");
+    #b: Product = Product {
+        name: "Taha",
+        age: 17
+    };
+
+    
 }
