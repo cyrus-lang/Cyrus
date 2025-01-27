@@ -560,11 +560,11 @@ impl Lexer {
 
     fn skip_whitespace(&mut self) {
         while Self::is_whitespace(self.ch) {
-            self.read_char();
-
             if self.is_eof() {
                 break;
             }
+
+            self.read_char();
         }
     }
 

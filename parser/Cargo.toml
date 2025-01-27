@@ -14,4 +14,4 @@ path = "./src/lib.rs"
 
 [[bin]]
 name = "parser"
-path = "./src/parser_cli.rs"
+path = "./src/cli.rs"

@@ -83,7 +83,7 @@ mod tests {
     fn test_parse_function_params() {
         let mut lexer = Lexer::new(String::from("(a: i32, b: u32 = 1, c: string)"), String::from("parser_test.cy"));
         let mut parser = Parser::new(&mut lexer);
-        let params = parser.parse_function_params().unwrap();
+        let params = parser.parse_func_params().unwrap();
 
         assert_eq!(params.index(0).identifier.name, "a");
         assert_eq!(params.index(0).default_value.is_none(), true);
