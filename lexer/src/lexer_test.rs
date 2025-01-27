@@ -6,6 +6,23 @@ mod tests {
         token::{Span, TokenKind},
     };
 
+    #[test]
+    fn test_select() {
+        let lexer = Lexer::new(String::from("Hello World"), String::from("test.cy"));
+        let substring = lexer.select(0..5);
+        assert_eq!(substring, "Hello");
+    }
+
+    #[test]
+    fn test_skip_whitespace() {
+        let mut lexer = Lexer::new(String::from("
+            Hello World
+        "), String::from("test.cy"));
+
+        lexer.skip_whitespace();
+        dbg!(lexer.ch);
+    }
+
     fn assert_tokens(input: &'static str, expected_tokens: Option<&Vec<TokenKind>>, spans: Option<&Vec<Span>>) {
         let lexer = Lexer::new(input.to_string(), String::from("test_package.cy"));
         let tokens = lexer;

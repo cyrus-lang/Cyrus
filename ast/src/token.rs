@@ -22,6 +22,7 @@ pub enum TokenKind {
     Increment,
     Decrement,
     // Symbols
+    BackTick,
     Assign,
     Equal,
     NotEqual,

@@ -29,7 +29,7 @@ impl Lexer {
             next_pos: 0, // points to next position
             ch: ' ',
             file_name,
-            line: 1,
+            line: 0,
             column: 0,
         };
 
@@ -37,6 +37,27 @@ impl Lexer {
         lexer
     }
 
+    /// Selects a substring from the input string within the specified range.
+    ///
+    /// # Parameters
+    /// - `range`: A `Range<usize>` specifying the start (inclusive) and end (exclusive) indices
+    ///   of the substring to extract. Both indices must be within the bounds of the input string,
+    ///   and the start index must not exceed the end index.
+    ///
+    /// # Returns
+    /// A `String` containing the substring specified by the given range.
+    ///
+    /// # Panics
+    /// This method will panic if:
+    /// - The start or end indices are out of bounds of the input string's length.
+    /// - The start index is greater than the end index.
+    ///
+    /// # Example
+    /// ```
+    /// let lexer = Lexer::new("hello, world!");
+    /// let substring = lexer.select(0..5);
+    /// assert_eq!(substring, "hello");
+    /// ```
     pub fn select(&self, range: Range<usize>) -> String {
         let len = self.input.len();
 
@@ -94,6 +115,7 @@ impl Lexer {
 
         let token_kind: TokenKind = match self.ch {
             ' ' => return self.next_token(),
+            '`' => TokenKind::BackTick,
             '+' => {
                 if self.peek_char() == '+' {
                     self.read_char();
@@ -347,9 +369,12 @@ impl Lexer {
 
         let span = Span { start: start - 1, end };
 
-        if let Some(raw)  = final_char {
+        if let Some(raw) = final_char {
             Token {
-                kind: TokenKind::Literal(Literal::Char(CharLiteral { raw, span: span.clone() })),
+                kind: TokenKind::Literal(Literal::Char(CharLiteral {
+                    raw,
+                    span: span.clone(),
+                })),
                 span,
             }
         } else {
@@ -535,11 +560,11 @@ impl Lexer {
 
     fn skip_whitespace(&mut self) {
         while Self::is_whitespace(self.ch) {
+            self.read_char();
+
             if self.is_eof() {
                 break;
             }
-
-            self.read_char();
         }
     }
 
@@ -558,9 +583,13 @@ impl Lexer {
                 self.read_char(); // consume
             }
 
-            if self.ch == '\n' {
-                // consume the new line char
-                self.read_char();
+            loop {
+                if self.ch == '\n' {
+                    // consume the new line char
+                    self.read_char();
+                } else {
+                    break;
+                }
             }
         } else if self.ch == '/' && self.peek_char() == '*' {
             self.read_char();
