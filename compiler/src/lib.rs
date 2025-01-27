@@ -162,7 +162,6 @@ impl Compiler {
             Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
             Statement::Struct(statement) => self.compile_struct(Rc::clone(&scope), statement),
-            Statement::Struct(statement) => self.compile_struct(Rc::clone(&scope), statement),
             Statement::Import(statement) => self.compile_import(statement),
             Statement::Return(statement) => self.compile_return(scope, statement),
             Statement::Break(loc) => self.compile_break_statement(loc),
@@ -170,8 +169,7 @@ impl Compiler {
             Statement::BlockStatement(statement) => self.compile_statements(
                 Rc::new(RefCell::new(scope.borrow_mut().clone_immutable())),
                 statement.body,
-            ),
-            _ => compiler_error!(format!("Invalid statement: {:?}", stmt)),
+            )
         }
     }
 
@@ -180,7 +178,7 @@ impl Compiler {
 
         if let Some(block) = guard.block {
             drop(guard);
-            
+
             let identifier = {
                 let guard = scope.borrow();
                 match guard.get(statement.identifier.name.clone()) {
@@ -191,7 +189,7 @@ impl Compiler {
                 }
             };
     
-            let mut result: *mut gcc_jit_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(identifier.lvalue) };
+            let result: *mut gcc_jit_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(identifier.lvalue) };
     
             for method_call in statement.chains {
                 unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
