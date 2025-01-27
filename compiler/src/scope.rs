@@ -1,9 +1,16 @@
-use gccjit_sys::gcc_jit_lvalue;
+use gccjit_sys::{gcc_jit_lvalue, gcc_jit_type};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
+
+#[derive(Debug, Clone)]
+pub struct IdentifierMetadata {
+    pub(crate) lvalue: *mut gcc_jit_lvalue,
+    pub lvalue_type: *mut gcc_jit_type
+}
 
 #[derive(Debug, Clone)]
 pub struct Scope {
-    pub table: HashMap<String, Rc<RefCell<*mut gcc_jit_lvalue>>>,
+    pub table: HashMap<String, Rc<RefCell<IdentifierMetadata>>>,
     pub parent: Option<Box<ScopeRef>>,
 }
 
@@ -17,7 +24,7 @@ impl Scope {
         }
     }
 
-    pub fn get(&self, key: String) -> Option<Rc<RefCell<*mut gcc_jit_lvalue>>> {
+    pub fn get(&self, key: String) -> Option<Rc<RefCell<IdentifierMetadata>>> {
         match self.table.get(&key) {
             Some(value) => Some(Rc::clone(&value)),
             None => {
@@ -30,7 +37,7 @@ impl Scope {
         }
     }
 
-    pub fn insert(&mut self, key: String, value: *mut gcc_jit_lvalue) {
+    pub fn insert(&mut self, key: String, value: IdentifierMetadata) {
         self.table.insert(key, Rc::new(RefCell::new(value)));
     }
 

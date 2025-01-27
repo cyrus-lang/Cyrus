@@ -7,7 +7,7 @@ use gccjit_sys::*;
 use options::CompilerOptions;
 use parser::parse_program;
 use rand::{distributions::Alphanumeric, Rng};
-use scope::{Scope, ScopeRef};
+use scope::{IdentifierMetadata, Scope, ScopeRef};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -15,7 +15,7 @@ use std::{
     fs::remove_file,
     path::Path,
     ptr::null_mut,
-    rc::{self, Rc},
+    rc::Rc,
     sync::{Arc, Mutex},
 };
 use utils::compiler_error;
@@ -59,8 +59,9 @@ struct FuncMetadata {
 struct StructMetadata {
     struct_type: *mut gcc_jit_struct,
     fields: Vec<Field>,
-    gcc_jit_fields: Vec<*mut gcc_jit_field>,
+    field_ptrs: Vec<*mut gcc_jit_field>,
     methods: Vec<FuncDef>,
+    method_ptrs: Vec<*mut gcc_jit_function>,
 }
 
 pub struct Compiler {
@@ -153,12 +154,15 @@ impl Compiler {
             Statement::Expression(expr) => {
                 self.compile_expression(scope, expr.clone());
             }
-            Statement::FuncDef(function) => self.compile_func_def(scope, function.clone()),
+            Statement::FuncDef(function) => {
+                self.compile_func_def(scope, function.clone());
+            }
             Statement::FuncDecl(function) => self.compile_func_decl(function.clone()),
             Statement::If(statement) => self.compile_if_statement(scope, statement),
             Statement::For(statement) => self.compile_for_statement(scope, statement),
             Statement::Match(_) => todo!(),
-            Statement::Struct(statement) => self.compile_struct(statement),
+            Statement::Struct(statement) => self.compile_struct(Rc::clone(&scope), statement),
+            Statement::Struct(statement) => self.compile_struct(Rc::clone(&scope), statement),
             Statement::Import(statement) => self.compile_import(statement),
             Statement::Return(statement) => self.compile_return(scope, statement),
             Statement::Break(loc) => self.compile_break_statement(loc),
@@ -168,6 +172,73 @@ impl Compiler {
                 statement.body,
             ),
             _ => compiler_error!(format!("Invalid statement: {:?}", stmt)),
+        }
+    }
+
+    fn compile_method_call(&mut self, scope: ScopeRef, statement: MethodCall) -> *mut gcc_jit_rvalue {
+        let guard = self.block_func_ref.lock().unwrap();
+
+        if let Some(block) = guard.block {
+            drop(guard);
+            
+            let identifier = {
+                let guard = scope.borrow();
+                match guard.get(statement.identifier.name.clone()) {
+                    Some(v) => v.borrow_mut().clone(),
+                    None => {
+                        compiler_error!(format!("Method call on invalid object '{}'", statement.identifier.name))
+                    }
+                }
+            };
+    
+            let mut result: *mut gcc_jit_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(identifier.lvalue) };
+    
+            for method_call in statement.chains {
+                unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
+    
+                let mut args = self.compile_func_arguments(Rc::clone(&scope), method_call.arguments);
+    
+                let guard = self.global_struct_table.borrow_mut();
+    
+                match guard
+                    .iter()
+                    .find(|&key| unsafe { gcc_jit_struct_as_type(key.1.struct_type) == gcc_jit_rvalue_get_type(result) })
+                {
+                    Some(founded_struct) => {
+                        match founded_struct
+                            .1
+                            .methods
+                            .iter()
+                            .position(|key| key.name == method_call.function_name.name)
+                        {
+                            Some(method_idx) => {
+    
+                                let func_def = founded_struct.1.methods[method_idx].clone();
+                                let func_ptr = founded_struct.1.method_ptrs[method_idx];
+    
+                                let rvalue = unsafe { gcc_jit_context_new_call(
+                                    self.context,
+                                    self.gccjit_location(func_def.loc.clone()),
+                                    func_ptr,
+                                    args.len().try_into().unwrap(),
+                                    args.as_mut_ptr(),
+                                ) };
+    
+                                unsafe { gcc_jit_block_add_eval(block, self.gccjit_location(func_def.loc), rvalue) };
+                            }
+                            None => compiler_error!(format!(
+                                "Method '{}' not defined for struct '{}'",
+                                method_call.function_name.name, founded_struct.0
+                            )),
+                        }
+                    }
+                    None => compiler_error!(format!("Invalid data type to call method.",)),
+                }
+            }
+    
+            result
+        } else {
+            compiler_error!("Method call is only valid inside a block");
         }
     }
 
@@ -202,8 +273,8 @@ impl Compiler {
                 self.gccjit_location(struct_init.loc),
                 struct_type,
                 values.len().try_into().unwrap(),
-                struct_metadata.gcc_jit_fields.as_mut_ptr(),
-                values.as_mut_ptr()
+                struct_metadata.field_ptrs.as_mut_ptr(),
+                values.as_mut_ptr(),
             )
         }
     }
@@ -226,8 +297,9 @@ impl Compiler {
         final_fields
     }
 
-    fn compile_struct(&mut self, statement: Struct) {
-        let mut fields = self.compile_struct_fields(statement.fields.clone());
+    fn compile_struct(&mut self, scope: ScopeRef, statement: Struct) {
+        let mut field_ptrs = self.compile_struct_fields(statement.fields.clone());
+        let mut method_ptrs: Vec<*mut gcc_jit_function> = Vec::new();
 
         let num_fields = statement.fields.len().try_into().unwrap();
         let struct_name = CString::new(statement.name.clone()).unwrap();
@@ -237,20 +309,42 @@ impl Compiler {
                 self.gccjit_location(statement.loc),
                 struct_name.as_ptr(),
                 num_fields,
-                fields.as_mut_ptr(),
+                field_ptrs.as_mut_ptr(),
             )
         };
+
+        for item in statement.methods.clone() {
+            let method_ptr = self.compile_func_def(
+                Rc::clone(&scope),
+                FuncDef {
+                    name: self.make_struct_method_name(statement.name.clone(), item.name),
+                    params: item.params,
+                    body: item.body,
+                    return_type: item.return_type,
+                    vis_type: item.vis_type,
+                    span: item.span,
+                    loc: item.loc,
+                },
+            );
+
+            method_ptrs.push(method_ptr);
+        }
 
         let struct_metadata = StructMetadata {
             struct_type,
             fields: statement.fields,
             methods: statement.methods,
-            gcc_jit_fields: fields,
+            field_ptrs,
+            method_ptrs,
         };
 
         self.global_struct_table
             .borrow_mut()
             .insert(statement.name, struct_metadata);
+    }
+
+    fn make_struct_method_name(&self, struct_name: String, method_name: String) -> String {
+        format!("__struct__{}__{}", struct_name, method_name)
     }
 
     fn object_file_extension(&self) -> &'static str {
@@ -344,7 +438,7 @@ impl Compiler {
         }
     }
 
-    fn compile_func_def(&mut self, scope: ScopeRef, func_def: FuncDef) {
+    fn compile_func_def(&mut self, scope: ScopeRef, func_def: FuncDef) -> *mut gcc_jit_function {
         let func_type = match func_def.vis_type {
             FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
             FuncVisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
@@ -447,6 +541,8 @@ impl Compiler {
                 return_type: return_type_token,
             },
         );
+
+        return func;
     }
 
     fn compile_func_decl(&mut self, func_decl: FuncDecl) {
@@ -718,7 +814,13 @@ impl Compiler {
                     let init_lvalue = unsafe { gcc_jit_function_new_local(func, loc, init_type, init_name.as_ptr()) };
 
                     unsafe { gcc_jit_block_add_assignment(active_block, loc.clone(), init_lvalue, init_rvalue) };
-                    Rc::clone(&scope).borrow_mut().insert(initializer.name, init_lvalue);
+                    Rc::clone(&scope).borrow_mut().insert(
+                        initializer.name,
+                        IdentifierMetadata {
+                            lvalue: init_lvalue,
+                            lvalue_type: init_type,
+                        },
+                    );
                 } else {
                     compiler_error!("For statement variable must be initialized with a valid value.");
                 }
@@ -831,25 +933,25 @@ impl Compiler {
         if let (Some(block), Some(func)) = (guard.block, guard.func) {
             drop(guard);
 
-            let mut variable_type: *mut gcc_jit_type = null_mut();
+            let mut var_type: *mut gcc_jit_type = null_mut();
             let mut rvalue = null_mut();
 
             if let Some(token) = variable.ty.clone() {
-                variable_type = self.token_as_data_type(self.context, token);
+                var_type = self.token_as_data_type(self.context, token);
             }
 
             if let Some(expr) = variable.expr {
                 rvalue = match expr {
-                    Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, variable_type),
+                    Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, var_type),
                     _ => self.compile_expression(Rc::clone(&scope), expr),
                 };
 
                 if variable.ty.is_none() {
-                    variable_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+                    var_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
                 }
             }
 
-            if variable_type.is_null() {
+            if var_type.is_null() {
                 compiler_error!("Undefined behaviour in variable declaration. Explicit type definition required.");
             }
 
@@ -858,7 +960,7 @@ impl Compiler {
                 gcc_jit_function_new_local(
                     func,
                     self.gccjit_location(variable.loc.clone()),
-                    variable_type,
+                    var_type,
                     name.as_ptr(),
                 )
             };
@@ -875,16 +977,17 @@ impl Compiler {
                 // };
 
                 unsafe {
-                    gcc_jit_block_add_assignment(
-                        block,
-                        self.gccjit_location(variable.loc.clone()),
-                        lvalue,
-                        rvalue,
-                    )
+                    gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, rvalue)
                 };
             }
 
-            scope.borrow_mut().insert(variable.name, lvalue);
+            scope.borrow_mut().insert(
+                variable.name,
+                IdentifierMetadata {
+                    lvalue,
+                    lvalue_type: var_type,
+                },
+            );
         } else {
             compiler_error!("Invalid usage of local variable.");
         }
@@ -897,8 +1000,8 @@ impl Compiler {
     ) -> (*mut gcc_jit_lvalue, *mut gcc_jit_rvalue) {
         match scope.borrow_mut().get(identifier.name.clone()) {
             Some(lvalue) => {
-                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(*lvalue.borrow_mut()) };
-                return (*lvalue.borrow_mut(), rvalue);
+                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.borrow_mut().lvalue) };
+                return (lvalue.borrow_mut().lvalue, rvalue);
             }
             None => {
                 let guard = self.block_func_ref.lock().unwrap();
@@ -942,7 +1045,7 @@ impl Compiler {
             Expression::AddressOf(expression) => self.compile_address_of(Rc::clone(&scope), expression),
             Expression::Dereference(expression) => self.compile_dereference(Rc::clone(&scope), expression),
             Expression::StructInit(struct_init) => self.compile_struct_init(scope, struct_init),
-            Expression::MethodCall(method_call) => todo!(),
+            Expression::MethodCall(method_call) => self.compile_method_call(scope, method_call),
         }
     }
 
@@ -971,7 +1074,7 @@ impl Compiler {
             Some(variable) => {
                 let lvalue = self.array_dimension_as_lvalue(
                     Rc::clone(&scope),
-                    *variable.borrow_mut(),
+                    variable.borrow_mut().lvalue,
                     array_index_assign.dimensions,
                 );
 
@@ -1037,8 +1140,11 @@ impl Compiler {
     fn compile_array_index(&mut self, scope: ScopeRef, array_index: ArrayIndex) -> *mut gcc_jit_rvalue {
         match scope.borrow_mut().get(array_index.identifier.name.clone()) {
             Some(variable) => {
-                let lvalue =
-                    self.array_dimension_as_lvalue(Rc::clone(&scope), *variable.borrow_mut(), array_index.dimensions);
+                let lvalue = self.array_dimension_as_lvalue(
+                    Rc::clone(&scope),
+                    variable.borrow_mut().lvalue,
+                    array_index.dimensions,
+                );
 
                 unsafe { gcc_jit_lvalue_as_rvalue(lvalue) }
             }
@@ -1103,18 +1209,24 @@ impl Compiler {
         }
     }
 
+    fn compile_func_arguments(&mut self, scope: ScopeRef, arguments: Vec<Expression>) -> Vec<*mut gcc_jit_rvalue> {
+        let mut args: Vec<*mut gcc_jit_rvalue> = Vec::new();
+
+        for arg_expr in arguments {
+            let arg_rvalue = self.compile_expression(Rc::clone(&scope), arg_expr);
+            args.push(arg_rvalue);
+        }
+
+        args
+    }
+
     fn compile_func_call(&mut self, scope: ScopeRef, func_call: FunctionCall) -> *mut gcc_jit_rvalue {
         let guard = self.block_func_ref.lock().unwrap();
 
         if let Some(block) = guard.block {
             drop(guard);
 
-            let mut args: Vec<*mut gcc_jit_rvalue> = Vec::new();
-
-            for arg_expr in func_call.arguments {
-                let arg_rvalue = self.compile_expression(Rc::clone(&scope), arg_expr);
-                args.push(arg_rvalue);
-            }
+            let mut args = self.compile_func_arguments(Rc::clone(&scope), func_call.arguments);
 
             let loc = self.gccjit_location(func_call.loc.clone());
             let func_table = self.func_table.borrow_mut();
@@ -1151,7 +1263,7 @@ impl Compiler {
 
         match scope.borrow_mut().get(unary_operator.identifer.name.clone()) {
             Some(lvalue) => {
-                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(*lvalue.borrow_mut()) };
+                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.borrow_mut().lvalue) };
                 let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
 
                 if !self.is_int_data_type(rvalue_type) {
@@ -1193,7 +1305,7 @@ impl Compiler {
                             gcc_jit_block_add_assignment_op(
                                 block,
                                 loc,
-                                *lvalue.borrow_mut(),
+                                lvalue.borrow_mut().lvalue,
                                 bin_op,
                                 gcc_jit_context_new_cast(self.context, loc, fixed_number, rvalue_type),
                             )

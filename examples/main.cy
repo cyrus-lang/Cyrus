@@ -1,18 +1,18 @@
-struct Product {
+struct User {
     name: string;
     age: i32;
-};
+
+    pub fn info() {
+        cprintf("Name: \n");
+        cprintf("Age: \n");
+    }
+}
 
 pub fn main() {
-    #a = Product {
+    #user = User {
         name: "Taha",
         age: 17
     };
 
-    #b: Product = Product {
-        name: "Taha",
-        age: 17
-    };
-
-    
+    user.info();
 }

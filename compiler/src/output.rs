@@ -10,7 +10,7 @@ impl Compiler {
         if result.is_null() {
             exit(1);
         }
-
+    
         let name = CString::new("main").unwrap();
         let main = unsafe { gcc_jit_result_get_code(result, name.as_ptr()) };
         if main.is_null() {

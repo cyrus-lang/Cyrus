@@ -161,6 +161,7 @@ impl<'a> Parser<'a> {
 
                     loop {
                         dbg!(self.current_token.kind.clone());
+
                         match self.current_token.kind.clone() {
                             TokenKind::LeftBrace => {
                                 self.next_token();
@@ -199,7 +200,6 @@ impl<'a> Parser<'a> {
                 loop {
                     match self.current_token.kind.clone() {
                         TokenKind::RightBrace => {
-                            self.next_token();
                             break;
                         }
                         TokenKind::EOF => {
@@ -213,7 +213,6 @@ impl<'a> Parser<'a> {
                             if let Statement::FuncDef(method) = self.parse_function_statement()? {
                                 methods.push(method);
                                 self.next_token(); // consume the right brace
-                                dbg!(self.current_token.kind.clone());
                             } else {
                                 return Err(format!(
                                     "Invalid func definition given as method to struct '{}'",
@@ -941,9 +940,11 @@ impl<'a> Parser<'a> {
         match left {
             Expression::Identifier(identifier) => {
                 self.next_token();
+
                 if !self.current_token_is(TokenKind::Semicolon) {
-                    return Err(format!("Expected to end with semicolon"))
+                    return Err(format!("Expected to end with semicolon"));
                 }
+
                 Ok(Expression::FunctionCall(FunctionCall {
                     function_name: identifier,
                     arguments: arguments.0,
@@ -1179,7 +1180,7 @@ impl<'a> Parser<'a> {
                         return Err(format!(
                             "Expected to be a method call with opening paren but got '{}'",
                             self.current_token.kind.clone()
-                        ))
+                        ));
                     }
                     let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
                     self.expect_current(TokenKind::RightParen)?;
@@ -1202,7 +1203,6 @@ impl<'a> Parser<'a> {
                             continue;
                         }
                         TokenKind::Semicolon => {
-                            self.next_token();
                             break;
                         }
                         _ => {
@@ -1242,7 +1242,11 @@ impl<'a> Parser<'a> {
                 self.expect_current(TokenKind::LeftBrace)?;
 
                 if self.current_token_is(TokenKind::RightBrace) {
-                    return Ok(Expression::StructInit(StructInit { name: struct_name, field_inits: Vec::new(), loc: self.current_location() }));
+                    return Ok(Expression::StructInit(StructInit {
+                        name: struct_name,
+                        field_inits: Vec::new(),
+                        loc: self.current_location(),
+                    }));
                 }
 
                 loop {
@@ -1275,12 +1279,12 @@ impl<'a> Parser<'a> {
                         }
                         TokenKind::Comma => {
                             self.next_token();
+
                             if self.current_token_is(TokenKind::RightBrace) {
                                 break;
                             }
                         }
                         TokenKind::RightBrace => {
-                            self.next_token();
                             break;
                         }
                         _ => return Err(format!("Invalid token recognized in struct init")),
