@@ -136,7 +136,7 @@ impl<'a> Parser<'a> {
                 } else if self.peek_token_is(TokenKind::LeftBrace) {
                     return self.parse_struct_init();
                 } else if self.peek_token_is(TokenKind::Dot) {
-                    return self.parse_method_call();
+                    return self.parse_struct_member();
                 } else {
                     return Ok(Expression::Identifier(Identifier {
                         name: identifier.name,
@@ -388,22 +388,22 @@ impl<'a> Parser<'a> {
         })))
     }
 
-    pub fn parse_method_call(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_struct_member(&mut self) -> Result<Expression, ParseError> {
         match self.current_token.kind.clone() {
             TokenKind::Identifier { name } => {
-                let method_call_start = self.current_token.span.start.clone();
+                let start = self.current_token.span.start.clone();
 
                 let identifier = Identifier {
                     name,
                     span: self.current_token.span.clone(),
                     loc: self.current_location(),
                 };
-                let mut chains: Vec<FunctionCall> = Vec::new();
+                let mut chains: Vec<FieldAccessOrMethodCall> = Vec::new();
                 self.next_token(); // consume identifer
                 self.expect_current(TokenKind::Dot)?;
 
                 loop {
-                    let start = self.current_token.span.start.clone();
+                    let member_start = self.current_token.span.start.clone();
                     let method_name = match self.current_token.kind.clone() {
                         TokenKind::Identifier { name } => Identifier {
                             name,
@@ -415,65 +415,99 @@ impl<'a> Parser<'a> {
                                 location: self.current_location(),
                                 etype: ParserErrorType::ExpectedIdentifier,
                                 file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Some(self.lexer.select(method_call_start..self.current_token.span.end)),
+                                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                                 verbose: None,
                                 caret: true,
                             })
                         }
                     };
 
-                    self.next_token(); // consume method name
-                    if !self.current_token_is(TokenKind::LeftParen) {
-                        return Err(CompileTimeError {
-                            location: self.current_location(),
-                            etype: ParserErrorType::MissingOpeningParen,
-                            file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Some(self.lexer.select(method_call_start..self.current_token.span.end)),
-                            verbose: None,
-                            caret: true,
+                    if self.peek_token_is(TokenKind::LeftParen) {
+                        self.next_token(); // consume method name
+
+                        let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
+                        self.expect_current(TokenKind::RightParen)?;
+
+                        let method_call = FunctionCall {
+                            function_name: method_name,
+                            arguments,
+                            span: Span {
+                                start: member_start,
+                                end: self.current_token.span.end,
+                            },
+                            loc: self.current_location(),
+                        };
+
+                        chains.push(FieldAccessOrMethodCall {
+                            method_call: Some(method_call),
+                            field_access: None,
                         });
-                    }
-                    let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
-                    self.expect_current(TokenKind::RightParen)?;
 
-                    let method_call = FunctionCall {
-                        function_name: method_name,
-                        arguments,
-                        span: Span {
-                            start,
-                            end: self.current_token.span.end,
-                        },
-                        loc: self.current_location(),
-                    };
+                        match self.current_token.kind {
+                            TokenKind::Dot => {
+                                self.next_token();
+                                continue;
+                            }
+                            TokenKind::Semicolon => {
+                                break;
+                            }
+                            _ => {
+                                return Err(CompileTimeError {
+                                    location: self.current_location(),
+                                    etype: ParserErrorType::MissingSemicolon,
+                                    file_name: Some(self.lexer.file_name.clone()),
+                                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                                    verbose: None,
+                                    caret: true,
+                                })
+                            }
+                        }
+                    } else {
+                        let field_name = match self.current_token.kind.clone() {
+                            TokenKind::Identifier { name } => Identifier {
+                                name,
+                                span: self.current_token.span.clone(),
+                                loc: self.current_location(),
+                            },
+                            _ => {
+                                return Err(CompileTimeError {
+                                    location: self.current_location(),
+                                    etype: ParserErrorType::ExpectedIdentifier,
+                                    file_name: Some(self.lexer.file_name.clone()),
+                                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                                    verbose: None,
+                                    caret: true,
+                                })
+                            }
+                        };
+                        self.next_token(); // consume field_name
 
-                    chains.push(method_call);
+                        chains.push(FieldAccessOrMethodCall {
+                            method_call: None,
+                            field_access: Some(FieldAccess {
+                                identifier: field_name,
+                                span: self.current_token.span.clone(),
+                                loc: self.current_location(),
+                            }),
+                        });
 
-                    match self.current_token.kind {
-                        TokenKind::Dot => {
-                            self.next_token();
-                            continue;
+                        match self.current_token.kind {
+                            TokenKind::Dot => {
+                                self.next_token();
+                                continue;
+                            }
+                            _ => {
+                                break;
+                            }
                         }
-                        TokenKind::Semicolon => {
-                            break;
-                        }
-                        _ => {
-                            return Err(CompileTimeError {
-                                location: self.current_location(),
-                                etype: ParserErrorType::MissingSemicolon,
-                                file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Some(self.lexer.select(method_call_start..self.current_token.span.end)),
-                                verbose: None,
-                                caret: true,
-                            })
-                        }
-                    }
+                    }                   
                 }
 
-                return Ok(Expression::MethodCall(MethodCall {
+                return Ok(Expression::StructFieldAccess(StructFieldAccess {
                     identifier,
                     chains,
                     span: Span {
-                        start: method_call_start,
+                        start,
                         end: self.current_token.span.end,
                     },
                     loc: self.current_location(),

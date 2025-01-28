@@ -35,18 +35,24 @@ impl<ErrorType: CompileTypeErrorType> fmt::Display for CompileTimeError<ErrorTyp
         write!(f, "| At: {}:{}\n\n", self.location.line, self.location.column)?;
 
         if let Some(code_raw) = &self.code_raw {
-            for line in code_raw.split("\n") {
-                write!(f, "\t{}\n", line)?;
+            let code_raw = code_raw.split("\n");
+
+            for (idx, line) in code_raw.clone().into_iter().enumerate() {
+                write!(f, "\t{}", line)?;
+                
+                if idx == code_raw.clone().count() {
+                    write!(f, "\n")?;
+                }
             }
         }
 
         if let Some(v) = &self.verbose {
-            write!(f, " // {}\n", v.trim())?;
+            write!(f, " // {}", v.trim())?;
         }
 
         write!(f, "\n")?;
-
         write!(f, "\t")?;
+        
         for _ in 0..self.location.column {
             write!(f, " ")?;
         }

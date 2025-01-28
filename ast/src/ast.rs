@@ -43,7 +43,7 @@ pub enum Expression {
     AddressOf(Box<Expression>),
     Dereference(Box<Expression>),
     StructInit(StructInit),
-    MethodCall(MethodCall),
+    StructFieldAccess(StructFieldAccess),
 }
 
 #[derive(Debug, Clone)]
@@ -71,9 +71,22 @@ pub struct FunctionCall {
 }
 
 #[derive(Debug, Clone)]
-pub struct MethodCall {
+pub struct FieldAccessOrMethodCall {
+    pub method_call: Option<FunctionCall>,
+    pub field_access: Option<FieldAccess>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructFieldAccess {
     pub identifier: Identifier,
-    pub chains: Vec<FunctionCall>,
+    pub chains: Vec<FieldAccessOrMethodCall>,
+    pub span: Span,
+    pub loc: Location
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldAccess {
+    pub identifier: Identifier,
     pub span: Span,
     pub loc: Location
 }

@@ -113,7 +113,7 @@ impl fmt::Display for Expression {
             Expression::AddressOf(expression) => write!(f, "&({})", expression),
             Expression::Dereference(expression) => write!(f, "*({})", expression),
             Expression::StructInit(struct_init) => todo!(),
-            Expression::MethodCall(struct_init) => todo!(),
+            Expression::StructFieldAccess(struct_field_access) => todo!(),
         }
     }
 }

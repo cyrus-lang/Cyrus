@@ -14,7 +14,7 @@ use std::{
     ffi::CString,
     fs::remove_file,
     path::Path,
-    ptr::null_mut,
+    ptr::{null, null_mut},
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -169,16 +169,30 @@ impl Compiler {
             Statement::BlockStatement(statement) => self.compile_statements(
                 Rc::new(RefCell::new(scope.borrow_mut().clone_immutable())),
                 statement.body,
-            )
+            ),
         }
     }
 
-    fn compile_method_call(&mut self, scope: ScopeRef, statement: MethodCall) -> *mut gcc_jit_rvalue {
-        let guard = self.block_func_ref.lock().unwrap();
+    fn find_struct(&mut self, rvalue_type: *mut gcc_jit_rvalue) -> (String, StructMetadata) {
+        let guard = self.global_struct_table.borrow();
+        let founded_struct = {
+            match guard.iter().find(|&key| unsafe {
+                gcc_jit_struct_as_type(key.1.struct_type) == gcc_jit_rvalue_get_type(rvalue_type)
+            }) {
+                Some(founded_struct) => founded_struct,
+                None => compiler_error!(format!("Invalid data type to call method.")),
+            }
+        };
+        (founded_struct.0.clone(), founded_struct.1.clone())
+    }
 
-        if let Some(block) = guard.block {
-            drop(guard);
+    fn compile_struct_field_access(&mut self, scope: ScopeRef, statement: StructFieldAccess) -> *mut gcc_jit_rvalue {
+        let block = {
+            let guard = self.block_func_ref.lock().unwrap();
+            guard.block
+        };
 
+        if let Some(block) = block {
             let identifier = {
                 let guard = scope.borrow();
                 match guard.get(statement.identifier.name.clone()) {
@@ -188,52 +202,71 @@ impl Compiler {
                     }
                 }
             };
-    
-            let result: *mut gcc_jit_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(identifier.lvalue) };
-    
-            for method_call in statement.chains {
+
+            let mut result: *mut gcc_jit_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(identifier.lvalue) };
+
+            for item in statement.chains {
                 unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
-    
-                let mut args = self.compile_func_arguments(Rc::clone(&scope), method_call.arguments);
-    
-                let guard = self.global_struct_table.borrow_mut();
-    
-                match guard
-                    .iter()
-                    .find(|&key| unsafe { gcc_jit_struct_as_type(key.1.struct_type) == gcc_jit_rvalue_get_type(result) })
-                {
-                    Some(founded_struct) => {
-                        match founded_struct
-                            .1
-                            .methods
-                            .iter()
-                            .position(|key| key.name == method_call.function_name.name)
-                        {
-                            Some(method_idx) => {
-    
-                                let func_def = founded_struct.1.methods[method_idx].clone();
-                                let func_ptr = founded_struct.1.method_ptrs[method_idx];
-    
-                                let rvalue = unsafe { gcc_jit_context_new_call(
+
+                let founded_struct = self.find_struct(result);
+
+                if let Some(method_call) = item.method_call {
+                    let mut args = {
+                        // Isolate the mutable borrow to avoid conflict with immutable borrows.
+                        self.compile_func_arguments(Rc::clone(&scope), method_call.arguments)
+                    };
+
+                    match founded_struct
+                        .1
+                        .methods
+                        .iter()
+                        .position(|key| key.name == method_call.function_name.name)
+                    {
+                        Some(method_idx) => {
+                            let func_def = founded_struct.1.methods[method_idx].clone();
+                            let func_ptr = founded_struct.1.method_ptrs[method_idx];
+
+                            let rvalue = unsafe {
+                                gcc_jit_context_new_call(
                                     self.context,
                                     self.gccjit_location(func_def.loc.clone()),
                                     func_ptr,
                                     args.len().try_into().unwrap(),
                                     args.as_mut_ptr(),
-                                ) };
-    
-                                unsafe { gcc_jit_block_add_eval(block, self.gccjit_location(func_def.loc), rvalue) };
-                            }
-                            None => compiler_error!(format!(
-                                "Method '{}' not defined for struct '{}'",
-                                method_call.function_name.name, founded_struct.0
-                            )),
+                                )
+                            };
+
+                            unsafe { gcc_jit_block_add_eval(block, self.gccjit_location(func_def.loc), rvalue) };
                         }
+                        None => compiler_error!(format!(
+                            "Method '{}' not defined for struct '{}'",
+                            method_call.function_name.name, founded_struct.0
+                        )),
                     }
-                    None => compiler_error!(format!("Invalid data type to call method.",)),
+                } else {
+                    let field_access = item.field_access.unwrap();
+
+                    match founded_struct
+                        .1
+                        .fields
+                        .iter()
+                        .position(|key| key.name == field_access.identifier.name)
+                    {
+                        Some(field_idx) => {
+                            let field_ptr = unsafe {
+                                gcc_jit_struct_get_field(founded_struct.1.struct_type, field_idx.try_into().unwrap())
+                            };
+                            let rvalue = unsafe { gcc_jit_rvalue_access_field(result, null_mut(), field_ptr) };
+                            result = rvalue;
+                        }
+                        None => compiler_error!(format!(
+                            "Field '{}' not defined for object '{}'",
+                            field_access.identifier.name, founded_struct.0
+                        )),
+                    }
                 }
             }
-    
+
             result
         } else {
             compiler_error!("Method call is only valid inside a block");
@@ -1043,7 +1076,9 @@ impl Compiler {
             Expression::AddressOf(expression) => self.compile_address_of(Rc::clone(&scope), expression),
             Expression::Dereference(expression) => self.compile_dereference(Rc::clone(&scope), expression),
             Expression::StructInit(struct_init) => self.compile_struct_init(scope, struct_init),
-            Expression::MethodCall(method_call) => self.compile_method_call(scope, method_call),
+            Expression::StructFieldAccess(struct_field_access) => {
+                self.compile_struct_field_access(scope, struct_field_access)
+            }
         }
     }
 
