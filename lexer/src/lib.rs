@@ -3,10 +3,12 @@ use ast::{
     token::*,
 };
 use core::panic;
-use errors::{lexer_invalid_char_error, lexer_unknown_char_error, LexicalError};
 use std::{fmt::Debug, ops::Range, process::exit};
+use utils::compile_time_errors::{
+    errors::CompileTimeError,
+    lexer_errors::{lexer_invalid_char_error, lexer_unknown_char_error, LexicalErrorType},
+};
 
-mod errors;
 mod format;
 mod lexer_test;
 
@@ -346,11 +348,11 @@ impl Lexer {
             final_char = Some(self.ch);
 
             if self.is_eof() {
-                LexicalError {
+                CompileTimeError {
                     line: self.line,
                     column: self.column - 1,
                     code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
-                    etype: errors::LexicalErrorType::UnterminatedStringLiteral,
+                    etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
                     caret: true,
                     file_name: Some(self.file_name.clone()),
@@ -378,11 +380,11 @@ impl Lexer {
                 span,
             }
         } else {
-            LexicalError {
+            CompileTimeError {
                 line: self.line,
                 column: self.column - 1,
                 code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
-                etype: errors::LexicalErrorType::EmptyCharLiteral,
+                etype: LexicalErrorType::EmptyCharLiteral,
                 verbose: None,
                 caret: true,
                 file_name: Some(self.file_name.clone()),
@@ -407,11 +409,11 @@ impl Lexer {
             final_string.push(self.ch);
 
             if self.is_eof() {
-                LexicalError {
+                CompileTimeError {
                     line: self.line,
                     column: self.column - 1,
                     code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
-                    etype: errors::LexicalErrorType::UnterminatedStringLiteral,
+                    etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
                     caret: true,
                     file_name: Some(self.file_name.clone()),
@@ -488,11 +490,11 @@ impl Lexer {
                 match literal {
                     Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::F32(value))),
                     Err(_) => {
-                        LexicalError {
+                        CompileTimeError {
                             line: self.line,
                             column: self.column - 1,
                             code_raw: Some(self.select(start..end)),
-                            etype: errors::LexicalErrorType::InvalidFloatLiteral,
+                            etype: LexicalErrorType::InvalidFloatLiteral,
                             verbose: None,
                             caret: true,
                             file_name: Some(self.file_name.clone()),
@@ -507,11 +509,11 @@ impl Lexer {
                 match literal {
                     Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
                     Err(_) => {
-                        LexicalError {
+                        CompileTimeError {
                             line: self.line,
                             column: self.column - 1,
                             code_raw: Some(self.select(start..end)),
-                            etype: errors::LexicalErrorType::InvalidIntegerLiteral,
+                            etype: LexicalErrorType::InvalidIntegerLiteral,
                             verbose: None,
                             caret: true,
                             file_name: Some(self.file_name.clone()),
@@ -598,11 +600,11 @@ impl Lexer {
             loop {
                 if self.is_eof() || self.ch == '*' {
                     if self.peek_char() != '/' {
-                        LexicalError {
+                        CompileTimeError {
                             line: self.line,
                             column: self.column - 1,
                             code_raw: Some(self.select(start..self.pos)),
-                            etype: errors::LexicalErrorType::UnterminatedMultiLineComment,
+                            etype: LexicalErrorType::UnterminatedMultiLineComment,
                             verbose: None,
                             caret: true,
                             file_name: Some(self.file_name.clone()),
