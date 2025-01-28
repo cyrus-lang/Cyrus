@@ -2,6 +2,7 @@ use super::errors::CompileTypeErrorType;
 use crate::compile_time_errors::errors::ERROR_PIPE_STR;
 use core::fmt;
 
+#[derive(Debug)]
 pub enum LexicalErrorType {
     UnterminatedStringLiteral,
     InvalidFloatLiteral,

@@ -1,16 +1,18 @@
 use ast::ast::*;
 use ast::token::*;
 use lexer::*;
+use utils::compile_time_errors::errors::CompileTimeError;
+use utils::compile_time_errors::parser_errors::ParserErrorType;
 use utils::compiler_error;
 use utils::fs::read_file;
 
-mod tests;
 mod common;
-mod statements;
 mod expressions;
 mod precedences;
+mod statements;
+mod tests;
 
-pub type ParseError = String;
+pub type ParseError = CompileTimeError<ParserErrorType>;
 
 /// Parses the program from the given file path.
 ///
@@ -140,10 +142,16 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
 
-        Err(format!(
-            "Expected token: {} but got {}.",
-            token_kind, self.peek_token.kind
-        ))
+        Err(CompileTimeError {
+            location: self.current_location(),
+            etype: ParserErrorType::UnexpectedToken(token_kind, self.current_token.kind.clone()),
+            file_name: Some(self.lexer.file_name.clone()),
+            code_raw: Some(self
+                .lexer
+                .select(self.current_token.span.start..self.current_token.span.end)),
+            verbose: None,
+            caret: true,
+        })
     }
 
     /// This function checks the current token and consumes it if it matches the expected kind.
@@ -154,9 +162,15 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
 
-        Err(format!(
-            "Expected token: {} but got {}.",
-            token_kind, self.current_token.kind
-        ))
+        Err(CompileTimeError {
+            location: self.current_location(),
+            etype: ParserErrorType::UnexpectedToken(token_kind, self.current_token.kind.clone()),
+            file_name: Some(self.lexer.file_name.clone()),
+            code_raw: Some(self
+                .lexer
+                .select(self.current_token.span.start..self.current_token.span.end)),
+            verbose: None,
+            caret: true,
+        })
     }
 }

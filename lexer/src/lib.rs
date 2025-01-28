@@ -15,10 +15,10 @@ mod lexer_test;
 #[derive(Debug, Clone)]
 pub struct Lexer {
     input: String,
-    file_name: String,
     pos: usize,
     next_pos: usize,
     ch: char,
+    pub file_name: String,
     pub line: usize,
     pub column: usize,
 }
@@ -349,8 +349,7 @@ impl Lexer {
 
             if self.is_eof() {
                 CompileTimeError {
-                    line: self.line,
-                    column: self.column - 1,
+                    location: Location { line: self.line, column: self.column },
                     code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
@@ -381,8 +380,7 @@ impl Lexer {
             }
         } else {
             CompileTimeError {
-                line: self.line,
-                column: self.column - 1,
+                location: Location { line: self.line, column: self.column },
                 code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
                 etype: LexicalErrorType::EmptyCharLiteral,
                 verbose: None,
@@ -410,8 +408,7 @@ impl Lexer {
 
             if self.is_eof() {
                 CompileTimeError {
-                    line: self.line,
-                    column: self.column - 1,
+                    location: Location { line: self.line, column: self.column },
                     code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
@@ -491,8 +488,7 @@ impl Lexer {
                     Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::F32(value))),
                     Err(_) => {
                         CompileTimeError {
-                            line: self.line,
-                            column: self.column - 1,
+                            location: Location { line: self.line, column: self.column },
                             code_raw: Some(self.select(start..end)),
                             etype: LexicalErrorType::InvalidFloatLiteral,
                             verbose: None,
@@ -510,8 +506,7 @@ impl Lexer {
                     Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
                     Err(_) => {
                         CompileTimeError {
-                            line: self.line,
-                            column: self.column - 1,
+                            location: Location { line: self.line, column: self.column },
                             code_raw: Some(self.select(start..end)),
                             etype: LexicalErrorType::InvalidIntegerLiteral,
                             verbose: None,
@@ -601,8 +596,7 @@ impl Lexer {
                 if self.is_eof() || self.ch == '*' {
                     if self.peek_char() != '/' {
                         CompileTimeError {
-                            line: self.line,
-                            column: self.column - 1,
+                            location: Location { line: self.line, column: self.column },
                             code_raw: Some(self.select(start..self.pos)),
                             etype: LexicalErrorType::UnterminatedMultiLineComment,
                             verbose: None,

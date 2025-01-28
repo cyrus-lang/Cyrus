@@ -2,6 +2,8 @@ use crate::ParseError;
 use crate::Parser;
 use ast::ast::*;
 use ast::token::*;
+use utils::compile_time_errors::errors::CompileTimeError;
+use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
     /// Parses a type token and returns its corresponding `TokenKind`.
@@ -23,6 +25,8 @@ impl<'a> Parser<'a> {
     /// # Errors
     /// - Returns an error if an invalid type is encountered or if brackets for arrays are mismatched.
     pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
+        let location = self.current_location();
+
         let data_type = match &self.current_token.kind {
             TokenKind::I8
             | TokenKind::I16
@@ -55,7 +59,17 @@ impl<'a> Parser<'a> {
                     span: self.current_token.span.clone(),
                     loc: self.current_location(),
                 }),
-                _ => return Err(format!("Invalid type: {}.", self.current_token.kind)),
+                _ => return 
+                Err(CompileTimeError {
+                    location,
+                    etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
+                    file_name: Some(self.lexer.file_name.clone()),
+                    code_raw: Some(self
+                        .lexer
+                        .select(self.current_token.span.start..self.current_token.span.end)),
+                    verbose: None,
+                    caret: true,
+                }),
             },
         };
 
@@ -96,7 +110,16 @@ impl<'a> Parser<'a> {
             TokenKind::Inline => FuncVisType::Inline,
             TokenKind::Extern => FuncVisType::Extern,
             TokenKind::Pub => FuncVisType::Pub,
-            _ => return Err(format!("Invalid function visibility detected: '{}'", token.kind)),
+            _ => return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                file_name: Some(self.lexer.file_name.clone()),
+                code_raw: Some(self
+                    .lexer
+                    .select(self.current_token.span.start..self.current_token.span.end)),
+                verbose: Some(String::from("Expected one of: 'inline', 'extern', 'pub' as function visiblity.")),
+                caret: true,
+            }),
         };
         self.next_token(); // consume vis_type token
         Ok(vis_type)

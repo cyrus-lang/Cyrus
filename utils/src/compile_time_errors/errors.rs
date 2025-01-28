@@ -1,17 +1,18 @@
 use core::fmt;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
+
+use ast::token::Location;
 
 pub const ERROR_PIPE_STR: &str = "-------------------------";
 
-pub trait CompileTypeErrorType: Display {
+pub trait CompileTypeErrorType: Display + Debug {
     fn context(&self) -> String;
 }
-
+#[derive(Debug, Clone)]
 pub struct CompileTimeError<ErrorType: CompileTypeErrorType> {
     pub etype: ErrorType,
     pub file_name: Option<String>,
-    pub line: usize,
-    pub column: usize,
+    pub location: Location,
     pub code_raw: Option<String>,
     pub verbose: Option<String>,
     pub caret: bool,
@@ -31,32 +32,32 @@ impl<ErrorType: CompileTypeErrorType> fmt::Display for CompileTimeError<ErrorTyp
             write!(f, "| Path: {}\n", file_name)?;
         }
 
-        write!(f, "| At: {}:{}\n\n", self.line, self.column)?;
+        write!(f, "| At: {}:{}\n\n", self.location.line, self.location.column)?;
 
         if let Some(code_raw) = &self.code_raw {
-            write!(f, "\t{}", code_raw)?;
+            for line in code_raw.split("\n") {
+                write!(f, "\t{}\n", line)?;
+            }
         }
 
         if let Some(v) = &self.verbose {
-            write!(f, " // {}", v)?;
+            write!(f, " // {}\n", v.trim())?;
         }
 
         write!(f, "\n")?;
 
         write!(f, "\t")?;
-        for _ in 0..self.column {
+        for _ in 0..self.location.column {
             write!(f, " ")?;
         }
 
         if self.caret {
-            write!(f, "^ {}\n", self.etype.context())?;
+            write!(f, "^ {}\n", self.etype.context().trim())?;
         }
 
         write!(f, "")
     }
 }
-
-// FIXME
 
 #[macro_export]
 macro_rules! compiler_error {
