@@ -387,6 +387,5 @@ pub fn integer_literal_as_value(integer_literal: IntegerLiteral) -> i64 {
         IntegerLiteral::U64(value) => value.try_into().unwrap(),
         IntegerLiteral::U128(value) => value.try_into().unwrap(),
         IntegerLiteral::CSize(value) => value.try_into().unwrap(),
-        
     }
 }

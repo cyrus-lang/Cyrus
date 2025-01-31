@@ -13,8 +13,9 @@ use std::{
     collections::HashMap,
     ffi::CString,
     fs::remove_file,
+    os::linux::raw::stat,
     path::Path,
-    ptr::{null, null_mut},
+    ptr::null_mut,
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -56,11 +57,17 @@ struct FuncMetadata {
 }
 
 #[derive(Debug, Clone)]
+struct StructMethodMetadata {
+    is_static: bool,
+    func_def: FuncDef,
+}
+
+#[derive(Debug, Clone)]
 struct StructMetadata {
     struct_type: *mut gcc_jit_struct,
     fields: Vec<Field>,
     field_ptrs: Vec<*mut gcc_jit_field>,
-    methods: Vec<FuncDef>,
+    methods: Vec<StructMethodMetadata>,
     method_ptrs: Vec<*mut gcc_jit_function>,
 }
 
@@ -189,6 +196,61 @@ impl Compiler {
         (founded_struct.0.clone(), founded_struct.1.clone())
     }
 
+    fn compile_struct_method_call(
+        &mut self,
+        scope: ScopeRef,
+        block: *mut gcc_jit_block,
+        struct_name: String,
+        struct_metadata: StructMetadata,
+        method_name: String,
+        mut arguments: Vec<*mut gcc_jit_rvalue>,
+    ) -> *mut gcc_jit_rvalue {
+        match struct_metadata
+            .methods
+            .iter()
+            .position(|key| key.func_def.name == method_name.clone())
+        {
+            Some(method_idx) => {
+                let func_def = struct_metadata.methods[method_idx].clone();
+                let func_ptr = struct_metadata.method_ptrs[method_idx];
+
+                let rvalue = unsafe {
+                    gcc_jit_context_new_call(
+                        self.context,
+                        self.gccjit_location(func_def.func_def.loc.clone()),
+                        func_ptr,
+                        arguments.len().try_into().unwrap(),
+                        arguments.as_mut_ptr(),
+                    )
+                };
+
+                unsafe { gcc_jit_block_add_eval(block, self.gccjit_location(func_def.func_def.loc), rvalue) };
+
+                return rvalue;
+            }
+            None => compiler_error!(format!(
+                "Method '{}' not defined for struct '{}'",
+                method_name, struct_name
+            )),
+        }
+    }
+
+    fn get_struct_method_def(
+        &mut self,
+        methods: Vec<StructMethodMetadata>,
+        struct_name: String,
+        method_name: String,
+    ) -> FuncDef {
+        if let Some(method_def) = methods.iter().find(|&key| key.func_def.name == method_name) {
+            method_def.func_def.clone()
+        } else {
+            compiler_error!(format!(
+                "Method definition not found for method '{}' of struct '{}'.",
+                method_name, struct_name
+            ))
+        }
+    }
+
     fn compile_struct_field_access(&mut self, scope: ScopeRef, statement: StructFieldAccess) -> *mut gcc_jit_rvalue {
         let block = {
             let guard = self.block_func_ref.lock().unwrap();
@@ -196,85 +258,126 @@ impl Compiler {
         };
 
         if let Some(block) = block {
-            let identifier = {
-                let guard = scope.borrow();
-                match guard.get(statement.identifier.name.clone()) {
-                    Some(v) => v.borrow_mut().clone(),
-                    None => {
-                        compiler_error!(format!("Method call on invalid object '{}'", statement.identifier.name))
+            let struct_name = statement.identifier.name.clone();
+
+            // compile static struct methods
+            if self.is_user_defined_type(statement.identifier.clone()) {
+                let struct_metadata = self
+                    .global_struct_table
+                    .borrow_mut()
+                    .get(&struct_name.clone())
+                    .unwrap()
+                    .clone();
+
+                let mut result: *mut gcc_jit_rvalue = null_mut();
+
+                for item in statement.chains {
+                    if let Some(method_call) = item.method_call {
+                        let method_def = self.get_struct_method_def(
+                            struct_metadata.methods.clone(),
+                            struct_name.clone(),
+                            method_call.function_name.name.clone(),
+                        );
+
+                        let arguments = {
+                            // Isolate the mutable borrow to avoid conflict with immutable borrows.
+                            self.compile_func_arguments(
+                                Rc::clone(&scope),
+                                Some(method_def.params),
+                                method_call.arguments,
+                            )
+                        };
+
+                        result = self.compile_struct_method_call(
+                            Rc::clone(&scope),
+                            block,
+                            struct_name.clone(),
+                            struct_metadata.clone(),
+                            method_call.function_name.name,
+                            arguments,
+                        );
+                    } else {
+                        compiler_error!("Accessing static field not supported in cyrus lang.")
                     }
                 }
-            };
 
-            let mut result: *mut gcc_jit_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(identifier.lvalue) };
+                return result;
+            } else {
+                // ANCHOR
+                // Get access to func params
+                // TODO
+                // Write a func for compiler to get var_decl or param from scope or func_def.
+                // Also this is usable here when getting access to identifier
+                let identifier = {
+                    let guard = scope.borrow();
+                    match guard.get(struct_name.clone()) {
+                        Some(v) => v.borrow_mut().clone(),
+                        None => {
+                            compiler_error!(format!("Method call on invalid object '{}'", struct_name))
+                        }
+                    }
+                };
 
-            for item in statement.chains {
+                let mut result: *mut gcc_jit_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(identifier.lvalue) };
                 unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
 
-                let founded_struct = self.find_struct(result);
+                for item in statement.chains {
+                    if let Some(method_call) = item.method_call {
+                        let (struct_name, struct_metadata): (String, StructMetadata) = self.find_struct(result);
+                        let method_def = self.get_struct_method_def(
+                            struct_metadata.methods.clone(),
+                            struct_name.clone(),
+                            method_call.function_name.name.clone(),
+                        );
 
-                if let Some(method_call) = item.method_call {
-                    match founded_struct
-                        .1
-                        .methods
-                        .iter()
-                        .position(|key| key.name == method_call.function_name.name)
-                    {
-                        Some(method_idx) => {
-                            let func_def = founded_struct.1.methods[method_idx].clone();
-                            let func_ptr = founded_struct.1.method_ptrs[method_idx];
+                        let mut arguments = self.compile_func_arguments(
+                            Rc::clone(&scope),
+                            Some(method_def.params),
+                            method_call.arguments,
+                        );
 
-                            let mut args = {
-                                // Isolate the mutable borrow to avoid conflict with immutable borrows.
-                                self.compile_func_arguments(
-                                    Rc::clone(&scope),
-                                    Some(func_def.params),
-                                    method_call.arguments,
-                                )
-                            };
+                        arguments.insert(0, unsafe { gcc_jit_lvalue_as_rvalue(identifier.lvalue) });
 
-                            let rvalue = unsafe {
-                                gcc_jit_context_new_call(
-                                    self.context,
-                                    self.gccjit_location(func_def.loc.clone()),
-                                    func_ptr,
-                                    args.len().try_into().unwrap(),
-                                    args.as_mut_ptr(),
-                                )
-                            };
+                        self.compile_struct_method_call(
+                            Rc::clone(&scope),
+                            block,
+                            struct_name.clone(),
+                            struct_metadata.clone(),
+                            method_call.function_name.name,
+                            arguments,
+                        );
+                    } else {
+                        let struct_metadata = self
+                            .global_struct_table
+                            .borrow_mut()
+                            .get(&struct_name.clone())
+                            .unwrap()
+                            .clone();
 
-                            unsafe { gcc_jit_block_add_eval(block, self.gccjit_location(func_def.loc), rvalue) };
+                        let field_access = item.field_access.unwrap();
+
+                        match struct_metadata
+                            .fields
+                            .iter()
+                            .position(|key| key.name == field_access.identifier.name)
+                        {
+                            Some(field_idx) => {
+                                let field_ptr = unsafe {
+                                    gcc_jit_struct_get_field(struct_metadata.struct_type, field_idx.try_into().unwrap())
+                                };
+                                let rvalue = unsafe { gcc_jit_rvalue_access_field(result, null_mut(), field_ptr) };
+                                result = rvalue;
+                            }
+                            None => compiler_error!(format!(
+                                "Field '{}' not defined for object '{}'",
+                                field_access.identifier.name, struct_name
+                            )),
                         }
-                        None => compiler_error!(format!(
-                            "Method '{}' not defined for struct '{}'",
-                            method_call.function_name.name, founded_struct.0
-                        )),
-                    }
-                } else {
-                    let field_access = item.field_access.unwrap();
-
-                    match founded_struct
-                        .1
-                        .fields
-                        .iter()
-                        .position(|key| key.name == field_access.identifier.name)
-                    {
-                        Some(field_idx) => {
-                            let field_ptr = unsafe {
-                                gcc_jit_struct_get_field(founded_struct.1.struct_type, field_idx.try_into().unwrap())
-                            };
-                            let rvalue = unsafe { gcc_jit_rvalue_access_field(result, null_mut(), field_ptr) };
-                            result = rvalue;
-                        }
-                        None => compiler_error!(format!(
-                            "Field '{}' not defined for object '{}'",
-                            field_access.identifier.name, founded_struct.0
-                        )),
                     }
                 }
-            }
 
-            result
+                null_mut()
+            }
         } else {
             compiler_error!("Method call is only valid inside a block");
         }
@@ -337,7 +440,6 @@ impl Compiler {
 
     fn compile_struct(&mut self, scope: ScopeRef, statement: Struct) {
         let mut field_ptrs = self.compile_struct_fields(statement.fields.clone());
-        let mut method_ptrs: Vec<*mut gcc_jit_function> = Vec::new();
 
         let num_fields = statement.fields.len().try_into().unwrap();
         let struct_name = CString::new(statement.name.clone()).unwrap();
@@ -351,11 +453,80 @@ impl Compiler {
             )
         };
 
-        for item in statement.methods.clone() {
+        self.global_struct_table.borrow_mut().insert(
+            statement.name.clone(),
+            StructMetadata {
+                struct_type,
+                fields: statement.fields.clone(),
+                field_ptrs: field_ptrs.clone(),
+                methods: Vec::new(),
+                method_ptrs: Vec::new(),
+            },
+        );
+
+        let (methods, method_ptrs) =
+            self.compile_struct_methods(Rc::clone(&scope), statement.name.clone(), statement.methods.clone());
+
+        let struct_metadata = StructMetadata {
+            struct_type,
+            fields: statement.fields,
+            methods,
+            field_ptrs,
+            method_ptrs,
+        };
+
+        self.global_struct_table
+            .borrow_mut()
+            .insert(statement.name, struct_metadata);
+    }
+
+    fn compile_struct_methods(
+        &mut self,
+        scope: ScopeRef,
+        struct_name: String,
+        ast_methods: Vec<FuncDef>,
+    ) -> (Vec<StructMethodMetadata>, Vec<*mut gcc_jit_function>) {
+        let mut methods: Vec<StructMethodMetadata> = Vec::new();
+        let mut method_ptrs: Vec<*mut gcc_jit_function> = Vec::new();
+
+        for item in ast_methods.clone() {
+            let mut is_static = true;
+
+            if let Some(self_param) = item.params.iter().find(|&key| key.identifier.name == "self") {
+                is_static = false;
+
+                if !self.struct_self_param_valid(struct_name.clone(), self_param.ty.clone().unwrap()) {
+                    compiler_error!(format!(
+                        "Invalid self parameter in method '{}' of struct '{}'.
+
+The self parameter must either be of the struct's type or a pointer to it.
+Valid method definitions should look like:
+
+struct {} {{
+    fn do_something(self: {}) {{ /* valid */ }}
+    fn do_another_thing(self: *{}) {{ /* valid */ }}
+}}
+
+Please ensure that the self parameter follows one of these forms.
+                        ",
+                        item.name.clone(),
+                        struct_name.clone(),
+                        struct_name.clone(),
+                        struct_name.clone(),
+                        struct_name.clone()
+                    ));
+                }
+            }
+
+            methods.push(StructMethodMetadata {
+                is_static,
+                func_def: item.clone(),
+            });
+
             let method_ptr = self.compile_func_def(
                 Rc::clone(&scope),
                 FuncDef {
-                    name: self.make_struct_method_name(statement.name.clone(), item.name),
+                    name: self.make_struct_method_name(struct_name.clone(), item.name),
                     params: item.params,
                     body: item.body,
                     return_type: item.return_type,
@@ -368,17 +539,33 @@ impl Compiler {
             method_ptrs.push(method_ptr);
         }
 
-        let struct_metadata = StructMetadata {
-            struct_type,
-            fields: statement.fields,
-            methods: statement.methods,
-            field_ptrs,
-            method_ptrs,
-        };
+        return (methods, method_ptrs);
+    }
 
-        self.global_struct_table
-            .borrow_mut()
-            .insert(statement.name, struct_metadata);
+    /// Validates whether the given self parameter type is a valid reference to the struct.
+    ///
+    /// # Parameters
+    /// - `struct_name`: The name of the struct the method belongs to.
+    /// - `self_param_type`: The type of the `self` parameter in the method signature.
+    ///
+    /// # Returns
+    /// - `true` if the self parameter is either the struct itself or a pointer to it.
+    /// - `false` otherwise.
+    ///
+    fn struct_self_param_valid(&mut self, struct_name: String, self_param_type: TokenKind) -> bool {
+        match self_param_type.clone() {
+            TokenKind::UserDefinedType(identifier) => {
+                if identifier.name == struct_name.clone() {
+                    true
+                } else {
+                    false
+                }
+            }
+            TokenKind::Dereference(token_kind) => {
+                return self.struct_self_param_valid(struct_name, *token_kind);
+            }
+            _ => false,
+        }
     }
 
     fn make_struct_method_name(&self, struct_name: String, method_name: String) -> String {
@@ -1272,7 +1459,6 @@ impl Compiler {
 
             if let Some(ref func_params) = func_params {
                 let param = func_params[idx].clone();
-                let expr_type = unsafe { gcc_jit_rvalue_get_type(expr) };
 
                 if let Some(var_token_type) = param.ty {
                     if self.auto_castable_data_types(var_token_type.clone()) {

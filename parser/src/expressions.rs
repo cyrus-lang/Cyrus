@@ -183,11 +183,12 @@ impl<'a> Parser<'a> {
                     etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                     file_name: Some(self.lexer.file_name.clone()),
                     code_raw: Some(self.lexer.select(span.start..self.current_token.span.end)),
-                    verbose: Some(String::from(
+                    verbose: Some(String::from(format!(
                         "No corresponding prefix function is defined for the token '{}'.
     This token cannot be parsed as a valid expression or statement prefix.
     Please check your syntax or ensure that a prefix function is implemented for this token type.",
-                    )),
+                        self.current_token.kind.clone()
+                    ))),
                     caret: true,
                 })
             }
@@ -288,7 +289,6 @@ impl<'a> Parser<'a> {
 
         series.push(self.parse_expression(Precedence::Lowest)?.0); // parse the first expression
 
-        // !self.peek_token_is(end.clone())
         while self.peek_token_is(TokenKind::Comma) {
             self.next_token(); // consume the current expression
 
@@ -500,7 +500,7 @@ impl<'a> Parser<'a> {
                                 break;
                             }
                         }
-                    }                   
+                    }
                 }
 
                 return Ok(Expression::StructFieldAccess(StructFieldAccess {

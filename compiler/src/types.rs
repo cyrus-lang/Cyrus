@@ -1,6 +1,9 @@
 use std::ptr::null_mut;
 
-use ast::{ast::integer_literal_as_value, token::TokenKind};
+use ast::{
+    ast::{integer_literal_as_value, Identifier},
+    token::TokenKind,
+};
 use gccjit_sys::*;
 use utils::compiler_error;
 
@@ -79,6 +82,13 @@ impl Compiler {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_BOOL) }
     }
 
+    pub fn is_user_defined_type(&self, identifier: Identifier) -> bool {
+        match self.global_struct_table.borrow_mut().get(&identifier.name) {
+            Some(_) => true,
+            None => false,
+        }
+    }
+
     pub fn token_as_data_type(&mut self, context: *mut gcc_jit_context, token_kind: TokenKind) -> *mut gcc_jit_type {
         match token_kind {
             TokenKind::I8 => Compiler::i8_type(context),
@@ -98,14 +108,12 @@ impl Compiler {
             TokenKind::String => Compiler::string_type(context),
             TokenKind::Char => Compiler::char_type(context),
             TokenKind::CSize => Compiler::csize_type(context),
-            TokenKind::Dereference(data_type) => {
-                unsafe { gcc_jit_type_get_pointer(self.token_as_data_type(context, *data_type)) }
-            }
+            TokenKind::Dereference(data_type) => unsafe {
+                gcc_jit_type_get_pointer(self.token_as_data_type(context, *data_type))
+            },
             TokenKind::UserDefinedType(identifier) => {
                 match self.global_struct_table.borrow_mut().get(&identifier.name) {
-                    Some(struct_statement) => {
-                        unsafe { gcc_jit_struct_as_type(struct_statement.struct_type) }
-                    },
+                    Some(struct_statement) => unsafe { gcc_jit_struct_as_type(struct_statement.struct_type) },
                     None => compiler_error!("Unknown data type."),
                 }
             }
@@ -122,23 +130,37 @@ impl Compiler {
                         match capacity {
                             TokenKind::Literal(literal) => {
                                 match literal {
-                                    ast::ast::Literal::Integer(integer_literal) => 
-                                    {
-                                        let capacity_raw = integer_literal_as_value(integer_literal).try_into().unwrap();
+                                    ast::ast::Literal::Integer(integer_literal) => {
+                                        let capacity_raw =
+                                            integer_literal_as_value(integer_literal).try_into().unwrap();
 
                                         if !multi_dimensional {
-                                            let elements_data_type = self.token_as_data_type(context, *data_type.clone());
-                                            array_type = unsafe { gcc_jit_context_new_array_type(context, null_mut(), elements_data_type, capacity_raw) };
+                                            let elements_data_type =
+                                                self.token_as_data_type(context, *data_type.clone());
+                                            array_type = unsafe {
+                                                gcc_jit_context_new_array_type(
+                                                    context,
+                                                    null_mut(),
+                                                    elements_data_type,
+                                                    capacity_raw,
+                                                )
+                                            };
                                             multi_dimensional = true;
                                         } else {
-                                            array_type = unsafe { gcc_jit_context_new_array_type(context, null_mut(), array_type, capacity_raw) };
+                                            array_type = unsafe {
+                                                gcc_jit_context_new_array_type(
+                                                    context,
+                                                    null_mut(),
+                                                    array_type,
+                                                    capacity_raw,
+                                                )
+                                            };
                                         }
-                                    },
-                                    _ => compiler_error!("Invalid capacity for array data type.")
+                                    }
+                                    _ => compiler_error!("Invalid capacity for array data type."),
                                 };
-
                             }
-                            _ => compiler_error!("Invalid token given to cast to a GCCJIT type.")
+                            _ => compiler_error!("Invalid token given to cast to a GCCJIT type."),
                         }
                     }
                 }
@@ -205,24 +227,24 @@ impl Compiler {
 
     pub fn auto_castable_data_types(&mut self, type_token: TokenKind) -> bool {
         match type_token {
-            TokenKind::I8 |
-            TokenKind::I16 |
-            TokenKind::I32 |
-            TokenKind::I64 |
-            TokenKind::I128 |
-            TokenKind::U8 |
-            TokenKind::U16 |
-            TokenKind::U32 |
-            TokenKind::U64 |
-            TokenKind::U128 |
-            TokenKind::Void |
-            TokenKind::Float |
-            TokenKind::Double |
-            TokenKind::Bool |
-            TokenKind::String |
-            TokenKind::Char |
-            TokenKind::CSize => true,
-            _ => false
+            TokenKind::I8
+            | TokenKind::I16
+            | TokenKind::I32
+            | TokenKind::I64
+            | TokenKind::I128
+            | TokenKind::U8
+            | TokenKind::U16
+            | TokenKind::U32
+            | TokenKind::U64
+            | TokenKind::U128
+            | TokenKind::Void
+            | TokenKind::Float
+            | TokenKind::Double
+            | TokenKind::Bool
+            | TokenKind::String
+            | TokenKind::Char
+            | TokenKind::CSize => true,
+            _ => false,
         }
     }
 }
