@@ -8,12 +8,12 @@ use utils::compile_time_errors::parser_errors::ParserErrorType;
 impl<'a> Parser<'a> {
     /// Parses a type token and returns its corresponding `TokenKind`.
     ///
-    /// This function handles primitive types (e.g., `i32`, `f64`), user-defined types,
+    /// This function handles primitive types (e.g., `float`, `double`), user-defined types,
     /// and composite types such as pointers, references, and arrays. If the type token
     /// is invalid, it returns a parsing error.
     ///
     /// # Behavior
-    /// - For primitive types (e.g., `i32`, `bool`, `string`), it directly returns the corresponding `TokenKind`.
+    /// - For primitive types (e.g., `float`, `bool`, `string`), it directly returns the corresponding `TokenKind`.
     /// - For pointers (`*`) and references (`&`), it recursively parses the type they point to or reference.
     /// - For user-defined types, it wraps the identifier in a `TokenKind::UserDefinedType`.
     /// - For array types (e.g., `type[]` or `type[capacity]`), it collects the dimensions and creates a `TokenKind::Array`.
@@ -38,8 +38,8 @@ impl<'a> Parser<'a> {
             | TokenKind::U32
             | TokenKind::U64
             | TokenKind::U128
-            | TokenKind::F32
-            | TokenKind::F64
+            | TokenKind::Float
+            | TokenKind::Double
             | TokenKind::CSize
             | TokenKind::Char
             | TokenKind::Bool

@@ -100,6 +100,9 @@ impl Compiler {
             let optname = CString::new(format!("-l{}", item)).unwrap();
             unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
         }
+
+        let optname = CString::new(format!("-lm")).unwrap();
+        unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
     }
 
     pub fn new(program: Program, file_path: String, file_name: String) -> Self {
@@ -211,11 +214,6 @@ impl Compiler {
                 let founded_struct = self.find_struct(result);
 
                 if let Some(method_call) = item.method_call {
-                    let mut args = {
-                        // Isolate the mutable borrow to avoid conflict with immutable borrows.
-                        self.compile_func_arguments(Rc::clone(&scope), method_call.arguments)
-                    };
-
                     match founded_struct
                         .1
                         .methods
@@ -225,6 +223,15 @@ impl Compiler {
                         Some(method_idx) => {
                             let func_def = founded_struct.1.methods[method_idx].clone();
                             let func_ptr = founded_struct.1.method_ptrs[method_idx];
+
+                            let mut args = {
+                                // Isolate the mutable borrow to avoid conflict with immutable borrows.
+                                self.compile_func_arguments(
+                                    Rc::clone(&scope),
+                                    Some(func_def.params),
+                                    method_call.arguments,
+                                )
+                            };
 
                             let rvalue = unsafe {
                                 gcc_jit_context_new_call(
@@ -982,9 +989,9 @@ impl Compiler {
                 }
             }
 
-            if var_type.is_null() {
-                compiler_error!("Undefined behaviour in variable declaration. Explicit type definition required.");
-            }
+            // if var_type.is_null() {
+            //     compiler_error!("Undefined behaviour in variable declaration. Explicit type definition required.");
+            // }
 
             let name = CString::new(variable.name.clone()).unwrap();
             let lvalue = unsafe {
@@ -997,18 +1004,28 @@ impl Compiler {
             };
 
             if !rvalue.is_null() {
-                // FIXME Array cast must be performed here
-                // let casted_rvalue = unsafe {
-                //     gcc_jit_context_new_cast(
-                //         self.context,
-                //         self.gccjit_location(variable.loc.clone()),
-                //         rvalue,
-                //         variable_type,
-                //     )
-                // };
+                let mut casted_rvalue = rvalue.clone();
+
+                if let Some(var_token_type) = variable.ty {
+                    if self.auto_castable_data_types(var_token_type) {
+                        casted_rvalue = unsafe {
+                            gcc_jit_context_new_cast(
+                                self.context,
+                                self.gccjit_location(variable.loc.clone()),
+                                rvalue,
+                                var_type,
+                            )
+                        };
+                    }
+                }
 
                 unsafe {
-                    gcc_jit_block_add_assignment(block, self.gccjit_location(variable.loc.clone()), lvalue, rvalue)
+                    gcc_jit_block_add_assignment(
+                        block,
+                        self.gccjit_location(variable.loc.clone()),
+                        lvalue,
+                        casted_rvalue,
+                    )
                 };
             }
 
@@ -1242,12 +1259,36 @@ impl Compiler {
         }
     }
 
-    fn compile_func_arguments(&mut self, scope: ScopeRef, arguments: Vec<Expression>) -> Vec<*mut gcc_jit_rvalue> {
+    fn compile_func_arguments(
+        &mut self,
+        scope: ScopeRef,
+        func_params: Option<Vec<FunctionParam>>,
+        arguments: Vec<Expression>,
+    ) -> Vec<*mut gcc_jit_rvalue> {
         let mut args: Vec<*mut gcc_jit_rvalue> = Vec::new();
 
-        for arg_expr in arguments {
-            let arg_rvalue = self.compile_expression(Rc::clone(&scope), arg_expr);
-            args.push(arg_rvalue);
+        for (idx, expr) in arguments.iter().enumerate() {
+            let mut expr = self.compile_expression(Rc::clone(&scope), expr.clone());
+
+            if let Some(ref func_params) = func_params {
+                let param = func_params[idx].clone();
+                let expr_type = unsafe { gcc_jit_rvalue_get_type(expr) };
+
+                if let Some(var_token_type) = param.ty {
+                    if self.auto_castable_data_types(var_token_type.clone()) {
+                        expr = unsafe {
+                            gcc_jit_context_new_cast(
+                                self.context,
+                                self.gccjit_location(param.loc.clone()),
+                                expr,
+                                self.token_as_data_type(self.context, var_token_type),
+                            )
+                        };
+                    }
+                }
+            }
+
+            args.push(expr);
         }
 
         args
@@ -1259,33 +1300,41 @@ impl Compiler {
         if let Some(block) = guard.block {
             drop(guard);
 
-            let mut args = self.compile_func_arguments(Rc::clone(&scope), func_call.arguments);
-
             let loc = self.gccjit_location(func_call.loc.clone());
-            let func_table = self.func_table.borrow_mut();
 
-            match func_table.get(&func_call.function_name.name) {
-                Some(func) => unsafe {
-                    let rvalue = gcc_jit_context_new_call(
-                        self.context,
-                        loc.clone(),
-                        func.ptr,
-                        args.len().try_into().unwrap(),
-                        args.as_mut_ptr(),
-                    );
+            let mut args = self.compile_func_arguments(Rc::clone(&scope), None, func_call.arguments.clone());
 
-                    gcc_jit_block_add_eval(block, loc, rvalue);
+            let func = {
+                let func_table = self.func_table.borrow_mut();
+                match func_table.get(&func_call.function_name.name) {
+                    Some(func) => func.clone(),
+                    None => match retrieve_builtin_func(func_call.function_name.name.clone()) {
+                        Some(func_def) => {
+                            return func_def(self.context, block, &mut args);
+                        }
+                        None => compiler_error!(format!(
+                            "Function '{}' not defined at this module.",
+                            func_call.function_name.name
+                        )),
+                    },
+                }
+            };
 
-                    rvalue
-                },
-                None => match retrieve_builtin_func(func_call.function_name.name.clone()) {
-                    Some(func_def) => func_def(self.context, block, &mut args),
-                    None => compiler_error!(format!(
-                        "Function '{}' not defined at this module.",
-                        func_call.function_name.name
-                    )),
-                },
-            }
+            args = self.compile_func_arguments(Rc::clone(&scope), Some(func.params.clone()), func_call.arguments);
+
+            let rvalue = unsafe {
+                gcc_jit_context_new_call(
+                    self.context,
+                    loc.clone(),
+                    func.ptr,
+                    args.len().try_into().unwrap(),
+                    args.as_mut_ptr(),
+                )
+            };
+
+            unsafe { gcc_jit_block_add_eval(block, loc, rvalue) };
+
+            return rvalue;
         } else {
             compiler_error!("Calling any function at top-level nodes isn't allowed.");
         }
@@ -1510,10 +1559,10 @@ impl Compiler {
                 },
             },
             Literal::Float(float_literal) => match float_literal {
-                FloatLiteral::F32(value) => unsafe {
+                FloatLiteral::Float(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_double(self.context, Compiler::f32_type(self.context), value as f64)
                 },
-                FloatLiteral::F64(value) => unsafe {
+                FloatLiteral::Double(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_double(self.context, Compiler::f64_type(self.context), value as f64)
                 },
             },

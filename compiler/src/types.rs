@@ -92,8 +92,8 @@ impl Compiler {
             TokenKind::U64 => Compiler::u64_type(context),
             TokenKind::U128 => Compiler::u128_type(context),
             TokenKind::Void => Compiler::void_type(context),
-            TokenKind::F32 => Compiler::f32_type(context),
-            TokenKind::F64 => Compiler::f64_type(context),
+            TokenKind::Float => Compiler::f32_type(context),
+            TokenKind::Double => Compiler::f64_type(context),
             TokenKind::Bool => Compiler::bool_type(context),
             TokenKind::String => Compiler::string_type(context),
             TokenKind::Char => Compiler::char_type(context),
@@ -200,6 +200,29 @@ impl Compiler {
             type1
         } else {
             compiler_error!("Failed to determine widest data type when comparing type1 with type2.");
+        }
+    }
+
+    pub fn auto_castable_data_types(&mut self, type_token: TokenKind) -> bool {
+        match type_token {
+            TokenKind::I8 |
+            TokenKind::I16 |
+            TokenKind::I32 |
+            TokenKind::I64 |
+            TokenKind::I128 |
+            TokenKind::U8 |
+            TokenKind::U16 |
+            TokenKind::U32 |
+            TokenKind::U64 |
+            TokenKind::U128 |
+            TokenKind::Void |
+            TokenKind::Float |
+            TokenKind::Double |
+            TokenKind::Bool |
+            TokenKind::String |
+            TokenKind::Char |
+            TokenKind::CSize => true,
+            _ => false
         }
     }
 }

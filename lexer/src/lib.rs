@@ -485,7 +485,7 @@ impl Lexer {
                 let literal: Result<f32, _> = String::from_iter(number_str).parse();
 
                 match literal {
-                    Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::F32(value))),
+                    Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::Float(value))),
                     Err(_) => {
                         CompileTimeError {
                             location: Location { line: self.line, column: self.column },
@@ -649,8 +649,8 @@ impl Lexer {
             "u32" => TokenKind::U32,
             "u64" => TokenKind::U64,
             "u128" => TokenKind::U128,
-            "f32" => TokenKind::F32,
-            "f64" => TokenKind::F64,
+            "float" => TokenKind::Float,
+            "double" => TokenKind::Double,
             "csize" => TokenKind::CSize,
             "char" => TokenKind::Char,
             "bool" => TokenKind::Bool,

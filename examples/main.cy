@@ -1,23 +1,6 @@
-struct User {
-    name: string;
-    age: i32;
-
-    pub fn do_something() {
-        cprintf("Do Something\n");
-    }
-
-    pub fn info() {
-        cprintf("Name: \n");
-        cprintf("Age: \n");
-    }
-}
+// extern fn sqrt(x: double): double;
 
 pub fn main() {
-    #user = User {
-        name: "Taha",
-        age: 17
-    };
+    cprintf("Program started\n");
 
-    cprintf("name: %s\n", user.name);
-    cprintf("age: %d\n", user.age);
 }

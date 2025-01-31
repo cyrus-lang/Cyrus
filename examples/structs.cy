@@ -18,6 +18,6 @@ pub fn main() {
         age: 17
     };
 
-    user.info();
-    user.do_something();
+    cprintf("name: %s\n", user.name);
+    cprintf("age: %d\n", user.age);
 }

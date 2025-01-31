@@ -131,8 +131,8 @@ pub enum IntegerLiteral {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum FloatLiteral {
-    F32(f32),
-    F64(f64),
+    Float(f32),
+    Double(f64),
 }
 
 #[derive(Debug, Clone)]

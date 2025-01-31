@@ -336,7 +336,7 @@ mod tests {
     fn test_floating_numbers() {
         assert_tokens(
             "3.14",
-            Some(&vec![TokenKind::Literal(Literal::Float(FloatLiteral::F32(3.14)))]),
+            Some(&vec![TokenKind::Literal(Literal::Float(FloatLiteral::Float(3.14)))]),
             None,
         );
     }

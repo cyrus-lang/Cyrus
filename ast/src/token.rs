@@ -73,8 +73,8 @@ pub enum TokenKind {
     U64,
     U128,
     Char,
-    F32,
-    F64,
+    Float,
+    Double,
     CSize,
     Void,
     String,
@@ -144,8 +144,8 @@ impl fmt::Display for TokenKind {
             Self::I64 => write!(f, "i64"),
             Self::U32 => write!(f, "u32"),
             Self::U64 => write!(f, "u64"),
-            Self::F32 => write!(f, "f32"),
-            Self::F64 => write!(f, "f64"),
+            Self::Float => write!(f, "float"),
+            Self::Double => write!(f, "double"),
             Self::Void => write!(f, "void"),
             Self::Array(data_type, array) => {
                 // TODO
