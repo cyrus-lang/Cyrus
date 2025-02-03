@@ -423,6 +423,8 @@ impl<'a> Parser<'a> {
                     };
 
                     if self.peek_token_is(TokenKind::LeftParen) {
+                        // parse struct method call
+
                         self.next_token(); // consume method name
 
                         let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
@@ -448,6 +450,12 @@ impl<'a> Parser<'a> {
                                 self.next_token();
                                 continue;
                             }
+                            TokenKind::RightBracket => {
+                                break;
+                            }
+                            TokenKind::RightParen => {
+                                break;
+                            }
                             TokenKind::Semicolon => {
                                 break;
                             }
@@ -463,6 +471,8 @@ impl<'a> Parser<'a> {
                             }
                         }
                     } else {
+                        // parse struct field access
+                        
                         let field_name = match self.current_token.kind.clone() {
                             TokenKind::Identifier { name } => Identifier {
                                 name,
@@ -480,7 +490,6 @@ impl<'a> Parser<'a> {
                                 })
                             }
                         };
-                        self.next_token(); // consume field_name
 
                         chains.push(FieldAccessOrMethodCall {
                             method_call: None,
@@ -491,9 +500,9 @@ impl<'a> Parser<'a> {
                             }),
                         });
 
-                        match self.current_token.kind {
+                        match self.peek_token.kind {
                             TokenKind::Dot => {
-                                self.next_token();
+                                self.next_token(); // consume field_name
                                 continue;
                             }
                             _ => {

@@ -1,11 +1,9 @@
 struct Person {
     name: string;
-    lname: string;
+    age: i32;
 
-    fn info(self: Person) {
-        // self.name = "Taha";
-
-        // cprintf("info(): %s\n", p.name);
+    fn info(self: Person, another_arg: string) {
+        cprintf("arg: %s\n", another_arg);
     }
 
     fn static_func_call() {
@@ -14,12 +12,14 @@ struct Person {
 }
 
 pub fn main() {
-    #p = Person {
-        name: "Unknown",
-        lname: "Dostifam"
+    #person = Person {
+        name: "Taha",
+        age: 17,
     };
 
-    p.info();
-    cprintf("name: %s\n", p.name);
-
+    #a = person.name;
+    
+    // cprintf("Program started\n");
+    // person.info("Sample");
+    // cprintf("Name: %s\n", );
 }
