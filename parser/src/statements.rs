@@ -1,3 +1,5 @@
+use core::panic;
+
 use crate::precedences::Precedence;
 use crate::ParseError;
 use crate::Parser;
@@ -214,10 +216,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingSemicolon,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(start..self.current_token.span.end),
-                ),
+                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                 verbose: None,
                 caret: true,
             });
@@ -279,10 +278,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::ExpectedIdentifier,
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Some(
-                                self.lexer
-                                    .select(start..self.current_token.span.end),
-                            ),
+                            code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                             verbose: None,
                             caret: true,
                         });
@@ -316,7 +312,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_func_params(&mut self) -> Result<FunctionParams, ParseError> {
-        let params_start= self.current_token.span.start;
+        let params_start = self.current_token.span.start;
 
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -376,10 +372,7 @@ impl<'a> Parser<'a> {
                                 location: self.current_location(),
                                 etype: ParserErrorType::MissingComma,
                                 file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Some(
-                                    self.lexer
-                                        .select(params_start..self.current_token.span.end),
-                                ),
+                                code_raw: Some(self.lexer.select(params_start..self.current_token.span.end)),
                                 verbose: None,
                                 caret: true,
                             });
@@ -423,10 +416,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Some(
-                            self.lexer
-                                .select(start..self.current_token.span.end),
-                        ),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                         verbose: None,
                         caret: true,
                     });
@@ -440,10 +430,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::MissingOpeningBrace,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(
-                        self.lexer
-                            .select(start..self.current_token.span.end),
-                    ),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
                 });
@@ -476,10 +463,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::IncompleteConditionalForLoop,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(start..self.current_token.span.end),
-                ),
+                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                 verbose: None,
                 caret: true,
             });
@@ -523,10 +507,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::MissingClosingBrace,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(
-                        self.lexer
-                            .select(start..self.current_token.span.end),
-                    ),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
                 });
@@ -576,10 +557,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(
-                        self.lexer
-                            .select(start..self.current_token.span.end),
-                    ),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
                 });
@@ -628,10 +606,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingSemicolon,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(start..self.current_token.span.end),
-                ),
+                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                 verbose: None,
                 caret: true,
             });
@@ -666,10 +641,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(
-                        self.lexer
-                            .select(start..self.current_token.span.end),
-                    ),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
                 })
@@ -685,21 +657,25 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::Colon) {
             self.next_token(); // consume colon
 
-            return_type = Some(self.current_token.clone());
-
             if self.current_token_is(TokenKind::LeftBrace) {
                 return Err(CompileTimeError {
                     location: self.current_location(),
                     etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(
-                        self.lexer
-                            .select(start..self.current_token.span.end),
-                    ),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: Some(String::from("Return type required before closing brace '{'")),
                     caret: true,
                 });
             }
+
+            let return_type_start = self.current_token.span.start.clone();
+            return_type = Some(Token {
+                kind: self.parse_type_token()?,
+                span: Span {
+                    start: return_type_start,
+                    end: self.current_token.span.end,
+                },
+            });
 
             self.next_token();
         }
@@ -721,6 +697,8 @@ impl<'a> Parser<'a> {
         // we used current_token_is because we don't want to consume it,
         // we pass this statement that is inside a brace to parse_block_statement.
         if self.current_token_is(TokenKind::LeftBrace) {
+            todo!();
+
             let body = Box::new(self.parse_block_statement()?);
 
             if !self.current_token_is(TokenKind::RightBrace) {
@@ -728,10 +706,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::MissingClosingBrace,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(
-                        self.lexer
-                            .select(start..self.current_token.span.end),
-                    ),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
                 });
@@ -758,10 +733,7 @@ impl<'a> Parser<'a> {
             location: self.current_location(),
             etype: ParserErrorType::MissingClosingBrace,
             file_name: Some(self.lexer.file_name.clone()),
-            code_raw: Some(
-                self.lexer
-                    .select(start..self.current_token.span.end),
-            ),
+            code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
             verbose: None,
             caret: true,
         });
@@ -828,10 +800,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingClosingBrace,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(start..self.current_token.span.end),
-                ),
+                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                 verbose: None,
                 caret: true,
             });
@@ -872,10 +841,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::MissingOpeningBrace,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Some(
-                            self.lexer
-                                .select(start..self.current_token.span.end),
-                        ),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                         verbose: None,
                         caret: true,
                     });
@@ -888,10 +854,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Some(
-                            self.lexer
-                                .select(start..self.current_token.span.end),
-                        ),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                         verbose: None,
                         caret: true,
                     });

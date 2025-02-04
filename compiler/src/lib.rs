@@ -13,7 +13,6 @@ use std::{
     collections::HashMap,
     ffi::CString,
     fs::remove_file,
-    os::linux::raw::stat,
     path::Path,
     ptr::null_mut,
     rc::Rc,
@@ -259,6 +258,8 @@ impl Compiler {
         };
 
         if let Some(block) = block {
+            let mut result: *mut gcc_jit_rvalue = null_mut();
+
             // compile static struct methods
             if self.is_user_defined_type(statement.identifier.clone()) {
                 let struct_metadata = self
@@ -267,8 +268,6 @@ impl Compiler {
                     .get(&statement.identifier.name.clone())
                     .unwrap()
                     .clone();
-
-                let mut result: *mut gcc_jit_rvalue = null_mut();
 
                 for item in statement.chains {
                     if let Some(method_call) = item.method_call {
@@ -304,10 +303,11 @@ impl Compiler {
             } else {
                 let (lvalue, rvalue) = self.access_identifier_values(Rc::clone(&scope), statement.identifier);
 
-                let mut result: *mut gcc_jit_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
-                unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
+                result = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
 
                 for item in statement.chains {
+                    unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
+                    
                     if let Some(method_call) = item.method_call {
                         let (struct_name, struct_metadata): (String, StructMetadata) = self.find_struct(result);
 
@@ -373,7 +373,7 @@ impl Compiler {
                     }
                 }
 
-                null_mut()
+                result
             }
         } else {
             compiler_error!("Method call is only valid inside a block");

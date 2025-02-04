@@ -2,12 +2,19 @@ struct Person {
     name: string;
     age: i32;
 
-    fn info(self: Person, another_arg: string) {
-        cprintf("arg: %s\n", another_arg);
+    fn info(self: *Person) {
+        cprintf("%p\n", &self);
+        // cprintf("Name: %s\n", self.name);
+        // cprintf("Age: %d\n", self.age);
     }
 
-    fn static_func_call() {
-        cprintf("This is a simple static func\n");
+    fn static_func_call(): *Person {
+        // #a = &Person {
+        //     name: "Taha",
+        //     age: 17,
+        // };
+
+        // return a;
     }
 }
 
@@ -17,9 +24,5 @@ pub fn main() {
         age: 17,
     };
 
-    #a = person.name;
-    
-    // cprintf("Program started\n");
-    // person.info("Sample");
-    // cprintf("Name: %s\n", );
+    person.info();
 }
