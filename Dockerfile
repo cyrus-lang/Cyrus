@@ -1,21 +1,20 @@
-FROM alpine:latest
+FROM rust:1.84-alpine3.20
 
-RUN apk add --no-cache rust cargo gcc make libc-dev curl
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-RUN echo 'source $HOME/.cargo/env' >> ~/.bashrc && \
-    source ~/.bashrc
-
-RUN apk add --no-cache libgcc libstdc++ musl-dev
-
-RUN ln -sf /usr/bin/gcc /usr/bin/cc && \
-    ln -sf /usr/bin/gcc /usr/bin/gcc && \
-    ln -sf /usr/bin/g++ /usr/bin/g++
-
-RUN export CC=gcc
-
-RUN /root/.cargo/bin/rustup target add x86_64-unknown-linux-musl
+RUN apk update && apk add --no-cache \
+    gcc \
+    make \
+    musl-dev \
+    libc-dev \
+    curl \
+    bash \
+    binutils-gold \
+    clang \
+    libgcc \
+    libstdc++ \
+    zlib-dev
 
 WORKDIR /app
 
@@ -25,4 +24,4 @@ RUN mkdir -p tmp && touch tmp/main
 
 RUN make
 
-CMD ["/bin/sh"]
+ENTRYPOINT ["/bin/sh"]
