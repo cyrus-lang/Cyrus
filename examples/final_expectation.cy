@@ -1,8 +1,8 @@
 package main;
 
 // Import some libraries
-imoprt http:simple_http_server;
-imoprt assert;
+import http:simple_http_server;
+import assert;
 
 // Variable definition
 #a: i32 = 10;
