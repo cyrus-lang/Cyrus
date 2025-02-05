@@ -4,10 +4,10 @@ Cyrus is a general-purpose, statically-typed, manually memory-managed programmin
 
 **Key Features:**
 
- * General-purpose: Suitable for a wide range of applications, including systems programming, game development, and scientific computing.
- * Statically-typed: Enforces type safety at compile time, reducing runtime errors and improving code reliability.
- * GCCJIT: Enables efficient code generation and optimization across various platforms and architectures.
- * C-inspired syntax: Offers a familiar and concise syntax for developers accustomed to C-like languages.
+- **General-purpose:** Suitable for a wide range of applications, including systems programming, game development, and scientific computing.
+- **Statically-typed:** Enforces type safety at compile time, reducing runtime errors and improving code reliability.
+- **GCCJIT:** Enables efficient code generation and optimization across various platforms and architectures.
+- **C-inspired syntax:** Offers a familiar and concise syntax for developers accustomed to C-like languages.
 
 ## Target Audience
 

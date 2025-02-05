@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-RUN apk add --no-cache rust cargo gcc make
+RUN apk add --no-cache rust cargo gcc make libc-dev
 
 RUN ln -sf /usr/bin/gcc /usr/bin/gcc && \
     ln -sf /usr/bin/g++ /usr/bin/g++
