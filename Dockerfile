@@ -1,8 +1,11 @@
 FROM alpine:latest
 
-RUN apk add --no-cache rust cargo gcc make libc-dev
+RUN apk add --no-cache rust cargo gcc make libc-dev curl
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+RUN echo 'source $HOME/.cargo/env' >> ~/.bashrc && \
+    source ~/.bashrc
 
 RUN apk add --no-cache libgcc libstdc++ musl-dev
 
@@ -12,7 +15,7 @@ RUN ln -sf /usr/bin/gcc /usr/bin/cc && \
 
 RUN export CC=gcc
 
-RUN ~/.cargo/bin/rustup target add x86_64-unknown-linux-musl
+RUN /root/.cargo/bin/rustup target add x86_64-unknown-linux-musl
 
 WORKDIR /app
 
