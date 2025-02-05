@@ -11,8 +11,6 @@ COPY . .
 
 RUN mkdir -p tmp && touch tmp/main
 
-RUN mkdir -p tmp && touch tmp/main
-
 RUN make
 
 CMD ["/bin/sh"]
