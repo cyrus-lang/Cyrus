@@ -2,14 +2,19 @@ struct Person {
     name: string;
     age: i32;
 
-    
+    fn new(name: string, age: i32): Person {
+        return Person {
+            name: "Taha",
+            age: 17
+        };
+    }
 
-    fn sample(): string {
-        return "Hello world";
+    fn info(self: *Person) {
+        cprintf("Name: %s\n", (*self).name);
+        cprintf("Age: %d\n", (*self).age);
     }
 }
 
 pub fn main() {
-    // Person.new("Taha", 17);
-    // Person.sample();
+    Person.new("Taha", 17).info();
 }

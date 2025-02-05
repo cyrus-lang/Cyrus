@@ -251,7 +251,13 @@ impl Compiler {
         }
     }
 
-    fn compile_struct_field_access(&mut self, scope: ScopeRef, statement: StructFieldAccess) -> *mut gcc_jit_rvalue {
+    fn compile_struct_field_access(
+        &mut self,
+        scope: ScopeRef,
+        mut statement: StructFieldAccess,
+    ) -> *mut gcc_jit_rvalue {
+        let mut method_call_chain = statement.chains.clone();
+
         let (func, block) = {
             let guard = self.block_func_ref.lock().unwrap();
             (guard.func, guard.block)
@@ -269,7 +275,9 @@ impl Compiler {
                         .unwrap()
                         .clone();
 
-                    for item in statement.chains.clone() {
+                    if statement.chains.len() > 0 {
+                        let item = statement.chains[0].clone();
+
                         if let Some(method_call) = item.method_call {
                             let method_def = self.get_struct_method_def(
                                 struct_metadata.methods.clone(),
@@ -294,6 +302,9 @@ impl Compiler {
                                 method_call.function_name.name,
                                 arguments,
                             );
+
+                            // consume current called method from the chain
+                            method_call_chain.remove(0);
                         } else {
                             compiler_error!("Accessing static field not supported in cyrus lang.")
                         }
@@ -303,7 +314,7 @@ impl Compiler {
                 result = self.compile_expression(Rc::clone(&scope), statement.expr.clone());
             }
 
-            for item in statement.chains {
+            for item in method_call_chain {
                 unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
 
                 if let Some(method_call) = item.method_call {
@@ -347,7 +358,7 @@ impl Compiler {
                         };
                         arguments.insert(0, self_arg);
 
-                        self.compile_struct_method_call(
+                        result = self.compile_struct_method_call(
                             Rc::clone(&scope),
                             block,
                             struct_name.clone(),
@@ -355,33 +366,37 @@ impl Compiler {
                             method_call.function_name.name,
                             arguments,
                         );
-                    } else {
-                        todo!();
-                        // let field_access = item.field_access.unwrap();
-
-                        // match struct_metadata
-                        //     .fields
-                        //     .iter()
-                        //     .position(|key| key.name == field_access.identifier.name)
-                        // {
-                        //     Some(field_idx) => {
-                        //         let field_ptr = unsafe {
-                        //             gcc_jit_struct_get_field(struct_metadata.struct_type, field_idx.try_into().unwrap())
-                        //         };
-
-                        //         let field_rvalue =
-                        //             unsafe { gcc_jit_rvalue_access_field(result, null_mut(), field_ptr) };
-
-                        //         result = field_rvalue;
-                        //     }
-                        //     None => compiler_error!(format!(
-                        //         "Field '{}' not defined for object '{}'",
-                        //         field_access.identifier.name, struct_name
-                        //     )),
-                        // }
                     }
                 } else {
-                    compiler_error!("This data typed returned from mathod call is not a struct.")
+                    if let Some(field_access) = item.field_access {
+                        if let Some((struct_name, struct_metadata)) = self.find_struct(result) {
+                            match struct_metadata
+                                .fields
+                                .iter()
+                                .position(|key| key.name == field_access.identifier.name)
+                            {
+                                Some(field_idx) => {
+                                    let field_ptr = unsafe {
+                                        gcc_jit_struct_get_field(
+                                            struct_metadata.struct_type,
+                                            field_idx.try_into().unwrap(),
+                                        )
+                                    };
+
+                                    let field_rvalue =
+                                        unsafe { gcc_jit_rvalue_access_field(result, null_mut(), field_ptr) };
+
+                                    result = field_rvalue;
+                                }
+                                None => compiler_error!(format!(
+                                    "Field '{}' not defined for struct '{}'",
+                                    field_access.identifier.name, struct_name
+                                )),
+                            }
+                        } else {
+                            compiler_error!("Trying to find struct with rvalue gained from method call chain but could not find anything.")
+                        }
+                    }
                 }
             }
 
