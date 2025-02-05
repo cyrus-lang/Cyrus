@@ -1,20 +1,11 @@
-struct Person {
-    name: string;
-    age: i32;
-
-    pub fn new(name: string, age: i32): Person {
-        return Person {
-            name: "Taha",
-            age: 17
-        };
-    }
-
-    fn info(self: *Person) {
-        cprintf("Name: %s\n", (*self).name);
-        cprintf("Age: %d\n", (*self).age);
-    }
-}
+import sample;
 
 pub fn main() {
-    Person.new("Taha", 17).info();
+    #person = Person {
+        name: "Taha",
+        age: 17
+    };
+
+    cprintf("Name: %s\n", person.name);
+    cprintf("Age: %d\n", person.age);
 }

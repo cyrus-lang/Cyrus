@@ -246,6 +246,7 @@ pub struct Import {
 #[derive(Debug, Clone)]
 pub struct Struct {
     pub name: String,
+    pub vis_type: VisType,
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub methods: Vec<FuncDef>,
@@ -306,7 +307,7 @@ pub struct FuncDef {
     pub params: FunctionParams,
     pub body: Box<BlockStatement>,
     pub return_type: Option<Token>,
-    pub vis_type: FuncVisType,
+    pub vis_type: VisType,
     pub span: Span,
     pub loc: Location,
 }
@@ -316,13 +317,13 @@ pub struct FuncDecl {
     pub name: String,
     pub params: FunctionParams,
     pub return_type: Option<Token>,
-    pub vis_type: FuncVisType,
+    pub vis_type: VisType,
     pub span: Span,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum FuncVisType {
+pub enum VisType {
     Extern,
     Pub,
     Internal,

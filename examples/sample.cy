@@ -3,3 +3,9 @@ pub fn sample(): i32 {
 
     return 0;
 }
+
+pub struct Person {
+    name: string;
+    age: i32;
+}
+

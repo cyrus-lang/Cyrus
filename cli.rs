@@ -98,7 +98,8 @@ enum Commands {
 macro_rules! init_compiler {
     ($file_path:expr) => {{
         let (program, file_name) = parse_program($file_path);
-        let mut compiler = Compiler::new(program, $file_path, file_name);
+        let context = Compiler::new_master_context();
+        let mut compiler = Compiler::new(context, program, $file_path, file_name);
 
         #[cfg(debug_assertions)]
         compiler.set_debug_info(true);

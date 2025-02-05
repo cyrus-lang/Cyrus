@@ -7,13 +7,20 @@ use ast::ast::*;
 use ast::token::*;
 use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
+use utils::compiler_error;
 
 impl<'a> Parser<'a> {
     pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         match self.current_token.kind {
             TokenKind::If => self.parse_if(),
             TokenKind::Function | TokenKind::Decl | TokenKind::Extern | TokenKind::Pub | TokenKind::Inline => {
-                self.parse_func()
+                if self.peek_token_is(TokenKind::Function) {
+                    self.parse_func()
+                } else if self.peek_token_is(TokenKind::Struct) {
+                    self.parse_struct()
+                } else {
+                    compiler_error!("Expected struct/fn definition after vis_type token");
+                }
             }
             TokenKind::Return => self.parse_return(),
             TokenKind::Hashtag => self.parse_var_decl(),
@@ -40,6 +47,11 @@ impl<'a> Parser<'a> {
     pub fn parse_struct(&mut self) -> Result<Statement, ParseError> {
         let loc = self.current_location();
         let start = self.current_token.span.start;
+
+        let vis_type = self.parse_vis_type(self.current_token.clone()).unwrap_or(VisType::Internal);
+        if vis_type == VisType::Inline {
+            compiler_error!("Inline vis type is invalid for structs. It only can be used for funcs.")
+        }
 
         self.next_token();
 
@@ -164,6 +176,7 @@ impl<'a> Parser<'a> {
                 }
 
                 Ok(Statement::Struct(Struct {
+                    vis_type,
                     name: struct_name,
                     inherits,
                     fields,
@@ -623,11 +636,11 @@ impl<'a> Parser<'a> {
     pub fn parse_func(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
 
-        let mut vis_type = FuncVisType::Internal; // internal by default
+        let mut vis_type = VisType::Internal; // internal by default
 
         if !self.current_token_is(TokenKind::Function) {
             // Parse visiblity type
-            vis_type = self.parse_func_vis_type(self.current_token.clone())?;
+            vis_type = self.parse_vis_type(self.current_token.clone())?;
         }
 
         self.next_token(); // consume the fn token

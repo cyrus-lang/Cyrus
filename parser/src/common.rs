@@ -102,16 +102,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parses a function visibility or type modifier token and returns its corresponding `FuncVisType`.
+    /// Parses a visibility or type modifier token and returns its corresponding `VisType`.
     ///
     /// This function checks if the given token represents a valid function visibility or type modifier
-    /// (e.g., `Inline`, `Extern`, or `Pub`) and converts it to the appropriate `FuncVisType`.
+    /// (e.g., `Inline`, `Extern`, or `Pub`) and converts it to the appropriate `VisType`.
     /// If the token is invalid, it returns a parsing error.
-    pub fn parse_func_vis_type(&mut self, token: Token) -> Result<FuncVisType, ParseError> {
+    pub fn parse_vis_type(&mut self, token: Token) -> Result<VisType, ParseError> {
         let vis_type = match token.kind {
-            TokenKind::Inline => FuncVisType::Inline,
-            TokenKind::Extern => FuncVisType::Extern,
-            TokenKind::Pub => FuncVisType::Pub,
+            TokenKind::Inline => VisType::Inline,
+            TokenKind::Extern => VisType::Extern,
+            TokenKind::Pub => VisType::Pub,
             _ => return Err(CompileTimeError {
                 location: self.current_location(),
                 etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),

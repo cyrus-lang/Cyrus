@@ -49,7 +49,7 @@ struct LoopBlockPair {
 
 #[derive(Debug, Clone)]
 struct FuncMetadata {
-    func_type: FuncVisType,
+    func_type: VisType,
     ptr: *mut gcc_jit_function,
     return_type: TokenKind,
     params: Vec<FunctionParam>,
@@ -63,6 +63,7 @@ struct StructMethodMetadata {
 
 #[derive(Debug, Clone)]
 struct StructMetadata {
+    vis_type: VisType,
     struct_type: *mut gcc_jit_struct,
     fields: Vec<Field>,
     field_ptrs: Vec<*mut gcc_jit_field>,
@@ -111,9 +112,15 @@ impl Compiler {
         unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
     }
 
-    pub fn new(program: Program, file_path: String, file_name: String) -> Self {
-        let context = unsafe { gcc_jit_context_acquire() };
+    pub fn new_master_context() -> *mut gcc_jit_context {
+        unsafe { gcc_jit_context_acquire() }
+    }
 
+    pub fn new_child_context(master: *mut gcc_jit_context) -> *mut gcc_jit_context {
+        unsafe { gcc_jit_context_new_child_context(master) }
+    }
+
+    pub fn new(context: *mut gcc_jit_context, program: Program, file_path: String, file_name: String) -> Self {
         let file_name_cstr = CString::new(file_name.clone()).unwrap();
         unsafe {
             gcc_jit_context_set_str_option(
@@ -307,9 +314,16 @@ impl Compiler {
                             compiler_error!("Accessing static field not supported in cyrus lang.")
                         }
                     }
+                } else {
+                    result = self.compile_expression(Rc::clone(&scope), statement.expr.clone());
                 }
             } else {
                 result = self.compile_expression(Rc::clone(&scope), statement.expr.clone());
+                dbg!(result);
+            }
+
+            if result == null_mut() {
+                compiler_error!("Unexpected behaviour in struct field access compilation.");
             }
 
             for item in method_call_chain {
@@ -476,6 +490,7 @@ impl Compiler {
         self.global_struct_table.borrow_mut().insert(
             statement.name.clone(),
             StructMetadata {
+                vis_type: statement.vis_type.clone(),
                 struct_type,
                 fields: statement.fields.clone(),
                 field_ptrs: field_ptrs.clone(),
@@ -488,6 +503,7 @@ impl Compiler {
             self.compile_struct_methods(Rc::clone(&scope), statement.name.clone(), statement.methods.clone());
 
         let struct_metadata = StructMetadata {
+            vis_type: statement.vis_type,
             struct_type,
             fields: statement.fields,
             methods,
@@ -538,7 +554,7 @@ Please ensure that the self parameter follows one of these forms.
                 }
             } else {
                 match item.vis_type.clone() {
-                    FuncVisType::Internal => {
+                    VisType::Internal => {
                         compiler_error!(format!(
                             "Static method '{}' must be defined as pub fn.",
                             item.name.clone(),
@@ -549,13 +565,13 @@ Please ensure that the self parameter follows one of these forms.
             }
 
             match item.vis_type.clone() {
-                FuncVisType::Extern | FuncVisType::Inline => {
+                VisType::Extern | VisType::Inline => {
                     compiler_error!(format!(
                         "Extern/Inline func definition is not allowed as a method for struct '{}'",
                         struct_name.clone()
                     ));
                 }
-                
+
                 _ => {}
             }
 
@@ -644,13 +660,41 @@ Please ensure that the self parameter follows one of these forms.
             };
 
             let (program, file_name) = parse_program(package_file_path.clone());
-            let mut compiler = Compiler::new(program, package_file_path.clone(), file_name);
+            let context = Compiler::new_child_context(self.context);
+            let mut compiler = Compiler::new(context, program, package_file_path.clone(), file_name);
 
             compiler.compile();
             compiler.make_object_file(library_path.clone());
 
+            for (key, value) in compiler.global_struct_table.borrow_mut().clone() {
+                if value.vis_type == VisType::Pub && !self.global_struct_table.borrow_mut().contains_key(&key) {
+                    let mut struct_field_ptrs = self.compile_struct_fields(value.fields.clone());
+                    let struct_decl_name = CString::new(key.clone()).unwrap();
+                    let struct_decl = unsafe {
+                        gcc_jit_context_new_struct_type(
+                            self.context,
+                            self.gccjit_location(import.loc.clone()),
+                            struct_decl_name.as_ptr(),
+                            value.fields.len().try_into().unwrap(),
+                            struct_field_ptrs.as_mut_ptr(),
+                        )
+                    };
+                    self.global_struct_table.borrow_mut().insert(
+                        key,
+                        StructMetadata {
+                            vis_type: VisType::Internal,
+                            struct_type: struct_decl,
+                            fields: value.fields,
+                            field_ptrs: struct_field_ptrs,
+                            methods: Vec::new(), // FIXME
+                            method_ptrs: Vec::new(),
+                        },
+                    );
+                }
+            }
+
             for (key, value) in compiler.func_table.borrow_mut().clone() {
-                if value.func_type == FuncVisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
+                if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
                     let mut func_params: Vec<*mut gcc_jit_param> = Vec::new();
                     for item in value.params.clone() {
                         let param_name = CString::new(item.identifier.name.clone()).unwrap();
@@ -689,7 +733,7 @@ Please ensure that the self parameter follows one of these forms.
                     self.func_table.borrow_mut().insert(
                         key,
                         FuncMetadata {
-                            func_type: FuncVisType::Extern,
+                            func_type: VisType::Extern,
                             ptr: decl_func,
                             params: value.params,
                             return_type: value.return_type,
@@ -706,10 +750,10 @@ Please ensure that the self parameter follows one of these forms.
 
     fn compile_func_def(&mut self, scope: ScopeRef, func_def: FuncDef) -> *mut gcc_jit_function {
         let func_type = match func_def.vis_type {
-            FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
-            FuncVisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
-            FuncVisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
-            FuncVisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
+            VisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
+            VisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
+            VisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
+            VisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
         };
 
         let return_type_token = func_def
@@ -818,10 +862,10 @@ Please ensure that the self parameter follows one of these forms.
         todo!();
 
         // let func_type = match func_decl.vis_type {
-        //     FuncVisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
-        //     FuncVisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
-        //     FuncVisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
-        //     FuncVisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
+        //     VisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
+        //     VisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
+        //     VisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
+        //     VisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
         // };
 
         // let return_type_token = func_decl
