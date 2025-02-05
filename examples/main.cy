@@ -2,7 +2,7 @@ struct Person {
     name: string;
     age: i32;
 
-    fn new(name: string, age: i32): Person {
+    pub fn new(name: string, age: i32): Person {
         return Person {
             name: "Taha",
             age: 17
