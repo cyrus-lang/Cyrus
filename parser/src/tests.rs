@@ -210,4 +210,9 @@ mod tests {
     fn test_func_return_user_defined_type() {
         assert_parse("fn sample(): MyStruct {}");
     }
+
+    #[test]
+    fn test_ptr_identifier() {
+        assert_parse("&**my_var");
+    }
 }

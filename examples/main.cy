@@ -1,8 +1,15 @@
-fn static_func_call(): i32 {
-    // #a = &Person {
-    //     name: "Taha",
-    //     age: 17,
-    // };
+struct Person {
+    name: string;
+    age: i32;
 
-    return 0;
+    
+
+    fn sample(): string {
+        return "Hello world";
+    }
+}
+
+pub fn main() {
+    // Person.new("Taha", 17);
+    // Person.sample();
 }

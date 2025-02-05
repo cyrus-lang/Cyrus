@@ -1,11 +1,10 @@
-use gccjit_sys::{gcc_jit_lvalue, gcc_jit_type};
+use gccjit_sys::*;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-
 
 #[derive(Debug, Clone)]
 pub struct IdentifierMetadata {
     pub(crate) lvalue: *mut gcc_jit_lvalue,
-    pub lvalue_type: *mut gcc_jit_type
+    pub lvalue_type: *mut gcc_jit_type,
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +43,7 @@ impl Scope {
     pub fn clone_immutable(&self) -> Self {
         Scope {
             table: self.table.clone(),
-            parent: self.parent.clone()
+            parent: self.parent.clone(),
         }
     }
 }

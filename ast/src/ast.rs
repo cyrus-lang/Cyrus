@@ -43,7 +43,7 @@ pub enum Expression {
     AddressOf(Box<Expression>),
     Dereference(Box<Expression>),
     StructInit(StructInit),
-    StructFieldAccess(StructFieldAccess),
+    StructFieldAccess(Box<StructFieldAccess>),
 }
 
 #[derive(Debug, Clone)]
@@ -78,7 +78,7 @@ pub struct FieldAccessOrMethodCall {
 
 #[derive(Debug, Clone)]
 pub struct StructFieldAccess {
-    pub identifier: Identifier,
+    pub expr: Expression,
     pub chains: Vec<FieldAccessOrMethodCall>,
     pub span: Span,
     pub loc: Location
