@@ -22,6 +22,8 @@ COPY . .
 
 RUN mkdir -p tmp && touch tmp/main
 
+RUN rustup default stable
+
 RUN make
 
 ENTRYPOINT ["/bin/sh"]
