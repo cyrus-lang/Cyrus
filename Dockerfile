@@ -1,28 +1,17 @@
 FROM alpine:latest
 
-RUN apk update && apk add --no-cache \
-    build-base \
-    gcc \
-    g++ \
-    make \
-    git \
-    curl \
-    tar \
-    xz \
-    bash \
-    sudo
+RUN apk add --no-cache rust cargo gcc make
 
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-RUN apk add --no-cache gcc12 gcc12-libs gcc12-static libgccjit
-
-RUN ln -sf /usr/bin/gcc-12 /usr/bin/gcc && \
-    ln -sf /usr/bin/g++-12 /usr/bin/g++
+RUN ln -sf /usr/bin/gcc /usr/bin/gcc && \
+    ln -sf /usr/bin/g++ /usr/bin/g++
 
 WORKDIR /app
 
 COPY . .
+
+RUN mkdir -p tmp && touch tmp/main
+
+RUN mkdir -p tmp && touch tmp/main
 
 RUN make
 
