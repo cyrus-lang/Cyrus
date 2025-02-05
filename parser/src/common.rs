@@ -27,7 +27,7 @@ impl<'a> Parser<'a> {
     pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
         let location = self.current_location();
 
-        let data_type = match &self.current_token.kind {
+        let data_type = match self.current_token.kind.clone() {
             TokenKind::I8
             | TokenKind::I16
             | TokenKind::I32
@@ -54,11 +54,13 @@ impl<'a> Parser<'a> {
                     self.next_token();
                     return Ok(TokenKind::AddressOf(Box::new(self.parse_type_token()?)));
                 }
-                TokenKind::Identifier { name: type_name } => TokenKind::UserDefinedType(Identifier {
-                    name: type_name.clone(),
-                    span: self.current_token.span.clone(),
-                    loc: self.current_location(),
-                }),
+                TokenKind::Identifier { name: type_name } => {
+                    TokenKind::UserDefinedType(Identifier {
+                        name: type_name.clone(),
+                        span: self.current_token.span.clone(),
+                        loc: self.current_location(),
+                    })
+                },
                 _ => return 
                 Err(CompileTimeError {
                     location,

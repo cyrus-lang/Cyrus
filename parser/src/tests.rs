@@ -205,4 +205,9 @@ mod tests {
     fn test_array_index_assign() {
         assert_parse("my_var[1] = 555;");
     }
+
+    #[test]
+    fn test_func_return_user_defined_type() {
+        assert_parse("fn sample(): MyStruct {}");
+    }
 }

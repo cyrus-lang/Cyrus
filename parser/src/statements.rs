@@ -53,8 +53,6 @@ impl<'a> Parser<'a> {
                     self.next_token();
 
                     loop {
-                        dbg!(self.current_token.kind.clone());
-
                         match self.current_token.kind.clone() {
                             TokenKind::LeftBrace => {
                                 self.next_token();
@@ -676,10 +674,9 @@ impl<'a> Parser<'a> {
                     end: self.current_token.span.end,
                 },
             });
-
-            self.next_token();
         }
 
+        // parse as func decl
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Statement::FuncDecl(FuncDecl {
                 name: function_name,
@@ -697,8 +694,6 @@ impl<'a> Parser<'a> {
         // we used current_token_is because we don't want to consume it,
         // we pass this statement that is inside a brace to parse_block_statement.
         if self.current_token_is(TokenKind::LeftBrace) {
-            todo!();
-
             let body = Box::new(self.parse_block_statement()?);
 
             if !self.current_token_is(TokenKind::RightBrace) {
