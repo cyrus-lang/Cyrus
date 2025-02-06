@@ -19,6 +19,10 @@ With the help of Docker, you can easily set it up:
 
 ```
 docker build -t my-cyrus-lang .
+docker run --rm my-cyrus-lang cargo --version
+docker run --rm -v "$PWD:/app" -w /app my-cyrus-lang make dump
+docker run --rm -v "$PWD:/app" -w /app my-cyrus-lang make run
+docker run --rm -it my-cyrus-lang /bin/sh
 ```
 
 ## Open to Contribution
