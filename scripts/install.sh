@@ -1,11 +1,9 @@
 #!/bin/bash
 
-# Define installation path
 INSTALL_DIR="/usr/bin"
 EXECUTABLE_NAME="cyrus"
 SOURCE_PATH="./cyrus"  
 
-# Check if running as root
 if [[ $EUID -ne 0 ]]; then
     echo "Please run this script as root or use sudo."
     exit 1
