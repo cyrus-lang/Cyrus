@@ -3,7 +3,6 @@ use ast::{
     token::{Location, Span, Token, TokenKind},
 };
 use builtins::macros::retrieve_builtin_func;
-use clap::ValueEnum;
 use gccjit_sys::*;
 use options::CompilerOptions;
 use parser::parse_program;
@@ -23,10 +22,10 @@ use utils::compiler_error;
 
 mod builtins;
 mod location;
-pub mod options;
 mod output;
 mod scope;
 mod types;
+pub mod options;
 
 // Tracks the current GCC JIT block and function being compiled.
 struct BlockFuncPair {
@@ -58,6 +57,7 @@ struct FuncMetadata {
 
 #[derive(Debug, Clone)]
 struct StructMethodMetadata {
+    #[allow(dead_code)]
     is_static: bool,
     func_def: FuncDef,
 }
@@ -1389,7 +1389,10 @@ Please ensure that the self parameter follows one of these forms.
         }
     }
 
-    fn access_current_func_param(&mut self, identifier: Identifier) -> Option<(*mut gcc_jit_lvalue, *mut gcc_jit_rvalue)> {
+    fn access_current_func_param(
+        &mut self,
+        identifier: Identifier,
+    ) -> Option<(*mut gcc_jit_lvalue, *mut gcc_jit_rvalue)> {
         let guard = self.block_func_ref.lock().unwrap();
         if let Some(func) = guard.func {
             if let Some(func_param_records) = self.param_table.borrow_mut().get(&func) {
@@ -1411,17 +1414,17 @@ Please ensure that the self parameter follows one of these forms.
         scope: ScopeRef,
         identifier: Identifier,
     ) -> (*mut gcc_jit_lvalue, *mut gcc_jit_rvalue) {
-        if let Some(metadata) = scope.borrow_mut().get(identifier.name.clone()){
+        if let Some(metadata) = scope.borrow_mut().get(identifier.name.clone()) {
             let lvalue = metadata.borrow_mut().lvalue;
             let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
 
             return (lvalue, rvalue);
-        } 
+        }
 
-        if let Some(values)  = self.access_current_func_param(identifier.clone()) {
+        if let Some(values) = self.access_current_func_param(identifier.clone()) {
             return values.clone();
         }
-        
+
         compiler_error!(format!("'{}' is not defined in this scope.", identifier.name))
     }
 
