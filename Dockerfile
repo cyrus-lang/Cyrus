@@ -1,29 +1,9 @@
-FROM rust:1.84-alpine3.20
+FROM rust:1.84.1-alpine3.21
 
-ENV CARGO_HOME=/root/.cargo
-ENV RUSTUP_HOME=/root/.rustup
-
-RUN apk update && apk add --no-cache \
-    gcc \
-    make \
-    musl-dev \
-    libc-dev \
-    curl \
-    bash \
-    binutils-gold \
-    clang \
-    libgcc \
-    libstdc++ \
-    zlib-dev
+RUN apk add --no-cache build-base make libgccjit libgccjit-dev
 
 WORKDIR /app
 
 COPY . .
 
-RUN mkdir -p tmp && touch tmp/main
-
-RUN rustup default stable
-
-RUN make
-
-ENTRYPOINT ["/bin/sh"]
+CMD ["make", "run"]
