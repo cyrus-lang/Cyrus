@@ -44,8 +44,8 @@ struct Args {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum DumpType {
-    IR,
-    ASM,
+    Ir,
+    Asm,
 }
 
 #[derive(clap::Subcommand, Debug, Clone)]
@@ -140,8 +140,8 @@ pub fn main() {
             });
 
             match dump_type {
-                DumpType::IR => compiler.make_dump_ir(output_path),
-                DumpType::ASM => compiler.make_dump_asm(output_path),
+                DumpType::Ir => compiler.make_dump_ir(output_path),
+                DumpType::Asm => compiler.make_dump_asm(output_path),
             }
         }
         Commands::Build {

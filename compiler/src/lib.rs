@@ -79,6 +79,7 @@ pub struct Compiler {
     context: *mut gcc_jit_context,
     func_table: RefCell<HashMap<String, FuncMetadata>>,
     global_struct_table: RefCell<HashMap<String, StructMetadata>>,
+    #[allow(dead_code)] // FIXME
     global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
     param_table: RefCell<HashMap<*mut gcc_jit_function, FuncParamsRecords>>,
     block_func_ref: Arc<Mutex<Box<BlockFuncPair>>>,
@@ -280,7 +281,7 @@ impl Compiler {
     fn compile_struct_field_access(
         &mut self,
         scope: ScopeRef,
-        mut statement: StructFieldAccess,
+        statement: StructFieldAccess,
     ) -> *mut gcc_jit_rvalue {
         let mut method_call_chain = statement.chains.clone();
 
