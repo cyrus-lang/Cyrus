@@ -49,3 +49,4 @@ jobs:
         with:
           name: cyrus
           path: ./cyrus.tar
+          compression-level: 0
