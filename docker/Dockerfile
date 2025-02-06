@@ -12,6 +12,8 @@ WORKDIR /app
 
 COPY ../ .
 
+RUN mkdir -p tmp && touch tmp/main
+
 RUN cargo build --release
 
 CMD ["./target/release/cyrus"]
