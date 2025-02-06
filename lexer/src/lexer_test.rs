@@ -27,8 +27,7 @@ mod tests {
         let lexer = Lexer::new(input.to_string(), String::from("test_package.cy"));
         let tokens = lexer;
 
-        let mut i: usize = 0;
-        for token in tokens {
+        for (i, token) in tokens.into_iter().enumerate() {
             println!("{:?}", token);
 
             if let Some(list) = expected_tokens {
@@ -39,8 +38,6 @@ mod tests {
                 assert_eq!(token.span.start, list[i].start);
                 assert_eq!(token.span.end, list[i].end);
             }
-
-            i += 1;
         }
     }
 
@@ -335,8 +332,8 @@ mod tests {
     #[test]
     fn test_floating_numbers() {
         assert_tokens(
-            "3.14",
-            Some(&vec![TokenKind::Literal(Literal::Float(FloatLiteral::Float(3.14)))]),
+            "2.56",
+            Some(&vec![TokenKind::Literal(Literal::Float(FloatLiteral::Float(2.56)))]),
             None,
         );
     }

@@ -75,7 +75,7 @@ impl Lexer {
             ' '
         } else {
             match self.input.chars().nth(self.next_pos) {
-                Some(ch) => return ch,
+                Some(ch) => ch,
                 None => {
                     lexer_unknown_char_error(self.file_name.clone(), self.line, self.column - 1);
                     std::process::exit(1);
@@ -566,7 +566,7 @@ impl Lexer {
     }
 
     fn skip_comments(&mut self) {
-        let start = self.pos.clone();
+        let start = self.pos;
 
         if self.ch == '/' && self.peek_char() == '/' {
             self.read_char();
