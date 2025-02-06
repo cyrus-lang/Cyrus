@@ -3,10 +3,10 @@ name: Build and Upload Cyrus Lang
 on:
   push:
     branches:
-      - main
+      - '*'  
   pull_request:
     branches:
-      - main
+      - '*'
 
 jobs:
   build:
