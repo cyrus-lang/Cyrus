@@ -1,11 +1,12 @@
 import sample;
 
 pub fn main() {
-    #person = Person {
+    #my_obj = Person {
         name: "Taha",
         age: 17
     };
 
-    cprintf("Name: %s\n", person.name);
-    cprintf("Age: %d\n", person.age);
+    Person.sample();
+    cprintf("Name: %s\n", my_obj.name);
+    cprintf("Age: %d\n", my_obj.age);
 }

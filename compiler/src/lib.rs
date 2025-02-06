@@ -3,6 +3,7 @@ use ast::{
     token::{Location, Span, Token, TokenKind},
 };
 use builtins::macros::retrieve_builtin_func;
+use clap::ValueEnum;
 use gccjit_sys::*;
 use options::CompilerOptions;
 use parser::parse_program;
@@ -170,8 +171,18 @@ impl Compiler {
             Statement::Expression(expr) => {
                 self.compile_expression(scope, expr.clone());
             }
-            Statement::FuncDef(function) => {
-                self.compile_func_def(scope, function.clone());
+            Statement::FuncDef(func_def) => {
+                let ptr = self.compile_func_def(scope, func_def.clone());
+                let return_type = self.safe_func_return_type(func_def.return_type);
+                self.func_table.borrow_mut().insert(
+                    func_def.name,
+                    FuncMetadata {
+                        func_type: func_def.vis_type,
+                        ptr,
+                        params: func_def.params,
+                        return_type,
+                    },
+                );
             }
             Statement::FuncDecl(function) => self.compile_func_decl(function.clone()),
             Statement::If(statement) => self.compile_if_statement(scope, statement),
@@ -187,6 +198,10 @@ impl Compiler {
                 statement.body,
             ),
         }
+    }
+
+    fn safe_func_return_type(&mut self, return_type: Option<Token>) ->  TokenKind {
+        return_type.unwrap_or(Token { kind: TokenKind::Void, span: Span::new_empty_span() }).kind
     }
 
     fn find_struct(&mut self, rvalue: *mut gcc_jit_rvalue) -> Option<(String, StructMetadata)> {
@@ -520,12 +535,12 @@ impl Compiler {
         &mut self,
         scope: ScopeRef,
         struct_name: String,
-        ast_methods: Vec<FuncDef>,
+        methods: Vec<FuncDef>,
     ) -> (Vec<StructMethodMetadata>, Vec<*mut gcc_jit_function>) {
-        let mut methods: Vec<StructMethodMetadata> = Vec::new();
+        let mut method_metadatas: Vec<StructMethodMetadata> = Vec::new();
         let mut method_ptrs: Vec<*mut gcc_jit_function> = Vec::new();
 
-        for item in ast_methods.clone() {
+        for item in methods.clone() {
             let mut is_static = true;
 
             if let Some(self_param) = item.params.iter().find(|&key| key.identifier.name == "self") {
@@ -575,11 +590,11 @@ Please ensure that the self parameter follows one of these forms.
                 _ => {}
             }
 
-            methods.push(StructMethodMetadata {
+            method_metadatas.push(StructMethodMetadata {
                 is_static,
                 func_def: item.clone(),
             });
-
+            
             let method_ptr = self.compile_func_def(
                 Rc::clone(&scope),
                 FuncDef {
@@ -596,7 +611,7 @@ Please ensure that the self parameter follows one of these forms.
             method_ptrs.push(method_ptr);
         }
 
-        return (methods, method_ptrs);
+        return (method_metadatas, method_ptrs);
     }
 
     /// Validates whether the given self parameter type is a valid reference to the struct.
@@ -665,6 +680,30 @@ Please ensure that the self parameter follows one of these forms.
 
             compiler.compile();
             compiler.make_object_file(library_path.clone());
+            
+            for (key, value) in compiler.func_table.borrow_mut().clone() {
+                if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
+                    let func_ptr = self.define_imported_func_as_extern_decl(
+                        key.clone(),
+                        value.params.clone(),
+                        Some(Token {
+                            kind: value.return_type.clone(),
+                            span: Span::new_empty_span(),
+                        }),
+                        import.loc.clone(),
+                    );
+
+                    self.func_table.borrow_mut().insert(
+                        key,
+                        FuncMetadata {
+                            func_type: VisType::Extern,
+                            ptr: func_ptr,
+                            params: value.params,
+                            return_type: value.return_type,
+                        },
+                    );
+                }
+            }
 
             for (key, value) in compiler.global_struct_table.borrow_mut().clone() {
                 if value.vis_type == VisType::Pub && !self.global_struct_table.borrow_mut().contains_key(&key) {
@@ -679,73 +718,106 @@ Please ensure that the self parameter follows one of these forms.
                             struct_field_ptrs.as_mut_ptr(),
                         )
                     };
+
                     self.global_struct_table.borrow_mut().insert(
-                        key,
+                        key.clone(),
                         StructMetadata {
                             vis_type: VisType::Internal,
                             struct_type: struct_decl,
-                            fields: value.fields,
-                            field_ptrs: struct_field_ptrs,
-                            methods: Vec::new(), // FIXME
+                            fields: value.fields.clone(),
+                            field_ptrs: struct_field_ptrs.clone(),
+                            methods: Vec::new(),
                             method_ptrs: Vec::new(),
                         },
                     );
-                }
-            }
 
-            for (key, value) in compiler.func_table.borrow_mut().clone() {
-                if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
-                    let mut func_params: Vec<*mut gcc_jit_param> = Vec::new();
-                    for item in value.params.clone() {
-                        let param_name = CString::new(item.identifier.name.clone()).unwrap();
-                        func_params.push(unsafe {
-                            gcc_jit_context_new_param(
-                                self.context,
-                                self.gccjit_location(import.loc.clone()),
-                                self.token_as_data_type(
-                                    self.context,
-                                    item.ty.expect(&format!(
-                                        "Function '{}' has an untyped param '{}' that is invalid.",
-                                        key,
-                                        item.identifier.name.clone()
-                                    )),
-                                ),
-                                param_name.as_ptr(),
-                            )
-                        });
+                    let mut methods_decl: Vec<*mut gcc_jit_function> = Vec::new();
+                    for item in value.methods.clone() {
+                        let method_ptr = self.define_imported_func_as_extern_decl(
+                            self.make_struct_method_name(key.clone(), item.func_def.name),
+                            item.func_def.params,
+                            item.func_def.return_type,
+                            item.func_def.loc,
+                        );
+                        methods_decl.push(method_ptr);
                     }
 
-                    let imported_func_name = CString::new(key.clone()).unwrap();
-
-                    let decl_func = unsafe {
-                        gcc_jit_context_new_function(
-                            self.context,
-                            self.gccjit_location(import.loc.clone()),
-                            gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED,
-                            self.token_as_data_type(self.context, value.return_type.clone()),
-                            imported_func_name.as_ptr(),
-                            func_params.len().try_into().unwrap(),
-                            func_params.as_mut_ptr(),
-                            0, // FIXME Variadic
-                        )
-                    };
-
-                    self.func_table.borrow_mut().insert(
-                        key,
-                        FuncMetadata {
-                            func_type: VisType::Extern,
-                            ptr: decl_func,
-                            params: value.params,
-                            return_type: value.return_type,
-                        },
-                    );
+                    self.global_struct_table.borrow_mut().insert(key, StructMetadata {
+                        vis_type: VisType::Internal,
+                        struct_type: struct_decl,
+                        fields: value.fields,
+                        field_ptrs: struct_field_ptrs,
+                        methods: value.methods,
+                        method_ptrs: methods_decl,
+                    });
                 }
             }
+
             self.compiled_object_files.push(library_path.clone());
 
             let optname = CString::new(library_path).unwrap();
             unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
         }
+    }
+
+    fn compile_func_params(
+        &mut self,
+        func_name: String,
+        params: Vec<FunctionParam>,
+        loc: Location,
+    ) -> Vec<*mut gcc_jit_param> {
+        let mut func_params: Vec<*mut gcc_jit_param> = Vec::new();
+        for item in params.clone() {
+            let param_name = CString::new(item.identifier.name.clone()).unwrap();
+            func_params.push(unsafe {
+                gcc_jit_context_new_param(
+                    self.context,
+                    self.gccjit_location(loc.clone()),
+                    self.token_as_data_type(
+                        self.context,
+                        item.ty.expect(&format!(
+                            "Function '{}' has an untyped param '{}' that is invalid.",
+                            func_name,
+                            item.identifier.name.clone()
+                        )),
+                    ),
+                    param_name.as_ptr(),
+                )
+            });
+        }
+        func_params
+    }
+
+    fn define_imported_func_as_extern_decl(
+        &mut self,
+        func_name: String,
+        params: Vec<FunctionParam>,
+        return_type: Option<Token>,
+        loc: Location,
+    ) -> *mut gcc_jit_function {
+        let return_type = return_type
+            .unwrap_or(Token {
+                kind: TokenKind::Void,
+                span: Span::new_empty_span(),
+            })
+            .kind;
+
+        let mut func_params = self.compile_func_params(func_name.clone(), params.clone(), loc.clone());
+        let func_name_cstr = CString::new(func_name.clone()).unwrap();
+        let decl_func = unsafe {
+            gcc_jit_context_new_function(
+                self.context,
+                self.gccjit_location(loc.clone()),
+                gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED,
+                self.token_as_data_type(self.context, return_type.clone()),
+                func_name_cstr.as_ptr(),
+                func_params.len().try_into().unwrap(),
+                func_params.as_mut_ptr(),
+                0, // FIXME Variadic
+            )
+        };
+
+        decl_func
     }
 
     fn compile_func_def(&mut self, scope: ScopeRef, func_def: FuncDef) -> *mut gcc_jit_function {
@@ -764,6 +836,7 @@ Please ensure that the self parameter follows one of these forms.
                 span: Span::new_empty_span(),
             })
             .kind;
+
         let return_type = self.token_as_data_type(self.context, return_type_token.clone());
 
         let mut params: Vec<*mut gcc_jit_param> = Vec::new();
@@ -843,16 +916,6 @@ Please ensure that the self parameter follows one of these forms.
                 unsafe { gcc_jit_block_end_with_void_return(block, null_mut()) };
             }
         }
-
-        self.func_table.borrow_mut().insert(
-            func_def.name,
-            FuncMetadata {
-                func_type: func_def.vis_type,
-                ptr: func,
-                params: func_def.params,
-                return_type: return_type_token,
-            },
-        );
 
         return func;
     }
