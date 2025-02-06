@@ -19,11 +19,11 @@ use std::{
 };
 use utils::compiler_error;
 
-mod builtins;
 mod location;
 pub mod options;
 mod output;
 mod scope;
+mod stdlib;
 mod types;
 
 // Tracks the current GCC JIT block and function being compiled.
@@ -649,38 +649,72 @@ Please ensure that the self parameter follows one of these forms.
         "o"
     }
 
+    fn make_import_file_path(&mut self, search_in_path: String, sb: PackagePath) -> Option<(String, String)> {
+        let import_file_name = if sb.is_relative {
+            sb.package_name.name.clone()
+        } else {
+            format!("{}.cy", sb.package_name.name)
+        };
+
+        let import_file_path = if sb.is_relative {
+            sb.package_name.name.clone()
+        } else {
+            format!("{}/{}", search_in_path, import_file_name)
+        };
+
+        let output_library_path = if sb.is_relative {
+            Path::new(&sb.package_name.name)
+                .with_extension(self.object_file_extension())
+                .to_string_lossy()
+                .to_string()
+        } else {
+            format!(
+                "{}/{}.{}",
+                search_in_path,
+                sb.package_name.name,
+                self.object_file_extension()
+            )
+        };
+
+        if self.file_exists(&import_file_path) {
+            return Some((import_file_path, output_library_path));
+        }
+
+        None
+    }
+
     fn compile_import(&mut self, import: Import) {
         let file_path = self.file_path.clone();
-        let dir_path = Path::new(&file_path).parent().unwrap().to_str().unwrap();
-
+        let current_dir = Path::new(&file_path).parent().unwrap().to_str().unwrap();
+        
         for sb in import.sub_packages {
-            let package_file_name = if sb.is_relative {
+            let import_file_name = if sb.is_relative {
                 sb.package_name.name.clone()
             } else {
                 format!("{}.cy", sb.package_name.name)
             };
-
-            let package_file_path = if sb.is_relative {
-                sb.package_name.name.clone()
-            } else {
-                format!("{}/{}", dir_path, package_file_name)
+            
+            let (import_file_path, output_library_path) = {
+                match self.make_import_file_path(current_dir.to_string(), sb.clone()) {
+                    Some(paths) => paths,
+                    None => match self.make_import_file_path(self.stdlib_path(), sb) {
+                        Some(paths) => paths,
+                        None => {
+                            compiler_error!(format!(
+                                    "File '{}' does not exist at the current location, nor is it part of the standard library.",
+                                    import_file_name
+                                ));
+                        }
+                    },
+                }
             };
 
-            let library_path = if sb.is_relative {
-                Path::new(&sb.package_name.name)
-                    .with_extension(self.object_file_extension())
-                    .to_string_lossy()
-                    .to_string()
-            } else {
-                format!("{}/{}.{}", dir_path, sb.package_name.name, self.object_file_extension())
-            };
-
-            let (program, file_name) = parse_program(package_file_path.clone());
+            let (program, file_name) = parse_program(import_file_path.clone());
             let context = Compiler::new_child_context(self.context);
-            let mut compiler = Compiler::new(context, program, package_file_path.clone(), file_name);
+            let mut compiler = Compiler::new(context, program, import_file_path.clone(), file_name);
 
             compiler.compile();
-            compiler.make_object_file(library_path.clone());
+            compiler.make_object_file(output_library_path.clone());
 
             for (key, value) in compiler.func_table.borrow_mut().clone() {
                 if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
@@ -757,9 +791,9 @@ Please ensure that the self parameter follows one of these forms.
                 }
             }
 
-            self.compiled_object_files.push(library_path.clone());
+            self.compiled_object_files.push(output_library_path.clone());
 
-            let optname = CString::new(library_path).unwrap();
+            let optname = CString::new(output_library_path).unwrap();
             unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
         }
     }
@@ -1581,7 +1615,6 @@ Please ensure that the self parameter follows one of these forms.
             };
         }
 
-
         for expr in array.elements {
             array_elements.push(self.compile_expression(Rc::clone(&scope), expr));
         }
@@ -1682,7 +1715,8 @@ Please ensure that the self parameter follows one of these forms.
                 }
             };
 
-            let mut args = self.compile_func_arguments(Rc::clone(&scope), Some(func.params.clone()), func_call.arguments);
+            let mut args =
+                self.compile_func_arguments(Rc::clone(&scope), Some(func.params.clone()), func_call.arguments);
 
             let rvalue = unsafe {
                 gcc_jit_context_new_call(
