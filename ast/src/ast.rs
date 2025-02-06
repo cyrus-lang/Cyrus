@@ -56,7 +56,7 @@ pub enum UnaryOperatorType {
 
 #[derive(Debug, Clone)]
 pub struct UnaryOperator {
-    pub identifer: Identifier,
+    pub identifier: Identifier,
     pub ty: UnaryOperatorType,
     pub span: Span,
     pub loc: Location

@@ -1739,7 +1739,7 @@ Please ensure that the self parameter follows one of these forms.
     fn compile_unary_operator(&mut self, scope: ScopeRef, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
         let loc = self.gccjit_location(unary_operator.loc.clone());
 
-        match scope.borrow_mut().get(unary_operator.identifer.name.clone()) {
+        match scope.borrow_mut().get(unary_operator.identifier.name.clone()) {
             Some(lvalue) => {
                 let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.borrow_mut().lvalue) };
                 let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
@@ -1805,7 +1805,7 @@ Please ensure that the self parameter follows one of these forms.
             None => {
                 compiler_error!(format!(
                     "'{}' is not defined in this scope.",
-                    unary_operator.identifer.name
+                    unary_operator.identifier.name
                 ))
             }
         }

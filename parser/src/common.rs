@@ -119,7 +119,7 @@ impl<'a> Parser<'a> {
                 code_raw: Some(self
                     .lexer
                     .select(self.current_token.span.start..self.current_token.span.end)),
-                verbose: Some(String::from("Expected one of: 'inline', 'extern', 'pub' as function visiblity.")),
+                verbose: Some(String::from("Expected one of: 'inline', 'extern', 'pub' as function visibility.")),
                 caret: true,
             }),
         };

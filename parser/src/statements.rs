@@ -639,7 +639,7 @@ impl<'a> Parser<'a> {
         let mut vis_type = VisType::Internal; // internal by default
 
         if !self.current_token_is(TokenKind::Function) {
-            // Parse visiblity type
+            // Parse visibility type
             vis_type = self.parse_vis_type(self.current_token.clone())?;
         }
 
