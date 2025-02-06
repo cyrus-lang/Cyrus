@@ -2,7 +2,6 @@ use ast::{
     ast::*,
     token::{Location, Span, Token, TokenKind},
 };
-use builtins::macros::retrieve_builtin_func;
 use gccjit_sys::*;
 use options::CompilerOptions;
 use parser::parse_program;
@@ -22,10 +21,10 @@ use utils::compiler_error;
 
 mod builtins;
 mod location;
+pub mod options;
 mod output;
 mod scope;
 mod types;
-pub mod options;
 
 // Tracks the current GCC JIT block and function being compiled.
 struct BlockFuncPair {
@@ -278,11 +277,7 @@ impl Compiler {
         }
     }
 
-    fn compile_struct_field_access(
-        &mut self,
-        scope: ScopeRef,
-        statement: StructFieldAccess,
-    ) -> *mut gcc_jit_rvalue {
+    fn compile_struct_field_access(&mut self, scope: ScopeRef, statement: StructFieldAccess) -> *mut gcc_jit_rvalue {
         let mut method_call_chain = statement.chains.clone();
 
         let (func, block) = {
@@ -1569,6 +1564,24 @@ Please ensure that the self parameter follows one of these forms.
         mut array_type: *mut gcc_jit_type,
     ) -> *mut gcc_jit_rvalue {
         let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
+
+        if array_type.is_null() {
+            compiler_error!("Unable to compile array construction without knowing it's type.");
+        }
+
+        if array.elements.len() == 0 {
+            return unsafe {
+                gcc_jit_context_new_array_constructor(
+                    self.context,
+                    self.gccjit_location(array.loc),
+                    array_type,
+                    array_elements.len() as i32,
+                    [].as_mut_ptr(),
+                )
+            };
+        }
+
+
         for expr in array.elements {
             array_elements.push(self.compile_expression(Rc::clone(&scope), expr));
         }
@@ -1658,25 +1671,18 @@ Please ensure that the self parameter follows one of these forms.
 
             let loc = self.gccjit_location(func_call.loc.clone());
 
-            let mut args = self.compile_func_arguments(Rc::clone(&scope), None, func_call.arguments.clone());
-
             let func = {
                 let func_table = self.func_table.borrow_mut();
                 match func_table.get(&func_call.function_name.name) {
                     Some(func) => func.clone(),
-                    None => match retrieve_builtin_func(func_call.function_name.name.clone()) {
-                        Some(func_def) => {
-                            return func_def(self.context, block, &mut args);
-                        }
-                        None => compiler_error!(format!(
-                            "Function '{}' not defined at this module.",
-                            func_call.function_name.name
-                        )),
-                    },
+                    None => compiler_error!(format!(
+                        "Function '{}' not defined at this module.",
+                        func_call.function_name.name
+                    )),
                 }
             };
 
-            args = self.compile_func_arguments(Rc::clone(&scope), Some(func.params.clone()), func_call.arguments);
+            let mut args = self.compile_func_arguments(Rc::clone(&scope), Some(func.params.clone()), func_call.arguments);
 
             let rvalue = unsafe {
                 gcc_jit_context_new_call(
