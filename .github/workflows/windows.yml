@@ -1,0 +1,43 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Build binary
+        run: |
+          make
+          chmod +x cyrus
+      
+      - name: Upload binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: cyrus-linux
+          path: ./cyrus
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Build binary
+        run: |
+          make
+      
+      - name: Upload binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: cyrus-windows
+          path: ./cyrus.exe
