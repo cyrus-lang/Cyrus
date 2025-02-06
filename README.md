@@ -22,7 +22,7 @@ Using Docker to run Cyrus Lang makes the setup and execution process quick and e
 First, build the Docker image for Cyrus Lang by running the following command in your terminal. This will use the `Dockerfile` inside the `docker` directory to build the image:
 
 ```bash
-$ docker build -t my-cyrus-lang -f docker/Dockerfile .
+$ docker build -t cyrus-lang -f docker/Dockerfile .
 ```
 
 ## Running Commands in Docker
@@ -32,20 +32,20 @@ Once the image is built, you can run various commands inside the Docker containe
 - **Check Cargo version**: To verify the installed version of Cargo (Rust's package manager), run:
 
     ```bash
-    $ docker run --rm my-cyrus-lang cargo --version
+    $ docker run --rm cyrus-lang cargo --version
     ```
 
 - **Run make with the current project:** To execute a make command within the current project directory, mount the current directory into the Docker container and set the working directory to /app:
 
     ```bash
-    $ docker run --rm -v "$PWD:/app" -w /app my-cyrus-lang make dump
+    $ docker run --rm -v "$PWD:/app" -w /app cyrus-lang make dump
     ```
 
     This command mounts the current directory ($PWD) into the container and runs make dump inside it.
 
 - **Run your project:** To run your project using make within the container:
     ```bash
-    $ docker run --rm -v "$PWD:/app" -w /app my-cyrus-lang make run
+    $ docker run --rm -v "$PWD:/app" -w /app cyrus-lang make run
     ```
 
     Again, this mounts the current directory into the container and executes make run.
@@ -53,7 +53,7 @@ Once the image is built, you can run various commands inside the Docker containe
 - **Access the container shell:** If you need to get inside the container to debug or manually interact with the environment, you can run:
 
     ```bash
-    $ docker run --rm -it my-cyrus-lang /bin/sh
+    $ docker run --rm -it cyrus-lang /bin/sh
     ```
 
     This will drop you into a shell (`/bin/sh`) inside the Docker container.
