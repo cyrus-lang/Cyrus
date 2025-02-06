@@ -57,7 +57,9 @@ Once the image is built, you can run various commands inside the Docker containe
 
 ### Volume Mounting Explained
 
-The -v "$PWD:/app" part of the command mounts your current directory ($PWD) to the /app directory inside the container. This allows you to work with your local files without modifying the Docker image. The -w /app option sets /app as the working directory inside the container, so any commands you run are executed relative to that directory.
+The `-v "$PWD:/app"` part of the command mounts your current directory (`$PWD`) to the `/app` directory inside the container.
+
+This allows you to work with your local files without modifying the Docker image. The `-w /app` option sets `/app` as the working directory inside the container, so any commands you run are executed relative to that directory.
 
 ## Open to Contribution
 
