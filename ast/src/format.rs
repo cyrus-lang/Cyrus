@@ -14,14 +14,29 @@ impl fmt::Display for Identifier {
 }
 
 impl fmt::Display for IntegerLiteral {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IntegerLiteral::I8(value) => write!(f, "{}", value),
+            IntegerLiteral::I16(value) => write!(f, "{}", value),
+            IntegerLiteral::I32(value) => write!(f, "{}", value),
+            IntegerLiteral::I64(value) => write!(f, "{}", value),
+            IntegerLiteral::I128(value) => write!(f, "{}", value),
+            IntegerLiteral::U8(value) => write!(f, "{}", value),
+            IntegerLiteral::U16(value) => write!(f, "{}", value),
+            IntegerLiteral::U32(value) => write!(f, "{}", value),
+            IntegerLiteral::U64(value) => write!(f, "{}", value),
+            IntegerLiteral::U128(value) => write!(f, "{}", value),
+            IntegerLiteral::CSize(value) => write!(f, "{}", value),
+        }
     }
 }
 
 impl fmt::Display for FloatLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
+        match self {
+            FloatLiteral::Float(value) => write!(f, "{}", value),
+            FloatLiteral::Double(value) => write!(f, "{}", value),
+        }
     }
 }
 

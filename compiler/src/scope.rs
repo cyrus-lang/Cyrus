@@ -47,3 +47,9 @@ impl Scope {
         }
     }
 }
+
+impl Default for Scope {
+    fn default() -> Self {
+        Self::new()
+    }
+}
