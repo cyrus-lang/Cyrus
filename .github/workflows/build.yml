@@ -26,8 +26,8 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-      - name: Upload binary as artifact
-        uses: actions/upload-artifact@v3
+      - name: Upload as artifact
+        uses: actions/upload-artifact@v4
         with:
           name: cyrus
           path: ./target/release/cyrus
