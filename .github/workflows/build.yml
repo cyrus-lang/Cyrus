@@ -37,8 +37,15 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+      - name: Merge binary and mandatory files
+        run: |
+          mkdir cyrus
+          cp ./target/release/cyrus ./cyrus
+          cp -r ./stdlib ./cyrus
+          tar -cvf ./cyrus.tar ./cyrus
+
       - name: Upload as artifact
         uses: actions/upload-artifact@v4
         with:
           name: cyrus
-          path: ./target/release/cyrus
+          path: ./cyrus.tar
