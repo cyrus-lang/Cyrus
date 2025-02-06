@@ -26,6 +26,7 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
         TokenKind::Minus => Precedence::Sum,
         TokenKind::Asterisk => Precedence::Product,
         TokenKind::Slash => Precedence::Product,
+        TokenKind::Percent => Precedence::Product,
         TokenKind::LeftParen => Precedence::Call,
         TokenKind::LeftBracket => Precedence::Index,
         _ => Precedence::Lowest,

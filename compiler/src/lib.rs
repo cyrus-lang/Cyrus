@@ -200,8 +200,13 @@ impl Compiler {
         }
     }
 
-    fn safe_func_return_type(&mut self, return_type: Option<Token>) ->  TokenKind {
-        return_type.unwrap_or(Token { kind: TokenKind::Void, span: Span::new_empty_span() }).kind
+    fn safe_func_return_type(&mut self, return_type: Option<Token>) -> TokenKind {
+        return_type
+            .unwrap_or(Token {
+                kind: TokenKind::Void,
+                span: Span::new_empty_span(),
+            })
+            .kind
     }
 
     fn find_struct(&mut self, rvalue: *mut gcc_jit_rvalue) -> Option<(String, StructMetadata)> {
@@ -594,7 +599,7 @@ Please ensure that the self parameter follows one of these forms.
                 is_static,
                 func_def: item.clone(),
             });
-            
+
             let method_ptr = self.compile_func_def(
                 Rc::clone(&scope),
                 FuncDef {
@@ -680,7 +685,7 @@ Please ensure that the self parameter follows one of these forms.
 
             compiler.compile();
             compiler.make_object_file(library_path.clone());
-            
+
             for (key, value) in compiler.func_table.borrow_mut().clone() {
                 if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
                     let func_ptr = self.define_imported_func_as_extern_decl(
@@ -742,14 +747,17 @@ Please ensure that the self parameter follows one of these forms.
                         methods_decl.push(method_ptr);
                     }
 
-                    self.global_struct_table.borrow_mut().insert(key, StructMetadata {
-                        vis_type: VisType::Internal,
-                        struct_type: struct_decl,
-                        fields: value.fields,
-                        field_ptrs: struct_field_ptrs,
-                        methods: value.methods,
-                        method_ptrs: methods_decl,
-                    });
+                    self.global_struct_table.borrow_mut().insert(
+                        key,
+                        StructMetadata {
+                            vis_type: VisType::Internal,
+                            struct_type: struct_decl,
+                            fields: value.fields,
+                            field_ptrs: struct_field_ptrs,
+                            methods: value.methods,
+                            method_ptrs: methods_decl,
+                        },
+                    );
                 }
             }
 
@@ -1381,35 +1389,40 @@ Please ensure that the self parameter follows one of these forms.
         }
     }
 
+    fn access_current_func_param(&mut self, identifier: Identifier) -> Option<(*mut gcc_jit_lvalue, *mut gcc_jit_rvalue)> {
+        let guard = self.block_func_ref.lock().unwrap();
+        if let Some(func) = guard.func {
+            if let Some(func_param_records) = self.param_table.borrow_mut().get(&func) {
+                for param in func_param_records {
+                    if param.param_name == identifier.name {
+                        let param = unsafe { gcc_jit_function_get_param(func, param.param_index) };
+                        let rvalue = unsafe { gcc_jit_param_as_rvalue(param) };
+                        let lvalue = unsafe { gcc_jit_param_as_lvalue(param) };
+                        return Some((lvalue, rvalue));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn access_identifier_values(
         &mut self,
         scope: ScopeRef,
         identifier: Identifier,
     ) -> (*mut gcc_jit_lvalue, *mut gcc_jit_rvalue) {
-        match scope.borrow_mut().get(identifier.name.clone()) {
-            Some(lvalue) => {
-                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.borrow_mut().lvalue) };
-                return (lvalue.borrow_mut().lvalue, rvalue);
-            }
-            None => {
-                let guard = self.block_func_ref.lock().unwrap();
+        if let Some(metadata) = scope.borrow_mut().get(identifier.name.clone()){
+            let lvalue = metadata.borrow_mut().lvalue;
+            let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
 
-                if let Some(func) = guard.func {
-                    if let Some(func_param_records) = self.param_table.borrow_mut().get(&func) {
-                        for param in func_param_records {
-                            if param.param_name == identifier.name {
-                                let param = unsafe { gcc_jit_function_get_param(func, param.param_index) };
-                                let rvalue = unsafe { gcc_jit_param_as_rvalue(param) };
-                                let lvalue = unsafe { gcc_jit_param_as_lvalue(param) };
-                                return (lvalue, rvalue);
-                            }
-                        }
-                    }
-                }
+            return (lvalue, rvalue);
+        } 
 
-                compiler_error!(format!("'{}' is not defined in this scope.", identifier.name))
-            }
+        if let Some(values)  = self.access_current_func_param(identifier.clone()) {
+            return values.clone();
         }
+        
+        compiler_error!(format!("'{}' is not defined in this scope.", identifier.name))
     }
 
     fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {

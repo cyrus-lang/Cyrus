@@ -42,8 +42,6 @@ impl<'a> Parser<'a> {
     pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
         let span = self.current_token.span.clone();
 
-        let inside_identifier: Option<Identifier> = None;
-
         let expr = match &self.current_token.clone().kind {
             TokenKind::Ampersand => {
                 self.next_token();
