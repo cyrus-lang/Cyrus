@@ -72,7 +72,7 @@ impl<'a> Parser<'a> {
 
                 match self.current_token.kind.clone() {
                     TokenKind::Identifier { name } => Expression::UnaryOperator(UnaryOperator {
-                        identifer: {
+                        identifier: {
                             Identifier {
                                 name,
                                 span: span.clone(),
@@ -108,7 +108,7 @@ impl<'a> Parser<'a> {
                 if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
-                        identifer: identifier.clone(),
+                        identifier: identifier.clone(),
                         ty: UnaryOperatorType::PostIncrement,
                         span,
                         loc: self.current_location(),
@@ -116,7 +116,7 @@ impl<'a> Parser<'a> {
                 } else if self.peek_token_is(TokenKind::Decrement) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
-                        identifer: identifier.clone(),
+                        identifier: identifier.clone(),
                         ty: UnaryOperatorType::PostDecrement,
                         span,
                         loc: self.current_location(),
@@ -654,9 +654,9 @@ impl<'a> Parser<'a> {
     pub fn parse_array_index(&mut self) -> Result<ArrayIndex, ParseError> {
         let start = self.current_token.span.start;
 
-        let identifer = self.current_token.clone();
+        let identifier = self.current_token.clone();
 
-        if let TokenKind::Identifier { name } = identifer.kind {
+        if let TokenKind::Identifier { name } = identifier.kind {
             let mut dimensions: Vec<Expression> = Vec::new();
 
             while self.peek_token_is(TokenKind::LeftBracket) {
@@ -671,7 +671,7 @@ impl<'a> Parser<'a> {
                 span: Span { start, end },
                 identifier: Identifier {
                     name,
-                    span: identifer.span,
+                    span: identifier.span,
                     loc: self.current_location(),
                 },
                 loc: self.current_location(),
