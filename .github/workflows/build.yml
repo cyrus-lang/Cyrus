@@ -41,6 +41,7 @@ jobs:
         run: |
           mkdir cyrus
           cp ./target/release/cyrus ./cyrus
+          cp ./scripts/install.sh ./cyrus
           cp -r ./stdlib ./cyrus
 
       - name: Upload as artifact
@@ -48,4 +49,3 @@ jobs:
         with:
           name: cyrus
           path: ./cyrus
-          compression-level: 0
