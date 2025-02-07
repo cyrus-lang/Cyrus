@@ -46,6 +46,13 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo build --verbose --release
 
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+          override: true
+
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: cargo build --verbose --release
