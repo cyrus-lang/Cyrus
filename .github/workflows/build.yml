@@ -1,0 +1,74 @@
+name: Build & Upload Cyrus Lang
+
+on:
+  push:
+    branches:
+      - "*"
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc
+
+      - name: Download and install GCC fork (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -LO https://github.com/antoyo/gcc/releases/latest/download/gcc-15.deb
+          sudo dpkg --force-overwrite -i gcc-15.deb
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y llvm ninja
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: cargo build --verbose --release
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: cargo build --verbose --release
+
+      - name: Run tests
+        run: cargo test --verbose
+
+      - name: Collect files in single directory (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir cyrus
+          cp ./target/release/cyrus ./cyrus
+          cp ./scripts/install.sh ./cyrus
+          cp -r ./stdlib ./cyrus
+
+      - name: Collect files in single directory (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir cyrus
+          copy .\target\release\cyrus.exe .\cyrus\
+          xcopy /E /I .\stdlib .\cyrus\stdlib\
+
+      - name: Upload as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-${{ runner.os }}
+          path: ./cyrus
