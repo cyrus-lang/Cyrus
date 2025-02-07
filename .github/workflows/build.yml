@@ -24,11 +24,12 @@ jobs:
           install: mingw-w64-x86_64-gcc mingw-w64-x86_64-gcc-ada mingw-w64-x86_64-libgccjit
           
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable  
         with:
-          toolchain: stable
-          target: x86_64-pc-windows-msvc
-          override: true
+          toolchain: stable  
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2  # Cache dependencies for faster builds
 
       - name: Build
         shell: pwsh
