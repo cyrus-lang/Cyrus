@@ -38,7 +38,7 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          cargo build --verbose --release
+          cargo build -Z build-std=std,panic_abort --target x86_64-pc-windows-msvc -C link-arg=-fuse-ld=lld --release
 
       - name: Collect files in single directory 
         shell: pwsh
