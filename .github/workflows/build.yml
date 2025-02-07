@@ -35,8 +35,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item cyrus
-          Copy-Item -Path .\target\release\cyrus.exe -Destination .\cyrus
-          Copy-Item -Path .\stdlib -Destination .\cyrus\stdlib\
+          pwd;
+          ls;
+          # Copy-Item -Path .\target\release\cyrus.exe -Destination .\cyrus
+          # Copy-Item -Path .\stdlib -Destination .\cyrus\stdlib\
 
       - name: Upload as artifact
         uses: actions/upload-artifact@v4

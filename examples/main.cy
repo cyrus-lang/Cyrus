@@ -1,9 +1,10 @@
-import io;
+pub fn main(): i32 {
+    #my_arr: i32[2][2] = [[50, 2], [30, 4]];
 
-pub fn main() {
-    // #a: i64 = 10;
-    // #list: string[3][3];
-    // list[0] = [];
-    
-    println();
+    my_arr[0] = [35, 45]; // This isn't working fine.
+
+    my_arr[0][0] = 17;
+
+    cprintf("%d\n", my_arr[0][0]);
+    return 0;
 }

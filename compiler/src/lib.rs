@@ -686,14 +686,14 @@ Please ensure that the self parameter follows one of these forms.
     fn compile_import(&mut self, import: Import) {
         let file_path = self.file_path.clone();
         let current_dir = Path::new(&file_path).parent().unwrap().to_str().unwrap();
-        
+
         for sb in import.sub_packages {
             let import_file_name = if sb.is_relative {
                 sb.package_name.name.clone()
             } else {
                 format!("{}.cy", sb.package_name.name)
             };
-            
+
             let (import_file_path, output_library_path) = {
                 match self.make_import_file_path(current_dir.to_string(), sb.clone()) {
                     Some(paths) => paths,
@@ -701,9 +701,9 @@ Please ensure that the self parameter follows one of these forms.
                         Some(paths) => paths,
                         None => {
                             compiler_error!(format!(
-                                    "File '{}' does not exist at the current location, nor is it part of the standard library.",
-                                    import_file_name
-                                ));
+                                "File '{}' does not exist at the current location, nor is it part of the standard library.",
+                                import_file_name
+                            ));
                         }
                     },
                 }
