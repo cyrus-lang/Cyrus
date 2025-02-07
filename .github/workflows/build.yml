@@ -35,6 +35,11 @@ jobs:
       - name: Cache Cargo Dependencies
         uses: Swatinem/rust-cache@v2  # Cache dependencies for faster builds
 
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          rustup component add llvm-tools-preview
+          
       - name: Build
         shell: pwsh
         run: |
