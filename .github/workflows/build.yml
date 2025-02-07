@@ -1,4 +1,4 @@
-name: Build & Upload Cyrus Lang (Linux)
+name: Build & Upload Cyrus Lang
 
 on:
   push:
@@ -9,6 +9,40 @@ on:
       - "*"
 
 jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-gcc-ada mingw-w64-x86_64-libgccjit
+          
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+          override: true
+          command: cargo build --verbose --release
+
+      - name: Collect files in single directory 
+        shell: pwsh
+        run: |
+          New-Item cyrus
+          Copy-Item -Path .\target\release\cyrus.exe -Destination .\cyrus
+          Copy-Item -Path .\stdlib -Destination .\cyrus\stdlib\
+
+      - name: Upload as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-windows
+          path: ./cyrus
   build-linux:
     runs-on: ubuntu-24.04
 
