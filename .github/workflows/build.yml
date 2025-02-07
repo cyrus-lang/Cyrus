@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install -y llvm ninja
+          choco install -y mingw msys2
 
       - uses: actions-rs/toolchain@v1
         with:
