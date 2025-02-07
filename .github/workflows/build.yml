@@ -34,12 +34,11 @@ jobs:
       - name: Collect files in single directory 
         shell: pwsh
         run: |
-          New-Item cyrus
-          pwd;
-          ls;
-          # Copy-Item -Path .\target\release\cyrus.exe -Destination .\cyrus
-          # Copy-Item -Path .\stdlib -Destination .\cyrus\stdlib\
-
+          New-Item -ItemType Directory -Path cyrus -Force
+          Copy-Item -Path .\target\release\cyrus -Destination .\cyrus\
+          Copy-Item -Path .\scripts\install.sh -Destination .\cyrus\
+          Copy-Item -Path .\stdlib -Destination .\cyrus\ -Recurse
+          
       - name: Upload as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -82,11 +81,11 @@ jobs:
 
       - name: Collect files in single directory
         run: |
-          New-Item -ItemType Directory -Path cyrus -Force
-          Copy-Item -Path .\target\release\cyrus -Destination .\cyrus\
-          Copy-Item -Path .\scripts\install.sh -Destination .\cyrus\
-          Copy-Item -Path .\stdlib -Destination .\cyrus\ -Recurse
-          
+          mkdir cyrus
+          cp ./target/release/cyrus ./cyrus
+          cp ./scripts/install.sh ./cyrus
+          cp -r ./stdlib ./cyrus
+
       - name: Upload as artifact
         uses: actions/upload-artifact@v4
         with:
