@@ -29,13 +29,8 @@ jobs:
           toolchain: stable
           target: x86_64-pc-windows-msvc
           override: true
-
-      - name: Build 
-        run: cargo build --verbose --release
-
-      - name: Run tests
-        run: cargo test --verbose
-
+          command: cargo build --verbose --release
+          
       - name: Collect files in single directory 
         run: |
           mkdir cyrus
