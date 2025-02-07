@@ -43,7 +43,8 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          $env:RUSTFLAGS="-C link-arg=-fuse-ld=lld" cargo build --release
+          $env:RUSTFLAGS="-C link-arg=-fuse-ld=lld"
+          cargo build --release
 
       - name: Collect files in single directory 
         shell: pwsh
