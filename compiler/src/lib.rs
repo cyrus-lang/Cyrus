@@ -1627,7 +1627,7 @@ Please ensure that the self parameter follows one of these forms.
                     self.context,
                     self.gccjit_location(array.loc.clone()),
                     element_type,
-                    array_elements.len() as u64,
+                    array_elements.len().try_into().unwrap(),
                 )
             }
         }
