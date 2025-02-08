@@ -1572,8 +1572,6 @@ Please ensure that the self parameter follows one of these forms.
         for dim in dimensions {
             if let Expression::Array(index_expr) = dim {
                 if let Expression::Array(value) = index_expr.elements[0].clone() {
-                    // TODO Implement ranges here
-
                     let idx = self.compile_expression(Rc::clone(&scope), value.elements[0].clone());
 
                     let lvalue = unsafe {
