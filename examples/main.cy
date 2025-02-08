@@ -1,5 +1,8 @@
 pub fn main(): i32 {
-    #my_arr: i32[2][2] = [[50, 2], [30, 4]];
+    #my_arr: i32[2][2] = [
+        [50, 2],
+        [30, 4]
+    ];
 
     my_arr[0] = [35, 45]; // This isn't working fine.
 

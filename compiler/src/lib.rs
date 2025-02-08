@@ -1598,11 +1598,7 @@ Please ensure that the self parameter follows one of these forms.
         mut array_type: *mut gcc_jit_type,
     ) -> *mut gcc_jit_rvalue {
         let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
-
-        if array_type.is_null() {
-            compiler_error!("Unable to compile array construction without knowing it's type.");
-        }
-
+        
         if array.elements.len() == 0 {
             return unsafe {
                 gcc_jit_context_new_array_constructor(
