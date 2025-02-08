@@ -68,7 +68,7 @@ jobs:
   #         name: cyrus-windows
   #         path: ./cyrus
 
-  build-linux:
+  build:
     runs-on: ubuntu-24.04
 
     steps:
@@ -76,8 +76,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential gcc
+          sudo apt update
+          sudo apt install -y gcc build-essential gcc-mingw-w64-x86-64 gcc-mingw-w64-x86-64 libgccjit-13-dev
 
       - name: Download and install GCC fork
         run: |
@@ -96,7 +96,10 @@ jobs:
           rustup target add x86_64-pc-windows-gnu
 
       - name: Build (CROSS)
-        run: cross build --target x86_64-pc-windows-gnu --release 
+        run: |
+          export LIBRARY_PATH=/usr/lib/gcc/x86_64-w64-mingw32/13
+          export RUSTFLAGS="-L /usr/lib/gcc/x86_64-w64-mingw32/13"
+          cross build --target x86_64-pc-windows-gnu --release
 
       # - name: Build
         #   run: cargo build --verbose --release
