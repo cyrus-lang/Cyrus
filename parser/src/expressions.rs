@@ -334,7 +334,7 @@ impl<'a> Parser<'a> {
         match left {
             Expression::Identifier(identifier) => {
                 self.next_token();
-
+                
                 if !self.current_token_is(TokenKind::Semicolon) {
                     return Err(CompileTimeError {
                         location: self.current_location(),

@@ -279,6 +279,26 @@ impl<'a> Parser<'a> {
                         });
 
                         self.next_token(); // consume identifier
+
+                        if !self.current_token_is(TokenKind::Semicolon) {
+                            return Err(CompileTimeError {
+                                location: self.current_location(),
+                                etype: ParserErrorType::MissingSemicolon,
+                                file_name: Some(self.lexer.file_name.clone()),
+                                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                                verbose: None,
+                                caret: true,
+                            });
+                        }
+
+                        return Ok(Statement::Import(Import {
+                            sub_packages: package_paths,
+                            span: Span {
+                                start,
+                                end: self.current_token.span.end,
+                            },
+                            loc: self.current_location(),
+                        }));
                     }
                     TokenKind::Colon => {
                         self.next_token();
@@ -612,7 +632,7 @@ impl<'a> Parser<'a> {
 
         let (expr, span) = self.parse_expression(Precedence::Lowest)?;
 
-        if !self.peek_token_is(TokenKind::Semicolon) {
+        if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingSemicolon,

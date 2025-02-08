@@ -8,14 +8,7 @@ use parser::parse_program;
 use rand::{distributions::Alphanumeric, Rng};
 use scope::{IdentifierMetadata, Scope, ScopeRef};
 use std::{
-    cell::RefCell,
-    collections::HashMap,
-    ffi::CString,
-    fs::remove_file,
-    path::Path,
-    ptr::null_mut,
-    rc::Rc,
-    sync::{Arc, Mutex},
+    cell::RefCell, collections::HashMap, ffi::CString, fs::remove_file, io::StdinLock, path::Path, ptr::null_mut, rc::Rc, sync::{Arc, Mutex}
 };
 use utils::compiler_error;
 
@@ -649,153 +642,140 @@ Please ensure that the self parameter follows one of these forms.
         "o"
     }
 
-    fn make_import_file_path(&mut self, search_in_path: String, sb: PackagePath) -> Option<(String, String)> {
-        let import_file_name = if sb.is_relative {
-            sb.package_name.name.clone()
-        } else {
-            format!("{}.cy", sb.package_name.name)
-        };
-
-        let import_file_path = if sb.is_relative {
-            sb.package_name.name.clone()
-        } else {
-            format!("{}/{}", search_in_path, import_file_name)
-        };
-
-        let output_library_path = if sb.is_relative {
-            Path::new(&sb.package_name.name)
-                .with_extension(self.object_file_extension())
-                .to_string_lossy()
-                .to_string()
-        } else {
-            format!(
-                "{}/{}.{}",
-                search_in_path,
-                sb.package_name.name,
-                self.object_file_extension()
-            )
-        };
-
-        if self.file_exists(&import_file_path) {
-            return Some((import_file_path, output_library_path));
-        }
-
-        None
-    }
-
     fn compile_import(&mut self, import: Import) {
         let file_path = self.file_path.clone();
         let current_dir = Path::new(&file_path).parent().unwrap().to_str().unwrap();
 
-        for sb in import.sub_packages {
-            let import_file_name = if sb.is_relative {
-                sb.package_name.name.clone()
-            } else {
-                format!("{}.cy", sb.package_name.name)
-            };
+        let mut import_file_path: String = String::new();
 
-            let (import_file_path, output_library_path) = {
-                match self.make_import_file_path(current_dir.to_string(), sb.clone()) {
-                    Some(paths) => paths,
-                    None => match self.make_import_file_path(self.stdlib_path(), sb) {
-                        Some(paths) => paths,
-                        None => {
-                            compiler_error!(format!(
-                                "File '{}' does not exist at the current location, nor is it part of the standard library.",
-                                import_file_name
-                            ));
-                        }
-                    },
-                }
-            };
+        if import.sub_packages[0].is_relative {
+            import_file_path = import.sub_packages[0].package_name.name.clone();
+        } else {
+            let mut import_file_name: String = String::new();
 
-            let (program, file_name) = parse_program(import_file_path.clone());
-            let context = Compiler::new_child_context(self.context);
-            let mut compiler = Compiler::new(context, program, import_file_path.clone(), file_name);
-
-            compiler.compile();
-            compiler.make_object_file(output_library_path.clone());
-
-            for (key, value) in compiler.func_table.borrow_mut().clone() {
-                if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
-                    let func_ptr = self.define_imported_func_as_extern_decl(
-                        key.clone(),
-                        value.params.clone(),
-                        Some(Token {
-                            kind: value.return_type.clone(),
-                            span: Span::new_empty_span(),
-                        }),
-                        import.loc.clone(),
-                    );
-
-                    self.func_table.borrow_mut().insert(
-                        key,
-                        FuncMetadata {
-                            func_type: VisType::Extern,
-                            ptr: func_ptr,
-                            params: value.params,
-                            return_type: value.return_type,
-                        },
-                    );
+            for (idx, sb) in import.sub_packages.iter().enumerate() {
+                if idx == import.sub_packages.len() - 1 {
+                    import_file_name += &format!("{}.cy", sb.package_name.name);
+                } else {
+                    import_file_name += &format!("{}/", sb.package_name);
                 }
             }
 
-            for (key, value) in compiler.global_struct_table.borrow_mut().clone() {
-                if value.vis_type == VisType::Pub && !self.global_struct_table.borrow_mut().contains_key(&key) {
-                    let mut struct_field_ptrs = self.compile_struct_fields(value.fields.clone());
-                    let struct_decl_name = CString::new(key.clone()).unwrap();
-                    let struct_decl = unsafe {
-                        gcc_jit_context_new_struct_type(
-                            self.context,
-                            self.gccjit_location(import.loc.clone()),
-                            struct_decl_name.as_ptr(),
-                            value.fields.len().try_into().unwrap(),
-                            struct_field_ptrs.as_mut_ptr(),
-                        )
-                    };
-
-                    self.global_struct_table.borrow_mut().insert(
-                        key.clone(),
-                        StructMetadata {
-                            vis_type: VisType::Internal,
-                            struct_type: struct_decl,
-                            fields: value.fields.clone(),
-                            field_ptrs: struct_field_ptrs.clone(),
-                            methods: Vec::new(),
-                            method_ptrs: Vec::new(),
-                        },
-                    );
-
-                    let mut methods_decl: Vec<*mut gcc_jit_function> = Vec::new();
-                    for item in value.methods.clone() {
-                        let method_ptr = self.define_imported_func_as_extern_decl(
-                            self.make_struct_method_name(key.clone(), item.func_def.name),
-                            item.func_def.params,
-                            item.func_def.return_type,
-                            item.func_def.loc,
-                        );
-                        methods_decl.push(method_ptr);
-                    }
-
-                    self.global_struct_table.borrow_mut().insert(
-                        key,
-                        StructMetadata {
-                            vis_type: VisType::Internal,
-                            struct_type: struct_decl,
-                            fields: value.fields,
-                            field_ptrs: struct_field_ptrs,
-                            methods: value.methods,
-                            method_ptrs: methods_decl,
-                        },
-                    );
-                }
+            let local = format!("{}/{}", current_dir, import_file_name.clone());
+            let stdlib = format!("{}/{}", self.stdlib_path(), import_file_name.clone());
+            if self.file_exists(&import_file_path) {
+                import_file_path = local;
             }
-
-            self.compiled_object_files.push(output_library_path.clone());
-
-            let optname = CString::new(output_library_path).unwrap();
-            unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
+            else if self.file_exists(&stdlib) {
+                import_file_path = stdlib;
+            }
+            else {
+                compiler_error!(format!(
+                    "File '{}' does not exist at the current location, nor is it part of the standard library.",
+                    import_file_name
+                ));
+            }
         }
+
+        let output_library_path =  Path::new(&import_file_path)
+        .with_extension(self.object_file_extension())
+        .to_string_lossy()
+        .to_string();
+
+
+        if !self.file_exists(&import_file_path.clone()) {
+            compiler_error!(format!(
+                "File '{}' not found to be importe by the compiler.",
+                import_file_path
+            ));
+        }
+
+        let (program, file_name) = parse_program(import_file_path.clone());
+        let context = Compiler::new_child_context(self.context);
+        let mut compiler = Compiler::new(context, program, import_file_path.clone(), file_name);
+
+        compiler.compile();
+        compiler.make_object_file(output_library_path.clone());
+
+        for (key, value) in compiler.func_table.borrow_mut().clone() {
+            if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
+                let func_ptr = self.define_imported_func_as_extern_decl(
+                    key.clone(),
+                    value.params.clone(),
+                    Some(Token {
+                        kind: value.return_type.clone(),
+                        span: Span::new_empty_span(),
+                    }),
+                    import.loc.clone(),
+                );
+
+                self.func_table.borrow_mut().insert(
+                    key,
+                    FuncMetadata {
+                        func_type: VisType::Extern,
+                        ptr: func_ptr,
+                        params: value.params,
+                        return_type: value.return_type,
+                    },
+                );
+            }
+        }
+
+        for (key, value) in compiler.global_struct_table.borrow_mut().clone() {
+            if value.vis_type == VisType::Pub && !self.global_struct_table.borrow_mut().contains_key(&key) {
+                let mut struct_field_ptrs = self.compile_struct_fields(value.fields.clone());
+                let struct_decl_name = CString::new(key.clone()).unwrap();
+                let struct_decl = unsafe {
+                    gcc_jit_context_new_struct_type(
+                        self.context,
+                        self.gccjit_location(import.loc.clone()),
+                        struct_decl_name.as_ptr(),
+                        value.fields.len().try_into().unwrap(),
+                        struct_field_ptrs.as_mut_ptr(),
+                    )
+                };
+
+                self.global_struct_table.borrow_mut().insert(
+                    key.clone(),
+                    StructMetadata {
+                        vis_type: VisType::Internal,
+                        struct_type: struct_decl,
+                        fields: value.fields.clone(),
+                        field_ptrs: struct_field_ptrs.clone(),
+                        methods: Vec::new(),
+                        method_ptrs: Vec::new(),
+                    },
+                );
+
+                let mut methods_decl: Vec<*mut gcc_jit_function> = Vec::new();
+                for item in value.methods.clone() {
+                    let method_ptr = self.define_imported_func_as_extern_decl(
+                        self.make_struct_method_name(key.clone(), item.func_def.name),
+                        item.func_def.params,
+                        item.func_def.return_type,
+                        item.func_def.loc,
+                    );
+                    methods_decl.push(method_ptr);
+                }
+
+                self.global_struct_table.borrow_mut().insert(
+                    key,
+                    StructMetadata {
+                        vis_type: VisType::Internal,
+                        struct_type: struct_decl,
+                        fields: value.fields,
+                        field_ptrs: struct_field_ptrs,
+                        methods: value.methods,
+                        method_ptrs: methods_decl,
+                    },
+                );
+            }
+        }
+
+        self.compiled_object_files.push(output_library_path.clone());
+
+        let optname = CString::new(output_library_path).unwrap();
+        unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
     }
 
     fn compile_func_params(
@@ -1531,10 +1511,10 @@ Please ensure that the self parameter follows one of these forms.
                                         ),
                                     )
                                 };
-        
+
                                 unsafe { gcc_jit_block_add_assignment(block, loc, array_item_ptr, expr) };
                             }
-        
+
                             return null_mut();
                         }
                         _ => {
@@ -1548,7 +1528,7 @@ Please ensure that the self parameter follows one of these forms.
                                 )
                             }
                             return rvalue;
-                        },
+                        }
                     };
                 } else {
                     compiler_error!("Array index assignment in invalid block.");
@@ -1664,7 +1644,7 @@ Please ensure that the self parameter follows one of these forms.
         if let Some(block) = block_func.block {
             drop(block_func);
 
-            let rvalue =  self.compile_expression(scope, assignment.expr);
+            let rvalue = self.compile_expression(scope, assignment.expr);
 
             unsafe {
                 gcc_jit_block_add_assignment(block, self.gccjit_location(assignment.loc.clone()), lvalue, rvalue);
