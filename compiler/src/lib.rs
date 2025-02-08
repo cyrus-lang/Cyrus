@@ -1367,10 +1367,6 @@ Please ensure that the self parameter follows one of these forms.
                 }
             }
 
-            // if var_type.is_null() {
-            //     compiler_error!("Undefined behaviour in variable declaration. Explicit type definition required.");
-            // }
-
             let name = CString::new(variable.name.clone()).unwrap();
             let lvalue = unsafe {
                 gcc_jit_function_new_local(
@@ -1514,22 +1510,46 @@ Please ensure that the self parameter follows one of these forms.
                     array_index_assign.dimensions,
                 );
 
-                let rvalue = self.compile_expression(Rc::clone(&scope), array_index_assign.expr);
-
                 let block_func = self.block_func_ref.lock().unwrap();
                 if let Some(block) = block_func.block {
                     drop(block_func);
 
-                    unsafe {
-                        gcc_jit_block_add_assignment(
-                            block,
-                            self.gccjit_location(array_index_assign.loc.clone()),
-                            lvalue,
-                            rvalue,
-                        )
+                    let loc = self.gccjit_location(array_index_assign.loc.clone());
+                    match array_index_assign.expr.clone() {
+                        Expression::Array(Array { elements, .. }) => {
+                            for (idx, item) in elements.iter().enumerate() {
+                                let expr = self.compile_expression(Rc::clone(&scope), item.clone());
+                                let array_item_ptr = unsafe {
+                                    gcc_jit_context_new_array_access(
+                                        self.context,
+                                        loc.clone(),
+                                        gcc_jit_lvalue_as_rvalue(lvalue),
+                                        gcc_jit_context_new_rvalue_from_int(
+                                            self.context,
+                                            Compiler::i32_type(self.context),
+                                            idx.try_into().unwrap(),
+                                        ),
+                                    )
+                                };
+        
+                                unsafe { gcc_jit_block_add_assignment(block, loc, array_item_ptr, expr) };
+                            }
+        
+                            return null_mut();
+                        }
+                        _ => {
+                            let rvalue = self.compile_expression(Rc::clone(&scope), array_index_assign.expr);
+                            unsafe {
+                                gcc_jit_block_add_assignment(
+                                    block,
+                                    self.gccjit_location(array_index_assign.loc.clone()),
+                                    lvalue,
+                                    rvalue,
+                                )
+                            }
+                            return rvalue;
+                        },
                     };
-
-                    rvalue
                 } else {
                     compiler_error!("Array index assignment in invalid block.");
                 }
@@ -1552,8 +1572,6 @@ Please ensure that the self parameter follows one of these forms.
         for dim in dimensions {
             if let Expression::Array(index_expr) = dim {
                 if let Expression::Array(value) = index_expr.elements[0].clone() {
-                    // TODO Implement ranges here
-
                     let idx = self.compile_expression(Rc::clone(&scope), value.elements[0].clone());
 
                     let lvalue = unsafe {
@@ -1598,10 +1616,6 @@ Please ensure that the self parameter follows one of these forms.
         mut array_type: *mut gcc_jit_type,
     ) -> *mut gcc_jit_rvalue {
         let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
-
-        if array_type.is_null() {
-            compiler_error!("Unable to compile array construction without knowing it's type.");
-        }
 
         if array.elements.len() == 0 {
             return unsafe {
@@ -1650,13 +1664,13 @@ Please ensure that the self parameter follows one of these forms.
         if let Some(block) = block_func.block {
             drop(block_func);
 
-            let new_rvalue = self.compile_expression(scope, assignment.expr);
+            let rvalue =  self.compile_expression(scope, assignment.expr);
 
             unsafe {
-                gcc_jit_block_add_assignment(block, self.gccjit_location(assignment.loc.clone()), lvalue, new_rvalue);
+                gcc_jit_block_add_assignment(block, self.gccjit_location(assignment.loc.clone()), lvalue, rvalue);
             };
 
-            return new_rvalue;
+            return rvalue;
         } else {
             compiler_error!("Incorrect usage of the assignment. Assignments must be performed inside a valid block.");
         }
