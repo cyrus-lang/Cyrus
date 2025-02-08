@@ -1598,7 +1598,7 @@ Please ensure that the self parameter follows one of these forms.
         mut array_type: *mut gcc_jit_type,
     ) -> *mut gcc_jit_rvalue {
         let mut array_elements: Vec<*mut gcc_jit_rvalue> = Vec::new();
-        
+
         if array.elements.len() == 0 {
             return unsafe {
                 gcc_jit_context_new_array_constructor(
@@ -1646,13 +1646,24 @@ Please ensure that the self parameter follows one of these forms.
         if let Some(block) = block_func.block {
             drop(block_func);
 
-            let new_rvalue = self.compile_expression(scope, assignment.expr);
+            let rvalue = match assignment.expr.clone() {
+                Expression::Array(Array { elements, .. }) => {
+                    for (idx, item) in elements.iter().enumerate() {
+                        let expr = self.compile_expression(Rc::clone(&scope), item.clone());
+                        todo!();
+                        // ANCHOR
+                    }
 
-            unsafe {
-                gcc_jit_block_add_assignment(block, self.gccjit_location(assignment.loc.clone()), lvalue, new_rvalue);
+                    todo!()
+                }
+                _ => self.compile_expression(scope, assignment.expr)
             };
 
-            return new_rvalue;
+            unsafe {
+                gcc_jit_block_add_assignment(block, self.gccjit_location(assignment.loc.clone()), lvalue, rvalue);
+            };
+
+            return rvalue;
         } else {
             compiler_error!("Incorrect usage of the assignment. Assignments must be performed inside a valid block.");
         }

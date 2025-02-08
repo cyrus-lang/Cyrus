@@ -125,18 +125,18 @@ impl Compiler {
                 let mut array_type: *mut gcc_jit_type = null_mut();
                 let mut multi_dimensional = false;
 
-                for item in dimensions {
+                for item in dimensions.iter().rev().into_iter() {
                     if let Some(capacity) = item {
                         match capacity {
                             TokenKind::Literal(literal) => {
                                 match literal {
                                     ast::ast::Literal::Integer(integer_literal) => {
-                                        let capacity_raw =
-                                            integer_literal_as_value(integer_literal).try_into().unwrap();
+                                        let capacity_raw: u64 = integer_literal_as_value(integer_literal.clone()).try_into().unwrap();
 
                                         if !multi_dimensional {
                                             let elements_data_type =
                                                 self.token_as_data_type(context, *data_type.clone());
+                                                
                                             array_type = unsafe {
                                                 gcc_jit_context_new_array_type(
                                                     context,
@@ -167,7 +167,7 @@ impl Compiler {
 
                 array_type
             }
-            _ => compiler_error!("Invalid token given to cast to a GCCJIT type."),
+            _ => compiler_error!("Invalid token given to cast as a GCCJIT type."),
         }
     }
 
