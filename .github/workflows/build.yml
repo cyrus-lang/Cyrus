@@ -41,14 +41,13 @@ jobs:
         run: |
           echo "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64" >> $env:GITHUB_PATH
 
-      - name: Configure Rust Linker
+      - name: Configure Rust to Link `gccjit.lib`
         shell: pwsh
         run: |
           mkdir -Force .cargo
           Set-Content -Path .cargo/config.toml -Value @"
           [target.x86_64-pc-windows-msvc]
-          linker = "rust-lld.exe"
-          rustflags = ["-C", "link-arg=-Wl"]
+          rustflags = ["-L", "C:/vcpkg/installed/x64-windows/lib", "-l", "gccjit"]
           "@
 
       - name: Build
