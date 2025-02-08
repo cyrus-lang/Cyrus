@@ -8,7 +8,15 @@ use parser::parse_program;
 use rand::{distributions::Alphanumeric, Rng};
 use scope::{IdentifierMetadata, Scope, ScopeRef};
 use std::{
-    cell::RefCell, collections::HashMap, ffi::CString, fs::remove_file, io::StdinLock, path::Path, ptr::null_mut, rc::Rc, sync::{Arc, Mutex}
+    cell::RefCell,
+    collections::HashMap,
+    ffi::CString,
+    fs::remove_file,
+    io::StdinLock,
+    path::Path,
+    ptr::null_mut,
+    rc::Rc,
+    sync::{Arc, Mutex},
 };
 use utils::compiler_error;
 
@@ -665,11 +673,9 @@ Please ensure that the self parameter follows one of these forms.
             let stdlib = format!("{}/{}", self.stdlib_path(), import_file_name.clone());
             if self.file_exists(&import_file_path) {
                 import_file_path = local;
-            }
-            else if self.file_exists(&stdlib) {
+            } else if self.file_exists(&stdlib) {
                 import_file_path = stdlib;
-            }
-            else {
+            } else {
                 compiler_error!(format!(
                     "File '{}' does not exist at the current location, nor is it part of the standard library.",
                     import_file_name
@@ -677,11 +683,10 @@ Please ensure that the self parameter follows one of these forms.
             }
         }
 
-        let output_library_path =  Path::new(&import_file_path)
-        .with_extension(self.object_file_extension())
-        .to_string_lossy()
-        .to_string();
-
+        let output_library_path = Path::new(&import_file_path)
+            .with_extension(self.object_file_extension())
+            .to_string_lossy()
+            .to_string();
 
         if !self.file_exists(&import_file_path.clone()) {
             compiler_error!(format!(
@@ -697,6 +702,7 @@ Please ensure that the self parameter follows one of these forms.
         compiler.compile();
         compiler.make_object_file(output_library_path.clone());
 
+        // Import functions
         for (key, value) in compiler.func_table.borrow_mut().clone() {
             if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
                 let func_ptr = self.define_imported_func_as_extern_decl(
@@ -721,6 +727,7 @@ Please ensure that the self parameter follows one of these forms.
             }
         }
 
+        // Import structs
         for (key, value) in compiler.global_struct_table.borrow_mut().clone() {
             if value.vis_type == VisType::Pub && !self.global_struct_table.borrow_mut().contains_key(&key) {
                 let mut struct_field_ptrs = self.compile_struct_fields(value.fields.clone());
@@ -838,15 +845,15 @@ Please ensure that the self parameter follows one of these forms.
         decl_func
     }
 
-    fn compile_func_def(&mut self, scope: ScopeRef, func_def: FuncDef) -> *mut gcc_jit_function {
-        let func_type = match func_def.vis_type {
+    fn func_decl(&mut self, func_decl: FuncDecl) -> (*mut gcc_jit_function, FuncParamsRecords) {
+        let func_type = match func_decl.vis_type {
             VisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
             VisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
             VisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
             VisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
         };
 
-        let return_type_token = func_def
+        let return_type_token = func_decl
             .return_type
             .clone()
             .unwrap_or(Token {
@@ -860,7 +867,7 @@ Please ensure that the self parameter follows one of these forms.
         let mut params: Vec<*mut gcc_jit_param> = Vec::new();
         let mut func_params = FuncParamsRecords::new();
 
-        for (idx, func_def_param) in func_def.params.iter().enumerate() {
+        for (idx, func_def_param) in func_decl.params.iter().enumerate() {
             let name = CString::new(func_def_param.identifier.name.clone()).unwrap();
 
             let ty_token = if let Some(user_def) = &func_def_param.ty {
@@ -888,11 +895,11 @@ Please ensure that the self parameter follows one of these forms.
             });
         }
 
-        let func_name = CString::new(func_def.name.clone()).unwrap();
+        let func_name = CString::new(func_decl.name.clone()).unwrap();
         let func = unsafe {
             gcc_jit_context_new_function(
                 self.context,
-                self.gccjit_location(func_def.loc.clone()),
+                self.gccjit_location(func_decl.loc.clone()),
                 func_type,
                 return_type.clone(),
                 func_name.as_ptr(),
@@ -902,16 +909,30 @@ Please ensure that the self parameter follows one of these forms.
             )
         };
 
-        self.param_table.borrow_mut().insert(func, func_params.clone());
+        return (func, func_params);
+    }
+
+    fn compile_func_def(&mut self, scope: ScopeRef, func_def: FuncDef) -> *mut gcc_jit_function {
+        let (func_decl, func_params) = self.func_decl(FuncDecl {
+            name: func_def.name.clone(),
+            params: func_def.params,
+            return_type: func_def.return_type.clone(),
+            vis_type: func_def.vis_type,
+            renamed_as: None,
+            span: func_def.span,
+            loc: func_def.loc,
+        });
+
+        self.param_table.borrow_mut().insert(func_decl, func_params.clone());
 
         // Build func block
         let name = CString::new("entry").unwrap();
-        let block = unsafe { gcc_jit_function_new_block(func, name.as_ptr()) };
+        let block = unsafe { gcc_jit_function_new_block(func_decl, name.as_ptr()) };
         let mut return_compiled = false;
 
         let mut guard = self.block_func_ref.lock().unwrap();
         guard.block = Some(block);
-        guard.func = Some(func);
+        guard.func = Some(func_decl);
         drop(guard);
 
         for item in func_def.body.body {
@@ -935,85 +956,26 @@ Please ensure that the self parameter follows one of these forms.
             }
         }
 
-        return func;
+        return func_decl;
     }
 
     fn compile_func_decl(&mut self, func_decl: FuncDecl) {
-        // FIXME Make a macro to compile func_decl and func_def similarly
-        todo!();
-
-        // let func_type = match func_decl.vis_type {
-        //     VisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
-        //     VisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
-        //     VisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
-        //     VisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
-        // };
-
-        // let return_type_token = func_decl
-        //     .return_type
-        //     .unwrap_or(Token {
-        //         kind: TokenKind::Void,
-        //         span: Span::new_empty_span(),
-        //     })
-        //     .kind;
-        // let return_type = self.token_as_data_type(self.context, return_type_token.clone());
-
-        // let mut params: Vec<*mut gcc_jit_param> = Vec::new();
-        // let mut func_params = FuncParamsRecords::new();
-
-        // for (idx, func_decl_param) in func_decl.params.iter().enumerate() {
-        //     let name = CString::new(func_decl_param.identifier.name.clone()).unwrap();
-
-        //     let ty_token = if let Some(user_def) = &func_decl_param.ty {
-        //         user_def
-        //     } else {
-        //         &TokenKind::Void
-        //     };
-
-        //     let ty = self.token_as_data_type(self.context, ty_token.clone());
-
-        //     let param = unsafe {
-        //         gcc_jit_context_new_param(
-        //             self.context,
-        //             self.gccjit_location(func_decl_param.loc.clone()),
-        //             ty,
-        //             name.as_ptr(),
-        //         )
-        //     };
-
-        //     params.push(param);
-
-        //     func_params.push(FuncParamRecord {
-        //         param_index: idx as i32,
-        //         param_name: func_decl_param.identifier.name.clone(),
-        //     });
-        // }
-
-        // let func_name = CString::new(func_decl.name.clone()).unwrap();
-        // let func = unsafe {
-        //     gcc_jit_context_new_function(
-        //         self.context,
-        //         self.gccjit_location(func_decl.loc.clone()),
-        //         func_type,
-        //         return_type.clone(),
-        //         func_name.as_ptr(),
-        //         params.len().try_into().unwrap(),
-        //         params.as_mut_ptr(),
-        //         0,
-        //     )
-        // };
-
-        // self.param_table.borrow_mut().insert(func, func_params.clone());
-
-        // self.func_table.borrow_mut().insert(
-        //     func_decl.name,
-        //     FuncMetadata {
-        //         func_type: func_decl.vis_type,
-        //         ptr: func,
-        //         params: func_decl.params,
-        //         return_type: return_type_token,
-        //     },
-        // );
+        let (func, _) = self.func_decl(func_decl.clone());
+        let return_type = self.safe_func_return_type(func_decl.return_type);
+        let func_name = if let Some(renamed_as) = func_decl.renamed_as {
+            renamed_as
+        } else {
+            func_decl.name
+        };
+        self.func_table.borrow_mut().insert(
+            func_name,
+            FuncMetadata {
+                func_type: func_decl.vis_type,
+                ptr: func,
+                params: func_decl.params,
+                return_type,
+            },
+        );
     }
 
     fn compile_continue_statement(&mut self, loc: Location) {
