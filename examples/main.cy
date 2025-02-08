@@ -4,10 +4,8 @@ pub fn main(): i32 {
         [30, 4],
         [6, 7]
     ];
-
-    // my_arr[0] = [35, 45]; // This isn't working fine.
-
-    // my_arr[0][0] = 17;
+    
+    my_arr[0] = [256, 257];
 
     return 0;
 }
