@@ -82,6 +82,7 @@ pub enum TokenKind {
     True,
     False,
     Null,
+    As,
 
     AddressOf(Box<TokenKind>),
     Dereference(Box<TokenKind>),

@@ -716,6 +716,41 @@ impl<'a> Parser<'a> {
                 params,
                 return_type,
                 vis_type,
+                renamed_as: None,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc: self.current_location(),
+            }));
+        } else if self.current_token_is(TokenKind::As) {
+            self.next_token();
+        
+            // parse renamed func decl
+            let renamed_as = match self.current_token.kind.clone() {
+                TokenKind::Identifier { name } => name,
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::ExpectedIdentifier,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
+                    })
+                }
+            }; // export the name of the function
+
+            if self.peek_token_is(TokenKind::Semicolon) {
+                self.next_token();
+            }
+
+            return Ok(Statement::FuncDecl(FuncDecl {
+                name: function_name,
+                params,
+                return_type,
+                vis_type,
+                renamed_as: Some(renamed_as),
                 span: Span {
                     start,
                     end: self.current_token.span.end,

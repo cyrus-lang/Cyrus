@@ -318,6 +318,7 @@ pub struct FuncDecl {
     pub params: FunctionParams,
     pub return_type: Option<Token>,
     pub vis_type: VisType,
+    pub renamed_as: Option<String>,
     pub span: Span,
     pub loc: Location,
 }
