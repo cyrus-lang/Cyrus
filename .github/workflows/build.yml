@@ -9,66 +9,7 @@ on:
       - "*"
 
 jobs:
-  # build-windows:
-  #   runs-on: windows-latest
-
-  #   steps:
-  #     - uses: actions/checkout@v4
-
-  #     - name: Install MSVC Build Tools
-  #       uses: ilammy/msvc-dev-cmd@v1
-
-  #     - name: Install Rust
-  #       uses: dtolnay/rust-toolchain@stable  
-  #       with:
-  #         toolchain: stable  
-  #         target: x86_64-pc-windows-msvc
-  #         components: llvm-tools-preview
-
-  #     - name: Install gccjit via vcpkg
-  #       shell: pwsh
-  #       run: |
-  #         vcpkg install libgccjit:x64-windows
-  #         vcpkg integrate install
-
-  #     - name: Set Library Path
-  #       shell: pwsh
-  #       run: |
-  #         $env:LIB="$env:VCPKG_ROOT\installed\x64-windows\lib;$env:LIB"
-
-  #     - name: Ensure `link.exe` is in PATH
-  #       shell: pwsh
-  #       run: |
-  #         echo "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64" >> $env:GITHUB_PATH
-
-  #     - name: Configure Rust to Link `gccjit.lib`
-  #       shell: pwsh
-  #       run: |
-  #         mkdir -Force .cargo
-  #         Set-Content -Path .cargo/config.toml -Value @"
-  #         [target.x86_64-pc-windows-msvc]
-  #         rustflags = ["-L", "C:/vcpkg/installed/x64-windows/lib", "-l", "gccjit"]
-  #         "@
-
-  #     - name: Build
-  #       shell: pwsh
-  #       run: cargo build --release
-
-  #     - name: Collect files in single directory 
-  #       shell: pwsh
-  #       run: |
-  #         New-Item -ItemType Directory -Path cyrus -Force
-  #         Copy-Item -Path .\target\release\cyrus.exe -Destination .\cyrus\
-  #         Copy-Item -Path .\scripts\install.sh -Destination .\cyrus\
-  #         Copy-Item -Path .\stdlib -Destination .\cyrus\ -Recurse
-          
-  #     - name: Upload as artifact
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: cyrus-windows
-  #         path: ./cyrus
-
-  build:
+  build-linux:
     runs-on: ubuntu-24.04
 
     steps:
@@ -76,33 +17,22 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y gcc build-essential gcc-mingw-w64-x86-64 gcc-mingw-w64-x86-64
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc
 
       - name: Download and install GCC fork
         run: |
           curl -LO https://github.com/antoyo/gcc/releases/latest/download/gcc-15.deb
           sudo dpkg --force-overwrite -i gcc-15.deb
 
+      - name: Build 
+        run: cargo build --verbose --release
+
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-
-      - name: Download and install CROSS
-        run: |
-          cargo install cross
-          rustup target add x86_64-pc-windows-gnu
-
-      - name: Build (CROSS)
-        run: |
-          export LIBRARY_PATH="/usr/lib/gcc/x86_64-w64-mingw32/13-win32"
-          export RUSTFLAGS="-L /usr/lib/gcc/x86_64-w64-mingw32/13-win32"
-          cross build --target x86_64-pc-windows-gnu --release
-
-      # - name: Build
-        #   run: cargo build --verbose --release
 
       - name: Run tests
         run: cargo test --verbose
