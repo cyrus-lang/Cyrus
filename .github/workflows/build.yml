@@ -11,17 +11,9 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
 
     steps:
       - uses: actions/checkout@v4
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-gcc-ada mingw-w64-x86_64-libgccjit
 
       - name: Install MSVC Build Tools
         uses: ilammy/msvc-dev-cmd@v1
@@ -31,26 +23,43 @@ jobs:
         with:
           toolchain: stable  
           target: x86_64-pc-windows-msvc
+          components: llvm-tools-preview
 
-      - name: Cache Cargo Dependencies
-        uses: Swatinem/rust-cache@v2  # Cache dependencies for faster builds
-
-      - name: Install dependencies
+      - name: Install gccjit via vcpkg
         shell: pwsh
         run: |
-          rustup component add llvm-tools-preview
-          
+          vcpkg install libgccjit:x64-windows
+          vcpkg integrate install
+
+      - name: Set Library Path
+        shell: pwsh
+        run: |
+          $env:LIB="$env:VCPKG_ROOT\installed\x64-windows\lib;$env:LIB"
+
+      - name: Ensure `link.exe` is in PATH
+        shell: pwsh
+        run: |
+          echo "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64" >> $env:GITHUB_PATH
+
+      - name: Configure Rust Linker
+        shell: pwsh
+        run: |
+          mkdir -Force .cargo
+          Set-Content -Path .cargo/config.toml -Value @"
+          [target.x86_64-pc-windows-msvc]
+          linker = "rust-lld.exe"
+          rustflags = ["-C", "link-arg=-Wl"]
+          "@
+
       - name: Build
         shell: pwsh
-        run: |
-          $env:RUSTFLAGS="-C link-arg=-fuse-ld=lld"
-          cargo build --release
+        run: cargo build --release
 
       - name: Collect files in single directory 
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path cyrus -Force
-          Copy-Item -Path .\target\release\cyrus -Destination .\cyrus\
+          Copy-Item -Path .\target\release\cyrus.exe -Destination .\cyrus\
           Copy-Item -Path .\scripts\install.sh -Destination .\cyrus\
           Copy-Item -Path .\stdlib -Destination .\cyrus\ -Recurse
           
@@ -59,6 +68,7 @@ jobs:
         with:
           name: cyrus-windows
           path: ./cyrus
+
   build-linux:
     runs-on: ubuntu-24.04
 
