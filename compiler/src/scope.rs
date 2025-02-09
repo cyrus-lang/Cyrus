@@ -3,8 +3,9 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[derive(Debug, Clone)]
 pub struct IdentifierMetadata {
-    pub(crate) lvalue: *mut gcc_jit_lvalue,
+    #[allow(dead_code)]
     pub lvalue_type: *mut gcc_jit_type,
+    pub(crate) lvalue: *mut gcc_jit_lvalue,
 }
 
 #[derive(Debug, Clone)]
