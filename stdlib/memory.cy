@@ -1,0 +1,12 @@
+extern fn malloc(size: u64): *void as local_malloc;
+extern fn malloc(ptr: *void) as local_free;
+
+pub struct Memory {
+    pub fn malloc(size: u64): *void {
+        return local_malloc(size);
+    }
+
+    pub fn free(ptr: *void) {
+        local_free(ptr);
+    }
+}
