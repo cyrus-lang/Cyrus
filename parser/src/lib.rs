@@ -86,8 +86,6 @@ impl<'a> Parser<'a> {
 
         while self.current_token.kind != TokenKind::EOF {
             self.parse_and_add_statement(&mut program);
-
-            // FIXME Mind to remove this and move it to inside of each of statements
             self.next_token();
         }
 

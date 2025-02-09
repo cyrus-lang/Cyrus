@@ -630,7 +630,7 @@ impl<'a> Parser<'a> {
 
         let (expr, span) = self.parse_expression(Precedence::Lowest)?;
 
-        if !self.current_token_is(TokenKind::Semicolon) {
+        if !self.peek_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingSemicolon,

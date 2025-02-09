@@ -158,7 +158,6 @@ impl Compiler {
                 }
             } else {
                 result = self.compile_expression(Rc::clone(&scope), statement.expr.clone());
-                dbg!(result);
             }
 
             if result == null_mut() {

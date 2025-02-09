@@ -20,7 +20,6 @@ mod tests {
         "), String::from("test.cy"));
 
         lexer.skip_whitespace();
-        dbg!(lexer.ch);
     }
 
     fn assert_tokens(input: &'static str, expected_tokens: Option<&Vec<TokenKind>>, spans: Option<&Vec<Span>>) {

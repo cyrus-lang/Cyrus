@@ -2,9 +2,11 @@ import io;
 import memory;
 
 pub fn main() {
-    #a = Memory.malloc(32);;
+    printf("Program started.\n");
 
+    #a: *void = Memory.malloc(32);
+    *a = 10;
     Memory.free(a);
 
-    printf("Hello World\n");
+    printf("Program end.\n");
 }

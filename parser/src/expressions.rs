@@ -421,7 +421,16 @@ impl<'a> Parser<'a> {
                 self.next_token(); // consume method name
 
                 let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
-                self.expect_current(TokenKind::RightParen)?;
+                if !self.current_token_is(TokenKind::RightParen) {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::MissingClosingParen,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
+                    })
+                }
 
                 let method_call = FuncCall {
                     func_name: method_name,
