@@ -63,7 +63,7 @@ impl fmt::Display for Literal {
         match self {
             Literal::Integer(integer) => write!(f, "{}", integer),
             Literal::Bool(bool) => write!(f, "{}", bool),
-            Literal::String(string_type) => write!(f, "{}", string_type),
+            Literal::String(string_type) => write!(f, "\"{}\"", string_type),
             Literal::Float(float) => write!(f, "{}", float),
             Literal::Char(ch) => write!(f, "{}", ch),
             Literal::Null => write!(f, "null"),
@@ -87,7 +87,7 @@ impl fmt::Display for Expression {
         match self {
             Expression::UnaryOperator(unop) => write!(f, "{}{}", unop.identifier, unop.ty),
             Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
-            Expression::Literal(literal) => write!(f, "{}", literal),
+            Expression::Literal(literal) => write!(f, "{}", literal.to_string()),
             Expression::Prefix(UnaryExpression { operand, operator, .. }) => {
                 write!(f, "({}{})", operator.kind, operand)
             }
@@ -96,12 +96,12 @@ impl fmt::Display for Expression {
             }) => {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
-            Expression::FunctionCall(FunctionCall {
-                function_name,
+            Expression::FuncCall(FuncCall {
+                func_name,
                 arguments,
                 ..
             }) => {
-                write!(f, "{}({})", function_name, format_expressions(arguments))
+                write!(f, "{}({})", func_name, format_expressions(arguments))
             }
             Expression::Array(array) => {
                 write!(f, "[{}]", array_items_to_string(array.clone()))
@@ -147,14 +147,18 @@ impl fmt::Display for Expression {
                     }
 
                     if let Some(method_call) = item.method_call.clone() {
-                        write!(f, ".{}(", method_call.function_name.name)?;
+                        write!(f, ".{}(", method_call.func_name.name)?;
 
-                        for (idx, arg) in method_call.arguments.iter().enumerate() {
-                            if idx == method_call.arguments.len() - 1  {
-                                write!(f, "{})", arg)?;
-                            } else{ 
-                                write!(f, "{}, ", arg)?;
+                        if method_call.arguments.len() > 0 {
+                            for (idx, arg) in method_call.arguments.iter().enumerate() {
+                                if idx == method_call.arguments.len() - 1 {
+                                    write!(f, "{})", arg)?;
+                                } else {
+                                    write!(f, "{}, ", arg)?;
+                                }
                             }
+                        } else {
+                            write!(f, ")")?;
                         }
                     }
                 }

@@ -23,7 +23,7 @@ impl Program {
     pub fn new() -> Self {
         Self {
             body: vec![],
-            span: Span::new_empty_span(),
+            span: Span::default(),
         }
     }
 }
@@ -35,7 +35,7 @@ pub enum Expression {
     Literal(Literal),
     Prefix(UnaryExpression),
     Infix(BinaryExpression),
-    FunctionCall(FunctionCall),
+    FuncCall(FuncCall),
     UnaryOperator(UnaryOperator),
     Array(Array),
     ArrayIndex(ArrayIndex),
@@ -63,8 +63,8 @@ pub struct UnaryOperator {
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionCall {
-    pub function_name: Identifier,
+pub struct FuncCall {
+    pub func_name: Identifier,
     pub arguments: Vec<Expression>,
     pub span: Span,
     pub loc: Location
@@ -72,7 +72,7 @@ pub struct FunctionCall {
 
 #[derive(Debug, Clone)]
 pub struct FieldAccessOrMethodCall {
-    pub method_call: Option<FunctionCall>,
+    pub method_call: Option<FuncCall>,
     pub field_access: Option<FieldAccess>,
 }
 

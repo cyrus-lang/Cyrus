@@ -71,7 +71,7 @@ impl Compiler {
                     value.params.clone(),
                     Some(Token {
                         kind: value.return_type.clone(),
-                        span: Span::new_empty_span(),
+                        span: Span::default(),
                     }),
                     import.loc.clone(),
                 );
@@ -156,7 +156,7 @@ impl Compiler {
         let return_type = return_type
             .unwrap_or(Token {
                 kind: TokenKind::Void,
-                span: Span::new_empty_span(),
+                span: Span::default(),
             })
             .kind;
 

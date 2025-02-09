@@ -148,6 +148,29 @@ impl fmt::Display for TokenKind {
             Self::Float => write!(f, "float"),
             Self::Double => write!(f, "double"),
             Self::Void => write!(f, "void"),
+            Self::Literal(literal) => match literal {
+                Literal::Integer(integer_literal) => match integer_literal {
+                    crate::ast::IntegerLiteral::I8(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::I16(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::I32(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::I64(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::I128(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::U8(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::U16(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::U32(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::U64(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::U128(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::CSize(value) => write!(f, "{}", value),
+                },
+                Literal::Float(float_literal) => match float_literal {
+                    crate::ast::FloatLiteral::Float(value) => write!(f, "{}", value),
+                    crate::ast::FloatLiteral::Double(value) => write!(f, "{}", value),
+                },
+                Literal::Bool(bool_literal) => write!(f, "{}", bool_literal.raw),
+                Literal::String(string_literal) => write!(f, "\"{}\"", string_literal.raw),
+                Literal::Char(char_literal) => write!(f, "\'{}\'", char_literal),
+                Literal::Null => write!(f, "null"),
+            },
             Self::Array(data_type, array) => {
                 write!(f, "{}", data_type)?;
 
@@ -159,7 +182,7 @@ impl fmt::Display for TokenKind {
                     }
                 }
 
-                todo!()
+                write!(f, "")
             }
             Self::String => write!(f, "string"),
             // ETC
@@ -176,6 +199,12 @@ pub struct Span {
     pub end: usize,
 }
 
+impl Default for Span {
+    fn default() -> Self {
+        Self { start: Default::default(), end: Default::default() }
+    }
+}
+
 impl Span {
     pub fn new(start: usize, end: usize) -> Self {
         Self { start, end }
@@ -190,4 +219,13 @@ impl Span {
 pub struct Location {
     pub line: usize,
     pub column: usize,
+}
+
+impl Default for Location {
+    fn default() -> Self {
+        Self {
+            line: Default::default(),
+            column: Default::default(),
+        }
+    }
 }

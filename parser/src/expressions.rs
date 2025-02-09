@@ -346,8 +346,8 @@ impl<'a> Parser<'a> {
                     });
                 }
 
-                Ok(Expression::FunctionCall(FunctionCall {
-                    function_name: identifier,
+                Ok(Expression::FuncCall(FuncCall {
+                    func_name: identifier,
                     arguments: arguments.0,
                     span: Span {
                         start: left_start,
@@ -423,8 +423,8 @@ impl<'a> Parser<'a> {
                 let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
                 self.expect_current(TokenKind::RightParen)?;
 
-                let method_call = FunctionCall {
-                    function_name: method_name,
+                let method_call = FuncCall {
+                    func_name: method_name,
                     arguments,
                     span: Span {
                         start: member_start,

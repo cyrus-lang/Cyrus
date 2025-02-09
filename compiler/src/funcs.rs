@@ -39,7 +39,7 @@ impl Compiler {
             .clone()
             .unwrap_or(Token {
                 kind: TokenKind::Void,
-                span: Span::new_empty_span(),
+                span: Span::default(),
             })
             .kind;
 
@@ -163,7 +163,7 @@ impl Compiler {
         return_type
             .unwrap_or(Token {
                 kind: TokenKind::Void,
-                span: Span::new_empty_span(),
+                span: Span::default(),
             })
             .kind
     }
@@ -230,7 +230,7 @@ impl Compiler {
         args
     }
 
-    pub(crate) fn compile_func_call(&mut self, scope: ScopeRef, func_call: FunctionCall) -> *mut gcc_jit_rvalue {
+    pub(crate) fn compile_func_call(&mut self, scope: ScopeRef, func_call: FuncCall) -> *mut gcc_jit_rvalue {
         let guard = self.block_func_ref.lock().unwrap();
 
         if let Some(block) = guard.block {
@@ -240,11 +240,11 @@ impl Compiler {
 
             let func = {
                 let func_table = self.func_table.borrow_mut();
-                match func_table.get(&func_call.function_name.name) {
+                match func_table.get(&func_call.func_name.name) {
                     Some(func) => func.clone(),
                     None => compiler_error!(format!(
                         "Function '{}' not defined at this module.",
-                        func_call.function_name.name
+                        func_call.func_name.name
                     )),
                 }
             };

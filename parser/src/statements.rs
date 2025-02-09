@@ -663,7 +663,7 @@ impl<'a> Parser<'a> {
 
         self.next_token(); // consume the fn token
 
-        let function_name = match self.current_token.kind.clone() {
+        let func_name = match self.current_token.kind.clone() {
             TokenKind::Identifier { name } => name,
             _ => {
                 return Err(CompileTimeError {
@@ -710,7 +710,7 @@ impl<'a> Parser<'a> {
         // parse as func decl
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Statement::FuncDecl(FuncDecl {
-                name: function_name,
+                name: func_name,
                 params,
                 return_type,
                 vis_type,
@@ -744,7 +744,7 @@ impl<'a> Parser<'a> {
             }
 
             return Ok(Statement::FuncDecl(FuncDecl {
-                name: function_name,
+                name: func_name,
                 params,
                 return_type,
                 vis_type,
@@ -780,7 +780,7 @@ impl<'a> Parser<'a> {
             let end = self.current_token.span.end;
 
             return Ok(Statement::FuncDef(FuncDef {
-                name: function_name,
+                name: func_name,
                 params,
                 body,
                 return_type,

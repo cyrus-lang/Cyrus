@@ -127,7 +127,7 @@ impl Compiler {
                             let method_def = self.get_struct_method_def(
                                 struct_metadata.methods.clone(),
                                 identifier.name.clone(),
-                                method_call.function_name.name.clone(),
+                                method_call.func_name.name.clone(),
                             );
 
                             let arguments = {
@@ -143,7 +143,7 @@ impl Compiler {
                                 block,
                                 identifier.name.clone(),
                                 struct_metadata.clone(),
-                                method_call.function_name.name,
+                                method_call.func_name.name,
                                 arguments,
                             );
 
@@ -173,7 +173,7 @@ impl Compiler {
                         let method_def = self.get_struct_method_def(
                             struct_metadata.methods.clone(),
                             struct_name.clone(),
-                            method_call.function_name.name.clone(),
+                            method_call.func_name.name.clone(),
                         );
 
                         // Inserting self argument
@@ -213,7 +213,7 @@ impl Compiler {
                             block,
                             struct_name.clone(),
                             struct_metadata.clone(),
-                            method_call.function_name.name,
+                            method_call.func_name.name,
                             arguments,
                         );
                     }

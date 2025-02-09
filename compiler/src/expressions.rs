@@ -40,7 +40,7 @@ impl Compiler {
             Expression::Identifier(identifier) => self.compile_identifier(scope, identifier),
             Expression::Prefix(unary_expression) => self.compile_prefix_expression(scope, unary_expression),
             Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
-            Expression::FunctionCall(func_call) => self.compile_func_call(scope, func_call),
+            Expression::FuncCall(func_call) => self.compile_func_call(scope, func_call),
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
             Expression::ArrayIndex(array_index) => self.compile_array_index(Rc::clone(&scope), array_index),
