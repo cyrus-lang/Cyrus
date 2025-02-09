@@ -1,5 +1,3 @@
-use core::panic;
-
 use crate::precedences::Precedence;
 use crate::ParseError;
 use crate::Parser;
