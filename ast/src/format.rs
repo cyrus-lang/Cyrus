@@ -107,7 +107,11 @@ impl fmt::Display for Expression {
                 write!(f, "[{}]", array_items_to_string(array.clone()))
             }
             Expression::ArrayIndex(array_index) => {
-                todo!()
+                write!(f, "{}", array_index.identifier)?;
+                for item in &array_index.dimensions {
+                    write!(f, "[{}]", item)?;
+                }
+                write!(f, "")
             }
             Expression::Assignment(assignment) => write!(f, "{} = {}", assignment.identifier, assignment.expr),
             Expression::ArrayIndexAssign(array_index_assign) => {
@@ -127,8 +131,36 @@ impl fmt::Display for Expression {
             }
             Expression::AddressOf(expression) => write!(f, "&({})", expression),
             Expression::Dereference(expression) => write!(f, "(*{})", expression),
-            Expression::StructInit(struct_init) => todo!(),
-            Expression::StructFieldAccess(struct_field_access) => todo!(),
+            Expression::StructInit(struct_init) => {
+                write!(f, "struct {} {{", struct_init.name)?;
+                for field in &struct_init.field_inits {
+                    write!(f, "{}: {};", field.name, field.value)?;
+                }
+                write!(f, "}}")
+            }
+            Expression::StructFieldAccess(struct_field_access) => {
+                write!(f, "{}", struct_field_access.expr)?;
+
+                for item in &struct_field_access.chains {
+                    if let Some(field_access) = item.field_access.clone() {
+                        write!(f, ".{}", field_access.identifier.name)?;
+                    }
+
+                    if let Some(method_call) = item.method_call.clone() {
+                        write!(f, ".{}(", method_call.function_name.name)?;
+
+                        for (idx, arg) in method_call.arguments.iter().enumerate() {
+                            if idx == method_call.arguments.len() - 1  {
+                                write!(f, "{})", arg)?;
+                            } else{ 
+                                write!(f, "{}, ", arg)?;
+                            }
+                        }
+                    }
+                }
+
+                write!(f, "")
+            }
         }
     }
 }

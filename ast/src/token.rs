@@ -87,7 +87,7 @@ pub enum TokenKind {
     AddressOf(Box<TokenKind>),
     Dereference(Box<TokenKind>),
 
-    // Identifier, DataType, Dimensions
+    // DataType, Dimensions
     Array(Box<TokenKind>, Vec<Option<TokenKind>>),
 
     // Object Visibility Keywords
@@ -149,7 +149,16 @@ impl fmt::Display for TokenKind {
             Self::Double => write!(f, "double"),
             Self::Void => write!(f, "void"),
             Self::Array(data_type, array) => {
-                // TODO
+                write!(f, "{}", data_type)?;
+
+                for item in array {
+                    if let Some(dimension) = item {
+                        write!(f, "[{}]", dimension)?;
+                    } else {
+                        write!(f, "[]")?;
+                    }
+                }
+
                 todo!()
             }
             Self::String => write!(f, "string"),
