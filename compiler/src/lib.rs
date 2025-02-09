@@ -1,7 +1,4 @@
-use ast::{
-    ast::*,
-    token::{Location, TokenKind},
-};
+use ast::ast::*;
 use control_flow::LoopBlockPair;
 use funcs::{FuncMetadata, FuncParamsRecords};
 use gccjit_sys::*;
@@ -12,12 +9,10 @@ use std::{
     collections::HashMap,
     ffi::CString,
     fs::remove_file,
-    ptr::null_mut,
     rc::Rc,
     sync::{Arc, Mutex},
 };
 use structs::StructMetadata;
-use utils::compiler_error;
 
 mod blocks;
 mod context;
@@ -74,14 +69,6 @@ impl Compiler {
 
         let optname = CString::new(format!("-lm")).unwrap();
         unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
-    }
-
-    pub fn new_master_context() -> *mut gcc_jit_context {
-        unsafe { gcc_jit_context_acquire() }
-    }
-
-    pub fn new_child_context(master: *mut gcc_jit_context) -> *mut gcc_jit_context {
-        unsafe { gcc_jit_context_new_child_context(master) }
     }
 
     pub fn new(context: *mut gcc_jit_context, program: Program, file_path: String, file_name: String) -> Self {
