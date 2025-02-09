@@ -5,14 +5,13 @@ use ast::{
 use gccjit_sys::*;
 use options::CompilerOptions;
 use parser::parse_program;
-use rand::{distributions::Alphanumeric, Rng};
 use scope::{IdentifierMetadata, Scope, ScopeRef};
+use ::utils::generate_random_hex::generate_random_hex;
 use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::CString,
     fs::remove_file,
-    io::StdinLock,
     path::Path,
     ptr::null_mut,
     rc::Rc,
@@ -26,6 +25,7 @@ mod output;
 mod scope;
 mod stdlib;
 mod types;
+mod context;
 
 // Tracks the current GCC JIT block and function being compiled.
 struct BlockFuncPair {
@@ -91,12 +91,6 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    pub fn new_block_name(&mut self) -> String {
-        let rng = rand::thread_rng();
-        let rand_string: String = rng.sample_iter(&Alphanumeric).take(10).map(char::from).collect();
-        rand_string
-    }
-
     pub fn set_opts(&mut self, opts: CompilerOptions) {
         self.opts = opts.clone();
 
@@ -372,7 +366,7 @@ impl Compiler {
                                 TokenKind::Dereference(_) => unsafe {
                                     // This means it's a pointer to this type so we need to pass value by address
                                     let result_type = gcc_jit_rvalue_get_type(result);
-                                    let temp_name = CString::new(format!("temp__{}", self.new_block_name())).unwrap();
+                                    let temp_name = CString::new(format!("temp__{}", generate_random_hex())).unwrap();
                                     let lvalue = gcc_jit_function_new_local(
                                         func,
                                         self.gccjit_location(method_call.loc),
@@ -1005,9 +999,9 @@ Please ensure that the self parameter follows one of these forms.
             drop(guard);
 
             // Build blocks
-            let true_block_name = CString::new(format!("true_block_{}", self.new_block_name())).unwrap();
-            let false_block_name = CString::new(format!("false_block_{}", self.new_block_name())).unwrap();
-            let final_block_name = CString::new(format!("final_block_{}", self.new_block_name())).unwrap();
+            let true_block_name = CString::new(format!("true_block_{}", generate_random_hex())).unwrap();
+            let false_block_name = CString::new(format!("false_block_{}", generate_random_hex())).unwrap();
+            let final_block_name = CString::new(format!("final_block_{}", generate_random_hex())).unwrap();
             let true_block = unsafe { gcc_jit_function_new_block(func, true_block_name.as_ptr()) };
             let false_block = unsafe { gcc_jit_function_new_block(func, false_block_name.as_ptr()) };
             let final_block = unsafe { gcc_jit_function_new_block(func, final_block_name.as_ptr()) };
@@ -1041,9 +1035,9 @@ Please ensure that the self parameter follows one of these forms.
                 let else_if_cond = self.compile_expression(Rc::clone(&scope), else_if_statement.condition);
 
                 let else_if_true_block_name =
-                    CString::new(format!("else_if_true_block_{}", self.new_block_name())).unwrap();
+                    CString::new(format!("else_if_true_block_{}", generate_random_hex())).unwrap();
                 let else_if_false_block_name =
-                    CString::new(format!("else_if_false_block_{}", self.new_block_name())).unwrap();
+                    CString::new(format!("else_if_false_block_{}", generate_random_hex())).unwrap();
 
                 let else_if_true_block = unsafe { gcc_jit_function_new_block(func, else_if_true_block_name.as_ptr()) };
 
@@ -1151,9 +1145,9 @@ Please ensure that the self parameter follows one of these forms.
             drop(guard);
 
             // Create blocks
-            let for_body_name = CString::new(format!("for_body_block_{}", self.new_block_name())).unwrap();
-            let for_end_name = CString::new(format!("for_end_block_{}", self.new_block_name())).unwrap();
-            let for_increment_name = CString::new(format!("for_increment_block_{}", self.new_block_name())).unwrap();
+            let for_body_name = CString::new(format!("for_body_block_{}", generate_random_hex())).unwrap();
+            let for_end_name = CString::new(format!("for_end_block_{}", generate_random_hex())).unwrap();
+            let for_increment_name = CString::new(format!("for_increment_block_{}", generate_random_hex())).unwrap();
             let for_body = unsafe { gcc_jit_function_new_block(func, for_body_name.as_ptr()) };
             let for_end = unsafe { gcc_jit_function_new_block(func, for_end_name.as_ptr()) };
             let for_increment_block = unsafe { gcc_jit_function_new_block(func, for_increment_name.as_ptr()) };
