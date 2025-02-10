@@ -54,8 +54,15 @@ impl Compiler {
             Expression::StructFieldAccess(struct_field_access) => {
                 self.compile_struct_field_access(scope, *struct_field_access)
             }
-            Expression::CastAs(cast_as) => todo!(),
+            Expression::CastAs(cast_as) => self.compile_cast_as(Rc::clone(&scope), cast_as),
         }
+    }
+
+    fn compile_cast_as(&mut self, scope: ScopeRef, cast_as: CastAs) -> *mut gcc_jit_rvalue {
+        let rvalue = self.compile_expression(scope, *cast_as.expr);
+        let target_type = self.token_as_data_type(self.context, cast_as.cast_as);
+
+        unsafe { gcc_jit_context_new_cast(self.context, self.gccjit_location(cast_as.loc), rvalue, target_type) }
     }
 
     fn compile_dereference(&mut self, scope: ScopeRef, expression: Box<Expression>) -> *mut gcc_jit_rvalue {
@@ -476,8 +483,8 @@ impl Compiler {
                 IntegerLiteral::U128(value) => unsafe {
                     gcc_jit_context_new_rvalue_from_int(self.context, Compiler::u128_type(self.context), value as i32)
                 },
-                IntegerLiteral::CSize(value) => unsafe {
-                    gcc_jit_context_new_rvalue_from_int(self.context, Compiler::csize_type(self.context), value as i32)
+                IntegerLiteral::SizeT(value) => unsafe {
+                    gcc_jit_context_new_rvalue_from_int(self.context, Compiler::size_t_type(self.context), value as i32)
                 },
             },
             Literal::Float(float_literal) => match float_literal {

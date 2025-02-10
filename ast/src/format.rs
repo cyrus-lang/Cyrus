@@ -26,7 +26,7 @@ impl fmt::Display for IntegerLiteral {
             IntegerLiteral::U32(value) => write!(f, "{}", value),
             IntegerLiteral::U64(value) => write!(f, "{}", value),
             IntegerLiteral::U128(value) => write!(f, "{}", value),
-            IntegerLiteral::CSize(value) => write!(f, "{}", value),
+            IntegerLiteral::SizeT(value) => write!(f, "{}", value),
         }
     }
 }

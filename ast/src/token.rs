@@ -75,7 +75,7 @@ pub enum TokenKind {
     Char,
     Float,
     Double,
-    CSize,
+    SizeT,
     Void,
     String,
     Bool,
@@ -161,7 +161,7 @@ impl fmt::Display for TokenKind {
                     crate::ast::IntegerLiteral::U32(value) => write!(f, "{}", value),
                     crate::ast::IntegerLiteral::U64(value) => write!(f, "{}", value),
                     crate::ast::IntegerLiteral::U128(value) => write!(f, "{}", value),
-                    crate::ast::IntegerLiteral::CSize(value) => write!(f, "{}", value),
+                    crate::ast::IntegerLiteral::SizeT(value) => write!(f, "{}", value),
                 },
                 Literal::Float(float_literal) => match float_literal {
                     crate::ast::FloatLiteral::Float(value) => write!(f, "{}", value),

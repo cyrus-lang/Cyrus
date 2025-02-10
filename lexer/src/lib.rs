@@ -652,7 +652,7 @@ impl Lexer {
             "u128" => TokenKind::U128,
             "float" => TokenKind::Float,
             "double" => TokenKind::Double,
-            "csize" => TokenKind::CSize,
+            "size_t" => TokenKind::SizeT,
             "char" => TokenKind::Char,
             "bool" => TokenKind::Bool,
             "void" => TokenKind::Void,

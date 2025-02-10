@@ -136,7 +136,7 @@ pub enum IntegerLiteral {
     U32(u32),
     U64(u64),
     U128(u128),
-    CSize(usize),
+    SizeT(usize),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -398,6 +398,6 @@ pub fn integer_literal_as_value(integer_literal: IntegerLiteral) -> i64 {
         IntegerLiteral::U32(value) => value.into(),
         IntegerLiteral::U64(value) => value.try_into().unwrap(),
         IntegerLiteral::U128(value) => value.try_into().unwrap(),
-        IntegerLiteral::CSize(value) => value.try_into().unwrap(),
+        IntegerLiteral::SizeT(value) => value.try_into().unwrap(),
     }
 }

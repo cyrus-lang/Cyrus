@@ -40,7 +40,7 @@ impl<'a> Parser<'a> {
             | TokenKind::U128
             | TokenKind::Float
             | TokenKind::Double
-            | TokenKind::CSize
+            | TokenKind::SizeT
             | TokenKind::Char
             | TokenKind::Bool
             | TokenKind::Void

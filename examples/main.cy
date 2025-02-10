@@ -1,5 +1,3 @@
-
 pub fn main() {
-    // Person.new("Taha", 17).info();
-    Person.name.aassad;
+    #a = 10 as i64;
 }

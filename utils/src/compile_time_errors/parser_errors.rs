@@ -48,7 +48,7 @@ impl CompileTypeErrorType for ParserErrorType {
                 format!(
                     "Expected one of the following type tokens: \n
                     'i8', 'i16', 'i32', 'i64', 'i128', 'u8', 'u16', 'u32', 'u64', 'u128', \n
-                    'float', 'double', 'csize', 'char', 'bool', 'void', 'string', '*', '&', or an identifier \n
+                    'float', 'double', 'size_t', 'char', 'bool', 'void', 'string', '*', '&', or an identifier \n
                     (e.g., user-defined type), but got '{}'",
                     token_kind
                 )
