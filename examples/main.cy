@@ -1,5 +1,6 @@
-pub fn main() {
-    #arr: *void[3];
+pub fn _sum() {
 
-    arr[0] = null;
+}
+pub fn main() {
+    _sum();
 }

@@ -311,7 +311,7 @@ impl Lexer {
             ';' => TokenKind::Semicolon,
             ':' => TokenKind::Colon,
             _ => {
-                if self.ch.is_alphabetic() {
+                if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_identifider();
                 } else if self.is_numeric(self.ch) {
                     return self.read_integer();
