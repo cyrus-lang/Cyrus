@@ -1,13 +1,6 @@
-pub struct Sample {
-    pub fn sample(): string {
-        return "some shit\n";
-    }
-}
-
 pub fn main() {
-    #arr: string[3];
+    #a = 10;
+    #arr: *void = &a as *void;
 
-    Sample.sample();
-    arr[0] = "bllblblbl";
-    arr[1] = Sample.sample();
+    arr = null;
 }

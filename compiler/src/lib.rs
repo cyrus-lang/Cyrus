@@ -28,7 +28,7 @@ mod scope;
 mod stdlib;
 mod structs;
 mod types;
-mod varables;
+mod variables;
 
 // Tracks the current GCC JIT block and function being compiled.
 struct BlockFuncPair {
