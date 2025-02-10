@@ -630,8 +630,17 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::Assign)?;
 
         let (expr, span) = self.parse_expression(Precedence::Lowest)?;
-        self.next_token();
 
+        // NOTE 
+        // This line here is potential to raise some serious problems 
+        // in parsing process. But now i don't have any idea that how we can fix it.
+        // The reason is that some expressions need consume last token (before semicolon) and some does not.
+        if self.peek_token_is(TokenKind::Semicolon) {
+            self.next_token();   
+        }
+        // 
+        // 
+        
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
                 location: self.current_location(),

@@ -1,1 +1,23 @@
-#a: string[2][2] = "";
+#a = (1 + 2);
+#b = "kir" as string;
+
+struct Person {
+    name: string;
+    age: i32;
+
+    pub fn new(name: string, age: i32): Person {
+        return Person {
+            name: "Taha",
+            age: 17
+        };
+    }
+
+    fn info(self: *Person) {
+        cprintf("Name: %s\n", (*self).name);
+        cprintf("Age: %d\n", (*self).age);
+    }
+}
+
+pub fn main() {
+    Person.new("Taha", 17).info();
+}

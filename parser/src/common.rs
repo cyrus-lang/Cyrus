@@ -75,10 +75,10 @@ impl<'a> Parser<'a> {
             },
         };
 
+        self.next_token(); // consume the data type
+        
         // Check for array data type
-        if self.peek_token_is(TokenKind::LeftBracket) {
-            self.next_token(); // consume the data type
-
+        if self.current_token_is(TokenKind::LeftBracket) {
             let mut dimensions: Vec<Option<TokenKind>> = Vec::new();
 
             while self.current_token_is(TokenKind::LeftBracket) {

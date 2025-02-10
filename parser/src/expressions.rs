@@ -209,9 +209,8 @@ impl<'a> Parser<'a> {
             self.next_token(); // consume left
             self.next_token(); // consume as token
 
-            match self.parse_type_token() { // ANCHOR
+            match self.parse_type_token() {
                 Ok(cast_as) => {
-                    self.next_token();
                     return Some(Ok(Expression::CastAs(CastAs {
                         expr: Box::new(left),
                         cast_as,
