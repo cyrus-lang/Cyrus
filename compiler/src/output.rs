@@ -6,11 +6,11 @@ use utils::compiler_error;
 impl Compiler {
     pub fn execute(&self) {
         let result = unsafe { gcc_jit_context_compile(self.context) };
-    
+
         if result.is_null() {
             exit(1);
         }
-    
+
         let name = CString::new("main").unwrap();
         let main = unsafe { gcc_jit_result_get_code(result, name.as_ptr()) };
         if main.is_null() {
@@ -46,7 +46,7 @@ impl Compiler {
             )
         };
     }
-    
+
     pub fn make_dynamic_library(&self, file_path: String) {
         unsafe {
             let file_path = CString::new(file_path).unwrap();
@@ -68,7 +68,11 @@ impl Compiler {
     pub fn make_dump_asm(&self, file_path: String) {
         unsafe {
             let file_path = CString::new(file_path).unwrap();
-            gcc_jit_context_compile_to_file(self.context, gcc_jit_output_kind::GCC_JIT_OUTPUT_KIND_ASSEMBLER, file_path.as_ptr())
+            gcc_jit_context_compile_to_file(
+                self.context,
+                gcc_jit_output_kind::GCC_JIT_OUTPUT_KIND_ASSEMBLER,
+                file_path.as_ptr(),
+            )
         };
     }
 

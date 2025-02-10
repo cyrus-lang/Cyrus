@@ -3,3 +3,6 @@ dump:
 
 run:
 	cargo run -- run ./examples/main.cy
+
+build: 
+	cargo run -- build ./examples/main.cy ./tmp/program;

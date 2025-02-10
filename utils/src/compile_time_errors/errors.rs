@@ -38,7 +38,7 @@ impl<ErrorType: CompileTypeErrorType> fmt::Display for CompileTimeError<ErrorTyp
             let code_raw = code_raw.split("\n");
 
             for (idx, line) in code_raw.clone().into_iter().enumerate() {
-                write!(f, "\t{}", line)?;
+                write!(f, "{}", line)?;
                 
                 if idx == code_raw.clone().count() {
                     write!(f, "\n")?;

@@ -258,7 +258,24 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LeftParen => {
                 self.next_token(); // consume the identifier token
-                Some(self.parse_func_call(left, left_start))
+
+                let expr = self.parse_func_call(left, left_start);
+
+                // ANCHOR
+                // if !(self.current_token_is(TokenKind::RightParen) || self.current_token_is(TokenKind::Comma))
+                //     && self.current_token_is(TokenKind::Semicolon)
+                // {
+                //     return Some(Err(CompileTimeError {
+                //         location: self.current_location(),
+                //         etype: ParserErrorType::MissingSemicolon,
+                //         file_name: Some(self.lexer.file_name.clone()),
+                //         code_raw: Some(self.lexer.select(left_start..self.current_token.span.end)),
+                //         verbose: None,
+                //         caret: true,
+                //     }));
+                // }
+
+                Some(expr)
             }
             _ => None,
         }
@@ -354,17 +371,6 @@ impl<'a> Parser<'a> {
         match left {
             Expression::Identifier(identifier) => {
                 self.next_token();
-
-                if !self.current_token_is(TokenKind::Semicolon) {
-                    return Err(CompileTimeError {
-                        location: self.current_location(),
-                        etype: ParserErrorType::MissingSemicolon,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                        verbose: None,
-                        caret: true,
-                    });
-                }
 
                 Ok(Expression::FuncCall(FuncCall {
                     func_name: identifier,
@@ -513,7 +519,7 @@ impl<'a> Parser<'a> {
                         loc: self.current_location(),
                     }),
                 });
-                
+
                 match self.current_token.kind {
                     TokenKind::Dot => {
                         self.next_token(); // consume field_name

@@ -39,11 +39,8 @@ pub fn parse_program(file_path: String) -> (Program, String) {
             }
         }
         Err(errors) => {
-            for error in errors {
-                println!("{}", error);
-            }
-
-            std::process::exit(1);
+            parser.display_parser_errors(errors);
+            panic!();
         }
     };
 
@@ -100,6 +97,13 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn display_parser_errors(&mut self, errors: Vec<CompileTimeError<ParserErrorType>>) {
+        if errors.len() > 0 {
+            println!("{}", errors[0]);
+            std::process::exit(1);
+        }
+    }
+
     /// Finalizes the program parse by checking for errors.
     pub fn finalize_program_parse(&self, program: Program) -> Result<Program, Vec<ParseError>> {
         if self.errors.is_empty() {
@@ -144,9 +148,10 @@ impl<'a> Parser<'a> {
             location: self.current_location(),
             etype: ParserErrorType::UnexpectedToken(token_kind, self.current_token.kind.clone()),
             file_name: Some(self.lexer.file_name.clone()),
-            code_raw: Some(self
-                .lexer
-                .select(self.current_token.span.start..self.current_token.span.end)),
+            code_raw: Some(
+                self.lexer
+                    .select(self.current_token.span.start..self.current_token.span.end),
+            ),
             verbose: None,
             caret: true,
         })
@@ -164,9 +169,10 @@ impl<'a> Parser<'a> {
             location: self.current_location(),
             etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), token_kind),
             file_name: Some(self.lexer.file_name.clone()),
-            code_raw: Some(self
-                .lexer
-                .select(self.current_token.span.start..self.current_token.span.end)),
+            code_raw: Some(
+                self.lexer
+                    .select(self.current_token.span.start..self.current_token.span.end),
+            ),
             verbose: None,
             caret: true,
         })

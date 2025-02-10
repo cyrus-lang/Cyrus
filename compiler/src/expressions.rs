@@ -6,6 +6,7 @@ use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
 use utils::compiler_error;
+use utils::purify_string::purify_string;
 
 use crate::scope::ScopeRef;
 use crate::Compiler;
@@ -516,7 +517,7 @@ impl Compiler {
                 unsafe { gcc_jit_context_new_rvalue_from_int(self.context, Compiler::i8_type(self.context), value) }
             }
             Literal::String(string_literal) => unsafe {
-                let value = CString::new(self.purify_string(string_literal.raw)).unwrap();
+                let value = CString::new(purify_string(string_literal.raw)).unwrap();
                 gcc_jit_context_new_string_literal(self.context, value.as_ptr())
             },
             Literal::Char(char_literal) => unsafe {

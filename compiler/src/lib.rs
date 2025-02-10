@@ -67,7 +67,8 @@ impl Compiler {
             unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
         }
 
-        let optname = CString::new(format!("-lm")).unwrap();
+        // Explicit C_STDLIB link
+        let optname = CString::new(format!("-lc")).unwrap();
         unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
     }
 

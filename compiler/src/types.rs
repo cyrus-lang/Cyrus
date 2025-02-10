@@ -181,17 +181,6 @@ impl Compiler {
         }
     }
 
-    pub fn purify_string(&self, str: String) -> String {
-        str.replace("\\n", "\n")
-            .replace("\\t", "\t")
-            .replace("\\r", "\r")
-            .replace("\\b", r"\b")
-            .replace("\\a", r"\a")
-            .replace("\\v", r"\v")
-            .replace("\\f", r"\f")
-            .replace("\\'", r"\'")
-    }
-
     pub fn is_float_data_type(&mut self, type1: *mut gcc_jit_type) -> bool {
         type1 == Compiler::f32_type(self.context) || type1 == Compiler::f64_type(self.context)
     }
