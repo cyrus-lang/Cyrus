@@ -14,7 +14,7 @@ pub struct FuncMetadata {
     pub(crate) func_type: VisType,
     pub(crate) ptr: *mut gcc_jit_function,
     pub(crate) return_type: TokenKind,
-    pub(crate) params: Vec<FunctionParam>,
+    pub(crate) params: FunctionParams,
 }
 
 #[derive(Debug, Clone)]
@@ -26,15 +26,15 @@ pub struct FuncParamRecord {
 pub type FuncParamsRecords = Vec<FuncParamRecord>;
 
 impl Compiler {
-    fn declare_function(&mut self, declare_function: FuncDecl) -> (*mut gcc_jit_function, FuncParamsRecords) {
-        let func_type = match declare_function.vis_type {
+    fn declare_function(&mut self, func_decl: FuncDecl) -> (*mut gcc_jit_function, FuncParamsRecords) {
+        let func_type = match func_decl.vis_type {
             VisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
             VisType::Pub => gcc_jit_function_kind::GCC_JIT_FUNCTION_EXPORTED,
             VisType::Internal => gcc_jit_function_kind::GCC_JIT_FUNCTION_INTERNAL,
             VisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
         };
 
-        let return_type_token = declare_function
+        let return_type_token = func_decl
             .return_type
             .clone()
             .unwrap_or(Token {
@@ -48,7 +48,7 @@ impl Compiler {
         let mut params: Vec<*mut gcc_jit_param> = Vec::new();
         let mut func_params = FuncParamsRecords::new();
 
-        for (idx, func_def_param) in declare_function.params.iter().enumerate() {
+        for (idx, func_def_param) in func_decl.params.list.iter().enumerate() {
             let name = CString::new(func_def_param.identifier.name.clone()).unwrap();
 
             let ty_token = if let Some(user_def) = &func_def_param.ty {
@@ -76,17 +76,17 @@ impl Compiler {
             });
         }
 
-        let func_name = CString::new(declare_function.name.clone()).unwrap();
+        let func_name = CString::new(func_decl.name.clone()).unwrap();
         let func = unsafe {
             gcc_jit_context_new_function(
                 self.context,
-                self.gccjit_location(declare_function.loc.clone()),
+                self.gccjit_location(func_decl.loc.clone()),
                 func_type,
                 return_type.clone(),
                 func_name.as_ptr(),
                 params.len().try_into().unwrap(),
                 params.as_mut_ptr(),
-                0,
+                self.cbool(func_decl.params.is_variadic),
             )
         };
 
@@ -210,18 +210,18 @@ impl Compiler {
             let mut expr = self.compile_expression(Rc::clone(&scope), expr.clone());
 
             if let Some(ref func_params) = func_params {
-                let param = func_params[idx].clone();
-
-                if let Some(var_token_type) = param.ty {
-                    if self.auto_castable_data_types(var_token_type.clone()) {
-                        expr = unsafe {
-                            gcc_jit_context_new_cast(
-                                self.context,
-                                self.gccjit_location(param.loc.clone()),
-                                expr,
-                                self.token_as_data_type(self.context, var_token_type),
-                            )
-                        };
+                if let Some(param) = func_params.get(idx) {
+                    if let Some(var_token_type) = &param.ty {
+                        if self.auto_castable_data_types(var_token_type.clone()) {
+                            expr = unsafe {
+                                gcc_jit_context_new_cast(
+                                    self.context,
+                                    self.gccjit_location(param.loc.clone()),
+                                    expr,
+                                    self.token_as_data_type(self.context, var_token_type.clone()),
+                                )
+                            };
+                        }
                     }
                 }
             }
@@ -247,7 +247,7 @@ impl Compiler {
         };
 
         let mut args =
-            self.compile_func_arguments(Rc::clone(&scope), Some(metadata.params.clone()), func_call.arguments);
+            self.compile_func_arguments(Rc::clone(&scope), Some(metadata.params.list.clone()), func_call.arguments);
 
         let rvalue = unsafe {
             gcc_jit_context_new_call(

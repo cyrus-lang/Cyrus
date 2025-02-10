@@ -195,7 +195,7 @@ mod tests {
 
         let func = FuncDef {
             name: "add".to_string(),
-            params: vec![param.clone()],
+            params: FunctionParams { list: vec![param.clone()], is_variadic: false },
             body: Box::new(BlockStatement {
                 body: vec![],
                 span: Span::default(),
@@ -208,7 +208,7 @@ mod tests {
         };
 
         assert_eq!(func.name, "add");
-        assert_eq!(func.params[0].identifier.name, "a");
+        assert_eq!(func.params.list[0].identifier.name, "a");
     }
 
     #[test]

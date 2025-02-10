@@ -342,15 +342,39 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_func_params(&mut self) -> Result<FunctionParams, ParseError> {
+    pub fn parse_func_params(&mut self, func_def_start: usize) -> Result<FunctionParams, ParseError> {
         let params_start = self.current_token.span.start;
 
         self.expect_current(TokenKind::LeftParen)?;
 
-        let mut params: Vec<FunctionParam> = Vec::new();
+        let mut triple_dots_count = 0;
+        let mut is_variadic = false;
+        let mut list: Vec<FunctionParam> = Vec::new();
 
         while self.current_token.kind != TokenKind::RightParen {
             match self.current_token.kind.clone() {
+                TokenKind::TripleDot => {
+                    if triple_dots_count >= 1 {
+                        return Err(CompileTimeError {
+                            location: self.current_location(),
+                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                            file_name: Some(self.lexer.file_name.clone()),
+                            code_raw: Some(self.lexer.select(func_def_start..self.current_token.span.end + 1)),
+                            verbose: Some(String::from(
+                                "Only one triple_dot is allowed in func decl and it must be positioned as final param.",
+                            )),
+                            caret: true,
+                        });
+                    }
+                    self.next_token();
+                    is_variadic = true;
+                    triple_dots_count += 1;
+                    
+                    if self.current_token_is(TokenKind::Comma) {
+                        self.next_token();
+                        continue;
+                    }
+                }
                 TokenKind::Identifier { name } => {
                     self.next_token(); // consume the identifier
 
@@ -375,7 +399,7 @@ impl<'a> Parser<'a> {
                         self.next_token(); // consume the expression
                     }
 
-                    params.push(FunctionParam {
+                    list.push(FunctionParam {
                         identifier: Identifier {
                             name: name,
                             span: self.current_token.span.clone(),
@@ -428,7 +452,7 @@ impl<'a> Parser<'a> {
 
         self.expect_current(TokenKind::RightParen)?;
 
-        Ok(params)
+        Ok(FunctionParams { list, is_variadic })
     }
 
     pub fn parse_for_loop(&mut self) -> Result<Statement, ParseError> {
@@ -687,7 +711,7 @@ impl<'a> Parser<'a> {
         }; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
-        let params = self.parse_func_params()?;
+        let params = self.parse_func_params(start)?;
 
         let mut return_type: Option<Token> = None;
 

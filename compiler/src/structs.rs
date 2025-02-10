@@ -133,7 +133,7 @@ impl Compiler {
                                 // Isolate the mutable borrow to avoid conflict with immutable borrows.
                                 self.compile_func_arguments(
                                     Rc::clone(&scope),
-                                    Some(method_def.params),
+                                    Some(method_def.params.list),
                                     method_call.arguments,
                                 )
                             };
@@ -176,11 +176,11 @@ impl Compiler {
                         // Inserting self argument
                         let mut arguments = self.compile_func_arguments(
                             Rc::clone(&scope),
-                            Some(method_def.params.clone()),
+                            Some(method_def.params.list.clone()),
                             method_call.arguments,
                         );
                         let self_param = method_def
-                            .params
+                            .params.list
                             .iter()
                             .find(|&key| key.identifier.name == "self")
                             .unwrap();
@@ -363,7 +363,7 @@ impl Compiler {
         for item in methods.clone() {
             let mut is_static = true;
 
-            if let Some(self_param) = item.params.iter().find(|&key| key.identifier.name == "self") {
+            if let Some(self_param) = item.params.list.iter().find(|&key| key.identifier.name == "self") {
                 is_static = false;
 
                 if !self.struct_self_param_valid(struct_name.clone(), self_param.ty.clone().unwrap()) {

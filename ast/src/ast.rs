@@ -374,7 +374,11 @@ pub struct FunctionParam {
     pub loc: Location,
 }
 
-pub type FunctionParams = Vec<FunctionParam>;
+#[derive(Debug, Clone)]
+pub struct FunctionParams {
+    pub list: Vec<FunctionParam>,
+    pub is_variadic: bool
+}
 
 #[derive(Debug, Clone)]
 pub struct If {

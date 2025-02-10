@@ -149,7 +149,7 @@ impl Compiler {
     fn define_imported_func_as_extern_decl(
         &mut self,
         func_name: String,
-        params: Vec<FunctionParam>,
+        params: FunctionParams,
         return_type: Option<Token>,
         loc: Location,
     ) -> *mut gcc_jit_function {
@@ -160,7 +160,7 @@ impl Compiler {
             })
             .kind;
 
-        let mut func_params = self.compile_func_params(func_name.clone(), params.clone(), loc.clone());
+        let mut func_params = self.compile_func_params(func_name.clone(), params.list.clone(), loc.clone());
         let func_name_cstr = CString::new(func_name.clone()).unwrap();
         let decl_func = unsafe {
             gcc_jit_context_new_function(
@@ -171,7 +171,7 @@ impl Compiler {
                 func_name_cstr.as_ptr(),
                 func_params.len().try_into().unwrap(),
                 func_params.as_mut_ptr(),
-                0, // FIXME Variadic
+                self.cbool(params.is_variadic)
             )
         };
 

@@ -1,5 +1,5 @@
-extern fn printf(fmt: string): void as local_printf;
+extern fn printf(fmt: string, ...): void as _printf;
 
-pub fn printf(fmt: string) {
-    local_printf(fmt);
+pub fn printf(fmt: string, ...) {
+    _printf(fmt);
 }

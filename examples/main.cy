@@ -1,6 +1,5 @@
-pub fn _sum() {
+import io;
 
-}
 pub fn main() {
-    _sum();
+    printf("Hello: %s %s\n", "adad", "aasd");
 }

@@ -172,7 +172,28 @@ impl Lexer {
             '[' => TokenKind::LeftBracket,
             ']' => TokenKind::RightBracket,
             ',' => TokenKind::Comma,
-            '.' => TokenKind::Dot,
+            '.' => {
+                self.read_char();
+
+                let mut kind = TokenKind::Dot;
+
+                if self.ch == '.' && self.peek_char() == '.' {
+                    self.read_char();
+                    self.read_char();
+                    kind = TokenKind::TripleDot;
+                } else if self.ch == '.' {
+                    self.read_char();
+                    kind = TokenKind::DoubleDot;
+                }
+
+                return Token {
+                    kind,
+                    span: Span {
+                        start: self.pos - 1,
+                        end: self.pos - 1,
+                    },
+                };
+            },
             '#' => TokenKind::Hashtag,
             '"' => return self.read_string(),
             '\'' => return self.read_char_literal(),
