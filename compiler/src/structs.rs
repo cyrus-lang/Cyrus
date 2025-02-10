@@ -48,8 +48,6 @@ impl Compiler {
 
     fn compile_struct_method_call(
         &mut self,
-        func: *mut gcc_jit_function,
-        block: *mut gcc_jit_block,
         struct_name: String,
         struct_metadata: StructMetadata,
         method_name: String,
@@ -64,7 +62,7 @@ impl Compiler {
                 let func_def = struct_metadata.methods[method_idx].clone().func_def;
                 let func_ptr = struct_metadata.method_ptrs[method_idx];
 
-                let rvalue = unsafe {
+                unsafe {
                     gcc_jit_context_new_call(
                         self.context,
                         self.gccjit_location(func_def.loc.clone()),
@@ -72,22 +70,7 @@ impl Compiler {
                         arguments.len().try_into().unwrap(),
                         arguments.as_mut_ptr(),
                     )
-                };
-                let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
-
-                let temp_lvalue =
-                    self.new_local_temp(func, rvalue_type, func_def.loc.clone());
-
-                unsafe {
-                    gcc_jit_block_add_assignment(
-                        block,
-                        self.gccjit_location(func_def.loc),
-                        temp_lvalue,
-                        rvalue,
-                    )
-                };
-
-                unsafe { gcc_jit_lvalue_as_rvalue(temp_lvalue) }
+                }
             }
             None => compiler_error!(format!(
                 "Method '{}' not defined for struct '{}'",
@@ -156,8 +139,6 @@ impl Compiler {
                             };
 
                             result = self.compile_struct_method_call(
-                                func,
-                                block,
                                 identifier.name.clone(),
                                 struct_metadata.clone(),
                                 method_call.func_name.name,
@@ -177,9 +158,9 @@ impl Compiler {
                 result = self.compile_expression(Rc::clone(&scope), statement.expr.clone());
             }
 
-            // if result == null_mut() {
-            //     compiler_error!("Unexpected behaviour in struct field access compilation.");
-            // }
+            if result == null_mut() {
+                compiler_error!("Unexpected behaviour in struct field access compilation.");
+            }
 
             for item in method_call_chain {
                 unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
@@ -226,8 +207,6 @@ impl Compiler {
                         arguments.insert(0, self_arg);
 
                         result = self.compile_struct_method_call(
-                            func,
-                            block,
                             struct_name.clone(),
                             struct_metadata.clone(),
                             method_call.func_name.name,

@@ -40,7 +40,11 @@ impl Compiler {
             Expression::Identifier(identifier) => self.compile_identifier(scope, identifier),
             Expression::Prefix(unary_expression) => self.compile_prefix_expression(scope, unary_expression),
             Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
-            Expression::FuncCall(func_call) => self.compile_func_call(scope, func_call),
+            Expression::FuncCall(func_call) => {
+                let rvalue = self.compile_func_call(scope, func_call.clone());
+                self.eval_func_call(rvalue, func_call.loc.clone());
+                null_mut()
+            }
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
             Expression::ArrayIndex(array_index) => self.compile_array_index(Rc::clone(&scope), array_index),
@@ -52,7 +56,12 @@ impl Compiler {
             Expression::Dereference(expression) => self.compile_dereference(Rc::clone(&scope), expression),
             Expression::StructInit(struct_init) => self.compile_struct_init(scope, struct_init),
             Expression::StructFieldAccess(struct_field_access) => {
-                self.compile_struct_field_access(scope, *struct_field_access)
+                let item = struct_field_access.chains[struct_field_access.chains.len() - 1].clone();
+                if let Some(method_call) = item.method_call {
+                    let rvalue = self.compile_struct_field_access(scope, *struct_field_access.clone());
+                    self.eval_func_call(rvalue, method_call.loc.clone());
+                }
+                null_mut()
             }
             Expression::CastAs(cast_as) => self.compile_cast_as(Rc::clone(&scope), cast_as),
         }
@@ -119,31 +128,13 @@ impl Compiler {
                                 unsafe { gcc_jit_block_add_assignment(block, loc, array_item_ptr, expr) };
                             }
 
-                            // TODO 
+                            // TODO
                             // Make a new construction to return the assigned array
-                            return null_mut(); 
+                            return null_mut();
                         }
                         _ => {
-                            let rvalue = self.compile_expression(Rc::clone(&scope), array_index_assign.expr);
-
-                            let casted_rvalue = unsafe {
-                                gcc_jit_context_new_cast(
-                                    self.context,
-                                    self.gccjit_location(array_index_assign.loc.clone()),
-                                    rvalue,
-                                    gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(lvalue)),
-                                )
-                            };
-
-                            unsafe {
-                                gcc_jit_block_add_assignment(
-                                    block,
-                                    self.gccjit_location(array_index_assign.loc.clone()),
-                                    lvalue,
-                                    casted_rvalue,
-                                )
-                            }
-                            return rvalue;
+                            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(lvalue))};
+                            return self.safe_assign_lvalue(Rc::clone(&scope), lvalue, rvalue_type, array_index_assign.expr.clone(), array_index_assign.loc);
                         }
                     };
                 } else {
@@ -253,32 +244,45 @@ impl Compiler {
         }
     }
 
-    fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
-        let (lvalue, rvalue) = self.access_identifier_values(Rc::clone(&scope), assignment.identifier);
-
+    fn safe_assign_lvalue(&mut self, scope: ScopeRef, lvalue: *mut gcc_jit_lvalue, rvalue_type:*mut gcc_jit_type, expr: Expression, loc: Location) -> *mut gcc_jit_rvalue {
         let block_func = self.block_func_ref.lock().unwrap();
         if let Some(block) = block_func.block {
             drop(block_func);
 
-            let target_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
-            let new_rvalue = self.compile_expression(scope, assignment.expr);
+            let new_rvalue = match expr.clone() {
+                Expression::FuncCall(func_call) => self.compile_func_call(Rc::clone(&scope), func_call),
+                Expression::StructFieldAccess(struct_field_access) => {
+                    self.compile_struct_field_access(Rc::clone(&scope), *struct_field_access.clone())
+                }
+                _ => self.compile_expression(scope, expr),
+            };
             let casted_rvalue = unsafe {
                 gcc_jit_context_new_cast(
                     self.context,
-                    self.gccjit_location(assignment.loc.clone()),
+                    self.gccjit_location(loc.clone()),
                     new_rvalue,
-                    target_type,
+                    rvalue_type,
                 )
             };
 
             unsafe {
-                gcc_jit_block_add_assignment(block, self.gccjit_location(assignment.loc.clone()), lvalue, casted_rvalue);
+                gcc_jit_block_add_assignment(
+                    block,
+                    self.gccjit_location(loc.clone()),
+                    lvalue,
+                    casted_rvalue,
+                );
             };
 
-            return rvalue;
+            return casted_rvalue;
         } else {
             compiler_error!("Incorrect usage of the assignment. Assignments must be performed inside a valid block.");
         }
+    }
+    fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
+        let (lvalue, rvalue) = self.access_identifier_values(Rc::clone(&scope), assignment.identifier);
+        let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue)};
+        self.safe_assign_lvalue(Rc::clone(&scope), lvalue, rvalue_type, assignment.expr, assignment.loc)
     }
 
     fn compile_unary_operator(&mut self, scope: ScopeRef, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {

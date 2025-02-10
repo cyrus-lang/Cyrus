@@ -26,6 +26,10 @@ impl Compiler {
             if let Some(expr) = variable.expr {
                 rvalue = match expr {
                     Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, var_type),
+                    Expression::FuncCall(func_call) => self.compile_func_call(Rc::clone(&scope), func_call),
+                    Expression::StructFieldAccess(struct_field_access) => {
+                        self.compile_struct_field_access(Rc::clone(&scope), *struct_field_access.clone())
+                    }
                     _ => self.compile_expression(Rc::clone(&scope), expr),
                 };
 

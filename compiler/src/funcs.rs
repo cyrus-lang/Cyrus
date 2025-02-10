@@ -263,21 +263,20 @@ impl Compiler {
                     args.as_mut_ptr(),
                 )
             };
-            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
-            let temp_lvalue = self.new_local_temp(func, rvalue_type, func_call.loc.clone());
 
-            unsafe {
-                gcc_jit_block_add_assignment(
-                    block,
-                    self.gccjit_location(func_call.loc),
-                    temp_lvalue,
-                    rvalue,
-                )
-            };
-
-            unsafe { gcc_jit_lvalue_as_rvalue(temp_lvalue) }
+            rvalue
         } else {
             compiler_error!("Calling any function at top-level nodes isn't allowed.");
+        }
+    }
+
+    pub(crate) fn eval_func_call(&mut self, func_call: *mut gcc_jit_rvalue, loc: Location) {
+        let guard = self.block_func_ref.lock().unwrap();
+
+        if let Some(block) = guard.block {
+            drop(guard);
+
+            unsafe { gcc_jit_block_add_eval(block, self.gccjit_location(loc), func_call) };
         }
     }
 

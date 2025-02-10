@@ -1,16 +1,13 @@
-
-
-fn get_string(msg: string): string {
-    return "some msg";
-}
-
-struct Sample {
+pub struct Sample {
     pub fn sample(): string {
         return "some shit\n";
     }
 }
 
 pub fn main() {
-    #result = Sample.sample();
-    #value = get_string("hello");
+    #arr: string[3];
+
+    Sample.sample();
+    arr[0] = "bllblblbl";
+    arr[1] = Sample.sample();
 }
