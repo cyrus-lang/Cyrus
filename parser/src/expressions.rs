@@ -105,7 +105,6 @@ impl<'a> Parser<'a> {
                     loc: self.current_location(),
                 };
 
-
                 if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
@@ -151,9 +150,7 @@ impl<'a> Parser<'a> {
 
                 Expression::Literal(Literal::Bool(BoolLiteral { raw, span }))
             }
-            TokenKind::Literal(value) => {
-                Expression::Literal(value.clone())
-            }
+            TokenKind::Literal(value) => Expression::Literal(value.clone()),
             TokenKind::Minus | TokenKind::Bang => {
                 let start = self.current_token.span.start;
                 let prefix_operator = self.current_token.clone();
@@ -444,16 +441,7 @@ impl<'a> Parser<'a> {
                 self.next_token(); // consume method name
 
                 let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
-                if !self.current_token_is(TokenKind::RightParen) {
-                    return Err(CompileTimeError {
-                        location: self.current_location(),
-                        etype: ParserErrorType::MissingClosingParen,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                        verbose: None,
-                        caret: true,
-                    });
-                }
+                self.expect_current(TokenKind::RightParen)?;
 
                 let method_call = FuncCall {
                     func_name: method_name,
@@ -515,6 +503,7 @@ impl<'a> Parser<'a> {
                         })
                     }
                 };
+                self.next_token();
 
                 chains.push(FieldAccessOrMethodCall {
                     method_call: None,
@@ -524,8 +513,8 @@ impl<'a> Parser<'a> {
                         loc: self.current_location(),
                     }),
                 });
-
-                match self.peek_token.kind {
+                
+                match self.current_token.kind {
                     TokenKind::Dot => {
                         self.next_token(); // consume field_name
                         continue;

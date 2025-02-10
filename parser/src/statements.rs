@@ -639,7 +639,6 @@ impl<'a> Parser<'a> {
             self.next_token();   
         }
         // 
-        // 
         
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
