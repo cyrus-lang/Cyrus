@@ -1,3 +1,4 @@
-pub fn main() {
-    #a = 10 as i64;
+pub fn main(): i32 {
+    
+    return 0;
 }

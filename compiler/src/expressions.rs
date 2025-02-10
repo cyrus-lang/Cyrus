@@ -119,16 +119,28 @@ impl Compiler {
                                 unsafe { gcc_jit_block_add_assignment(block, loc, array_item_ptr, expr) };
                             }
 
-                            return null_mut();
+                            // TODO 
+                            // Make a new construction to return the assigned array
+                            return null_mut(); 
                         }
                         _ => {
                             let rvalue = self.compile_expression(Rc::clone(&scope), array_index_assign.expr);
+
+                            let casted_rvalue = unsafe {
+                                gcc_jit_context_new_cast(
+                                    self.context,
+                                    self.gccjit_location(array_index_assign.loc.clone()),
+                                    rvalue,
+                                    gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(lvalue)),
+                                )
+                            };
+
                             unsafe {
                                 gcc_jit_block_add_assignment(
                                     block,
                                     self.gccjit_location(array_index_assign.loc.clone()),
                                     lvalue,
-                                    rvalue,
+                                    casted_rvalue,
                                 )
                             }
                             return rvalue;
