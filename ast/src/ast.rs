@@ -44,7 +44,17 @@ pub enum Expression {
     Dereference(Box<Expression>),
     StructInit(StructInit),
     StructFieldAccess(Box<StructFieldAccess>),
+    CastAs(CastAs)
 }
+
+#[derive(Debug, Clone)]
+pub struct CastAs {
+    pub expr: Box<Expression>,
+    pub cast_as: TokenKind,
+    pub span: Span,
+    pub loc: Location
+}
+
 
 #[derive(Debug, Clone)]
 pub enum UnaryOperatorType {

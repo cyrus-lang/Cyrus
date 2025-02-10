@@ -54,6 +54,7 @@ impl Compiler {
             Expression::StructFieldAccess(struct_field_access) => {
                 self.compile_struct_field_access(scope, *struct_field_access)
             }
+            Expression::CastAs(cast_as) => todo!(),
         }
     }
 
@@ -234,16 +235,25 @@ impl Compiler {
     }
 
     fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
-        let (lvalue, _) = self.access_identifier_values(Rc::clone(&scope), assignment.identifier);
+        let (lvalue, rvalue) = self.access_identifier_values(Rc::clone(&scope), assignment.identifier);
 
         let block_func = self.block_func_ref.lock().unwrap();
         if let Some(block) = block_func.block {
             drop(block_func);
 
-            let rvalue = self.compile_expression(scope, assignment.expr);
+            let target_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+            let new_rvalue = self.compile_expression(scope, assignment.expr);
+            let casted_rvalue = unsafe {
+                gcc_jit_context_new_cast(
+                    self.context,
+                    self.gccjit_location(assignment.loc.clone()),
+                    new_rvalue,
+                    target_type,
+                )
+            };
 
             unsafe {
-                gcc_jit_block_add_assignment(block, self.gccjit_location(assignment.loc.clone()), lvalue, rvalue);
+                gcc_jit_block_add_assignment(block, self.gccjit_location(assignment.loc.clone()), lvalue, casted_rvalue);
             };
 
             return rvalue;

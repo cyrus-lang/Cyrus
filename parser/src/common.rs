@@ -54,37 +54,37 @@ impl<'a> Parser<'a> {
                     self.next_token();
                     return Ok(TokenKind::AddressOf(Box::new(self.parse_type_token()?)));
                 }
-                TokenKind::Identifier { name: type_name } => {
-                    TokenKind::UserDefinedType(Identifier {
-                        name: type_name.clone(),
-                        span: self.current_token.span.clone(),
-                        loc: self.current_location(),
-                    })
-                },
-                _ => return 
-                Err(CompileTimeError {
-                    location,
-                    etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
-                    file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(self
-                        .lexer
-                        .select(self.current_token.span.start..self.current_token.span.end)),
-                    verbose: None,
-                    caret: true,
+                TokenKind::Identifier { name: type_name } => TokenKind::UserDefinedType(Identifier {
+                    name: type_name.clone(),
+                    span: self.current_token.span.clone(),
+                    loc: self.current_location(),
                 }),
+                _ => {
+                    return Err(CompileTimeError {
+                        location,
+                        etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(
+                            self.lexer
+                                .select(self.current_token.span.start..self.current_token.span.end),
+                        ),
+                        verbose: None,
+                        caret: true,
+                    })
+                }
             },
         };
 
-        self.next_token(); // consume the data type
-
         // Check for array data type
-        if self.current_token_is(TokenKind::LeftBracket) {
+        if self.peek_token_is(TokenKind::LeftBracket) {
+            self.next_token(); // consume the data type
+
             let mut dimensions: Vec<Option<TokenKind>> = Vec::new();
 
             while self.current_token_is(TokenKind::LeftBracket) {
                 let mut capacity: Option<TokenKind> = None;
 
-                self.next_token();
+                self.next_token(); // consume left bracket
 
                 if let TokenKind::Literal(_) = self.current_token.kind.clone() {
                     capacity = Some(self.current_token.kind.clone());
@@ -112,16 +112,21 @@ impl<'a> Parser<'a> {
             TokenKind::Inline => VisType::Inline,
             TokenKind::Extern => VisType::Extern,
             TokenKind::Pub => VisType::Pub,
-            _ => return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(self
-                    .lexer
-                    .select(self.current_token.span.start..self.current_token.span.end)),
-                verbose: Some(String::from("Expected one of: 'inline', 'extern', 'pub' as function visibility.")),
-                caret: true,
-            }),
+            _ => {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                    file_name: Some(self.lexer.file_name.clone()),
+                    code_raw: Some(
+                        self.lexer
+                            .select(self.current_token.span.start..self.current_token.span.end),
+                    ),
+                    verbose: Some(String::from(
+                        "Expected one of: 'inline', 'extern', 'pub' as function visibility.",
+                    )),
+                    caret: true,
+                })
+            }
         };
         self.next_token(); // consume vis_type token
         Ok(vis_type)

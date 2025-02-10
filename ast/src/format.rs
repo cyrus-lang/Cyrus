@@ -82,6 +82,12 @@ impl fmt::Display for UnaryOperatorType {
     }
 }
 
+impl fmt::Display for CastAs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} as {}", self.expr, self.cast_as)
+    }
+}
+
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -165,6 +171,9 @@ impl fmt::Display for Expression {
 
                 write!(f, "")
             }
+            Expression::CastAs(cast_as) => {
+                write!(f, "{}", cast_as)
+            },
         }
     }
 }

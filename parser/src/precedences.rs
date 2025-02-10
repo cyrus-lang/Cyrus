@@ -1,6 +1,5 @@
-use core::fmt;
-
 use ast::token::TokenKind;
+use core::fmt;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Precedence {
@@ -12,10 +11,12 @@ pub enum Precedence {
     Prefix,      // -X or !X
     Call,        // my_function(x)
     Index,       // array[index]
+    Cast,        // Type conversion
 }
 
 pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
     match token_kind {
+        TokenKind::As => Precedence::Cast,
         TokenKind::Equal => Precedence::Equals,
         TokenKind::NotEqual => Precedence::Equals,
         TokenKind::LessThan => Precedence::LessGreater,
@@ -44,6 +45,7 @@ impl fmt::Display for Precedence {
             Precedence::Prefix => write!(f, "prefix"),
             Precedence::Call => write!(f, "call"),
             Precedence::Index => write!(f, "index"),
+            Precedence::Cast => write!(f, "cast"),
         }
     }
 }

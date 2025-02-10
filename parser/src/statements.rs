@@ -46,7 +46,9 @@ impl<'a> Parser<'a> {
         let loc = self.current_location();
         let start = self.current_token.span.start;
 
-        let vis_type = self.parse_vis_type(self.current_token.clone()).unwrap_or(VisType::Internal);
+        let vis_type = self
+            .parse_vis_type(self.current_token.clone())
+            .unwrap_or(VisType::Internal);
         if vis_type == VisType::Inline {
             compiler_error!("Inline vis type is invalid for structs. It only can be used for funcs.")
         }
@@ -625,12 +627,12 @@ impl<'a> Parser<'a> {
                 loc: self.current_location(),
             }));
         }
-
         self.expect_current(TokenKind::Assign)?;
 
         let (expr, span) = self.parse_expression(Precedence::Lowest)?;
+        self.next_token();
 
-        if !self.peek_token_is(TokenKind::Semicolon) {
+        if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingSemicolon,
@@ -640,7 +642,6 @@ impl<'a> Parser<'a> {
                 caret: true,
             });
         }
-        self.next_token();
 
         Ok(Statement::Variable(Variable {
             name,
@@ -723,7 +724,7 @@ impl<'a> Parser<'a> {
             }));
         } else if self.current_token_is(TokenKind::As) {
             self.next_token();
-        
+
             // parse renamed func decl
             let renamed_as = match self.current_token.kind.clone() {
                 TokenKind::Identifier { name } => name,

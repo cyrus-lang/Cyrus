@@ -231,4 +231,16 @@ mod tests {
 
         assert!(matches!(if_statement.condition, Expression::Literal(Literal::Bool(_))));
     }
+
+    #[test]
+    fn test_cast_as() {
+        let cast_as_expression = CastAs {
+            expr: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
+            cast_as: TokenKind::Float,
+            span: Span::default(),
+            loc: Location::default(),
+        };
+
+        assert_eq!(cast_as_expression.to_string(), "10 as float");
+    }
 }

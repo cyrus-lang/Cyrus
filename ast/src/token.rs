@@ -148,6 +148,7 @@ impl fmt::Display for TokenKind {
             Self::Float => write!(f, "float"),
             Self::Double => write!(f, "double"),
             Self::Void => write!(f, "void"),
+            Self::As => write!(f, "as"),
             Self::Literal(literal) => match literal {
                 Literal::Integer(integer_literal) => match integer_literal {
                     crate::ast::IntegerLiteral::I8(value) => write!(f, "{}", value),
