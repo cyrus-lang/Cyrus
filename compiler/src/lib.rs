@@ -1,4 +1,4 @@
-use ast::{ast::*, token::Location};
+use ast::ast::*;
 use control_flow::LoopBlockPair;
 use funcs::{FuncMetadata, FuncParamsRecords};
 use gccjit_sys::*;
@@ -13,7 +13,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use structs::StructMetadata;
-use utils::generate_random_hex::generate_random_hex;
 
 mod blocks;
 mod context;
@@ -148,18 +147,6 @@ impl Compiler {
                 Rc::new(RefCell::new(scope.borrow_mut().clone_immutable())),
                 statement.body,
             ),
-        }
-    }
-
-    pub(crate) fn new_local_temp(&mut self, func: *mut gcc_jit_function, ty: *mut gcc_jit_type, loc: Location) -> *mut gcc_jit_lvalue {
-        let temp_name = CString::new(format!("temp_{}", generate_random_hex())).unwrap();
-        unsafe {
-            gcc_jit_function_new_local(
-                func,
-                self.gccjit_location(loc),
-                ty,
-                temp_name.as_ptr(),
-            )
         }
     }
 }

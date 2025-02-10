@@ -1,6 +1,5 @@
 pub fn main() {
-    #a = 10;
-    #arr: *void = &a as *void;
+    #arr: *void[3];
 
-    arr = null;
+    arr[0] = null;
 }

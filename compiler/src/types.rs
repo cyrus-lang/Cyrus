@@ -131,12 +131,14 @@ impl Compiler {
                             TokenKind::Literal(literal) => {
                                 match literal {
                                     ast::ast::Literal::Integer(integer_literal) => {
-                                        let capacity_raw: u64 = integer_literal_as_value(integer_literal.clone()).try_into().unwrap();
+                                        let capacity_raw: u64 =
+                                            integer_literal_as_value(integer_literal.clone()).try_into().unwrap();
 
                                         if !multi_dimensional {
                                             let elements_data_type =
                                                 self.token_as_data_type(context, *data_type.clone());
-                                                
+
+
                                             array_type = unsafe {
                                                 gcc_jit_context_new_array_type(
                                                     context,
@@ -243,7 +245,9 @@ impl Compiler {
             | TokenKind::Bool
             | TokenKind::String
             | TokenKind::Char
-            | TokenKind::SizeT => true,
+            | TokenKind::SizeT
+            | TokenKind::AddressOf(_)
+            | TokenKind::Dereference(_) => true,
             _ => false,
         }
     }

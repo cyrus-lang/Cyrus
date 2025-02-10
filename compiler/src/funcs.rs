@@ -233,41 +233,33 @@ impl Compiler {
     }
 
     pub(crate) fn compile_func_call(&mut self, scope: ScopeRef, func_call: FuncCall) -> *mut gcc_jit_rvalue {
-        let guard = self.block_func_ref.lock().unwrap();
+        let loc = self.gccjit_location(func_call.loc.clone());
 
-        if let (Some(block), Some(func)) = (guard.block, guard.func) {
-            drop(guard);
+        let metadata = {
+            let func_table = self.func_table.borrow_mut();
+            match func_table.get(&func_call.func_name.name) {
+                Some(func) => func.clone(),
+                None => compiler_error!(format!(
+                    "Function '{}' not defined at this module.",
+                    func_call.func_name.name
+                )),
+            }
+        };
 
-            let loc = self.gccjit_location(func_call.loc.clone());
+        let mut args =
+            self.compile_func_arguments(Rc::clone(&scope), Some(metadata.params.clone()), func_call.arguments);
 
-            let metadata = {
-                let func_table = self.func_table.borrow_mut();
-                match func_table.get(&func_call.func_name.name) {
-                    Some(func) => func.clone(),
-                    None => compiler_error!(format!(
-                        "Function '{}' not defined at this module.",
-                        func_call.func_name.name
-                    )),
-                }
-            };
+        let rvalue = unsafe {
+            gcc_jit_context_new_call(
+                self.context,
+                loc.clone(),
+                metadata.ptr,
+                args.len().try_into().unwrap(),
+                args.as_mut_ptr(),
+            )
+        };
 
-            let mut args =
-                self.compile_func_arguments(Rc::clone(&scope), Some(metadata.params.clone()), func_call.arguments);
-
-            let rvalue = unsafe {
-                gcc_jit_context_new_call(
-                    self.context,
-                    loc.clone(),
-                    metadata.ptr,
-                    args.len().try_into().unwrap(),
-                    args.as_mut_ptr(),
-                )
-            };
-
-            rvalue
-        } else {
-            compiler_error!("Calling any function at top-level nodes isn't allowed.");
-        }
+        rvalue
     }
 
     pub(crate) fn eval_func_call(&mut self, func_call: *mut gcc_jit_rvalue, loc: Location) {

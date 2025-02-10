@@ -6,25 +6,10 @@ use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
-    /// Parses a type token and returns its corresponding `TokenKind`.
-    ///
-    /// This function handles primitive types (e.g., `float`, `double`), user-defined types,
-    /// and composite types such as pointers, references, and arrays. If the type token
-    /// is invalid, it returns a parsing error.
-    ///
-    /// # Behavior
-    /// - For primitive types (e.g., `float`, `bool`, `string`), it directly returns the corresponding `TokenKind`.
-    /// - For pointers (`*`) and references (`&`), it recursively parses the type they point to or reference.
-    /// - For user-defined types, it wraps the identifier in a `TokenKind::UserDefinedType`.
-    /// - For array types (e.g., `type[]` or `type[capacity]`), it collects the dimensions and creates a `TokenKind::Array`.
-    ///
-    /// # Returns
-    /// - `Ok(TokenKind)`: The parsed type token.
-    /// - `Err(ParseError)`: If the token is not a valid type or if there is a syntax error in the array type definition.
-    ///
-    /// # Errors
-    /// - Returns an error if an invalid type is encountered or if brackets for arrays are mismatched.
-    pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
+    // The get_type_token function is responsible for parsing a type token from the source code and returning its corresponding TokenKind.
+    // This function supports both primitive types (e.g., integers, floating points, booleans) and user-defined types.
+    // Additionally, it handles pointer types by recognizing dereference (*) and reference (&) symbols.
+    pub fn get_type_token(&mut self) -> Result<TokenKind, ParseError> {
         let location = self.current_location();
 
         let data_type = match self.current_token.kind.clone() {
@@ -48,11 +33,11 @@ impl<'a> Parser<'a> {
             token_kind => match token_kind {
                 TokenKind::Asterisk => {
                     self.next_token();
-                    return Ok(TokenKind::Dereference(Box::new(self.parse_type_token()?)));
+                    return Ok(TokenKind::Dereference(Box::new(self.get_type_token()?)));
                 }
                 TokenKind::Ampersand => {
                     self.next_token();
-                    return Ok(TokenKind::AddressOf(Box::new(self.parse_type_token()?)));
+                    return Ok(TokenKind::Dereference(Box::new(self.get_type_token()?)));
                 }
                 TokenKind::Identifier { name: type_name } => TokenKind::UserDefinedType(Identifier {
                     name: type_name.clone(),
@@ -76,7 +61,15 @@ impl<'a> Parser<'a> {
         };
 
         self.next_token(); // consume the data type
-        
+        Ok(data_type)
+    }
+
+    // The parse_type_token function extends get_type_token by also handling array type parsing.
+    // It checks if the parsed type is followed by square brackets ([]), which indicate an array type.
+    // If brackets are present, it collects the array dimensions, including possible explicit capacities.
+    pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
+        let data_type = self.get_type_token()?;
+
         // Check for array data type
         if self.current_token_is(TokenKind::LeftBracket) {
             let mut dimensions: Vec<Option<TokenKind>> = Vec::new();
