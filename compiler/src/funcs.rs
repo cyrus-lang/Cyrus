@@ -104,7 +104,9 @@ impl Compiler {
             loc: func_def.loc,
         });
 
-        self.param_table.borrow_mut().insert(declare_function, func_params.clone());
+        self.param_table
+            .borrow_mut()
+            .insert(declare_function, func_params.clone());
 
         // Build func block
         let name = CString::new("entry").unwrap();
@@ -233,12 +235,12 @@ impl Compiler {
     pub(crate) fn compile_func_call(&mut self, scope: ScopeRef, func_call: FuncCall) -> *mut gcc_jit_rvalue {
         let guard = self.block_func_ref.lock().unwrap();
 
-        if let Some(block) = guard.block {
+        if let (Some(block), Some(func)) = (guard.block, guard.func) {
             drop(guard);
 
             let loc = self.gccjit_location(func_call.loc.clone());
 
-            let func = {
+            let metadata = {
                 let func_table = self.func_table.borrow_mut();
                 match func_table.get(&func_call.func_name.name) {
                     Some(func) => func.clone(),
@@ -250,21 +252,30 @@ impl Compiler {
             };
 
             let mut args =
-                self.compile_func_arguments(Rc::clone(&scope), Some(func.params.clone()), func_call.arguments);
+                self.compile_func_arguments(Rc::clone(&scope), Some(metadata.params.clone()), func_call.arguments);
 
             let rvalue = unsafe {
                 gcc_jit_context_new_call(
                     self.context,
                     loc.clone(),
-                    func.ptr,
+                    metadata.ptr,
                     args.len().try_into().unwrap(),
                     args.as_mut_ptr(),
                 )
             };
+            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+            let temp_lvalue = self.new_local_temp(func, rvalue_type, func_call.loc.clone());
 
-            unsafe { gcc_jit_block_add_eval(block, loc, rvalue) };
+            unsafe {
+                gcc_jit_block_add_assignment(
+                    block,
+                    self.gccjit_location(func_call.loc),
+                    temp_lvalue,
+                    rvalue,
+                )
+            };
 
-            return rvalue;
+            unsafe { gcc_jit_lvalue_as_rvalue(temp_lvalue) }
         } else {
             compiler_error!("Calling any function at top-level nodes isn't allowed.");
         }

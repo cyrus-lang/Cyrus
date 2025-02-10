@@ -1,9 +1,9 @@
-pub struct Person {
-    name: string;
-    age: i32;
+import io;
+import memory;
 
-    pub fn sample() {
-        cprintf("sample.cy executed.\n");
-    }
+fn get_string(msg: string): string {
+    return "some msg";
 }
 
+pub fn main() {
+}

@@ -12,9 +12,9 @@ impl<'a> Parser<'a> {
         match self.current_token.kind {
             TokenKind::If => self.parse_if(),
             TokenKind::Function | TokenKind::Decl | TokenKind::Extern | TokenKind::Pub | TokenKind::Inline => {
-                if self.peek_token_is(TokenKind::Function) {
+                if self.current_token_is(TokenKind::Function) || self.peek_token_is(TokenKind::Function) {
                     self.parse_func()
-                } else if self.peek_token_is(TokenKind::Struct) {
+                } else if self.current_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Struct) {
                     self.parse_struct()
                 } else {
                     compiler_error!("Expected struct/fn definition after vis_type token");
@@ -631,15 +631,15 @@ impl<'a> Parser<'a> {
 
         let (expr, span) = self.parse_expression(Precedence::Lowest)?;
 
-        // NOTE 
-        // This line here is potential to raise some serious problems 
+        // NOTE
+        // This line here is potential to raise some serious problems
         // in parsing process. But now i don't have any idea that how we can fix it.
         // The reason is that some expressions need consume last token (before semicolon) and some does not.
         if self.peek_token_is(TokenKind::Semicolon) {
-            self.next_token();   
+            self.next_token();
         }
-        // 
-        
+        //
+
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
                 location: self.current_location(),
