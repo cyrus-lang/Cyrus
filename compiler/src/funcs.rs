@@ -134,8 +134,12 @@ impl Compiler {
                 ));
             }
         } else {
-            if !self.block_is_terminated(block) {
-                unsafe { gcc_jit_block_end_with_void_return(block, null_mut()) };
+            let guard = self.block_func_ref.lock().unwrap();
+            if let Some(block) = guard.block {
+                drop(guard);
+                if !self.block_is_terminated(block) {
+                    unsafe { gcc_jit_block_end_with_void_return(block, null_mut()) };
+                }
             }
         }
 
@@ -246,8 +250,11 @@ impl Compiler {
             }
         };
 
-        let mut args =
-            self.compile_func_arguments(Rc::clone(&scope), Some(metadata.params.list.clone()), func_call.arguments);
+        let mut args = self.compile_func_arguments(
+            Rc::clone(&scope),
+            Some(metadata.params.list.clone()),
+            func_call.arguments,
+        );
 
         let rvalue = unsafe {
             gcc_jit_context_new_call(

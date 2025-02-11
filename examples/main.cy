@@ -1,5 +1,5 @@
-import io;
+import io; 
 
 pub fn main() {
-    IO.printf("Hi %s.\n", "Taha");
+    io.printf("Hello World\n");
 }

@@ -1,10 +1,12 @@
+import io;
+
 pub fn main(): i32 {
-    cprintf("Program started.\n");
+    IO.printf("Program started.\n");
 
     #i: i32 = 10;
 
     for {
-        cprintf("i->%d\n", i);
+        IO.printf("i->%d\n", i);
 
         if (i == 5) {
             break;
@@ -13,7 +15,7 @@ pub fn main(): i32 {
         i--;
     }
 
-    cprintf("Program finished.\n");
+    IO.printf("Program finished.\n");
     
     return 0;   
 }

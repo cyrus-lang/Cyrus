@@ -1,6 +1,6 @@
 extern fn printf(fmt: string, ...): void as _printf;
 
-pub struct IO {
+pub struct io {
     pub fn printf(fmt: string, ...) {
         _printf(fmt);
     }
