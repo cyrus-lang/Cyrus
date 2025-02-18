@@ -37,6 +37,14 @@
           homepage = "https://github.com/cyrus-lang/Cyrus-Lang";
         };
       };
+
+      devShells.${system}.default = pkgs.mkShell {
+        buildInputs = [
+          rustToolchain
+          pkgs.gcc
+          pkgs.libgccjit
+        ];
+      };
     };
 }
 
