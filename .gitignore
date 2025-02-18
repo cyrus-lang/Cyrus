@@ -2,3 +2,4 @@
 *.ll
 tmp/**
 .vscode
+result

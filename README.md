@@ -13,56 +13,14 @@ Cyrus is a general-purpose, statically-typed, manually memory-managed programmin
 
 Cyrus is primarily aimed at experienced programmers who value performance, control, and low-level system interactions. Developers seeking to build high-performance applications that require precise memory management will find this language well-suited to their needs.
 
-## Running It with Docker
+## Testing, Documentation, and API References
 
-Using Docker to run Cyrus Lang makes the setup and execution process quick and easy. Here's how you can get started:
+All information about testing `Cyrus` in a development environment, along with comprehensive documentation and API references, is available on our website at this [link](https://cyrus-lang.netlify.app).
 
-### Building the Docker Image
+### Contributing to Documentation
 
-Once the image is published to Docker Hub, you can run various commands inside the Docker container:
-
-## Running Commands in Docker
-
-Once the image is built, you can run various commands inside the Docker container:
-
-- **Check Cargo version**: To verify the installed version of Cargo (Rust's package manager), run:
-
-    ```bash
-    $ docker run --rm basemax/cyrus-lang:latest cargo --version
-    ```
-
-- **Run make with the current project:** To execute a make command within the current project directory, mount the current directory into the Docker container and set the working directory to /app:
-
-    ```bash
-    $ docker run --rm -v "$PWD:/app" -w /app basemax/cyrus-lang:latest make dump
-    ```
-
-    This command mounts the current directory ($PWD) into the container and runs make dump inside it.
-
-- **Run your project:** To run your project using make within the container:
-
-    ```bash
-    $ docker run --rm -v "$PWD:/app" -w /app basemax/cyrus-lang:latest make run
-    ```
-
-    Again, this mounts the current directory into the container and executes make run.
-
-- **Access the container shell:** If you need to get inside the container to debug or manually interact with the environment, you can run:
-
-    ```bash
-    $ docker run --rm -it basemax/cyrus-lang:latest /bin/sh
-    ```
-
-    This will drop you into a shell (`/bin/sh`) inside the Docker container.
-
-### Volume Mounting Explained
-
-The `-v "$PWD:/app"` part of the command mounts your current directory (`$PWD`) to the `/app` directory inside the container.
-
-This allows you to work with your local files without modifying the Docker image. The `-w /app` option sets `/app` as the working directory inside the container, so any commands you run are executed relative to that directory.
+If you notice any misspellings, inaccuracies, or areas for improvement in the documentation, we welcome your contributions! Feel free to open an issue or submit a pull request in the [Official Website Repository](https://github.com/cyrus-lang/Official-Website). Your feedback helps us improve the quality of our resources for everyone.
 
 ## Open to Contribution
 
 We highly encourage contributions! If you're interested in helping to shape the future of Cyrus Lang, feel free to fork the repository, propose improvements, or report any issues you encounter. Together, we can make Cyrus even better!
-
-Copyright 2025 - Cyrus Team
