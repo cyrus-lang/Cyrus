@@ -1,5 +1,5 @@
-import io; 
+import "sample.cyr"; 
 
 pub fn main() {
-    io.printf("Hello World\n");
+    
 }

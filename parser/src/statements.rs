@@ -246,23 +246,6 @@ impl<'a> Parser<'a> {
 
             while !self.current_token_is(TokenKind::Semicolon) {
                 match self.current_token.kind.clone() {
-                    TokenKind::Identifier { name } => {
-                        package_paths.push(PackagePath {
-                            package_name: Identifier {
-                                name,
-                                span: self.current_token.span.clone(),
-                                loc: self.current_location(),
-                            },
-                            is_relative: false,
-                            span: Span {
-                                start,
-                                end: self.current_token.span.end,
-                            },
-                            loc: self.current_location(),
-                        });
-
-                        self.next_token(); // consume identifier
-                    }
                     TokenKind::Literal(Literal::String(value)) => {
                         package_paths.push(PackagePath {
                             package_name: Identifier {
@@ -270,7 +253,6 @@ impl<'a> Parser<'a> {
                                 span: value.span,
                                 loc: self.current_location(),
                             },
-                            is_relative: true,
                             span: Span {
                                 start,
                                 end: self.current_token.span.end,

@@ -15,46 +15,32 @@ impl Compiler {
         let file_path = self.file_path.clone();
         let current_dir = Path::new(&file_path).parent().unwrap().to_str().unwrap();
 
-        let mut import_file_path: String = String::new();
+        let mut import_file_path: String = import.sub_packages[0].package_name.name.clone();
 
-        if import.sub_packages[0].is_relative {
-            import_file_path = import.sub_packages[0].package_name.name.clone();
-        } else {
-            let mut import_file_name: String = String::new();
+        let mut import_file = Path::new(&import_file_path);
 
-            for (idx, sb) in import.sub_packages.iter().enumerate() {
-                if idx == import.sub_packages.len() - 1 {
-                    import_file_name += &format!("{}.cyr", sb.package_name.name);
-                } else {
-                    import_file_name += &format!("{}/", sb.package_name);
-                }
-            }
+        // convert relative to absolute path
+        if !import_file.is_absolute() {
+            let file_name = import_file.file_name().unwrap().to_str().unwrap();
+            import_file_path = format!("{}/{}", current_dir, file_name);
+            import_file = Path::new(&import_file_path);
+        }
 
-            let local = format!("{}/{}", current_dir, import_file_name.clone());
-            let stdlib = format!("{}/{}", self.stdlib_path(), import_file_name.clone());
-            if self.file_exists(&import_file_path) {
-                import_file_path = local;
-            } else if self.file_exists(&stdlib) {
-                import_file_path = stdlib;
-            } else {
-                compiler_error!(format!(
-                    "File '{}' does not exist at the current location, nor is it part of the standard library.",
-                    import_file_name
-                ));
-            }
+        if !self.file_exists(&import_file_path.clone()) {
+            compiler_error!(format!(
+                "File '{}' not found to be imported by the compiler.",
+                import_file_path
+            ));
+        }
+
+        if !import_file.is_file() {
+            compiler_error!("Expected a file to be imported by compiler but got directory.");
         }
 
         let output_library_path = Path::new(&import_file_path)
             .with_extension(self.object_file_extension())
             .to_string_lossy()
             .to_string();
-
-        if !self.file_exists(&import_file_path.clone()) {
-            compiler_error!(format!(
-                "File '{}' not found to be importe by the compiler.",
-                import_file_path
-            ));
-        }
 
         let (program, file_name) = parse_program(import_file_path.clone());
         let context = Compiler::new_child_context(self.context);
@@ -171,7 +157,7 @@ impl Compiler {
                 func_name_cstr.as_ptr(),
                 func_params.len().try_into().unwrap(),
                 func_params.as_mut_ptr(),
-                self.cbool(params.is_variadic)
+                self.cbool(params.is_variadic),
             )
         };
 
