@@ -8,7 +8,7 @@ mod tests {
 
     #[test]
     fn test_select() {
-        let lexer = Lexer::new(String::from("Hello World"), String::from("test.cy"));
+        let lexer = Lexer::new(String::from("Hello World"), String::from("test.cyr"));
         let substring = lexer.select(0..5);
         assert_eq!(substring, "Hello");
     }
@@ -17,13 +17,13 @@ mod tests {
     fn test_skip_whitespace() {
         let mut lexer = Lexer::new(String::from("
             Hello World
-        "), String::from("test.cy"));
+        "), String::from("test.cyr"));
 
         lexer.skip_whitespace();
     }
 
     fn assert_tokens(input: &'static str, expected_tokens: Option<&Vec<TokenKind>>, spans: Option<&Vec<Span>>) {
-        let lexer = Lexer::new(input.to_string(), String::from("test_package.cy"));
+        let lexer = Lexer::new(input.to_string(), String::from("test_package.cyr"));
         let tokens = lexer;
 
         for (i, token) in tokens.into_iter().enumerate() {
@@ -145,7 +145,7 @@ mod tests {
         ",
         );
 
-        let lexer = Lexer::new(code, String::from("test_package.cy"));
+        let lexer = Lexer::new(code, String::from("test_package.cyr"));
         for token in lexer {
             println!("{:?}", token);
         }

@@ -240,7 +240,6 @@ pub struct Return {
 #[derive(Debug, Clone)]
 pub struct PackagePath {
     pub package_name: Identifier,
-    pub is_relative: bool,
     pub span: Span,
     pub loc: Location,
 }

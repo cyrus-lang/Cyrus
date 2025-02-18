@@ -10,7 +10,7 @@ mod tests {
         CompileTimeError {
             location: Location{ line: 0, column: 10 },
             etype: ParserErrorType::InvalidToken(ast::token::TokenKind::Semicolon),
-            file_name: Some(String::from("test.cy")),
+            file_name: Some(String::from("test.cyr")),
             code_raw: Some(code_raw),
             verbose: None,
             caret: true,

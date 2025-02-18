@@ -24,7 +24,7 @@ impl Compiler {
 
             for (idx, sb) in import.sub_packages.iter().enumerate() {
                 if idx == import.sub_packages.len() - 1 {
-                    import_file_name += &format!("{}.cy", sb.package_name.name);
+                    import_file_name += &format!("{}.cyr", sb.package_name.name);
                 } else {
                     import_file_name += &format!("{}/", sb.package_name);
                 }

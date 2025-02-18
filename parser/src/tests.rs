@@ -8,7 +8,7 @@ mod tests {
     use crate::Parser;
 
     fn assert_parse(input: &'static str) {
-        let mut lexer = Lexer::new(input.to_string(), String::from("parser_test.cy"));
+        let mut lexer = Lexer::new(input.to_string(), String::from("parser_test.cyr"));
         let mut parser = Parser::new(&mut lexer);
 
         match parser.parse() {
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_parse_block_statement() {
-        let mut binding = Lexer::new(String::from("{ 1 + 2; hello(); }"), String::from("parser_test.cy"));
+        let mut binding = Lexer::new(String::from("{ 1 + 2; hello(); }"), String::from("parser_test.cyr"));
         let mut parser = Parser::new(&mut binding);
         let block = parser.parse_block_statement().unwrap();
         println!("{:#?}", block);
@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn test_parse_function_params() {
-        let mut lexer = Lexer::new(String::from("(a: i32, b: u32 = 1, c: string)"), String::from("parser_test.cy"));
+        let mut lexer = Lexer::new(String::from("(a: i32, b: u32 = 1, c: string)"), String::from("parser_test.cyr"));
         let mut parser = Parser::new(&mut lexer);
         let params = parser.parse_func_params(0).unwrap().list;
 
@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_parse_expression_series() {
-        let mut lexer = Lexer::new(String::from("[1, 2, 3, ]"), String::from("parser_test.cy"));
+        let mut lexer = Lexer::new(String::from("[1, 2, 3, ]"), String::from("parser_test.cyr"));
         let mut parser = Parser::new(&mut lexer);
         let params = parser.parse_expression_series(TokenKind::RightBracket).unwrap();
 
