@@ -2,6 +2,8 @@ use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
 use parser::parse_program;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::path::Path;
 use utils::compiler_error;
@@ -9,6 +11,12 @@ use utils::compiler_error;
 use crate::funcs::FuncMetadata;
 use crate::structs::StructMetadata;
 use crate::Compiler;
+
+#[derive(Debug, Clone)]
+pub struct ImportedPackageMetadata {
+    func_table: RefCell<HashMap<String, FuncMetadata>>,
+    global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
+}
 
 impl Compiler {
     pub(crate) fn compile_import(&mut self, import: Import) {
@@ -18,7 +26,7 @@ impl Compiler {
         let mut finding_std = false;
         let mut import_file_path = String::from(format!("{}/", current_dir));
 
-        for sub_package in import.sub_packages {
+        for sub_package in import.sub_packages.clone() {
             let package_name = sub_package.package_name.name.as_str();
             match package_name {
                 "std" => {
@@ -67,6 +75,23 @@ impl Compiler {
         compiler.compile();
         compiler.make_object_file(output_library_path.clone());
 
+        self.imported_package_table.borrow_mut().insert(
+            package_path_as_string(import.sub_packages.clone()),
+            ImportedPackageMetadata {
+                func_table: compiler.func_table.borrow_mut().clone().into(),
+                global_vars_table: compiler.global_vars_table.borrow_mut().clone().into(),
+            },
+        );
+
+        self.compiled_object_files.push(output_library_path.clone());
+
+        self.import_package(compiler, import);
+
+        let optname = CString::new(output_library_path).unwrap();
+        unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
+    }
+
+    fn import_package(&mut self, compiler: Compiler, import: Import) {
         // Import functions
         for (key, value) in compiler.func_table.borrow_mut().clone() {
             if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
@@ -143,11 +168,6 @@ impl Compiler {
                 );
             }
         }
-
-        self.compiled_object_files.push(output_library_path.clone());
-
-        let optname = CString::new(output_library_path).unwrap();
-        unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
     }
 
     fn define_imported_func_as_extern_decl(

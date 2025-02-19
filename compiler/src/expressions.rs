@@ -65,7 +65,20 @@ impl Compiler {
                 null_mut()
             }
             Expression::CastAs(cast_as) => self.compile_cast_as(Rc::clone(&scope), cast_as),
-            Expression::PackageCall(package_call) => todo!(),
+            Expression::PackageCall(package_call) => self.compile_package_call(Rc::clone(&scope), package_call),
+        }
+    }
+
+    fn compile_package_call(&mut self, scope: ScopeRef, package_call: PackageCall) -> *mut gcc_jit_rvalue {
+        let package_name =
+            package_path_as_string(package_call.sub_packages[0..package_call.sub_packages.len() - 1].to_vec());
+
+        if let Some(metadata) = self.imported_package_table.borrow_mut().get(&package_name.clone()) {
+            // ANCHOR 
+            // Perform stuff like method_call or field_access
+            todo!();
+        } else {
+            compiler_error!(format!("Package '{}' not defined in this module.", package_name));
         }
     }
 

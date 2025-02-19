@@ -1,3 +1,8 @@
 pub fn sum(a: i32, b: i32): i32 {
     return a + b;
 } 
+
+pub struct Sample {
+    name: string;
+    age: i32;
+}

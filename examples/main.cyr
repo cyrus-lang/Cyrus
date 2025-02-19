@@ -1,6 +1,6 @@
-import std::io;
+import sample;
 
 pub fn main() {
     // printf().sample();
-    std::io::printf("hello world\n");
+    sample::Sample;
 }

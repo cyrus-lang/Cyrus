@@ -1,4 +1,4 @@
-struct Person {
+pub struct Person {
     name: string;
     age: i32;
 
