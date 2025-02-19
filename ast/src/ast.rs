@@ -35,7 +35,7 @@ pub enum Expression {
     Literal(Literal),
     Prefix(UnaryExpression),
     Infix(BinaryExpression),
-    FuncCall(FuncCall),
+    FieldAccessOrMethodCall(Vec<FieldAccessOrMethodCall>),
     UnaryOperator(UnaryOperator),
     Array(Array),
     ArrayIndex(ArrayIndex),

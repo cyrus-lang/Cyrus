@@ -41,10 +41,13 @@ impl Compiler {
             Expression::Identifier(identifier) => self.compile_identifier(scope, identifier),
             Expression::Prefix(unary_expression) => self.compile_prefix_expression(scope, unary_expression),
             Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
-            Expression::FuncCall(func_call) => {
-                let rvalue = self.compile_func_call(scope, func_call.clone());
-                self.eval_func_call(rvalue, func_call.loc.clone());
-                null_mut()
+            Expression::FieldAccessOrMethodCall(chains) => {
+                
+                // TODO
+                todo!();
+                // let rvalue = self.compile_func_call(scope, func_call.clone());
+                // self.eval_func_call(rvalue, func_call.loc.clone());
+                // null_mut()
             }
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
@@ -278,7 +281,8 @@ impl Compiler {
             drop(block_func);
 
             let new_rvalue = match expr.clone() {
-                Expression::FuncCall(func_call) => self.compile_func_call(Rc::clone(&scope), func_call),
+                // TODO
+                // Expression::FuncCall(func_call) => self.compile_func_call(Rc::clone(&scope), func_call),
                 Expression::StructFieldAccess(struct_field_access) => {
                     self.compile_struct_field_access(Rc::clone(&scope), *struct_field_access.clone())
                 }

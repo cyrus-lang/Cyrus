@@ -102,10 +102,28 @@ impl fmt::Display for Expression {
             }) => {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
-            Expression::FuncCall(FuncCall {
-                func_name, arguments, ..
-            }) => {
-                write!(f, "{}({})", func_name, format_expressions(arguments))
+            Expression::FieldAccessOrMethodCall(chains) => {
+                let mut chains = chains.clone();
+
+                let first = chains.first().unwrap().method_call.clone().unwrap();
+                write!(f, "{}({})", first.func_name, format_expressions(&first.arguments))?;
+                chains.remove(0);
+
+                for item in chains {
+                    if let Some(method_call) = &item.method_call {
+                        write!(
+                            f,
+                            ".{}({})",
+                            method_call.func_name,
+                            format_expressions(&method_call.arguments)
+                        )?;
+                    }
+
+                    if let Some(field_access) = &item.field_access {
+                        write!(f, ".{}", field_access.identifier.name,)?;
+                    }
+                }
+                write!(f, "")
             }
             Expression::Array(array) => {
                 write!(f, "[{}]", array_items_to_string(array.clone()))
@@ -174,7 +192,7 @@ impl fmt::Display for Expression {
             }
             Expression::PackageCall(package_call) => {
                 todo!() // TODO
-            },
+            }
         }
     }
 }

@@ -195,13 +195,19 @@ mod tests {
 
         let func = FuncDef {
             name: "add".to_string(),
-            params: FunctionParams { list: vec![param.clone()], is_variadic: false },
+            params: FunctionParams {
+                list: vec![param.clone()],
+                is_variadic: false,
+            },
             body: Box::new(BlockStatement {
                 body: vec![],
                 span: Span::default(),
                 loc: Location::default(),
             }),
-            return_type: Some(Token { kind: TokenKind::I32, span: Span::default() }),
+            return_type: Some(Token {
+                kind: TokenKind::I32,
+                span: Span::default(),
+            }),
             vis_type: VisType::Pub,
             span: Span::default(),
             loc: Location::default(),
@@ -242,5 +248,51 @@ mod tests {
         };
 
         assert_eq!(cast_as_expression.to_string(), "10 as float");
+    }
+
+    #[test]
+    fn test_field_access_or_method_call() {
+        let chains: Vec<FieldAccessOrMethodCall> = vec![
+            FieldAccessOrMethodCall {
+                method_call: Some(FuncCall {
+                    func_name: Identifier {
+                        name: String::from("sample"),
+                        span: Span::default(),
+                        loc: Location::default(),
+                    },
+                    arguments: vec![],
+                    span: Span::default(),
+                    loc: Location::default(),
+                }),
+                field_access: None,
+            },
+            FieldAccessOrMethodCall {
+                method_call: Some(FuncCall {
+                    func_name: Identifier {
+                        name: String::from("nested_func_call"),
+                        span: Span::default(),
+                        loc: Location::default(),
+                    },
+                    arguments: vec![],
+                    span: Span::default(),
+                    loc: Location::default(),
+                }),
+                field_access: None,
+            },
+            FieldAccessOrMethodCall {
+                field_access: Some(FieldAccess {
+                    identifier: Identifier {
+                        name: String::from("some_field"),
+                        span: Span::default(),
+                        loc: Location::default(),
+                    },
+                    span: Span::default(),
+                    loc: Location::default(),
+                }),
+                method_call: None,
+            },
+        ];
+
+        dbg!(Expression::FieldAccessOrMethodCall(chains).to_string());
     }
 }

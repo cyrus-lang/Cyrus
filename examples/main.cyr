@@ -1,6 +1,3 @@
-import sample;
-
 pub fn main() {
-    // printf().sample();
-    sample::Sample;
+    printf().sample();
 }
