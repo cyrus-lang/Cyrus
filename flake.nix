@@ -2,7 +2,7 @@
   description = "Cyrus language flake";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-24.11";
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
@@ -29,9 +29,12 @@
           rustToolchain
           pkgs.gcc
           pkgs.libgccjit
-          # pkgs.binutils
+          pkgs.binutils
           pkgs.glibc
           pkgs.gcc_multi
+          pkgs.isl
+          pkgs.libffi
+          pkgs.libffi.dev
         ];
 
         meta = {
@@ -45,19 +48,21 @@
         name = "cyrus-dev-shell";
 
         buildInputs = [
-          rustToolchain
           pkgs.gcc
           pkgs.libgccjit
-          # pkgs.binutils
+          pkgs.binutils
           pkgs.glibc
           pkgs.gcc_multi
+          pkgs.clang-tools
+          pkgs.isl
+          pkgs.libffi
+          pkgs.libffi.dev
         ];
 
         env = {
-          RUSTC_LINKER = "${pkgs.glibc}/lib/ld-linux-x86-64.so.2";
           LD = "${pkgs.glibc}/lib/ld-linux-x86-64.so.2"; # Use glibc's dynamic linker
           NIX_LDFLAGS = "-L${pkgs.glibc}/lib -L${pkgs.gcc_multi}/lib";
-          LD_LIBRARY_PATH = "${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib";
+          LD_LIBRARY_PATH = "${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:$LD_LIBRARY_PATH";
         };
 
         shellHook = ''
