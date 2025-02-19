@@ -7,6 +7,109 @@ use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
+    // ANCHOR
+    pub fn parse_package_call(&mut self, parse_start: usize) -> Result<Expression, ParseError> {
+        let mut sub_packages: Vec<PackagePath> = vec![];
+
+        loop {
+            match self.current_token.kind.clone() {
+                TokenKind::Identifier { name: identifier } => {
+                    let span = self.current_token.span.clone();
+
+                    sub_packages.push(PackagePath {
+                        package_name: Identifier {
+                            name: identifier.clone(),
+                            span: span.clone(),
+                            loc: self.current_location(),
+                        },
+                        span: Span {
+                            start: parse_start,
+                            end: self.current_token.span.end,
+                        },
+                        loc: self.current_location(),
+                    });
+
+                    self.next_token(); // consume identifier
+
+                    if self.current_token_is(TokenKind::DoubleColon) {
+                        continue;
+                    } else if self.current_token_is(TokenKind::Semicolon) {
+                        return Ok(Expression::PackageCall(PackageCall {
+                            sub_packages,
+                            chains: Vec::new(),
+                        }));
+                    } else {
+                        if self.current_token_is(TokenKind::LeftParen) {
+                            let left_start = self.current_token.span.start;
+                            let left = Expression::Identifier(Identifier {
+                                name: identifier,
+                                span: self.current_token.span.clone(),
+                                loc: self.current_location(),
+                            });
+
+                            if let Expression::FuncCall(func_call) = self.parse_func_call(left, left_start)? {
+                                return Ok(Expression::PackageCall(PackageCall {
+                                    sub_packages,
+                                    chains: vec![FieldAccessOrMethodCall {
+                                        method_call: Some(func_call),
+                                        field_access: None,
+                                    }],
+                                }));
+                            } else {
+                                return Err(CompileTimeError {
+                                    location: self.current_location(),
+                                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                                    file_name: Some(self.lexer.file_name.clone()),
+                                    code_raw: Some(self.lexer.select(parse_start..self.current_token.span.end)),
+                                    verbose: Some(String::from("Expected to get Expression::FuncCall after parsing func_call but got something unexpected.")),
+                                    caret: false,
+                                });
+                            }
+                        } else if self.current_token_is(TokenKind::Dot) {
+                            let latest_sub_package = sub_packages.last().unwrap().package_name.clone();
+                            self.next_token();
+
+                            if let Expression::StructFieldAccess(struct_field_access) =
+                                self.parse_struct_member(Box::new(Expression::Identifier(latest_sub_package)))?
+                            {
+                                return Ok(Expression::PackageCall(PackageCall {
+                                    sub_packages,
+                                    chains: struct_field_access.chains,
+                                }));
+                            } else {
+                                return Err(CompileTimeError {
+                                    location: self.current_location(),
+                                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                                    file_name: Some(self.lexer.file_name.clone()),
+                                    code_raw: Some(self.lexer.select(parse_start..self.current_token.span.end)),
+                                    verbose: Some(String::from("Expected to get Expression::StructFieldAccess after parsing struct_member but got something unexpected.")),
+                                    caret: false,
+                                });
+                            }
+                        }
+                    }
+                }
+                TokenKind::DoubleColon => {
+                    self.next_token();
+                    continue;
+                }
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::ExpectedIdentifier,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(parse_start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
+                    });
+                }
+            }
+        }
+
+        // Ok(package_paths)
+        todo!();
+    }
+
     pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParseError> {
         let mut left_start = self.current_token.span.start;
         let mut left = self.parse_prefix_expression()?;
@@ -113,6 +216,8 @@ impl<'a> Parser<'a> {
                         span,
                         loc: self.current_location(),
                     })
+                } else if self.peek_token_is(TokenKind::DoubleColon) {
+                    return self.parse_package_call(span.start);
                 } else if self.peek_token_is(TokenKind::Decrement) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {

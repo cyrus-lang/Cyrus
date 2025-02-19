@@ -27,13 +27,13 @@ impl Compiler {
                 }
                 "./" => {
                     if finding_std {
-                        compiler_error!("Passing relative path to find stdlib is not allowed.");
+                        compiler_error!("Importing package with relative path to find stdlib is not allowed.");
                     }
                     import_file_path += "./";
                 }
                 "../" => {
                     if finding_std {
-                        compiler_error!("Passing relative path to find stdlib is not allowed.");
+                        compiler_error!("Importing package with relative path to find stdlib is not allowed.");
                     }
                     import_file_path += "../";
                 }

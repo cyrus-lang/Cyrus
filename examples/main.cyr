@@ -1,5 +1,6 @@
-import sample;
+import std::io;
 
 pub fn main() {
-    
+    // printf().sample();
+    std::io::printf("hello world\n");
 }

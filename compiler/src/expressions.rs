@@ -65,6 +65,7 @@ impl Compiler {
                 null_mut()
             }
             Expression::CastAs(cast_as) => self.compile_cast_as(Rc::clone(&scope), cast_as),
+            Expression::PackageCall(package_call) => todo!(),
         }
     }
 
@@ -134,8 +135,14 @@ impl Compiler {
                             return null_mut();
                         }
                         _ => {
-                            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(lvalue))};
-                            return self.safe_assign_lvalue(Rc::clone(&scope), lvalue, rvalue_type, array_index_assign.expr.clone(), array_index_assign.loc);
+                            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(lvalue)) };
+                            return self.safe_assign_lvalue(
+                                Rc::clone(&scope),
+                                lvalue,
+                                rvalue_type,
+                                array_index_assign.expr.clone(),
+                                array_index_assign.loc,
+                            );
                         }
                     };
                 } else {
@@ -245,7 +252,14 @@ impl Compiler {
         }
     }
 
-    fn safe_assign_lvalue(&mut self, scope: ScopeRef, lvalue: *mut gcc_jit_lvalue, rvalue_type:*mut gcc_jit_type, expr: Expression, loc: Location) -> *mut gcc_jit_rvalue {
+    fn safe_assign_lvalue(
+        &mut self,
+        scope: ScopeRef,
+        lvalue: *mut gcc_jit_lvalue,
+        rvalue_type: *mut gcc_jit_type,
+        expr: Expression,
+        loc: Location,
+    ) -> *mut gcc_jit_rvalue {
         let block_func = self.block_func_ref.lock().unwrap();
         if let Some(block) = block_func.block {
             drop(block_func);
@@ -258,21 +272,11 @@ impl Compiler {
                 _ => self.compile_expression(scope, expr),
             };
             let casted_rvalue = unsafe {
-                gcc_jit_context_new_cast(
-                    self.context,
-                    self.gccjit_location(loc.clone()),
-                    new_rvalue,
-                    rvalue_type,
-                )
+                gcc_jit_context_new_cast(self.context, self.gccjit_location(loc.clone()), new_rvalue, rvalue_type)
             };
 
             unsafe {
-                gcc_jit_block_add_assignment(
-                    block,
-                    self.gccjit_location(loc.clone()),
-                    lvalue,
-                    casted_rvalue,
-                );
+                gcc_jit_block_add_assignment(block, self.gccjit_location(loc.clone()), lvalue, casted_rvalue);
             };
 
             return casted_rvalue;
@@ -282,7 +286,7 @@ impl Compiler {
     }
     fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
         let (lvalue, rvalue) = self.access_identifier_values(Rc::clone(&scope), assignment.identifier);
-        let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue)};
+        let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
         self.safe_assign_lvalue(Rc::clone(&scope), lvalue, rvalue_type, assignment.expr, assignment.loc)
     }
 

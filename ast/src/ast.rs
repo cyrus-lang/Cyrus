@@ -44,6 +44,7 @@ pub enum Expression {
     Dereference(Box<Expression>),
     StructInit(StructInit),
     StructFieldAccess(Box<StructFieldAccess>),
+    PackageCall(PackageCall),
     CastAs(CastAs)
 }
 
@@ -78,6 +79,12 @@ pub struct FuncCall {
     pub arguments: Vec<Expression>,
     pub span: Span,
     pub loc: Location
+}
+
+#[derive(Debug, Clone)]
+pub struct PackageCall {
+    pub sub_packages: Vec<PackagePath>,
+    pub chains: Vec<FieldAccessOrMethodCall>,
 }
 
 #[derive(Debug, Clone)]
@@ -243,7 +250,6 @@ pub struct PackagePath {
     pub span: Span,
     pub loc: Location,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Import {

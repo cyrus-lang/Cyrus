@@ -103,9 +103,7 @@ impl fmt::Display for Expression {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
             Expression::FuncCall(FuncCall {
-                func_name,
-                arguments,
-                ..
+                func_name, arguments, ..
             }) => {
                 write!(f, "{}({})", func_name, format_expressions(arguments))
             }
@@ -173,6 +171,9 @@ impl fmt::Display for Expression {
             }
             Expression::CastAs(cast_as) => {
                 write!(f, "{}", cast_as)
+            }
+            Expression::PackageCall(package_call) => {
+                todo!() // TODO
             },
         }
     }
