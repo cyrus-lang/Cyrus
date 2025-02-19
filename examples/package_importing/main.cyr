@@ -1,4 +1,4 @@
-import sample;
+import std::io;
 
 pub fn main() {
     

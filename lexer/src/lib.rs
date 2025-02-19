@@ -330,7 +330,21 @@ impl Lexer {
                 }
             }
             ';' => TokenKind::Semicolon,
-            ':' => TokenKind::Colon,
+            ':' => {
+                if self.peek_char() == ':' {
+                    self.read_char();
+                    self.read_char();
+                    return Token {
+                        kind: TokenKind::DoubleColon,
+                        span: Span {
+                            start: self.pos - 1,
+                            end: self.pos - 1,
+                        },
+                    };
+                } else {
+                    TokenKind::Colon
+                }
+            },
             _ => {
                 if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_identifider();

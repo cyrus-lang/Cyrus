@@ -15,125 +15,139 @@ impl Compiler {
         let file_path = self.file_path.clone();
         let current_dir = Path::new(&file_path).parent().unwrap().to_str().unwrap();
 
-        let mut import_file_path: String = import.sub_packages[0].package_name.name.clone();
+        let mut finding_std = false;
+        let mut import_file_path = String::from(format!("{}/", current_dir));
 
         for sub_package in import.sub_packages {
-            dbg!(sub_package.package_name);
+            let package_name = sub_package.package_name.name.as_str();
+            match package_name {
+                "std" => {
+                    finding_std = true;
+                    import_file_path = format!("{}/", self.stdlib_path());
+                }
+                "./" => {
+                    if finding_std {
+                        compiler_error!("Passing relative path to find stdlib is not allowed.");
+                    }
+                    import_file_path += "./";
+                }
+                "../" => {
+                    if finding_std {
+                        compiler_error!("Passing relative path to find stdlib is not allowed.");
+                    }
+                    import_file_path += "../";
+                }
+                _ => {
+                    let path_str = format!("{}{}", import_file_path, package_name);
+
+                    if Path::new(&format!("{}", path_str)).is_dir() {
+                        import_file_path += &format!("{}/", package_name);
+                    } else if Path::new(&format!("{}.cyr", path_str)).is_file() {
+                        import_file_path += &format!("{}.cyr", package_name);
+                        break;
+                    } else {
+                        compiler_error!(format!(
+                            "File '{}' not found to be imported by the compiler.",
+                            import_file_path + package_name
+                        ));
+                    }
+                }
+            }
         }
 
-        // let mut import_file = Path::new(&import_file_path);
+        let output_library_path = Path::new(&import_file_path)
+            .with_extension(self.object_file_extension())
+            .to_string_lossy()
+            .to_string();
 
-        // convert relative to absolute path
-        // if !import_file.is_absolute() {
-        //     let file_name = import_file.file_name().unwrap().to_str().unwrap();
-        //     import_file_path = format!("{}/{}", current_dir, file_name);
-        //     import_file = Path::new(&import_file_path);
-        // }
+        let (program, file_name) = parse_program(import_file_path.clone());
+        let context = Compiler::new_child_context(self.context);
+        let mut compiler = Compiler::new(context, program, import_file_path.clone(), file_name);
 
-        // if !self.file_exists(&import_file_path.clone()) {
-        //     compiler_error!(format!(
-        //         "File '{}' not found to be imported by the compiler.",
-        //         import_file_path
-        //     ));
-        // }
+        compiler.compile();
+        compiler.make_object_file(output_library_path.clone());
 
-        // if !import_file.is_file() {
-        //     compiler_error!("Expected a file to be imported by compiler but got directory.");
-        // }
+        // Import functions
+        for (key, value) in compiler.func_table.borrow_mut().clone() {
+            if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
+                let func_ptr = self.define_imported_func_as_extern_decl(
+                    key.clone(),
+                    value.params.clone(),
+                    Some(Token {
+                        kind: value.return_type.clone(),
+                        span: Span::default(),
+                    }),
+                    import.loc.clone(),
+                );
 
-        // let output_library_path = Path::new(&import_file_path)
-        //     .with_extension(self.object_file_extension())
-        //     .to_string_lossy()
-        //     .to_string();
+                self.func_table.borrow_mut().insert(
+                    key,
+                    FuncMetadata {
+                        func_type: VisType::Extern,
+                        ptr: func_ptr,
+                        params: value.params,
+                        return_type: value.return_type,
+                    },
+                );
+            }
+        }
 
-        // let (program, file_name) = parse_program(import_file_path.clone());
-        // let context = Compiler::new_child_context(self.context);
-        // let mut compiler = Compiler::new(context, program, import_file_path.clone(), file_name);
+        // Import structs
+        for (key, value) in compiler.global_struct_table.borrow_mut().clone() {
+            if value.vis_type == VisType::Pub && !self.global_struct_table.borrow_mut().contains_key(&key) {
+                let mut struct_field_ptrs = self.compile_struct_fields(value.fields.clone());
+                let struct_decl_name = CString::new(key.clone()).unwrap();
+                let struct_decl = unsafe {
+                    gcc_jit_context_new_struct_type(
+                        self.context,
+                        self.gccjit_location(import.loc.clone()),
+                        struct_decl_name.as_ptr(),
+                        value.fields.len().try_into().unwrap(),
+                        struct_field_ptrs.as_mut_ptr(),
+                    )
+                };
 
-        // compiler.compile();
-        // compiler.make_object_file(output_library_path.clone());
+                self.global_struct_table.borrow_mut().insert(
+                    key.clone(),
+                    StructMetadata {
+                        vis_type: VisType::Internal,
+                        struct_type: struct_decl,
+                        fields: value.fields.clone(),
+                        field_ptrs: struct_field_ptrs.clone(),
+                        methods: Vec::new(),
+                        method_ptrs: Vec::new(),
+                    },
+                );
 
-        // // Import functions
-        // for (key, value) in compiler.func_table.borrow_mut().clone() {
-        //     if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
-        //         let func_ptr = self.define_imported_func_as_extern_decl(
-        //             key.clone(),
-        //             value.params.clone(),
-        //             Some(Token {
-        //                 kind: value.return_type.clone(),
-        //                 span: Span::default(),
-        //             }),
-        //             import.loc.clone(),
-        //         );
+                let mut methods_decl: Vec<*mut gcc_jit_function> = Vec::new();
+                for item in value.methods.clone() {
+                    let method_ptr = self.define_imported_func_as_extern_decl(
+                        self.make_struct_method_name(key.clone(), item.func_def.name),
+                        item.func_def.params,
+                        item.func_def.return_type,
+                        item.func_def.loc,
+                    );
+                    methods_decl.push(method_ptr);
+                }
 
-        //         self.func_table.borrow_mut().insert(
-        //             key,
-        //             FuncMetadata {
-        //                 func_type: VisType::Extern,
-        //                 ptr: func_ptr,
-        //                 params: value.params,
-        //                 return_type: value.return_type,
-        //             },
-        //         );
-        //     }
-        // }
+                self.global_struct_table.borrow_mut().insert(
+                    key,
+                    StructMetadata {
+                        vis_type: VisType::Internal,
+                        struct_type: struct_decl,
+                        fields: value.fields,
+                        field_ptrs: struct_field_ptrs,
+                        methods: value.methods,
+                        method_ptrs: methods_decl,
+                    },
+                );
+            }
+        }
 
-        // // Import structs
-        // for (key, value) in compiler.global_struct_table.borrow_mut().clone() {
-        //     if value.vis_type == VisType::Pub && !self.global_struct_table.borrow_mut().contains_key(&key) {
-        //         let mut struct_field_ptrs = self.compile_struct_fields(value.fields.clone());
-        //         let struct_decl_name = CString::new(key.clone()).unwrap();
-        //         let struct_decl = unsafe {
-        //             gcc_jit_context_new_struct_type(
-        //                 self.context,
-        //                 self.gccjit_location(import.loc.clone()),
-        //                 struct_decl_name.as_ptr(),
-        //                 value.fields.len().try_into().unwrap(),
-        //                 struct_field_ptrs.as_mut_ptr(),
-        //             )
-        //         };
+        self.compiled_object_files.push(output_library_path.clone());
 
-        //         self.global_struct_table.borrow_mut().insert(
-        //             key.clone(),
-        //             StructMetadata {
-        //                 vis_type: VisType::Internal,
-        //                 struct_type: struct_decl,
-        //                 fields: value.fields.clone(),
-        //                 field_ptrs: struct_field_ptrs.clone(),
-        //                 methods: Vec::new(),
-        //                 method_ptrs: Vec::new(),
-        //             },
-        //         );
-
-        //         let mut methods_decl: Vec<*mut gcc_jit_function> = Vec::new();
-        //         for item in value.methods.clone() {
-        //             let method_ptr = self.define_imported_func_as_extern_decl(
-        //                 self.make_struct_method_name(key.clone(), item.func_def.name),
-        //                 item.func_def.params,
-        //                 item.func_def.return_type,
-        //                 item.func_def.loc,
-        //             );
-        //             methods_decl.push(method_ptr);
-        //         }
-
-        //         self.global_struct_table.borrow_mut().insert(
-        //             key,
-        //             StructMetadata {
-        //                 vis_type: VisType::Internal,
-        //                 struct_type: struct_decl,
-        //                 fields: value.fields,
-        //                 field_ptrs: struct_field_ptrs,
-        //                 methods: value.methods,
-        //                 method_ptrs: methods_decl,
-        //             },
-        //         );
-        //     }
-        // }
-
-        // self.compiled_object_files.push(output_library_path.clone());
-
-        // let optname = CString::new(output_library_path).unwrap();
-        // unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
+        let optname = CString::new(output_library_path).unwrap();
+        unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
     }
 
     fn define_imported_func_as_extern_decl(

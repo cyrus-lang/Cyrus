@@ -300,7 +300,7 @@ impl<'a> Parser<'a> {
 
                         self.next_token(); // consume identifier
 
-                        if self.current_token_is(TokenKind::Colon) {
+                        if self.current_token_is(TokenKind::DoubleColon) {
                             continue;
                         } else if self.current_token_is(TokenKind::Semicolon) {
                             return Ok(Statement::Import(Import {
@@ -322,7 +322,7 @@ impl<'a> Parser<'a> {
                             });
                         }
                     }
-                    TokenKind::Colon => {
+                    TokenKind::DoubleColon => {
                         self.next_token();
                         continue;
                     }
