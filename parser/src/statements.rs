@@ -246,11 +246,49 @@ impl<'a> Parser<'a> {
 
             while !self.current_token_is(TokenKind::Semicolon) {
                 match self.current_token.kind.clone() {
-                    TokenKind::Literal(Literal::String(value)) => {
+                    TokenKind::Dot => {
+                        let span = Span {
+                            start: self.current_token.span.start,
+                            end: self.current_token.span.end,
+                        };
+
+                        self.next_token();
+
                         package_paths.push(PackagePath {
                             package_name: Identifier {
-                                name: value.raw,
-                                span: value.span,
+                                name: String::from("./"),
+                                loc: self.current_location(),
+                                span: span.clone(),
+                            },
+                            loc: self.current_location(),
+                            span,
+                        });
+                    }
+                    TokenKind::DoubleDot => {
+                        let span = Span {
+                            start: self.current_token.span.start,
+                            end: self.current_token.span.end,
+                        };
+
+                        self.next_token();
+
+                        package_paths.push(PackagePath {
+                            package_name: Identifier {
+                                name: String::from("../"),
+                                loc: self.current_location(),
+                                span: span.clone(),
+                            },
+                            loc: self.current_location(),
+                            span,
+                        });
+                    }
+                    TokenKind::Identifier { name: identiier } => {
+                        let span = self.current_token.span.clone();
+
+                        package_paths.push(PackagePath {
+                            package_name: Identifier {
+                                name: identiier,
+                                span: span.clone(),
                                 loc: self.current_location(),
                             },
                             span: Span {
@@ -262,25 +300,27 @@ impl<'a> Parser<'a> {
 
                         self.next_token(); // consume identifier
 
-                        if !self.current_token_is(TokenKind::Semicolon) {
+                        if self.current_token_is(TokenKind::Colon) {
+                            continue;
+                        } else if self.current_token_is(TokenKind::Semicolon) {
+                            return Ok(Statement::Import(Import {
+                                sub_packages: package_paths,
+                                span: Span {
+                                    start,
+                                    end: self.current_token.span.end,
+                                },
+                                loc: self.current_location(),
+                            }));
+                        } else {
                             return Err(CompileTimeError {
                                 location: self.current_location(),
-                                etype: ParserErrorType::MissingSemicolon,
+                                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                                 file_name: Some(self.lexer.file_name.clone()),
                                 code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                                 verbose: None,
                                 caret: true,
                             });
                         }
-
-                        return Ok(Statement::Import(Import {
-                            sub_packages: package_paths,
-                            span: Span {
-                                start,
-                                end: self.current_token.span.end,
-                            },
-                            loc: self.current_location(),
-                        }));
                     }
                     TokenKind::Colon => {
                         self.next_token();
@@ -351,7 +391,7 @@ impl<'a> Parser<'a> {
                     self.next_token();
                     is_variadic = true;
                     triple_dots_count += 1;
-                    
+
                     if self.current_token_is(TokenKind::Comma) {
                         self.next_token();
                         continue;

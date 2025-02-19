@@ -1,0 +1,13 @@
+version: '3.9'
+
+services:
+  cyrus-devel:
+    build:
+      dockerfile: ./devel.Dockerfile
+    container_name: cyrus-devel-container
+    volumes:
+      - .:/app
+    working_dir: /app
+    tty: true
+    stdin_open: true
+    restart: unless-stopped

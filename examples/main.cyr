@@ -1,4 +1,4 @@
-import "sample.cyr"; 
+import .:sample; 
 
 pub fn main() {
     
