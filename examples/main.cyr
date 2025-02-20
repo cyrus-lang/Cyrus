@@ -1,8 +1,12 @@
-// import sample;
+import sample;
 
 pub fn main() {
-    // #result = sample::sum(1, 2);
     #result = sample::Sample {
-        name: "Taha"
+        name: "Taha",
+        age: 17
     };
+
+    result.age;
+
+    sample::Sample.dosomething();
 }

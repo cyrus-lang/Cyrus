@@ -100,7 +100,7 @@ impl Compiler {
                         ptr: func_ptr,
                         params: value.params,
                         return_type: value.return_type,
-                        import_from_package: Some(package_name.clone()),
+                        imported_from: Some(package_name.clone()),
                     },
                 );
             }
@@ -130,7 +130,7 @@ impl Compiler {
                         field_ptrs: struct_field_ptrs.clone(),
                         methods: Vec::new(),
                         method_ptrs: Vec::new(),
-                        import_from_package: Some(package_name.clone()),
+                        imported_from: Some(package_name.clone()),
                     },
                 );
 
@@ -154,7 +154,7 @@ impl Compiler {
                         field_ptrs: struct_field_ptrs,
                         methods: value.methods,
                         method_ptrs: methods_decl,
-                        import_from_package: Some(package_name.clone()),
+                        imported_from: Some(package_name.clone()),
                     },
                 );
             }

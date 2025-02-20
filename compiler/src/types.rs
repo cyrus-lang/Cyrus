@@ -84,8 +84,8 @@ impl Compiler {
 
     pub fn is_user_defined_type(&self, from_package: FromPackage) -> bool {
         match self.global_struct_table.borrow_mut().iter().find(|&item| {
-            if let Some(import_from_package) = &item.1.import_from_package {
-                *import_from_package == from_package.to_string()
+            if let Some(imported_from) = &item.1.imported_from {
+                *imported_from == from_package.to_string()
             } else {
                 from_package.identifier.name == *item.0
             }

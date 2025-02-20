@@ -15,7 +15,7 @@ pub struct FuncMetadata {
     pub(crate) ptr: *mut gcc_jit_function,
     pub(crate) return_type: TokenKind,
     pub(crate) params: FunctionParams,
-    pub(crate) import_from_package: Option<String>,
+    pub(crate) imported_from: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -162,7 +162,7 @@ impl Compiler {
                 ptr: func,
                 params: declare_function.params,
                 return_type,
-                import_from_package: None
+                imported_from: None
             },
         );
     }
@@ -241,8 +241,8 @@ impl Compiler {
     pub(crate) fn get_func(&mut self, from_package: FromPackage) -> FuncMetadata {
         let binding = self.func_table.borrow_mut();
         let func_metadata = binding.iter().find(|&item| {
-            if let Some(import_from_package) = &item.1.import_from_package {
-                *import_from_package == from_package.to_string()
+            if let Some(imported_from) = &item.1.imported_from {
+                *imported_from == from_package.to_string()
             } else {
                 from_package.identifier.name == *item.0
             }

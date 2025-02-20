@@ -132,7 +132,7 @@ impl Compiler {
                         ptr,
                         params: func_def.params,
                         return_type,
-                        import_from_package: None
+                        imported_from: None
                     },
                 );
             }

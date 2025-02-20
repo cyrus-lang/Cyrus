@@ -26,7 +26,7 @@ pub struct StructMetadata {
     pub(crate) field_ptrs: Vec<*mut gcc_jit_field>,
     pub(crate) methods: Vec<StructMethodMetadata>,
     pub(crate) method_ptrs: Vec<*mut gcc_jit_function>,
-    pub(crate) import_from_package: Option<String>,
+    pub(crate) imported_from: Option<String>,
 }
 
 impl Compiler {
@@ -292,8 +292,8 @@ impl Compiler {
     pub(crate) fn get_struct(&mut self, from_package: FromPackage) -> StructMetadata {
         let binding = self.global_struct_table.borrow_mut();
         let struct_metadata = binding.iter().find(|&item| {
-            if let Some(import_from_package) = &item.1.import_from_package {
-                *import_from_package == from_package.to_string()
+            if let Some(imported_from) = &item.1.imported_from {
+                *imported_from == package_path_as_string(from_package.sub_packages.clone())
             } else {
                 from_package.identifier.name == *item.0
             }
@@ -379,7 +379,7 @@ impl Compiler {
                 field_ptrs: field_ptrs.clone(),
                 methods: Vec::new(),
                 method_ptrs: Vec::new(),
-                import_from_package: None,
+                imported_from: None,
             },
         );
 
@@ -393,7 +393,7 @@ impl Compiler {
             methods,
             field_ptrs,
             method_ptrs,
-            import_from_package: None,
+            imported_from: None,
         };
 
         self.global_struct_table
