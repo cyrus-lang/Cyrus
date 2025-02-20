@@ -1,7 +1,7 @@
 use std::ptr::null_mut;
 
 use ast::{
-    ast::{integer_literal_as_value, FromPackage, Identifier},
+    ast::{integer_literal_as_value, sub_packages_as_string, FromPackage, Identifier},
     token::TokenKind,
 };
 use gccjit_sys::*;
@@ -85,7 +85,7 @@ impl Compiler {
     pub fn is_user_defined_type(&self, from_package: FromPackage) -> bool {
         match self.global_struct_table.borrow_mut().iter().find(|&item| {
             if let Some(imported_from) = &item.1.imported_from {
-                *imported_from == from_package.to_string()
+                *imported_from == sub_packages_as_string(from_package.sub_packages.clone())
             } else {
                 from_package.identifier.name == *item.0
             }

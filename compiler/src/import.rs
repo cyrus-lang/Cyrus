@@ -69,7 +69,7 @@ impl Compiler {
         compiler.compile();
         compiler.make_object_file(output_library_path.clone());
 
-        let package_name = package_path_as_string(import.sub_packages.clone());
+        let package_name = sub_packages_as_string(import.sub_packages.clone());
 
         self.compiled_object_files.push(output_library_path.clone());
 

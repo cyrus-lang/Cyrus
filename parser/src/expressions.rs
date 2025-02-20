@@ -107,11 +107,6 @@ impl<'a> Parser<'a> {
                         span,
                         loc: self.current_location(),
                     })
-                } else if self.peek_token_is(TokenKind::DoubleColon) {
-                    dbg!(Expression::FromPackage(from_package));
-
-                    dbg!(self.current_token.kind.clone());
-                    todo!();
                 } else if self.peek_token_is(TokenKind::Decrement) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {

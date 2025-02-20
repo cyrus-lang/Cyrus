@@ -326,6 +326,6 @@ mod tests {
             },
         ];
 
-        dbg!(Expression::FieldAccessOrMethodCall(chains).to_string());
+        assert_eq!(Expression::FieldAccessOrMethodCall(chains).to_string(), "my_pkg::sample().nested_method().some_field");
     }
 }

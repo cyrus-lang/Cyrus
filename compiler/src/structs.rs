@@ -239,7 +239,7 @@ impl Compiler {
         let mut result: *mut gcc_jit_rvalue = null_mut();
 
         if let Expression::FromPackage(from_package) = statement.expr.clone() {
-            if self.is_user_defined_type(from_package.clone()) {
+            if self.is_user_defined_type(from_package.clone()) {                
                 let struct_metadata = self.get_struct(from_package.clone());
 
                 if statement.chains.len() > 0 {
@@ -293,7 +293,7 @@ impl Compiler {
         let binding = self.global_struct_table.borrow_mut();
         let struct_metadata = binding.iter().find(|&item| {
             if let Some(imported_from) = &item.1.imported_from {
-                *imported_from == package_path_as_string(from_package.sub_packages.clone())
+                *imported_from == sub_packages_as_string(from_package.sub_packages.clone())
             } else {
                 from_package.identifier.name == *item.0
             }

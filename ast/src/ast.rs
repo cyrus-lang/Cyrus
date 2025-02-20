@@ -260,7 +260,7 @@ pub struct Import {
     pub loc: Location,
 }
 
-pub fn package_path_as_string(list: Vec<PackagePath>) -> String {
+pub fn sub_packages_as_string(list: Vec<PackagePath>) -> String {
     let mut str = String::new();
     for (idx, sub_package) in list.iter().enumerate().clone() {
         if sub_package.package_name.name != "./" && sub_package.package_name.name != "../" {

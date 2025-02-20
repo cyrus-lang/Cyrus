@@ -270,7 +270,7 @@ impl fmt::Display for FromPackage {
             write!(
                 f,
                 "{}::{}",
-                package_path_as_string(self.sub_packages.clone()),
+                sub_packages_as_string(self.sub_packages.clone()),
                 self.identifier.name
             )
         } else {
