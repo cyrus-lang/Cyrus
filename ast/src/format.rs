@@ -91,7 +91,12 @@ impl fmt::Display for CastAs {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::UnaryOperator(unop) => write!(f, "{}{}", Expression::FromPackage(unop.identifier.clone()).to_string(), unop.ty),
+            Expression::UnaryOperator(unop) => write!(
+                f,
+                "{}{}",
+                Expression::FromPackage(unop.identifier.clone()).to_string(),
+                unop.ty
+            ),
             Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
             Expression::Literal(literal) => write!(f, "{}", literal.to_string()),
             Expression::Prefix(UnaryExpression { operand, operator, .. }) => {
@@ -146,7 +151,12 @@ impl fmt::Display for Expression {
                 }
                 write!(f, "")
             }
-            Expression::Assignment(assignment) => write!(f, "{} = {}", assignment.identifier, assignment.expr),
+            Expression::Assignment(assignment) => write!(
+                f,
+                "{} = {}",
+                Expression::FromPackage(assignment.identifier.clone()).to_string(),
+                assignment.expr
+            ),
             Expression::ArrayIndexAssign(array_index_assign) => {
                 let array_index = ArrayIndex {
                     identifier: array_index_assign.identifier.clone(),
@@ -165,7 +175,11 @@ impl fmt::Display for Expression {
             Expression::AddressOf(expression) => write!(f, "&({})", expression),
             Expression::Dereference(expression) => write!(f, "(*{})", expression),
             Expression::StructInit(struct_init) => {
-                write!(f, "{} {{", Expression::FromPackage(struct_init.struct_name.clone()).to_string())?;
+                write!(
+                    f,
+                    "{} {{",
+                    Expression::FromPackage(struct_init.struct_name.clone()).to_string()
+                )?;
                 for field in &struct_init.field_inits {
                     write!(f, "{}: {};", field.name, field.value)?;
                 }

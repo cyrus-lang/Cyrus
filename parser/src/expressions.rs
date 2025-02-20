@@ -121,7 +121,7 @@ impl<'a> Parser<'a> {
                         loc: self.current_location(),
                     })
                 } else if self.peek_token_is(TokenKind::Assign) {
-                    return self.parse_assignment();
+                    return self.parse_assignment(from_package);
                 } else if self.peek_token_is(TokenKind::LeftBracket) {
                     let array_index = self.parse_array_index()?;
 
@@ -463,117 +463,140 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_struct_member(&mut self, object_expr: Box<Expression>) -> Result<Expression, ParseError> {
-        todo!()
-        // let start = self.current_token.span.start.clone();
+        let start = self.current_token.span.start.clone();
 
-        // let mut chains: Vec<FieldAccessOrMethodCall> = Vec::new();
-        // self.next_token();
-        // self.expect_current(TokenKind::Dot)?;
+        let mut chains: Vec<FieldAccessOrMethodCall> = Vec::new();
+        self.next_token();
+        self.expect_current(TokenKind::Dot)?;
 
-        // loop {
-        //     let member_start = self.current_token.span.start.clone();
-        //     let method_name = self.parse_ide
+        loop {
+            let member_start = self.current_token.span.start.clone();
+            let method_name = match self.current_token.kind.clone() {
+                TokenKind::Identifier { name } => Identifier {
+                    name,
+                    span: self.current_token.span.clone(),
+                    loc: self.current_location(),
+                },
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::ExpectedIdentifier,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
+                    });
+                }
+            };
 
-        //     if self.peek_token_is(TokenKind::LeftParen) {
-        //         // parse struct method call
+            if self.peek_token_is(TokenKind::LeftParen) {
+                // parse struct method call
 
-        //         self.next_token(); // consume method name
+                self.next_token(); // consume method name
 
-        //         let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
-        //         self.expect_current(TokenKind::RightParen)?;
+                let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
+                self.expect_current(TokenKind::RightParen)?;
 
-        //         let method_call = FuncCall {
-        //             func_name: method_name,
-        //             arguments,
-        //             span: Span {
-        //                 start: member_start,
-        //                 end: self.current_token.span.end,
-        //             },
-        //             loc: self.current_location(),
-        //         };
+                let method_call = FuncCall {
+                    func_name: FromPackage {
+                        sub_packages: vec![],
+                        identifier: method_name,
+                        span: Span {
+                            start: member_start,
+                            end: self.current_token.span.end,
+                        },
+                        loc: self.current_location(),
+                    },
+                    arguments,
+                    span: Span {
+                        start: member_start,
+                        end: self.current_token.span.end,
+                    },
+                    loc: self.current_location(),
+                };
 
-        //         chains.push(FieldAccessOrMethodCall {
-        //             method_call: Some(method_call),
-        //             field_access: None,
-        //         });
+                chains.push(FieldAccessOrMethodCall {
+                    method_call: Some(method_call),
+                    field_access: None,
+                });
 
-        //         match self.current_token.kind {
-        //             TokenKind::Dot => {
-        //                 self.next_token();
-        //                 continue;
-        //             }
-        //             TokenKind::RightBracket => {
-        //                 break;
-        //             }
-        //             TokenKind::RightParen => {
-        //                 break;
-        //             }
-        //             TokenKind::Semicolon => {
-        //                 break;
-        //             }
-        //             _ => {
-        //                 return Err(CompileTimeError {
-        //                     location: self.current_location(),
-        //                     etype: ParserErrorType::MissingSemicolon,
-        //                     file_name: Some(self.lexer.file_name.clone()),
-        //                     code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-        //                     verbose: None,
-        //                     caret: true,
-        //                 })
-        //             }
-        //         }
-        //     } else {
-        //         // parse struct field access
+                match self.current_token.kind {
+                    TokenKind::Dot => {
+                        self.next_token();
+                        continue;
+                    }
+                    TokenKind::RightBracket => {
+                        break;
+                    }
+                    TokenKind::RightParen => {
+                        break;
+                    }
+                    TokenKind::Semicolon => {
+                        break;
+                    }
+                    _ => {
+                        return Err(CompileTimeError {
+                            location: self.current_location(),
+                            etype: ParserErrorType::MissingSemicolon,
+                            file_name: Some(self.lexer.file_name.clone()),
+                            code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                            verbose: None,
+                            caret: true,
+                        })
+                    }
+                }
+            } else {
+                // parse struct field access
 
-        //         let field_name = match self.current_token.kind.clone() {
-        //             TokenKind::Identifier { name } => Identifier {
-        //                 name,
-        //                 span: self.current_token.span.clone(),
-        //                 loc: self.current_location(),
-        //             },
-        //             _ => {
-        //                 return Err(CompileTimeError {
-        //                     location: self.current_location(),
-        //                     etype: ParserErrorType::ExpectedIdentifier,
-        //                     file_name: Some(self.lexer.file_name.clone()),
-        //                     code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-        //                     verbose: None,
-        //                     caret: true,
-        //                 })
-        //             }
-        //         };
-        //         self.next_token();
+                let field_name = match self.current_token.kind.clone() {
+                    TokenKind::Identifier { name } => Identifier {
+                        name,
+                        span: self.current_token.span.clone(),
+                        loc: self.current_location(),
+                    },
+                    _ => {
+                        return Err(CompileTimeError {
+                            location: self.current_location(),
+                            etype: ParserErrorType::ExpectedIdentifier,
+                            file_name: Some(self.lexer.file_name.clone()),
+                            code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                            verbose: None,
+                            caret: true,
+                        })
+                    }
+                };
+                self.next_token();
 
-        //         chains.push(FieldAccessOrMethodCall {
-        //             method_call: None,
-        //             field_access: Some(FieldAccess {
-        //                 identifier: field_name,
-        //                 span: self.current_token.span.clone(),
-        //                 loc: self.current_location(),
-        //             }),
-        //         });
+                chains.push(FieldAccessOrMethodCall {
+                    method_call: None,
+                    field_access: Some(FieldAccess {
+                        identifier: field_name,
+                        span: self.current_token.span.clone(),
+                        loc: self.current_location(),
+                    }),
+                });
 
-        //         match self.current_token.kind {
-        //             TokenKind::Dot => {
-        //                 self.next_token(); // consume field_name
-        //                 continue;
-        //             }
-        //             _ => {
-        //                 break;
-        //             }
-        //         }
-        //     }
-        // }
+                match self.current_token.kind {
+                    TokenKind::Dot => {
+                        self.next_token(); // consume field_name
+                        continue;
+                    }
+                    _ => {
+                        break;
+                    }
+                }
+            }
+        }
 
-        // return Ok(Expression::StructFieldAccess(Box::new(StructFieldAccess {
-        //     expr: *object_expr,
-        //     chains,
-        //     span: Span {
-        //         start,
-        //         end: self.current_token.span.end,
-        //     },
-        //     loc: self.current_location(),
-        // })));
+        return Ok(Expression::StructFieldAccess(Box::new(StructFieldAccess {
+            expr: *object_expr,
+            chains,
+            span: Span {
+                start,
+                end: self.current_token.span.end,
+            },
+            loc: self.current_location(),
+        })));
     }
 
     pub fn parse_struct_init(&mut self, struct_name: FromPackage) -> Result<Expression, ParseError> {
@@ -659,41 +682,22 @@ impl<'a> Parser<'a> {
         }));
     }
 
-    pub fn parse_assignment(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_assignment(&mut self, from_package: FromPackage) -> Result<Expression, ParseError> {
         let start: usize = self.current_token.span.start;
 
-        if let TokenKind::Identifier { name } = self.current_token.kind.clone() {
-            let identifier = Identifier {
-                name,
-                span: self.current_token.span.clone(),
-                loc: self.current_location(),
-            };
-            self.next_token(); // consume identifier
-            self.next_token(); // consume assign
+        self.next_token(); // consume identifier
+        self.next_token(); // consume assign
 
-            let expr = self.parse_expression(Precedence::Lowest)?.0;
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
 
-            let end = self.current_token.span.end;
+        let end = self.current_token.span.end;
 
-            Ok(Expression::Assignment(Box::new(Assignment {
-                identifier,
-                expr,
-                span: Span { start, end },
-                loc: self.current_location(),
-            })))
-        } else {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::ExpectedIdentifier,
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(self.current_token.span.start..self.current_token.span.end),
-                ),
-                verbose: None,
-                caret: true,
-            });
-        }
+        Ok(Expression::Assignment(Box::new(Assignment {
+            identifier: from_package,
+            expr,
+            span: Span { start, end },
+            loc: self.current_location(),
+        })))
     }
 
     pub fn parse_array_index(&mut self) -> Result<ArrayIndex, ParseError> {

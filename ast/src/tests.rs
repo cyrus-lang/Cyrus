@@ -176,8 +176,13 @@ mod tests {
     #[test]
     fn test_assignment() {
         let assignment = Assignment {
-            identifier: Identifier {
-                name: "x".to_string(),
+            identifier: FromPackage {
+                sub_packages: vec![],
+                identifier: Identifier {
+                    name: "x".to_string(),
+                    span: Span::default(),
+                    loc: Location::default(),
+                },
                 span: Span::default(),
                 loc: Location::default(),
             },
@@ -186,7 +191,7 @@ mod tests {
             loc: Location::default(),
         };
 
-        assert_eq!(assignment.identifier.name, "x");
+        assert_eq!(assignment.identifier.identifier.name, "x");
     }
 
     #[test]

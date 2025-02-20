@@ -379,7 +379,7 @@ pub struct Variable {
 
 #[derive(Debug, Clone)]
 pub struct Assignment {
-    pub identifier: Identifier,
+    pub identifier: FromPackage,
     pub expr: Expression,
     pub span: Span,
     pub loc: Location,

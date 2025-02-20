@@ -15,24 +15,31 @@ impl Compiler {
     pub(crate) fn access_identifier_values(
         &mut self,
         scope: ScopeRef,
-        identifier: Identifier,
+        from_package: FromPackage,
     ) -> (*mut gcc_jit_lvalue, *mut gcc_jit_rvalue) {
-        if let Some(metadata) = scope.borrow_mut().get(identifier.name.clone()) {
-            let lvalue = metadata.borrow_mut().lvalue;
-            let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
+        todo!();
 
-            return (lvalue, rvalue);
-        }
+        // if let Some(metadata) = scope.borrow_mut().get(identifier.name.clone()) {
+        //     let lvalue = metadata.borrow_mut().lvalue;
+        //     let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
 
-        if let Some(values) = self.access_current_func_param(identifier.clone()) {
-            return values.clone();
-        }
+        //     return (lvalue, rvalue);
+        // }
 
-        compiler_error!(format!("'{}' is not defined in this scope.", identifier.name))
+        // if let Some(values) = self.access_current_func_param(identifier.clone()) {
+        //     return values.clone();
+        // }
+
+        // compiler_error!(format!("'{}' is not defined in this scope.", identifier.name))
     }
 
     fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
-        self.access_identifier_values(scope, identifier).1
+        todo!();
+        // self.access_identifier_values(scope, identifier).1
+    }
+
+    fn compile_from_package(&mut self, scope: ScopeRef, from_pakcage: FromPackage) -> *mut gcc_jit_rvalue {
+        todo!();
     }
 
     pub(crate) fn compile_expression(&mut self, scope: ScopeRef, expr: Expression) -> *mut gcc_jit_rvalue {
@@ -63,6 +70,7 @@ impl Compiler {
                 null_mut()
             }
             Expression::CastAs(cast_as) => self.compile_cast_as(Rc::clone(&scope), cast_as),
+            Expression::FromPackage(from_package) => self.compile_from_package(Rc::clone(&scope), from_pakcage),
         }
     }
 
@@ -81,8 +89,22 @@ impl Compiler {
 
     fn compile_address_of(&mut self, scope: ScopeRef, expression: Box<Expression>) -> *mut gcc_jit_rvalue {
         match *expression {
+            Expression::FromPackage(from_package) => {
+                let lvalue = self.access_identifier_values(Rc::clone(&scope), from_package).0;
+                unsafe { gcc_jit_lvalue_get_address(lvalue, null_mut()) }
+            }
             Expression::Identifier(identifier) => {
-                let lvalue = self.access_identifier_values(Rc::clone(&scope), identifier).0;
+                let lvalue = self
+                    .access_identifier_values(
+                        Rc::clone(&scope),
+                        FromPackage {
+                            sub_packages: vec![],
+                            identifier: identifier.clone(),
+                            span: identifier.span.clone(),
+                            loc: identifier.loc,
+                        },
+                    )
+                    .0;
                 unsafe { gcc_jit_lvalue_get_address(lvalue, null_mut()) }
             }
             _ => self.compile_expression(scope, *expression),
