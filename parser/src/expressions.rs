@@ -7,7 +7,6 @@ use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
-    // ANCHOR
     pub fn parse_package_call(&mut self, parse_start: usize) -> Result<Expression, ParseError> {
         let mut sub_packages: Vec<PackagePath> = vec![];
 
@@ -47,25 +46,21 @@ impl<'a> Parser<'a> {
                                 loc: self.current_location(),
                             });
 
-                            // TODO
-                            // if let Expression::FuncCall(func_call) = self.parse_func_call(left, left_start)? {
-                            //     return Ok(Expression::PackageCall(PackageCall {
-                            //         sub_packages,
-                            //         chains: vec![FieldAccessOrMethodCall {
-                            //             method_call: Some(func_call),
-                            //             field_access: None,
-                            //         }],
-                            //     }));
-                            // } else {
-                            //     return Err(CompileTimeError {
-                            //         location: self.current_location(),
-                            //         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                            //         file_name: Some(self.lexer.file_name.clone()),
-                            //         code_raw: Some(self.lexer.select(parse_start..self.current_token.span.end)),
-                            //         verbose: Some(String::from("Expected to get Expression::FuncCall after parsing func_call but got something unexpected.")),
-                            //         caret: false,
-                            //     });
-                            // }
+                            if let Expression::FieldAccessOrMethodCall(chains) = self.parse_field_access_or_method_call(left, left_start)? {
+                                return Ok(Expression::PackageCall(PackageCall {
+                                    sub_packages,
+                                    chains,
+                                }));
+                            } else {
+                                return Err(CompileTimeError {
+                                    location: self.current_location(),
+                                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                                    file_name: Some(self.lexer.file_name.clone()),
+                                    code_raw: Some(self.lexer.select(parse_start..self.current_token.span.end)),
+                                    verbose: Some(String::from("Expected to get Expression::FuncCall after parsing func_call but got something unexpected.")),
+                                    caret: false,
+                                });
+                            }
                         } else if self.current_token_is(TokenKind::Dot) {
                             let latest_sub_package = sub_packages.last().unwrap().package_name.clone();
                             self.next_token();
@@ -106,9 +101,6 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-
-        // Ok(package_paths)
-        todo!();
     }
 
     pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParseError> {

@@ -191,7 +191,13 @@ impl fmt::Display for Expression {
                 write!(f, "{}", cast_as)
             }
             Expression::PackageCall(package_call) => {
-                todo!() // TODO
+                let package_name = package_path_as_string(package_call.sub_packages.clone());
+                write!(f, "{}", package_name)?;
+                write!(
+                    f,
+                    "{}",
+                    Expression::FieldAccessOrMethodCall(package_call.chains.clone()).to_string()
+                )
             }
         }
     }
