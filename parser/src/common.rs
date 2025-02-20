@@ -11,11 +11,6 @@ impl<'a> Parser<'a> {
     pub fn parse_from_package(&mut self) -> Result<FromPackage, ParseError> {
         let start = self.current_token.span.start;
 
-        let mut identifier: Identifier = Identifier {
-            name: String::from("<UB>"),
-            span: Span::default(),
-            loc: Location::default(),
-        };
         let mut sub_packages: Vec<PackagePath> = match self.current_token.kind.clone() {
             TokenKind::Identifier { name } => vec![PackagePath {
                 package_name: Identifier {
@@ -44,15 +39,6 @@ impl<'a> Parser<'a> {
 
             match self.current_token.kind.clone() {
                 TokenKind::Identifier { name } => {
-                    if !self.peek_token_is(TokenKind::DoubleColon) {
-                        identifier = Identifier {
-                            name,
-                            span: self.current_token.span.clone(),
-                            loc: self.current_location(),
-                        };
-                        break;
-                    }
-
                     sub_packages.push(PackagePath {
                         package_name: Identifier {
                             name,
@@ -72,7 +58,7 @@ impl<'a> Parser<'a> {
         }
 
         if sub_packages.len() == 1 {
-            return Ok(FromPackage {
+            Ok(FromPackage {
                 identifier: sub_packages[0].package_name.clone(),
                 sub_packages: vec![],
                 span: Span {
@@ -80,18 +66,21 @@ impl<'a> Parser<'a> {
                     end: self.current_token.span.end,
                 },
                 loc: self.current_location(),
-            });
-        }
+            })
+        } else {
+            let identifier = sub_packages.last().unwrap().package_name.clone();
+            sub_packages.pop();
 
-        Ok(FromPackage {
-            identifier,
-            sub_packages,
-            span: Span {
-                start,
-                end: self.current_token.span.end,
-            },
-            loc: self.current_location(),
-        })
+            Ok(FromPackage {
+                identifier,
+                sub_packages,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc: self.current_location(),
+            })
+        }
     }
 
     // The get_type_token function is responsible for parsing a type token from the source code and returning its corresponding TokenKind.

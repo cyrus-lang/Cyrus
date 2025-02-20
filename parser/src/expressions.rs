@@ -347,8 +347,6 @@ impl<'a> Parser<'a> {
         left: Expression,
         left_start: usize,
     ) -> Result<Expression, ParseError> {
-        todo!();
-
         let mut chains: Vec<FieldAccessOrMethodCall> = vec![FieldAccessOrMethodCall {
             method_call: Some(self.parse_func_call(left, left_start)?),
             field_access: None,

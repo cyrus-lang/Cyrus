@@ -1,14 +1,8 @@
-// import std::io;
-
-struct Local {
-    name: string;
-}
+// import sample;
 
 pub fn main() {
-    #result = Local {
+    // #result = sample::sum(1, 2);
+    #result = sample::Sample {
         name: "Taha"
     };
-
-    #name = result.name;
-
 }
