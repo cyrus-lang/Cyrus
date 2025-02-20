@@ -1,3 +1,5 @@
+use std::vec;
+
 use crate::ParseError;
 use crate::Parser;
 use ast::ast::*;
@@ -6,6 +8,92 @@ use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
+    pub fn parse_from_package(&mut self) -> Result<FromPackage, ParseError> {
+        let start = self.current_token.span.start;
+
+        let mut identifier: Identifier = Identifier {
+            name: String::from("<UB>"),
+            span: Span::default(),
+            loc: Location::default(),
+        };
+        let mut sub_packages: Vec<PackagePath> = match self.current_token.kind.clone() {
+            TokenKind::Identifier { name } => vec![PackagePath {
+                package_name: Identifier {
+                    name,
+                    span: self.current_token.span.clone(),
+                    loc: self.current_location(),
+                },
+                span: self.current_token.span.clone(),
+                loc: self.current_location(),
+            }],
+            _ => {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::ExpectedIdentifier,
+                    file_name: Some(self.lexer.file_name.clone()),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                    verbose: None,
+                    caret: true,
+                })
+            }
+        };
+        self.next_token();
+
+        while self.current_token_is(TokenKind::DoubleColon) {
+            self.next_token();
+
+            match self.current_token.kind.clone() {
+                TokenKind::Identifier { name } => {
+                    if !self.peek_token_is(TokenKind::DoubleColon) {
+                        identifier = Identifier {
+                            name,
+                            span: self.current_token.span.clone(),
+                            loc: self.current_location(),
+                        };
+                        break;
+                    }
+
+                    sub_packages.push(PackagePath {
+                        package_name: Identifier {
+                            name,
+                            span: self.current_token.span.clone(),
+                            loc: self.current_location(),
+                        },
+                        span: self.current_token.span.clone(),
+                        loc: self.current_location(),
+                    });
+                }
+                _ => {
+                    break;
+                }
+            }
+
+            self.next_token();
+        }
+
+        if sub_packages.len() == 1 {
+            return Ok(FromPackage {
+                identifier: sub_packages[0].package_name.clone(),
+                sub_packages: vec![],
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc: self.current_location(),
+            });
+        }
+
+        Ok(FromPackage {
+            identifier,
+            sub_packages,
+            span: Span {
+                start,
+                end: self.current_token.span.end,
+            },
+            loc: self.current_location(),
+        })
+    }
+
     // The get_type_token function is responsible for parsing a type token from the source code and returning its corresponding TokenKind.
     // This function supports both primitive types (e.g., integers, floating points, booleans) and user-defined types.
     // Additionally, it handles pointer types by recognizing dereference (*) and reference (&) symbols.

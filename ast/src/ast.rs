@@ -31,6 +31,7 @@ impl Program {
 #[derive(Debug, Clone)]
 pub enum Expression {
     Identifier(Identifier),
+    FromPackage(FromPackage),
     Assignment(Box<Assignment>),
     Literal(Literal),
     Prefix(UnaryExpression),
@@ -44,7 +45,6 @@ pub enum Expression {
     Dereference(Box<Expression>),
     StructInit(StructInit),
     StructFieldAccess(Box<StructFieldAccess>),
-    PackageCall(PackageCall),
     CastAs(CastAs)
 }
 
@@ -67,7 +67,7 @@ pub enum UnaryOperatorType {
 
 #[derive(Debug, Clone)]
 pub struct UnaryOperator {
-    pub identifier: Identifier,
+    pub identifier: FromPackage,
     pub ty: UnaryOperatorType,
     pub span: Span,
     pub loc: Location
@@ -75,16 +75,10 @@ pub struct UnaryOperator {
 
 #[derive(Debug, Clone)]
 pub struct FuncCall {
-    pub func_name: Identifier,
+    pub func_name: FromPackage,
     pub arguments: Vec<Expression>,
     pub span: Span,
     pub loc: Location
-}
-
-#[derive(Debug, Clone)]
-pub struct PackageCall {
-    pub sub_packages: Vec<PackagePath>,
-    pub chains: Vec<FieldAccessOrMethodCall>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +105,14 @@ pub struct FieldAccess {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Identifier {
     pub name: String,
+    pub span: Span,
+    pub loc: Location
+}
+
+#[derive(Debug, Clone)]
+pub struct FromPackage {
+    pub sub_packages: Vec<PackagePath>,
+    pub identifier: Identifier,
     pub span: Span,
     pub loc: Location
 }
@@ -283,7 +285,7 @@ pub struct Struct {
 
 #[derive(Debug, Clone)]
 pub struct StructInit {
-    pub name: String,
+    pub struct_name: FromPackage,
     pub field_inits: Vec<FieldInit>,
     pub loc: Location,
 }

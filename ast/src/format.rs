@@ -91,7 +91,7 @@ impl fmt::Display for CastAs {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::UnaryOperator(unop) => write!(f, "{}{}", unop.identifier, unop.ty),
+            Expression::UnaryOperator(unop) => write!(f, "{}{}", Expression::FromPackage(unop.identifier.clone()).to_string(), unop.ty),
             Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
             Expression::Literal(literal) => write!(f, "{}", literal.to_string()),
             Expression::Prefix(UnaryExpression { operand, operator, .. }) => {
@@ -106,7 +106,18 @@ impl fmt::Display for Expression {
                 let mut chains = chains.clone();
 
                 let first = chains.first().unwrap().method_call.clone().unwrap();
-                write!(f, "{}({})", first.func_name, format_expressions(&first.arguments))?;
+                write!(
+                    f,
+                    "{}({})",
+                    Expression::FromPackage(FromPackage {
+                        sub_packages: first.func_name.sub_packages,
+                        identifier: first.func_name.identifier,
+                        span: first.span,
+                        loc: first.loc
+                    })
+                    .to_string(),
+                    format_expressions(&first.arguments)
+                )?;
                 chains.remove(0);
 
                 for item in chains {
@@ -114,7 +125,7 @@ impl fmt::Display for Expression {
                         write!(
                             f,
                             ".{}({})",
-                            method_call.func_name,
+                            method_call.func_name.identifier.name,
                             format_expressions(&method_call.arguments)
                         )?;
                     }
@@ -154,7 +165,7 @@ impl fmt::Display for Expression {
             Expression::AddressOf(expression) => write!(f, "&({})", expression),
             Expression::Dereference(expression) => write!(f, "(*{})", expression),
             Expression::StructInit(struct_init) => {
-                write!(f, "struct {} {{", struct_init.name)?;
+                write!(f, "{} {{", Expression::FromPackage(struct_init.struct_name.clone()).to_string())?;
                 for field in &struct_init.field_inits {
                     write!(f, "{}: {};", field.name, field.value)?;
                 }
@@ -169,7 +180,17 @@ impl fmt::Display for Expression {
                     }
 
                     if let Some(method_call) = item.method_call.clone() {
-                        write!(f, ".{}(", method_call.func_name.name)?;
+                        write!(
+                            f,
+                            ".{}(",
+                            Expression::FromPackage(FromPackage {
+                                sub_packages: method_call.func_name.sub_packages,
+                                identifier: method_call.func_name.identifier,
+                                span: method_call.span,
+                                loc: method_call.loc
+                            })
+                            .to_string()
+                        )?;
 
                         if method_call.arguments.len() > 0 {
                             for (idx, arg) in method_call.arguments.iter().enumerate() {
@@ -190,14 +211,17 @@ impl fmt::Display for Expression {
             Expression::CastAs(cast_as) => {
                 write!(f, "{}", cast_as)
             }
-            Expression::PackageCall(package_call) => {
-                let package_name = package_path_as_string(package_call.sub_packages.clone());
-                write!(f, "{}", package_name)?;
-                write!(
-                    f,
-                    "{}",
-                    Expression::FieldAccessOrMethodCall(package_call.chains.clone()).to_string()
-                )
+            Expression::FromPackage(from_package) => {
+                if from_package.sub_packages.len() > 0 {
+                    write!(
+                        f,
+                        "{}::{}",
+                        package_path_as_string(from_package.sub_packages.clone()),
+                        from_package.identifier.name
+                    )
+                } else {
+                    write!(f, "{}", from_package.identifier.name)
+                }
             }
         }
     }

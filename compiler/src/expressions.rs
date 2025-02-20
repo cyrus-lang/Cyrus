@@ -63,17 +63,7 @@ impl Compiler {
                 null_mut()
             }
             Expression::CastAs(cast_as) => self.compile_cast_as(Rc::clone(&scope), cast_as),
-            Expression::PackageCall(package_call) => self.compile_package_call(Rc::clone(&scope), package_call),
         }
-    }
-
-    fn compile_package_call(&mut self, scope: ScopeRef, package_call: PackageCall) -> *mut gcc_jit_rvalue {
-        let package_name =
-            package_path_as_string(package_call.sub_packages[0..package_call.sub_packages.len() - 1].to_vec());
-
-       dbg!(package_call);
-
-        todo!();
     }
 
     fn compile_cast_as(&mut self, scope: ScopeRef, cast_as: CastAs) -> *mut gcc_jit_rvalue {

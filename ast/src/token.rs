@@ -132,6 +132,7 @@ impl fmt::Display for TokenKind {
             Self::Or => write!(f, "||"),
             Self::Semicolon => write!(f, ";"),
             Self::Colon => write!(f, ":"),
+            Self::DoubleColon => write!(f, "::"),
             // Keywords
             Self::Function => write!(f, "fn"),
             Self::Match => write!(f, "match"),
