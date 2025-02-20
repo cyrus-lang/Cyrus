@@ -2,8 +2,6 @@ use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
 use parser::parse_program;
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::ffi::CString;
 use std::path::Path;
 use utils::compiler_error;

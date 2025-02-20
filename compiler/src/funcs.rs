@@ -242,7 +242,7 @@ impl Compiler {
         let binding = self.func_table.borrow_mut();
         let func_metadata = binding.iter().find(|&item| {
             if let Some(imported_from) = &item.1.imported_from {
-                *imported_from == from_package.to_string()
+                *imported_from == sub_packages_as_string(from_package.sub_packages.clone())
             } else {
                 from_package.identifier.name == *item.0
             }

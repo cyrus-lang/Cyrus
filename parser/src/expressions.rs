@@ -43,6 +43,46 @@ impl<'a> Parser<'a> {
         let span = self.current_token.span.clone();
 
         let expr = match &self.current_token.clone().kind {
+            TokenKind::Identifier { .. } => {
+                let from_package = self.parse_from_package()?;
+
+                if self.peek_token_is(TokenKind::Increment) {
+                    self.next_token();
+                    Expression::UnaryOperator(UnaryOperator {
+                        identifier: from_package.clone(),
+                        ty: UnaryOperatorType::PostIncrement,
+                        span,
+                        loc: self.current_location(),
+                    })
+                } else if self.peek_token_is(TokenKind::Decrement) {
+                    self.next_token();
+                    Expression::UnaryOperator(UnaryOperator {
+                        identifier: from_package.clone(),
+                        ty: UnaryOperatorType::PostDecrement,
+                        span,
+                        loc: self.current_location(),
+                    })
+                } else if self.peek_token_is(TokenKind::Assign) {
+                    return self.parse_assignment(from_package);
+                } else if self.peek_token_is(TokenKind::LeftBracket) {
+                    let array_index = self.parse_array_index()?;
+
+                    if self.peek_token_is(TokenKind::Assign) {
+                        return self.parse_array_index_assign(array_index);
+                    }
+
+                    Expression::ArrayIndex(array_index)
+                } else if self.current_token_is(TokenKind::LeftBrace) {
+                    return self.parse_struct_init(from_package);
+                } else if self.current_token_is(TokenKind::LeftParen) {
+                    return self.parse_field_access_or_method_call(
+                        ast::ast::Expression::FromPackage(from_package.clone()),
+                        from_package.span.start,
+                    );
+                } else {
+                    Expression::FromPackage(from_package)
+                }
+            }
             TokenKind::Ampersand => {
                 self.next_token();
                 Expression::AddressOf(Box::new(self.parse_prefix_expression()?))
@@ -96,41 +136,6 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
-            TokenKind::Identifier { .. } => {
-                let from_package = self.parse_from_package()?;
-
-                if self.peek_token_is(TokenKind::Increment) {
-                    self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        identifier: from_package.clone(),
-                        ty: UnaryOperatorType::PostIncrement,
-                        span,
-                        loc: self.current_location(),
-                    })
-                } else if self.peek_token_is(TokenKind::Decrement) {
-                    self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        identifier: from_package.clone(),
-                        ty: UnaryOperatorType::PostDecrement,
-                        span,
-                        loc: self.current_location(),
-                    })
-                } else if self.peek_token_is(TokenKind::Assign) {
-                    return self.parse_assignment(from_package);
-                } else if self.peek_token_is(TokenKind::LeftBracket) {
-                    let array_index = self.parse_array_index()?;
-
-                    if self.peek_token_is(TokenKind::Assign) {
-                        return self.parse_array_index_assign(array_index);
-                    }
-
-                    Expression::ArrayIndex(array_index)
-                } else if self.current_token_is(TokenKind::LeftBrace) {
-                    return self.parse_struct_init(from_package);
-                } else {
-                    Expression::FromPackage(from_package)
-                }
-            }
             bool_token @ TokenKind::True | bool_token @ TokenKind::False => {
                 let raw = match bool_token {
                     TokenKind::True => true,
@@ -179,7 +184,7 @@ impl<'a> Parser<'a> {
                 })
             }
         };
-        
+
         if self.current_token_is(TokenKind::Dot) {
             return self.parse_struct_member(Box::new(expr));
         }
@@ -595,7 +600,7 @@ impl<'a> Parser<'a> {
     pub fn parse_struct_init(&mut self, struct_name: FromPackage) -> Result<Expression, ParseError> {
         let mut field_inits: Vec<FieldInit> = Vec::new();
         let start = self.current_token.span.start;
-        
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {

@@ -1,12 +1,5 @@
-import sample;
+import std::io;
 
 pub fn main() {
-    #result = sample::Sample {
-        name: "Taha",
-        age: 17
-    };
-
-    result.age;
-
-    sample::Sample.dosomething();
+    std::io::printf("Hello World\n");
 }

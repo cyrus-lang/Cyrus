@@ -58,9 +58,18 @@ impl Compiler {
             Expression::Prefix(unary_expression) => self.compile_prefix_expression(scope, unary_expression),
             Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
             Expression::FieldAccessOrMethodCall(mut chains) => {
+                let chains_copy = chains.clone();
                 let rvalue = self.eval_first_item_of_chains(Rc::clone(&scope), chains.clone());
                 chains.remove(0);
-                self.field_access_or_method_call(Rc::clone(&scope), rvalue, chains)
+                let result = self.field_access_or_method_call(Rc::clone(&scope), rvalue, chains.clone());
+
+                let last_chain = chains_copy.last().unwrap();
+                if let Some(method_call) = last_chain.method_call.clone() {
+                    self.eval_func_call(result, method_call.loc);
+                    null_mut()
+                } else {
+                    result
+                }
             }
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
