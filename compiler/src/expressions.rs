@@ -70,7 +70,7 @@ impl Compiler {
                 null_mut()
             }
             Expression::CastAs(cast_as) => self.compile_cast_as(Rc::clone(&scope), cast_as),
-            Expression::FromPackage(from_package) => self.compile_from_package(Rc::clone(&scope), from_pakcage),
+            Expression::FromPackage(from_package) => self.compile_from_package(Rc::clone(&scope), from_package),
         }
     }
 
@@ -314,76 +314,67 @@ impl Compiler {
     fn compile_unary_operator(&mut self, scope: ScopeRef, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
         let loc = self.gccjit_location(unary_operator.loc.clone());
 
-        match scope.borrow_mut().get(unary_operator.identifier.name.clone()) {
-            Some(lvalue) => {
-                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.borrow_mut().lvalue) };
-                let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+        let (lvalue, rvalue) = self.access_identifier_values(Rc::clone(&scope), unary_operator.identifier);
 
-                if !self.is_int_data_type(rvalue_type) {
-                    compiler_error!("Unary operations are only valid for integer types.");
-                }
+        let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
 
-                let fixed_number = unsafe { gcc_jit_context_new_rvalue_from_int(self.context, rvalue_type, 1) };
+        if !self.is_int_data_type(rvalue_type) {
+            compiler_error!("Unary operations are only valid for integer types.");
+        }
 
-                let bin_op = match unary_operator.ty.clone() {
-                    UnaryOperatorType::PostIncrement | UnaryOperatorType::PreIncrement => {
-                        gcc_jit_binary_op::GCC_JIT_BINARY_OP_PLUS
-                    }
-                    UnaryOperatorType::PostDecrement | UnaryOperatorType::PreDecrement => {
-                        gcc_jit_binary_op::GCC_JIT_BINARY_OP_MINUS
-                    }
-                };
+        let fixed_number = unsafe { gcc_jit_context_new_rvalue_from_int(self.context, rvalue_type, 1) };
 
-                let guard = self.block_func_ref.lock().unwrap();
-
-                let tmp_local: *mut gcc_jit_lvalue;
-                if let (Some(block), Some(func)) = (guard.block, guard.func) {
-                    let tmp_local_name = CString::new("temp").unwrap();
-
-                    tmp_local = unsafe { gcc_jit_function_new_local(func, loc, rvalue_type, tmp_local_name.as_ptr()) };
-
-                    if !self.block_is_terminated(block) {
-                        unsafe { gcc_jit_block_add_assignment(block, loc, tmp_local, rvalue) };
-                    }
-                } else {
-                    compiler_error!("Unary operators (++, --, etc.) are only allowed inside functions.");
-                }
-
-                let tmp_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(tmp_local) };
-
-                // Assign incremented/decremented value in the variable
-                if let Some(block) = guard.block {
-                    if !self.block_is_terminated(block) {
-                        unsafe {
-                            gcc_jit_block_add_assignment_op(
-                                block,
-                                loc,
-                                lvalue.borrow_mut().lvalue,
-                                bin_op,
-                                gcc_jit_context_new_cast(self.context, loc, fixed_number, rvalue_type),
-                            )
-                        };
-                    }
-                }
-
-                let result = rvalue.clone();
-
-                let result = match unary_operator.ty {
-                    UnaryOperatorType::PreIncrement => result,
-                    UnaryOperatorType::PostIncrement => tmp_rvalue,
-                    UnaryOperatorType::PreDecrement => result,
-                    UnaryOperatorType::PostDecrement => tmp_rvalue,
-                };
-
-                result
+        let bin_op = match unary_operator.ty.clone() {
+            UnaryOperatorType::PostIncrement | UnaryOperatorType::PreIncrement => {
+                gcc_jit_binary_op::GCC_JIT_BINARY_OP_PLUS
             }
-            None => {
-                compiler_error!(format!(
-                    "'{}' is not defined in this scope.",
-                    unary_operator.identifier.name
-                ))
+            UnaryOperatorType::PostDecrement | UnaryOperatorType::PreDecrement => {
+                gcc_jit_binary_op::GCC_JIT_BINARY_OP_MINUS
+            }
+        };
+
+        let guard = self.block_func_ref.lock().unwrap();
+
+        let tmp_local: *mut gcc_jit_lvalue;
+        if let (Some(block), Some(func)) = (guard.block, guard.func) {
+            let tmp_local_name = CString::new("temp").unwrap();
+
+            tmp_local = unsafe { gcc_jit_function_new_local(func, loc, rvalue_type, tmp_local_name.as_ptr()) };
+
+            if !self.block_is_terminated(block) {
+                unsafe { gcc_jit_block_add_assignment(block, loc, tmp_local, rvalue) };
+            }
+        } else {
+            compiler_error!("Unary operators (++, --, etc.) are only allowed inside functions.");
+        }
+
+        let tmp_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(tmp_local) };
+
+        // Assign incremented/decremented value in the variable
+        if let Some(block) = guard.block {
+            if !self.block_is_terminated(block) {
+                unsafe {
+                    gcc_jit_block_add_assignment_op(
+                        block,
+                        loc,
+                        lvalue,
+                        bin_op,
+                        gcc_jit_context_new_cast(self.context, loc, fixed_number, rvalue_type),
+                    )
+                };
             }
         }
+
+        let result = rvalue.clone();
+
+        let result = match unary_operator.ty {
+            UnaryOperatorType::PreIncrement => result,
+            UnaryOperatorType::PostIncrement => tmp_rvalue,
+            UnaryOperatorType::PreDecrement => result,
+            UnaryOperatorType::PostDecrement => tmp_rvalue,
+        };
+
+        result
     }
 
     fn compile_prefix_expression(&mut self, scope: ScopeRef, unary_expression: UnaryExpression) -> *mut gcc_jit_rvalue {

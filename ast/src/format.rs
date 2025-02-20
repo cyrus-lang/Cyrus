@@ -226,16 +226,7 @@ impl fmt::Display for Expression {
                 write!(f, "{}", cast_as)
             }
             Expression::FromPackage(from_package) => {
-                if from_package.sub_packages.len() > 0 {
-                    write!(
-                        f,
-                        "{}::{}",
-                        package_path_as_string(from_package.sub_packages.clone()),
-                        from_package.identifier.name
-                    )
-                } else {
-                    write!(f, "{}", from_package.identifier.name)
-                }
+                write!(f, "{}", from_package.to_string())
             }
         }
     }
@@ -270,5 +261,20 @@ impl fmt::Display for Node {
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", format_statements(&self.body))
+    }
+}
+
+impl fmt::Display for FromPackage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.sub_packages.len() > 0 {
+            write!(
+                f,
+                "{}::{}",
+                package_path_as_string(self.sub_packages.clone()),
+                self.identifier.name
+            )
+        } else {
+            write!(f, "{}", self.identifier.name)
+        }
     }
 }

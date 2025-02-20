@@ -112,8 +112,16 @@ impl Compiler {
                 if let Some(method_call) = &chains[0].method_call {
                     self.compile_func_call(Rc::clone(&scope), method_call.clone())
                 } else if let Some(field_access) = &chains[0].field_access {
-                    self.access_identifier_values(Rc::clone(&scope), field_access.identifier.clone())
-                        .1
+                    self.access_identifier_values(
+                        Rc::clone(&scope),
+                        FromPackage {
+                            sub_packages: vec![],
+                            identifier: field_access.identifier.clone(),
+                            span: field_access.identifier.span.clone(),
+                            loc: field_access.identifier.loc.clone(),
+                        },
+                    )
+                    .1
                 } else {
                     panic!();
                 }
@@ -128,11 +136,13 @@ impl Compiler {
                 unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
 
                 if let Some(method_call) = item.method_call {
+                    let method_name = method_call.func_name.clone(); // TODO
+
                     if let Some((struct_name, struct_metadata)) = self.find_struct(result) {
                         let method_def = self.get_struct_method_def(
                             struct_metadata.methods.clone(),
                             struct_name.clone(),
-                            method_call.func_name.name.clone(),
+                            method_call.func_name.identifier.name.clone(),
                         );
 
                         // Inserting self argument
@@ -171,7 +181,7 @@ impl Compiler {
                         result = self.compile_struct_method_call(
                             struct_name.clone(),
                             struct_metadata.clone(),
-                            method_call.func_name.name,
+                            method_call.func_name.identifier.name,
                             arguments,
                         );
                     }
@@ -221,13 +231,6 @@ impl Compiler {
     ) -> *mut gcc_jit_rvalue {
         let mut method_call_chain = statement.chains.clone();
 
-        let (func, block) = {
-            let guard = self.block_func_ref.lock().unwrap();
-            (guard.func, guard.block)
-        };
-
-        let mut first_chain_func_name = String::from("<UB>");
-
         let mut result: *mut gcc_jit_rvalue = null_mut();
 
         if let Expression::Identifier(identifier) = statement.expr.clone() {
@@ -243,12 +246,11 @@ impl Compiler {
                     let item = statement.chains[0].clone();
 
                     if let Some(method_call) = item.method_call {
-                        first_chain_func_name = method_call.func_name.name.clone();
-
+                        let method_name = method_call.func_name.identifier.name;
                         let method_def = self.get_struct_method_def(
                             struct_metadata.methods.clone(),
                             identifier.name.clone(),
-                            method_call.func_name.name.clone(),
+                            method_name.clone(),
                         );
 
                         let arguments = {
@@ -263,7 +265,7 @@ impl Compiler {
                         result = self.compile_struct_method_call(
                             identifier.name.clone(),
                             struct_metadata.clone(),
-                            method_call.func_name.name,
+                            method_name.clone(),
                             arguments,
                         );
 
@@ -287,14 +289,25 @@ impl Compiler {
         self.struct_field_access_or_method_call(Rc::clone(&scope), statement.chains)
     }
 
-    pub(crate) fn compile_struct_init(&mut self, scope: ScopeRef, struct_init: StructInit) -> *mut gcc_jit_rvalue {
-        let mut struct_metadata = {
-            let struct_table = self.global_struct_table.borrow();
-            match struct_table.get(&struct_init.name) {
-                Some(struct_statement) => struct_statement.clone(),
-                None => compiler_error!(format!("Undefined object '{}'", struct_init.name)),
+    pub(crate) fn get_struct(&mut self, from_package: FromPackage) -> StructMetadata {
+        let binding = self.global_struct_table.borrow_mut();
+        let struct_metadata = binding.iter().find(|&item| {
+            if let Some(import_from_package) = &item.1.import_from_package {
+                *import_from_package == from_package.to_string()
+            } else {
+                from_package.identifier.name == *item.0
             }
-        };
+        });
+
+        if let Some(struct_metadata) = struct_metadata {
+            return struct_metadata.1.clone();
+        }
+
+        compiler_error!(format!("Undefined object '{}'.", from_package.to_string()))
+    }
+
+    pub(crate) fn compile_struct_init(&mut self, scope: ScopeRef, struct_init: StructInit) -> *mut gcc_jit_rvalue {
+        let mut struct_metadata = self.get_struct(struct_init.struct_name.clone());
 
         let struct_type = unsafe { gcc_jit_struct_as_type(struct_metadata.struct_type.clone()) };
         let mut values: Vec<*mut gcc_jit_rvalue> = Vec::new();
@@ -307,7 +320,7 @@ impl Compiler {
                 }
                 None => compiler_error!(format!(
                     "Field '{}' required to be set in struct '{}'",
-                    field.name, struct_init.name
+                    field.name, struct_init.struct_name.to_string()
                 )),
             }
         }
@@ -366,7 +379,7 @@ impl Compiler {
                 field_ptrs: field_ptrs.clone(),
                 methods: Vec::new(),
                 method_ptrs: Vec::new(),
-                import_from_package: None
+                import_from_package: None,
             },
         );
 
@@ -380,7 +393,7 @@ impl Compiler {
             methods,
             field_ptrs,
             method_ptrs,
-            import_from_package: None
+            import_from_package: None,
         };
 
         self.global_struct_table
