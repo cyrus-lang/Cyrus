@@ -1,3 +1,4 @@
+use core::panic;
 use std::ffi::CString;
 use std::ptr::null_mut;
 use std::rc::Rc;
@@ -25,6 +26,7 @@ pub struct StructMetadata {
     pub(crate) field_ptrs: Vec<*mut gcc_jit_field>,
     pub(crate) methods: Vec<StructMethodMetadata>,
     pub(crate) method_ptrs: Vec<*mut gcc_jit_function>,
+    pub(crate) import_from_package: Option<String>,
 }
 
 impl Compiler {
@@ -98,9 +100,7 @@ impl Compiler {
     pub(crate) fn struct_field_access_or_method_call(
         &mut self,
         scope: ScopeRef,
-        first_chain_func_name: String,
-        chains: Vec<FieldAccessOrMethodCall>,
-        rvalue: *mut gcc_jit_rvalue,
+        mut chains: Vec<FieldAccessOrMethodCall>,
     ) -> *mut gcc_jit_rvalue {
         let (func, block) = {
             let guard = self.block_func_ref.lock().unwrap();
@@ -108,13 +108,20 @@ impl Compiler {
         };
 
         if let (Some(func), Some(block)) = (func, block) {
-            let mut result: *mut gcc_jit_rvalue = rvalue;
+            let mut result: *mut gcc_jit_rvalue = {
+                if let Some(method_call) = &chains[0].method_call {
+                    self.compile_func_call(Rc::clone(&scope), method_call.clone())
+                } else if let Some(field_access) = &chains[0].field_access {
+                    self.access_identifier_values(Rc::clone(&scope), field_access.identifier.clone())
+                        .1
+                } else {
+                    panic!();
+                }
+            };
+            chains.remove(0);
 
             if result == null_mut() {
-                compiler_error!(format!(
-                    "Func '{}' returns null value, hence chained func call is an undefined behaviour.",
-                    first_chain_func_name
-                ));
+                compiler_error!("Chained struct_field_access_or_method_call on null value.");
             }
 
             for item in chains {
@@ -277,12 +284,7 @@ impl Compiler {
             compiler_error!("Unexpected behaviour in struct field access compilation.");
         }
 
-        self.struct_field_access_or_method_call(
-            Rc::clone(&scope),
-            first_chain_func_name.to_string(),
-            statement.chains,
-            result,
-        )
+        self.struct_field_access_or_method_call(Rc::clone(&scope), statement.chains)
     }
 
     pub(crate) fn compile_struct_init(&mut self, scope: ScopeRef, struct_init: StructInit) -> *mut gcc_jit_rvalue {
@@ -364,6 +366,7 @@ impl Compiler {
                 field_ptrs: field_ptrs.clone(),
                 methods: Vec::new(),
                 method_ptrs: Vec::new(),
+                import_from_package: None
             },
         );
 
@@ -377,6 +380,7 @@ impl Compiler {
             methods,
             field_ptrs,
             method_ptrs,
+            import_from_package: None
         };
 
         self.global_struct_table

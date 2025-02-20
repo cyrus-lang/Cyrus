@@ -1,20 +1,5 @@
-pub struct Person {
-    name: string;
-    age: i32;
-
-    pub fn sample() {
-        #a = 1 + 2;
-    }
-}
-
-fn kirkoskon(): Person {
-    return Person {
-        name: "Taha",
-        age: 17
-    };
-}
+import std::io;
 
 pub fn main() {
-    #a = kirkoskon().name;
-    // akasasldad(std::io::printf().sample());
+
 }

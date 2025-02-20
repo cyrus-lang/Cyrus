@@ -2,7 +2,6 @@ use ast::ast::*;
 use control_flow::LoopBlockPair;
 use funcs::{FuncMetadata, FuncParamsRecords};
 use gccjit_sys::*;
-use import::ImportedPackageMetadata;
 use options::CompilerOptions;
 use scope::{Scope, ScopeRef};
 use std::{
@@ -41,7 +40,6 @@ pub struct Compiler {
     file_path: String,
     program: Program,
     context: *mut gcc_jit_context,
-    imported_package_table: RefCell<HashMap<String, ImportedPackageMetadata>>,
     func_table: RefCell<HashMap<String, FuncMetadata>>,
     global_struct_table: RefCell<HashMap<String, StructMetadata>>,
     #[allow(dead_code)] // FIXME
@@ -104,7 +102,6 @@ impl Compiler {
             file_path,
             compiled_object_files: Vec::new(),
             opts: CompilerOptions::default(),
-            imported_package_table: RefCell::new(HashMap::new()),
         }
     }
 
@@ -135,6 +132,7 @@ impl Compiler {
                         ptr,
                         params: func_def.params,
                         return_type,
+                        import_from_package: None
                     },
                 );
             }

@@ -12,12 +12,6 @@ use crate::funcs::FuncMetadata;
 use crate::structs::StructMetadata;
 use crate::Compiler;
 
-#[derive(Debug, Clone)]
-pub struct ImportedPackageMetadata {
-    func_table: RefCell<HashMap<String, FuncMetadata>>,
-    global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
-}
-
 impl Compiler {
     pub(crate) fn compile_import(&mut self, import: Import) {
         let file_path = self.file_path.clone();
@@ -75,23 +69,17 @@ impl Compiler {
         compiler.compile();
         compiler.make_object_file(output_library_path.clone());
 
-        self.imported_package_table.borrow_mut().insert(
-            package_path_as_string(import.sub_packages.clone()),
-            ImportedPackageMetadata {
-                func_table: compiler.func_table.borrow_mut().clone().into(),
-                global_vars_table: compiler.global_vars_table.borrow_mut().clone().into(),
-            },
-        );
+        let package_name = package_path_as_string(import.sub_packages.clone());
 
         self.compiled_object_files.push(output_library_path.clone());
 
-        self.import_package(compiler, import);
+        self.import_package(compiler, package_name, import);
 
         let optname = CString::new(output_library_path).unwrap();
         unsafe { gcc_jit_context_add_driver_option(self.context, optname.as_ptr()) };
     }
 
-    fn import_package(&mut self, compiler: Compiler, import: Import) {
+    fn import_package(&mut self, compiler: Compiler, package_name: String, import: Import) {
         // Import functions
         for (key, value) in compiler.func_table.borrow_mut().clone() {
             if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
@@ -112,6 +100,7 @@ impl Compiler {
                         ptr: func_ptr,
                         params: value.params,
                         return_type: value.return_type,
+                        import_from_package: Some(package_name.clone()),
                     },
                 );
             }
@@ -141,6 +130,7 @@ impl Compiler {
                         field_ptrs: struct_field_ptrs.clone(),
                         methods: Vec::new(),
                         method_ptrs: Vec::new(),
+                        import_from_package: Some(package_name.clone()),
                     },
                 );
 
@@ -164,6 +154,7 @@ impl Compiler {
                         field_ptrs: struct_field_ptrs,
                         methods: value.methods,
                         method_ptrs: methods_decl,
+                        import_from_package: Some(package_name.clone()),
                     },
                 );
             }

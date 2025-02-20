@@ -1,7 +1,6 @@
 use std::ffi::CString;
 use std::ptr::null_mut;
 use std::rc::Rc;
-use std::str::CharIndices;
 
 use ast::ast::*;
 use ast::token::*;
@@ -13,7 +12,7 @@ use crate::scope::ScopeRef;
 use crate::Compiler;
 
 impl Compiler {
-    fn access_identifier_values(
+    pub(crate) fn access_identifier_values(
         &mut self,
         scope: ScopeRef,
         identifier: Identifier,
@@ -42,16 +41,8 @@ impl Compiler {
             Expression::Identifier(identifier) => self.compile_identifier(scope, identifier),
             Expression::Prefix(unary_expression) => self.compile_prefix_expression(scope, unary_expression),
             Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
-            Expression::FieldAccessOrMethodCall(mut chains) => {
-                if let Some(first_method_call) = chains[0].method_call.clone() {
-                    let result: *mut gcc_jit_rvalue =
-                        self.compile_func_call(Rc::clone(&scope), first_method_call.clone());
-
-                    chains.remove(0);
-
-                    return self.struct_field_access_or_method_call(Rc::clone(&scope), String::new(), chains, result);
-                }
-                null_mut()
+            Expression::FieldAccessOrMethodCall(chains) => {
+                self.struct_field_access_or_method_call(Rc::clone(&scope), chains)
             }
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
@@ -76,25 +67,13 @@ impl Compiler {
         }
     }
 
-    // fn compile_field_access_or_method_call_chain(
-    //     &mut self,
-    //     scope: ScopeRef,
-    //     chains: Vec<FieldAccessOrMethodCall>,
-    // ) -> *mut gcc_jit_rvalue {
-    //     todo!();
-    // }
-
     fn compile_package_call(&mut self, scope: ScopeRef, package_call: PackageCall) -> *mut gcc_jit_rvalue {
         let package_name =
             package_path_as_string(package_call.sub_packages[0..package_call.sub_packages.len() - 1].to_vec());
 
-        if let Some(metadata) = self.imported_package_table.borrow_mut().get(&package_name.clone()) {
-            // ANCHOR
-            // Perform stuff like method_call or field_access
-            todo!();
-        } else {
-            compiler_error!(format!("Package '{}' not defined in this module.", package_name));
-        }
+       dbg!(package_call);
+
+        todo!();
     }
 
     fn compile_cast_as(&mut self, scope: ScopeRef, cast_as: CastAs) -> *mut gcc_jit_rvalue {
@@ -293,8 +272,9 @@ impl Compiler {
             drop(block_func);
 
             let new_rvalue = match expr.clone() {
-                // TODO
-                // Expression::FuncCall(func_call) => self.compile_func_call(Rc::clone(&scope), func_call),
+                Expression::FieldAccessOrMethodCall(chains) => {
+                    return self.struct_field_access_or_method_call(scope, chains)
+                }
                 Expression::StructFieldAccess(struct_field_access) => {
                     self.compile_struct_field_access(Rc::clone(&scope), *struct_field_access.clone())
                 }

@@ -15,6 +15,7 @@ pub struct FuncMetadata {
     pub(crate) ptr: *mut gcc_jit_function,
     pub(crate) return_type: TokenKind,
     pub(crate) params: FunctionParams,
+    pub(crate) import_from_package: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +162,7 @@ impl Compiler {
                 ptr: func,
                 params: declare_function.params,
                 return_type,
+                import_from_package: None
             },
         );
     }
