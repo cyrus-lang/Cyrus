@@ -1,7 +1,7 @@
 use std::ptr::null_mut;
 
 use ast::{
-    ast::{integer_literal_as_value, Identifier},
+    ast::{integer_literal_as_value, FromPackage, Identifier},
     token::TokenKind,
 };
 use gccjit_sys::*;
@@ -82,8 +82,14 @@ impl Compiler {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_BOOL) }
     }
 
-    pub fn is_user_defined_type(&self, identifier: Identifier) -> bool {
-        match self.global_struct_table.borrow_mut().get(&identifier.name) {
+    pub fn is_user_defined_type(&self, from_package: FromPackage) -> bool {
+        match self.global_struct_table.borrow_mut().iter().find(|&item| {
+            if let Some(import_from_package) = &item.1.import_from_package {
+                *import_from_package == from_package.to_string()
+            } else {
+                from_package.identifier.name == *item.0
+            }
+        }) {
             Some(_) => true,
             None => false,
         }
@@ -137,7 +143,6 @@ impl Compiler {
                                         if !multi_dimensional {
                                             let elements_data_type =
                                                 self.token_as_data_type(context, *data_type.clone());
-
 
                                             array_type = unsafe {
                                                 gcc_jit_context_new_array_type(

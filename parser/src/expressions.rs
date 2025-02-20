@@ -130,8 +130,7 @@ impl<'a> Parser<'a> {
                     }
 
                     Expression::ArrayIndex(array_index)
-                } else if self.peek_token_is(TokenKind::LeftBrace) {
-                    self.next_token(); // consume latest identifier of the package_name
+                } else if self.current_token_is(TokenKind::LeftBrace) {
                     return self.parse_struct_init(from_package);
                 } else {
                     Expression::FromPackage(from_package)
@@ -185,8 +184,8 @@ impl<'a> Parser<'a> {
                 })
             }
         };
-
-        if self.peek_token_is(TokenKind::Dot) {
+        
+        if self.current_token_is(TokenKind::Dot) {
             return self.parse_struct_member(Box::new(expr));
         }
 
@@ -348,6 +347,8 @@ impl<'a> Parser<'a> {
         left: Expression,
         left_start: usize,
     ) -> Result<Expression, ParseError> {
+        todo!();
+
         let mut chains: Vec<FieldAccessOrMethodCall> = vec![FieldAccessOrMethodCall {
             method_call: Some(self.parse_func_call(left, left_start)?),
             field_access: None,
@@ -467,7 +468,6 @@ impl<'a> Parser<'a> {
 
         let mut chains: Vec<FieldAccessOrMethodCall> = Vec::new();
         self.next_token();
-        self.expect_current(TokenKind::Dot)?;
 
         loop {
             let member_start = self.current_token.span.start.clone();
@@ -602,7 +602,7 @@ impl<'a> Parser<'a> {
     pub fn parse_struct_init(&mut self, struct_name: FromPackage) -> Result<Expression, ParseError> {
         let mut field_inits: Vec<FieldInit> = Vec::new();
         let start = self.current_token.span.start;
-
+        
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {

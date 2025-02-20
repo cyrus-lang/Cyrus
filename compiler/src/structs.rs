@@ -95,12 +95,35 @@ impl Compiler {
                 method_name, struct_name
             ))
         }
+    }   
+
+    pub(crate) fn eval_first_item_of_chains(&mut self, scope: ScopeRef, chains: Vec<FieldAccessOrMethodCall>) -> *mut gcc_jit_rvalue {
+        let rvalue: *mut gcc_jit_rvalue = {
+            if let Some(method_call) = &chains[0].method_call {
+                self.compile_func_call(Rc::clone(&scope), method_call.clone())
+            } else if let Some(field_access) = &chains[0].field_access {
+                self.access_identifier_values(
+                    Rc::clone(&scope),
+                    FromPackage {
+                        sub_packages: vec![],
+                        identifier: field_access.identifier.clone(),
+                        span: field_access.identifier.span.clone(),
+                        loc: field_access.identifier.loc.clone(),
+                    },
+                )
+                .1
+            } else {
+                panic!();
+            }
+        };
+        rvalue
     }
 
-    pub(crate) fn struct_field_access_or_method_call(
+    pub(crate) fn field_access_or_method_call(
         &mut self,
         scope: ScopeRef,
-        mut chains: Vec<FieldAccessOrMethodCall>,
+        rvalue: *mut gcc_jit_rvalue,
+        chains: Vec<FieldAccessOrMethodCall>,
     ) -> *mut gcc_jit_rvalue {
         let (func, block) = {
             let guard = self.block_func_ref.lock().unwrap();
@@ -108,41 +131,23 @@ impl Compiler {
         };
 
         if let (Some(func), Some(block)) = (func, block) {
-            let mut result: *mut gcc_jit_rvalue = {
-                if let Some(method_call) = &chains[0].method_call {
-                    self.compile_func_call(Rc::clone(&scope), method_call.clone())
-                } else if let Some(field_access) = &chains[0].field_access {
-                    self.access_identifier_values(
-                        Rc::clone(&scope),
-                        FromPackage {
-                            sub_packages: vec![],
-                            identifier: field_access.identifier.clone(),
-                            span: field_access.identifier.span.clone(),
-                            loc: field_access.identifier.loc.clone(),
-                        },
-                    )
-                    .1
-                } else {
-                    panic!();
-                }
-            };
-            chains.remove(0);
+            let mut result = rvalue.clone();
 
             if result == null_mut() {
-                compiler_error!("Chained struct_field_access_or_method_call on null value.");
+                compiler_error!("Chained field_access_or_method_call on null value.");
             }
 
             for item in chains {
                 unsafe { gcc_jit_type_is_struct(gcc_jit_rvalue_get_type(result)) }; // check to be struct
 
                 if let Some(method_call) = item.method_call {
-                    let method_name = method_call.func_name.clone(); // TODO
+                    let method_name = method_call.func_name.identifier.name.clone();
 
                     if let Some((struct_name, struct_metadata)) = self.find_struct(result) {
                         let method_def = self.get_struct_method_def(
                             struct_metadata.methods.clone(),
                             struct_name.clone(),
-                            method_call.func_name.identifier.name.clone(),
+                            method_name.clone(),
                         );
 
                         // Inserting self argument
@@ -181,7 +186,7 @@ impl Compiler {
                         result = self.compile_struct_method_call(
                             struct_name.clone(),
                             struct_metadata.clone(),
-                            method_call.func_name.identifier.name,
+                            method_name,
                             arguments,
                         );
                     }
@@ -233,14 +238,9 @@ impl Compiler {
 
         let mut result: *mut gcc_jit_rvalue = null_mut();
 
-        if let Expression::Identifier(identifier) = statement.expr.clone() {
-            if self.is_user_defined_type(identifier.clone()) {
-                let struct_metadata = self
-                    .global_struct_table
-                    .borrow_mut()
-                    .get(&identifier.name.clone())
-                    .unwrap()
-                    .clone();
+        if let Expression::FromPackage(from_package) = statement.expr.clone() {
+            if self.is_user_defined_type(from_package.clone()) {
+                let struct_metadata = self.get_struct(from_package.clone());
 
                 if statement.chains.len() > 0 {
                     let item = statement.chains[0].clone();
@@ -249,7 +249,7 @@ impl Compiler {
                         let method_name = method_call.func_name.identifier.name;
                         let method_def = self.get_struct_method_def(
                             struct_metadata.methods.clone(),
-                            identifier.name.clone(),
+                            from_package.identifier.name.clone(),
                             method_name.clone(),
                         );
 
@@ -263,7 +263,7 @@ impl Compiler {
                         };
 
                         result = self.compile_struct_method_call(
-                            identifier.name.clone(),
+                            from_package.identifier.name.clone(),
                             struct_metadata.clone(),
                             method_name.clone(),
                             arguments,
@@ -286,7 +286,7 @@ impl Compiler {
             compiler_error!("Unexpected behaviour in struct field access compilation.");
         }
 
-        self.struct_field_access_or_method_call(Rc::clone(&scope), statement.chains)
+        self.field_access_or_method_call(Rc::clone(&scope), result, method_call_chain)
     }
 
     pub(crate) fn get_struct(&mut self, from_package: FromPackage) -> StructMetadata {

@@ -1,3 +1,14 @@
+// import std::io;
+
+struct Local {
+    name: string;
+}
+
 pub fn main() {
-    
+    #result = Local {
+        name: "Taha"
+    };
+
+    #name = result.name;
+
 }

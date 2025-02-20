@@ -17,29 +17,38 @@ impl Compiler {
         scope: ScopeRef,
         from_package: FromPackage,
     ) -> (*mut gcc_jit_lvalue, *mut gcc_jit_rvalue) {
-        todo!();
+        if from_package.sub_packages.len() == 0 {
+            // local defined identifier
+            if let Some(metadata) = scope.borrow_mut().get(from_package.identifier.name.clone()) {
+                let lvalue = metadata.borrow_mut().lvalue;
+                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
 
-        // if let Some(metadata) = scope.borrow_mut().get(identifier.name.clone()) {
-        //     let lvalue = metadata.borrow_mut().lvalue;
-        //     let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
+                return (lvalue, rvalue);
+            }
 
-        //     return (lvalue, rvalue);
-        // }
+            if let Some(values) = self.access_current_func_param(from_package.identifier.clone()) {
+                return values.clone();
+            }
+        }
 
-        // if let Some(values) = self.access_current_func_param(identifier.clone()) {
-        //     return values.clone();
-        // }
-
-        // compiler_error!(format!("'{}' is not defined in this scope.", identifier.name))
+        compiler_error!(format!("'{}' is not defined in this scope.", from_package.to_string()))
     }
 
     fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
-        todo!();
-        // self.access_identifier_values(scope, identifier).1
+        self.access_identifier_values(
+            scope,
+            FromPackage {
+                sub_packages: vec![],
+                identifier: identifier.clone(),
+                span: identifier.span.clone(),
+                loc: identifier.loc,
+            },
+        )
+        .1
     }
 
-    fn compile_from_package(&mut self, scope: ScopeRef, from_pakcage: FromPackage) -> *mut gcc_jit_rvalue {
-        todo!();
+    fn compile_from_package(&mut self, scope: ScopeRef, from_package: FromPackage) -> *mut gcc_jit_rvalue {
+        self.access_identifier_values(Rc::clone(&scope), from_package).1
     }
 
     pub(crate) fn compile_expression(&mut self, scope: ScopeRef, expr: Expression) -> *mut gcc_jit_rvalue {
@@ -48,8 +57,10 @@ impl Compiler {
             Expression::Identifier(identifier) => self.compile_identifier(scope, identifier),
             Expression::Prefix(unary_expression) => self.compile_prefix_expression(scope, unary_expression),
             Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
-            Expression::FieldAccessOrMethodCall(chains) => {
-                self.struct_field_access_or_method_call(Rc::clone(&scope), chains)
+            Expression::FieldAccessOrMethodCall(mut chains) => {
+                let rvalue = self.eval_first_item_of_chains(Rc::clone(&scope), chains.clone());
+                chains.remove(0);
+                self.field_access_or_method_call(Rc::clone(&scope), rvalue, chains)
             }
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
@@ -284,8 +295,10 @@ impl Compiler {
             drop(block_func);
 
             let new_rvalue = match expr.clone() {
-                Expression::FieldAccessOrMethodCall(chains) => {
-                    return self.struct_field_access_or_method_call(scope, chains)
+                Expression::FieldAccessOrMethodCall(mut chains) => {
+                    let rvalue = self.eval_first_item_of_chains(Rc::clone(&scope), chains.clone());
+                    chains.remove(0);
+                    return self.field_access_or_method_call(Rc::clone(&scope), rvalue, chains);
                 }
                 Expression::StructFieldAccess(struct_field_access) => {
                     self.compile_struct_field_access(Rc::clone(&scope), *struct_field_access.clone())
