@@ -26,7 +26,11 @@ impl Compiler {
             if let Some(expr) = variable.expr {
                 rvalue = match expr {
                     Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, var_type),
-                    Expression::FuncCall(func_call) => self.compile_func_call(Rc::clone(&scope), func_call),
+                    Expression::FieldAccessOrMethodCall(mut chains) => {
+                        let rvalue = self.eval_first_item_of_chains(Rc::clone(&scope), chains.clone());
+                        chains.remove(0);
+                        self.field_access_or_method_call(Rc::clone(&scope), rvalue, chains)
+                    }
                     Expression::StructFieldAccess(struct_field_access) => {
                         self.compile_struct_field_access(Rc::clone(&scope), *struct_field_access.clone())
                     }

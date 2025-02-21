@@ -1,0 +1,3 @@
+import dir1::module1;
+
+pub fn main() {}

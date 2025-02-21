@@ -91,7 +91,12 @@ impl fmt::Display for CastAs {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::UnaryOperator(unop) => write!(f, "{}{}", unop.identifier, unop.ty),
+            Expression::UnaryOperator(unop) => write!(
+                f,
+                "{}{}",
+                Expression::FromPackage(unop.identifier.clone()).to_string(),
+                unop.ty
+            ),
             Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
             Expression::Literal(literal) => write!(f, "{}", literal.to_string()),
             Expression::Prefix(UnaryExpression { operand, operator, .. }) => {
@@ -102,12 +107,39 @@ impl fmt::Display for Expression {
             }) => {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
-            Expression::FuncCall(FuncCall {
-                func_name,
-                arguments,
-                ..
-            }) => {
-                write!(f, "{}({})", func_name, format_expressions(arguments))
+            Expression::FieldAccessOrMethodCall(chains) => {
+                let mut chains = chains.clone();
+
+                let first = chains.first().unwrap().method_call.clone().unwrap();
+                write!(
+                    f,
+                    "{}({})",
+                    Expression::FromPackage(FromPackage {
+                        sub_packages: first.func_name.sub_packages,
+                        identifier: first.func_name.identifier,
+                        span: first.span,
+                        loc: first.loc
+                    })
+                    .to_string(),
+                    format_expressions(&first.arguments)
+                )?;
+                chains.remove(0);
+
+                for item in chains {
+                    if let Some(method_call) = &item.method_call {
+                        write!(
+                            f,
+                            ".{}({})",
+                            method_call.func_name.identifier.name,
+                            format_expressions(&method_call.arguments)
+                        )?;
+                    }
+
+                    if let Some(field_access) = &item.field_access {
+                        write!(f, ".{}", field_access.identifier.name,)?;
+                    }
+                }
+                write!(f, "")
             }
             Expression::Array(array) => {
                 write!(f, "[{}]", array_items_to_string(array.clone()))
@@ -119,7 +151,12 @@ impl fmt::Display for Expression {
                 }
                 write!(f, "")
             }
-            Expression::Assignment(assignment) => write!(f, "{} = {}", assignment.identifier, assignment.expr),
+            Expression::Assignment(assignment) => write!(
+                f,
+                "{} = {}",
+                Expression::FromPackage(assignment.identifier.clone()).to_string(),
+                assignment.expr
+            ),
             Expression::ArrayIndexAssign(array_index_assign) => {
                 let array_index = ArrayIndex {
                     identifier: array_index_assign.identifier.clone(),
@@ -138,7 +175,11 @@ impl fmt::Display for Expression {
             Expression::AddressOf(expression) => write!(f, "&({})", expression),
             Expression::Dereference(expression) => write!(f, "(*{})", expression),
             Expression::StructInit(struct_init) => {
-                write!(f, "struct {} {{", struct_init.name)?;
+                write!(
+                    f,
+                    "{} {{",
+                    Expression::FromPackage(struct_init.struct_name.clone()).to_string()
+                )?;
                 for field in &struct_init.field_inits {
                     write!(f, "{}: {};", field.name, field.value)?;
                 }
@@ -153,7 +194,17 @@ impl fmt::Display for Expression {
                     }
 
                     if let Some(method_call) = item.method_call.clone() {
-                        write!(f, ".{}(", method_call.func_name.name)?;
+                        write!(
+                            f,
+                            ".{}(",
+                            Expression::FromPackage(FromPackage {
+                                sub_packages: method_call.func_name.sub_packages,
+                                identifier: method_call.func_name.identifier,
+                                span: method_call.span,
+                                loc: method_call.loc
+                            })
+                            .to_string()
+                        )?;
 
                         if method_call.arguments.len() > 0 {
                             for (idx, arg) in method_call.arguments.iter().enumerate() {
@@ -173,7 +224,10 @@ impl fmt::Display for Expression {
             }
             Expression::CastAs(cast_as) => {
                 write!(f, "{}", cast_as)
-            },
+            }
+            Expression::FromPackage(from_package) => {
+                write!(f, "{}", from_package.to_string())
+            }
         }
     }
 }
@@ -207,5 +261,20 @@ impl fmt::Display for Node {
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", format_statements(&self.body))
+    }
+}
+
+impl fmt::Display for FromPackage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.sub_packages.len() > 0 {
+            write!(
+                f,
+                "{}::{}",
+                sub_packages_as_string(self.sub_packages.clone()),
+                self.identifier.name
+            )
+        } else {
+            write!(f, "{}", self.identifier.name)
+        }
     }
 }

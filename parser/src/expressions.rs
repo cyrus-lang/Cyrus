@@ -43,6 +43,46 @@ impl<'a> Parser<'a> {
         let span = self.current_token.span.clone();
 
         let expr = match &self.current_token.clone().kind {
+            TokenKind::Identifier { .. } => {
+                let from_package = self.parse_from_package()?;
+
+                if self.peek_token_is(TokenKind::Increment) {
+                    self.next_token();
+                    Expression::UnaryOperator(UnaryOperator {
+                        identifier: from_package.clone(),
+                        ty: UnaryOperatorType::PostIncrement,
+                        span,
+                        loc: self.current_location(),
+                    })
+                } else if self.peek_token_is(TokenKind::Decrement) {
+                    self.next_token();
+                    Expression::UnaryOperator(UnaryOperator {
+                        identifier: from_package.clone(),
+                        ty: UnaryOperatorType::PostDecrement,
+                        span,
+                        loc: self.current_location(),
+                    })
+                } else if self.peek_token_is(TokenKind::Assign) {
+                    return self.parse_assignment(from_package);
+                } else if self.peek_token_is(TokenKind::LeftBracket) {
+                    let array_index = self.parse_array_index()?;
+
+                    if self.peek_token_is(TokenKind::Assign) {
+                        return self.parse_array_index_assign(array_index);
+                    }
+
+                    Expression::ArrayIndex(array_index)
+                } else if self.current_token_is(TokenKind::LeftBrace) {
+                    return self.parse_struct_init(from_package);
+                } else if self.current_token_is(TokenKind::LeftParen) {
+                    return self.parse_field_access_or_method_call(
+                        ast::ast::Expression::FromPackage(from_package.clone()),
+                        from_package.span.start,
+                    );
+                } else {
+                    Expression::FromPackage(from_package)
+                }
+            }
             TokenKind::Ampersand => {
                 self.next_token();
                 Expression::AddressOf(Box::new(self.parse_prefix_expression()?))
@@ -71,21 +111,19 @@ impl<'a> Parser<'a> {
                 self.next_token(); // consume the operator
 
                 match self.current_token.kind.clone() {
-                    TokenKind::Identifier { name } => Expression::UnaryOperator(UnaryOperator {
-                        identifier: {
-                            Identifier {
-                                name,
-                                span: span.clone(),
-                                loc: self.current_location(),
-                            }
-                        },
-                        ty: unary_operator_type,
-                        span: Span {
-                            start: span.start,
-                            end: self.current_token.span.end,
-                        },
-                        loc: self.current_location(),
-                    }),
+                    TokenKind::Identifier { .. } => {
+                        let from_package = self.parse_from_package()?;
+
+                        Expression::UnaryOperator(UnaryOperator {
+                            identifier: from_package,
+                            ty: unary_operator_type,
+                            span: Span {
+                                start: span.start,
+                                end: self.current_token.span.end,
+                            },
+                            loc: self.current_location(),
+                        })
+                    }
                     _ => {
                         return Err(CompileTimeError {
                             location: self.current_location(),
@@ -96,49 +134,6 @@ impl<'a> Parser<'a> {
                             caret: true,
                         });
                     }
-                }
-            }
-            TokenKind::Identifier { name } => {
-                let identifier = Identifier {
-                    name: name.clone(),
-                    span: span.clone(),
-                    loc: self.current_location(),
-                };
-
-                if self.peek_token_is(TokenKind::Increment) {
-                    self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        identifier: identifier.clone(),
-                        ty: UnaryOperatorType::PostIncrement,
-                        span,
-                        loc: self.current_location(),
-                    })
-                } else if self.peek_token_is(TokenKind::Decrement) {
-                    self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        identifier: identifier.clone(),
-                        ty: UnaryOperatorType::PostDecrement,
-                        span,
-                        loc: self.current_location(),
-                    })
-                } else if self.peek_token_is(TokenKind::Assign) {
-                    return self.parse_assignment();
-                } else if self.peek_token_is(TokenKind::LeftBracket) {
-                    let array_index = self.parse_array_index()?;
-
-                    if self.peek_token_is(TokenKind::Assign) {
-                        return self.parse_array_index_assign(array_index);
-                    }
-
-                    Expression::ArrayIndex(array_index)
-                } else if self.peek_token_is(TokenKind::LeftBrace) {
-                    return self.parse_struct_init();
-                } else {
-                    Expression::Identifier(Identifier {
-                        name: identifier.name,
-                        span,
-                        loc: self.current_location(),
-                    })
                 }
             }
             bool_token @ TokenKind::True | bool_token @ TokenKind::False => {
@@ -190,7 +185,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        if self.peek_token_is(TokenKind::Dot) {
+        if self.current_token_is(TokenKind::Dot) {
             return self.parse_struct_member(Box::new(expr));
         }
 
@@ -258,23 +253,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LeftParen => {
                 self.next_token(); // consume the identifier token
-
-                let expr = self.parse_func_call(left, left_start);
-
-                // ANCHOR
-                // if !(self.current_token_is(TokenKind::RightParen) || self.current_token_is(TokenKind::Comma))
-                //     && self.current_token_is(TokenKind::Semicolon)
-                // {
-                //     return Some(Err(CompileTimeError {
-                //         location: self.current_location(),
-                //         etype: ParserErrorType::MissingSemicolon,
-                //         file_name: Some(self.lexer.file_name.clone()),
-                //         code_raw: Some(self.lexer.select(left_start..self.current_token.span.end)),
-                //         verbose: None,
-                //         caret: true,
-                //     }));
-                // }
-
+                let expr = self.parse_field_access_or_method_call(left, left_start);
                 Some(expr)
             }
             _ => None,
@@ -363,24 +342,92 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    pub fn parse_func_call(&mut self, left: Expression, left_start: usize) -> Result<Expression, ParseError> {
+    pub fn parse_field_access_or_method_call(
+        &mut self,
+        left: Expression,
+        left_start: usize,
+    ) -> Result<Expression, ParseError> {
+        let mut chains: Vec<FieldAccessOrMethodCall> = vec![FieldAccessOrMethodCall {
+            method_call: Some(self.parse_func_call(left, left_start)?),
+            field_access: None,
+        }];
+
+        while self.current_token_is(TokenKind::Dot) {
+            self.next_token(); // consume dot
+
+            let identifier = match self.current_token.kind.clone() {
+                TokenKind::Identifier { name } => Identifier {
+                    name,
+                    span: self.current_token.span.clone(),
+                    loc: self.current_location(),
+                },
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::ExpectedIdentifier,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(left_start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
+                    })
+                }
+            };
+            self.next_token();
+
+            if self.current_token_is(TokenKind::LeftParen) {
+                chains.push(FieldAccessOrMethodCall {
+                    method_call: Some(self.parse_func_call(ast::ast::Expression::Identifier(identifier), left_start)?),
+                    field_access: None,
+                });
+            } else {
+                chains.push(FieldAccessOrMethodCall {
+                    method_call: None,
+                    field_access: Some(FieldAccess {
+                        identifier,
+                        span: self.current_token.span.clone(),
+                        loc: self.current_location(),
+                    }),
+                });
+            }
+        }
+
+        Ok(Expression::FieldAccessOrMethodCall(chains))
+    }
+
+    pub fn parse_func_call(&mut self, left: Expression, left_start: usize) -> Result<FuncCall, ParseError> {
         let arguments = self.parse_expression_series(TokenKind::RightParen)?;
-
         let start = self.current_token.span.start;
-
         match left {
-            Expression::Identifier(identifier) => {
+            Expression::FromPackage(from_package) => {
                 self.next_token();
 
-                Ok(Expression::FuncCall(FuncCall {
-                    func_name: identifier,
+                Ok(FuncCall {
+                    func_name: from_package,
                     arguments: arguments.0,
                     span: Span {
                         start: left_start,
                         end: self.current_token.span.end,
                     },
                     loc: self.current_location(),
-                }))
+                })
+            }
+            Expression::Identifier(identifier) => {
+                self.next_token();
+
+                Ok(FuncCall {
+                    func_name: FromPackage {
+                        sub_packages: vec![],
+                        identifier,
+                        span: self.current_token.span.clone(),
+                        loc: self.current_location(),
+                    },
+                    arguments: arguments.0,
+                    span: Span {
+                        start: left_start,
+                        end: self.current_token.span.end,
+                    },
+                    loc: self.current_location(),
+                })
             }
             _ => {
                 return Err(CompileTimeError {
@@ -419,7 +466,6 @@ impl<'a> Parser<'a> {
 
         let mut chains: Vec<FieldAccessOrMethodCall> = Vec::new();
         self.next_token();
-        self.expect_current(TokenKind::Dot)?;
 
         loop {
             let member_start = self.current_token.span.start.clone();
@@ -437,7 +483,7 @@ impl<'a> Parser<'a> {
                         code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                         verbose: None,
                         caret: true,
-                    })
+                    });
                 }
             };
 
@@ -450,7 +496,15 @@ impl<'a> Parser<'a> {
                 self.expect_current(TokenKind::RightParen)?;
 
                 let method_call = FuncCall {
-                    func_name: method_name,
+                    func_name: FromPackage {
+                        sub_packages: vec![],
+                        identifier: method_name,
+                        span: Span {
+                            start: member_start,
+                            end: self.current_token.span.end,
+                        },
+                        loc: self.current_location(),
+                    },
                     arguments,
                     span: Span {
                         start: member_start,
@@ -543,139 +597,105 @@ impl<'a> Parser<'a> {
         })));
     }
 
-    pub fn parse_struct_init(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_struct_init(&mut self, struct_name: FromPackage) -> Result<Expression, ParseError> {
         let mut field_inits: Vec<FieldInit> = Vec::new();
         let start = self.current_token.span.start;
 
-        match self.current_token.kind.clone() {
-            TokenKind::Identifier { name: struct_name } => {
-                self.next_token(); // consume struct name
-                self.expect_current(TokenKind::LeftBrace)?;
+        self.expect_current(TokenKind::LeftBrace)?;
 
-                if self.current_token_is(TokenKind::RightBrace) {
-                    return Ok(Expression::StructInit(StructInit {
-                        name: struct_name,
-                        field_inits: Vec::new(),
-                        loc: self.current_location(),
-                    }));
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Expression::StructInit(StructInit {
+                struct_name: struct_name.clone(),
+                field_inits: Vec::new(),
+                loc: self.current_location(),
+            }));
+        }
+
+        loop {
+            let field_name = match self.current_token.kind.clone() {
+                TokenKind::Identifier { name } => {
+                    self.next_token(); // consume identifier
+                    name
                 }
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::ExpectedIdentifier,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
+                    })
+                }
+            };
+            self.expect_current(TokenKind::Colon)?;
 
-                loop {
-                    let field_name = match self.current_token.kind.clone() {
-                        TokenKind::Identifier { name } => {
-                            self.next_token(); // consume identifier
-                            name
-                        }
-                        _ => {
-                            return Err(CompileTimeError {
-                                location: self.current_location(),
-                                etype: ParserErrorType::ExpectedIdentifier,
-                                file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                                verbose: None,
-                                caret: true,
-                            })
-                        }
-                    };
-                    self.expect_current(TokenKind::Colon)?;
+            let value = self.parse_expression(Precedence::Lowest)?.0;
+            self.next_token(); // consume expr
 
-                    let value = self.parse_expression(Precedence::Lowest)?.0;
-                    self.next_token(); // consume expr
+            field_inits.push(FieldInit {
+                name: field_name,
+                value,
+                loc: self.current_location(),
+            });
 
-                    field_inits.push(FieldInit {
-                        name: field_name,
-                        value,
-                        loc: self.current_location(),
+            match self.current_token.kind.clone() {
+                TokenKind::EOF => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::MissingClosingBrace,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
                     });
+                }
+                TokenKind::Comma => {
+                    self.next_token();
 
-                    match self.current_token.kind.clone() {
-                        TokenKind::EOF => {
-                            return Err(CompileTimeError {
-                                location: self.current_location(),
-                                etype: ParserErrorType::MissingClosingBrace,
-                                file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                                verbose: None,
-                                caret: true,
-                            });
-                        }
-                        TokenKind::Comma => {
-                            self.next_token();
-
-                            if self.current_token_is(TokenKind::RightBrace) {
-                                break;
-                            }
-                        }
-                        TokenKind::RightBrace => {
-                            break;
-                        }
-                        _ => {
-                            return Err(CompileTimeError {
-                                location: self.current_location(),
-                                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                                file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                                verbose: None,
-                                caret: true,
-                            })
-                        }
+                    if self.current_token_is(TokenKind::RightBrace) {
+                        break;
                     }
                 }
-
-                return Ok(Expression::StructInit(StructInit {
-                    name: struct_name,
-                    field_inits,
-                    loc: self.current_location(),
-                }));
-            }
-            _ => {
-                return Err(CompileTimeError {
-                    location: self.current_location(),
-                    etype: ParserErrorType::ExpectedIdentifier,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                    verbose: None,
-                    caret: true,
-                })
+                TokenKind::RightBrace => {
+                    break;
+                }
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
+                    })
+                }
             }
         }
+
+        return Ok(Expression::StructInit(StructInit {
+            struct_name,
+            field_inits,
+            loc: self.current_location(),
+        }));
     }
 
-    pub fn parse_assignment(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_assignment(&mut self, from_package: FromPackage) -> Result<Expression, ParseError> {
         let start: usize = self.current_token.span.start;
 
-        if let TokenKind::Identifier { name } = self.current_token.kind.clone() {
-            let identifier = Identifier {
-                name,
-                span: self.current_token.span.clone(),
-                loc: self.current_location(),
-            };
-            self.next_token(); // consume identifier
-            self.next_token(); // consume assign
+        self.next_token(); // consume identifier
+        self.next_token(); // consume assign
 
-            let expr = self.parse_expression(Precedence::Lowest)?.0;
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
 
-            let end = self.current_token.span.end;
+        let end = self.current_token.span.end;
 
-            Ok(Expression::Assignment(Box::new(Assignment {
-                identifier,
-                expr,
-                span: Span { start, end },
-                loc: self.current_location(),
-            })))
-        } else {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::ExpectedIdentifier,
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(self.current_token.span.start..self.current_token.span.end),
-                ),
-                verbose: None,
-                caret: true,
-            });
-        }
+        Ok(Expression::Assignment(Box::new(Assignment {
+            identifier: from_package,
+            expr,
+            span: Span { start, end },
+            loc: self.current_location(),
+        })))
     }
 
     pub fn parse_array_index(&mut self) -> Result<ArrayIndex, ParseError> {

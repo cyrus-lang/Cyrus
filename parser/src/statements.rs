@@ -236,68 +236,107 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_package_import(&mut self, parse_start: usize) -> Result<Vec<PackagePath>, ParseError> {
+        let mut package_paths: Vec<PackagePath> = vec![];
+
+        while !self.current_token_is(TokenKind::Semicolon) {
+            match self.current_token.kind.clone() {
+                TokenKind::Dot => {
+                    let span = Span {
+                        start: self.current_token.span.start,
+                        end: self.current_token.span.end,
+                    };
+
+                    self.next_token();
+
+                    package_paths.push(PackagePath {
+                        package_name: Identifier {
+                            name: String::from("./"),
+                            loc: self.current_location(),
+                            span: span.clone(),
+                        },
+                        loc: self.current_location(),
+                        span,
+                    });
+                }
+                TokenKind::DoubleDot => {
+                    let span = Span {
+                        start: self.current_token.span.start,
+                        end: self.current_token.span.end,
+                    };
+
+                    self.next_token();
+
+                    package_paths.push(PackagePath {
+                        package_name: Identifier {
+                            name: String::from("../"),
+                            loc: self.current_location(),
+                            span: span.clone(),
+                        },
+                        loc: self.current_location(),
+                        span,
+                    });
+                }
+                TokenKind::Identifier { name: identiier } => {
+                    let span = self.current_token.span.clone();
+
+                    package_paths.push(PackagePath {
+                        package_name: Identifier {
+                            name: identiier,
+                            span: span.clone(),
+                            loc: self.current_location(),
+                        },
+                        span: Span {
+                            start: parse_start,
+                            end: self.current_token.span.end,
+                        },
+                        loc: self.current_location(),
+                    });
+
+                    self.next_token(); // consume identifier
+
+                    if self.current_token_is(TokenKind::DoubleColon) {
+                        continue;
+                    } else if self.current_token_is(TokenKind::Semicolon) {
+                        return Ok(package_paths);
+                    } else {
+                        return Err(CompileTimeError {
+                            location: self.current_location(),
+                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                            file_name: Some(self.lexer.file_name.clone()),
+                            code_raw: Some(self.lexer.select(parse_start..self.current_token.span.end)),
+                            verbose: None,
+                            caret: true,
+                        });
+                    }
+                }
+                TokenKind::DoubleColon => {
+                    self.next_token();
+                    continue;
+                }
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::ExpectedIdentifier,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(parse_start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
+                    });
+                }
+            }
+        }
+
+        Ok(package_paths)
+    }
+
     pub fn parse_import(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
 
         if self.current_token_is(TokenKind::Import) {
             self.next_token(); // consume import keyword
 
-            let mut package_paths: Vec<PackagePath> = vec![];
-
-            while !self.current_token_is(TokenKind::Semicolon) {
-                match self.current_token.kind.clone() {
-                    TokenKind::Literal(Literal::String(value)) => {
-                        package_paths.push(PackagePath {
-                            package_name: Identifier {
-                                name: value.raw,
-                                span: value.span,
-                                loc: self.current_location(),
-                            },
-                            span: Span {
-                                start,
-                                end: self.current_token.span.end,
-                            },
-                            loc: self.current_location(),
-                        });
-
-                        self.next_token(); // consume identifier
-
-                        if !self.current_token_is(TokenKind::Semicolon) {
-                            return Err(CompileTimeError {
-                                location: self.current_location(),
-                                etype: ParserErrorType::MissingSemicolon,
-                                file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                                verbose: None,
-                                caret: true,
-                            });
-                        }
-
-                        return Ok(Statement::Import(Import {
-                            sub_packages: package_paths,
-                            span: Span {
-                                start,
-                                end: self.current_token.span.end,
-                            },
-                            loc: self.current_location(),
-                        }));
-                    }
-                    TokenKind::Colon => {
-                        self.next_token();
-                        continue;
-                    }
-                    _ => {
-                        return Err(CompileTimeError {
-                            location: self.current_location(),
-                            etype: ParserErrorType::ExpectedIdentifier,
-                            file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                            verbose: None,
-                            caret: true,
-                        });
-                    }
-                }
-            }
+            let package_paths = self.parse_package_import(start)?;
 
             let span = Span {
                 start,
@@ -351,7 +390,7 @@ impl<'a> Parser<'a> {
                     self.next_token();
                     is_variadic = true;
                     triple_dots_count += 1;
-                    
+
                     if self.current_token_is(TokenKind::Comma) {
                         self.next_token();
                         continue;

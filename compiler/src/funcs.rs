@@ -15,6 +15,7 @@ pub struct FuncMetadata {
     pub(crate) ptr: *mut gcc_jit_function,
     pub(crate) return_type: TokenKind,
     pub(crate) params: FunctionParams,
+    pub(crate) imported_from: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +162,7 @@ impl Compiler {
                 ptr: func,
                 params: declare_function.params,
                 return_type,
+                imported_from: None
             },
         );
     }
@@ -236,19 +238,30 @@ impl Compiler {
         args
     }
 
+    pub(crate) fn get_func(&mut self, from_package: FromPackage) -> FuncMetadata {
+        let binding = self.func_table.borrow_mut();
+        let func_metadata = binding.iter().find(|&item| {
+            if let Some(imported_from) = &item.1.imported_from {
+                *imported_from == sub_packages_as_string(from_package.sub_packages.clone())
+            } else {
+                from_package.identifier.name == *item.0
+            }
+        });
+
+        if let Some(func_metadata) = func_metadata {
+            return func_metadata.1.clone();
+        } 
+        
+        compiler_error!(format!(
+            "Function '{}' not defined at this module.",
+            from_package.to_string()
+        ))
+    }
+
     pub(crate) fn compile_func_call(&mut self, scope: ScopeRef, func_call: FuncCall) -> *mut gcc_jit_rvalue {
         let loc = self.gccjit_location(func_call.loc.clone());
 
-        let metadata = {
-            let func_table = self.func_table.borrow_mut();
-            match func_table.get(&func_call.func_name.name) {
-                Some(func) => func.clone(),
-                None => compiler_error!(format!(
-                    "Function '{}' not defined at this module.",
-                    func_call.func_name.name
-                )),
-            }
-        };
+        let metadata = self.get_func(func_call.func_name);
 
         let mut args = self.compile_func_arguments(
             Rc::clone(&scope),

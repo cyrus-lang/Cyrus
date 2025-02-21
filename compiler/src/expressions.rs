@@ -12,27 +12,43 @@ use crate::scope::ScopeRef;
 use crate::Compiler;
 
 impl Compiler {
-    fn access_identifier_values(
+    pub(crate) fn access_identifier_values(
         &mut self,
         scope: ScopeRef,
-        identifier: Identifier,
+        from_package: FromPackage,
     ) -> (*mut gcc_jit_lvalue, *mut gcc_jit_rvalue) {
-        if let Some(metadata) = scope.borrow_mut().get(identifier.name.clone()) {
-            let lvalue = metadata.borrow_mut().lvalue;
-            let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
+        if from_package.sub_packages.len() == 0 {
+            // local defined identifier
+            if let Some(metadata) = scope.borrow_mut().get(from_package.identifier.name.clone()) {
+                let lvalue = metadata.borrow_mut().lvalue;
+                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue) };
 
-            return (lvalue, rvalue);
+                return (lvalue, rvalue);
+            }
+
+            if let Some(values) = self.access_current_func_param(from_package.identifier.clone()) {
+                return values.clone();
+            }
         }
 
-        if let Some(values) = self.access_current_func_param(identifier.clone()) {
-            return values.clone();
-        }
-
-        compiler_error!(format!("'{}' is not defined in this scope.", identifier.name))
+        compiler_error!(format!("'{}' is not defined in this scope.", from_package.to_string()))
     }
 
     fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
-        self.access_identifier_values(scope, identifier).1
+        self.access_identifier_values(
+            scope,
+            FromPackage {
+                sub_packages: vec![],
+                identifier: identifier.clone(),
+                span: identifier.span.clone(),
+                loc: identifier.loc,
+            },
+        )
+        .1
+    }
+
+    fn compile_from_package(&mut self, scope: ScopeRef, from_package: FromPackage) -> *mut gcc_jit_rvalue {
+        self.access_identifier_values(Rc::clone(&scope), from_package).1
     }
 
     pub(crate) fn compile_expression(&mut self, scope: ScopeRef, expr: Expression) -> *mut gcc_jit_rvalue {
@@ -41,10 +57,19 @@ impl Compiler {
             Expression::Identifier(identifier) => self.compile_identifier(scope, identifier),
             Expression::Prefix(unary_expression) => self.compile_prefix_expression(scope, unary_expression),
             Expression::Infix(binary_expression) => self.compile_infix_expression(scope, binary_expression),
-            Expression::FuncCall(func_call) => {
-                let rvalue = self.compile_func_call(scope, func_call.clone());
-                self.eval_func_call(rvalue, func_call.loc.clone());
-                null_mut()
+            Expression::FieldAccessOrMethodCall(mut chains) => {
+                let chains_copy = chains.clone();
+                let rvalue = self.eval_first_item_of_chains(Rc::clone(&scope), chains.clone());
+                chains.remove(0);
+                let result = self.field_access_or_method_call(Rc::clone(&scope), rvalue, chains.clone());
+
+                let last_chain = chains_copy.last().unwrap();
+                if let Some(method_call) = last_chain.method_call.clone() {
+                    self.eval_func_call(result, method_call.loc);
+                    null_mut()
+                } else {
+                    result
+                }
             }
             Expression::UnaryOperator(unary_operator) => self.compile_unary_operator(scope, unary_operator),
             Expression::Array(array) => self.compile_array(Rc::clone(&scope), array, null_mut()),
@@ -65,6 +90,7 @@ impl Compiler {
                 null_mut()
             }
             Expression::CastAs(cast_as) => self.compile_cast_as(Rc::clone(&scope), cast_as),
+            Expression::FromPackage(from_package) => self.compile_from_package(Rc::clone(&scope), from_package),
         }
     }
 
@@ -83,8 +109,22 @@ impl Compiler {
 
     fn compile_address_of(&mut self, scope: ScopeRef, expression: Box<Expression>) -> *mut gcc_jit_rvalue {
         match *expression {
+            Expression::FromPackage(from_package) => {
+                let lvalue = self.access_identifier_values(Rc::clone(&scope), from_package).0;
+                unsafe { gcc_jit_lvalue_get_address(lvalue, null_mut()) }
+            }
             Expression::Identifier(identifier) => {
-                let lvalue = self.access_identifier_values(Rc::clone(&scope), identifier).0;
+                let lvalue = self
+                    .access_identifier_values(
+                        Rc::clone(&scope),
+                        FromPackage {
+                            sub_packages: vec![],
+                            identifier: identifier.clone(),
+                            span: identifier.span.clone(),
+                            loc: identifier.loc,
+                        },
+                    )
+                    .0;
                 unsafe { gcc_jit_lvalue_get_address(lvalue, null_mut()) }
             }
             _ => self.compile_expression(scope, *expression),
@@ -134,8 +174,14 @@ impl Compiler {
                             return null_mut();
                         }
                         _ => {
-                            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(lvalue))};
-                            return self.safe_assign_lvalue(Rc::clone(&scope), lvalue, rvalue_type, array_index_assign.expr.clone(), array_index_assign.loc);
+                            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(lvalue)) };
+                            return self.safe_assign_lvalue(
+                                Rc::clone(&scope),
+                                lvalue,
+                                rvalue_type,
+                                array_index_assign.expr.clone(),
+                                array_index_assign.loc,
+                            );
                         }
                     };
                 } else {
@@ -245,34 +291,35 @@ impl Compiler {
         }
     }
 
-    fn safe_assign_lvalue(&mut self, scope: ScopeRef, lvalue: *mut gcc_jit_lvalue, rvalue_type:*mut gcc_jit_type, expr: Expression, loc: Location) -> *mut gcc_jit_rvalue {
+    fn safe_assign_lvalue(
+        &mut self,
+        scope: ScopeRef,
+        lvalue: *mut gcc_jit_lvalue,
+        rvalue_type: *mut gcc_jit_type,
+        expr: Expression,
+        loc: Location,
+    ) -> *mut gcc_jit_rvalue {
         let block_func = self.block_func_ref.lock().unwrap();
         if let Some(block) = block_func.block {
             drop(block_func);
 
             let new_rvalue = match expr.clone() {
-                Expression::FuncCall(func_call) => self.compile_func_call(Rc::clone(&scope), func_call),
+                Expression::FieldAccessOrMethodCall(mut chains) => {
+                    let rvalue = self.eval_first_item_of_chains(Rc::clone(&scope), chains.clone());
+                    chains.remove(0);
+                    return self.field_access_or_method_call(Rc::clone(&scope), rvalue, chains);
+                }
                 Expression::StructFieldAccess(struct_field_access) => {
                     self.compile_struct_field_access(Rc::clone(&scope), *struct_field_access.clone())
                 }
                 _ => self.compile_expression(scope, expr),
             };
             let casted_rvalue = unsafe {
-                gcc_jit_context_new_cast(
-                    self.context,
-                    self.gccjit_location(loc.clone()),
-                    new_rvalue,
-                    rvalue_type,
-                )
+                gcc_jit_context_new_cast(self.context, self.gccjit_location(loc.clone()), new_rvalue, rvalue_type)
             };
 
             unsafe {
-                gcc_jit_block_add_assignment(
-                    block,
-                    self.gccjit_location(loc.clone()),
-                    lvalue,
-                    casted_rvalue,
-                );
+                gcc_jit_block_add_assignment(block, self.gccjit_location(loc.clone()), lvalue, casted_rvalue);
             };
 
             return casted_rvalue;
@@ -282,83 +329,74 @@ impl Compiler {
     }
     fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
         let (lvalue, rvalue) = self.access_identifier_values(Rc::clone(&scope), assignment.identifier);
-        let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue)};
+        let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
         self.safe_assign_lvalue(Rc::clone(&scope), lvalue, rvalue_type, assignment.expr, assignment.loc)
     }
 
     fn compile_unary_operator(&mut self, scope: ScopeRef, unary_operator: UnaryOperator) -> *mut gcc_jit_rvalue {
         let loc = self.gccjit_location(unary_operator.loc.clone());
 
-        match scope.borrow_mut().get(unary_operator.identifier.name.clone()) {
-            Some(lvalue) => {
-                let rvalue = unsafe { gcc_jit_lvalue_as_rvalue(lvalue.borrow_mut().lvalue) };
-                let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+        let (lvalue, rvalue) = self.access_identifier_values(Rc::clone(&scope), unary_operator.identifier);
 
-                if !self.is_int_data_type(rvalue_type) {
-                    compiler_error!("Unary operations are only valid for integer types.");
-                }
+        let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
 
-                let fixed_number = unsafe { gcc_jit_context_new_rvalue_from_int(self.context, rvalue_type, 1) };
+        if !self.is_int_data_type(rvalue_type) {
+            compiler_error!("Unary operations are only valid for integer types.");
+        }
 
-                let bin_op = match unary_operator.ty.clone() {
-                    UnaryOperatorType::PostIncrement | UnaryOperatorType::PreIncrement => {
-                        gcc_jit_binary_op::GCC_JIT_BINARY_OP_PLUS
-                    }
-                    UnaryOperatorType::PostDecrement | UnaryOperatorType::PreDecrement => {
-                        gcc_jit_binary_op::GCC_JIT_BINARY_OP_MINUS
-                    }
-                };
+        let fixed_number = unsafe { gcc_jit_context_new_rvalue_from_int(self.context, rvalue_type, 1) };
 
-                let guard = self.block_func_ref.lock().unwrap();
-
-                let tmp_local: *mut gcc_jit_lvalue;
-                if let (Some(block), Some(func)) = (guard.block, guard.func) {
-                    let tmp_local_name = CString::new("temp").unwrap();
-
-                    tmp_local = unsafe { gcc_jit_function_new_local(func, loc, rvalue_type, tmp_local_name.as_ptr()) };
-
-                    if !self.block_is_terminated(block) {
-                        unsafe { gcc_jit_block_add_assignment(block, loc, tmp_local, rvalue) };
-                    }
-                } else {
-                    compiler_error!("Unary operators (++, --, etc.) are only allowed inside functions.");
-                }
-
-                let tmp_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(tmp_local) };
-
-                // Assign incremented/decremented value in the variable
-                if let Some(block) = guard.block {
-                    if !self.block_is_terminated(block) {
-                        unsafe {
-                            gcc_jit_block_add_assignment_op(
-                                block,
-                                loc,
-                                lvalue.borrow_mut().lvalue,
-                                bin_op,
-                                gcc_jit_context_new_cast(self.context, loc, fixed_number, rvalue_type),
-                            )
-                        };
-                    }
-                }
-
-                let result = rvalue.clone();
-
-                let result = match unary_operator.ty {
-                    UnaryOperatorType::PreIncrement => result,
-                    UnaryOperatorType::PostIncrement => tmp_rvalue,
-                    UnaryOperatorType::PreDecrement => result,
-                    UnaryOperatorType::PostDecrement => tmp_rvalue,
-                };
-
-                result
+        let bin_op = match unary_operator.ty.clone() {
+            UnaryOperatorType::PostIncrement | UnaryOperatorType::PreIncrement => {
+                gcc_jit_binary_op::GCC_JIT_BINARY_OP_PLUS
             }
-            None => {
-                compiler_error!(format!(
-                    "'{}' is not defined in this scope.",
-                    unary_operator.identifier.name
-                ))
+            UnaryOperatorType::PostDecrement | UnaryOperatorType::PreDecrement => {
+                gcc_jit_binary_op::GCC_JIT_BINARY_OP_MINUS
+            }
+        };
+
+        let guard = self.block_func_ref.lock().unwrap();
+
+        let tmp_local: *mut gcc_jit_lvalue;
+        if let (Some(block), Some(func)) = (guard.block, guard.func) {
+            let tmp_local_name = CString::new("temp").unwrap();
+
+            tmp_local = unsafe { gcc_jit_function_new_local(func, loc, rvalue_type, tmp_local_name.as_ptr()) };
+
+            if !self.block_is_terminated(block) {
+                unsafe { gcc_jit_block_add_assignment(block, loc, tmp_local, rvalue) };
+            }
+        } else {
+            compiler_error!("Unary operators (++, --, etc.) are only allowed inside functions.");
+        }
+
+        let tmp_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(tmp_local) };
+
+        // Assign incremented/decremented value in the variable
+        if let Some(block) = guard.block {
+            if !self.block_is_terminated(block) {
+                unsafe {
+                    gcc_jit_block_add_assignment_op(
+                        block,
+                        loc,
+                        lvalue,
+                        bin_op,
+                        gcc_jit_context_new_cast(self.context, loc, fixed_number, rvalue_type),
+                    )
+                };
             }
         }
+
+        let result = rvalue.clone();
+
+        let result = match unary_operator.ty {
+            UnaryOperatorType::PreIncrement => result,
+            UnaryOperatorType::PostIncrement => tmp_rvalue,
+            UnaryOperatorType::PreDecrement => result,
+            UnaryOperatorType::PostDecrement => tmp_rvalue,
+        };
+
+        result
     }
 
     fn compile_prefix_expression(&mut self, scope: ScopeRef, unary_expression: UnaryExpression) -> *mut gcc_jit_rvalue {

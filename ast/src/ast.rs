@@ -31,11 +31,12 @@ impl Program {
 #[derive(Debug, Clone)]
 pub enum Expression {
     Identifier(Identifier),
+    FromPackage(FromPackage),
     Assignment(Box<Assignment>),
     Literal(Literal),
     Prefix(UnaryExpression),
     Infix(BinaryExpression),
-    FuncCall(FuncCall),
+    FieldAccessOrMethodCall(Vec<FieldAccessOrMethodCall>),
     UnaryOperator(UnaryOperator),
     Array(Array),
     ArrayIndex(ArrayIndex),
@@ -66,7 +67,7 @@ pub enum UnaryOperatorType {
 
 #[derive(Debug, Clone)]
 pub struct UnaryOperator {
-    pub identifier: Identifier,
+    pub identifier: FromPackage,
     pub ty: UnaryOperatorType,
     pub span: Span,
     pub loc: Location
@@ -74,7 +75,7 @@ pub struct UnaryOperator {
 
 #[derive(Debug, Clone)]
 pub struct FuncCall {
-    pub func_name: Identifier,
+    pub func_name: FromPackage,
     pub arguments: Vec<Expression>,
     pub span: Span,
     pub loc: Location
@@ -104,6 +105,14 @@ pub struct FieldAccess {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Identifier {
     pub name: String,
+    pub span: Span,
+    pub loc: Location
+}
+
+#[derive(Debug, Clone)]
+pub struct FromPackage {
+    pub sub_packages: Vec<PackagePath>,
+    pub identifier: Identifier,
     pub span: Span,
     pub loc: Location
 }
@@ -244,12 +253,24 @@ pub struct PackagePath {
     pub loc: Location,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct Import {
     pub sub_packages: Vec<PackagePath>,
     pub span: Span,
     pub loc: Location,
+}
+
+pub fn sub_packages_as_string(list: Vec<PackagePath>) -> String {
+    let mut str = String::new();
+    for (idx, sub_package) in list.iter().enumerate().clone() {
+        if sub_package.package_name.name != "./" && sub_package.package_name.name != "../" {
+            str += &sub_package.package_name.name.clone();
+        }
+        if idx != list.len() - 1 {
+            str += "::";
+        }
+    }
+    str
 }
 
 #[derive(Debug, Clone)]
@@ -264,7 +285,7 @@ pub struct Struct {
 
 #[derive(Debug, Clone)]
 pub struct StructInit {
-    pub name: String,
+    pub struct_name: FromPackage,
     pub field_inits: Vec<FieldInit>,
     pub loc: Location,
 }
@@ -358,7 +379,7 @@ pub struct Variable {
 
 #[derive(Debug, Clone)]
 pub struct Assignment {
-    pub identifier: Identifier,
+    pub identifier: FromPackage,
     pub expr: Expression,
     pub span: Span,
     pub loc: Location,

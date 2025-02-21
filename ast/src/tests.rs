@@ -48,10 +48,15 @@ mod tests {
                 },
                 FieldAccessOrMethodCall {
                     method_call: Some(FuncCall {
-                        func_name: Identifier {
-                            name: String::from("my_method"),
+                        func_name: FromPackage {
+                            sub_packages: vec![],
+                            identifier: Identifier {
+                                name: String::from("my_method"),
+                                span: Span::default(),
+                                loc: Location::default(),
+                            },
                             span: Span::default(),
-                            loc: Location::default(),
+                            loc: loc.clone(),
                         },
                         arguments: vec![Expression::Literal(Literal::String(StringLiteral {
                             raw: String::from("my_string"),
@@ -124,8 +129,13 @@ mod tests {
             loc: Location::default(),
         }));
         let increment = Some(Expression::UnaryOperator(UnaryOperator {
-            identifier: Identifier {
-                name: "i".to_string(),
+            identifier: FromPackage {
+                identifier: Identifier {
+                    name: "i".to_string(),
+                    span: Span::default(),
+                    loc: Location::default(),
+                },
+                sub_packages: vec![],
                 span: Span::default(),
                 loc: Location::default(),
             },
@@ -166,8 +176,13 @@ mod tests {
     #[test]
     fn test_assignment() {
         let assignment = Assignment {
-            identifier: Identifier {
-                name: "x".to_string(),
+            identifier: FromPackage {
+                sub_packages: vec![],
+                identifier: Identifier {
+                    name: "x".to_string(),
+                    span: Span::default(),
+                    loc: Location::default(),
+                },
                 span: Span::default(),
                 loc: Location::default(),
             },
@@ -176,7 +191,7 @@ mod tests {
             loc: Location::default(),
         };
 
-        assert_eq!(assignment.identifier.name, "x");
+        assert_eq!(assignment.identifier.identifier.name, "x");
     }
 
     #[test]
@@ -195,13 +210,19 @@ mod tests {
 
         let func = FuncDef {
             name: "add".to_string(),
-            params: FunctionParams { list: vec![param.clone()], is_variadic: false },
+            params: FunctionParams {
+                list: vec![param.clone()],
+                is_variadic: false,
+            },
             body: Box::new(BlockStatement {
                 body: vec![],
                 span: Span::default(),
                 loc: Location::default(),
             }),
-            return_type: Some(Token { kind: TokenKind::I32, span: Span::default() }),
+            return_type: Some(Token {
+                kind: TokenKind::I32,
+                span: Span::default(),
+            }),
             vis_type: VisType::Pub,
             span: Span::default(),
             loc: Location::default(),
@@ -242,5 +263,69 @@ mod tests {
         };
 
         assert_eq!(cast_as_expression.to_string(), "10 as float");
+    }
+
+    #[test]
+    fn test_field_access_or_method_call() {
+        let chains: Vec<FieldAccessOrMethodCall> = vec![
+            FieldAccessOrMethodCall {
+                method_call: Some(FuncCall {
+                    func_name: FromPackage {
+                        sub_packages: vec![PackagePath {
+                            package_name: Identifier {
+                                name: String::from("my_pkg"),
+                                span: Span::default(),
+                                loc: Location::default(),
+                            },
+                            span: Span::default(),
+                            loc: Location::default(),
+                        }],
+                        identifier: Identifier {
+                            name: String::from("sample"),
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        span: Span::default(),
+                        loc: Location::default(),
+                    },
+                    arguments: vec![],
+                    span: Span::default(),
+                    loc: Location::default(),
+                }),
+                field_access: None,
+            },
+            FieldAccessOrMethodCall {
+                method_call: Some(FuncCall {
+                    func_name: FromPackage {
+                        sub_packages: vec![],
+                        identifier: Identifier {
+                            name: String::from("nested_method"),
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        span: Span::default(),
+                        loc: Location::default(),
+                    },
+                    arguments: vec![],
+                    span: Span::default(),
+                    loc: Location::default(),
+                }),
+                field_access: None,
+            },
+            FieldAccessOrMethodCall {
+                field_access: Some(FieldAccess {
+                    identifier: Identifier {
+                        name: String::from("some_field"),
+                        span: Span::default(),
+                        loc: Location::default(),
+                    },
+                    span: Span::default(),
+                    loc: Location::default(),
+                }),
+                method_call: None,
+            },
+        ];
+
+        assert_eq!(Expression::FieldAccessOrMethodCall(chains).to_string(), "my_pkg::sample().nested_method().some_field");
     }
 }
