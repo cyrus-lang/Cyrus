@@ -33,6 +33,17 @@ pub struct ClapCompilerOptions {
 
     #[clap(long = "library", value_name = "LIB", help = "Link a library")]
     libraries: Vec<String>,
+
+    #[clap(
+        long = "build-dir",
+        value_name = "PATH",
+        default_value = "./build",
+        help = "Specifies the directory where build artifacts will be stored.
+This includes compiled binaries, intermediate files, and other outputs 
+generated during the build process. If not provided, a default directory \
+    (e.g., './build') will be used."
+    )]
+    build_dir: String,
 }
 
 #[derive(clap::Parser, Clone)]
@@ -103,8 +114,6 @@ macro_rules! init_compiler {
 
         #[cfg(debug_assertions)]
         compiler.set_debug_info(true);
-
-        compiler.compile();
         compiler
     }};
 }
@@ -123,7 +132,9 @@ pub fn main() {
                 optimization_level: compiler_options.optimization_level.as_integer(),
                 library_path: compiler_options.library_path,
                 libraries: compiler_options.libraries,
+                build_dir: compiler_options.build_dir,
             });
+            compiler.compile();
             compiler.execute();
         }
         Commands::Dump {
@@ -137,7 +148,9 @@ pub fn main() {
                 optimization_level: compiler_options.optimization_level.as_integer(),
                 library_path: compiler_options.library_path,
                 libraries: compiler_options.libraries,
+                build_dir: compiler_options.build_dir,
             });
+            compiler.compile();
 
             match dump_type {
                 DumpType::Ir => compiler.make_dump_ir(output_path),
@@ -154,7 +167,9 @@ pub fn main() {
                 optimization_level: compiler_options.optimization_level.as_integer(),
                 library_path: compiler_options.library_path,
                 libraries: compiler_options.libraries,
+                build_dir: compiler_options.build_dir,
             });
+            compiler.compile();
             compiler.make_executable_file(output_path);
         }
         Commands::Obj {
@@ -167,7 +182,9 @@ pub fn main() {
                 optimization_level: compiler_options.optimization_level.as_integer(),
                 library_path: compiler_options.library_path,
                 libraries: compiler_options.libraries,
+                build_dir: compiler_options.build_dir,
             });
+            compiler.compile();
             compiler.make_object_file(output_path);
         }
         Commands::Dylib {
@@ -180,7 +197,9 @@ pub fn main() {
                 optimization_level: compiler_options.optimization_level.as_integer(),
                 library_path: compiler_options.library_path,
                 libraries: compiler_options.libraries,
+                build_dir: compiler_options.build_dir,
             });
+            compiler.compile();
             compiler.make_dynamic_library(output_path);
         }
         Commands::Version => {

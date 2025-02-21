@@ -8,7 +8,6 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::CString,
-    fs::remove_file,
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -156,9 +155,5 @@ impl Compiler {
 impl Drop for Compiler {
     fn drop(&mut self) {
         unsafe { gcc_jit_context_release(self.context) };
-
-        for item in self.compiled_object_files.clone() {
-            remove_file(item).unwrap();
-        }
     }
 }

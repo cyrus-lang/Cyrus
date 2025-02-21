@@ -16,8 +16,8 @@ pub fn read_file(file_path: String) -> (String, String) {
     let mut contents = String::new();
 
     match file.read_to_string(&mut contents) {
-        Err(_) => {
-            compiler_error!("Failed to read the file content.");
+        Err(err) => {
+            compiler_error!(format!("Failed to read the file content: {}", err));
         }
         _ => {}
     }

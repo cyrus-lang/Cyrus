@@ -1,7 +1,6 @@
 import std::io;
+// import std::mem;
 
 pub fn main() {
-    std::io::printf("Hello World\n");
-    std::io::printf("Hello World\n");
     std::io::printf("Hello World\n");
 }

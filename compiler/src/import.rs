@@ -3,6 +3,7 @@ use ast::token::*;
 use gccjit_sys::*;
 use parser::parse_program;
 use std::ffi::CString;
+use std::fs;
 use std::path::Path;
 use utils::compiler_error;
 
@@ -41,7 +42,13 @@ impl Compiler {
                     let path_str = format!("{}{}", import_file_path, package_name);
 
                     if Path::new(&format!("{}", path_str)).is_dir() {
-                        import_file_path += &format!("{}/", package_name);
+                        // if there is both directory and another file with same name
+                        if Path::new(&format!("{}.cyr", path_str)).is_file() {
+                            import_file_path += &format!("{}.cyr", package_name);
+                            break;
+                        } else {
+                            import_file_path += &format!("{}/", package_name);
+                        }
                     } else if Path::new(&format!("{}.cyr", path_str)).is_file() {
                         import_file_path += &format!("{}.cyr", package_name);
                         break;
@@ -55,10 +62,17 @@ impl Compiler {
             }
         }
 
-        let output_library_path = Path::new(&import_file_path)
-            .with_extension(self.object_file_extension())
-            .to_string_lossy()
-            .to_string();
+        fs::create_dir_all(self.get_objects_directory_path()).unwrap();
+        
+        let output_library_path = format!(
+            "{}/{}",
+            self.get_objects_directory_path(),
+            format!(
+                "{}.{}",
+                Path::new(&import_file_path).file_stem().unwrap().to_str().unwrap(),
+                self.object_file_extension()
+            )
+        );
 
         let (program, file_name) = parse_program(import_file_path.clone());
         let context = Compiler::new_child_context(self.context);
@@ -189,6 +203,10 @@ impl Compiler {
         };
 
         decl_func
+    }
+
+    pub(crate) fn get_objects_directory_path(&self) -> String {
+        format!("{}/obj", &self.opts.build_dir)
     }
 
     pub(crate) fn object_file_extension(&self) -> &'static str {
