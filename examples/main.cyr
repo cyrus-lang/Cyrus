@@ -2,4 +2,6 @@ import std::io;
 
 pub fn main() {
     std::io::printf("Hello World\n");
+    std::io::printf("Hello World\n");
+    std::io::printf("Hello World\n");
 }

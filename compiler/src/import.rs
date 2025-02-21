@@ -192,6 +192,10 @@ impl Compiler {
     }
 
     pub(crate) fn object_file_extension(&self) -> &'static str {
-        "o"
+        if cfg!(target_os = "windows") {
+            "obj"
+        } else {
+            "o"
+        }
     }
 }

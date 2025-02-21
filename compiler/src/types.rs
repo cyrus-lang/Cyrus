@@ -1,7 +1,7 @@
 use std::ptr::null_mut;
 
 use ast::{
-    ast::{integer_literal_as_value, sub_packages_as_string, FromPackage, Identifier},
+    ast::{integer_literal_as_value, sub_packages_as_string, FromPackage},
     token::TokenKind,
 };
 use gccjit_sys::*;
