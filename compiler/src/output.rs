@@ -1,6 +1,10 @@
 use crate::Compiler;
 use gccjit_sys::*;
-use std::{ffi::CString, process::exit};
+use std::{
+    ffi::CString,
+    fs::{self, File},
+    process::exit,
+};
 use utils::compiler_error;
 
 impl Compiler {
@@ -46,7 +50,7 @@ impl Compiler {
             )
         };
     }
-
+    
     pub fn make_dynamic_library(&self, file_path: String) {
         unsafe {
             let file_path = CString::new(file_path).unwrap();
@@ -58,14 +62,24 @@ impl Compiler {
         };
     }
 
+    pub fn create_dump_file(&self, file_path: String) {
+        if !fs::exists(file_path.clone()).unwrap() {
+            if let Err(err) = File::create(file_path.clone()) {
+                compiler_error!(format!("Failed to dump source code at '{}': {}", file_path, err))
+            }
+        }
+    }
+
     pub fn make_dump_ir(&self, file_path: String) {
+        self.create_dump_file(file_path.clone());
         unsafe {
             let file_path = CString::new(file_path).unwrap();
             gcc_jit_context_dump_to_file(self.context, file_path.as_ptr(), self.cbool(true))
         };
     }
-
+    
     pub fn make_dump_asm(&self, file_path: String) {
+        self.create_dump_file(file_path.clone());
         unsafe {
             let file_path = CString::new(file_path).unwrap();
             gcc_jit_context_compile_to_file(
