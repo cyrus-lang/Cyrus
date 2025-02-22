@@ -2,9 +2,11 @@ use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
 use parser::parse_program;
+use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs;
 use std::path::Path;
+use std::ptr::null_mut;
 use utils::compiler_error;
 
 use crate::funcs::FuncMetadata;
@@ -63,7 +65,7 @@ impl Compiler {
         }
 
         fs::create_dir_all(self.get_objects_directory_path()).unwrap();
-        
+
         let output_library_path = format!(
             "{}/{}",
             self.get_objects_directory_path(),
@@ -76,9 +78,16 @@ impl Compiler {
 
         let (program, file_name) = parse_program(import_file_path.clone());
         let context = Compiler::new_child_context(self.context);
-        let mut compiler = Compiler::new(context, program, import_file_path.clone(), file_name);
+        let mut compiler = Compiler::new(context, program, import_file_path.clone(), file_name.clone());
 
         compiler.compile();
+
+        let compile_error = unsafe { gcc_jit_context_get_first_error(context) };
+        if compile_error != null_mut() {
+            let error_string = unsafe { CStr::from_ptr(compile_error) };
+            compiler_error!(format!("{} compilation failed: {}", file_name, error_string.to_str().unwrap()));
+        }
+
         compiler.make_object_file(output_library_path.clone());
 
         let package_name = sub_packages_as_string(import.sub_packages.clone());

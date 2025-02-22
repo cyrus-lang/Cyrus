@@ -1,6 +1,9 @@
+import std::math;
 import std::io;
-// import std::mem;
 
 pub fn main() {
     std::io::printf("Hello World\n");
+
+    #result = std::math::sqrt(9);
+    std::io::printf("result: %f\n", result);
 }

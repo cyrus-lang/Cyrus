@@ -162,7 +162,7 @@ impl Compiler {
                 ptr: func,
                 params: declare_function.params,
                 return_type,
-                imported_from: None
+                imported_from: None,
             },
         );
     }
@@ -241,17 +241,17 @@ impl Compiler {
     pub(crate) fn get_func(&mut self, from_package: FromPackage) -> FuncMetadata {
         let binding = self.func_table.borrow_mut();
         let func_metadata = binding.iter().find(|&item| {
-            if let Some(imported_from) = &item.1.imported_from {
+            (if let Some(imported_from) = &item.1.imported_from {
                 *imported_from == sub_packages_as_string(from_package.sub_packages.clone())
             } else {
-                from_package.identifier.name == *item.0
-            }
+                true
+            }) && from_package.identifier.name == *item.0
         });
 
         if let Some(func_metadata) = func_metadata {
             return func_metadata.1.clone();
-        } 
-        
+        }
+
         compiler_error!(format!(
             "Function '{}' not defined at this module.",
             from_package.to_string()
