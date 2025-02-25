@@ -64,8 +64,8 @@ impl<'a> Parser<'a> {
                     })
                 } else if self.peek_token_is(TokenKind::Assign) {
                     return self.parse_assignment(from_package);
-                } else if self.peek_token_is(TokenKind::LeftBracket) {
-                    let array_index = self.parse_array_index()?;
+                } else if self.current_token_is(TokenKind::LeftBracket) {
+                    let array_index = self.parse_array_index(from_package)?;
 
                     if self.peek_token_is(TokenKind::Assign) {
                         return self.parse_array_index_assign(array_index);
@@ -450,7 +450,7 @@ impl<'a> Parser<'a> {
         let expr = self.parse_expression(Precedence::Lowest)?.0;
 
         Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
-            identifier: array_index.identifier,
+            from_package: array_index.from_package,
             dimensions: array_index.dimensions,
             span: Span {
                 start: array_index.span.start,
@@ -698,44 +698,24 @@ impl<'a> Parser<'a> {
         })))
     }
 
-    pub fn parse_array_index(&mut self) -> Result<ArrayIndex, ParseError> {
+    pub fn parse_array_index(&mut self, from_package: FromPackage) -> Result<ArrayIndex, ParseError> {
         let start = self.current_token.span.start;
 
-        let identifier = self.current_token.clone();
+        let mut dimensions: Vec<Expression> = Vec::new();
 
-        if let TokenKind::Identifier { name } = identifier.kind {
-            let mut dimensions: Vec<Expression> = Vec::new();
-
-            while self.peek_token_is(TokenKind::LeftBracket) {
-                let expr = self.parse_array_items()?;
-                dimensions.push(expr);
-            }
-
-            let end = self.current_token.span.end;
-
-            Ok(ArrayIndex {
-                dimensions,
-                span: Span { start, end },
-                identifier: Identifier {
-                    name,
-                    span: identifier.span,
-                    loc: self.current_location(),
-                },
-                loc: self.current_location(),
-            })
-        } else {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::ExpectedIdentifier,
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(self.current_token.span.start..self.current_token.span.end),
-                ),
-                verbose: None,
-                caret: true,
-            });
+        while self.current_token_is(TokenKind::LeftBracket) {
+            let expr = self.parse_array_items()?;
+            dimensions.push(expr);
         }
+
+        let end = self.current_token.span.end;
+
+        Ok(ArrayIndex {
+            dimensions: vec![],
+            span: Span { start, end },
+            from_package: from_package,
+            loc: self.current_location(),
+        })
     }
 
     pub fn parse_array_items(&mut self) -> Result<Expression, ParseError> {

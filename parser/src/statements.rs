@@ -680,10 +680,9 @@ impl<'a> Parser<'a> {
         // This line here is potential to raise some serious problems
         // in parsing process. But now i don't have any idea that how we can fix it.
         // The reason is that some expressions need consume last token (before semicolon) and some does not.
-        if self.peek_token_is(TokenKind::Semicolon) {
+        if self.peek_token_is(TokenKind::Semicolon)  {
             self.next_token();
         }
-        //
 
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {

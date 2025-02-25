@@ -192,7 +192,7 @@ pub struct Array {
 
 #[derive(Debug, Clone)]
 pub struct ArrayIndex {
-    pub identifier: Identifier,
+    pub from_package: FromPackage,
     pub dimensions: Vec<Expression>,
     pub span: Span,
     pub loc: Location
@@ -200,7 +200,7 @@ pub struct ArrayIndex {
 
 #[derive(Debug, Clone)]
 pub struct ArrayIndexAssign {
-    pub identifier: Identifier,
+    pub from_package: FromPackage,
     pub dimensions: Vec<Expression>,
     pub expr: Expression,
     pub span: Span,

@@ -58,11 +58,11 @@ impl Compiler {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_UINT128_T) }
     }
 
-    pub fn f32_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+    pub fn float_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_FLOAT) }
     }
 
-    pub fn f64_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
+    pub fn double_type(context: *mut gcc_jit_context) -> *mut gcc_jit_type {
         unsafe { gcc_jit_context_get_type(context, gcc_jit_types::GCC_JIT_TYPE_DOUBLE) }
     }
 
@@ -108,8 +108,8 @@ impl Compiler {
             TokenKind::U64 => Compiler::u64_type(context),
             TokenKind::U128 => Compiler::u128_type(context),
             TokenKind::Void => Compiler::void_type(context),
-            TokenKind::Float => Compiler::f32_type(context),
-            TokenKind::Double => Compiler::f64_type(context),
+            TokenKind::Float => Compiler::float_type(context),
+            TokenKind::Double => Compiler::double_type(context),
             TokenKind::Bool => Compiler::bool_type(context),
             TokenKind::String => Compiler::string_type(context),
             TokenKind::Char => Compiler::char_type(context),
@@ -187,7 +187,7 @@ impl Compiler {
     }
 
     pub fn is_float_data_type(&mut self, type1: *mut gcc_jit_type) -> bool {
-        type1 == Compiler::f32_type(self.context) || type1 == Compiler::f64_type(self.context)
+        type1 == Compiler::float_type(self.context) || type1 == Compiler::double_type(self.context)
     }
 
     pub fn is_int_data_type(&self, type1: *mut gcc_jit_type) -> bool {

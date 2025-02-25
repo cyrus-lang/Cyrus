@@ -136,62 +136,51 @@ impl Compiler {
         scope: ScopeRef,
         array_index_assign: ArrayIndexAssign,
     ) -> *mut gcc_jit_rvalue {
-        match scope.borrow_mut().get(array_index_assign.identifier.name.clone()) {
-            Some(variable) => {
-                let lvalue = self.array_dimension_as_lvalue(
-                    Rc::clone(&scope),
-                    variable.borrow_mut().lvalue,
-                    array_index_assign.dimensions,
-                );
+        let (lvalue, _) = self.access_identifier_values(Rc::clone(&scope), array_index_assign.from_package);
+        let array_index_lvalue = self.array_dimension_as_lvalue(Rc::clone(&scope), lvalue, array_index_assign.dimensions);
 
-                let block_func = self.block_func_ref.lock().unwrap();
-                if let Some(block) = block_func.block {
-                    drop(block_func);
+        let block_func = self.block_func_ref.lock().unwrap();
+        if let Some(block) = block_func.block {
+            drop(block_func);
 
-                    let loc = self.gccjit_location(array_index_assign.loc.clone());
-                    match array_index_assign.expr.clone() {
-                        Expression::Array(Array { elements, .. }) => {
-                            for (idx, item) in elements.iter().enumerate() {
-                                let expr = self.compile_expression(Rc::clone(&scope), item.clone());
-                                let array_item_ptr = unsafe {
-                                    gcc_jit_context_new_array_access(
-                                        self.context,
-                                        loc.clone(),
-                                        gcc_jit_lvalue_as_rvalue(lvalue),
-                                        gcc_jit_context_new_rvalue_from_int(
-                                            self.context,
-                                            Compiler::i32_type(self.context),
-                                            idx.try_into().unwrap(),
-                                        ),
-                                    )
-                                };
+            let loc = self.gccjit_location(array_index_assign.loc.clone());
+            match array_index_assign.expr.clone() {
+                Expression::Array(Array { elements, .. }) => {
+                    for (idx, item) in elements.iter().enumerate() {
+                        let expr = self.compile_expression(Rc::clone(&scope), item.clone());
+                        let array_item_ptr = unsafe {
+                            gcc_jit_context_new_array_access(
+                                self.context,
+                                loc.clone(),
+                                gcc_jit_lvalue_as_rvalue(array_index_lvalue),
+                                gcc_jit_context_new_rvalue_from_int(
+                                    self.context,
+                                    Compiler::i32_type(self.context),
+                                    idx.try_into().unwrap(),
+                                ),
+                            )
+                        };
 
-                                unsafe { gcc_jit_block_add_assignment(block, loc, array_item_ptr, expr) };
-                            }
+                        unsafe { gcc_jit_block_add_assignment(block, loc, array_item_ptr, expr) };
+                    }
 
-                            // TODO
-                            // Make a new construction to return the assigned array
-                            return null_mut();
-                        }
-                        _ => {
-                            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(lvalue)) };
-                            return self.safe_assign_lvalue(
-                                Rc::clone(&scope),
-                                lvalue,
-                                rvalue_type,
-                                array_index_assign.expr.clone(),
-                                array_index_assign.loc,
-                            );
-                        }
-                    };
-                } else {
-                    compiler_error!("Array index assignment in invalid block.");
+                    // TODO
+                    // Make a new construction to return the assigned array
+                    return null_mut();
                 }
-            }
-            None => compiler_error!(format!(
-                "'{}' is not defined in this scope.",
-                array_index_assign.identifier.name
-            )),
+                _ => {
+                    let rvalue_type = unsafe { gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(array_index_lvalue)) };
+                    return self.safe_assign_lvalue(
+                        Rc::clone(&scope),
+                        array_index_lvalue,
+                        rvalue_type,
+                        array_index_assign.expr.clone(),
+                        array_index_assign.loc,
+                    );
+                }
+            };
+        } else {
+            compiler_error!("Array index assignment in invalid block.");
         }
     }
 
@@ -226,21 +215,9 @@ impl Compiler {
     }
 
     fn compile_array_index(&mut self, scope: ScopeRef, array_index: ArrayIndex) -> *mut gcc_jit_rvalue {
-        match scope.borrow_mut().get(array_index.identifier.name.clone()) {
-            Some(variable) => {
-                let lvalue = self.array_dimension_as_lvalue(
-                    Rc::clone(&scope),
-                    variable.borrow_mut().lvalue,
-                    array_index.dimensions,
-                );
-
-                unsafe { gcc_jit_lvalue_as_rvalue(lvalue) }
-            }
-            None => compiler_error!(format!(
-                "'{}' is not defined in this scope.",
-                array_index.identifier.name
-            )),
-        }
+        let (lvalue, _) = self.access_identifier_values(Rc::clone(&scope), array_index.from_package);
+        let array_index_lvalue = self.array_dimension_as_lvalue(Rc::clone(&scope), lvalue, array_index.dimensions);
+        unsafe { gcc_jit_lvalue_as_rvalue(array_index_lvalue) }
     }
 
     pub(crate) fn compile_array(
@@ -544,10 +521,10 @@ impl Compiler {
             },
             Literal::Float(float_literal) => match float_literal {
                 FloatLiteral::Float(value) => unsafe {
-                    gcc_jit_context_new_rvalue_from_double(self.context, Compiler::f32_type(self.context), value as f64)
+                    gcc_jit_context_new_rvalue_from_double(self.context, Compiler::float_type(self.context), value as f64)
                 },
                 FloatLiteral::Double(value) => unsafe {
-                    gcc_jit_context_new_rvalue_from_double(self.context, Compiler::f64_type(self.context), value as f64)
+                    gcc_jit_context_new_rvalue_from_double(self.context, Compiler::double_type(self.context), value as f64)
                 },
             },
             Literal::Bool(bool_literal) => {

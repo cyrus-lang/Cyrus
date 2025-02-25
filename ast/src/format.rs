@@ -145,7 +145,7 @@ impl fmt::Display for Expression {
                 write!(f, "[{}]", array_items_to_string(array.clone()))
             }
             Expression::ArrayIndex(array_index) => {
-                write!(f, "{}", array_index.identifier)?;
+                write!(f, "{}", Expression::FromPackage(array_index.from_package.clone()).to_string())?;
                 for item in &array_index.dimensions {
                     write!(f, "[{}]", item)?;
                 }
@@ -159,7 +159,7 @@ impl fmt::Display for Expression {
             ),
             Expression::ArrayIndexAssign(array_index_assign) => {
                 let array_index = ArrayIndex {
-                    identifier: array_index_assign.identifier.clone(),
+                    from_package: array_index_assign.from_package.clone(),
                     dimensions: array_index_assign.dimensions.clone(),
                     span: array_index_assign.span.clone(),
                     loc: array_index_assign.loc.clone(),

@@ -1,12 +1,7 @@
 import std::io;
 
-fn sqrt(value: double): double {
-    return value;
-}
-
 pub fn main() {
-    std::io::printf("Hello World\n");
-
-    #result = std::math::sqrt(9);
-    std::io::printf("result: %f\n", result);
+    for (#i = 0; i < 10; i++) {
+        std::io::printf("%d\n", i);
+    }
 }
