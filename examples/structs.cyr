@@ -1,14 +1,16 @@
+import std::io;
+
 struct User {
     name: string;
     age: i32;
 
     pub fn do_something() {
-        cprintf("Do Something\n");
+        std::io::printf("Do Something\n");
     }
 
     pub fn info() {
-        cprintf("Name: \n");
-        cprintf("Age: \n");
+        std::io::printf("Name: \n");
+        std::io::printf("Age: \n");
     }
 }
 
@@ -18,6 +20,6 @@ pub fn main() {
         age: 17
     };
 
-    cprintf("name: %s\n", user.name);
-    cprintf("age: %d\n", user.age);
+    std::io::printf("name: %s\n", user.name);
+    std::io::printf("age: %d\n", user.age);
 }

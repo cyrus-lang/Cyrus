@@ -1,9 +1,29 @@
 import std::io;
 
-pub fn main() {
-    #a: i32[3] = [10, 2];
-    
-    a = [5, 6];
+struct User {
+    name: string;
+    age: i32;
 
-    std::io::printf("result: %d\n", a[0]);
+    pub fn do_something() {
+        std::io::printf("Do Something\n");
+    }
+
+    pub fn info() {
+        std::io::printf("Name: \n");
+        std::io::printf("Age: \n");
+    }
+
+    pub fn local(self: *User) {
+        std::io::printf("Name: \n");
+        std::io::printf("Age: \n");
+    }
+}
+
+pub fn main() {
+    #user = User {
+        name: "Taha",
+        age: 17
+    };
+
+    user.info();
 }

@@ -95,9 +95,13 @@ impl Compiler {
                 method_name, struct_name
             ))
         }
-    }   
+    }
 
-    pub(crate) fn eval_first_item_of_chains(&mut self, scope: ScopeRef, chains: Vec<FieldAccessOrMethodCall>) -> *mut gcc_jit_rvalue {
+    pub(crate) fn eval_first_item_of_chains(
+        &mut self,
+        scope: ScopeRef,
+        chains: Vec<FieldAccessOrMethodCall>,
+    ) -> *mut gcc_jit_rvalue {
         let rvalue: *mut gcc_jit_rvalue = {
             if let Some(method_call) = &chains[0].method_call {
                 self.compile_func_call(Rc::clone(&scope), method_call.clone())
@@ -144,6 +148,24 @@ impl Compiler {
                     let method_name = method_call.func_name.identifier.name.clone();
 
                     if let Some((struct_name, struct_metadata)) = self.find_struct(result) {
+                        if let Some(method_metadata) = struct_metadata
+                            .methods
+                            .iter()
+                            .find(|&key| key.func_def.name == method_name)
+                        {
+                            if method_metadata.is_static {
+                                compiler_error!(format!(
+                                    "Method '{}' defined globally for struct '{}', hence it cannot be called through the struct type.",
+                                    method_name, struct_name
+                                ))
+                            }
+                        } else {
+                            compiler_error!(format!(
+                                "Method '{}' not defined for struct '{}'",
+                                method_name, struct_name
+                            ))
+                        }
+
                         let method_def = self.get_struct_method_def(
                             struct_metadata.methods.clone(),
                             struct_name.clone(),
@@ -239,7 +261,7 @@ impl Compiler {
         let mut result: *mut gcc_jit_rvalue = null_mut();
 
         if let Expression::FromPackage(from_package) = statement.expr.clone() {
-            if self.is_user_defined_type(from_package.clone()) {                
+            if self.is_user_defined_type(from_package.clone()) {
                 let struct_metadata = self.get_struct(from_package.clone());
 
                 if statement.chains.len() > 0 {
@@ -247,6 +269,25 @@ impl Compiler {
 
                     if let Some(method_call) = item.method_call {
                         let method_name = method_call.func_name.identifier.name;
+
+                        if let Some(method_metadata) = struct_metadata
+                            .methods
+                            .iter()
+                            .find(|&key| key.func_def.name == method_name)
+                        {
+                            if !method_metadata.is_static {
+                                compiler_error!(format!(
+                                    "Method '{}' defined statically for struct '{}', hence it cannot be called through an instance.",
+                                    method_name, from_package
+                                ))
+                            }
+                        } else {
+                            compiler_error!(format!(
+                                "Field '{}' not defined for struct '{}'",
+                                method_name, from_package
+                            ))
+                        }
+
                         let method_def = self.get_struct_method_def(
                             struct_metadata.methods.clone(),
                             from_package.identifier.name.clone(),
@@ -274,6 +315,10 @@ impl Compiler {
                     } else {
                         compiler_error!("Accessing static field not supported in cyrus lang.")
                     }
+                } else {
+                    compiler_error!(
+                        "Unexpected behaviour because compiler is trying to call struct method with empty chain."
+                    );
                 }
             } else {
                 result = self.compile_expression(Rc::clone(&scope), statement.expr.clone());
@@ -320,7 +365,8 @@ impl Compiler {
                 }
                 None => compiler_error!(format!(
                     "Field '{}' required to be set in struct '{}'",
-                    field.name, struct_init.struct_name.to_string()
+                    field.name,
+                    struct_init.struct_name.to_string()
                 )),
             }
         }
