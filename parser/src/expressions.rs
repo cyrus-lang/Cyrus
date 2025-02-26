@@ -12,7 +12,7 @@ impl<'a> Parser<'a> {
         let mut left = self.parse_prefix_expression()?;
 
         while self.current_token.kind != TokenKind::EOF
-            && precedence < token_precedence_of(self.peek_token.kind.clone())
+            && precedence < token_precedence_of(self.current_token.kind.clone())
         {
             match self.parse_infix_expression(left.clone(), left_start) {
                 Some(infix) => {
@@ -197,8 +197,7 @@ impl<'a> Parser<'a> {
         left: Expression,
         left_start: usize,
     ) -> Option<Result<Expression, ParseError>> {
-        if self.peek_token_is(TokenKind::As) {
-            self.next_token(); // consume left
+        if self.current_token_is(TokenKind::As) {
             self.next_token(); // consume as token
 
             match self.parse_type_token() {
@@ -215,9 +214,9 @@ impl<'a> Parser<'a> {
                 }
                 Err(err) => return Some(Err(err)),
             }
-        }
+        }   
 
-        match &self.peek_token.kind {
+        match &self.current_token.kind {
             TokenKind::Plus
             | TokenKind::Minus
             | TokenKind::Asterisk
@@ -230,12 +229,8 @@ impl<'a> Parser<'a> {
             | TokenKind::GreaterEqual
             | TokenKind::GreaterThan
             | TokenKind::Identifier { .. } => {
-                self.next_token(); // consume the first part of the expression
-
                 let operator = self.current_token.clone();
-
                 let precedence = token_precedence_of(self.current_token.kind.clone());
-
                 self.next_token(); // consume the operator
 
                 let (right, span) = self.parse_expression(precedence).unwrap();
