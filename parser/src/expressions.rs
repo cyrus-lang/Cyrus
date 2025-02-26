@@ -442,25 +442,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_array_index_assign(&mut self, array_index: ArrayIndex) -> Result<Expression, ParseError> {
-        self.next_token(); // consume right bracket
-
-        self.expect_current(TokenKind::Assign)?;
-
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
-
-        Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
-            from_package: array_index.from_package,
-            dimensions: array_index.dimensions,
-            span: Span {
-                start: array_index.span.start,
-                end: self.current_token.span.end,
-            },
-            loc: self.current_location(),
-            expr,
-        })))
-    }
-
     pub fn parse_struct_member(&mut self, object_expr: Box<Expression>) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start.clone();
 
@@ -698,6 +679,25 @@ impl<'a> Parser<'a> {
         })))
     }
 
+    pub fn parse_array_index_assign(&mut self, array_index: ArrayIndex) -> Result<Expression, ParseError> {
+        self.next_token(); // consume right bracket
+
+        self.expect_current(TokenKind::Assign)?;
+
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
+
+        Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
+            from_package: array_index.from_package,
+            dimensions: array_index.dimensions,
+            span: Span {
+                start: array_index.span.start,
+                end: self.current_token.span.end,
+            },
+            loc: self.current_location(),
+            expr,
+        })))
+    }
+
     pub fn parse_array_index(&mut self, from_package: FromPackage) -> Result<ArrayIndex, ParseError> {
         let start = self.current_token.span.start;
 
@@ -711,7 +711,7 @@ impl<'a> Parser<'a> {
         let end = self.current_token.span.end;
 
         Ok(ArrayIndex {
-            dimensions: vec![],
+            dimensions,
             span: Span { start, end },
             from_package: from_package,
             loc: self.current_location(),

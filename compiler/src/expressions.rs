@@ -137,7 +137,8 @@ impl Compiler {
         array_index_assign: ArrayIndexAssign,
     ) -> *mut gcc_jit_rvalue {
         let (lvalue, _) = self.access_identifier_values(Rc::clone(&scope), array_index_assign.from_package);
-        let array_index_lvalue = self.array_dimension_as_lvalue(Rc::clone(&scope), lvalue, array_index_assign.dimensions);
+        let array_index_lvalue =
+            self.array_dimension_as_lvalue(Rc::clone(&scope), lvalue, array_index_assign.dimensions);
 
         let block_func = self.block_func_ref.lock().unwrap();
         if let Some(block) = block_func.block {
@@ -170,11 +171,12 @@ impl Compiler {
                 }
                 _ => {
                     let rvalue_type = unsafe { gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(array_index_lvalue)) };
+                    let expr = array_index_assign.expr.clone();
                     return self.safe_assign_lvalue(
                         Rc::clone(&scope),
                         array_index_lvalue,
                         rvalue_type,
-                        array_index_assign.expr.clone(),
+                        expr,
                         array_index_assign.loc,
                     );
                 }
@@ -190,12 +192,19 @@ impl Compiler {
         variable: *mut gcc_jit_lvalue,
         dimensions: Vec<Expression>,
     ) -> *mut gcc_jit_lvalue {
+        if dimensions.len() == 0 {
+            compiler_error!("You are trying to access an array item lvalue with empty dimension.")
+        }
+
         let mut result: *mut gcc_jit_lvalue = variable;
 
         for dim in dimensions {
             if let Expression::Array(index_expr) = dim {
-                if let Expression::Array(value) = index_expr.elements[0].clone() {
-                    let idx = self.compile_expression(Rc::clone(&scope), value.elements[0].clone());
+                if let Expression::Literal(Literal::Integer(integer_literal)) = index_expr.elements[0].clone() {
+                    let idx = self.compile_expression(
+                        Rc::clone(&scope),
+                        Expression::Literal(Literal::Integer(integer_literal)),
+                    );
 
                     let lvalue = unsafe {
                         gcc_jit_context_new_array_access(
@@ -207,8 +216,14 @@ impl Compiler {
                     };
 
                     result = lvalue;
+                } else {
+                    compiler_error!("Unable to access array lvalue through a non-integer literal.")
                 }
             }
+        }
+
+        if result == variable {
+            compiler_error!("Unexpected behavior when trying to compile array_dimension_as_lvalue.")
         }
 
         result
@@ -304,6 +319,7 @@ impl Compiler {
             compiler_error!("Incorrect usage of the assignment. Assignments must be performed inside a valid block.");
         }
     }
+
     fn compile_assignment(&mut self, scope: ScopeRef, assignment: Assignment) -> *mut gcc_jit_rvalue {
         let (lvalue, rvalue) = self.access_identifier_values(Rc::clone(&scope), assignment.identifier);
         let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
@@ -521,10 +537,18 @@ impl Compiler {
             },
             Literal::Float(float_literal) => match float_literal {
                 FloatLiteral::Float(value) => unsafe {
-                    gcc_jit_context_new_rvalue_from_double(self.context, Compiler::float_type(self.context), value as f64)
+                    gcc_jit_context_new_rvalue_from_double(
+                        self.context,
+                        Compiler::float_type(self.context),
+                        value as f64,
+                    )
                 },
                 FloatLiteral::Double(value) => unsafe {
-                    gcc_jit_context_new_rvalue_from_double(self.context, Compiler::double_type(self.context), value as f64)
+                    gcc_jit_context_new_rvalue_from_double(
+                        self.context,
+                        Compiler::double_type(self.context),
+                        value as f64,
+                    )
                 },
             },
             Literal::Bool(bool_literal) => {

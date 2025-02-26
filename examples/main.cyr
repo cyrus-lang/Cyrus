@@ -1,7 +1,9 @@
 import std::io;
 
 pub fn main() {
-    for (#i = 0; i < 10; i++) {
-        std::io::printf("%d\n", i);
-    }
+    #a: i32[3] = [10, 2];
+    
+    a = [5, 6];
+
+    std::io::printf("result: %d\n", a[0]);
 }
