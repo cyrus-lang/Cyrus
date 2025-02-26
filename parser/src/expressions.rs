@@ -1,6 +1,6 @@
-use crate::precedences::*;
 use crate::ParseError;
 use crate::Parser;
+use crate::precedences::*;
 use ast::ast::*;
 use ast::token::*;
 use utils::compile_time_errors::errors::CompileTimeError;
@@ -11,8 +11,33 @@ impl<'a> Parser<'a> {
         let mut left_start = self.current_token.span.start;
         let mut left = self.parse_prefix_expression()?;
 
+        if self.current_token_is(TokenKind::As) {
+            self.next_token(); // consume left expression
+
+            match self.parse_type_token() {
+                Ok(cast_as) => {
+                    return Ok((
+                        Expression::CastAs(CastAs {
+                            expr: Box::new(left),
+                            cast_as,
+                            span: Span {
+                                start: left_start,
+                                end: self.current_token.span.end.clone(),
+                            },
+                            loc: self.current_location(),
+                        }),
+                        Span {
+                            start: left_start,
+                            end: self.current_token.span.end.clone(),
+                        },
+                    ));
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
         while self.current_token.kind != TokenKind::EOF
-            && precedence < token_precedence_of(self.current_token.kind.clone())
+            && precedence < token_precedence_of(self.peek_token.kind.clone())
         {
             match self.parse_infix_expression(left.clone(), left_start) {
                 Some(infix) => {
@@ -181,7 +206,7 @@ impl<'a> Parser<'a> {
                         self.current_token.kind.clone()
                     ))),
                     caret: true,
-                })
+                });
             }
         };
 
@@ -197,26 +222,7 @@ impl<'a> Parser<'a> {
         left: Expression,
         left_start: usize,
     ) -> Option<Result<Expression, ParseError>> {
-        if self.current_token_is(TokenKind::As) {
-            self.next_token(); // consume as token
-
-            match self.parse_type_token() {
-                Ok(cast_as) => {
-                    return Some(Ok(Expression::CastAs(CastAs {
-                        expr: Box::new(left),
-                        cast_as,
-                        span: Span {
-                            start: left_start,
-                            end: self.current_token.span.end.clone(),
-                        },
-                        loc: self.current_location(),
-                    })));
-                }
-                Err(err) => return Some(Err(err)),
-            }
-        }   
-
-        match &self.current_token.kind {
+        match &self.peek_token.kind {
             TokenKind::Plus
             | TokenKind::Minus
             | TokenKind::Asterisk
@@ -229,6 +235,7 @@ impl<'a> Parser<'a> {
             | TokenKind::GreaterEqual
             | TokenKind::GreaterThan
             | TokenKind::Identifier { .. } => {
+                self.next_token(); // consume left expression
                 let operator = self.current_token.clone();
                 let precedence = token_precedence_of(self.current_token.kind.clone());
                 self.next_token(); // consume the operator
@@ -295,7 +302,6 @@ impl<'a> Parser<'a> {
                 },
             ));
         }
-
         self.next_token(); // consume the starting token
 
         series.push(self.parse_expression(Precedence::Lowest)?.0); // parse the first expression
@@ -364,7 +370,7 @@ impl<'a> Parser<'a> {
                         code_raw: Some(self.lexer.select(left_start..self.current_token.span.end)),
                         verbose: None,
                         caret: true,
-                    })
+                    });
                 }
             };
             self.next_token();
@@ -432,7 +438,7 @@ impl<'a> Parser<'a> {
                     code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
-                })
+                });
             }
         }
     }
@@ -516,7 +522,7 @@ impl<'a> Parser<'a> {
                             code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                             verbose: None,
                             caret: true,
-                        })
+                        });
                     }
                 }
             } else {
@@ -536,7 +542,7 @@ impl<'a> Parser<'a> {
                             code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                             verbose: None,
                             caret: true,
-                        })
+                        });
                     }
                 };
                 self.next_token();
@@ -601,7 +607,7 @@ impl<'a> Parser<'a> {
                         code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                         verbose: None,
                         caret: true,
-                    })
+                    });
                 }
             };
             self.expect_current(TokenKind::Colon)?;
@@ -644,7 +650,7 @@ impl<'a> Parser<'a> {
                         code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                         verbose: None,
                         caret: true,
-                    })
+                    });
                 }
             }
         }

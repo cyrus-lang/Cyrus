@@ -1,9 +1,1 @@
-import std::io;
-
-pub fn main() {
-    #a = 10;
-    #b = 20;
-
-    #result = a + b as double;
-    std::io::printf("result: %f\n", result + 20);
-}
+var.field as i32 

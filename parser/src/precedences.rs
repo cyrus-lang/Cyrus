@@ -58,5 +58,6 @@ mod tests {
     fn test_compare_precedences() {
         assert!(Precedence::Lowest < Precedence::LessGreater);
         assert!(Precedence::Call > Precedence::Sum);
+        assert!(Precedence::Call < Precedence::Cast);
     }
 }
