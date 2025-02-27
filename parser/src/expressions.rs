@@ -40,7 +40,11 @@ impl<'a> Parser<'a> {
 
         let end = self.current_token.span.end;
 
-        if !(self.current_token_is(TokenKind::Semicolon) || self.current_token_is(TokenKind::LeftBrace)) {
+        // REVIEW
+        if !(self.current_token_is(TokenKind::Semicolon)
+            || self.current_token_is(TokenKind::LeftBrace)
+            || self.current_token_is(TokenKind::RightBracket))
+        {
             self.next_token();
         }
 
@@ -53,7 +57,6 @@ impl<'a> Parser<'a> {
         let expr = match &self.current_token.clone().kind {
             TokenKind::Identifier { .. } => {
                 let from_package = self.parse_from_package()?;
-
                 if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
@@ -70,7 +73,7 @@ impl<'a> Parser<'a> {
                         span,
                         loc: self.current_location(),
                     })
-                } else if self.peek_token_is(TokenKind::Assign) {
+                } else if self.current_token_is(TokenKind::Assign) {
                     return self.parse_assignment(from_package);
                 } else if self.current_token_is(TokenKind::LeftBracket) {
                     let array_index = self.parse_array_index(from_package)?;
@@ -283,31 +286,24 @@ impl<'a> Parser<'a> {
                 },
             ));
         }
-        self.next_token(); // consume the starting token
+        self.next_token(); // consume left brace
 
         let first_argument = self.parse_expression(Precedence::Lowest)?.0;
         series.push(first_argument);
+        self.next_token();
 
-        while self.peek_token_is(TokenKind::Comma) {
-            self.next_token(); // consume the current expression
-
-            if self.current_token_is(TokenKind::Comma) && self.peek_token_is(end.clone()) {
-                self.next_token(); // consume last comma
+        while self.current_token_is(TokenKind::Comma) {
+            self.next_token();
+            
+            if self.current_token_is(TokenKind::RightBracket) {
                 break;
             }
 
-            self.next_token(); // consume the comma
-
-            // dbg!(self.current_token.kind.clone());
-            let argument = self.parse_expression(Precedence::Lowest)?.0;
-            series.push(argument);
+            let expr = self.parse_expression(Precedence::Lowest)?.0;
+            series.push(expr);
         }
 
-        if self.peek_token_is(end.clone()) {
-            self.next_token(); // consume the latest expression
-        }
-
-        if !self.current_token_is(end.clone()) {
+        if !(self.current_token_is(end.clone()) || self.current_token_is(TokenKind::EOF)) {
             return Err(CompileTimeError {
                 location: self.current_location(),
                 etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), end),
@@ -722,7 +718,6 @@ impl<'a> Parser<'a> {
     pub fn parse_assignment(&mut self, from_package: FromPackage) -> Result<Expression, ParseError> {
         let start: usize = self.current_token.span.start;
 
-        self.next_token(); // consume identifier
         self.next_token(); // consume assign
 
         let expr = self.parse_expression(Precedence::Lowest)?.0;
