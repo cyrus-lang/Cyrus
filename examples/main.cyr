@@ -1,1 +1,8 @@
-#a = [print(nested())];
+import std::io;
+
+pub fn main() {
+    #a = 10;
+    #b: i32 = 20;
+    #result = a + b;
+    std::io::printf("result: %d\n", result);
+}

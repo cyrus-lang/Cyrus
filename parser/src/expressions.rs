@@ -318,7 +318,6 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume the starting token
 
         let first_argument = self.parse_expression(Precedence::Lowest)?.0;
-        dbg!(first_argument.clone());
         series.push(first_argument);
 
         while self.peek_token_is(TokenKind::Comma) {
@@ -409,8 +408,15 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if (self.current_token_is(TokenKind::RightParen) || self.current_token_is(TokenKind::RightBracket)) != true {
-            self.expect_current(TokenKind::Semicolon)?;
+        if (self.current_token_is(TokenKind::RightParen) || self.current_token_is(TokenKind::RightBracket)) != true && !self.current_token_is(TokenKind::Semicolon) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingSemicolon,
+                file_name: Some(self.lexer.file_name.clone()),
+                code_raw: Some(self.lexer.select(left_start..self.current_token.span.end)),
+                verbose: None,
+                caret: true,
+            });            
         }
 
         Ok(Expression::FieldAccessOrMethodCall(chains))
