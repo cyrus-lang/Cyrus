@@ -1,1 +1,2 @@
-var.field as i32 
+print("", 1 as double);
+"" as string;

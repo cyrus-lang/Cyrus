@@ -11,29 +11,8 @@ impl<'a> Parser<'a> {
         let mut left_start = self.current_token.span.start;
         let mut left = self.parse_prefix_expression()?;
 
-        if self.current_token_is(TokenKind::As) {
-            self.next_token(); // consume left expression
-
-            match self.parse_type_token() {
-                Ok(cast_as) => {
-                    return Ok((
-                        Expression::CastAs(CastAs {
-                            expr: Box::new(left),
-                            cast_as,
-                            span: Span {
-                                start: left_start,
-                                end: self.current_token.span.end.clone(),
-                            },
-                            loc: self.current_location(),
-                        }),
-                        Span {
-                            start: left_start,
-                            end: self.current_token.span.end.clone(),
-                        },
-                    ));
-                }
-                Err(err) => return Err(err),
-            }
+        if self.current_token_is(TokenKind::As) || self.peek_token_is(TokenKind::As) {
+            return self.parse_cast_as_expression(left, left_start);
         }
 
         while self.current_token.kind != TokenKind::EOF
@@ -62,6 +41,42 @@ impl<'a> Parser<'a> {
         let end = self.current_token.span.end;
 
         Ok((left, Span { start: left_start, end }))
+    }
+
+    pub fn parse_cast_as_expression(
+        &mut self,
+        left: Expression,
+        left_start: usize,
+    ) -> Result<(Expression, Span), ParseError> {
+        if self.peek_token_is(TokenKind::As) {
+            self.next_token(); // consume left expression
+            self.next_token(); // consume as expression
+        } else if self.current_token_is(TokenKind::As) {
+            self.next_token(); // consume as expression
+        } else {
+            panic!("Unexpected behaviour when trying to parse cast_as_expression.");
+        }
+
+        match self.parse_type_token() {
+            Ok(cast_as) => {
+                return Ok((
+                    Expression::CastAs(CastAs {
+                        expr: Box::new(left),
+                        cast_as,
+                        span: Span {
+                            start: left_start,
+                            end: self.current_token.span.end.clone(),
+                        },
+                        loc: self.current_location(),
+                    }),
+                    Span {
+                        start: left_start,
+                        end: self.current_token.span.end.clone(),
+                    },
+                ));
+            }
+            Err(err) => return Err(err),
+        }
     }
 
     pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
@@ -200,9 +215,7 @@ impl<'a> Parser<'a> {
                     file_name: Some(self.lexer.file_name.clone()),
                     code_raw: Some(self.lexer.select(span.start..self.current_token.span.end)),
                     verbose: Some(String::from(format!(
-                        "No corresponding prefix function is defined for the token '{}'.
-    This token cannot be parsed as a valid expression or statement prefix.
-    Please check your syntax or ensure that a prefix function is implemented for this token type.",
+                        "No corresponding prefix function is defined for the token '{}'.",
                         self.current_token.kind.clone()
                     ))),
                     caret: true,
@@ -304,7 +317,9 @@ impl<'a> Parser<'a> {
         }
         self.next_token(); // consume the starting token
 
-        series.push(self.parse_expression(Precedence::Lowest)?.0); // parse the first expression
+        let first_argument = self.parse_expression(Precedence::Lowest)?.0;
+        dbg!(first_argument.clone());
+        series.push(first_argument);
 
         while self.peek_token_is(TokenKind::Comma) {
             self.next_token(); // consume the current expression
@@ -316,7 +331,9 @@ impl<'a> Parser<'a> {
 
             self.next_token(); // consume the comma
 
-            series.push(self.parse_expression(Precedence::Lowest)?.0);
+            // dbg!(self.current_token.kind.clone());
+            let argument = self.parse_expression(Precedence::Lowest)?.0;
+            series.push(argument);
         }
 
         if self.peek_token_is(end.clone()) {
@@ -391,6 +408,8 @@ impl<'a> Parser<'a> {
                 });
             }
         }
+
+        self.expect_current(TokenKind::Semicolon)?;
 
         Ok(Expression::FieldAccessOrMethodCall(chains))
     }

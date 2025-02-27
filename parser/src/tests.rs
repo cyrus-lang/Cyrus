@@ -2,7 +2,10 @@
 mod tests {
     use std::ops::Index;
 
-    use ast::token::*;
+    use ast::{
+        ast::{Expression, IntegerLiteral, Literal},
+        token::*,
+    };
     use lexer::Lexer;
 
     use crate::Parser;
@@ -16,7 +19,7 @@ mod tests {
                 println!("{:#?}", program);
             }
             Err(parse_errors) => {
-                println!("{:#?}", parse_errors);
+                panic!("{:#?}", parse_errors);
             }
         }
     }
@@ -53,10 +56,12 @@ mod tests {
         assert_parse("#my_var2: f32 = 0;");
         assert_parse("#my_var3: bool = false;");
         assert_parse("#my_var4 = 0;");
+        assert_parse("#my_var4 = sample();");
     }
 
     #[test]
     fn test_if_statement2() {
+        // FIXME
         assert_parse(
             "
         if (next() == 0) {
@@ -81,7 +86,10 @@ mod tests {
 
     #[test]
     fn test_parse_function_params() {
-        let mut lexer = Lexer::new(String::from("(a: i32, b: u32 = 1, c: string)"), String::from("parser_test.cyr"));
+        let mut lexer = Lexer::new(
+            String::from("(a: i32, b: u32 = 1, c: string)"),
+            String::from("parser_test.cyr"),
+        );
         let mut parser = Parser::new(&mut lexer);
         let params = parser.parse_func_params(0).unwrap().list;
 
@@ -101,49 +109,40 @@ mod tests {
     fn test_parse_expression_series() {
         let mut lexer = Lexer::new(String::from("[1, 2, 3, ]"), String::from("parser_test.cyr"));
         let mut parser = Parser::new(&mut lexer);
-        let params = parser.parse_expression_series(TokenKind::RightBracket).unwrap();
-
-        println!("{:#?}", params.0);
+        let params = parser.parse_expression_series(TokenKind::RightBracket).unwrap().0;
+        assert_eq!(params[0], Expression::Literal(Literal::Integer(IntegerLiteral::I32(1))));
+        assert_eq!(params[1], Expression::Literal(Literal::Integer(IntegerLiteral::I32(2))));
+        assert_eq!(params[2], Expression::Literal(Literal::Integer(IntegerLiteral::I32(3))));
     }
 
     #[test]
     fn test_function_statement() {
         assert_parse("fn foo_bar(a: i32, b: i32): i32 { ret a + b; }");
+        assert_parse("fn foo_bar2(a: i32, b: i32) { }");
     }
 
     #[test]
-    fn test_function_call_expresion() {
+    fn test_func_call_expresion() {
         assert_parse("foo_bar(1, 2);");
         assert_parse("foo_bar();");
-    }
-
-    #[test]
-    fn test_parse_1() {
-        assert_parse(
-            "
-        print(1);
-        print(1 + 2);
-        print(1 > 2);
-        print(1 >= 2);
-        print(1 < 2);
-        print(1 <= 2);
-        print(1 == 2);
-        print(1 != 2);
-        print(!true);
-        print(!false);
-        print(\"Cyrus Lang =)\");
-",
-        );
-    }
-
-    #[test]
-    fn test_parse_2() {
+        assert_parse("print(1);");
         assert_parse("print(1 + 2);");
+        assert_parse("print(1 > 2);");
+        assert_parse("print(1 >= 2);");
+        assert_parse("print(1 < 2);");
+        assert_parse("print(1 <= 2);");
+        assert_parse("print(1 == 2);");
+        assert_parse("print(1 != 2);");
+        assert_parse("print(1 as double);");
+        assert_parse("print(!true);");
+        assert_parse("print(!false);");
+        assert_parse("print(\"Cyrus Lang =)\");");
+        assert_parse("print(3 % 2);");
+        // assert_parse("print(\"result: %d\n\", ident as float);");
     }
 
     #[test]
     fn test_parse_percent() {
-        assert_parse("3 % 2");
     }
 
     #[test]
@@ -171,25 +170,6 @@ mod tests {
             for #i = 0; i < 10; i++ {
                 print(i);
             }
-            ",
-        );
-    }
-
-    #[test]
-    fn test_identifier_and_comparative() {
-        assert_parse(
-            "
-            i < j
-            ",
-        );
-        assert_parse(
-            "
-            i < 10
-            ",
-        );
-        assert_parse(
-            "
-            10 < j
             ",
         );
     }
