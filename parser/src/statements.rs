@@ -596,6 +596,10 @@ impl<'a> Parser<'a> {
         }
         self.next_token(); // consume latest token
 
+        if self.current_token_is(TokenKind::Semicolon) {
+            self.next_token();
+        }
+
         let mut increment: Option<Expression> = None;
         if !self.current_token_is(TokenKind::LeftBrace) {
             match self.parse_expression(Precedence::Lowest, true) {
