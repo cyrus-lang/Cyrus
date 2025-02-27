@@ -7,11 +7,7 @@ use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
-    pub fn parse_expression(
-        &mut self,
-        precedence: Precedence,
-        match_current: bool,
-    ) -> Result<(Expression, Span), ParseError> {
+    pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParseError> {
         let mut left_start = self.current_token.span.start;
         let mut left = self.parse_prefix_expression()?;
 
@@ -20,14 +16,9 @@ impl<'a> Parser<'a> {
         }
 
         while self.current_token.kind != TokenKind::EOF
-            && precedence
-                < token_precedence_of(if match_current {
-                    self.current_token.kind.clone()
-                } else {
-                    self.peek_token.kind.clone()
-                })
+            && precedence < token_precedence_of(self.peek_token.kind.clone())
         {
-            match self.parse_infix_expression(left.clone(), left_start, match_current) {
+            match self.parse_infix_expression(left.clone(), left_start) {
                 Some(infix) => {
                     left = infix?;
 
@@ -49,43 +40,11 @@ impl<'a> Parser<'a> {
 
         let end = self.current_token.span.end;
 
+        if !(self.current_token_is(TokenKind::Semicolon) || self.current_token_is(TokenKind::LeftBrace)) {
+            self.next_token();
+        }
+
         Ok((left, Span { start: left_start, end }))
-    }
-
-    pub fn parse_cast_as_expression(
-        &mut self,
-        left: Expression,
-        left_start: usize,
-    ) -> Result<(Expression, Span), ParseError> {
-        if self.peek_token_is(TokenKind::As) {
-            self.next_token(); // consume left expression
-            self.next_token(); // consume as expression
-        } else if self.current_token_is(TokenKind::As) {
-            self.next_token(); // consume as expression
-        } else {
-            panic!("Unexpected behaviour when trying to parse cast_as_expression.");
-        }
-
-        match self.parse_type_token() {
-            Ok(cast_as) => {
-                return Ok((
-                    Expression::CastAs(CastAs {
-                        expr: Box::new(left),
-                        cast_as,
-                        span: Span {
-                            start: left_start,
-                            end: self.current_token.span.end.clone(),
-                        },
-                        loc: self.current_location(),
-                    }),
-                    Span {
-                        start: left_start,
-                        end: self.current_token.span.end.clone(),
-                    },
-                ));
-            }
-            Err(err) => return Err(err),
-        }
     }
 
     pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
@@ -201,7 +160,7 @@ impl<'a> Parser<'a> {
 
                 self.next_token(); // consume the prefix operator
 
-                let (expr, span) = self.parse_expression(Precedence::Prefix, false)?;
+                let (expr, span) = self.parse_expression(Precedence::Prefix)?;
 
                 Expression::Prefix(UnaryExpression {
                     operator: prefix_operator,
@@ -212,7 +171,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LeftParen => {
                 self.next_token();
-                let expr = self.parse_expression(Precedence::Lowest, false)?.0;
+                let expr = self.parse_expression(Precedence::Lowest)?.0;
                 self.expect_peek(TokenKind::RightParen)?;
                 expr
             }
@@ -243,17 +202,8 @@ impl<'a> Parser<'a> {
         &mut self,
         left: Expression,
         left_start: usize,
-        match_current: bool,
     ) -> Option<Result<Expression, ParseError>> {
-        let token_kind = {
-            if match_current {
-                self.current_token.kind.clone()
-            } else {
-                self.peek_token.kind.clone()
-            }
-        };
-
-        match token_kind {
+        match self.peek_token.kind.clone() {
             TokenKind::Plus
             | TokenKind::Minus
             | TokenKind::Asterisk
@@ -266,16 +216,12 @@ impl<'a> Parser<'a> {
             | TokenKind::GreaterEqual
             | TokenKind::GreaterThan
             | TokenKind::Identifier { .. } => {
-                if !match_current {
-                    self.next_token(); // consume left expression
-                }
-
+                self.next_token(); // consume left expression
                 let operator = self.current_token.clone();
-                let precedence = token_precedence_of(self.current_token.kind.clone());
+                let precedence = token_precedence_of(operator.kind.clone());
                 self.next_token(); // consume the operator
 
-                dbg!(self.current_token.kind.clone());
-                let (right, span) = self.parse_expression(precedence, false).ok()?;
+                let (right, span) = self.parse_expression(precedence).ok()?;
 
                 Some(Ok(Expression::Infix(BinaryExpression {
                     operator,
@@ -339,7 +285,7 @@ impl<'a> Parser<'a> {
         }
         self.next_token(); // consume the starting token
 
-        let first_argument = self.parse_expression(Precedence::Lowest, false)?.0;
+        let first_argument = self.parse_expression(Precedence::Lowest)?.0;
         series.push(first_argument);
 
         while self.peek_token_is(TokenKind::Comma) {
@@ -353,7 +299,7 @@ impl<'a> Parser<'a> {
             self.next_token(); // consume the comma
 
             // dbg!(self.current_token.kind.clone());
-            let argument = self.parse_expression(Precedence::Lowest, false)?.0;
+            let argument = self.parse_expression(Precedence::Lowest)?.0;
             series.push(argument);
         }
 
@@ -381,22 +327,56 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    // no semicolon required inside specific expressions like for_loop, if_stmt and etc.
+    pub fn parse_cast_as_expression(
+        &mut self,
+        left: Expression,
+        left_start: usize,
+    ) -> Result<(Expression, Span), ParseError> {
+        if self.peek_token_is(TokenKind::As) {
+            self.next_token(); // consume left expression
+            self.next_token(); // consume as expression
+        } else if self.current_token_is(TokenKind::As) {
+            self.next_token(); // consume as expression
+        } else {
+            panic!("Unexpected behaviour when trying to parse cast_as_expression.");
+        }
+
+        match self.parse_type_token() {
+            Ok(cast_as) => {
+                return Ok((
+                    Expression::CastAs(CastAs {
+                        expr: Box::new(left),
+                        cast_as,
+                        span: Span {
+                            start: left_start,
+                            end: self.current_token.span.end.clone(),
+                        },
+                        loc: self.current_location(),
+                    }),
+                    Span {
+                        start: left_start,
+                        end: self.current_token.span.end.clone(),
+                    },
+                ));
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    // FIXME
     pub fn parse_field_access_or_method_call(
         &mut self,
         left: Expression,
         left_start: usize,
     ) -> Result<Expression, ParseError> {
         let mut semicolon_required = true;
-    
+
         if self.current_token_is(TokenKind::LeftBrace)
-            ||self.current_token_is(TokenKind::LeftParen)
+            || self.current_token_is(TokenKind::LeftParen)
             || self.current_token_is(TokenKind::LeftBracket)
         {
             semicolon_required = false;
         }
-
-        todo!();
 
         let mut chains: Vec<FieldAccessOrMethodCall> = vec![FieldAccessOrMethodCall {
             method_call: Some(self.parse_func_call(left, left_start)?),
@@ -689,7 +669,7 @@ impl<'a> Parser<'a> {
             };
             self.expect_current(TokenKind::Colon)?;
 
-            let value = self.parse_expression(Precedence::Lowest, false)?.0;
+            let value = self.parse_expression(Precedence::Lowest)?.0;
             self.next_token(); // consume expr
 
             field_inits.push(FieldInit {
@@ -745,7 +725,7 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume identifier
         self.next_token(); // consume assign
 
-        let expr = self.parse_expression(Precedence::Lowest, false)?.0;
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
 
         let end = self.current_token.span.end;
 
@@ -762,7 +742,7 @@ impl<'a> Parser<'a> {
 
         self.expect_current(TokenKind::Assign)?;
 
-        let expr = self.parse_expression(Precedence::Lowest, false)?.0;
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
 
         Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
             from_package: array_index.from_package,

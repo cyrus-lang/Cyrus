@@ -109,6 +109,7 @@ impl fmt::Display for TokenKind {
             Self::Slash => write!(f, "/"),
             Self::Percent => write!(f, "%"),
             Self::Assign => write!(f, "="),
+            Self::Equal => write!(f, "=="),
             Self::LeftParen => write!(f, "("),
             Self::RightParen => write!(f, ")"),
             Self::LeftBrace => write!(f, "{{"),

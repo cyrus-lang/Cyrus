@@ -3,12 +3,12 @@ mod tests {
     use std::ops::Index;
 
     use ast::{
-        ast::{Expression, IntegerLiteral, Literal, Node},
+        ast::{Expression, IntegerLiteral, Literal},
         token::*,
     };
     use lexer::Lexer;
 
-    use crate::Parser;
+    use crate::{Parser, precedences::Precedence};
 
     fn assert_parse(input: &'static str) {
         let mut lexer = Lexer::new(input.to_string(), String::from("parser_test.cyr"));
@@ -22,6 +22,15 @@ mod tests {
                 panic!("{:#?}", parse_errors);
             }
         }
+    }
+
+    #[test]
+    fn test_parse_expression() {
+        let input = "1 + 2";
+        let mut lexer = Lexer::new(input.to_string(), String::from("parser_test.cyr"));
+        let mut parser = Parser::new(&mut lexer);
+        let expr = parser.parse_expression(Precedence::Lowest).unwrap().0;
+        dbg!(expr);
     }
 
     #[test]
@@ -81,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_return_statement() {
-        assert_parse("return 1 + 2");
+        assert_parse("return 1 + 2;");
     }
 
     #[test]

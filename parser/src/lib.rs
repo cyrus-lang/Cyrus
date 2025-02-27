@@ -11,6 +11,7 @@ mod expressions;
 mod precedences;
 mod statements;
 mod tests;
+mod debug_tools;
 
 pub type ParseError = CompileTimeError<ParserErrorType>;
 
