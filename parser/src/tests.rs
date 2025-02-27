@@ -3,7 +3,7 @@ mod tests {
     use std::ops::Index;
 
     use ast::{
-        ast::{Expression, IntegerLiteral, Literal},
+        ast::{Expression, IntegerLiteral, Literal, Node},
         token::*,
     };
     use lexer::Lexer;

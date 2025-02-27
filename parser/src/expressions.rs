@@ -274,7 +274,8 @@ impl<'a> Parser<'a> {
                 let precedence = token_precedence_of(self.current_token.kind.clone());
                 self.next_token(); // consume the operator
 
-                let (right, span) = self.parse_expression(precedence, false).unwrap();
+                dbg!(self.current_token.kind.clone());
+                let (right, span) = self.parse_expression(precedence, false).ok()?;
 
                 Some(Ok(Expression::Infix(BinaryExpression {
                     operator,
@@ -380,11 +381,23 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    // no semicolon required inside specific expressions like for_loop, if_stmt and etc.
     pub fn parse_field_access_or_method_call(
         &mut self,
         left: Expression,
         left_start: usize,
     ) -> Result<Expression, ParseError> {
+        let mut semicolon_required = true;
+    
+        if self.current_token_is(TokenKind::LeftBrace)
+            ||self.current_token_is(TokenKind::LeftParen)
+            || self.current_token_is(TokenKind::LeftBracket)
+        {
+            semicolon_required = false;
+        }
+
+        todo!();
+
         let mut chains: Vec<FieldAccessOrMethodCall> = vec![FieldAccessOrMethodCall {
             method_call: Some(self.parse_func_call(left, left_start)?),
             field_access: None,
@@ -429,8 +442,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if (self.current_token_is(TokenKind::RightParen) || self.current_token_is(TokenKind::RightBracket)) != true
+        if !(self.current_token_is(TokenKind::RightBrace)
+            || self.current_token_is(TokenKind::RightParen)
+            || self.current_token_is(TokenKind::RightBracket))
             && !self.current_token_is(TokenKind::Semicolon)
+            && semicolon_required
         {
             return Err(CompileTimeError {
                 location: self.current_location(),
@@ -440,7 +456,18 @@ impl<'a> Parser<'a> {
                 verbose: None,
                 caret: true,
             });
+        } else if !semicolon_required {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                file_name: Some(self.lexer.file_name.clone()),
+                code_raw: Some(self.lexer.select(left_start..self.current_token.span.end)),
+                verbose: None,
+                caret: true,
+            });
         }
+
+        dbg!(self.current_token.kind.clone());
 
         Ok(Expression::FieldAccessOrMethodCall(chains))
     }

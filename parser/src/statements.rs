@@ -685,7 +685,7 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::Assign)?;
 
         // ANCHOR
-        let (expr, span) = self.parse_expression(Precedence::Lowest, true)?;
+        let (expr, span) = self.parse_expression(Precedence::Lowest, false)?;
 
         // NOTE
         // This line here is potential to raise some serious problems
@@ -908,19 +908,15 @@ impl<'a> Parser<'a> {
         let start = self.current_token.span.start;
 
         self.expect_current(TokenKind::If)?;
-        self.expect_current(TokenKind::LeftParen)?;
-
         let (condition, _) = self.parse_expression(Precedence::Lowest, false)?;
-
-        self.expect_peek(TokenKind::RightParen)?;
-        self.expect_peek(TokenKind::LeftBrace)?;
+        self.expect_current(TokenKind::LeftBrace)?;
 
         let mut branches: Vec<If> = Vec::new();
         let mut alternate: Option<Box<BlockStatement>> = None;
 
         let consequent = Box::new(self.parse_block_statement()?);
 
-        if !self.current_token_is(TokenKind::RightBrace) {
+        if !self.current_token_is(TokenKind::RightBrace) && !self.current_token_is(TokenKind::EOF) {
             return Err(CompileTimeError {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingClosingBrace,
