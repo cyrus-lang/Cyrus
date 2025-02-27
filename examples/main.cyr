@@ -1,2 +1,1 @@
-print("", 1 as double);
-"" as string;
+#a = [print(nested())];

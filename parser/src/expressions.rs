@@ -409,7 +409,9 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_current(TokenKind::Semicolon)?;
+        if (self.current_token_is(TokenKind::RightParen) || self.current_token_is(TokenKind::RightBracket)) != true {
+            self.expect_current(TokenKind::Semicolon)?;
+        }
 
         Ok(Expression::FieldAccessOrMethodCall(chains))
     }

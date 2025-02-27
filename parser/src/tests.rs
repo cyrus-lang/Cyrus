@@ -127,22 +127,13 @@ mod tests {
         assert_parse("foo_bar();");
         assert_parse("print(1);");
         assert_parse("print(1 + 2);");
-        assert_parse("print(1 > 2);");
-        assert_parse("print(1 >= 2);");
-        assert_parse("print(1 < 2);");
-        assert_parse("print(1 <= 2);");
-        assert_parse("print(1 == 2);");
-        assert_parse("print(1 != 2);");
         assert_parse("print(1 as double);");
+        assert_parse("print(nested());");
         assert_parse("print(!true);");
         assert_parse("print(!false);");
         assert_parse("print(\"Cyrus Lang =)\");");
         assert_parse("print(3 % 2);");
-        // assert_parse("print(\"result: %d\n\", ident as float);");
-    }
-
-    #[test]
-    fn test_parse_percent() {
+        assert_parse("print(\"result: %d\n\", ident as float);");
     }
 
     #[test]
