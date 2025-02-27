@@ -1,6 +1,6 @@
-use crate::precedences::Precedence;
 use crate::ParseError;
 use crate::Parser;
+use crate::precedences::Precedence;
 use ast::ast::*;
 use ast::token::*;
 use utils::compile_time_errors::errors::CompileTimeError;
@@ -33,7 +33,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_expression_statement(&mut self) -> Result<Statement, ParseError> {
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
+        let expr = self.parse_expression(Precedence::Lowest, false)?.0;
 
         if self.peek_token_is(TokenKind::Semicolon) {
             self.next_token();
@@ -100,7 +100,7 @@ impl<'a> Parser<'a> {
                                     code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                                     verbose: None,
                                     caret: true,
-                                })
+                                });
                             }
                         }
                     }
@@ -170,7 +170,7 @@ impl<'a> Parser<'a> {
                                 code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                                 verbose: Some(String::from("Invalid token inside a struct definition.")),
                                 caret: true,
-                            })
+                            });
                         }
                     }
                 }
@@ -195,7 +195,7 @@ impl<'a> Parser<'a> {
                     ),
                     verbose: None,
                     caret: true,
-                })
+                });
             }
         }
     }
@@ -415,7 +415,7 @@ impl<'a> Parser<'a> {
                     if self.current_token_is(TokenKind::Assign) {
                         self.next_token(); // consume the assign
 
-                        default_value = Some(self.parse_expression(Precedence::Lowest)?.0);
+                        default_value = Some(self.parse_expression(Precedence::Lowest, false)?.0);
 
                         self.next_token(); // consume the expression
                     }
@@ -466,7 +466,7 @@ impl<'a> Parser<'a> {
                         ),
                         verbose: None,
                         caret: true,
-                    })
+                    });
                 }
             }
         }
@@ -476,6 +476,42 @@ impl<'a> Parser<'a> {
         Ok(FunctionParams { list, is_variadic })
     }
 
+    pub fn parse_for_loop_body(&mut self, expr_start: usize) -> Result<Box<BlockStatement>, ParseError> {
+        let body: Box<BlockStatement>;
+        if self.current_token_is(TokenKind::LeftBrace) {
+            body = Box::new(self.parse_block_statement()?);
+
+            if !self.current_token_is(TokenKind::RightBrace) {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::MissingClosingBrace,
+                    file_name: Some(self.lexer.file_name.clone()),
+                    code_raw: Some(self.lexer.select(expr_start..self.current_token.span.end)),
+                    verbose: None,
+                    caret: true,
+                });
+            }
+
+            if self.peek_token_is(TokenKind::Semicolon) {
+                self.next_token();
+            }
+        } else {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingOpeningBrace,
+                file_name: Some(self.lexer.file_name.clone()),
+                code_raw: Some(
+                    self.lexer
+                        .select(self.current_token.span.start..self.current_token.span.end),
+                ),
+                verbose: None,
+                caret: true,
+            });
+        }
+        Ok(body)
+    }
+
+    // ANCHOR
     pub fn parse_for_loop(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
 
@@ -525,42 +561,44 @@ impl<'a> Parser<'a> {
             }));
         }
 
-        self.expect_current(TokenKind::LeftParen)?;
-
         let mut initializer: Option<Variable> = None;
         if let Statement::Variable(var) = self.parse_var_decl()? {
             initializer = Some(var);
         }
-
         self.expect_current(TokenKind::Semicolon)?;
 
+        // for loop with only initializer expression
         if self.current_token_is(TokenKind::LeftBrace) {
+            let body = self.parse_for_loop_body(start)?;
+            return Ok(Statement::For(For {
+                initializer,
+                condition: None,
+                increment: None,
+                body,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc: self.current_location(),
+            }));
+        }
+
+        let condition = self.parse_expression(Precedence::Lowest, true)?.0;
+        if (self.current_token_is(TokenKind::Semicolon) || self.peek_token_is(TokenKind::Semicolon)) != true {
             return Err(CompileTimeError {
                 location: self.current_location(),
-                etype: ParserErrorType::IncompleteConditionalForLoop,
+                etype: ParserErrorType::MissingSemicolon,
                 file_name: Some(self.lexer.file_name.clone()),
                 code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                 verbose: None,
                 caret: true,
             });
         }
-
-        let condition: Option<Expression>;
-        match self.parse_expression(Precedence::Lowest) {
-            Ok(result) => {
-                condition = Some(result.0);
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        }
-
-        self.expect_peek(TokenKind::Semicolon)?;
-        self.next_token();
+        self.next_token(); // consume latest token
 
         let mut increment: Option<Expression> = None;
         if !self.current_token_is(TokenKind::LeftBrace) {
-            match self.parse_expression(Precedence::Lowest) {
+            match self.parse_expression(Precedence::Lowest, true) {
                 Ok(result) => {
                     increment = Some(result.0);
                 }
@@ -572,43 +610,11 @@ impl<'a> Parser<'a> {
             self.next_token(); // consume increment token
         }
 
-        self.expect_current(TokenKind::RightParen)?;
-
-        let body: Box<BlockStatement>;
-        if self.current_token_is(TokenKind::LeftBrace) {
-            body = Box::new(self.parse_block_statement()?);
-
-            if !self.current_token_is(TokenKind::RightBrace) {
-                return Err(CompileTimeError {
-                    location: self.current_location(),
-                    etype: ParserErrorType::MissingClosingBrace,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                    verbose: None,
-                    caret: true,
-                });
-            }
-
-            if self.peek_token_is(TokenKind::Semicolon) {
-                self.next_token();
-            }
-        } else {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::MissingOpeningBrace,
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(self.current_token.span.start..self.current_token.span.end),
-                ),
-                verbose: None,
-                caret: true,
-            });
-        }
+        let body = self.parse_for_loop_body(start)?;
 
         Ok(Statement::For(For {
             initializer,
-            condition,
+            condition: Some(condition),
             increment,
             body,
             span: Span {
@@ -674,13 +680,14 @@ impl<'a> Parser<'a> {
         }
         self.expect_current(TokenKind::Assign)?;
 
-        let (expr, span) = self.parse_expression(Precedence::Lowest)?;
+        // ANCHOR
+        let (expr, span) = self.parse_expression(Precedence::Lowest, true)?;
 
         // NOTE
         // This line here is potential to raise some serious problems
         // in parsing process. But now i don't have any idea that how we can fix it.
         // The reason is that some expressions need consume last token (before semicolon) and some does not.
-        if self.peek_token_is(TokenKind::Semicolon)  {
+        if self.peek_token_is(TokenKind::Semicolon) {
             self.next_token();
         }
 
@@ -726,7 +733,7 @@ impl<'a> Parser<'a> {
                     code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
-                })
+                });
             }
         }; // export the name of the function
         self.next_token(); // consume the name of the identifier
@@ -788,7 +795,7 @@ impl<'a> Parser<'a> {
                         code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                         verbose: None,
                         caret: true,
-                    })
+                    });
                 }
             }; // export the name of the function
 
@@ -857,7 +864,7 @@ impl<'a> Parser<'a> {
         let start = self.current_token.span.start;
         self.next_token(); // consume return token
 
-        let argument = self.parse_expression(Precedence::Lowest)?.0;
+        let argument = self.parse_expression(Precedence::Lowest, false)?.0;
 
         if self.peek_token_is(TokenKind::Semicolon) {
             self.next_token();
@@ -899,7 +906,7 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::If)?;
         self.expect_current(TokenKind::LeftParen)?;
 
-        let (condition, _) = self.parse_expression(Precedence::Lowest)?;
+        let (condition, _) = self.parse_expression(Precedence::Lowest, false)?;
 
         self.expect_peek(TokenKind::RightParen)?;
         self.expect_peek(TokenKind::LeftBrace)?;
@@ -931,7 +938,7 @@ impl<'a> Parser<'a> {
                 self.next_token(); // consume if token
                 let start = self.current_token.span.start;
                 self.expect_current(TokenKind::LeftParen)?;
-                let (condition, _) = self.parse_expression(Precedence::Lowest)?;
+                let (condition, _) = self.parse_expression(Precedence::Lowest, false)?;
                 self.expect_peek(TokenKind::RightParen)?; // biggening of the block
                 self.expect_peek(TokenKind::LeftBrace)?; // biggening of the block
                 let consequent = Box::new(self.parse_block_statement()?);
