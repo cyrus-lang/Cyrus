@@ -42,6 +42,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::Expression(expr))
     }
 
+    // REVIEW 
     pub fn parse_struct(&mut self) -> Result<Statement, ParseError> {
         let loc = self.current_location();
         let start = self.current_token.span.start;
@@ -805,6 +806,15 @@ impl<'a> Parser<'a> {
 
             if self.peek_token_is(TokenKind::Semicolon) {
                 self.next_token();
+            } else if self.peek_token_is(TokenKind::LeftBrace) {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::InvalidToken(self.peek_token.kind.clone()),
+                    file_name: Some(self.lexer.file_name.clone()),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                    verbose: Some(String::from("FuncDecl does not accept a body. Use a semicolon `;` instead of a body `{ ... }`.")),
+                    caret: true,
+                });
             }
 
             return Ok(Statement::FuncDecl(FuncDecl {
@@ -826,7 +836,7 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::LeftBrace) {
             let body = Box::new(self.parse_block_statement()?);
 
-            if !self.current_token_is(TokenKind::RightBrace) {
+            if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
                 return Err(CompileTimeError {
                     location: self.current_location(),
                     etype: ParserErrorType::MissingClosingBrace,

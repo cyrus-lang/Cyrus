@@ -183,7 +183,7 @@ impl<'a> Parser<'a> {
                     file_name: Some(self.lexer.file_name.clone()),
                     code_raw: Some(self.lexer.select(span.start..self.current_token.span.end)),
                     verbose: Some(String::from(format!(
-                        "No corresponding prefix function is defined for the token '{}'.",
+                        "Unexpected token '{}'. Expected a number, variable, or operator.",
                         self.current_token.kind.clone()
                     ))),
                     caret: true,
