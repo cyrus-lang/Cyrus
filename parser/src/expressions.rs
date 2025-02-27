@@ -15,6 +15,9 @@ impl<'a> Parser<'a> {
             return self.parse_cast_as_expression(left, left_start);
         }
 
+        // dbg!(left.clone());
+        // dbg!(self.peek_token.kind.clone());
+
         while self.current_token.kind != TokenKind::EOF
             && precedence < token_precedence_of(self.peek_token.kind.clone())
         {
@@ -52,11 +55,12 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
-        let span = self.current_token.span.clone();
+        let span: Span = self.current_token.span.clone();
 
         let expr = match &self.current_token.clone().kind {
             TokenKind::Identifier { .. } => {
                 let from_package = self.parse_from_package()?;
+                
                 if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
@@ -91,6 +95,7 @@ impl<'a> Parser<'a> {
                         from_package.span.start,
                     );
                 } else {
+                    self.next_token();
                     Expression::FromPackage(from_package)
                 }
             }
@@ -194,6 +199,7 @@ impl<'a> Parser<'a> {
             }
         };
 
+        // FIXME
         if self.current_token_is(TokenKind::Dot) {
             return self.parse_struct_member(Box::new(expr));
         }
@@ -290,11 +296,10 @@ impl<'a> Parser<'a> {
 
         let first_argument = self.parse_expression(Precedence::Lowest)?.0;
         series.push(first_argument);
-        self.next_token();
 
         while self.current_token_is(TokenKind::Comma) {
             self.next_token();
-            
+
             if self.current_token_is(TokenKind::RightBracket) {
                 break;
             }
@@ -365,14 +370,6 @@ impl<'a> Parser<'a> {
         left: Expression,
         left_start: usize,
     ) -> Result<Expression, ParseError> {
-        let mut semicolon_required = true;
-
-        if self.current_token_is(TokenKind::LeftBrace)
-            || self.current_token_is(TokenKind::LeftParen)
-            || self.current_token_is(TokenKind::LeftBracket)
-        {
-            semicolon_required = false;
-        }
 
         let mut chains: Vec<FieldAccessOrMethodCall> = vec![FieldAccessOrMethodCall {
             method_call: Some(self.parse_func_call(left, left_start)?),
@@ -417,33 +414,6 @@ impl<'a> Parser<'a> {
                 });
             }
         }
-
-        if !(self.current_token_is(TokenKind::RightBrace)
-            || self.current_token_is(TokenKind::RightParen)
-            || self.current_token_is(TokenKind::RightBracket))
-            && !self.current_token_is(TokenKind::Semicolon)
-            && semicolon_required
-        {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::MissingSemicolon,
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(self.lexer.select(left_start..self.current_token.span.end)),
-                verbose: None,
-                caret: true,
-            });
-        } else if !semicolon_required {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(self.lexer.select(left_start..self.current_token.span.end)),
-                verbose: None,
-                caret: true,
-            });
-        }
-
-        dbg!(self.current_token.kind.clone());
 
         Ok(Expression::FieldAccessOrMethodCall(chains))
     }
