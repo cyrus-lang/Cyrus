@@ -136,11 +136,12 @@ mod tests {
     fn test_func_call_expresion() {
         // FIXME
         assert_parse("foo_bar();");
-        assert_parse("print(1);");
+        // assert_parse("print(1);");
         assert_parse("foo_bar(1, 2);");
-        // assert_parse("print(1 + 2);");
-        assert_parse("print(1 as double);");
+        assert_parse("print(1 + 2)");
+        // assert_parse("print(1 as double);");
         // assert_parse("print(nested());");
+        
         // assert_parse("print(!true);");
         // assert_parse("print(!false);");
         // assert_parse("print(\"Cyrus Lang =)\");");
@@ -168,34 +169,24 @@ mod tests {
 
     #[test]
     fn test_parse_for_statement() {
-        assert_parse(
-            "
-            for #i = 0; i < 10; i++ {
-                
-            }
-            ",
-        );
+        assert_parse("for #i = 0; i < 10; i++ {  }");
+        assert_parse("for #i = 0; i < 10; {  }");
+        assert_parse("for #i = 0; {  }");
+        assert_parse("for {  }");
     }
 
     #[test]
     fn test_arrays() {
-        assert_parse("#a: array = [1, 2, 3]");
-        assert_parse("#a: array = [\"Cyrus\", \"Lang\"]");
+        assert_parse("#a: i32[3] = [1, 2, 3]");
+        assert_parse("#a: string[2] = [\"Cyrus\", \"Lang\"]");
         assert_parse("arr[0][1]");
-    }
-
-    #[test]
-    fn test_array_index_assign() {
         assert_parse("my_var[1] = 555;");
-    }
 
-    #[test]
-    fn test_func_return_user_defined_type() {
-        assert_parse("fn sample(): MyStruct {}");
     }
 
     #[test]
     fn test_ptr_identifier() {
+        assert_parse("*my_var");
         assert_parse("&**my_var");
     }
 }

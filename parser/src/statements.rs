@@ -512,7 +512,6 @@ impl<'a> Parser<'a> {
         Ok(body)
     }
 
-    // ANCHOR
     pub fn parse_for_loop(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
 
