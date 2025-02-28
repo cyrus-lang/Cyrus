@@ -585,34 +585,13 @@ impl<'a> Parser<'a> {
         }
 
         let condition = self.parse_expression(Precedence::Lowest)?.0;
-        if (self.current_token_is(TokenKind::Semicolon) || self.peek_token_is(TokenKind::Semicolon)) != true {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::MissingSemicolon,
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                verbose: None,
-                caret: true,
-            });
-        }
-        self.next_token(); // consume latest token
-
-        if self.current_token_is(TokenKind::Semicolon) {
-            self.next_token();
-        }
+        self.expect_current(TokenKind::Semicolon)?;
 
         let mut increment: Option<Expression> = None;
+        
+        
         if !self.current_token_is(TokenKind::LeftBrace) {
-            match self.parse_expression(Precedence::Lowest) {
-                Ok(result) => {
-                    increment = Some(result.0);
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            }
-
-            self.next_token(); // consume increment token
+            increment = Some(self.parse_expression(Precedence::Lowest)?.0);
         }
 
         let body = self.parse_for_loop_body(start)?;
