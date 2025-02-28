@@ -29,15 +29,14 @@ impl<'a> Parser<'a> {
                     code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
-                })
+                });
             }
         };
-        self.next_token();
 
-        while self.current_token_is(TokenKind::DoubleColon) {
+        while self.peek_token_is(TokenKind::DoubleColon) {
             self.next_token();
 
-            match self.current_token.kind.clone() {
+            match self.peek_token.kind.clone() {
                 TokenKind::Identifier { name } => {
                     sub_packages.push(PackagePath {
                         package_name: Identifier {
@@ -132,7 +131,7 @@ impl<'a> Parser<'a> {
                         ),
                         verbose: None,
                         caret: true,
-                    })
+                    });
                 }
             },
         };
@@ -195,7 +194,7 @@ impl<'a> Parser<'a> {
                         "Expected one of: 'inline', 'extern', 'pub' as function visibility.",
                     )),
                     caret: true,
-                })
+                });
             }
         };
         self.next_token(); // consume vis_type token

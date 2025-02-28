@@ -15,9 +15,6 @@ impl<'a> Parser<'a> {
             return self.parse_cast_as_expression(left, left_start);
         }
 
-        // dbg!(left.clone());
-        // dbg!(self.peek_token.kind.clone());
-
         while self.current_token.kind != TokenKind::EOF
             && precedence < token_precedence_of(self.peek_token.kind.clone())
         {
@@ -60,7 +57,7 @@ impl<'a> Parser<'a> {
         let expr = match &self.current_token.clone().kind {
             TokenKind::Identifier { .. } => {
                 let from_package = self.parse_from_package()?;
-                
+
                 if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
@@ -95,8 +92,7 @@ impl<'a> Parser<'a> {
                         from_package.span.start,
                     );
                 } else {
-                    self.next_token();
-                    Expression::FromPackage(from_package)
+                    return Ok(Expression::FromPackage(from_package));
                 }
             }
             TokenKind::Ampersand => {
@@ -199,7 +195,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // FIXME
+        // REVIEW
         if self.current_token_is(TokenKind::Dot) {
             return self.parse_struct_member(Box::new(expr));
         }
