@@ -45,6 +45,7 @@ impl<'a> Parser<'a> {
             || self.current_token_is(TokenKind::LeftBrace)
             || self.current_token_is(TokenKind::RightBracket)
             || self.current_token_is(TokenKind::Comma)
+            || self.current_token_is(TokenKind::RightParen)
         )
         {
             self.next_token();
@@ -290,8 +291,9 @@ impl<'a> Parser<'a> {
             let expr = self.parse_expression(Precedence::Lowest)?.0;
             series.push(expr);
 
-            if !self.current_token_is(TokenKind::RightParen) {
-                dbg!(self.current_token.kind.clone());
+            dbg!(self.current_token.kind.clone());
+            
+            if !self.current_token_is(end.clone()) {
                 self.expect_current(TokenKind::Comma)?;
             } else {
                 self.next_token(); // consume right paren
@@ -361,7 +363,6 @@ impl<'a> Parser<'a> {
         left: Expression,
         left_start: usize,
     ) -> Result<Expression, ParseError> {
-
         let mut chains: Vec<FieldAccessOrMethodCall> = vec![FieldAccessOrMethodCall {
             method_call: Some(self.parse_func_call(left, left_start)?),
             field_access: None,
