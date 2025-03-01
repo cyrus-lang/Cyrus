@@ -86,6 +86,7 @@ pub enum TokenKind {
     False,
     Null,
     As,
+    Extends,
 
     AddressOf(Box<TokenKind>),
     Dereference(Box<TokenKind>),
@@ -109,6 +110,7 @@ impl fmt::Display for TokenKind {
             Self::Slash => write!(f, "/"),
             Self::Percent => write!(f, "%"),
             Self::Assign => write!(f, "="),
+            Self::Equal => write!(f, "=="),
             Self::LeftParen => write!(f, "("),
             Self::RightParen => write!(f, ")"),
             Self::LeftBrace => write!(f, "{{"),
@@ -155,6 +157,7 @@ impl fmt::Display for TokenKind {
             Self::Double => write!(f, "double"),
             Self::Void => write!(f, "void"),
             Self::As => write!(f, "as"),
+            Self::Extends => write!(f, "extends"),
             Self::Literal(literal) => match literal {
                 Literal::Integer(integer_literal) => match integer_literal {
                     crate::ast::IntegerLiteral::I8(value) => write!(f, "{}", value),

@@ -11,6 +11,7 @@ mod expressions;
 mod precedences;
 mod statements;
 mod tests;
+mod debug_tools;
 
 pub type ParseError = CompileTimeError<ParserErrorType>;
 
@@ -146,7 +147,7 @@ impl<'a> Parser<'a> {
 
         Err(CompileTimeError {
             location: self.current_location(),
-            etype: ParserErrorType::UnexpectedToken(token_kind, self.current_token.kind.clone()),
+            etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), token_kind),
             file_name: Some(self.lexer.file_name.clone()),
             code_raw: Some(
                 self.lexer

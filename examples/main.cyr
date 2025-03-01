@@ -1,3 +1,11 @@
-for #i = sample(); i < sample(); {
+import std::io;
 
+pub struct Sample extends AnotherStruct, User {
+    x: i32;
+    y: i32;
+    z: i32;
+}
+
+pub fn main() {
+    std::io::printf("Hello World\n");
 }
