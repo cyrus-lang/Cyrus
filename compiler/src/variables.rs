@@ -3,6 +3,7 @@ use std::{ffi::CString, ptr::null_mut, rc::Rc};
 use ast::ast::*;
 use gccjit_sys::*;
 use utils::compiler_error;
+use utils::compile_time_errors::errors::*;
 
 use crate::{
     scope::{IdentifierMetadata, ScopeRef},
@@ -86,7 +87,7 @@ impl Compiler {
                 },
             );
         } else {
-            compiler_error!("Invalid usage of local variable.");
+            compiler_error!("Invalid usage of local variable.", self.file_path.clone());
         }
     }
 }

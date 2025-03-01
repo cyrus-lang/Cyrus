@@ -3,12 +3,13 @@ use std::ffi::CString;
 use std::ptr::null_mut;
 use std::rc::Rc;
 
-use crate::scope::ScopeRef;
 use crate::Compiler;
+use crate::scope::ScopeRef;
 use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
 use utils::compiler_error;
+use utils::compile_time_errors::errors::*;
 use utils::generate_random_hex::generate_random_hex;
 
 #[derive(Debug, Clone)]
@@ -74,10 +75,10 @@ impl Compiler {
                     )
                 }
             }
-            None => compiler_error!(format!(
-                "Method '{}' not defined for struct '{}'",
-                method_name, struct_name
-            )),
+            None => compiler_error!(
+                format!("Method '{}' not defined for struct '{}'", method_name, struct_name),
+                self.file_path.clone()
+            ),
         }
     }
 
@@ -90,10 +91,13 @@ impl Compiler {
         if let Some(method_def) = methods.iter().find(|&key| key.func_def.name == method_name) {
             method_def.func_def.clone()
         } else {
-            compiler_error!(format!(
-                "Method definition not found for method '{}' of struct '{}'.",
-                method_name, struct_name
-            ))
+            compiler_error!(
+                format!(
+                    "Method definition not found for method '{}' of struct '{}'.",
+                    method_name, struct_name
+                ),
+                self.file_path.clone()
+            )
         }
     }
 
@@ -138,7 +142,7 @@ impl Compiler {
             let mut result = rvalue.clone();
 
             if result == null_mut() {
-                compiler_error!("Chained field_access_or_method_call on null value.");
+                compiler_error!("Chained field_access_or_method_call on null value.", self.file_path.clone());
             }
 
             for item in chains {
@@ -154,16 +158,19 @@ impl Compiler {
                             .find(|&key| key.func_def.name == method_name)
                         {
                             if method_metadata.is_static {
-                                compiler_error!(format!(
-                                    "Method '{}' defined globally for struct '{}', hence it cannot be called through the struct type.",
-                                    method_name, struct_name
-                                ))
+                                compiler_error!(
+                                    format!(
+                                        "Method '{}' defined globally for struct '{}', hence it cannot be called through the struct type.",
+                                        method_name, struct_name
+                                    ),
+                                    self.file_path.clone()
+                                )
                             }
                         } else {
-                            compiler_error!(format!(
-                                "Method '{}' not defined for struct '{}'",
-                                method_name, struct_name
-                            ))
+                            compiler_error!(
+                                format!("Method '{}' not defined for struct '{}'", method_name, struct_name),
+                                self.file_path.clone()
+                            )
                         }
 
                         let method_def = self.get_struct_method_def(
@@ -199,7 +206,7 @@ impl Compiler {
                                         gcc_jit_block_add_assignment(block, null_mut(), lvalue, result);
                                         gcc_jit_lvalue_get_address(lvalue, null_mut())
                                     },
-                                    _ => compiler_error!(format!("Invalid param type.")),
+                                    _ => compiler_error!(format!("Invalid param type."), self.file_path.clone()),
                                 }
                             };
                             arguments.insert(0, self_arg);
@@ -233,13 +240,19 @@ impl Compiler {
 
                                     result = field_rvalue;
                                 }
-                                None => compiler_error!(format!(
-                                    "Field '{}' not defined for struct '{}'",
-                                    field_access.identifier.name, struct_name
-                                )),
+                                None => compiler_error!(
+                                    format!(
+                                        "Field '{}' not defined for struct '{}'",
+                                        field_access.identifier.name, struct_name
+                                    ),
+                                    self.file_path.clone()
+                                ),
                             }
                         } else {
-                            compiler_error!("Trying to find struct with rvalue gained from method call chain but could not find anything.")
+                            compiler_error!(
+                                "Trying to find struct with rvalue gained from method call chain but could not find anything.",
+                                self.file_path.clone()
+                            )
                         }
                     }
                 }
@@ -247,7 +260,7 @@ impl Compiler {
 
             return result;
         } else {
-            compiler_error!("Func call is only valid inside a block");
+            compiler_error!("Func call is only valid inside a block.", self.file_path.clone());
         }
     }
 
@@ -258,6 +271,7 @@ impl Compiler {
     ) -> *mut gcc_jit_rvalue {
         let mut method_call_chain = statement.chains.clone();
 
+        #[allow(unused_assignments)]
         let mut result: *mut gcc_jit_rvalue = null_mut();
 
         if let Expression::FromPackage(from_package) = statement.expr.clone() {
@@ -279,13 +293,13 @@ impl Compiler {
                                 compiler_error!(format!(
                                     "Method '{}' defined statically for struct '{}', hence it cannot be called through an instance.",
                                     method_name, from_package
-                                ))
+                                ), self.file_path.clone())
                             }
                         } else {
                             compiler_error!(format!(
                                 "Field '{}' not defined for struct '{}'",
                                 method_name, from_package
-                            ))
+                            ), self.file_path.clone())
                         }
 
                         let method_def = self.get_struct_method_def(
@@ -313,11 +327,12 @@ impl Compiler {
                         // consume current called method from the chain
                         method_call_chain.remove(0);
                     } else {
-                        compiler_error!("Accessing static field not supported in cyrus lang.")
+                        compiler_error!("Accessing static field not supported in cyrus lang.", self.file_path.clone())
                     }
                 } else {
                     compiler_error!(
-                        "Unexpected behaviour because compiler is trying to call struct method with empty chain."
+                        "Unexpected behaviour because compiler is trying to call struct method with empty chain.",
+                        self.file_path.clone()
                     );
                 }
             } else {
@@ -328,7 +343,7 @@ impl Compiler {
         }
 
         if result == null_mut() {
-            compiler_error!("Unexpected behaviour in struct field access compilation.");
+            compiler_error!("Unexpected behaviour in struct field access compilation.", self.file_path.clone());
         }
 
         self.field_access_or_method_call(Rc::clone(&scope), result, method_call_chain)
@@ -348,7 +363,7 @@ impl Compiler {
             return struct_metadata.1.clone();
         }
 
-        compiler_error!(format!("Undefined object '{}'.", from_package.to_string()))
+        compiler_error!(format!("Undefined object '{}'.", from_package.to_string()), self.file_path.clone())
     }
 
     pub(crate) fn compile_struct_init(&mut self, scope: ScopeRef, struct_init: StructInit) -> *mut gcc_jit_rvalue {
@@ -367,7 +382,7 @@ impl Compiler {
                     "Field '{}' required to be set in struct '{}'",
                     field.name,
                     struct_init.struct_name.to_string()
-                )),
+                ), self.file_path.clone()),
             }
         }
 
@@ -481,7 +496,7 @@ Please ensure that the self parameter follows one of these forms.
                         struct_name.clone(),
                         struct_name.clone(),
                         struct_name.clone()
-                    ));
+                    ), self.file_path.clone());
                 }
             } else {
                 match item.vis_type.clone() {
@@ -489,7 +504,7 @@ Please ensure that the self parameter follows one of these forms.
                         compiler_error!(format!(
                             "Static method '{}' must be defined as pub(crate) fn.",
                             item.name.clone(),
-                        ));
+                        ), self.file_path.clone());
                     }
                     _ => {}
                 }
@@ -500,7 +515,7 @@ Please ensure that the self parameter follows one of these forms.
                     compiler_error!(format!(
                         "Extern/Inline func definition is not allowed as a method for struct '{}'",
                         struct_name.clone()
-                    ));
+                    ), self.file_path.clone());
                 }
 
                 _ => {}

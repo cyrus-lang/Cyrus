@@ -1,7 +1,7 @@
+use ast::token::Location;
+use colorized::*;
 use core::fmt;
 use std::fmt::{Debug, Display};
-
-use ast::token::Location;
 
 pub const ERROR_PIPE_STR: &str = "-------------------------";
 
@@ -39,7 +39,7 @@ impl<ErrorType: CompileTypeErrorType> fmt::Display for CompileTimeError<ErrorTyp
 
             for (idx, line) in code_raw.clone().into_iter().enumerate() {
                 write!(f, "{}", line)?;
-                
+
                 if idx == code_raw.clone().count() {
                     write!(f, "\n")?;
                 }
@@ -52,7 +52,7 @@ impl<ErrorType: CompileTypeErrorType> fmt::Display for CompileTimeError<ErrorTyp
 
         write!(f, "\n")?;
         write!(f, "\t")?;
-        
+
         for _ in 0..self.location.column {
             write!(f, " ")?;
         }
@@ -65,10 +65,20 @@ impl<ErrorType: CompileTypeErrorType> fmt::Display for CompileTimeError<ErrorTyp
     }
 }
 
+pub fn compiled_successfully() {
+    colorize_println("Compilation complete.", colorized::Colors::GreenFg);
+}
+
+pub fn compilation_failed_message(file_name: String) {
+    colorize_print("error", colorized::Colors::RedFg);
+    println!(": compiling file `{}` failed.", file_name);
+}
+
 #[macro_export]
 macro_rules! compiler_error {
-    ($s:expr) => {{
-        println!("(compiler) cyrus: {}", $s);
+    ($s:expr, $file_name:expr) => {{
+        println!("{}\n", $s);
+        compilation_failed_message($file_name);
         std::process::exit(1);
     }};
 }

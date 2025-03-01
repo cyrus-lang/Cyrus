@@ -5,10 +5,11 @@ use ast::ast::*;
 use ast::token::*;
 use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
-use utils::compiler_error;
 
 impl<'a> Parser<'a> {
     pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
+        let start = self.current_token.span.start.clone();
+
         match self.current_token.kind {
             TokenKind::If => self.parse_if(),
             TokenKind::Function | TokenKind::Decl | TokenKind::Extern | TokenKind::Pub | TokenKind::Inline => {
@@ -17,7 +18,14 @@ impl<'a> Parser<'a> {
                 } else if self.current_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Struct) {
                     self.parse_struct()
                 } else {
-                    compiler_error!("Expected struct/fn definition after vis_type token");
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        verbose: Some(String::from("Expected 'struct' or 'fn' after visibility token!")),
+                        caret: false,
+                    });
                 }
             }
             TokenKind::Return => self.parse_return(),
@@ -50,22 +58,26 @@ impl<'a> Parser<'a> {
             .parse_vis_type(self.current_token.clone())
             .unwrap_or(VisType::Internal);
         if vis_type == VisType::Inline {
-            compiler_error!("Inline vis type is invalid for structs. It only can be used for funcs.")
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::ExpectedIdentifier,
+                file_name: Some(self.lexer.file_name.clone()),
+                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                verbose: Some(String::from("Token 'inline' is not a valid vistype for structs.")),
+                caret: true,
+            });
         }
 
         self.next_token();
 
         let struct_name = match self.current_token.kind.clone() {
-            TokenKind::Identifier { name } => { name }
+            TokenKind::Identifier { name } => name,
             _ => {
                 return Err(CompileTimeError {
                     location: self.current_location(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(
-                        self.lexer
-                            .select(start..self.current_token.span.end),
-                    ),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
                 });

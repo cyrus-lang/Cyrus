@@ -7,6 +7,7 @@ use gccjit_sys::*;
 use std::ffi::CString;
 use std::rc::Rc;
 use utils::compiler_error;
+use utils::compile_time_errors::errors::*;
 use utils::generate_random_hex::generate_random_hex;
 
 #[derive(Debug, Clone)]
@@ -218,7 +219,7 @@ impl Compiler {
                         },
                     );
                 } else {
-                    compiler_error!("For statement variable must be initialized with a valid value.");
+                    compiler_error!("For statement variable must be initialized with a valid value.", self.file_path.clone());
                 }
             }
 
@@ -298,7 +299,7 @@ impl Compiler {
                 unsafe { gcc_jit_block_end_with_return(block, self.gccjit_location(statement.loc), ret_value) };
             }
         } else {
-            compiler_error!("Incorrect usage of the return statement. It must be used inside a function definition.");
+            compiler_error!("Return statement must be used inside a func definition.", self.file_path.clone());
         }
     }
 }

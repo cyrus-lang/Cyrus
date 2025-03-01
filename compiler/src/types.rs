@@ -6,6 +6,7 @@ use ast::{
 };
 use gccjit_sys::*;
 use utils::compiler_error;
+use utils::compile_time_errors::errors::*;
 
 use crate::Compiler;
 
@@ -120,7 +121,7 @@ impl Compiler {
             TokenKind::UserDefinedType(identifier) => {
                 match self.global_struct_table.borrow_mut().get(&identifier.name) {
                     Some(struct_statement) => unsafe { gcc_jit_struct_as_type(struct_statement.struct_type) },
-                    None => compiler_error!("Unknown data type."),
+                    None => compiler_error!("Undefined data type.", self.file_path.clone()),
                 }
             }
             TokenKind::Array(data_type, dimensions) => {
@@ -164,17 +165,17 @@ impl Compiler {
                                             };
                                         }
                                     }
-                                    _ => compiler_error!("Invalid capacity for array data type."),
+                                    _ => compiler_error!("Invalid capacity for array data type.", self.file_path.clone()),
                                 };
                             }
-                            _ => compiler_error!("Invalid token given to cast to a GCCJIT type."),
+                            _ => compiler_error!("Invalid token given to cast to a GCCJIT type.", self.file_path.clone()),
                         }
                     }
                 }
 
                 array_type
             }
-            _ => compiler_error!("Invalid token given to cast as a GCCJIT type."),
+            _ => compiler_error!("Invalid token given to cast as a GCCJIT type.", self.file_path.clone()),
         }
     }
 
@@ -217,7 +218,7 @@ impl Compiler {
         } else if type1 == type2 {
             type1
         } else {
-            compiler_error!("Failed to determine widest data type when comparing type1 with type2.");
+            compiler_error!("Failed to determine widest data type when comparing type1 with type.", self.file_path.clone());
         }
     }
 

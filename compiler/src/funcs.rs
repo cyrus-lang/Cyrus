@@ -2,12 +2,13 @@ use std::ffi::CString;
 use std::ptr::null_mut;
 use std::rc::Rc;
 
-use crate::scope::ScopeRef;
 use crate::Compiler;
+use crate::scope::ScopeRef;
 use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
 use utils::compiler_error;
+use utils::compile_time_errors::errors::*;
 
 #[derive(Debug, Clone)]
 pub struct FuncMetadata {
@@ -27,6 +28,21 @@ pub struct FuncParamRecord {
 pub type FuncParamsRecords = Vec<FuncParamRecord>;
 
 impl Compiler {
+    pub fn safe_func_return_type_token(&mut self, return_type: Option<Token>) -> TokenKind {
+        return_type
+            .clone()
+            .unwrap_or(Token {
+                kind: TokenKind::Void,
+                span: Span::default(),
+            })
+            .kind
+    }
+
+    pub fn safe_func_return_type(&mut self, return_type: Option<Token>) -> *mut gcc_jit_type {
+        let return_type_token = self.safe_func_return_type_token(return_type);
+        self.token_as_data_type(self.context, return_type_token.clone())
+    }
+
     fn declare_function(&mut self, func_decl: FuncDecl) -> (*mut gcc_jit_function, FuncParamsRecords) {
         let func_type = match func_decl.vis_type {
             VisType::Extern => gcc_jit_function_kind::GCC_JIT_FUNCTION_IMPORTED, // imported function
@@ -35,16 +51,7 @@ impl Compiler {
             VisType::Inline => gcc_jit_function_kind::GCC_JIT_FUNCTION_ALWAYS_INLINE,
         };
 
-        let return_type_token = func_decl
-            .return_type
-            .clone()
-            .unwrap_or(Token {
-                kind: TokenKind::Void,
-                span: Span::default(),
-            })
-            .kind;
-
-        let return_type = self.token_as_data_type(self.context, return_type_token.clone());
+        let return_type = self.safe_func_return_type(func_decl.return_type);
 
         let mut params: Vec<*mut gcc_jit_param> = Vec::new();
         let mut func_params = FuncParamsRecords::new();
@@ -95,28 +102,26 @@ impl Compiler {
     }
 
     pub(crate) fn compile_func_def(&mut self, scope: ScopeRef, func_def: FuncDef) -> *mut gcc_jit_function {
-        let (declare_function, func_params) = self.declare_function(FuncDecl {
+        let (func_ptr, func_params) = self.declare_function(FuncDecl {
             name: func_def.name.clone(),
-            params: func_def.params,
+            params: func_def.params.clone(),
             return_type: func_def.return_type.clone(),
-            vis_type: func_def.vis_type,
+            vis_type: func_def.vis_type.clone(),
             renamed_as: None,
             span: func_def.span,
             loc: func_def.loc,
         });
 
-        self.param_table
-            .borrow_mut()
-            .insert(declare_function, func_params.clone());
+        self.param_table.borrow_mut().insert(func_ptr, func_params.clone());
 
         // Build func block
         let name = CString::new("entry").unwrap();
-        let block = unsafe { gcc_jit_function_new_block(declare_function, name.as_ptr()) };
+        let block = unsafe { gcc_jit_function_new_block(func_ptr, name.as_ptr()) };
         let mut return_compiled = false;
 
         let mut guard = self.block_func_ref.lock().unwrap();
         guard.block = Some(block);
-        guard.func = Some(declare_function);
+        guard.func = Some(func_ptr);
         drop(guard);
 
         for item in func_def.body.body {
@@ -132,7 +137,7 @@ impl Compiler {
                 compiler_error!(format!(
                     "Explicit return statement required for the function '{}'.",
                     func_def.name
-                ));
+                ), self.file_path.clone());
             }
         } else {
             let guard = self.block_func_ref.lock().unwrap();
@@ -142,19 +147,20 @@ impl Compiler {
                     unsafe { gcc_jit_block_end_with_void_return(block, null_mut()) };
                 }
             }
-        }
+        }   
 
-        return declare_function;
+        return func_ptr;
     }
 
     pub(crate) fn compile_func_decl(&mut self, declare_function: FuncDecl) {
         let (func, _) = self.declare_function(declare_function.clone());
-        let return_type = self.safe_func_return_type(declare_function.return_type);
+        let return_type = self.safe_func_return_type_token(declare_function.return_type);
         let func_name = if let Some(renamed_as) = declare_function.renamed_as {
             renamed_as
         } else {
             declare_function.name
         };
+
         self.func_table.borrow_mut().insert(
             func_name,
             FuncMetadata {
@@ -165,15 +171,6 @@ impl Compiler {
                 imported_from: None,
             },
         );
-    }
-
-    pub(crate) fn safe_func_return_type(&mut self, return_type: Option<Token>) -> TokenKind {
-        return_type
-            .unwrap_or(Token {
-                kind: TokenKind::Void,
-                span: Span::default(),
-            })
-            .kind
     }
 
     pub(crate) fn compile_func_params(
@@ -252,17 +249,18 @@ impl Compiler {
             return func_metadata.1.clone();
         }
 
+        dbg!(binding.keys());
         compiler_error!(format!(
             "Function '{}' not defined at this module.",
             from_package.to_string()
-        ))
+        ), self.file_path.clone())
     }
 
     pub(crate) fn compile_func_call(&mut self, scope: ScopeRef, func_call: FuncCall) -> *mut gcc_jit_rvalue {
         let loc = self.gccjit_location(func_call.loc.clone());
 
         let metadata = self.get_func(func_call.func_name);
-
+        
         let mut args = self.compile_func_arguments(
             Rc::clone(&scope),
             Some(metadata.params.list.clone()),

@@ -35,16 +35,20 @@ struct BlockFuncPair {
 }
 
 pub struct Compiler {
+    #[allow(dead_code)]
     file_name: String,
+    
+    #[allow(dead_code)] // FIXME
+    global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
+
     file_path: String,
     program: Program,
     context: *mut gcc_jit_context,
     func_table: RefCell<HashMap<String, FuncMetadata>>,
     global_struct_table: RefCell<HashMap<String, StructMetadata>>,
-    #[allow(dead_code)] // FIXME
-    global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
     param_table: RefCell<HashMap<*mut gcc_jit_function, FuncParamsRecords>>,
     block_func_ref: Arc<Mutex<Box<BlockFuncPair>>>,
+    main_func_ref: Option<FuncDef>,
     terminated_blocks: Vec<*mut gcc_jit_block>,
     parent_block: Option<*mut gcc_jit_block>,
     active_loop: Option<LoopBlockPair>,
@@ -94,6 +98,7 @@ impl Compiler {
                 block: None,
                 func: None,
             }))),
+            main_func_ref: None,
             terminated_blocks: Vec::new(),
             parent_block: None,
             active_loop: None,
@@ -122,8 +127,13 @@ impl Compiler {
                 self.compile_expression(scope, expr.clone());
             }
             Statement::FuncDef(func_def) => {
+                if func_def.name == "main" {
+                    self.main_func_ref = Some(func_def);
+                    return;
+                }
+
                 let ptr = self.compile_func_def(scope, func_def.clone());
-                let return_type = self.safe_func_return_type(func_def.return_type);
+                let return_type = self.safe_func_return_type_token(func_def.return_type);
                 self.func_table.borrow_mut().insert(
                     func_def.name,
                     FuncMetadata {
@@ -131,7 +141,7 @@ impl Compiler {
                         ptr,
                         params: func_def.params,
                         return_type,
-                        imported_from: None
+                        imported_from: None,
                     },
                 );
             }

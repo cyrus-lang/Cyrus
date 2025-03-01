@@ -8,6 +8,7 @@ use std::fs;
 use std::path::Path;
 use std::ptr::null_mut;
 use utils::compiler_error;
+use utils::compile_time_errors::errors::*;
 
 use crate::funcs::FuncMetadata;
 use crate::structs::StructMetadata;
@@ -30,13 +31,13 @@ impl Compiler {
                 }
                 "./" => {
                     if finding_std {
-                        compiler_error!("Importing package with relative path to find stdlib is not allowed.");
+                        compiler_error!("Importing package with relative path to find stdlib is not allowed.", self.file_path.clone());
                     }
                     import_file_path += "./";
                 }
                 "../" => {
                     if finding_std {
-                        compiler_error!("Importing package with relative path to find stdlib is not allowed.");
+                        compiler_error!("Importing package with relative path to find stdlib is not allowed.", self.file_path.clone());
                     }
                     import_file_path += "../";
                 }
@@ -58,7 +59,7 @@ impl Compiler {
                         compiler_error!(format!(
                             "File '{}' not found to be imported by the compiler.",
                             import_file_path + package_name
-                        ));
+                        ), self.file_path.clone());
                     }
                 }
             }
@@ -85,7 +86,7 @@ impl Compiler {
         let compile_error = unsafe { gcc_jit_context_get_first_error(context) };
         if compile_error != null_mut() {
             let error_string = unsafe { CStr::from_ptr(compile_error) };
-            compiler_error!(format!("{} compilation failed: {}", file_name, error_string.to_str().unwrap()));
+            compiler_error!(format!("{} compilation failed: {}", file_name, error_string.to_str().unwrap()), self.file_path.clone());
         }
 
         compiler.make_object_file(output_library_path.clone());

@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 ast = {path = "../ast", version = "*"}
+colorized = "1.0.0"
 rand = "0.8"

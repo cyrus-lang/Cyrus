@@ -1,7 +1,7 @@
 use ast::ast::*;
 use ast::token::*;
 use lexer::*;
-use utils::compile_time_errors::errors::CompileTimeError;
+use utils::compile_time_errors::errors::*;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 use utils::compiler_error;
 use utils::fs::read_file;
@@ -28,7 +28,7 @@ pub fn parse_program(file_path: String) -> (Program, String) {
     let file = read_file(file_path.clone());
     let code = file.0;
 
-    let mut lexer = Lexer::new(code, file_path);
+    let mut lexer = Lexer::new(code, file_path.clone());
     let mut parser = Parser::new(&mut lexer);
 
     let program = match parser.parse() {
@@ -36,7 +36,7 @@ pub fn parse_program(file_path: String) -> (Program, String) {
             if let Node::Program(program) = result {
                 program
             } else {
-                compiler_error!("Expected a program given as input to the compiler but got unknown.");
+                compiler_error!("Expected a program given as input to the compiler but got unknown.", file_path);
             }
         }
         Err(errors) => {

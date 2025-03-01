@@ -6,6 +6,7 @@ use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
 use utils::compiler_error;
+use utils::compile_time_errors::errors::*;
 use utils::purify_string::purify_string;
 
 use crate::scope::ScopeRef;
@@ -31,7 +32,7 @@ impl Compiler {
             }
         }
 
-        compiler_error!(format!("'{}' is not defined in this scope.", from_package.to_string()))
+        compiler_error!(format!("'{}' is not defined in this scope.", from_package.to_string()), self.file_path.clone())
     }
 
     fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
@@ -182,7 +183,7 @@ impl Compiler {
                 }
             };
         } else {
-            compiler_error!("Array index assignment in invalid block.");
+            compiler_error!("Array index assignment in invalid block.", self.file_path.clone());
         }
     }
 
@@ -193,7 +194,7 @@ impl Compiler {
         dimensions: Vec<Expression>,
     ) -> *mut gcc_jit_lvalue {
         if dimensions.len() == 0 {
-            compiler_error!("You are trying to access an array item lvalue with empty dimension.")
+            compiler_error!("You are trying to access an array item lvalue with empty dimension.", self.file_path.clone())
         }
 
         let mut result: *mut gcc_jit_lvalue = variable;
@@ -217,13 +218,13 @@ impl Compiler {
 
                     result = lvalue;
                 } else {
-                    compiler_error!("Unable to access array lvalue through a non-integer literal.")
+                    compiler_error!("Unable to access array lvalue through a non-integer literal.", self.file_path.clone())
                 }
             }
         }
 
         if result == variable {
-            compiler_error!("Unexpected behavior when trying to compile array_dimension_as_lvalue.")
+            compiler_error!("Unexpected behavior when trying to compile array_dimension_as_lvalue.", self.file_path.clone())
         }
 
         result
@@ -316,7 +317,7 @@ impl Compiler {
 
             return casted_rvalue;
         } else {
-            compiler_error!("Incorrect usage of the assignment. Assignments must be performed inside a valid block.");
+            compiler_error!("Incorrect usage of the assignment. Assignments must be performed inside a valid block.", self.file_path.clone());
         }
     }
 
@@ -334,7 +335,7 @@ impl Compiler {
         let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
 
         if !self.is_int_data_type(rvalue_type) {
-            compiler_error!("Unary operations are only valid for integer types.");
+            compiler_error!("Unary operations are only valid for integer types.", self.file_path.clone());
         }
 
         let fixed_number = unsafe { gcc_jit_context_new_rvalue_from_int(self.context, rvalue_type, 1) };
@@ -360,7 +361,7 @@ impl Compiler {
                 unsafe { gcc_jit_block_add_assignment(block, loc, tmp_local, rvalue) };
             }
         } else {
-            compiler_error!("Unary operators (++, --, etc.) are only allowed inside functions.");
+            compiler_error!("Unary operators (++, --, etc.) are only allowed inside functions.", self.file_path.clone());
         }
 
         let tmp_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(tmp_local) };
@@ -396,7 +397,7 @@ impl Compiler {
         let op = match unary_expression.operator.kind {
             TokenKind::Minus => gcc_jit_unary_op::GCC_JIT_UNARY_OP_MINUS,
             TokenKind::Bang => gcc_jit_unary_op::GCC_JIT_UNARY_OP_LOGICAL_NEGATE,
-            _ => compiler_error!("Invalid operator given for the prefix expression."),
+            _ => compiler_error!("Invalid operator given for the prefix expression.", self.file_path.clone()),
         };
 
         let expr = self.compile_expression(scope, *unary_expression.operand);
@@ -454,7 +455,7 @@ impl Compiler {
             | bin_op @ TokenKind::NotEqual => {
                 self.compile_comparison_operation(bin_op, casted_left, casted_right, binary_expression.loc)
             }
-            _ => compiler_error!("Invalid operator given for the infix expression."),
+            _ => compiler_error!("Invalid operator given for the infix expression.", self.file_path.clone()),
         }
     }
 

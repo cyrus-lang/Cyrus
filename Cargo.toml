@@ -13,6 +13,7 @@ path = "./cli.rs"
 
 [dependencies]
 clap = { version = "4.5.23", features = ["derive"] }
+colorized = "1.0.0"
 lexer = { path = "./lexer", version = "*" }
 ast = { path = "./ast", version = "*" }
 parser = { path = "./parser", version = "*" }
