@@ -1,23 +1,21 @@
-FROM rust:1.84.1-bookworm
+FROM archlinux:latest
 
-RUN echo "deb http://deb.debian.org/debian testing main" | tee /etc/apt/sources.list.d/testing.list
+RUN pacman -Syu --noconfirm && \
+    pacman -S --noconfirm base-devel curl git
 
-RUN apt update && apt install -y \
-    build-essential \
-    gcc \
-    make \
-    git \
-    wget \
-    gcc-14 \
-    libgccjit-14-dev
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-WORKDIR /app
+ENV PATH="/root/.cargo/bin:${PATH}"
 
-COPY . .
+RUN rustc --version && cargo --version
 
-RUN mkdir -p tmp
-RUN echo 'alias cyrus="cargo run --"' >> ~/.bashrc
+# WORKDIR /app
 
-VOLUME [ "/app" ]
+# COPY . .
 
-CMD ["/usr/bin/bash"]
+# RUN mkdir -p tmp
+# RUN echo 'alias cyrus="cargo run --"' >> ~/.bashrc
+
+# VOLUME [ "/app" ]
+
+# CMD ["/usr/bin/bash"]

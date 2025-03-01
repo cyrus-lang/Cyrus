@@ -249,7 +249,6 @@ impl Compiler {
             return func_metadata.1.clone();
         }
 
-        dbg!(binding.keys());
         compiler_error!(format!(
             "Function '{}' not defined at this module.",
             from_package.to_string()

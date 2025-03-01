@@ -1,6 +1,8 @@
 import std::io;
 
-pub fn sample(x: i32, y: i32): i32 {
-    return x + y;
+pub fn main() {
+    #a = 10;
+    #result = sizeof(&a);
+    
+    std::io::printf("size: %d\n", result);
 }
-

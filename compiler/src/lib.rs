@@ -1,4 +1,8 @@
-use ast::ast::*;
+use ast::{
+    ast::*,
+    token::{Location, Span, TokenKind},
+};
+use builtins::{funcs::builtin_func__sizeof, loader::builtins_loader};
 use control_flow::LoopBlockPair;
 use funcs::{FuncMetadata, FuncParamsRecords};
 use gccjit_sys::*;
@@ -14,6 +18,7 @@ use std::{
 use structs::StructMetadata;
 
 mod blocks;
+mod builtins;
 mod context;
 mod control_flow;
 mod expressions;
@@ -37,7 +42,7 @@ struct BlockFuncPair {
 pub struct Compiler {
     #[allow(dead_code)]
     file_name: String,
-    
+
     #[allow(dead_code)] // FIXME
     global_vars_table: RefCell<HashMap<String, *mut gcc_jit_lvalue>>,
 
@@ -87,10 +92,35 @@ impl Compiler {
 
         unsafe { gcc_jit_context_set_bool_allow_unreachable_blocks(context, 1) };
 
+        let mut func_table = HashMap::new();
+        func_table.insert(
+            String::from("sizeof"),
+            FuncMetadata {
+                func_type: VisType::Internal,
+                ptr: builtin_func__sizeof(context),
+                return_type: TokenKind::SizeT,
+                params: FunctionParams {
+                    list: vec![FunctionParam {
+                        identifier: Identifier {
+                            name: String::from("rvalue"),
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        ty: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
+                        default_value: None,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    }],
+                    is_variadic: false,
+                },
+                imported_from: None,
+            },
+        );
+
         Self {
             program,
             context,
-            func_table: RefCell::new(HashMap::new()),
+            func_table: RefCell::new(func_table),
             global_struct_table: RefCell::new(HashMap::new()),
             global_vars_table: RefCell::new(HashMap::new()),
             param_table: RefCell::new(HashMap::new()),
