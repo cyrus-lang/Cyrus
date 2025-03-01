@@ -675,6 +675,7 @@ impl Lexer {
             "false" => TokenKind::False,
             "null" => TokenKind::Null,
             "as" => TokenKind::As,
+            "extends" => TokenKind::Extends,
             "i8" => TokenKind::I8,
             "i16" => TokenKind::I16,
             "i32" => TokenKind::I32,
