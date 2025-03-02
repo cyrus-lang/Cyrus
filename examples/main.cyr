@@ -1,8 +1,0 @@
-import std::io;
-
-pub fn main() {
-    #a = 10;
-    #result = sizeof(&a);
-    
-    std::io::printf("size: %d\n", result);
-}
