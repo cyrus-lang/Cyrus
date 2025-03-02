@@ -1,8 +1,8 @@
 use gccjit_sys::{gcc_jit_context, gcc_jit_rvalue};
 use std::{collections::HashMap, sync::LazyLock};
 
-use super::funcs::builtin_func__len;
-use crate::builtins::funcs::builtin_func__sizeof;
+use super::funcs::builtin_func_len;
+use crate::builtins::funcs::builtin_func_sizeof;
 
 pub type BuiltinFuncDef =
     fn(file_path: String, context: *mut gcc_jit_context, args: Vec<*mut gcc_jit_rvalue>) -> *mut gcc_jit_rvalue;
@@ -22,7 +22,7 @@ macro_rules! build_builtin_funcs {
 
 pub static BUILTIN_FUNCS: LazyLock<BuiltinFuncsTable> = LazyLock::new(|| {
     build_builtin_funcs! {
-        "len" => builtin_func__len,
-        "sizeof" => builtin_func__sizeof
+        "len" => builtin_func_len,
+        "sizeof" => builtin_func_sizeof
     }
 });

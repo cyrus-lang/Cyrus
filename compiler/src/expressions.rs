@@ -5,12 +5,12 @@ use std::rc::Rc;
 use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
-use utils::compiler_error;
 use utils::compile_time_errors::errors::*;
+use utils::compiler_error;
 use utils::purify_string::purify_string;
 
-use crate::scope::ScopeRef;
 use crate::Compiler;
+use crate::scope::ScopeRef;
 
 impl Compiler {
     pub(crate) fn access_identifier_values(
@@ -32,7 +32,10 @@ impl Compiler {
             }
         }
 
-        compiler_error!(format!("'{}' is not defined in this scope.", from_package.to_string()), self.file_path.clone())
+        compiler_error!(
+            format!("'{}' is not defined in this scope.", from_package.to_string()),
+            self.file_path.clone()
+        )
     }
 
     fn compile_identifier(&mut self, scope: ScopeRef, identifier: Identifier) -> *mut gcc_jit_rvalue {
@@ -66,7 +69,9 @@ impl Compiler {
 
                 let last_chain = chains_copy.last().unwrap();
                 if let Some(method_call) = last_chain.method_call.clone() {
-                    self.eval_func_call(result, method_call.loc);
+                    if result != null_mut() {
+                        self.eval_func_call(result, method_call.loc);
+                    }
                     null_mut()
                 } else {
                     result
@@ -86,7 +91,9 @@ impl Compiler {
                 let item = struct_field_access.chains[struct_field_access.chains.len() - 1].clone();
                 if let Some(method_call) = item.method_call {
                     let rvalue = self.compile_struct_field_access(scope, *struct_field_access.clone());
-                    self.eval_func_call(rvalue, method_call.loc.clone());
+                    if rvalue != null_mut() {
+                        self.eval_func_call(rvalue, method_call.loc.clone());
+                    }
                 }
                 null_mut()
             }
@@ -193,7 +200,10 @@ impl Compiler {
         dimensions: Vec<Expression>,
     ) -> *mut gcc_jit_lvalue {
         if dimensions.len() == 0 {
-            compiler_error!("You are trying to access an array item lvalue with empty dimension.", self.file_path.clone())
+            compiler_error!(
+                "You are trying to access an array item lvalue with empty dimension.",
+                self.file_path.clone()
+            )
         }
 
         let mut result: *mut gcc_jit_lvalue = variable;
@@ -217,13 +227,19 @@ impl Compiler {
 
                     result = lvalue;
                 } else {
-                    compiler_error!("Unable to access array lvalue through a non-integer literal.", self.file_path.clone())
+                    compiler_error!(
+                        "Unable to access array lvalue through a non-integer literal.",
+                        self.file_path.clone()
+                    )
                 }
             }
         }
 
         if result == variable {
-            compiler_error!("Unexpected behavior when trying to compile array_dimension_as_lvalue.", self.file_path.clone())
+            compiler_error!(
+                "Unexpected behavior when trying to compile array_dimension_as_lvalue.",
+                self.file_path.clone()
+            )
         }
 
         result
@@ -316,7 +332,10 @@ impl Compiler {
 
             return casted_rvalue;
         } else {
-            compiler_error!("Incorrect usage of the assignment. Assignments must be performed inside a valid block.", self.file_path.clone());
+            compiler_error!(
+                "Incorrect usage of the assignment. Assignments must be performed inside a valid block.",
+                self.file_path.clone()
+            );
         }
     }
 
@@ -334,7 +353,10 @@ impl Compiler {
         let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
 
         if !self.is_int_data_type(rvalue_type) {
-            compiler_error!("Unary operations are only valid for integer types.", self.file_path.clone());
+            compiler_error!(
+                "Unary operations are only valid for integer types.",
+                self.file_path.clone()
+            );
         }
 
         let fixed_number = unsafe { gcc_jit_context_new_rvalue_from_int(self.context, rvalue_type, 1) };
@@ -360,7 +382,10 @@ impl Compiler {
                 unsafe { gcc_jit_block_add_assignment(block, loc, tmp_local, rvalue) };
             }
         } else {
-            compiler_error!("Unary operators (++, --, etc.) are only allowed inside functions.", self.file_path.clone());
+            compiler_error!(
+                "Unary operators (++, --, etc.) are only allowed inside functions.",
+                self.file_path.clone()
+            );
         }
 
         let tmp_rvalue = unsafe { gcc_jit_lvalue_as_rvalue(tmp_local) };
@@ -396,7 +421,10 @@ impl Compiler {
         let op = match unary_expression.operator.kind {
             TokenKind::Minus => gcc_jit_unary_op::GCC_JIT_UNARY_OP_MINUS,
             TokenKind::Bang => gcc_jit_unary_op::GCC_JIT_UNARY_OP_LOGICAL_NEGATE,
-            _ => compiler_error!("Invalid operator given for the prefix expression.", self.file_path.clone()),
+            _ => compiler_error!(
+                "Invalid operator given for the prefix expression.",
+                self.file_path.clone()
+            ),
         };
 
         let expr = self.compile_expression(scope, *unary_expression.operand);
@@ -454,7 +482,10 @@ impl Compiler {
             | bin_op @ TokenKind::NotEqual => {
                 self.compile_comparison_operation(bin_op, casted_left, casted_right, binary_expression.loc)
             }
-            _ => compiler_error!("Invalid operator given for the infix expression.", self.file_path.clone()),
+            _ => compiler_error!(
+                "Invalid operator given for the infix expression.",
+                self.file_path.clone()
+            ),
         }
     }
 

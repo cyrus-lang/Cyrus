@@ -114,7 +114,13 @@ impl Compiler {
                 let args =self.compile_func_arguments(Rc::clone(&scope), None, method_call.arguments);
                 let rvalue = func_def(self.file_path.clone(), self.context, args);
                 return rvalue;
-            }
+            } 
+            // else {
+            //     compiler_error!(format!(
+            //         "Function '{}' not defined at this module.",
+            //         func_name
+            //     ), self.file_path.clone());
+            // }
         }
         
         let rvalue: *mut gcc_jit_rvalue = {
@@ -152,7 +158,7 @@ impl Compiler {
         if let (Some(func), Some(block)) = (func, block) {
             let mut result = rvalue.clone();
 
-            if result == null_mut() {
+            if result == null_mut() && chains.len() > 1 {
                 compiler_error!("Chained field_access_or_method_call on null value.", self.file_path.clone());
             }
 
@@ -342,7 +348,7 @@ impl Compiler {
                     }
                 } else {
                     compiler_error!(
-                        "Unexpected behaviour because compiler is trying to call struct method with empty chain.",
+                        "Unexpected behavior because compiler is trying to call struct method with empty chain.",
                         self.file_path.clone()
                     );
                 }
@@ -354,7 +360,7 @@ impl Compiler {
         }
 
         if result == null_mut() {
-            compiler_error!("Unexpected behaviour in struct field access compilation.", self.file_path.clone());
+            compiler_error!("Unexpected behavior in struct field access compilation.", self.file_path.clone());
         }
 
         self.field_access_or_method_call(Rc::clone(&scope), result, method_call_chain)

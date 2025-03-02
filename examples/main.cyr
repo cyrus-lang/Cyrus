@@ -1,2 +1,7 @@
-#arr: i32[3] = [1, 2, 3];
-#item = arr[2];
+import std::io;
+
+fn main() {
+    #arr: i32[4] = [1, 2, 3];
+    #size = len(arr);
+    std::io::printf("size: %d\n", size);
+}

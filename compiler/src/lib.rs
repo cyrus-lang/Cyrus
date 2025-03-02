@@ -1,14 +1,15 @@
-use ast::{
-    ast::*,
-    token::{Location, Span, TokenKind},
-};
+use ast::ast::*;
 use control_flow::LoopBlockPair;
 use funcs::{FuncMetadata, FuncParamsRecords};
 use gccjit_sys::*;
 use options::CompilerOptions;
 use scope::{Scope, ScopeRef};
 use std::{
-    cell::RefCell, collections::HashMap, ffi::CString, ops::Deref, rc::Rc, sync::{Arc, Mutex}
+    cell::RefCell,
+    collections::HashMap,
+    ffi::CString,
+    rc::Rc,
+    sync::{Arc, Mutex},
 };
 use structs::StructMetadata;
 

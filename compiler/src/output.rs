@@ -1,5 +1,5 @@
 use crate::{Compiler, scope::Scope};
-use ast::token::{Location, TokenKind};
+use ast::token::TokenKind;
 use gccjit_sys::*;
 use std::{
     cell::RefCell,

@@ -81,10 +81,11 @@ impl<'a> Parser<'a> {
                     })
                 } else if self.current_token_is(TokenKind::Assign) {
                     self.parse_assignment(from_package)?
-                } else if self.current_token_is(TokenKind::LeftBracket) {
+                } else if self.peek_token_is(TokenKind::LeftBracket) {
+                    self.next_token(); // consume identifier
                     let array_index = self.parse_array_index(from_package)?;
 
-                    if self.peek_token_is(TokenKind::Assign) {
+                    if self.current_token_is(TokenKind::Assign) {
                         self.parse_array_index_assign(array_index)?
                     } else {
                         Expression::ArrayIndex(array_index)
@@ -620,8 +621,6 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_array_index_assign(&mut self, array_index: ArrayIndex) -> Result<Expression, ParseError> {
-        self.next_token(); // consume right bracket
-
         self.expect_current(TokenKind::Assign)?;
 
         let expr = self.parse_expression(Precedence::Lowest)?.0;
@@ -641,13 +640,12 @@ impl<'a> Parser<'a> {
     pub fn parse_array_index(&mut self, from_package: FromPackage) -> Result<ArrayIndex, ParseError> {
         let start = self.current_token.span.start;
 
-        dbg!(self.current_token.kind.clone());
-        
         let mut dimensions: Vec<Expression> = Vec::new();
 
         while self.current_token_is(TokenKind::LeftBracket) {
             let expr = self.parse_array_items()?;
             dimensions.push(expr);
+            self.next_token();
         }
 
         let end = self.current_token.span.end;
