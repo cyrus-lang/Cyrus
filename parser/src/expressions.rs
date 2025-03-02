@@ -641,6 +641,8 @@ impl<'a> Parser<'a> {
     pub fn parse_array_index(&mut self, from_package: FromPackage) -> Result<ArrayIndex, ParseError> {
         let start = self.current_token.span.start;
 
+        dbg!(self.current_token.kind.clone());
+        
         let mut dimensions: Vec<Expression> = Vec::new();
 
         while self.current_token_is(TokenKind::LeftBracket) {

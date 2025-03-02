@@ -3,6 +3,7 @@ use std::ffi::CString;
 use std::ptr::null_mut;
 use std::rc::Rc;
 
+use crate::builtins::loader::BUILTIN_FUNCS;
 use crate::Compiler;
 use crate::scope::ScopeRef;
 use ast::ast::*;
@@ -106,14 +107,14 @@ impl Compiler {
         scope: ScopeRef,
         chains: Vec<FieldAccessOrMethodCall>,
     ) -> *mut gcc_jit_rvalue {
-        // Check for builtin funcs 
-        let first_method_call = chains.first().unwrap().clone().method_call.unwrap().clone();
-        if first_method_call.func_name.identifier.name == "sizeof" {
-            let expr = first_method_call.arguments[0].clone();
-            let rvalue = self.compile_expression(Rc::clone(&scope), expr);
-            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
-            let size = unsafe { gcc_jit_context_new_sizeof(self.context, rvalue_type ) };
-            return size;
+        // If first chain item is method call we need to check that's a builtin func or not
+        if let Some(method_call) = chains.first().unwrap().method_call.clone() {
+            let func_name = method_call.func_name.identifier.name.clone();
+            if let Some(func_def) = BUILTIN_FUNCS.get(&func_name) {
+                let args =self.compile_func_arguments(Rc::clone(&scope), None, method_call.arguments);
+                let rvalue = func_def(self.file_path.clone(), self.context, args);
+                return rvalue;
+            }
         }
         
         let rvalue: *mut gcc_jit_rvalue = {

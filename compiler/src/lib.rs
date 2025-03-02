@@ -2,7 +2,6 @@ use ast::{
     ast::*,
     token::{Location, Span, TokenKind},
 };
-use builtins::{funcs::builtin_func__sizeof, loader::builtins_loader};
 use control_flow::LoopBlockPair;
 use funcs::{FuncMetadata, FuncParamsRecords};
 use gccjit_sys::*;
@@ -88,13 +87,10 @@ impl Compiler {
 
         unsafe { gcc_jit_context_set_bool_allow_unreachable_blocks(context, 1) };
 
-        let func_table = Rc::new(RefCell::new(HashMap::new()));
-        builtins_loader(Rc::clone(&func_table), context);
-
         Self {
             program,
             context,
-            func_table: func_table.deref().clone(),
+            func_table: RefCell::new(HashMap::new()),
             global_struct_table: RefCell::new(HashMap::new()),
             global_vars_table: RefCell::new(HashMap::new()),
             param_table: RefCell::new(HashMap::new()),
