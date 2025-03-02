@@ -1,0 +1,6 @@
+import std::io;
+
+pub fn main() {
+    #a = sizeof(10.0 as double);
+    std::io::printf("result: %d\n", a);
+}

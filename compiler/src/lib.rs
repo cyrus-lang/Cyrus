@@ -9,11 +9,7 @@ use gccjit_sys::*;
 use options::CompilerOptions;
 use scope::{Scope, ScopeRef};
 use std::{
-    cell::RefCell,
-    collections::HashMap,
-    ffi::CString,
-    rc::Rc,
-    sync::{Arc, Mutex},
+    cell::RefCell, collections::HashMap, ffi::CString, ops::Deref, rc::Rc, sync::{Arc, Mutex}
 };
 use structs::StructMetadata;
 
@@ -92,35 +88,13 @@ impl Compiler {
 
         unsafe { gcc_jit_context_set_bool_allow_unreachable_blocks(context, 1) };
 
-        let mut func_table = HashMap::new();
-        func_table.insert(
-            String::from("sizeof"),
-            FuncMetadata {
-                func_type: VisType::Internal,
-                ptr: builtin_func__sizeof(context),
-                return_type: TokenKind::SizeT,
-                params: FunctionParams {
-                    list: vec![FunctionParam {
-                        identifier: Identifier {
-                            name: String::from("rvalue"),
-                            span: Span::default(),
-                            loc: Location::default(),
-                        },
-                        ty: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
-                        default_value: None,
-                        span: Span::default(),
-                        loc: Location::default(),
-                    }],
-                    is_variadic: false,
-                },
-                imported_from: None,
-            },
-        );
+        let func_table = Rc::new(RefCell::new(HashMap::new()));
+        builtins_loader(Rc::clone(&func_table), context);
 
         Self {
             program,
             context,
-            func_table: RefCell::new(func_table),
+            func_table: func_table.deref().clone(),
             global_struct_table: RefCell::new(HashMap::new()),
             global_vars_table: RefCell::new(HashMap::new()),
             param_table: RefCell::new(HashMap::new()),

@@ -106,6 +106,16 @@ impl Compiler {
         scope: ScopeRef,
         chains: Vec<FieldAccessOrMethodCall>,
     ) -> *mut gcc_jit_rvalue {
+        // Check for builtin funcs 
+        let first_method_call = chains.first().unwrap().clone().method_call.unwrap().clone();
+        if first_method_call.func_name.identifier.name == "sizeof" {
+            let expr = first_method_call.arguments[0].clone();
+            let rvalue = self.compile_expression(Rc::clone(&scope), expr);
+            let rvalue_type = unsafe { gcc_jit_rvalue_get_type(rvalue) };
+            let size = unsafe { gcc_jit_context_new_sizeof(self.context, rvalue_type ) };
+            return size;
+        }
+        
         let rvalue: *mut gcc_jit_rvalue = {
             if let Some(method_call) = &chains[0].method_call {
                 self.compile_func_call(Rc::clone(&scope), method_call.clone())

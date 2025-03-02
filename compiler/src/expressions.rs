@@ -104,7 +104,6 @@ impl Compiler {
 
     fn compile_dereference(&mut self, scope: ScopeRef, expression: Box<Expression>) -> *mut gcc_jit_rvalue {
         let rvalue = self.compile_expression(scope, *expression.clone());
-
         unsafe { gcc_jit_lvalue_as_rvalue(gcc_jit_rvalue_dereference(rvalue, null_mut())) }
     }
 

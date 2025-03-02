@@ -58,12 +58,7 @@
           libffi.dev
           isl
         ];
-
-        env = {
-          NIX_LDFLAGS = "-L${pkgs.glibc}/lib -L${pkgs.gcc_multi}/lib";
-          LD_LIBRARY_PATH = "${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:$LD_LIBRARY_PATH";
-        };
-
+        
         shellHook = ''
           export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:$LIBRARY_PATH"
 
