@@ -326,7 +326,7 @@ impl<'a> Parser<'a> {
         } else if self.current_token_is(TokenKind::As) {
             self.next_token(); // consume as expression
         } else {
-            panic!("Unexpected behaviour when trying to parse cast_as_expression.");
+            panic!("Unexpected behavior when trying to parse cast_as_expression.");
         }
 
         match self.parse_type_token() {
@@ -513,6 +513,9 @@ impl<'a> Parser<'a> {
         } else {
             self.next_token();
             let func_call = self.parse_func_call(*object_expr, start)?;
+            if self.current_token_is(TokenKind::RightParen) {
+                self.next_token();
+            }
             Ok(Expression::FieldAccessOrMethodCall(vec![FieldAccessOrMethodCall {
                 method_call: Some(func_call),
                 field_access: None,
@@ -532,7 +535,7 @@ impl<'a> Parser<'a> {
                 field_inits: Vec::new(),
                 loc: self.current_location(),
             }));
-        }
+        } 
 
         loop {
             let field_name = match self.current_token.kind.clone() {
