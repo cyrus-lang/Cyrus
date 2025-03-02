@@ -13,7 +13,7 @@
       pkgs = import nixpkgs {
         inherit system overlays;
       };
-      rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+      rustToolchain = pkgs.rust-bin.nightly.latest.default.override {
         extensions = [ "rust-src" "rust-analyzer" ];
       };
     in
@@ -47,25 +47,26 @@
       devShells.${system}.default = pkgs.mkShell {
         name = "cyrus-dev-shell";
 
-        buildInputs = [
-          pkgs.gcc
-          pkgs.libgccjit
-          pkgs.binutils
-          pkgs.glibc
-          pkgs.gcc_multi
-          pkgs.clang-tools
-          pkgs.isl
-          pkgs.libffi
-          pkgs.libffi.dev
+        buildInputs = with pkgs; [
+          gcc
+          libgcc
+          glibc
+          libgccjit
+          gcc_multi
+          clang-tools
+          libffi
+          libffi.dev
+          isl
         ];
 
         env = {
-          LD = "${pkgs.glibc}/lib/ld-linux-x86-64.so.2"; # Use glibc's dynamic linker
           NIX_LDFLAGS = "-L${pkgs.glibc}/lib -L${pkgs.gcc_multi}/lib";
           LD_LIBRARY_PATH = "${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:$LD_LIBRARY_PATH";
         };
 
         shellHook = ''
+          export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:$LIBRARY_PATH"
+
           alias cyrus="cargo run --"
         '';
       };

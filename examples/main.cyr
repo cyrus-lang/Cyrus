@@ -4,3 +4,6 @@ pub fn sample(x: i32, y: i32): i32 {
     return x + y;
 }
 
+pub fn main() {
+    std::io::printf("Hello World\n");
+}
