@@ -78,7 +78,7 @@ impl Compiler {
         );
 
         let (program, file_name) = parse_program(import_file_path.clone());
-        let context = Compiler::new_child_context(self.context);
+        let context = Compiler::new_master_context();
         let mut compiler = Compiler::new(context, program, import_file_path.clone(), file_name.clone());
 
         compiler.compile();

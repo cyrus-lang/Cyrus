@@ -1,5 +1,5 @@
 use crate::{Compiler, scope::Scope};
-use ast::token::TokenKind;
+use ast::token::{Location, TokenKind};
 use gccjit_sys::*;
 use std::{
     cell::RefCell,
@@ -62,9 +62,9 @@ impl Compiler {
             let main_func_block = unsafe { gcc_jit_function_new_block(main_func_ptr, main_func_block_name.as_ptr()) };
 
             let exec_result = unsafe { gcc_jit_context_new_call(self.context, loc, func_ptr, 0, null_mut()) };
-
             if void_return_type {
                 if !self.block_is_terminated(main_func_block) {
+                    unsafe { gcc_jit_block_add_eval(main_func_block, null_mut(), exec_result) };
                     let return_value =
                         unsafe { gcc_jit_context_new_rvalue_from_int(self.context, main_func_return_type, 0) };
                     unsafe { gcc_jit_block_end_with_return(main_func_block, loc, return_value) };
@@ -73,8 +73,6 @@ impl Compiler {
                 unsafe { gcc_jit_block_end_with_return(main_func_block, loc, exec_result) };
             }
             self.mark_block_terminated(main_func_block);
-
-            compiled_successfully();
         } else {
             let mut err_msg = String::from("No entry point detected.\n");
             err_msg.push_str("Consider to add an execution entry point: \n\n");
@@ -106,6 +104,8 @@ impl Compiler {
             let main_fn: extern "C" fn() = std::mem::transmute(main);
             main_fn();
         }
+
+        compiled_successfully();
 
         unsafe { gcc_jit_result_release(result) };
     }
