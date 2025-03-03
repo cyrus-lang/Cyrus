@@ -2,16 +2,15 @@ import std::io;
 
 struct User {
     name: string;
-}
-
-fn sample(fmt: string, name: string) {
-    std::io::printf(fmt, name);
+    age: i32;
 }
 
 fn main() {
     #user1 = User { 
         name: "Taha",
+        age: 17
     };
 
-    sample("%s\n", user1.name);
+    std::io::printf("%s\n", user1.name);
+    std::io::printf("%d\n", user1.age);
 }

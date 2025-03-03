@@ -1,3 +1,4 @@
+use core::panic;
 use std::ffi::CString;
 use std::ptr::null_mut;
 use std::rc::Rc;
@@ -88,14 +89,17 @@ impl Compiler {
             Expression::Dereference(expression) => self.compile_dereference(Rc::clone(&scope), expression),
             Expression::StructInit(struct_init) => self.compile_struct_init(scope, struct_init),
             Expression::StructFieldAccess(struct_field_access) => {
-                let item = struct_field_access.chains[struct_field_access.chains.len() - 1].clone();
-                if let Some(method_call) = item.method_call {
+                let last_item = struct_field_access.chains.last().unwrap().clone();
+                if let Some(method_call) = last_item.method_call {
                     let rvalue = self.compile_struct_field_access(scope, *struct_field_access.clone());
                     if rvalue != null_mut() {
                         self.eval_func_call(rvalue, method_call.loc.clone());
                     }
+                    return rvalue;
+                } else {
+                    let rvalue = self.compile_struct_field_access(scope, *struct_field_access.clone());
+                    return rvalue;   
                 }
-                null_mut()
             }
             Expression::CastAs(cast_as) => self.compile_cast_as(Rc::clone(&scope), cast_as),
             Expression::FromPackage(from_package) => self.compile_from_package(Rc::clone(&scope), from_package),

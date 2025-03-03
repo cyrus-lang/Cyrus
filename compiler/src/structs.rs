@@ -115,6 +115,7 @@ impl Compiler {
                 let rvalue = func_def(self.file_path.clone(), self.context, args);
                 return rvalue;
             } 
+            // FIXME
             // else {
             //     compiler_error!(format!(
             //         "Function '{}' not defined at this module.",
