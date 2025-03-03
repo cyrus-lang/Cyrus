@@ -284,12 +284,12 @@ impl<'a> Parser<'a> {
                         span,
                     });
                 }
-                TokenKind::Identifier { name: identiier } => {
+                TokenKind::Identifier { name: identifier } => {
                     let span = self.current_token.span.clone();
 
                     package_paths.push(PackagePath {
                         package_name: Identifier {
-                            name: identiier,
+                            name: identifier,
                             span: span.clone(),
                             loc: self.current_location(),
                         },

@@ -123,6 +123,7 @@ impl Compiler {
                         params: value.params,
                         return_type: value.return_type,
                         imported_from: Some(package_name.clone()),
+                        normal_params_count: value.normal_params_count
                     },
                 );
             }
@@ -208,7 +209,7 @@ impl Compiler {
                 func_name_cstr.as_ptr(),
                 func_params.len().try_into().unwrap(),
                 func_params.as_mut_ptr(),
-                self.cbool(params.is_variadic),
+                self.cbool(params.variadic.is_some()),
             )
         };
 

@@ -3,12 +3,14 @@ use std::ptr::null_mut;
 use std::rc::Rc;
 
 use crate::Compiler;
+use crate::scope::IdentifierMetadata;
 use crate::scope::ScopeRef;
 use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
-use utils::compiler_error;
 use utils::compile_time_errors::errors::*;
+use utils::compiler_error;
+use utils::generate_random_hex::generate_random_hex;
 
 #[derive(Debug, Clone)]
 pub struct FuncMetadata {
@@ -16,6 +18,7 @@ pub struct FuncMetadata {
     pub(crate) ptr: *mut gcc_jit_function,
     pub(crate) return_type: TokenKind,
     pub(crate) params: FunctionParams,
+    pub(crate) normal_params_count: usize,
     pub(crate) imported_from: Option<String>,
 }
 
@@ -94,7 +97,7 @@ impl Compiler {
                 func_name.as_ptr(),
                 params.len().try_into().unwrap(),
                 params.as_mut_ptr(),
-                self.cbool(func_decl.params.is_variadic),
+                self.cbool(func_decl.params.variadic.is_some()),
             )
         };
 
@@ -134,10 +137,13 @@ impl Compiler {
 
         if func_def.return_type.is_some() {
             if !return_compiled {
-                compiler_error!(format!(
-                    "Explicit return statement required for the function '{}'.",
-                    func_def.name
-                ), self.file_path.clone());
+                compiler_error!(
+                    format!(
+                        "Explicit return statement required for the function '{}'.",
+                        func_def.name
+                    ),
+                    self.file_path.clone()
+                );
             }
         } else {
             let guard = self.block_func_ref.lock().unwrap();
@@ -147,7 +153,7 @@ impl Compiler {
                     unsafe { gcc_jit_block_end_with_void_return(block, null_mut()) };
                 }
             }
-        }   
+        }
 
         return func_ptr;
     }
@@ -161,6 +167,8 @@ impl Compiler {
             declare_function.name
         };
 
+        let normal_params_count = declare_function.params.list.len();
+
         self.func_table.borrow_mut().insert(
             func_name,
             FuncMetadata {
@@ -169,6 +177,7 @@ impl Compiler {
                 params: declare_function.params,
                 return_type,
                 imported_from: None,
+                normal_params_count,
             },
         );
     }
@@ -249,22 +258,71 @@ impl Compiler {
             return func_metadata.1.clone();
         }
 
-        compiler_error!(format!(
-            "Function '{}' not defined at this module.",
-            from_package.to_string()
-        ), self.file_path.clone())
+        compiler_error!(
+            format!("Function '{}' not defined at this module.", from_package.to_string()),
+            self.file_path.clone()
+        )
     }
 
     pub(crate) fn compile_func_call(&mut self, scope: ScopeRef, func_call: FuncCall) -> *mut gcc_jit_rvalue {
         let loc = self.gccjit_location(func_call.loc.clone());
 
-        let metadata = self.get_func(func_call.func_name);
-        
+        let metadata = self.get_func(func_call.func_name.clone());
+
+        let func_metadata = self.get_func(func_call.func_name.clone());
+        let normal_params_count = func_metadata.normal_params_count;
+
         let mut args = self.compile_func_arguments(
             Rc::clone(&scope),
             Some(metadata.params.list.clone()),
             func_call.arguments,
         );
+
+        // FIXME Find a better solution
+        // Add variadic_arguments identifier to current scope
+        // if let Some(variadic) = func_metadata.params.variadic {
+        //     let vargs_type = self.token_as_data_type(
+        //         self.context,
+        //         TokenKind::Array(
+        //             Box::new(variadic),
+        //             vec![Some(TokenKind::Literal(Literal::Integer(IntegerLiteral::SizeT(
+        //                 normal_params_count,
+        //             ))))],
+        //         ),
+        //     );
+        //     let mut vargs_values = args[0..normal_params_count - 1].to_vec();
+
+        //     let vargs_rvalue = unsafe {
+        //         gcc_jit_context_new_array_constructor(
+        //             self.context,
+        //             null_mut(),
+        //             vargs_type,
+        //             vargs_values.len().try_into().unwrap(),
+        //             vargs_values.as_mut_ptr(),
+        //         )
+        //     };
+
+        //     let vargs_lvalue_name = CString::new(format!("__func_vargs__{}", generate_random_hex())).unwrap();
+        //     let vargs_lvalue = unsafe {
+        //         gcc_jit_context_new_global(
+        //             self.context,
+        //             self.gccjit_location(func_call.loc.clone()),
+        //             gcc_jit_global_kind::GCC_JIT_GLOBAL_INTERNAL,
+        //             vargs_type,
+        //             vargs_lvalue_name.as_ptr(),
+        //         )
+        //     };
+
+        //     unsafe { gcc_jit_global_set_initializer_rvalue(vargs_lvalue, vargs_rvalue) };
+
+        //     scope.borrow_mut().insert(
+        //         String::from("vargs"),
+        //         IdentifierMetadata {
+        //             lvalue_type: vargs_type,
+        //             lvalue: vargs_lvalue,
+        //         },
+        //     );
+        // }
 
         let rvalue = unsafe {
             gcc_jit_context_new_call(

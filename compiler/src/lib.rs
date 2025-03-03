@@ -140,9 +140,10 @@ impl Compiler {
                     FuncMetadata {
                         func_type: func_def.vis_type,
                         ptr,
-                        params: func_def.params,
+                        params: func_def.params.clone(),
                         return_type,
                         imported_from: None,
+                        normal_params_count: func_def.params.list.len(),
                     },
                 );
             }

@@ -212,7 +212,7 @@ mod tests {
             name: "add".to_string(),
             params: FunctionParams {
                 list: vec![param.clone()],
-                is_variadic: false,
+                variadic: None,
             },
             body: Box::new(BlockStatement {
                 body: vec![],

@@ -1,4 +1,4 @@
-extern fn printf(fmt: string, ...): void as _printf;
+extern fn printf(fmt: string, ...string): void as _printf;
 
 pub fn printf(fmt: string, ...) {
     _printf(fmt);
