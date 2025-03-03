@@ -397,7 +397,7 @@ pub struct FunctionParam {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionParams {
     pub list: Vec<FunctionParam>,
-    pub is_variadic: bool
+    pub variadic: Option<TokenKind>
 }
 
 #[derive(Debug, Clone, PartialEq)]
