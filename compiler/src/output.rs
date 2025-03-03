@@ -1,5 +1,5 @@
 use crate::{Compiler, scope::Scope};
-use ast::token::TokenKind;
+use ast::{ast::VisType, token::TokenKind};
 use gccjit_sys::*;
 use std::{
     cell::RefCell,
@@ -18,6 +18,15 @@ impl Compiler {
         // The main function is compiled after all other function definitions
         // to ensure that all functions are available for use within main.
         if let Some(mut func_def) = self.main_func_ref.clone() {
+            if func_def.vis_type != VisType::Internal {
+                let mut err_msg = String::from("Main func must be defined internally.\n");
+                err_msg.push_str("Consider to change your execution entry point to: \n\n");
+                err_msg.push_str("fn main() {\n");
+                err_msg.push_str("   ...\n");
+                err_msg.push_str("}");
+                compiler_error!(err_msg, self.file_path.clone());
+            }
+
             let loc = self.gccjit_location(func_def.loc.clone());
             let scope = Rc::new(RefCell::new(Scope::new()));
 

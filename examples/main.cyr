@@ -4,11 +4,14 @@ struct User {
     name: string;
 }
 
+fn sample(fmt: string, name: string) {
+    std::io::printf(fmt, name);
+}
+
 fn main() {
     #user1 = User { 
         name: "Taha",
     };
 
-    #a = user1.name;
-    std::io::printf("%s\n", a);
+    sample("%s\n", user1.name);
 }
