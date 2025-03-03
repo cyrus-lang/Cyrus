@@ -90,7 +90,8 @@ impl<'a> Parser<'a> {
                     } else {
                         Expression::ArrayIndex(array_index)
                     }
-                } else if self.current_token_is(TokenKind::LeftBrace) {
+                } else if self.peek_token_is(TokenKind::LeftBrace) {
+                    self.next_token(); // consume struct_name
                     self.parse_struct_init(from_package)?
                 } else {
                     Expression::FromPackage(from_package)
@@ -524,10 +525,10 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_struct_init(&mut self, struct_name: FromPackage) -> Result<Expression, ParseError> {
+        self.expect_current(TokenKind::LeftBrace)?;
+        
         let mut field_inits: Vec<FieldInit> = Vec::new();
         let start = self.current_token.span.start;
-
-        self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Expression::StructInit(StructInit {
@@ -557,7 +558,9 @@ impl<'a> Parser<'a> {
             self.expect_current(TokenKind::Colon)?;
 
             let value = self.parse_expression(Precedence::Lowest)?.0;
-            self.next_token(); // consume expr
+            if !(self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace)) {
+                self.next_token(); // consume expr
+            }
 
             field_inits.push(FieldInit {
                 name: field_name,
@@ -578,7 +581,6 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Comma => {
                     self.next_token();
-
                     if self.current_token_is(TokenKind::RightBrace) {
                         break;
                     }

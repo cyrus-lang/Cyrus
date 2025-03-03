@@ -6,6 +6,9 @@ struct User {
 
 fn main() {
     #user1 = User { 
-        name: "Taha"
+        name: "Taha",
     };
+
+    #a = user1.name;
+    std::io::printf("%s\n", a);
 }
