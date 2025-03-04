@@ -1,4 +1,6 @@
-fn sample(x: i32, ...i32) {
+extern fn printf(fmt: string, ...string): void;
+
+fn sample(...i32) {
     // #result = vargs;
 }
 

@@ -123,7 +123,7 @@ impl Compiler {
                         params: value.params,
                         return_type: value.return_type,
                         imported_from: Some(package_name.clone()),
-                        normal_params_count: value.normal_params_count
+                        fixed_params_count: value.fixed_params_count
                     },
                 );
             }

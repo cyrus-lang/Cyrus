@@ -143,7 +143,7 @@ impl Compiler {
                         params: func_def.params.clone(),
                         return_type,
                         imported_from: None,
-                        normal_params_count: func_def.params.list.len(),
+                        fixed_params_count: func_def.params.list.len(),
                     },
                 );
             }

@@ -18,7 +18,7 @@ pub struct FuncMetadata {
     pub(crate) ptr: *mut gcc_jit_function,
     pub(crate) return_type: TokenKind,
     pub(crate) params: FunctionParams,
-    pub(crate) normal_params_count: usize,
+    pub(crate) fixed_params_count: usize,
     pub(crate) imported_from: Option<String>,
 }
 
@@ -167,7 +167,7 @@ impl Compiler {
             declare_function.name
         };
 
-        let normal_params_count = declare_function.params.list.len();
+        let fixed_params_count = declare_function.params.list.len();
 
         self.func_table.borrow_mut().insert(
             func_name,
@@ -177,7 +177,7 @@ impl Compiler {
                 params: declare_function.params,
                 return_type,
                 imported_from: None,
-                normal_params_count,
+                fixed_params_count,
             },
         );
     }
@@ -270,7 +270,7 @@ impl Compiler {
         let metadata = self.get_func(func_call.func_name.clone());
 
         let func_metadata = self.get_func(func_call.func_name.clone());
-        let normal_params_count = func_metadata.normal_params_count;
+        let fixed_params_count = func_metadata.fixed_params_count;
 
         let mut args = self.compile_func_arguments(
             Rc::clone(&scope),
@@ -286,11 +286,11 @@ impl Compiler {
         //         TokenKind::Array(
         //             Box::new(variadic),
         //             vec![Some(TokenKind::Literal(Literal::Integer(IntegerLiteral::SizeT(
-        //                 normal_params_count,
+        //                 fixed_params_count,
         //             ))))],
         //         ),
         //     );
-        //     let mut vargs_values = args[0..normal_params_count - 1].to_vec();
+        //     let mut vargs_values = args[0..fixed_params_count - 1].to_vec();
 
         //     let vargs_rvalue = unsafe {
         //         gcc_jit_context_new_array_constructor(
