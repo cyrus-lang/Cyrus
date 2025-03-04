@@ -127,6 +127,14 @@ impl Compiler {
         guard.func = Some(func_ptr);
         drop(guard);
 
+        // TODO Variadic Funcs
+        // This feature is not supported by the GCCJIT yet.
+        // We will impl this later.
+        // 
+        // let va_list_name = CString::new("__builtin_va_start").unwrap();
+        // let va_list_func = unsafe { gcc_jit_context_get_builtin_function(self.context, va_list_name.as_ptr()) };
+        // 
+
         for item in func_def.body.body {
             if let Statement::Return(_) = item.clone() {
                 return_compiled = true;
@@ -269,60 +277,11 @@ impl Compiler {
 
         let metadata = self.get_func(func_call.func_name.clone());
 
-        let func_metadata = self.get_func(func_call.func_name.clone());
-        let fixed_params_count = func_metadata.fixed_params_count;
-
         let mut args = self.compile_func_arguments(
             Rc::clone(&scope),
             Some(metadata.params.list.clone()),
             func_call.arguments,
         );
-
-        // FIXME Find a better solution
-        // Add variadic_arguments identifier to current scope
-        // if let Some(variadic) = func_metadata.params.variadic {
-        //     let vargs_type = self.token_as_data_type(
-        //         self.context,
-        //         TokenKind::Array(
-        //             Box::new(variadic),
-        //             vec![Some(TokenKind::Literal(Literal::Integer(IntegerLiteral::SizeT(
-        //                 fixed_params_count,
-        //             ))))],
-        //         ),
-        //     );
-        //     let mut vargs_values = args[0..fixed_params_count - 1].to_vec();
-
-        //     let vargs_rvalue = unsafe {
-        //         gcc_jit_context_new_array_constructor(
-        //             self.context,
-        //             null_mut(),
-        //             vargs_type,
-        //             vargs_values.len().try_into().unwrap(),
-        //             vargs_values.as_mut_ptr(),
-        //         )
-        //     };
-
-        //     let vargs_lvalue_name = CString::new(format!("__func_vargs__{}", generate_random_hex())).unwrap();
-        //     let vargs_lvalue = unsafe {
-        //         gcc_jit_context_new_global(
-        //             self.context,
-        //             self.gccjit_location(func_call.loc.clone()),
-        //             gcc_jit_global_kind::GCC_JIT_GLOBAL_INTERNAL,
-        //             vargs_type,
-        //             vargs_lvalue_name.as_ptr(),
-        //         )
-        //     };
-
-        //     unsafe { gcc_jit_global_set_initializer_rvalue(vargs_lvalue, vargs_rvalue) };
-
-        //     scope.borrow_mut().insert(
-        //         String::from("vargs"),
-        //         IdentifierMetadata {
-        //             lvalue_type: vargs_type,
-        //             lvalue: vargs_lvalue,
-        //         },
-        //     );
-        // }
 
         let rvalue = unsafe {
             gcc_jit_context_new_call(
