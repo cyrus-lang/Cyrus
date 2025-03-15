@@ -104,7 +104,7 @@ impl Compiler {
     fn import_package(&mut self, compiler: Compiler, package_name: String, import: Import) {
         // Import functions
         for (key, value) in compiler.func_table.borrow_mut().clone() {
-            if value.func_type == VisType::Pub && !self.func_table.borrow_mut().contains_key(&key) {
+            if (value.func_type == VisType::Pub || value.func_type == VisType::Extern) && !self.func_table.borrow_mut().contains_key(&key) {
                 let func_ptr = self.define_imported_func_as_extern_decl(
                     key.clone(),
                     value.params.clone(),
@@ -131,7 +131,7 @@ impl Compiler {
 
         // Import structs
         for (key, value) in compiler.global_struct_table.borrow_mut().clone() {
-            if value.vis_type == VisType::Pub && !self.global_struct_table.borrow_mut().contains_key(&key) {
+            if (value.vis_type == VisType::Pub || value.vis_type == VisType::Extern) && !self.global_struct_table.borrow_mut().contains_key(&key) {
                 let mut struct_field_ptrs = self.compile_struct_fields(value.fields.clone());
                 let struct_decl_name = CString::new(key.clone()).unwrap();
                 let struct_decl = unsafe {

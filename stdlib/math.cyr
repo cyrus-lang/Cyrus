@@ -1,12 +1,7 @@
-extern fn pow(base: double, exp: double): double as local_pow;
-extern fn sqrt(x: double): double as local_sqrt;
-extern fn sin(x: double): double as local_sin;
-extern fn cos(x: double): double as local_cos;
-extern fn tan(x: double): double as local_tan;
-extern fn log(x: double): double as local_log;
-
-pub fn sqrt(x: double): double {
-    // return local_sqrt(x);
-    return 0 as double;
-}
+extern fn pow(base: double, exp: double): double;
+extern fn sqrt(x: double): double;
+extern fn sin(x: double): double;
+extern fn cos(x: double): double;
+extern fn tan(x: double): double;
+extern fn log(x: double): double;
 

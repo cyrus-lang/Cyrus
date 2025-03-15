@@ -1,16 +1,13 @@
-use std::ffi::CString;
-use std::ptr::null_mut;
-use std::rc::Rc;
-
 use crate::Compiler;
-use crate::scope::IdentifierMetadata;
 use crate::scope::ScopeRef;
 use ast::ast::*;
 use ast::token::*;
 use gccjit_sys::*;
+use std::ffi::CString;
+use std::ptr::null_mut;
+use std::rc::Rc;
 use utils::compile_time_errors::errors::*;
 use utils::compiler_error;
-use utils::generate_random_hex::generate_random_hex;
 
 #[derive(Debug, Clone)]
 pub struct FuncMetadata {
@@ -127,13 +124,17 @@ impl Compiler {
         guard.func = Some(func_ptr);
         drop(guard);
 
-        // TODO Variadic Funcs
+        
+        // TODO
         // This feature is not supported by the GCCJIT yet.
+        // if let Some(vargs_type) = func_def.params.variadic {
+            
+        // }
         // We will impl this later.
-        // 
+        //
         // let va_list_name = CString::new("__builtin_va_start").unwrap();
         // let va_list_func = unsafe { gcc_jit_context_get_builtin_function(self.context, va_list_name.as_ptr()) };
-        // 
+        //
 
         for item in func_def.body.body {
             if let Statement::Return(_) = item.clone() {

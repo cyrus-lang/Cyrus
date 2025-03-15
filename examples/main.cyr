@@ -1,7 +1,7 @@
-fn sample(...i32) {
-    // #result = vargs;
-}
+import std::io;
+import std::math;
 
 fn main() { 
-    sample(10, 20, 30);
+    #result = std::math::pow(2, 5);
+    std::io::printf("result: %f\n", result);
 }
