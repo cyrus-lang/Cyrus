@@ -5,7 +5,7 @@ edition = "2024"
 resolver = "2"
 
 [workspace]
-members = ["ast", "compiler", "lexer", "parser", "utils"]
+members = ["ast", "codegen_gccjit", "lexer", "parser", "utils"]
 
 [[bin]]
 name = "cyrus"
@@ -18,4 +18,4 @@ lexer = { path = "./lexer", version = "*" }
 ast = { path = "./ast", version = "*" }
 parser = { path = "./parser", version = "*" }
 utils = { path = "./utils", version = "*" }
-compiler = { path = "./compiler", version = "*" }
+codegen_gccjit = { path = "./codegen_gccjit", version = "*" }
