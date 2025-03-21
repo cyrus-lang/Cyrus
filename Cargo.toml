@@ -5,7 +5,7 @@ edition = "2024"
 resolver = "2"
 
 [workspace]
-members = ["ast", "codegen_gccjit", "lexer", "parser", "utils"]
+members = ["ast", "codegen_gccjit", "codegen_llvm", "lexer", "parser", "utils"]
 
 [[bin]]
 name = "cyrus"
