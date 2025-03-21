@@ -1,7 +1,7 @@
-import std::io;
-import std::math;
+struct Person {
+    name: string;
+}
 
-fn main() { 
-    #result = std::math::log2(10);
-    std::io::printf("result: %f\n", result);
+fn main() {
+    Person { name: "Taha" };
 }

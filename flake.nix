@@ -25,16 +25,17 @@
         cargoLock = {
           lockFile = ./Cargo.lock;
         };
-        nativeBuildInputs = [
+        nativeBuildInputs = with pkgs; [
           rustToolchain
-          pkgs.gcc
-          pkgs.libgccjit
-          pkgs.binutils
-          pkgs.glibc
-          pkgs.gcc_multi
-          pkgs.isl
-          pkgs.libffi
-          pkgs.libffi.dev
+          gcc
+          libgccjit
+          binutils
+          glibc
+          gcc_multi
+          isl
+          libffi
+          libffi.dev
+          llvmPackages_18.libllvm
         ];
 
         meta = {
@@ -57,11 +58,14 @@
           libffi
           libffi.dev
           isl
+          llvm_18.lib
+          llvm_18.dev
+          libxml2
         ];
         
         shellHook = ''
-          export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:$LIBRARY_PATH"
-
+          export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
+          export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
           alias cyrus="cargo run --"
         '';
       };

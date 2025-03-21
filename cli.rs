@@ -1,8 +1,8 @@
 use ::parser::parse_program;
 use clap::Parser as ClapParser;
 use clap::*;
-use compiler::options::CompilerOptions;
-use compiler::Compiler;
+use codegen_gccjit::options::CompilerOptions;
+use codegen_gccjit::Compiler;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum ClapOptimizationLevel {
