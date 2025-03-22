@@ -1,8 +1,8 @@
 use ::parser::parse_program;
 use clap::Parser as ClapParser;
 use clap::*;
-use codegen_gccjit::options::CompilerOptions;
-use codegen_gccjit::Compiler;
+use codegen_llvm::CodeGenLLVM;
+use codegen_llvm::opts::CodeGenLLVMOptions;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum ClapOptimizationLevel {
@@ -107,18 +107,23 @@ enum Commands {
 }
 
 macro_rules! init_compiler {
-    ($file_path:expr) => {{
-        let (program, file_name) = parse_program($file_path);
-        let context = Compiler::new_master_context();
-        let compiler = Compiler::new(context, program, $file_path, file_name);
-
-        #[cfg(debug_assertions)]
-        compiler.set_debug_info(true);
-        compiler
+    ($context:expr, $file_path:expr) => {{
+        let (program, file_name) = parse_program($file_path.clone());
+        let mut codegen_llvm = match CodeGenLLVM::new($context, $file_path, file_name.clone(), program) {
+            Ok(instance) => instance,
+            Err(err) => {
+                eprintln!("(cyrus) Creating CodeGenLLVM instance failed: ");
+                eprintln!("{}", err.to_str().unwrap());
+                std::process::exit(1);
+            }
+        };
+        codegen_llvm
     }};
 }
 
 pub fn main() {
+    let context = CodeGenLLVM::new_context();
+    
     let version = env!("CARGO_PKG_VERSION");
     let args = Args::parse();
 
@@ -127,15 +132,15 @@ pub fn main() {
             file_path,
             compiler_options,
         } => {
-            let mut compiler = init_compiler!(file_path.clone());
-            compiler.set_opts(CompilerOptions {
+            let mut codegen_llvm = init_compiler!(&context, file_path.clone());
+            codegen_llvm.set_opts(CodeGenLLVMOptions {
                 optimization_level: compiler_options.optimization_level.as_integer(),
                 library_path: compiler_options.library_path,
                 libraries: compiler_options.libraries,
                 build_dir: compiler_options.build_dir,
             });
-            compiler.compile();
-            compiler.execute();
+            codegen_llvm.compile();
+            codegen_llvm.execute();
         }
         Commands::Dump {
             file_path,
@@ -143,64 +148,64 @@ pub fn main() {
             output_path,
             compiler_options,
         } => {
-            let mut compiler = init_compiler!(file_path.clone());
-            compiler.set_opts(CompilerOptions {
-                optimization_level: compiler_options.optimization_level.as_integer(),
-                library_path: compiler_options.library_path,
-                libraries: compiler_options.libraries,
-                build_dir: compiler_options.build_dir,
-            });
-            compiler.compile();
+            // let mut compiler = init_compiler!(file_path.clone());
+            // compiler.set_opts(CompilerOptions {
+            //     optimization_level: compiler_options.optimization_level.as_integer(),
+            //     library_path: compiler_options.library_path,
+            //     libraries: compiler_options.libraries,
+            //     build_dir: compiler_options.build_dir,
+            // });
+            // compiler.compile();
 
-            match dump_type {
-                DumpType::Ir => compiler.make_dump_ir(output_path),
-                DumpType::Asm => compiler.make_dump_asm(output_path),
-            }
+            // match dump_type {
+            //     DumpType::Ir => compiler.make_dump_ir(output_path),
+            //     DumpType::Asm => compiler.make_dump_asm(output_path),
+            // }
         }
         Commands::Build {
             file_path,
             output_path,
             compiler_options,
         } => {
-            let mut compiler = init_compiler!(file_path.clone());
-            compiler.set_opts(CompilerOptions {
-                optimization_level: compiler_options.optimization_level.as_integer(),
-                library_path: compiler_options.library_path,
-                libraries: compiler_options.libraries,
-                build_dir: compiler_options.build_dir,
-            });
-            compiler.compile();
-            compiler.make_executable_file(output_path);
+            // let mut compiler = init_compiler!(file_path.clone());
+            // compiler.set_opts(CompilerOptions {
+            //     optimization_level: compiler_options.optimization_level.as_integer(),
+            //     library_path: compiler_options.library_path,
+            //     libraries: compiler_options.libraries,
+            //     build_dir: compiler_options.build_dir,
+            // });
+            // compiler.compile();
+            // compiler.make_executable_file(output_path);
         }
         Commands::Obj {
             file_path,
             output_path,
             compiler_options,
         } => {
-            let mut compiler = init_compiler!(file_path.clone());
-            compiler.set_opts(CompilerOptions {
-                optimization_level: compiler_options.optimization_level.as_integer(),
-                library_path: compiler_options.library_path,
-                libraries: compiler_options.libraries,
-                build_dir: compiler_options.build_dir,
-            });
-            compiler.compile();
-            compiler.make_object_file(output_path);
+            // let mut compiler = init_compiler!(file_path.clone());
+            // compiler.set_opts(CompilerOptions {
+            //     optimization_level: compiler_options.optimization_level.as_integer(),
+            //     library_path: compiler_options.library_path,
+            //     libraries: compiler_options.libraries,
+            //     build_dir: compiler_options.build_dir,
+            // });
+            // compiler.compile();
+            // compiler.make_object_file(output_path);
         }
         Commands::Dylib {
             file_path,
             output_path,
             compiler_options,
         } => {
-            let mut compiler = init_compiler!(file_path.clone());
-            compiler.set_opts(CompilerOptions {
-                optimization_level: compiler_options.optimization_level.as_integer(),
-                library_path: compiler_options.library_path,
-                libraries: compiler_options.libraries,
-                build_dir: compiler_options.build_dir,
-            });
-            compiler.compile();
-            compiler.make_dynamic_library(output_path);
+            // let mut compiler = init_compiler!(file_path.clone());
+            // compiler.set_opts(CompilerOptions {
+            //     optimization_level: compiler_options.optimization_level.as_integer(),
+            //     library_path: compiler_options.library_path,
+            //     libraries: compiler_options.libraries,
+            //     build_dir: compiler_options.build_dir,
+            // });
+            // compiler.compile();
+            // compiler.make_dynamic_library(output_path);
         }
         Commands::Version => {
             println!("Cyrus {}", version)

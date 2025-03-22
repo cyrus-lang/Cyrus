@@ -1,71 +1,106 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use ast::ast::*;
+use ast::token::{Token, TokenKind};
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::execution_engine::{ExecutionEngine, JitFunction};
-use inkwell::module::Module;
+use inkwell::module::{Linkage, Module};
+use inkwell::support::LLVMString;
+use inkwell::types::FunctionType;
+use opts::CodeGenLLVMOptions;
 
-use std::error::Error;
+mod common;
+pub mod opts;
+mod scope;
+mod tests;
 
-/// Convenience type alias for the `sum` function.
-///
-/// Calling this is innately `unsafe` because there's no guarantee it doesn't
-/// do `unsafe` operations internally.
-type SumFunc = unsafe extern "C" fn(u64, u64, u64) -> u64;
-
-struct CodeGen<'ctx> {
+pub struct CodeGenLLVM<'ctx> {
+    opts: CodeGenLLVMOptions,
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     execution_engine: ExecutionEngine<'ctx>,
+    program: Program,
+    file_path: String,
+    file_name: String,
 }
 
-impl<'ctx> CodeGen<'ctx> {
-    fn jit_compile_sum(&self) -> Option<JitFunction<SumFunc>> {
-        let i64_type = self.context.i64_type();
-        let fn_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
-        let function = self.module.add_function("sum", fn_type, None);
-        let basic_block = self.context.append_basic_block(function, "entry");
+impl<'ctx> CodeGenLLVM<'ctx> {
+    pub fn new(
+        context: &'ctx Context,
+        file_path: String,
+        file_name: String,
+        program: Program,
+    ) -> Result<Self, LLVMString> {
+        let module = context.create_module(&file_name);
+        let builder = context.create_builder();
+        let execution_engine = module.create_jit_execution_engine(OptimizationLevel::None)?;
 
-        self.builder.position_at_end(basic_block);
-
-        let x = function.get_nth_param(0)?.into_int_value();
-        let y = function.get_nth_param(1)?.into_int_value();
-        let z = function.get_nth_param(2)?.into_int_value();
-
-        let sum = self.builder.build_int_add(x, y, "sum").unwrap();
-        let sum = self.builder.build_int_add(sum, z, "sum").unwrap();
-
-        self.builder.build_return(Some(&sum)).unwrap();
-
-        unsafe { self.execution_engine.get_function("sum").ok() }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let context = Context::create();
-        let module = context.create_module("sum");
-        let execution_engine = module.create_jit_execution_engine(OptimizationLevel::None).unwrap();
-        let codegen = CodeGen {
-            context: &context,
+        Ok(CodeGenLLVM {
+            opts: CodeGenLLVMOptions::default(),
+            context,
             module,
-            builder: context.create_builder(),
+            builder,
             execution_engine,
-        };
+            program,
+            file_path,
+            file_name,
+        })
+    }
 
-        let sum = codegen.jit_compile_sum().ok_or("Unable to JIT compile `sum`").unwrap();
+    pub fn new_context() -> Context {
+        Context::create()
+    }
 
-        let x = 1u64;
-        let y = 2u64;
-        let z = 3u64;
+    pub fn set_opts(&mut self, opts: CodeGenLLVMOptions) {
+        self.opts = opts;
+    }
 
-        unsafe {
-            println!("{} + {} + {} = {}", x, y, z, sum.call(x, y, z));
-            assert_eq!(sum.call(x, y, z), x + y + z);
+    pub fn compile(&mut self) {
+        self.compile_statements(self.program.body.clone());
+    }
+
+    pub fn execute(&mut self) {
+        unimplemented!();
+    }
+
+    pub(crate) fn compile_statements(&mut self, stmts: Vec<Statement>) {
+        for stmt in stmts {
+            self.compile_statement(stmt.clone());
         }
+
+        println!("{}", self.module.print_to_string())
+    }
+
+    pub(crate) fn compile_statement(&mut self, stmt: Statement) {
+        match stmt {
+            Statement::Variable(variable) => todo!(),
+            Statement::Expression(expression) => todo!(),
+            Statement::If(_) => todo!(),
+            Statement::Return(_) => todo!(),
+            Statement::FuncDef(func_def) => todo!(),
+            Statement::FuncDecl(func_decl) => self.compile_func_decl(func_decl),
+            Statement::For(_) => todo!(),
+            Statement::Match(_) => todo!(),
+            Statement::Struct(_) => todo!(),
+            Statement::Import(import) => todo!(),
+            Statement::BlockStatement(block_statement) => todo!(),
+            Statement::Break(location) => todo!(),
+            Statement::Continue(location) => todo!(),
+        }
+    }
+
+    pub(crate) fn compile_func_decl(&mut self, func_decl: FuncDecl) {
+        let func_type = self
+            .token_as_data_type(func_decl.return_type.unwrap_or(Token {
+                kind: TokenKind::Void,
+                span: func_decl.loc.clone(),
+            }))
+            .fn_type(&[], false);
+        let func_linkage = self.vis_type_as_linkage(func_decl.vis_type);
+        let func = self.module.add_function(&func_decl.name, func_type, Some(func_linkage));
     }
 }

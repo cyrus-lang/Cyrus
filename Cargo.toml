@@ -19,3 +19,4 @@ ast = { path = "./ast", version = "*" }
 parser = { path = "./parser", version = "*" }
 utils = { path = "./utils", version = "*" }
 codegen_gccjit = { path = "./codegen_gccjit", version = "*" }
+codegen_llvm = { path = "./codegen_llvm", version = "*" }

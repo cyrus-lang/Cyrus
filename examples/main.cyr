@@ -1,7 +1,1 @@
-struct Person {
-    name: string;
-}
-
-fn main() {
-    Person { name: "Taha" };
-}
+fn main();
