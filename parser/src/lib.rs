@@ -22,9 +22,9 @@ pub type ParseError = CompileTimeError<ParserErrorType>;
 ///
 /// # Returns
 /// A tuple containing:
-/// - `Program`: The parsed program representation.
+/// - `ProgramTree`: The parsed program representation.
 /// - `String`: The name of the file.
-pub fn parse_program(file_path: String) -> (Program, String) {
+pub fn parse_program(file_path: String) -> (ProgramTree, String) {
     let file = read_file(file_path.clone());
     let code = file.0;
 
@@ -33,7 +33,7 @@ pub fn parse_program(file_path: String) -> (Program, String) {
 
     let program = match parser.parse() {
         Ok(result) => {
-            if let Node::Program(program) = result {
+            if let Node::ProgramTree(program) = result {
                 program
             } else {
                 compiler_error!("Expected a program given as input to the compiler but got unknown.", file_path);
@@ -69,18 +69,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parses the entire input program and returns it as a `Node::Program`.
+    /// Parses the entire input program and returns it as a `Node::ProgramTree`.
     pub fn parse(&mut self) -> Result<Node, Vec<ParseError>> {
         let program = self.parse_program()?;
-        Ok(Node::Program(program))
+        Ok(Node::ProgramTree(program))
     }
 
     /// Parses the program by repeatedly parsing statements until the end of file (EOF) token is encountered.
     ///
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
-    pub fn parse_program(&mut self) -> Result<Program, Vec<ParseError>> {
-        let mut program = Program::new();
+    pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<ParseError>> {
+        let mut program = ProgramTree::new();
 
         while self.current_token.kind != TokenKind::EOF {
             self.parse_and_add_statement(&mut program);
@@ -91,7 +91,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a statement and adds it to the program, accumulating errors if any.
-    pub fn parse_and_add_statement(&mut self, program: &mut Program) {
+    pub fn parse_and_add_statement(&mut self, program: &mut ProgramTree) {
         match self.parse_statement() {
             Ok(statement) => program.body.push(statement),
             Err(error) => self.errors.push(error),
@@ -106,7 +106,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Finalizes the program parse by checking for errors.
-    pub fn finalize_program_parse(&self, program: Program) -> Result<Program, Vec<ParseError>> {
+    pub fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<ParseError>> {
         if self.errors.is_empty() {
             Ok(program)
         } else {

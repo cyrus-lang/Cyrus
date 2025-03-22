@@ -28,7 +28,6 @@
         nativeBuildInputs = with pkgs; [
           rustToolchain
           gcc
-          libgccjit
           binutils
           glibc
           gcc_multi

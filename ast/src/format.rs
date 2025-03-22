@@ -251,14 +251,14 @@ impl fmt::Display for Statement {
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Node::Program(program) => write!(f, "{}", program),
+            Node::ProgramTree(program) => write!(f, "{}", program),
             Node::Statement(stmt) => write!(f, "{}", stmt),
             Node::Expression(expr) => write!(f, "{}", expr),
         }
     }
 }
 
-impl fmt::Display for Program {
+impl fmt::Display for ProgramTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", format_statements(&self.body))
     }

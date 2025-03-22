@@ -10,7 +10,7 @@ mod tests {
             &context,
             String::from("./main.cyr"),
             String::from("main.cyr"),
-            ast::ast::Program {
+            ast::ast::ProgramTree {
                 body: vec![],
                 span: ast::token::Span::default(),
             },

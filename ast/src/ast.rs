@@ -2,24 +2,24 @@ use crate::token::*;
 
 #[derive(Debug)]
 pub enum Node {
-    Program(Program),
+    ProgramTree(ProgramTree),
     Statement(Statement),
     Expression(Expression),
 }
 
 #[derive(Debug)]
-pub struct Program {
+pub struct ProgramTree {
     pub body: Vec<Statement>,
     pub span: Span,
 }
 
-impl Default for Program {
+impl Default for ProgramTree {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Program {
+impl ProgramTree {
     pub fn new() -> Self {
         Self {
             body: vec![],
