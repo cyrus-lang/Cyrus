@@ -8,15 +8,16 @@ use inkwell::context::Context;
 use inkwell::execution_engine::ExecutionEngine;
 use inkwell::module::{Linkage, Module};
 use inkwell::support::LLVMString;
+use inkwell::targets::{InitializationConfig, Target, TargetMachine, TargetTriple};
 use opts::CodeGenLLVMOptions;
 
+mod build;
+mod diag;
 mod funcs;
 pub mod opts;
 mod scope;
 mod tests;
 mod types;
-mod build;
-mod diag;
 
 pub struct CodeGenLLVM<'ctx> {
     opts: CodeGenLLVMOptions,
@@ -24,6 +25,7 @@ pub struct CodeGenLLVM<'ctx> {
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     execution_engine: ExecutionEngine<'ctx>,
+    target_machine: TargetMachine,
     program: ProgramTree,
     file_path: String,
     file_name: String,
@@ -36,14 +38,29 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         file_path: String,
         file_name: String,
         program: ProgramTree,
+        opts: CodeGenLLVMOptions,
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
         let module = context.create_module(&file_name);
         let builder = context.create_builder();
         let execution_engine = module.create_jit_execution_engine(OptimizationLevel::None)?;
 
+        Target::initialize_all(&InitializationConfig::default());
+        let target_triple = TargetMachine::get_default_triple();
+        let target = Target::from_triple(&target_triple).unwrap();
+        let target_machine = target
+            .create_target_machine(
+                &target_triple,
+                "generic",
+                "",
+                OptimizationLevel::None,
+                inkwell::targets::RelocMode::PIC,
+                inkwell::targets::CodeModel::Default,
+            )
+            .unwrap();
+
         Ok(CodeGenLLVM {
-            opts: CodeGenLLVMOptions::default(),
+            opts,
             context,
             module,
             builder,
@@ -52,15 +69,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             file_path,
             file_name,
             reporter,
+            target_machine,
         })
     }
 
     pub fn new_context() -> Context {
         Context::create()
-    }
-
-    pub fn set_opts(&mut self, opts: CodeGenLLVMOptions) {
-        self.opts = opts;
     }
 
     pub fn compile(&mut self) {

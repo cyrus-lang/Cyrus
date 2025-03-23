@@ -128,6 +128,7 @@ name = "codegen_llvm"
 version = "0.1.0"
 dependencies = [
  "ast",
+ "clap",
  "colorized",
  "inkwell",
  "parser",

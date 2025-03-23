@@ -68,10 +68,9 @@ enum Commands {
         compiler_options: ClapCompilerOptions,
     },
 
-    #[clap(about = "Dump intermediate representation (IR) or assembly code")]
+    #[clap(about = "Dump LLVM-ir or Assembly code")]
     Dump {
         file_path: String,
-        #[clap(long, value_enum, help = "Dump intermediate representation (IR) or assembly code")]
         dump_type: DumpType,
         output_path: String,
         #[clap(flatten)]
@@ -107,9 +106,9 @@ enum Commands {
 }
 
 macro_rules! init_compiler {
-    ($context:expr, $file_path:expr) => {{
+    ($context:expr, $file_path:expr, $opts:expr) => {{
         let (program, file_name) = parse_program($file_path.clone());
-        let mut codegen_llvm = match CodeGenLLVM::new($context, $file_path, file_name.clone(), program) {
+        let codegen_llvm = match CodeGenLLVM::new($context, $file_path, file_name.clone(), program, $opts) {
             Ok(instance) => instance,
             Err(err) => {
                 eprintln!("(cyrus) Creating CodeGenLLVM instance failed: ");
@@ -132,8 +131,7 @@ pub fn main() {
             file_path,
             compiler_options,
         } => {
-            let mut codegen_llvm = init_compiler!(&context, file_path.clone());
-            codegen_llvm.set_opts(CodeGenLLVMOptions {
+            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), CodeGenLLVMOptions {
                 optimization_level: compiler_options.optimization_level.as_integer(),
                 library_path: compiler_options.library_path,
                 libraries: compiler_options.libraries,
@@ -148,32 +146,30 @@ pub fn main() {
             output_path,
             compiler_options,
         } => {
-            // let mut compiler = init_compiler!(file_path.clone());
-            // compiler.set_opts(CompilerOptions {
-            //     optimization_level: compiler_options.optimization_level.as_integer(),
-            //     library_path: compiler_options.library_path,
-            //     libraries: compiler_options.libraries,
-            //     build_dir: compiler_options.build_dir,
-            // });
-            // compiler.compile();
+            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), CodeGenLLVMOptions {
+                optimization_level: compiler_options.optimization_level.as_integer(),
+                library_path: compiler_options.library_path,
+                libraries: compiler_options.libraries,
+                build_dir: compiler_options.build_dir,
+            });
+            codegen_llvm.compile();
 
-            // match dump_type {
-            //     DumpType::Ir => compiler.make_dump_ir(output_path),
-            //     DumpType::Asm => compiler.make_dump_asm(output_path),
-            // }
+            match dump_type {
+                DumpType::Ir => codegen_llvm.make_dump_ir(output_path),
+                DumpType::Asm => codegen_llvm.make_dump_asm(output_path),
+            }
         }
         Commands::Build {
             file_path,
             output_path,
             compiler_options,
         } => {
-            // let mut compiler = init_compiler!(file_path.clone());
-            // compiler.set_opts(CompilerOptions {
-            //     optimization_level: compiler_options.optimization_level.as_integer(),
-            //     library_path: compiler_options.library_path,
-            //     libraries: compiler_options.libraries,
-            //     build_dir: compiler_options.build_dir,
-            // });
+            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), CodeGenLLVMOptions {
+                optimization_level: compiler_options.optimization_level.as_integer(),
+                library_path: compiler_options.library_path,
+                libraries: compiler_options.libraries,
+                build_dir: compiler_options.build_dir,
+            });
             // compiler.compile();
             // compiler.make_executable_file(output_path);
         }

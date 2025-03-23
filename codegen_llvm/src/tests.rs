@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::CodeGenLLVM;
+    use crate::{opts::CodeGenLLVMOptions, CodeGenLLVM};
     use inkwell::context::Context;
 
     #[test]
@@ -14,6 +14,7 @@ mod tests {
                 body: vec![],
                 span: ast::token::Span::default(),
             },
+            CodeGenLLVMOptions::default()
         );
     }
 }

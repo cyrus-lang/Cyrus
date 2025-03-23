@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 inkwell = { version = "0.5.0", features = ["llvm18-0"] }
+clap = { version = "4.5.23", features = ["derive"] }
 ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
 parser = { path = "../parser", version = "*" }
