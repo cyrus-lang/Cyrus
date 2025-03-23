@@ -155,8 +155,8 @@ pub fn main() {
             codegen_llvm.compile();
 
             match dump_type {
-                DumpType::Ir => codegen_llvm.make_dump_ir(output_path),
-                DumpType::Asm => codegen_llvm.make_dump_asm(output_path),
+                DumpType::Ir => codegen_llvm.emit_llvm_ir(output_path),
+                DumpType::Asm => codegen_llvm.emit_asm(output_path),
             }
         }
         Commands::Build {

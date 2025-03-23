@@ -6,20 +6,22 @@ use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::execution_engine::ExecutionEngine;
-use inkwell::module::{Linkage, Module};
+use inkwell::module::Module;
 use inkwell::support::LLVMString;
-use inkwell::targets::{InitializationConfig, Target, TargetMachine, TargetTriple};
+use inkwell::targets::{InitializationConfig, Target, TargetMachine};
 use opts::CodeGenLLVMOptions;
 
 mod build;
 mod diag;
 mod funcs;
+mod linkage;
 pub mod opts;
 mod scope;
 mod tests;
 mod types;
 
 pub struct CodeGenLLVM<'ctx> {
+    #[allow(dead_code)]
     opts: CodeGenLLVMOptions,
     context: &'ctx Context,
     module: Module<'ctx>,
@@ -28,7 +30,6 @@ pub struct CodeGenLLVM<'ctx> {
     target_machine: TargetMachine,
     program: ProgramTree,
     file_path: String,
-    file_name: String,
     reporter: DiagReporter,
 }
 
@@ -45,6 +46,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let builder = context.create_builder();
         let execution_engine = module.create_jit_execution_engine(OptimizationLevel::None)?;
 
+        // FIXME
         Target::initialize_all(&InitializationConfig::default());
         let target_triple = TargetMachine::get_default_triple();
         let target = Target::from_triple(&target_triple).unwrap();
@@ -67,7 +69,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             execution_engine,
             program,
             file_path,
-            file_name,
             reporter,
             target_machine,
         })
@@ -111,15 +112,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::BlockStatement(block_statement) => todo!(),
             Statement::Break(location) => todo!(),
             Statement::Continue(location) => todo!(),
-        }
-    }
-
-    pub(crate) fn build_linkage(&self, vis_type: VisType) -> Linkage {
-        match vis_type {
-            VisType::Extern => Linkage::External,
-            VisType::Pub => Linkage::AvailableExternally,
-            VisType::Internal => Linkage::Private,
-            VisType::Inline => todo!(),
         }
     }
 }

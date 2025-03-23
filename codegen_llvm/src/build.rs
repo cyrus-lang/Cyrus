@@ -18,7 +18,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub fn make_dump_ir(&mut self, output_path: String) {
+    pub fn emit_llvm_ir(&mut self, output_path: String) {
         if let Err(err) = self.module.print_to_file(output_path) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -30,7 +30,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub fn make_dump_asm(&mut self, output_path: String) {
+    pub fn emit_asm(&mut self, output_path: String) {
         if let Err(err) = self.target_machine.write_to_file(
             &self.module,
             inkwell::targets::FileType::Assembly,
