@@ -1,23 +1,18 @@
 use ast::ast::*;
-use ast::token::{Span, Token, TokenKind};
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::execution_engine::ExecutionEngine;
-use inkwell::llvm_sys::LLVMType;
-use inkwell::llvm_sys::core::LLVMFunctionType;
-use inkwell::module::Module;
+use inkwell::module::{Linkage, Module};
 use inkwell::support::LLVMString;
-use inkwell::types::{AsTypeRef, FunctionType};
-use inkwell::values::FunctionValue;
 use opts::CodeGenLLVMOptions;
-use utils::compile_time_errors::errors::*;
-use utils::compiler_error;
 
-mod common;
+mod funcs;
 pub mod opts;
 mod scope;
 mod tests;
+mod types;
+mod build;
 
 pub struct CodeGenLLVM<'ctx> {
     opts: CodeGenLLVMOptions,
@@ -63,25 +58,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn compile(&mut self) {
         self.compile_statements(self.program.body.clone());
-        let module_string = self.module.print_to_string().to_string();
-        println!("{}", module_string);
-    }
-
-    pub fn execute(&mut self) {
-        if let Some(main_func) = self.module.get_function("main") {
-            unsafe { self.execution_engine.run_function_as_main(main_func, &[]) };
-        } else {
-            // FIXME
-            compiler_error!(
-                format!(
-                    "No entry point detected. Consider to add such a function into your module:\n
-                        fn main() {{ 
-                            ... 
-                        }}"
-                ),
-                self.file_path.clone()
-            );
-        }
     }
 
     pub(crate) fn compile_statements(&mut self, stmts: Vec<Statement>) {
@@ -112,70 +88,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn compile_func_params(&self, func_name: String, params: Vec<FuncParam>) -> Vec<*mut LLVMType> {
-        params
-            .iter()
-            .map(|param| {
-                if let Some(param_type_token) = &param.ty {
-                    self.token_as_data_type(param_type_token.clone()).as_type_ref()
-                } else {
-                    // FIXME
-                    // Move to central diagnostics crate
-                    compiler_error!(
-                        format!(
-                            "Type annotation required for parameter '{}' in function '{}'.",
-                            param.identifier.name.clone(),
-                            func_name,
-                        ),
-                        self.file_path.clone()
-                    );
-                }
-            })
-            .collect()
-    }
-
-    pub(crate) fn compile_func_decl(&self, func_decl: FuncDecl) -> FunctionValue {
-        let is_var_args = func_decl.params.variadic.is_some();
-        let mut param_types = self.compile_func_params(func_decl.name.clone(), func_decl.params.list.clone());
-
-        let return_type = self.token_as_data_type(
-            func_decl
-                .return_type
-                .unwrap_or(Token {
-                    kind: TokenKind::Void,
-                    span: Span::default(),
-                })
-                .kind,
-        );
-
-        let fn_type = unsafe {
-            FunctionType::new(LLVMFunctionType(
-                return_type.as_type_ref(),
-                param_types.as_mut_ptr(),
-                param_types.len() as u32,
-                is_var_args as i32,
-            ))
-        };
-
-        let func_linkage = self.vis_type_as_linkage(func_decl.vis_type);
-        self.module.add_function(&func_decl.name, fn_type, Some(func_linkage))
-    }
-
-    pub(crate) fn compile_func_def(&self, func_def: FuncDef) {
-        let func_decl = {
-            self.compile_func_decl(FuncDecl {
-                name: func_def.name.clone(),
-                params: func_def.params,
-                return_type: func_def.return_type,
-                vis_type: func_def.vis_type,
-                renamed_as: None,
-                span: func_def.span,
-                loc: func_def.loc,
-            })
-        };
-
-        let entry_block = self.context.append_basic_block(func_decl, "entry");
-        self.builder.position_at_end(entry_block);
-        // TODO
+    pub(crate) fn build_linkage(&self, vis_type: VisType) -> Linkage {
+        match vis_type {
+            VisType::Extern => Linkage::External,
+            VisType::Pub => Linkage::AvailableExternally,
+            VisType::Internal => Linkage::Private,
+            VisType::Inline => todo!(),
+        }
     }
 }
