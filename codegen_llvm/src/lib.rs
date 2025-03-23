@@ -194,7 +194,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
     }
 
-    pub(crate) fn compile_variable(&mut self, variable: Variable) {
+    pub(crate) fn compile_variable(&self, variable: Variable) {
         let var_type_token = match variable.ty {
             Some(ty) => ty,
             None => {
@@ -211,7 +211,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         if let Some(expr)  = variable.expr {
             let value = self.build_expr(expr);
-            // self.build_store(ptr, value);
+            self.build_store(ptr, value);
         }
     }
 }

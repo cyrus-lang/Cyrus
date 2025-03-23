@@ -3,7 +3,7 @@ use ast::ast::*;
 use inkwell::{values::{AnyValueEnum, ArrayValue, FloatValue, IntValue, PointerValue}, AddressSpace};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_expr(&mut self, expr: Expression) -> AnyValueEnum {
+    pub(crate) fn build_expr(&self, expr: Expression) -> AnyValueEnum {
         match expr {
             Expression::Identifier(identifier) => todo!(),
             Expression::Assignment(assignment) => todo!(),
@@ -24,7 +24,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_literal(&mut self, literal: Literal) -> AnyValueEnum {
+    pub(crate) fn build_literal(&self, literal: Literal) -> AnyValueEnum {
         match literal {
             Literal::Integer(integer_literal) => AnyValueEnum::IntValue(self.build_integer_literal(integer_literal)),
             Literal::Float(float_literal) => AnyValueEnum::FloatValue(self.build_float_literal(float_literal)),
@@ -41,7 +41,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_integer_literal(&mut self, integer_literal: IntegerLiteral) -> IntValue {
+    pub(crate) fn build_integer_literal(&self, integer_literal: IntegerLiteral) -> IntValue {
         match integer_literal {
             IntegerLiteral::I8(val) => self.context.i8_type().const_int(val.try_into().unwrap(), true),
             IntegerLiteral::I16(val) => self.context.i16_type().const_int(val.try_into().unwrap(), true),
@@ -57,26 +57,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_float_literal(&mut self, float_literal: FloatLiteral) -> FloatValue {
+    pub(crate) fn build_float_literal(&self, float_literal: FloatLiteral) -> FloatValue {
         match float_literal {
             FloatLiteral::Float(val) => self.context.f32_type().const_float(val.into()),
             FloatLiteral::Double(val) => self.context.f64_type().const_float(val),
         }
     }
 
-    pub(crate) fn build_string_literal(&mut self, string_literal: StringLiteral) -> ArrayValue {
+    pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> ArrayValue {
         self.context.const_string(string_literal.raw.as_bytes(), true)
     }
     
-    pub(crate) fn build_char_literal(&mut self, char_literal: CharLiteral) -> IntValue {
+    pub(crate) fn build_char_literal(&self, char_literal: CharLiteral) -> IntValue {
         self.context.i8_type().const_int(char_literal.raw as u8 as u64, false)
     }
 
-    pub(crate) fn build_null_literal(&mut self) -> PointerValue {
+    pub(crate) fn build_null_literal(&self) -> PointerValue {
         self.context.ptr_type(AddressSpace::default()).const_null()
     }
 
-    pub(crate) fn build_bool_literal(&mut self, bool_literal: BoolLiteral) -> IntValue {
+    pub(crate) fn build_bool_literal(&self, bool_literal: BoolLiteral) -> IntValue {
         self.context.bool_type().const_int(if bool_literal.raw { 1 } else { 0 }, false)
     }
 }
