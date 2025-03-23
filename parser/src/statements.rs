@@ -370,13 +370,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_func_params(&mut self, func_def_start: usize) -> Result<FunctionParams, ParseError> {
+    pub fn parse_func_params(&mut self, func_def_start: usize) -> Result<FuncParams, ParseError> {
         let params_start = self.current_token.span.start;
 
         self.expect_current(TokenKind::LeftParen)?;
         
         let mut variadic: Option<TokenKind> = None;
-        let mut list: Vec<FunctionParam> = Vec::new();
+        let mut list: Vec<FuncParam> = Vec::new();
 
         while self.current_token.kind != TokenKind::RightParen {
             match self.current_token.kind.clone() {
@@ -425,7 +425,7 @@ impl<'a> Parser<'a> {
                         self.next_token(); // consume the expression
                     }
 
-                    list.push(FunctionParam {
+                    list.push(FuncParam {
                         identifier: Identifier {
                             name: name,
                             span: self.current_token.span.clone(),
@@ -478,7 +478,7 @@ impl<'a> Parser<'a> {
 
         self.expect_current(TokenKind::RightParen)?;
 
-        Ok(FunctionParams { list, variadic  })
+        Ok(FuncParams { list, variadic  })
     }
 
     pub fn parse_for_loop_body(&mut self, expr_start: usize) -> Result<Box<BlockStatement>, ParseError> {

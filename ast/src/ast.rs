@@ -334,7 +334,7 @@ pub struct MatchPattern {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncDef {
     pub name: String,
-    pub params: FunctionParams,
+    pub params: FuncParams,
     pub body: Box<BlockStatement>,
     pub return_type: Option<Token>,
     pub vis_type: VisType,
@@ -345,7 +345,7 @@ pub struct FuncDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncDecl {
     pub name: String,
-    pub params: FunctionParams,
+    pub params: FuncParams,
     pub return_type: Option<Token>,
     pub vis_type: VisType,
     pub renamed_as: Option<String>,
@@ -386,7 +386,7 @@ pub struct Assignment {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FunctionParam {
+pub struct FuncParam {
     pub identifier: Identifier,
     pub ty: Option<TokenKind>,
     pub default_value: Option<Expression>,
@@ -395,8 +395,8 @@ pub struct FunctionParam {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FunctionParams {
-    pub list: Vec<FunctionParam>,
+pub struct FuncParams {
+    pub list: Vec<FuncParam>,
     pub variadic: Option<TokenKind>
 }
 

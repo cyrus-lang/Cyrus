@@ -9,7 +9,7 @@ use utils::compile_time_errors::errors::*;
 use crate::CodeGenLLVM;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn vis_type_as_linkage(&mut self, vis_type: VisType) -> Linkage {
+    pub(crate) fn vis_type_as_linkage(&self, vis_type: VisType) -> Linkage {
         match vis_type {
             VisType::Extern => Linkage::External,
             VisType::Pub => Linkage::AvailableExternally,
@@ -18,7 +18,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn token_as_data_type(&mut self, token_kind: TokenKind) -> AnyTypeEnum {
+    pub(crate) fn token_as_data_type(&self, token_kind: TokenKind) -> AnyTypeEnum {
         match token_kind {
             TokenKind::I8 => AnyTypeEnum::IntType(self.context.i8_type()),
             TokenKind::I16 => AnyTypeEnum::IntType(self.context.i16_type()),

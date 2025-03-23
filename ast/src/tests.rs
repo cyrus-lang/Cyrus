@@ -196,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_func_def() {
-        let param = FunctionParam {
+        let param = FuncParam {
             identifier: Identifier {
                 name: "a".to_string(),
                 span: Span::default(),
@@ -210,7 +210,7 @@ mod tests {
 
         let func = FuncDef {
             name: "add".to_string(),
-            params: FunctionParams {
+            params: FuncParams {
                 list: vec![param.clone()],
                 variadic: None,
             },

@@ -9,6 +9,7 @@ use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::types::{AsTypeRef, FunctionType};
+use inkwell::values::FunctionValue;
 use opts::CodeGenLLVMOptions;
 use utils::compile_time_errors::errors::*;
 use utils::compiler_error;
@@ -62,18 +63,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn compile(&mut self) {
         self.compile_statements(self.program.body.clone());
+        let module_string = self.module.print_to_string().to_string();
+        println!("{}", module_string);
     }
 
     pub fn execute(&mut self) {
-        unimplemented!();
+        if let Some(main_func) = self.module.get_function("main") {
+            unsafe { self.execution_engine.run_function_as_main(main_func, &[]) };
+        } else {
+            // FIXME
+            compiler_error!(
+                format!(
+                    "No entry point detected. Consider to add such a function into your module:\n
+                        fn main() {{ 
+                            ... 
+                        }}"
+                ),
+                self.file_path.clone()
+            );
+        }
     }
 
     pub(crate) fn compile_statements(&mut self, stmts: Vec<Statement>) {
         for stmt in stmts {
             self.compile_statement(stmt.clone());
         }
-
-        println!("{}", self.module.print_to_string())
     }
 
     pub(crate) fn compile_statement(&mut self, stmt: Statement) {
@@ -82,8 +96,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Expression(expression) => todo!(),
             Statement::If(_) => todo!(),
             Statement::Return(_) => todo!(),
-            Statement::FuncDef(func_def) => todo!(),
-            Statement::FuncDecl(func_decl) => self.compile_func_decl(func_decl),
+            Statement::FuncDef(func_def) => {
+                self.compile_func_def(func_def);
+            }
+            Statement::FuncDecl(func_decl) => {
+                self.compile_func_decl(func_decl);
+            }
             Statement::For(_) => todo!(),
             Statement::Match(_) => todo!(),
             Statement::Struct(_) => todo!(),
@@ -94,11 +112,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn compile_func_decl(&mut self, func_decl: FuncDecl) {
-        let is_var_args = func_decl.params.variadic.is_some();
-        let mut param_types: Vec<*mut LLVMType> = func_decl
-            .params
-            .list
+    pub(crate) fn compile_func_params(&self, func_name: String, params: Vec<FuncParam>) -> Vec<*mut LLVMType> {
+        params
             .iter()
             .map(|param| {
                 if let Some(param_type_token) = &param.ty {
@@ -110,13 +125,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         format!(
                             "Type annotation required for parameter '{}' in function '{}'.",
                             param.identifier.name.clone(),
-                            func_decl.name
+                            func_name,
                         ),
                         self.file_path.clone()
                     );
                 }
             })
-            .collect();
+            .collect()
+    }
+
+    pub(crate) fn compile_func_decl(&self, func_decl: FuncDecl) -> FunctionValue {
+        let is_var_args = func_decl.params.variadic.is_some();
+        let mut param_types = self.compile_func_params(func_decl.name.clone(), func_decl.params.list.clone());
 
         let return_type = self.token_as_data_type(
             func_decl
@@ -138,6 +158,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let func_linkage = self.vis_type_as_linkage(func_decl.vis_type);
-        let func = self.module.add_function(&func_decl.name, fn_type, Some(func_linkage));
+        self.module.add_function(&func_decl.name, fn_type, Some(func_linkage))
+    }
+
+    pub(crate) fn compile_func_def(&self, func_def: FuncDef) {
+        let func_decl = {
+            self.compile_func_decl(FuncDecl {
+                name: func_def.name.clone(),
+                params: func_def.params,
+                return_type: func_def.return_type,
+                vis_type: func_def.vis_type,
+                renamed_as: None,
+                span: func_def.span,
+                loc: func_def.loc,
+            })
+        };
+
+        let entry_block = self.context.append_basic_block(func_decl, "entry");
+        self.builder.position_at_end(entry_block);
+        // TODO
     }
 }
