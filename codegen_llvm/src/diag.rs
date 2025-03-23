@@ -4,7 +4,7 @@ use core::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagKind {
     NoEntryPointDetected,
-    TypeError,
+    InvalidTypeToken,
     DerefNonPointerType,
     UnimplementedFeature,
     TypeAnnotationRequired(String, String),
@@ -37,7 +37,7 @@ impl fmt::Display for DiagKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match self {
             DiagKind::Custom(str) => str,
-            DiagKind::TypeError => "Invalid type token.",
+            DiagKind::InvalidTypeToken => "Invalid type token.",
             DiagKind::UnimplementedFeature => "Unimplemented.",
             DiagKind::DerefNonPointerType => "Cannot dereference a non-pointer type.",
             DiagKind::NoEntryPointDetected => "No entry point detected.",
@@ -59,8 +59,9 @@ impl DiagReporter {
         DiagReporter { diags: Vec::new() }
     }
 
-    pub fn report(&mut self, diag: Diag) {
+    pub fn report(&mut self, diag: Diag) -> &mut Self {
         self.diags.push(diag);
+        self
     }
 
     pub fn display_diags(&self) {
@@ -96,7 +97,7 @@ mod tests {
         let mut reporter = DiagReporter::new();
         let diag = Diag {
             level: DiagLevel::Error,
-            kind: DiagKind::TypeError,
+            kind: DiagKind::InvalidTypeToken,
             location: Some(DiagLoc {
                 file: "test.rs".to_string(),
                 line: 10,

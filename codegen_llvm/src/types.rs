@@ -1,13 +1,13 @@
+use std::process::exit;
+
+use crate::CodeGenLLVM;
+use crate::diag::*;
 use ast::token::*;
 use inkwell::AddressSpace;
 use inkwell::types::AnyTypeEnum;
-use utils::compile_time_errors::errors::*;
-use utils::compiler_error;
-
-use crate::CodeGenLLVM;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_type(&self, token_kind: TokenKind) -> AnyTypeEnum {
+    pub(crate) fn build_type(&mut self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyTypeEnum {
         match token_kind {
             TokenKind::I8 => AnyTypeEnum::IntType(self.context.i8_type()),
             TokenKind::I16 => AnyTypeEnum::IntType(self.context.i16_type()),
@@ -30,19 +30,39 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             TokenKind::UserDefinedType(identifier) => todo!(),
             TokenKind::AddressOf(inner_token_kind) => {
-                let data_type = self.build_type(*inner_token_kind);
+                let data_type = self.build_type(*inner_token_kind, loc.clone(), span_end);
                 inkwell::types::AnyTypeEnum::PointerType(data_type.into_pointer_type())
             }
             TokenKind::Dereference(inner_token_kind) => {
-                if let AnyTypeEnum::PointerType(_) = self.build_type(*inner_token_kind) {
+                if let AnyTypeEnum::PointerType(_) = self.build_type(*inner_token_kind, loc.clone(), span_end) {
                     self.context.ptr_type(AddressSpace::default()).into()
                 } else {
-                    compiler_error!("Cannot dereference a non-pointer type!", self.file_path.clone());
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::DerefNonPointerType,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    }).display_diags();
+                    exit(1);
                 }
             }
             TokenKind::Array(data_type, dimensions) => todo!(),
             _ => {
-                compiler_error!(format!("Invalid type token: {}", token_kind), self.file_path.clone());
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::InvalidTypeToken,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                }).display_diags();
+                exit(1);
             }
         }
     }

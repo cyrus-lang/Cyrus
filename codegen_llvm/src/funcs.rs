@@ -20,7 +20,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .iter()
             .map(|param| {
                 if let Some(param_type_token) = &param.ty {
-                    self.build_type(param_type_token.clone()).as_type_ref()
+                    self.build_type(param_type_token.clone(), func_loc.clone(), span_end)
+                        .as_type_ref()
                 } else {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
@@ -42,7 +43,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let is_var_args = func_decl.params.variadic.is_some();
         let mut param_types = self.compile_func_params(
             func_decl.name.clone(),
-            func_decl.loc,
+            func_decl.loc.clone(),
             func_decl.span.end,
             func_decl.params.list,
         );
@@ -55,6 +56,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     span: Span::default(),
                 })
                 .kind,
+            func_decl.loc,
+            func_decl.span.end,
         );
 
         let fn_type = unsafe {
@@ -74,7 +77,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let is_var_args = func_def.params.variadic.is_some();
         let mut param_types = self.compile_func_params(
             func_def.name.clone(),
-            func_def.loc,
+            func_def.loc.clone(),
             func_def.span.end,
             func_def.params.list,
         );
@@ -87,6 +90,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     span: Span::default(),
                 })
                 .kind,
+            func_def.loc,
+            func_def.span.end,
         );
 
         let fn_type = unsafe {
