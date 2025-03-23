@@ -7,7 +7,7 @@ use inkwell::AddressSpace;
 use inkwell::types::AnyTypeEnum;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_type(&mut self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyTypeEnum {
+    pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyTypeEnum {
         match token_kind {
             TokenKind::I8 => AnyTypeEnum::IntType(self.context.i8_type()),
             TokenKind::I16 => AnyTypeEnum::IntType(self.context.i16_type()),
@@ -37,7 +37,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 if let AnyTypeEnum::PointerType(_) = self.build_type(*inner_token_kind, loc.clone(), span_end) {
                     self.context.ptr_type(AddressSpace::default()).into()
                 } else {
-                    self.reporter.report(Diag {
+                    display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::DerefNonPointerType,
                         location: Some(DiagLoc {
@@ -46,13 +46,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             column: loc.column,
                             length: span_end,
                         }),
-                    }).display_diags();
+                    });
                     exit(1);
                 }
             }
             TokenKind::Array(data_type, dimensions) => todo!(),
             _ => {
-                self.reporter.report(Diag {
+                display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::InvalidTypeToken,
                     location: Some(DiagLoc {
@@ -61,7 +61,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         column: loc.column,
                         length: span_end,
                     }),
-                }).display_diags();
+                });
                 exit(1);
             }
         }

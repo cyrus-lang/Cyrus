@@ -54,6 +54,12 @@ pub struct DiagReporter {
     diags: Vec<Diag>,
 }
 
+pub fn display_single_diag(diag: Diag) {
+    let mut reporter = DiagReporter::new();
+    reporter.report(diag);
+    reporter.display_diags();
+}
+
 impl DiagReporter {
     pub fn new() -> Self {
         DiagReporter { diags: Vec::new() }

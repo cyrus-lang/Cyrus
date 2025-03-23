@@ -1,15 +1,15 @@
 use crate::CodeGenLLVM;
-use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc};
+use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use ast::ast::{FuncDecl, FuncDef, FuncParam};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::types::FunctionType;
 use inkwell::values::FunctionValue;
 use inkwell::{llvm_sys::LLVMType, types::AsTypeRef};
-use std::ptr::null_mut;
+use std::process::exit;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn compile_func_params(
+    pub(crate) fn build_func_params(
         &mut self,
         func_name: String,
         func_loc: Location,
@@ -23,7 +23,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.build_type(param_type_token.clone(), func_loc.clone(), span_end)
                         .as_type_ref()
                 } else {
-                    self.reporter.report(Diag {
+                    display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::TypeAnnotationRequired(param.identifier.name.clone(), func_name.clone()),
                         location: Some(DiagLoc {
@@ -33,15 +33,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             length: span_end,
                         }),
                     });
-                    null_mut()
+                    exit(1);
                 }
             })
             .collect()
     }
 
-    pub(crate) fn compile_func_decl(&mut self, func_decl: FuncDecl) -> FunctionValue {
+    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl) -> FunctionValue {
         let is_var_args = func_decl.params.variadic.is_some();
-        let mut param_types = self.compile_func_params(
+        let mut param_types = self.build_func_params(
             func_decl.name.clone(),
             func_decl.loc.clone(),
             func_decl.span.end,
@@ -73,9 +73,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.module.add_function(&func_decl.name, fn_type, Some(func_linkage))
     }
 
-    pub(crate) fn compile_func_def(&mut self, func_def: FuncDef) {
+    pub(crate) fn build_func_def(&mut self, func_def: FuncDef) {
         let is_var_args = func_def.params.variadic.is_some();
-        let mut param_types = self.compile_func_params(
+        let mut param_types = self.build_func_params(
             func_def.name.clone(),
             func_def.loc.clone(),
             func_def.span.end,
@@ -108,5 +108,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let entry_block = self.context.append_basic_block(func, "entry");
         self.builder.position_at_end(entry_block);
+
+        self.compile_statements(func_def.body.body);
     }
 }
