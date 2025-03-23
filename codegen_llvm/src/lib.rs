@@ -1,4 +1,7 @@
+use std::process::exit;
+
 use ast::ast::*;
+use diag::DiagReporter;
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -13,6 +16,7 @@ mod scope;
 mod tests;
 mod types;
 mod build;
+mod diag;
 
 pub struct CodeGenLLVM<'ctx> {
     opts: CodeGenLLVMOptions,
@@ -23,6 +27,7 @@ pub struct CodeGenLLVM<'ctx> {
     program: ProgramTree,
     file_path: String,
     file_name: String,
+    reporter: DiagReporter,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -32,6 +37,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         file_name: String,
         program: ProgramTree,
     ) -> Result<Self, LLVMString> {
+        let reporter = DiagReporter::new();
         let module = context.create_module(&file_name);
         let builder = context.create_builder();
         let execution_engine = module.create_jit_execution_engine(OptimizationLevel::None)?;
@@ -45,6 +51,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             program,
             file_path,
             file_name,
+            reporter,
         })
     }
 
@@ -58,6 +65,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn compile(&mut self) {
         self.compile_statements(self.program.body.clone());
+
+        if self.reporter.has_errors() {
+            self.reporter.display_diags();
+            exit(1);
+        }
     }
 
     pub(crate) fn compile_statements(&mut self, stmts: Vec<Statement>) {

@@ -8,3 +8,4 @@ inkwell = { version = "0.5.0", features = ["llvm18-0"] }
 ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
 parser = { path = "../parser", version = "*" }
+colorized = "1.0.0"

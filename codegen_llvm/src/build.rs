@@ -1,6 +1,6 @@
-use utils::compiler_error;
-use utils::compile_time_errors::errors::*;
+use std::process::exit;
 
+use crate::diag::*;
 use crate::CodeGenLLVM;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -8,11 +8,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         if let Some(main_func) = self.module.get_function("main") {
             unsafe { self.execution_engine.run_function_as_main(main_func, &[]) };
         } else {
-            // FIXME
-            compiler_error!(
-                format!("No entry point detected. Consider to add such a function into your module:\nfn main() {{\n   ...\n}}"),
-                self.file_path.clone()
-            );
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::NoEntryPointDetected,
+                location: None,
+            });
+            self.reporter.display_diags();
+            exit(1);
         }
     }
 }
