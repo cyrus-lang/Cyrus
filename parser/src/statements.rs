@@ -899,7 +899,7 @@ impl<'a> Parser<'a> {
         let end = self.current_token.span.end;
 
         Ok(BlockStatement {
-            body: block_statement,
+            exprs: block_statement,
             span: Span { start, end },
             loc: self.current_location(),
         })

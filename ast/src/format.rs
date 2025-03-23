@@ -3,7 +3,7 @@ use core::fmt;
 
 impl fmt::Display for BlockStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", format_statements(&self.body))
+        write!(f, "{}", format_statements(&self.exprs))
     }
 }
 

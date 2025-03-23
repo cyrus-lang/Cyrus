@@ -173,12 +173,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         ptr: PointerValue,
         value: AnyValueEnum,
     ) {
-        match value {
+        let result = match value {
             AnyValueEnum::IntValue(int_value) => {
-                self.builder.build_store(ptr, int_value);
+                self.builder.build_store(ptr, int_value)
             },
             AnyValueEnum::FloatValue(float_value) => {
-                self.builder.build_store(ptr, float_value);
+                self.builder.build_store(ptr, float_value)
             },
             AnyValueEnum::PointerValue(pointer_value) => todo!(),
             AnyValueEnum::VectorValue(vector_value) => todo!(),
@@ -192,6 +192,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
         };
+        
+        if let Err(err) = result {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!("Cannot store value in pointer:\n{}", err.to_string())),
+                location: None,
+            });
+            exit(1);
+        }
     }
 
     pub(crate) fn compile_variable(&self, variable: Variable) {

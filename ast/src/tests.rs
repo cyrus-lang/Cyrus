@@ -144,7 +144,7 @@ mod tests {
             loc: Location::default(),
         }));
         let body = Box::new(BlockStatement {
-            body: vec![],
+            exprs: vec![],
             span: Span::default(),
             loc: Location::default(),
         });
@@ -215,7 +215,7 @@ mod tests {
                 variadic: None,
             },
             body: Box::new(BlockStatement {
-                body: vec![],
+                exprs: vec![],
                 span: Span::default(),
                 loc: Location::default(),
             }),
@@ -240,7 +240,7 @@ mod tests {
                 span: Span::default(),
             })),
             consequent: Box::new(BlockStatement {
-                body: vec![],
+                exprs: vec![],
                 span: Span::default(),
                 loc: Location::default(),
             }),

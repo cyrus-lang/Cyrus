@@ -4,7 +4,7 @@ use ast::ast::{FuncDecl, FuncDef, FuncParam};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::types::FunctionType;
-use inkwell::values::FunctionValue;
+use inkwell::values::{AnyValueEnum, FunctionValue};
 use inkwell::{llvm_sys::LLVMType, types::AsTypeRef};
 use std::process::exit;
 
@@ -82,15 +82,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_def.params.list,
         );
 
+        let return_type_token = func_def
+        .return_type
+        .unwrap_or(Token {
+            kind: TokenKind::Void,
+            span: Span::default(),
+        })
+        .kind;
+    
         let return_type = self.build_type(
-            func_def
-                .return_type
-                .unwrap_or(Token {
-                    kind: TokenKind::Void,
-                    span: Span::default(),
-                })
-                .kind,
-            func_def.loc,
+            return_type_token.clone(),
+            func_def.loc.clone(),
             func_def.span.end,
         );
 
@@ -109,6 +111,85 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let entry_block = self.context.append_basic_block(func, "entry");
         self.builder.position_at_end(entry_block);
 
-        self.compile_statements(func_def.body.body);
+        let mut build_return = false;
+        for expr in func_def.body.exprs {
+            match expr  {
+                ast::ast::Statement::Return(return_statement) => {
+                    build_return = true;
+                    let expr = self.build_expr(return_statement.argument);
+                    self.build_return(expr);
+                },
+                _ => self.compile_statement(expr),
+            }
+        }   
+
+        if return_type_token == TokenKind::Void {
+            if build_return {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("The function '{}' is not allowed to have a return statement.", func_def.name)),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: func_def.loc.line,
+                        column: func_def.loc.column,
+                        length: func_def.span.end
+                    }),
+                });
+                exit(1);
+            }
+
+            let _ = self.builder.build_return(None).unwrap();
+        } else if !build_return {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!("The function '{}' is missing a return statement.", func_def.name)),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_def.loc.line,
+                    column: func_def.loc.column,
+                    length: func_def.span.end
+                }),
+            });
+            exit(1);
+        }
+
+        func.verify(true);
+    }
+
+    pub(crate) fn build_return(&self, value: AnyValueEnum) {
+        let result = match value {
+            AnyValueEnum::IntValue(int_value) => {
+                self.builder.build_return(Some(&int_value))
+            },
+            AnyValueEnum::FloatValue(float_value) => {
+                self.builder.build_return(Some(&float_value))
+            },
+            AnyValueEnum::PointerValue(pointer_value) => {
+                self.builder.build_return(Some(&pointer_value))
+            },
+            AnyValueEnum::VectorValue(vector_value) => {
+                self.builder.build_return(Some(&vector_value))
+            },
+            AnyValueEnum::ArrayValue(array_value) => {
+                self.builder.build_return(Some(&array_value))
+            },
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(String::from("Cannot build return statement with non-basic value.")),
+                    location: None,
+                });
+                exit(1);
+            }
+        };
+        
+        if let Err(err) = result {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!("Cannot store value in pointer:\n{}", err.to_string())),
+                location: None,
+            });
+            exit(1);
+        }
     }
 }

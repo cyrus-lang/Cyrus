@@ -363,7 +363,7 @@ pub enum VisType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStatement {
-    pub body: Vec<Statement>,
+    pub exprs: Vec<Statement>,
     pub span: Span,
     pub loc: Location,
 }
