@@ -7,6 +7,7 @@ pub enum DiagKind {
     InvalidTypeToken,
     DerefNonPointerType,
     InfixNonBasic,
+    NonInternalEntryPoint,
     UnimplementedFeature,
     TypeAnnotationRequired(String, String),
     Custom(String),
@@ -42,6 +43,7 @@ impl fmt::Display for DiagKind {
             DiagKind::UnimplementedFeature => "Unimplemented.",
             DiagKind::DerefNonPointerType => "Cannot dereference a non-pointer type.",
             DiagKind::NoEntryPointDetected => "No entry point detected.",
+            DiagKind::NonInternalEntryPoint => "Entry pont must be defined internally.",
             DiagKind::TypeAnnotationRequired(param, func) => &format!(
                 "Type annotation required for parameter '{}' in function '{}'.",
                 param, func

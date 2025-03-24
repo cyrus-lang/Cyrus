@@ -1,6 +1,6 @@
 use crate::CodeGenLLVM;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
-use ast::ast::{FuncDecl, FuncDef, FuncParam};
+use ast::ast::{FuncDecl, FuncDef, FuncParam, VisType};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::types::FunctionType;
@@ -117,7 +117,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             is_main = true;
         }
 
-        let func_linkage = self.build_linkage(func_def.vis_type);
+        let func_linkage = self.build_linkage(func_def.vis_type.clone());
         let func = self.module.add_function(&func_def.name, fn_type, Some(func_linkage));
 
         let entry_block = self.context.append_basic_block(func, "entry");
@@ -174,6 +174,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func.verify(true);
 
         if is_main {
+            if func_def.vis_type != VisType::Internal {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::NonInternalEntryPoint,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: func_def.loc.line,
+                        column: func_def.loc.column,
+                        length: func_def.span.end,
+                    }),
+                });
+                exit(1);
+            }
+
             self.entry_point = Some(func);
         }
 
