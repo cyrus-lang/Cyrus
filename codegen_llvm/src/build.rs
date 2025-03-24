@@ -1,6 +1,5 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
-use ast::ast::FuncDef;
 use inkwell::OptimizationLevel;
 use inkwell::execution_engine::FunctionLookupError;
 use inkwell::execution_engine::JitFunction;
@@ -52,7 +51,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let entry_block = self.context.append_basic_block(entry_point, "entry");
             self.builder.position_at_end(entry_block);
             self.builder.build_call(main_func, &[], "call_main").unwrap();
-            self.builder.build_return(Some(&return_type.const_int(0, false))).unwrap();
+            self.builder
+                .build_return(Some(&return_type.const_int(0, false)))
+                .unwrap();
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

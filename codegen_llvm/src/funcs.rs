@@ -113,7 +113,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let mut is_main = false;
         if func_def.name == "main" {
-            func_def.name = generate_random_hex();
+            func_def.name = format!("main_{}", generate_random_hex());
             is_main = true;
         }
 
