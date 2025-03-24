@@ -94,7 +94,7 @@ impl fmt::Display for Expression {
             Expression::UnaryOperator(unary_operator) => write!(
                 f,
                 "{}{}",
-                Expression::FromPackage(unary_operator.from_package.clone()).to_string(),
+                Expression::ModuleImport(unary_operator.module_import.clone()).to_string(),
                 unary_operator.ty
             ),
             Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
@@ -114,8 +114,8 @@ impl fmt::Display for Expression {
                 write!(
                     f,
                     "{}({})",
-                    Expression::FromPackage(FromPackage {
-                        sub_packages: first.func_name.sub_packages,
+                    Expression::ModuleImport(ModuleImport {
+                        sub_modules: first.func_name.sub_modules,
                         identifier: first.func_name.identifier,
                         span: first.span,
                         loc: first.loc
@@ -145,7 +145,7 @@ impl fmt::Display for Expression {
                 write!(f, "[{}]", array_items_to_string(array.clone()))
             }
             Expression::ArrayIndex(array_index) => {
-                write!(f, "{}", Expression::FromPackage(array_index.from_package.clone()).to_string())?;
+                write!(f, "{}", Expression::ModuleImport(array_index.module_import.clone()).to_string())?;
                 for item in &array_index.dimensions {
                     write!(f, "[{}]", item)?;
                 }
@@ -154,12 +154,12 @@ impl fmt::Display for Expression {
             Expression::Assignment(assignment) => write!(
                 f,
                 "{} = {}",
-                Expression::FromPackage(assignment.identifier.clone()).to_string(),
+                Expression::ModuleImport(assignment.identifier.clone()).to_string(),
                 assignment.expr
             ),
             Expression::ArrayIndexAssign(array_index_assign) => {
                 let array_index = ArrayIndex {
-                    from_package: array_index_assign.from_package.clone(),
+                    module_import: array_index_assign.module_import.clone(),
                     dimensions: array_index_assign.dimensions.clone(),
                     span: array_index_assign.span.clone(),
                     loc: array_index_assign.loc.clone(),
@@ -178,7 +178,7 @@ impl fmt::Display for Expression {
                 write!(
                     f,
                     "{} {{",
-                    Expression::FromPackage(struct_init.struct_name.clone()).to_string()
+                    Expression::ModuleImport(struct_init.struct_name.clone()).to_string()
                 )?;
                 for field in &struct_init.field_inits {
                     write!(f, "{}: {};", field.name, field.value)?;
@@ -197,8 +197,8 @@ impl fmt::Display for Expression {
                         write!(
                             f,
                             ".{}(",
-                            Expression::FromPackage(FromPackage {
-                                sub_packages: method_call.func_name.sub_packages,
+                            Expression::ModuleImport(ModuleImport {
+                                sub_modules: method_call.func_name.sub_modules,
                                 identifier: method_call.func_name.identifier,
                                 span: method_call.span,
                                 loc: method_call.loc
@@ -225,8 +225,8 @@ impl fmt::Display for Expression {
             Expression::CastAs(cast_as) => {
                 write!(f, "{}", cast_as)
             }
-            Expression::FromPackage(from_package) => {
-                write!(f, "{}", from_package.to_string())
+            Expression::ModuleImport(module_import) => {
+                write!(f, "{}", module_import.to_string())
             }
         }
     }
@@ -264,17 +264,9 @@ impl fmt::Display for ProgramTree {
     }
 }
 
-impl fmt::Display for FromPackage {
+impl fmt::Display for ModuleImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.sub_packages.len() > 0 {
-            write!(
-                f,
-                "{}::{}",
-                sub_packages_as_string(self.sub_packages.clone()),
-                self.identifier.name
-            )
-        } else {
-            write!(f, "{}", self.identifier.name)
-        }
+        todo!();
+        // FIXME
     }
 }

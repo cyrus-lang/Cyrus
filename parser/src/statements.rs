@@ -243,69 +243,24 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_package_import(&mut self, parse_start: usize) -> Result<Vec<PackagePath>, ParseError> {
-        let mut package_paths: Vec<PackagePath> = vec![];
+    pub fn parse_module_paths(&mut self, parse_start: usize) -> Result<Vec<ModulePath>, ParseError> {
+        let mut module_paths: Vec<ModulePath> = vec![];
 
         while !self.current_token_is(TokenKind::Semicolon) {
             match self.current_token.kind.clone() {
-                TokenKind::Dot => {
-                    let span = Span {
-                        start: self.current_token.span.start,
-                        end: self.current_token.span.end,
-                    };
-
-                    self.next_token();
-
-                    package_paths.push(PackagePath {
-                        package_name: Identifier {
-                            name: String::from("./"),
-                            loc: self.current_location(),
-                            span: span.clone(),
-                        },
-                        loc: self.current_location(),
-                        span,
-                    });
-                }
-                TokenKind::DoubleDot => {
-                    let span = Span {
-                        start: self.current_token.span.start,
-                        end: self.current_token.span.end,
-                    };
-
-                    self.next_token();
-
-                    package_paths.push(PackagePath {
-                        package_name: Identifier {
-                            name: String::from("../"),
-                            loc: self.current_location(),
-                            span: span.clone(),
-                        },
-                        loc: self.current_location(),
-                        span,
-                    });
-                }
                 TokenKind::Identifier { name: identifier } => {
                     let span = self.current_token.span.clone();
-
-                    package_paths.push(PackagePath {
-                        package_name: Identifier {
-                            name: identifier,
-                            span: span.clone(),
-                            loc: self.current_location(),
-                        },
-                        span: Span {
-                            start: parse_start,
-                            end: self.current_token.span.end,
-                        },
+                    module_paths.push(ModulePath::SubModule(Identifier {
+                        name: identifier,
+                        span: span.clone(),
                         loc: self.current_location(),
-                    });
-
+                    }));
                     self.next_token(); // consume identifier
 
-                    if self.current_token_is(TokenKind::DoubleColon) {
+                    if self.current_token_is(TokenKind::Dot) {
                         continue;
                     } else if self.current_token_is(TokenKind::Semicolon) {
-                        return Ok(package_paths);
+                        return Ok(module_paths);
                     } else {
                         return Err(CompileTimeError {
                             location: self.current_location(),
@@ -317,7 +272,11 @@ impl<'a> Parser<'a> {
                         });
                     }
                 }
-                TokenKind::DoubleColon => {
+                TokenKind::Asterisk => {
+                    module_paths.push(ModulePath::Wildcard);
+                    self.next_token();
+                }
+                TokenKind::Dot => {
                     self.next_token();
                     continue;
                 }
@@ -334,7 +293,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(package_paths)
+        Ok(module_paths)
     }
 
     pub fn parse_import(&mut self) -> Result<Statement, ParseError> {
@@ -343,16 +302,14 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::Import) {
             self.next_token(); // consume import keyword
 
-            let package_paths = self.parse_package_import(start)?;
-
-            let span = Span {
-                start,
-                end: self.current_token.span.end,
-            };
+            let module_paths = self.parse_module_paths(start)?;
 
             return Ok(Statement::Import(Import {
-                sub_packages: package_paths,
-                span,
+                module_paths,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
                 loc: self.current_location(),
             }));
         } else {
@@ -374,13 +331,13 @@ impl<'a> Parser<'a> {
         let params_start = self.current_token.span.start;
 
         self.expect_current(TokenKind::LeftParen)?;
-        
+
         let mut variadic: Option<TokenKind> = None;
         let mut list: Vec<FuncParam> = Vec::new();
 
         while self.current_token.kind != TokenKind::RightParen {
             match self.current_token.kind.clone() {
-                TokenKind::TripleDot => { 
+                TokenKind::TripleDot => {
                     self.next_token(); // consume triple_dot
 
                     let variadic_data_type = self.parse_type_token()?;
@@ -392,9 +349,7 @@ impl<'a> Parser<'a> {
                             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
                             code_raw: Some(self.lexer.select(func_def_start..self.current_token.span.end + 1)),
-                            verbose: Some(String::from(
-                                "Define all parameters before the variadic argument.",
-                            )),
+                            verbose: Some(String::from("Define all parameters before the variadic argument.")),
                             caret: false,
                         });
                     } else {
@@ -478,7 +433,7 @@ impl<'a> Parser<'a> {
 
         self.expect_current(TokenKind::RightParen)?;
 
-        Ok(FuncParams { list, variadic  })
+        Ok(FuncParams { list, variadic })
     }
 
     pub fn parse_for_loop_body(&mut self, expr_start: usize) -> Result<Box<BlockStatement>, ParseError> {

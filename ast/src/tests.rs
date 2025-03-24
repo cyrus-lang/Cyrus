@@ -48,8 +48,8 @@ mod tests {
                 },
                 FieldAccessOrMethodCall {
                     method_call: Some(FuncCall {
-                        func_name: FromPackage {
-                            sub_packages: vec![],
+                        func_name: ModuleImport {
+                            sub_modules: vec![],
                             identifier: Identifier {
                                 name: String::from("my_method"),
                                 span: Span::default(),
@@ -129,13 +129,13 @@ mod tests {
             loc: Location::default(),
         }));
         let increment = Some(Expression::UnaryOperator(UnaryOperator {
-            from_package: FromPackage {
+            module_import: ModuleImport {
                 identifier: Identifier {
                     name: "i".to_string(),
                     span: Span::default(),
                     loc: Location::default(),
                 },
-                sub_packages: vec![],
+                sub_modules: vec![],
                 span: Span::default(),
                 loc: Location::default(),
             },
@@ -176,8 +176,8 @@ mod tests {
     #[test]
     fn test_assignment() {
         let assignment = Assignment {
-            identifier: FromPackage {
-                sub_packages: vec![],
+            identifier: ModuleImport {
+                sub_modules: vec![],
                 identifier: Identifier {
                     name: "x".to_string(),
                     span: Span::default(),
@@ -270,16 +270,12 @@ mod tests {
         let chains: Vec<FieldAccessOrMethodCall> = vec![
             FieldAccessOrMethodCall {
                 method_call: Some(FuncCall {
-                    func_name: FromPackage {
-                        sub_packages: vec![PackagePath {
-                            package_name: Identifier {
-                                name: String::from("my_pkg"),
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
+                    func_name: ModuleImport {
+                        sub_modules: vec![ModulePath::SubModule(Identifier {
+                            name: String::from("my_pkg"),
                             span: Span::default(),
                             loc: Location::default(),
-                        }],
+                        })],
                         identifier: Identifier {
                             name: String::from("sample"),
                             span: Span::default(),
@@ -296,8 +292,8 @@ mod tests {
             },
             FieldAccessOrMethodCall {
                 method_call: Some(FuncCall {
-                    func_name: FromPackage {
-                        sub_packages: vec![],
+                    func_name: ModuleImport {
+                        sub_modules: vec![],
                         identifier: Identifier {
                             name: String::from("nested_method"),
                             span: Span::default(),
@@ -326,6 +322,9 @@ mod tests {
             },
         ];
 
-        assert_eq!(Expression::FieldAccessOrMethodCall(chains).to_string(), "my_pkg::sample().nested_method().some_field");
+        assert_eq!(
+            Expression::FieldAccessOrMethodCall(chains).to_string(),
+            "my_pkg::sample().nested_method().some_field"
+        );
     }
 }

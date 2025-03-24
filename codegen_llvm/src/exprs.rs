@@ -31,13 +31,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Array(array) => self.build_array(array),
             Expression::ArrayIndex(array_index) => todo!(),
             Expression::ArrayIndexAssign(array_index_assign) => todo!(),
-            Expression::FromPackage(from_package) => self.build_from_package(Rc::clone(&scope), from_package),
+            Expression::ModuleImport(module_import) => self.build_from_package(Rc::clone(&scope), module_import),
         }
     }
 
     pub(crate) fn build_unary_operator(&self, scope: ScopeRef, unary_operator: UnaryOperator) -> AnyValueEnum {
         let int_one = self.context.i32_type().const_int(1, false);
-        let value = self.build_from_package(Rc::clone(&scope), unary_operator.from_package);
+        let value = self.build_from_package(Rc::clone(&scope), unary_operator.module_import);
         match value {
             AnyValueEnum::IntValue(int_value) => match unary_operator.ty {
                 UnaryOperatorType::PreIncrement => {
@@ -68,9 +68,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_from_package(&self, scope: ScopeRef, from_package: FromPackage) -> AnyValueEnum {
-        if from_package.sub_packages.is_empty() {
-            return self.build_load(Rc::clone(&scope), from_package.identifier);
+    pub(crate) fn build_from_package(&self, scope: ScopeRef, module_import: ModuleImport) -> AnyValueEnum {
+        if module_import.sub_modules.is_empty() {
+            return self.build_load(Rc::clone(&scope), module_import.identifier);
         }
 
         todo!();

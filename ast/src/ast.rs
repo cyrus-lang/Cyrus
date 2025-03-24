@@ -31,7 +31,7 @@ impl ProgramTree {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Identifier(Identifier),
-    FromPackage(FromPackage),
+    ModuleImport(ModuleImport),
     Assignment(Box<Assignment>),
     Literal(Literal),
     Prefix(UnaryExpression),
@@ -45,7 +45,7 @@ pub enum Expression {
     Dereference(Box<Expression>),
     StructInit(StructInit),
     StructFieldAccess(Box<StructFieldAccess>),
-    CastAs(CastAs)
+    CastAs(CastAs),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -53,9 +53,8 @@ pub struct CastAs {
     pub expr: Box<Expression>,
     pub type_token: TokenKind,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOperatorType {
@@ -67,18 +66,18 @@ pub enum UnaryOperatorType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryOperator {
-    pub from_package: FromPackage,
+    pub module_import: ModuleImport,
     pub ty: UnaryOperatorType,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncCall {
-    pub func_name: FromPackage,
+    pub func_name: ModuleImport,
     pub arguments: Vec<Expression>,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,29 +91,29 @@ pub struct StructFieldAccess {
     pub expr: Expression,
     pub chains: Vec<FieldAccessOrMethodCall>,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldAccess {
     pub identifier: Identifier,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Identifier {
     pub name: String,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FromPackage {
-    pub sub_packages: Vec<PackagePath>,
+pub struct ModuleImport {
+    pub sub_modules: Vec<ModulePath>,
     pub identifier: Identifier,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -159,7 +158,7 @@ pub struct UnaryExpression {
     pub operator: Token,
     pub operand: Box<Expression>,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -168,7 +167,7 @@ pub struct BinaryExpression {
     pub left: Box<Expression>,
     pub right: Box<Expression>,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -187,31 +186,31 @@ pub struct StringLiteral {
 pub struct Array {
     pub elements: Vec<Expression>,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArrayIndex {
-    pub from_package: FromPackage,
+    pub module_import: ModuleImport,
     pub dimensions: Vec<Expression>,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArrayIndexAssign {
-    pub from_package: FromPackage,
+    pub module_import: ModuleImport,
     pub dimensions: Vec<Expression>,
     pub expr: Expression,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hash {
     pub pairs: Vec<(Expression, Expression)>,
     pub span: Span,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -247,30 +246,16 @@ pub struct Return {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PackagePath {
-    pub package_name: Identifier,
-    pub span: Span,
-    pub loc: Location,
+pub enum ModulePath {
+    Wildcard,
+    SubModule(Identifier),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Import {
-    pub sub_packages: Vec<PackagePath>,
+    pub module_paths: Vec<ModulePath>,
     pub span: Span,
     pub loc: Location,
-}
-
-pub fn sub_packages_as_string(list: Vec<PackagePath>) -> String {
-    let mut str = String::new();
-    for (idx, sub_package) in list.iter().enumerate().clone() {
-        if sub_package.package_name.name != "./" && sub_package.package_name.name != "../" {
-            str += &sub_package.package_name.name.clone();
-        }
-        if idx != list.len() - 1 {
-            str += "::";
-        }
-    }
-    str
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -285,7 +270,7 @@ pub struct Struct {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructInit {
-    pub struct_name: FromPackage,
+    pub struct_name: ModuleImport,
     pub field_inits: Vec<FieldInit>,
     pub loc: Location,
 }
@@ -379,7 +364,7 @@ pub struct Variable {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignment {
-    pub identifier: FromPackage,
+    pub identifier: ModuleImport,
     pub expr: Expression,
     pub span: Span,
     pub loc: Location,
@@ -397,7 +382,7 @@ pub struct FuncParam {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncParams {
     pub list: Vec<FuncParam>,
-    pub variadic: Option<TokenKind>
+    pub variadic: Option<TokenKind>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -413,7 +398,7 @@ pub struct If {
 pub fn integer_literal_as_value(integer_literal: IntegerLiteral) -> i64 {
     match integer_literal {
         IntegerLiteral::I8(value) => value.into(),
-        IntegerLiteral::I16(value ) => value.into(),
+        IntegerLiteral::I16(value) => value.into(),
         IntegerLiteral::I32(value) => value.into(),
         IntegerLiteral::I64(value) => value,
         IntegerLiteral::I128(value) => value.try_into().unwrap(),

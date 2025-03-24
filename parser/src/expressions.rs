@@ -58,15 +58,15 @@ impl<'a> Parser<'a> {
 
         let expr = match &self.current_token.clone().kind {
             TokenKind::Identifier { .. } => {
-                let from_package = self.parse_from_package()?;
+                let module_import = self.parse_module_import()?;
 
                 if self.peek_token_is(TokenKind::Dot) {
                     self.next_token();
-                    return self.parse_struct_member(Box::new(Expression::FromPackage(from_package)));
+                    return self.parse_struct_member(Box::new(Expression::ModuleImport(module_import)));
                 } else if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
-                        from_package: from_package.clone(),
+                        module_import: module_import.clone(),
                         ty: UnaryOperatorType::PostIncrement,
                         span,
                         loc: self.current_location(),
@@ -74,16 +74,16 @@ impl<'a> Parser<'a> {
                 } else if self.peek_token_is(TokenKind::Decrement) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
-                        from_package: from_package.clone(),
+                        module_import: module_import.clone(),
                         ty: UnaryOperatorType::PostDecrement,
                         span,
                         loc: self.current_location(),
                     })
                 } else if self.current_token_is(TokenKind::Assign) {
-                    self.parse_assignment(from_package)?
+                    self.parse_assignment(module_import)?
                 } else if self.peek_token_is(TokenKind::LeftBracket) {
                     self.next_token(); // consume identifier
-                    let array_index = self.parse_array_index(from_package)?;
+                    let array_index = self.parse_array_index(module_import)?;
 
                     if self.current_token_is(TokenKind::Assign) {
                         self.parse_array_index_assign(array_index)?
@@ -92,9 +92,9 @@ impl<'a> Parser<'a> {
                     }
                 } else if self.peek_token_is(TokenKind::LeftBrace) {
                     self.next_token(); // consume struct_name
-                    self.parse_struct_init(from_package)?
+                    self.parse_struct_init(module_import)?
                 } else {
-                    Expression::FromPackage(from_package)
+                    Expression::ModuleImport(module_import)
                 }
             }
             TokenKind::Ampersand => {
@@ -126,10 +126,10 @@ impl<'a> Parser<'a> {
 
                 match self.current_token.kind.clone() {
                     TokenKind::Identifier { .. } => {
-                        let from_package = self.parse_from_package()?;
+                        let module_import = self.parse_module_import()?;
 
                         Expression::UnaryOperator(UnaryOperator {
-                            from_package: from_package,
+                            module_import: module_import,
                             ty: unary_operator_type,
                             span: Span {
                                 start: span.start,
@@ -356,8 +356,8 @@ impl<'a> Parser<'a> {
         let arguments = self.parse_expression_series(TokenKind::RightParen)?;
         let start = self.current_token.span.start;
         let expr = match left {
-            Expression::FromPackage(from_package) => FuncCall {
-                func_name: from_package,
+            Expression::ModuleImport(module_import) => FuncCall {
+                func_name: module_import,
                 arguments: arguments.0,
                 span: Span {
                     start: left_start,
@@ -366,8 +366,8 @@ impl<'a> Parser<'a> {
                 loc: self.current_location(),
             },
             Expression::Identifier(identifier) => FuncCall {
-                func_name: FromPackage {
-                    sub_packages: vec![],
+                func_name: ModuleImport {
+                    sub_modules: vec![],
                     identifier,
                     span: self.current_token.span.clone(),
                     loc: self.current_location(),
@@ -430,8 +430,8 @@ impl<'a> Parser<'a> {
                     self.expect_current(TokenKind::RightParen)?;
 
                     let method_call = FuncCall {
-                        func_name: FromPackage {
-                            sub_packages: vec![],
+                        func_name: ModuleImport {
+                            sub_modules: vec![],
                             identifier: method_name,
                             span: Span {
                                 start: member_start,
@@ -524,7 +524,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_struct_init(&mut self, struct_name: FromPackage) -> Result<Expression, ParseError> {
+    pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<Expression, ParseError> {
         self.expect_current(TokenKind::LeftBrace)?;
         
         let mut field_inits: Vec<FieldInit> = Vec::new();
@@ -608,7 +608,7 @@ impl<'a> Parser<'a> {
         }));
     }
 
-    pub fn parse_assignment(&mut self, from_package: FromPackage) -> Result<Expression, ParseError> {
+    pub fn parse_assignment(&mut self, module_import: ModuleImport) -> Result<Expression, ParseError> {
         let start: usize = self.current_token.span.start;
 
         self.next_token(); // consume assign
@@ -618,7 +618,7 @@ impl<'a> Parser<'a> {
         let end = self.current_token.span.end;
 
         Ok(Expression::Assignment(Box::new(Assignment {
-            identifier: from_package,
+            identifier: module_import,
             expr,
             span: Span { start, end },
             loc: self.current_location(),
@@ -631,7 +631,7 @@ impl<'a> Parser<'a> {
         let expr = self.parse_expression(Precedence::Lowest)?.0;
 
         Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
-            from_package: array_index.from_package,
+            module_import: array_index.module_import,
             dimensions: array_index.dimensions,
             span: Span {
                 start: array_index.span.start,
@@ -642,7 +642,7 @@ impl<'a> Parser<'a> {
         })))
     }
 
-    pub fn parse_array_index(&mut self, from_package: FromPackage) -> Result<ArrayIndex, ParseError> {
+    pub fn parse_array_index(&mut self, module_import: ModuleImport) -> Result<ArrayIndex, ParseError> {
         let start = self.current_token.span.start;
 
         let mut dimensions: Vec<Expression> = Vec::new();
@@ -658,7 +658,7 @@ impl<'a> Parser<'a> {
         Ok(ArrayIndex {
             dimensions,
             span: Span { start, end },
-            from_package: from_package,
+            module_import: module_import,
             loc: self.current_location(),
         })
     }

@@ -8,19 +8,14 @@ use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
-    pub fn parse_from_package(&mut self) -> Result<FromPackage, ParseError> {
+    pub fn parse_module_import(&mut self) -> Result<ModuleImport, ParseError> {
         let start = self.current_token.span.start;
-
-        let mut sub_packages: Vec<PackagePath> = match self.current_token.kind.clone() {
-            TokenKind::Identifier { name } => vec![PackagePath {
-                package_name: Identifier {
-                    name,
-                    span: self.current_token.span.clone(),
-                    loc: self.current_location(),
-                },
+        let mut sub_modules: Vec<ModulePath> = match self.current_token.kind.clone() {
+            TokenKind::Identifier { name } => vec![ModulePath::SubModule(Identifier {
+                name,
                 span: self.current_token.span.clone(),
                 loc: self.current_location(),
-            }],
+            })],
             _ => {
                 return Err(CompileTimeError {
                     location: self.current_location(),
@@ -33,20 +28,16 @@ impl<'a> Parser<'a> {
             }
         };
 
-        while self.peek_token_is(TokenKind::DoubleColon) {
+        while self.peek_token_is(TokenKind::Dot) {
             self.next_token();
 
             match self.peek_token.kind.clone() {
                 TokenKind::Identifier { name } => {
-                    sub_packages.push(PackagePath {
-                        package_name: Identifier {
-                            name,
-                            span: self.current_token.span.clone(),
-                            loc: self.current_location(),
-                        },
+                    sub_modules.push(ModulePath::SubModule(Identifier {
+                        name,
                         span: self.current_token.span.clone(),
                         loc: self.current_location(),
-                    });
+                    }));
                 }
                 _ => {
                     break;
@@ -56,29 +47,31 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        if sub_packages.len() == 1 {
-            Ok(FromPackage {
-                identifier: sub_packages[0].package_name.clone(),
-                sub_packages: vec![],
-                span: Span {
-                    start,
-                    end: self.current_token.span.end,
-                },
-                loc: self.current_location(),
-            })
+        if let ModulePath::SubModule(identifier) = sub_modules[0].clone() {
+            if sub_modules.len() == 1 {
+                Ok(ModuleImport {
+                    identifier,
+                    sub_modules: vec![],
+                    span: Span {
+                        start,
+                        end: self.current_token.span.end,
+                    },
+                    loc: self.current_location(),
+                })
+            } else {
+                sub_modules.pop();
+                Ok(ModuleImport {
+                    identifier,
+                    sub_modules,
+                    span: Span {
+                        start,
+                        end: self.current_token.span.end,
+                    },
+                    loc: self.current_location(),
+                })
+            }
         } else {
-            let identifier = sub_packages.last().unwrap().package_name.clone();
-            sub_packages.pop();
-
-            Ok(FromPackage {
-                identifier,
-                sub_packages,
-                span: Span {
-                    start,
-                    end: self.current_token.span.end,
-                },
-                loc: self.current_location(),
-            })
+            unreachable!();
         }
     }
 

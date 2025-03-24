@@ -330,24 +330,9 @@ impl Lexer {
                 }
             }
             ';' => TokenKind::Semicolon,
-            ':' => {
-                if self.peek_char() == ':' {
-                    self.read_char();
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::DoubleColon,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
-                } else {
-                    TokenKind::Colon
-                }
-            },
             _ => {
                 if self.ch.is_alphabetic() || self.ch == '_' {
-                    return self.read_identifider();
+                    return self.read_identifier();
                 } else if self.is_numeric(self.ch) {
                     return self.read_integer();
                 } else {
@@ -473,7 +458,7 @@ impl Lexer {
         }
     }
 
-    fn read_identifider(&mut self) -> Token {
+    fn read_identifier(&mut self) -> Token {
         let start = self.pos;
 
         let mut final_identifier = String::new();
