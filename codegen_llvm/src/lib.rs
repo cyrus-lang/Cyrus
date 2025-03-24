@@ -1,6 +1,7 @@
 use ast::ast::*;
 use ast::token::{Location, TokenKind};
 use diag::*;
+use inkwell::types::AnyTypeEnum;
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -82,7 +83,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn compile(&mut self) {
-        self.compile_statements(self.program.body.clone());
+        self.build_statements(self.program.body.clone());
 
         if self.reporter.has_errors() {
             self.reporter.display_diags();
@@ -93,15 +94,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.build_entry_point();
     }
 
-    pub(crate) fn compile_statements(&mut self, stmts: Vec<Statement>) {
+    pub(crate) fn build_statements(&mut self, stmts: Vec<Statement>) {
         for stmt in stmts {
-            self.compile_statement(stmt.clone());
+            self.build_statement(stmt.clone());
         }
     }
 
-    pub(crate) fn compile_statement<'a>(&'a mut self, stmt: Statement) {
+    pub(crate) fn build_statement<'a>(&'a mut self, stmt: Statement) {
         match stmt {
-            Statement::Variable(variable) => self.compile_variable(variable),
+            Statement::Variable(variable) => self.build_variable(variable),
             Statement::Expression(expression) => {
                 self.build_expr(expression);
             }
@@ -132,14 +133,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> PointerValue {
         let any_type = self.build_type(var_type_token, loc.clone(), span_end);
         let ptr_value = match any_type {
-            inkwell::types::AnyTypeEnum::IntType(int_type) => self.builder.build_alloca(int_type, &var_name),
-            inkwell::types::AnyTypeEnum::FloatType(float_type) => self.builder.build_alloca(float_type, &var_name),
-            inkwell::types::AnyTypeEnum::PointerType(pointer_type) => {
+            AnyTypeEnum::IntType(int_type) => self.builder.build_alloca(int_type, &var_name),
+            AnyTypeEnum::FloatType(float_type) => self.builder.build_alloca(float_type, &var_name),
+            AnyTypeEnum::PointerType(pointer_type) => {
                 self.builder.build_alloca(pointer_type, &var_name)
             }
-            inkwell::types::AnyTypeEnum::StructType(struct_type) => todo!(),
-            inkwell::types::AnyTypeEnum::VectorType(vector_type) => todo!(),
-            inkwell::types::AnyTypeEnum::ArrayType(array_type) => todo!(),
+            AnyTypeEnum::StructType(struct_type) => todo!(),
+            AnyTypeEnum::VectorType(vector_type) => todo!(),
+            AnyTypeEnum::ArrayType(array_type) => self.builder.build_alloca(array_type, &var_name),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -176,9 +177,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let result = match value {
             AnyValueEnum::IntValue(int_value) => self.builder.build_store(ptr, int_value),
             AnyValueEnum::FloatValue(float_value) => self.builder.build_store(ptr, float_value),
-            AnyValueEnum::PointerValue(pointer_value) => todo!(),
-            AnyValueEnum::VectorValue(vector_value) => todo!(),
-            AnyValueEnum::ArrayValue(array_value) => todo!(),
+            AnyValueEnum::ArrayValue(array_value) => self.builder.build_store(ptr, array_value),
+            AnyValueEnum::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value),
+            AnyValueEnum::VectorValue(vector_value) => self.builder.build_store(ptr, vector_value),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -199,7 +200,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn compile_variable(&self, variable: Variable) {
+    pub(crate) fn build_variable(&self, variable: Variable) {
         let var_type_token = match variable.ty {
             Some(ty) => ty,
             None => {

@@ -257,7 +257,7 @@ mod tests {
     fn test_cast_as() {
         let cast_as_expression = CastAs {
             expr: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
-            cast_as: TokenKind::Float,
+            type_token: TokenKind::Float,
             span: Span::default(),
             loc: Location::default(),
         };

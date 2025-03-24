@@ -25,7 +25,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TokenKind::Void => AnyTypeEnum::VoidType(self.context.void_type()),
             TokenKind::Bool => AnyTypeEnum::IntType(self.context.bool_type()),
             TokenKind::String => {
-                // string is a ptr to i8 array
                 AnyTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default()))
             }
             TokenKind::UserDefinedType(identifier) => todo!(),

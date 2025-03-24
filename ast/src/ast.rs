@@ -51,7 +51,7 @@ pub enum Expression {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastAs {
     pub expr: Box<Expression>,
-    pub cast_as: TokenKind,
+    pub type_token: TokenKind,
     pub span: Span,
     pub loc: Location
 }

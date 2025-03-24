@@ -131,7 +131,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     let expr = self.build_expr(return_statement.argument);
                     self.build_return(expr);
                 }
-                _ => self.compile_statement(expr),
+                _ => self.build_statement(expr),
             }
         }
 
@@ -141,7 +141,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "The function '{}' is not allowed to have a return statement.",
-                        func_def.name
+                        if is_main {
+                            "main"
+                        } else {
+                            &func_def.name
+                        }
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -159,7 +163,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
                     "The function '{}' is missing a return statement.",
-                    func_def.name
+                    if is_main {
+                        "main"
+                    } else {
+                        &func_def.name
+                    }
                 )),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),

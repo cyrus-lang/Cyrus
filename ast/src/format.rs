@@ -84,7 +84,7 @@ impl fmt::Display for UnaryOperatorType {
 
 impl fmt::Display for CastAs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} as {}", self.expr, self.cast_as)
+        write!(f, "{} as {}", self.expr, self.type_token)
     }
 }
 

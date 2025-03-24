@@ -331,11 +331,11 @@ impl<'a> Parser<'a> {
         }
 
         match self.parse_type_token() {
-            Ok(cast_as) => {
+            Ok(type_token) => {
                 return Ok((
                     Expression::CastAs(CastAs {
                         expr: Box::new(left),
-                        cast_as,
+                        type_token,
                         span: Span {
                             start: left_start,
                             end: self.current_token.span.end.clone(),

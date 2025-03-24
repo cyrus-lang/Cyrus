@@ -1,5 +1,3 @@
-use std::process::exit;
-
 use crate::{
     CodeGenLLVM,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
@@ -10,6 +8,7 @@ use inkwell::{
     types::AnyTypeEnum,
     values::{AnyValueEnum, ArrayValue, FloatValue, IntValue, PointerValue},
 };
+use std::process::exit;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, expr: Expression) -> AnyValueEnum {
@@ -25,7 +24,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::UnaryOperator(unary_operator) => todo!(),
             Expression::AddressOf(expression) => todo!(),
             Expression::Dereference(expression) => todo!(),
-            Expression::CastAs(cast_as) => todo!(),
+            Expression::CastAs(cast_as) => self.build_cast_as(cast_as),
             Expression::StructInit(struct_init) => todo!(),
             Expression::StructFieldAccess(struct_field_access) => todo!(),
             Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => todo!(),
@@ -41,7 +40,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Literal::Integer(integer_literal) => AnyValueEnum::IntValue(self.build_integer_literal(integer_literal)),
             Literal::Float(float_literal) => AnyValueEnum::FloatValue(self.build_float_literal(float_literal)),
             Literal::Bool(bool_literal) => AnyValueEnum::IntValue(self.build_bool_literal(bool_literal)),
-            Literal::String(string_literal) => AnyValueEnum::ArrayValue(self.build_string_literal(string_literal)),
+            Literal::String(string_literal) => AnyValueEnum::PointerValue(self.build_string_literal(string_literal)),
             Literal::Char(char_literal) => AnyValueEnum::IntValue(self.build_char_literal(char_literal)),
             Literal::Null => AnyValueEnum::PointerValue(self.build_null_literal()),
         }
@@ -70,8 +69,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> ArrayValue {
-        self.context.const_string(string_literal.raw.as_bytes(), true)
+    pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> PointerValue {
+        let i8_array_type = self.context.i8_type().array_type((string_literal.raw.len() + 1).try_into().unwrap());
+        let string_global = self.module.add_global(i8_array_type, Some(AddressSpace::default()), "str");
+        string_global.set_constant(true);
+        string_global.as_pointer_value()
     }
 
     pub(crate) fn build_char_literal(&self, char_literal: CharLiteral) -> IntValue {
@@ -91,6 +93,73 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_assignment(&self, assignment: Box<Assignment>) {
         // assignment.
         // self.builder.build_store(ptr, value)
+    }
+
+    pub(crate) fn build_cast_as(&self, cast_as: CastAs) -> AnyValueEnum {
+        let expr = self.build_expr(*cast_as.expr.clone());
+        let target = self.build_type(cast_as.type_token, cast_as.loc.clone(), cast_as.span.end);
+
+        match expr {
+            AnyValueEnum::IntValue(int_value) => match target {
+                AnyTypeEnum::IntType(int_type) => {
+                    AnyValueEnum::IntValue(self.builder.build_int_cast(int_value, int_type, "cast").unwrap())
+                }
+                AnyTypeEnum::FloatType(float_type) => AnyValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(int_value, float_type, "cast")
+                        .unwrap(),
+                ),
+                _ => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(String::from("Cannot cast non-basic value.")),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: cast_as.loc.line,
+                            column: cast_as.loc.column,
+                            length: cast_as.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
+            AnyValueEnum::FloatValue(float_value) => match target {
+                AnyTypeEnum::IntType(int_type) => AnyValueEnum::IntValue(
+                    self.builder
+                        .build_float_to_signed_int(float_value, int_type, "cast")
+                        .unwrap(),
+                ),
+                AnyTypeEnum::FloatType(float_type) => {
+                    AnyValueEnum::FloatValue(self.builder.build_float_cast(float_value, float_type, "cast").unwrap())
+                }
+                _ => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(String::from("Cannot cast non-basic value.")),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: cast_as.loc.line,
+                            column: cast_as.loc.column,
+                            length: cast_as.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(String::from("Cannot cast non-basic value.")),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: cast_as.loc.line,
+                        column: cast_as.loc.column,
+                        length: cast_as.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        }
     }
 
     pub(crate) fn build_prefix_expr(&self, unary_expression: UnaryExpression) -> AnyValueEnum {

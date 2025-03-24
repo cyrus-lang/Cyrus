@@ -1,3 +1,4 @@
-pub fn main(): void {
-    #a: i32 = 0;
+fn main() {
+    #a: string = "Hello World";
+    #b: string = "Taha";
 }
