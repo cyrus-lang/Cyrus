@@ -51,7 +51,6 @@
           gcc
           libgcc
           glibc
-          libgccjit
           gcc_multi
           clang-tools
           libffi
