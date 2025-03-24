@@ -6,6 +6,7 @@ pub enum DiagKind {
     NoEntryPointDetected,
     InvalidTypeToken,
     DerefNonPointerType,
+    InfixNonBasic,
     UnimplementedFeature,
     TypeAnnotationRequired(String, String),
     Custom(String),
@@ -45,6 +46,7 @@ impl fmt::Display for DiagKind {
                 "Type annotation required for parameter '{}' in function '{}'.",
                 param, func
             ),
+            DiagKind::InfixNonBasic => "Cannot build infix expression for non-basic value.",
         };
         write!(f, "{}", msg)
     }

@@ -2,7 +2,7 @@ use std::process::exit;
 
 use crate::{
     CodeGenLLVM,
-    diag::{Diag, DiagKind, DiagLevel, display_single_diag},
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
 };
 use ast::{ast::*, token::TokenKind};
 use inkwell::{
@@ -21,7 +21,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Expression::Literal(literal) => self.build_literal(literal),
             Expression::Prefix(unary_expression) => self.build_prefix_expr(unary_expression),
-            Expression::Infix(binary_expression) => todo!(),
+            Expression::Infix(binary_expression) => self.build_infix_expr(binary_expression),
             Expression::UnaryOperator(unary_operator) => todo!(),
             Expression::AddressOf(expression) => todo!(),
             Expression::Dereference(expression) => todo!(),
@@ -107,7 +107,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(String::from("Cannot build minus for non-basic value.")),
-                        location: None,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: unary_expression.loc.line,
+                            column: unary_expression.loc.column,
+                            length: unary_expression.span.end,
+                        }),
                     });
                     exit(1);
                 }
@@ -121,7 +126,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         .builder
                         .build_int_compare(inkwell::IntPredicate::EQ, int_value, zero, "prefix_ineg")
                         .unwrap();
-                    
+
                     if is_zero.get_zero_extended_constant().unwrap() == 0 {
                         AnyValueEnum::IntValue(zero)
                     } else {
@@ -132,7 +137,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(String::from("Cannot build neg for non-integer value.")),
-                        location: None,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: unary_expression.loc.line,
+                            column: unary_expression.loc.column,
+                            length: unary_expression.span.end,
+                        }),
                     });
                     exit(1);
                 }
@@ -141,7 +151,338 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(String::from("Invalid prefix token.")),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: unary_expression.loc.line,
+                        column: unary_expression.loc.column,
+                        length: unary_expression.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+    }
+
+    pub(crate) fn build_infix_expr(&self, binary_expression: BinaryExpression) -> AnyValueEnum {
+        let left = self.build_expr(*binary_expression.left);
+        let right = self.build_expr(*binary_expression.right);
+
+        match binary_expression.operator.kind {
+            TokenKind::Plus => {
+                if let AnyValueEnum::IntValue(left) = left {
+                    if let AnyValueEnum::IntValue(right) = right {
+                        AnyValueEnum::IntValue(self.builder.build_int_add(left, right, "infix_iadd").unwrap())
+                    } else if let AnyValueEnum::FloatValue(right) = right {
+                        let left_float = {
+                            self.builder
+                                .build_signed_int_to_float(left, right.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_add(left_float, right, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else if let AnyValueEnum::FloatValue(left) = left {
+                    if let AnyValueEnum::FloatValue(right) = right {
+                        AnyValueEnum::FloatValue(self.builder.build_float_add(left, right, "infix_fadd").unwrap())
+                    } else if let AnyValueEnum::IntValue(right) = right {
+                        let right_float = {
+                            self.builder
+                                .build_signed_int_to_float(right, left.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_add(left, right_float, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::InfixNonBasic,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: binary_expression.loc.line,
+                            column: binary_expression.loc.column,
+                            length: binary_expression.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            }
+            TokenKind::Minus => {
+                if let AnyValueEnum::IntValue(left) = left {
+                    if let AnyValueEnum::IntValue(right) = right {
+                        AnyValueEnum::IntValue(self.builder.build_int_sub(left, right, "infix_iadd").unwrap())
+                    } else if let AnyValueEnum::FloatValue(right) = right {
+                        let left_float = {
+                            self.builder
+                                .build_signed_int_to_float(left, right.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_sub(left_float, right, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else if let AnyValueEnum::FloatValue(left) = left {
+                    if let AnyValueEnum::FloatValue(right) = right {
+                        AnyValueEnum::FloatValue(self.builder.build_float_sub(left, right, "infix_fadd").unwrap())
+                    } else if let AnyValueEnum::IntValue(right) = right {
+                        let right_float = {
+                            self.builder
+                                .build_signed_int_to_float(right, left.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_sub(left, right_float, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::InfixNonBasic,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: binary_expression.loc.line,
+                            column: binary_expression.loc.column,
+                            length: binary_expression.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            }
+            TokenKind::Asterisk => {
+                if let AnyValueEnum::IntValue(left) = left {
+                    if let AnyValueEnum::IntValue(right) = right {
+                        AnyValueEnum::IntValue(self.builder.build_int_mul(left, right, "infix_iadd").unwrap())
+                    } else if let AnyValueEnum::FloatValue(right) = right {
+                        let left_float = {
+                            self.builder
+                                .build_signed_int_to_float(left, right.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_mul(left_float, right, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else if let AnyValueEnum::FloatValue(left) = left {
+                    if let AnyValueEnum::FloatValue(right) = right {
+                        AnyValueEnum::FloatValue(self.builder.build_float_mul(left, right, "infix_fadd").unwrap())
+                    } else if let AnyValueEnum::IntValue(right) = right {
+                        let right_float = {
+                            self.builder
+                                .build_signed_int_to_float(right, left.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_mul(left, right_float, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::InfixNonBasic,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: binary_expression.loc.line,
+                            column: binary_expression.loc.column,
+                            length: binary_expression.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            }
+            TokenKind::Slash => {
+                if let AnyValueEnum::IntValue(left) = left {
+                    if let AnyValueEnum::IntValue(right) = right {
+                        AnyValueEnum::IntValue(self.builder.build_int_signed_div(left, right, "infix_iadd").unwrap())
+                    } else if let AnyValueEnum::FloatValue(right) = right {
+                        let left_float = {
+                            self.builder
+                                .build_signed_int_to_float(left, right.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_div(left_float, right, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else if let AnyValueEnum::FloatValue(left) = left {
+                    if let AnyValueEnum::FloatValue(right) = right {
+                        AnyValueEnum::FloatValue(self.builder.build_float_div(left, right, "infix_fadd").unwrap())
+                    } else if let AnyValueEnum::IntValue(right) = right {
+                        let right_float = {
+                            self.builder
+                                .build_signed_int_to_float(right, left.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_div(left, right_float, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::InfixNonBasic,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: binary_expression.loc.line,
+                            column: binary_expression.loc.column,
+                            length: binary_expression.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            }
+            TokenKind::Percent => {
+                if let AnyValueEnum::IntValue(left) = left {
+                    if let AnyValueEnum::IntValue(right) = right {
+                        AnyValueEnum::IntValue(self.builder.build_int_signed_rem(left, right, "infix_iadd").unwrap())
+                    } else if let AnyValueEnum::FloatValue(right) = right {
+                        let left_float = {
+                            self.builder
+                                .build_signed_int_to_float(left, right.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_rem(left_float, right, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else if let AnyValueEnum::FloatValue(left) = left {
+                    if let AnyValueEnum::FloatValue(right) = right {
+                        AnyValueEnum::FloatValue(self.builder.build_float_rem(left, right, "infix_fadd").unwrap())
+                    } else if let AnyValueEnum::IntValue(right) = right {
+                        let right_float = {
+                            self.builder
+                                .build_signed_int_to_float(right, left.get_type(), "cast")
+                                .unwrap()
+                        };
+                        AnyValueEnum::FloatValue(self.builder.build_float_rem(left, right_float, "infix_fadd").unwrap())
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InfixNonBasic,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: binary_expression.loc.line,
+                                column: binary_expression.loc.column,
+                                length: binary_expression.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                } else {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::InfixNonBasic,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: binary_expression.loc.line,
+                            column: binary_expression.loc.column,
+                            length: binary_expression.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            }
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(String::from("Invalid infix token.")),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: binary_expression.loc.line,
+                        column: binary_expression.loc.column,
+                        length: binary_expression.span.end,
+                    }),
                 });
                 exit(1);
             }
