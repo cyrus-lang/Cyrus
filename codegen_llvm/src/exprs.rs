@@ -1,5 +1,5 @@
 use crate::{
-    CodeGenLLVM,
+    CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
 };
 use ast::{ast::*, token::TokenKind};
@@ -8,10 +8,10 @@ use inkwell::{
     types::AnyTypeEnum,
     values::{AnyValueEnum, FloatValue, IntValue, PointerValue},
 };
-use std::process::exit;
+use std::{process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_expr(&self, expr: Expression) -> AnyValueEnum {
+    pub(crate) fn build_expr(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
         match expr {
             Expression::Identifier(identifier) => todo!(),
             Expression::Assignment(assignment) => {
@@ -19,12 +19,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 inkwell::values::AnyValueEnum::PointerValue(self.build_null_literal())
             }
             Expression::Literal(literal) => self.build_literal(literal),
-            Expression::Prefix(unary_expression) => self.build_prefix_expr(unary_expression),
-            Expression::Infix(binary_expression) => self.build_infix_expr(binary_expression),
+            Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
+            Expression::Infix(binary_expression) => self.build_infix_expr(Rc::clone(&scope), binary_expression),
             Expression::UnaryOperator(unary_operator) => todo!(),
             Expression::AddressOf(expression) => todo!(),
             Expression::Dereference(expression) => todo!(),
-            Expression::CastAs(cast_as) => self.build_cast_as(cast_as),
+            Expression::CastAs(cast_as) => self.build_cast_as(Rc::clone(&scope), cast_as),
             Expression::StructInit(struct_init) => todo!(),
             Expression::StructFieldAccess(struct_field_access) => todo!(),
             Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => todo!(),
@@ -33,6 +33,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::ArrayIndexAssign(array_index_assign) => todo!(),
             Expression::FromPackage(_) => todo!(),
         }
+    }
+
+    pub(crate) fn build_assignment(&self, assignment: Box<Assignment>) {
+        todo!();
+    }
+
+    pub(crate) fn build_array(&self, array: Array) -> AnyValueEnum {
+        todo!();
     }
 
     pub(crate) fn build_literal(&self, literal: Literal) -> AnyValueEnum {
@@ -95,17 +103,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .const_int(if bool_literal.raw { 1 } else { 0 }, false)
     }
 
-    pub(crate) fn build_assignment(&self, assignment: Box<Assignment>) {
-        // assignment.
-        // self.builder.build_store(ptr, value)
-    }
-
-    pub(crate) fn build_array(&self, array: Array) -> AnyValueEnum {
-        todo!();
-    }
-
-    pub(crate) fn build_cast_as(&self, cast_as: CastAs) -> AnyValueEnum {
-        let expr = self.build_expr(*cast_as.expr.clone());
+    pub(crate) fn build_cast_as(&self, scope: ScopeRef, cast_as: CastAs) -> AnyValueEnum {
+        let expr = self.build_expr(Rc::clone(&scope), *cast_as.expr.clone());
         let target = self.build_type(cast_as.type_token, cast_as.loc.clone(), cast_as.span.end);
 
         match expr {
@@ -171,8 +170,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_prefix_expr(&self, unary_expression: UnaryExpression) -> AnyValueEnum {
-        let operand = self.build_expr(*unary_expression.operand.clone());
+    pub(crate) fn build_prefix_expr(&self, scope: ScopeRef, unary_expression: UnaryExpression) -> AnyValueEnum {
+        let operand = self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone());
         match unary_expression.operator.kind {
             TokenKind::Minus => match operand {
                 AnyValueEnum::IntValue(int_value) => {
@@ -241,9 +240,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_infix_expr(&self, binary_expression: BinaryExpression) -> AnyValueEnum {
-        let left = self.build_expr(*binary_expression.left);
-        let right = self.build_expr(*binary_expression.right);
+    pub(crate) fn build_infix_expr(&self, scope: ScopeRef, binary_expression: BinaryExpression) -> AnyValueEnum {
+        let left = self.build_expr(Rc::clone(&scope), *binary_expression.left);
+        let right = self.build_expr(Rc::clone(&scope), *binary_expression.right);
 
         match binary_expression.operator.kind {
             TokenKind::Plus => {

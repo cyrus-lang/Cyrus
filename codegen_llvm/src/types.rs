@@ -26,27 +26,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TokenKind::Bool => AnyTypeEnum::IntType(self.context.bool_type()),
             TokenKind::String => AnyTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default())),
             TokenKind::UserDefinedType(identifier) => todo!(),
-            TokenKind::AddressOf(inner_token_kind) => {
-                let data_type = self.build_type(*inner_token_kind, loc.clone(), span_end);
-                inkwell::types::AnyTypeEnum::PointerType(data_type.into_pointer_type())
-            }
-            TokenKind::Dereference(inner_token_kind) => {
-                if let AnyTypeEnum::PointerType(_) = self.build_type(*inner_token_kind, loc.clone(), span_end) {
-                    self.context.ptr_type(AddressSpace::default()).into()
-                } else {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::DerefNonPointerType,
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
-                }
-            }
+            TokenKind::Dereference(_) => self.context.ptr_type(AddressSpace::default()).into(),
             TokenKind::Array(type_token, dimensions) => {
                 let mut data_type = self.build_type(*type_token, loc.clone(), span_end);
                 for item in dimensions {

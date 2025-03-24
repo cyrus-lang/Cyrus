@@ -1,12 +1,15 @@
 use crate::CodeGenLLVM;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
+use crate::scope::{Scope, ScopeRef};
 use ast::ast::{FuncDecl, FuncDef, FuncParam, VisType};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::types::FunctionType;
 use inkwell::values::{AnyValueEnum, FunctionValue};
 use inkwell::{llvm_sys::LLVMType, types::AsTypeRef};
+use std::cell::RefCell;
 use std::process::exit;
+use std::rc::Rc;
 use utils::generate_random_hex::generate_random_hex;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -74,7 +77,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.module.add_function(&func_decl.name, fn_type, Some(func_linkage))
     }
 
-    pub(crate) fn build_func_def(&mut self, mut func_def: FuncDef) -> FunctionValue {
+    pub(crate) fn build_func_def(&mut self, mut func_def: FuncDef) -> FunctionValue<'ctx> {
+        let scope: ScopeRef = Rc::new(RefCell::new(Scope::new()));
+
         if func_def.name == "main" && self.entry_point.is_some() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -128,10 +133,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match expr {
                 ast::ast::Statement::Return(return_statement) => {
                     build_return = true;
-                    let expr = self.build_expr(return_statement.argument);
+                    let expr = self.build_expr(Rc::clone(&scope), return_statement.argument);
                     self.build_return(expr);
                 }
-                _ => self.build_statement(expr),
+                _ => self.build_statement(Rc::clone(&scope), expr),
             }
         }
 
@@ -141,11 +146,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "The function '{}' is not allowed to have a return statement.",
-                        if is_main {
-                            "main"
-                        } else {
-                            &func_def.name
-                        }
+                        if is_main { "main" } else { &func_def.name }
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -163,11 +164,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
                     "The function '{}' is missing a return statement.",
-                    if is_main {
-                        "main"
-                    } else {
-                        &func_def.name
-                    }
+                    if is_main { "main" } else { &func_def.name }
                 )),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),

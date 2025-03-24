@@ -16,7 +16,7 @@ use std::process::exit;
 type MainFunc = unsafe extern "C" fn() -> c_void;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn optimize(&mut self) {
+    pub(crate) fn optimize(&self) {
         let fpm = PassManager::create(&self.module);
         self.target_machine.add_analysis_passes(&fpm);
         fpm.initialize();
@@ -33,7 +33,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_entry_point(&mut self) {
+    pub(crate) fn build_entry_point(&self) {
         if let Some(main_func) = self.entry_point {
             // wrap actual main_func as entry point
             let return_type = self.context.i32_type();

@@ -1,16 +1,19 @@
 use ast::ast::*;
 use ast::token::{Location, TokenKind};
 use diag::*;
-use inkwell::types::AnyTypeEnum;
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::values::{AnyValueEnum, FunctionValue, PointerValue};
+use inkwell::types::AnyTypeEnum;
+use inkwell::values::{AnyValueEnum, AsValueRef, FunctionValue, PointerValue};
 use opts::CodeGenLLVMOptions;
+use scope::{Scope, ScopeRef};
+use std::cell::RefCell;
 use std::process::exit;
+use std::rc::Rc;
 
 mod build;
 mod diag;
@@ -83,7 +86,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn compile(&mut self) {
-        self.build_statements(self.program.body.clone());
+        let scope: ScopeRef = Rc::new(RefCell::new(Scope::new()));
+        self.build_statements(Rc::clone(&scope), self.program.body.clone());
 
         if self.reporter.has_errors() {
             self.reporter.display_diags();
@@ -94,18 +98,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.build_entry_point();
     }
 
-    pub(crate) fn build_statements(&mut self, stmts: Vec<Statement>) {
+    pub(crate) fn build_statements(&mut self, scope: ScopeRef, stmts: Vec<Statement>) {
         for stmt in stmts {
-            self.build_statement(stmt.clone());
+            self.build_statement(Rc::clone(&scope), stmt.clone());
         }
     }
 
-    pub(crate) fn build_statement<'a>(&'a mut self, stmt: Statement) {
+    pub(crate) fn build_statement(&mut self, scope: ScopeRef, stmt: Statement) {
         match stmt {
-            Statement::Variable(variable) => self.build_variable(variable),
-            Statement::Expression(expression) => {
-                self.build_expr(expression);
+            Statement::BlockStatement(block_statement) => {
+                self.build_statements(Rc::clone(&scope), block_statement.exprs);
             }
+            Statement::Expression(expression) => {
+                self.build_expr(Rc::clone(&scope), expression);
+            }
+            Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
             Statement::If(_) => todo!(),
             Statement::Return(_) => todo!(),
             Statement::FuncDef(func_def) => {
@@ -117,10 +124,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::For(_) => todo!(),
             Statement::Match(_) => todo!(),
             Statement::Struct(_) => todo!(),
-            Statement::Import(import) => todo!(),
-            Statement::BlockStatement(block_statement) => todo!(),
             Statement::Break(location) => todo!(),
             Statement::Continue(location) => todo!(),
+            Statement::Import(import) => todo!(),
         }
     }
 
@@ -135,9 +141,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let ptr_value = match any_type {
             AnyTypeEnum::IntType(int_type) => self.builder.build_alloca(int_type, &var_name),
             AnyTypeEnum::FloatType(float_type) => self.builder.build_alloca(float_type, &var_name),
-            AnyTypeEnum::PointerType(pointer_type) => {
-                self.builder.build_alloca(pointer_type, &var_name)
-            }
+            AnyTypeEnum::PointerType(pointer_type) => self.builder.build_alloca(pointer_type, &var_name),
             AnyTypeEnum::StructType(struct_type) => todo!(),
             AnyTypeEnum::VectorType(vector_type) => todo!(),
             AnyTypeEnum::ArrayType(array_type) => self.builder.build_alloca(array_type, &var_name),
@@ -200,7 +204,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_variable(&self, variable: Variable) {
+    pub(crate) fn build_variable(&self, scope: ScopeRef, variable: Variable) {
         let var_type_token = match variable.ty {
             Some(ty) => ty,
             None => {
@@ -216,8 +220,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
 
         if let Some(expr) = variable.expr {
-            let value = self.build_expr(expr);
+            let value = self.build_expr(Rc::clone(&scope), expr);
             self.build_store(ptr, value);
         }
+
+        scope.borrow_mut().insert(
+            variable.name,
+            scope::ScopeRecord {
+                ptr: ptr.as_value_ref(),
+            },
+        );
     }
 }

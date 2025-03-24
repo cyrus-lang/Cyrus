@@ -113,7 +113,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Ampersand => {
                     self.next_token();
-                    return Ok(TokenKind::Dereference(Box::new(self.get_type_token()?)));
+                    return Ok(TokenKind::AddressOf(Box::new(self.get_type_token()?)));
                 }
                 TokenKind::Identifier { name: type_name } => TokenKind::UserDefinedType(Identifier {
                     name: type_name.clone(),
