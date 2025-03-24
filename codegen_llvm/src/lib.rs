@@ -4,22 +4,21 @@ use diag::*;
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::execution_engine::ExecutionEngine;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
-use inkwell::targets::{InitializationConfig, Target, TargetMachine};
+use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::values::{AnyValueEnum, PointerValue};
 use opts::CodeGenLLVMOptions;
 use std::process::exit;
 
 mod build;
 mod diag;
+mod exprs;
 mod funcs;
 mod linkage;
 pub mod opts;
 mod scope;
 mod tests;
-mod exprs;
 mod types;
 
 pub struct CodeGenLLVM<'ctx> {
@@ -28,7 +27,6 @@ pub struct CodeGenLLVM<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
-    execution_engine: ExecutionEngine<'ctx>,
     target_machine: TargetMachine,
     program: ProgramTree,
     file_path: String,
@@ -46,29 +44,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let reporter = DiagReporter::new();
         let module = context.create_module(&file_name);
         let builder = context.create_builder();
-        let execution_engine = module.create_jit_execution_engine(OptimizationLevel::None)?;
 
-        // FIXME
-        Target::initialize_all(&InitializationConfig::default());
+        Target::initialize_native(&InitializationConfig::default()).unwrap();
         let target_triple = TargetMachine::get_default_triple();
+        let cpu = TargetMachine::get_host_cpu_name().to_string();
+        let features = TargetMachine::get_host_cpu_features().to_string();
         let target = Target::from_triple(&target_triple).unwrap();
         let target_machine = target
             .create_target_machine(
                 &target_triple,
-                "generic",
-                "",
-                OptimizationLevel::None,
-                inkwell::targets::RelocMode::PIC,
-                inkwell::targets::CodeModel::Default,
+                &cpu,
+                &features,
+                OptimizationLevel::Default,
+                RelocMode::Default,
+                CodeModel::Default,
             )
             .unwrap();
+        module.set_triple(&target_triple);
+        module.set_data_layout(&target_machine.get_target_data().get_data_layout());
 
         Ok(CodeGenLLVM {
             opts,
             context,
             module,
             builder,
-            execution_engine,
             program,
             file_path,
             reporter,
@@ -87,6 +86,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.reporter.display_diags();
             exit(1);
         }
+
+        self.optimize();
     }
 
     pub(crate) fn compile_statements(&mut self, stmts: Vec<Statement>) {
@@ -100,7 +101,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Variable(variable) => self.compile_variable(variable),
             Statement::Expression(expression) => {
                 self.build_expr(expression);
-            },
+            }
             Statement::If(_) => todo!(),
             Statement::Return(_) => todo!(),
             Statement::FuncDef(func_def) => {
@@ -168,18 +169,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_store(
-        &self,
-        ptr: PointerValue,
-        value: AnyValueEnum,
-    ) {
+    pub(crate) fn build_store(&self, ptr: PointerValue, value: AnyValueEnum) {
         let result = match value {
-            AnyValueEnum::IntValue(int_value) => {
-                self.builder.build_store(ptr, int_value)
-            },
-            AnyValueEnum::FloatValue(float_value) => {
-                self.builder.build_store(ptr, float_value)
-            },
+            AnyValueEnum::IntValue(int_value) => self.builder.build_store(ptr, int_value),
+            AnyValueEnum::FloatValue(float_value) => self.builder.build_store(ptr, float_value),
             AnyValueEnum::PointerValue(pointer_value) => todo!(),
             AnyValueEnum::VectorValue(vector_value) => todo!(),
             AnyValueEnum::ArrayValue(array_value) => todo!(),
@@ -192,7 +185,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
         };
-        
+
         if let Err(err) = result {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -218,7 +211,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             variable.span.end,
         );
 
-        if let Some(expr)  = variable.expr {
+        if let Some(expr) = variable.expr {
             let value = self.build_expr(expr);
             self.build_store(ptr, value);
         }
