@@ -67,7 +67,7 @@ pub enum UnaryOperatorType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryOperator {
-    pub identifier: FromPackage,
+    pub from_package: FromPackage,
     pub ty: UnaryOperatorType,
     pub span: Span,
     pub loc: Location

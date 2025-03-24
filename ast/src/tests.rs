@@ -129,7 +129,7 @@ mod tests {
             loc: Location::default(),
         }));
         let increment = Some(Expression::UnaryOperator(UnaryOperator {
-            identifier: FromPackage {
+            from_package: FromPackage {
                 identifier: Identifier {
                     name: "i".to_string(),
                     span: Span::default(),

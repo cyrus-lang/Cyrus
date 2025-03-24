@@ -66,7 +66,7 @@ impl<'a> Parser<'a> {
                 } else if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
-                        identifier: from_package.clone(),
+                        from_package: from_package.clone(),
                         ty: UnaryOperatorType::PostIncrement,
                         span,
                         loc: self.current_location(),
@@ -74,7 +74,7 @@ impl<'a> Parser<'a> {
                 } else if self.peek_token_is(TokenKind::Decrement) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
-                        identifier: from_package.clone(),
+                        from_package: from_package.clone(),
                         ty: UnaryOperatorType::PostDecrement,
                         span,
                         loc: self.current_location(),
@@ -129,7 +129,7 @@ impl<'a> Parser<'a> {
                         let from_package = self.parse_from_package()?;
 
                         Expression::UnaryOperator(UnaryOperator {
-                            identifier: from_package,
+                            from_package: from_package,
                             ty: unary_operator_type,
                             span: Span {
                                 start: span.start,

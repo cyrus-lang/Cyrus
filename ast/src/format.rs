@@ -91,11 +91,11 @@ impl fmt::Display for CastAs {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::UnaryOperator(unop) => write!(
+            Expression::UnaryOperator(unary_operator) => write!(
                 f,
                 "{}{}",
-                Expression::FromPackage(unop.identifier.clone()).to_string(),
-                unop.ty
+                Expression::FromPackage(unary_operator.from_package.clone()).to_string(),
+                unary_operator.ty
             ),
             Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
             Expression::Literal(literal) => write!(f, "{}", literal.to_string()),

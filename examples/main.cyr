@@ -1,4 +1,7 @@
-fn main() {
-    #a: i32 = 10;
-    #b: i32 = a + 1;
+enum Color {
+    RED,
+    GREEN,
+    BLUE
 }
+
+pub global VERSION: float = 10.0;

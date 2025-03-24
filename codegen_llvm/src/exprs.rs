@@ -21,7 +21,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Literal(literal) => self.build_literal(literal),
             Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
             Expression::Infix(binary_expression) => self.build_infix_expr(Rc::clone(&scope), binary_expression),
-            Expression::UnaryOperator(unary_operator) => todo!(),
+            Expression::UnaryOperator(unary_operator) => self.build_unary_operator(Rc::clone(&scope), unary_operator),
             Expression::AddressOf(expression) => todo!(),
             Expression::Dereference(expression) => todo!(),
             Expression::CastAs(cast_as) => self.build_cast_as(Rc::clone(&scope), cast_as),
@@ -32,6 +32,39 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::ArrayIndex(array_index) => todo!(),
             Expression::ArrayIndexAssign(array_index_assign) => todo!(),
             Expression::FromPackage(from_package) => self.build_from_package(Rc::clone(&scope), from_package),
+        }
+    }
+
+    pub(crate) fn build_unary_operator(&self, scope: ScopeRef, unary_operator: UnaryOperator) -> AnyValueEnum {
+        let int_one = self.context.i32_type().const_int(1, false);
+        let value = self.build_from_package(Rc::clone(&scope), unary_operator.from_package);
+        match value {
+            AnyValueEnum::IntValue(int_value) => match unary_operator.ty {
+                UnaryOperatorType::PreIncrement => {
+                    return AnyValueEnum::IntValue(self.builder.build_int_add(int_value, int_one, "unaryop").unwrap());
+                }
+                UnaryOperatorType::PreDecrement => {
+                    return AnyValueEnum::IntValue(self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap());
+                }
+                UnaryOperatorType::PostIncrement => {
+                    let clone = value.clone();
+                    self.builder.build_int_add(int_value, int_one, "unaryop").unwrap();
+                    return clone;
+                }
+                UnaryOperatorType::PostDecrement => {
+                    let clone = value.clone();
+                    self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap();
+                    return clone;
+                }
+            },
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(String::from("Cannot build unary operator for non-integer value.")),
+                    location: None,
+                });
+                exit(1);
+            }
         }
     }
 

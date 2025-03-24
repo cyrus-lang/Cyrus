@@ -1,3 +1,19 @@
-import dir1::module1;
+import std {
+  io,
+  string,
+  math;
+};
 
-pub fn main() {}
+import std {
+  io {
+    println,
+    readln;
+  },
+  string;
+};
+
+import std.io.*;
+
+pub fn main() {
+    println("Hello, world!");
+}
