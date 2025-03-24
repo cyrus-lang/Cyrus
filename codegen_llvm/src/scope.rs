@@ -5,6 +5,8 @@ pub type ScopeRef = Rc<RefCell<Scope>>;
 
 #[derive(Debug, Clone)]
 pub struct ScopeRecord {
+    // FIXME
+    // Consider to change this to use safe PointerValue<'_>
     pub ptr: *mut LLVMValue,
 }
 

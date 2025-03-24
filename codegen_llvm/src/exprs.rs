@@ -13,7 +13,7 @@ use std::{process::exit, rc::Rc};
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
         match expr {
-            Expression::Identifier(identifier) => todo!(),
+            Expression::Identifier(identifier) => self.build_load(Rc::clone(&scope), identifier),
             Expression::Assignment(assignment) => {
                 self.build_assignment(assignment);
                 inkwell::values::AnyValueEnum::PointerValue(self.build_null_literal())
@@ -31,8 +31,35 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Array(array) => self.build_array(array),
             Expression::ArrayIndex(array_index) => todo!(),
             Expression::ArrayIndexAssign(array_index_assign) => todo!(),
-            Expression::FromPackage(_) => todo!(),
+            Expression::FromPackage(from_package) => self.build_from_package(Rc::clone(&scope), from_package),
         }
+    }
+
+    pub(crate) fn build_from_package(&self, scope: ScopeRef, from_package: FromPackage) -> AnyValueEnum {
+        if from_package.sub_packages.is_empty() {
+            return self.build_load(Rc::clone(&scope), from_package.identifier);
+        }
+
+        todo!();
+    }
+
+    pub(crate) fn build_load(&self, scope: ScopeRef, identifier: Identifier) -> AnyValueEnum {
+        let record = {
+            match scope.borrow_mut().get(identifier.name.clone()) {
+                Some(record) => record,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::IdentifierNotDefined(identifier.name),
+                        location: None,
+                    });
+                    exit(1);
+                }
+            }
+        };
+        let ptr = unsafe { PointerValue::new(record.borrow_mut().ptr) };
+        let value = self.builder.build_load(self.context.i32_type(), ptr, "load").unwrap();
+        value.into()
     }
 
     pub(crate) fn build_assignment(&self, assignment: Box<Assignment>) {
