@@ -148,21 +148,21 @@ impl<'a> Parser<'a> {
 
         // Check for array data type
         if self.current_token_is(TokenKind::LeftBracket) {
-            let mut dimensions: Vec<Option<TokenKind>> = Vec::new();
+            let mut dimensions: Vec<TokenKind> = Vec::new();
 
             while self.current_token_is(TokenKind::LeftBracket) {
-                let mut capacity: Option<TokenKind> = None;
-
                 self.next_token(); // consume left bracket
 
                 if let TokenKind::Literal(_) = self.current_token.kind.clone() {
-                    capacity = Some(self.current_token.kind.clone());
+                    let capacity = self.current_token.kind.clone();
+                    dimensions.push(capacity);
+                    self.next_token();
+                } else if TokenKind::Dyn == self.current_token.kind.clone() {
+                    dimensions.push(TokenKind::Dyn);
                     self.next_token();
                 }
 
                 self.expect_current(TokenKind::RightBracket)?;
-
-                dimensions.push(capacity);
             }
 
             Ok(TokenKind::Array(Box::new(data_type), dimensions))

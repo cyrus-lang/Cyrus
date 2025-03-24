@@ -9,6 +9,7 @@ pub enum DiagKind {
     InfixNonBasic,
     NonInternalEntryPoint,
     UnimplementedFeature,
+    InvalidTokenAsArrayCapacity,
     TypeAnnotationRequired(String, String),
     Custom(String),
 }
@@ -49,6 +50,7 @@ impl fmt::Display for DiagKind {
                 param, func
             ),
             DiagKind::InfixNonBasic => "Cannot build infix expression for non-basic value.",
+            DiagKind::InvalidTokenAsArrayCapacity => "Invalid token given as array capacity.",
         };
         write!(f, "{}", msg)
     }

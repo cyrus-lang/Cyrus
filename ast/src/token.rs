@@ -80,6 +80,7 @@ pub enum TokenKind {
     Double,
     SizeT,
     Void,
+    Dyn,
     String,
     Bool,
     True,
@@ -92,7 +93,7 @@ pub enum TokenKind {
     Dereference(Box<TokenKind>),
 
     // DataType, Dimensions
-    Array(Box<TokenKind>, Vec<Option<TokenKind>>),
+    Array(Box<TokenKind>, Vec<TokenKind>),
 
     // Object Visibility Keywords
     Extern,
@@ -156,6 +157,7 @@ impl fmt::Display for TokenKind {
             Self::Float => write!(f, "float"),
             Self::Double => write!(f, "double"),
             Self::Void => write!(f, "void"),
+            Self::Dyn => write!(f, "dyn"),
             Self::As => write!(f, "as"),
             Self::Extends => write!(f, "extends"),
             Self::Literal(literal) => match literal {
@@ -185,11 +187,7 @@ impl fmt::Display for TokenKind {
                 write!(f, "{}", data_type)?;
 
                 for item in array {
-                    if let Some(dimension) = item {
-                        write!(f, "[{}]", dimension)?;
-                    } else {
-                        write!(f, "[]")?;
-                    }
+                    write!(f, "[{}]", item)?;
                 }
 
                 write!(f, "")

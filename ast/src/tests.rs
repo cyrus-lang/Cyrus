@@ -16,9 +16,9 @@ mod tests {
         let arrays = TokenKind::Array(
             Box::new(TokenKind::I32),
             vec![
-                Some(TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(3)))),
-                Some(TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(4)))),
-                Some(TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(5)))),
+                TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(3))),
+                TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(4))),
+                TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(5))),
             ],
         );
         assert_eq!(arrays.to_string(), "i32[3][4][5]");

@@ -1,4 +1,3 @@
 fn main() {
-    #a: string = "Hello World";
-    #b: string = "Taha";
+    #a: i32[dyn];
 }

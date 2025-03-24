@@ -6,7 +6,7 @@ use ast::{ast::*, token::TokenKind};
 use inkwell::{
     AddressSpace,
     types::AnyTypeEnum,
-    values::{AnyValueEnum, ArrayValue, FloatValue, IntValue, PointerValue},
+    values::{AnyValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::process::exit;
 
@@ -28,7 +28,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::StructInit(struct_init) => todo!(),
             Expression::StructFieldAccess(struct_field_access) => todo!(),
             Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => todo!(),
-            Expression::Array(array) => todo!(),
+            Expression::Array(array) => self.build_array(array),
             Expression::ArrayIndex(array_index) => todo!(),
             Expression::ArrayIndexAssign(array_index_assign) => todo!(),
             Expression::FromPackage(_) => todo!(),
@@ -70,8 +70,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> PointerValue {
-        let i8_array_type = self.context.i8_type().array_type((string_literal.raw.len() + 1).try_into().unwrap());
-        let string_global = self.module.add_global(i8_array_type, Some(AddressSpace::default()), "str");
+        let i8_array_type = self
+            .context
+            .i8_type()
+            .array_type((string_literal.raw.len() + 1).try_into().unwrap());
+        let string_global = self
+            .module
+            .add_global(i8_array_type, Some(AddressSpace::default()), "str");
         string_global.set_constant(true);
         string_global.as_pointer_value()
     }
@@ -93,6 +98,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_assignment(&self, assignment: Box<Assignment>) {
         // assignment.
         // self.builder.build_store(ptr, value)
+    }
+
+    pub(crate) fn build_array(&self, array: Array) -> AnyValueEnum {
+        todo!();
     }
 
     pub(crate) fn build_cast_as(&self, cast_as: CastAs) -> AnyValueEnum {

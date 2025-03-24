@@ -24,9 +24,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TokenKind::Double => AnyTypeEnum::FloatType(self.context.f64_type()),
             TokenKind::Void => AnyTypeEnum::VoidType(self.context.void_type()),
             TokenKind::Bool => AnyTypeEnum::IntType(self.context.bool_type()),
-            TokenKind::String => {
-                AnyTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default()))
-            }
+            TokenKind::String => AnyTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default())),
             TokenKind::UserDefinedType(identifier) => todo!(),
             TokenKind::AddressOf(inner_token_kind) => {
                 let data_type = self.build_type(*inner_token_kind, loc.clone(), span_end);
@@ -49,7 +47,88 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
             }
-            TokenKind::Array(data_type, dimensions) => todo!(),
+            TokenKind::Array(type_token, dimensions) => {
+                let mut data_type = self.build_type(*type_token, loc.clone(), span_end);
+                for item in dimensions {
+                    let capacity = {
+                        match item {
+                            TokenKind::Literal(literal) => {
+                                let literal_value = self.build_literal(literal);
+                                match literal_value {
+                                    inkwell::values::AnyValueEnum::IntValue(int_value) => int_value,
+                                    _ => {
+                                        display_single_diag(Diag {
+                                            level: DiagLevel::Error,
+                                            kind: DiagKind::InvalidTokenAsArrayCapacity,
+                                            location: Some(DiagLoc {
+                                                file: self.file_path.clone(),
+                                                line: loc.line,
+                                                column: loc.column,
+                                                length: span_end,
+                                            }),
+                                        });
+                                        exit(1);
+                                    }
+                                }
+                            }
+                            TokenKind::Dyn => {
+                                todo!()
+                            }
+                            _ => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::InvalidTokenAsArrayCapacity,
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: loc.line,
+                                        column: loc.column,
+                                        length: span_end,
+                                    }),
+                                });
+                                exit(1);
+                            }
+                        }
+                        .get_zero_extended_constant()
+                        .unwrap()
+                    };
+
+                    match data_type {
+                        AnyTypeEnum::IntType(int_type) => {
+                            data_type = inkwell::types::AnyTypeEnum::ArrayType(
+                                int_type.array_type(capacity.try_into().unwrap()),
+                            );
+                        }
+                        AnyTypeEnum::FloatType(float_type) => {
+                            data_type = inkwell::types::AnyTypeEnum::ArrayType(
+                                float_type.array_type(capacity.try_into().unwrap()),
+                            );
+                        }
+                        AnyTypeEnum::ArrayType(array_type) => {
+                            data_type = inkwell::types::AnyTypeEnum::ArrayType(
+                                array_type.array_type(capacity.try_into().unwrap()),
+                            );
+                        }
+                        AnyTypeEnum::StructType(struct_type) => todo!(),
+                        AnyTypeEnum::VectorType(vector_type) => todo!(),
+                        AnyTypeEnum::VoidType(void_type) => todo!(),
+                        AnyTypeEnum::PointerType(pointer_type) => todo!(),
+                        _ => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::InvalidTypeToken,
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: loc.line,
+                                    column: loc.column,
+                                    length: span_end,
+                                }),
+                            });
+                            exit(1);
+                        }
+                    }
+                }
+                data_type
+            }
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
