@@ -7,7 +7,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::values::{AnyValueEnum, PointerValue};
+use inkwell::values::{AnyValueEnum, FunctionValue, PointerValue};
 use opts::CodeGenLLVMOptions;
 use std::process::exit;
 
@@ -31,6 +31,7 @@ pub struct CodeGenLLVM<'ctx> {
     program: ProgramTree,
     file_path: String,
     reporter: DiagReporter,
+    entry_point: Option<FunctionValue<'ctx>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -72,6 +73,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             file_path,
             reporter,
             target_machine,
+            entry_point: None,
         })
     }
 
@@ -88,6 +90,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         self.optimize();
+        self.build_entry_point();
     }
 
     pub(crate) fn compile_statements(&mut self, stmts: Vec<Statement>) {
@@ -96,7 +99,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn compile_statement(&mut self, stmt: Statement) {
+    pub(crate) fn compile_statement<'a>(&'a mut self, stmt: Statement) {
         match stmt {
             Statement::Variable(variable) => self.compile_variable(variable),
             Statement::Expression(expression) => {
@@ -105,7 +108,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::If(_) => todo!(),
             Statement::Return(_) => todo!(),
             Statement::FuncDef(func_def) => {
-                self.build_func_def(func_def);
+                self.build_func_def(func_def.clone());
             }
             Statement::FuncDecl(func_decl) => {
                 self.build_func_decl(func_decl);

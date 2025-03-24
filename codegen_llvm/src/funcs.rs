@@ -7,6 +7,7 @@ use inkwell::types::FunctionType;
 use inkwell::values::{AnyValueEnum, FunctionValue};
 use inkwell::{llvm_sys::LLVMType, types::AsTypeRef};
 use std::process::exit;
+use utils::generate_random_hex::generate_random_hex;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_func_params(
@@ -73,7 +74,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.module.add_function(&func_decl.name, fn_type, Some(func_linkage))
     }
 
-    pub(crate) fn build_func_def(&mut self, func_def: FuncDef) {
+    pub(crate) fn build_func_def(&mut self, mut func_def: FuncDef) -> FunctionValue {
+        if func_def.name == "main" && self.entry_point.is_some() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(String::from("Multiple entry point not allowed.")),
+                location: None,
+            });
+            exit(1);
+        }
+
         let is_var_args = func_def.params.variadic.is_some();
         let mut param_types = self.build_func_params(
             func_def.name.clone(),
@@ -83,18 +93,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
 
         let return_type_token = func_def
-        .return_type
-        .unwrap_or(Token {
-            kind: TokenKind::Void,
-            span: Span::default(),
-        })
-        .kind;
-    
-        let return_type = self.build_type(
-            return_type_token.clone(),
-            func_def.loc.clone(),
-            func_def.span.end,
-        );
+            .return_type
+            .unwrap_or(Token {
+                kind: TokenKind::Void,
+                span: Span::default(),
+            })
+            .kind;
+
+        let return_type = self.build_type(return_type_token.clone(), func_def.loc.clone(), func_def.span.end);
 
         let fn_type = unsafe {
             FunctionType::new(LLVMFunctionType(
@@ -105,6 +111,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
+        let mut is_main = false;
+        if func_def.name == "main" {
+            func_def.name = generate_random_hex();
+            is_main = true;
+        }
+
         let func_linkage = self.build_linkage(func_def.vis_type);
         let func = self.module.add_function(&func_def.name, fn_type, Some(func_linkage));
 
@@ -113,26 +125,29 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let mut build_return = false;
         for expr in func_def.body.exprs {
-            match expr  {
+            match expr {
                 ast::ast::Statement::Return(return_statement) => {
                     build_return = true;
                     let expr = self.build_expr(return_statement.argument);
                     self.build_return(expr);
-                },
+                }
                 _ => self.compile_statement(expr),
             }
-        }   
+        }
 
         if return_type_token == TokenKind::Void {
             if build_return {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!("The function '{}' is not allowed to have a return statement.", func_def.name)),
+                    kind: DiagKind::Custom(format!(
+                        "The function '{}' is not allowed to have a return statement.",
+                        func_def.name
+                    )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
                         line: func_def.loc.line,
                         column: func_def.loc.column,
-                        length: func_def.span.end
+                        length: func_def.span.end,
                     }),
                 });
                 exit(1);
@@ -142,37 +157,36 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         } else if !build_return {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!("The function '{}' is missing a return statement.", func_def.name)),
+                kind: DiagKind::Custom(format!(
+                    "The function '{}' is missing a return statement.",
+                    func_def.name
+                )),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
                     line: func_def.loc.line,
                     column: func_def.loc.column,
-                    length: func_def.span.end
+                    length: func_def.span.end,
                 }),
             });
             exit(1);
         }
 
         func.verify(true);
+
+        if is_main {
+            self.entry_point = Some(func);
+        }
+
+        return func;
     }
 
     pub(crate) fn build_return(&self, value: AnyValueEnum) {
         let result = match value {
-            AnyValueEnum::IntValue(int_value) => {
-                self.builder.build_return(Some(&int_value))
-            },
-            AnyValueEnum::FloatValue(float_value) => {
-                self.builder.build_return(Some(&float_value))
-            },
-            AnyValueEnum::PointerValue(pointer_value) => {
-                self.builder.build_return(Some(&pointer_value))
-            },
-            AnyValueEnum::VectorValue(vector_value) => {
-                self.builder.build_return(Some(&vector_value))
-            },
-            AnyValueEnum::ArrayValue(array_value) => {
-                self.builder.build_return(Some(&array_value))
-            },
+            AnyValueEnum::IntValue(int_value) => self.builder.build_return(Some(&int_value)),
+            AnyValueEnum::FloatValue(float_value) => self.builder.build_return(Some(&float_value)),
+            AnyValueEnum::PointerValue(pointer_value) => self.builder.build_return(Some(&pointer_value)),
+            AnyValueEnum::VectorValue(vector_value) => self.builder.build_return(Some(&vector_value)),
+            AnyValueEnum::ArrayValue(array_value) => self.builder.build_return(Some(&array_value)),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -182,7 +196,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
         };
-        
+
         if let Err(err) = result {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

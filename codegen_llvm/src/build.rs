@@ -1,9 +1,15 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
+use ast::ast::FuncDef;
 use inkwell::OptimizationLevel;
 use inkwell::execution_engine::FunctionLookupError;
 use inkwell::execution_engine::JitFunction;
+use inkwell::llvm_sys::LLVMType;
+use inkwell::llvm_sys::core::LLVMFunctionType;
+use inkwell::module::Linkage;
 use inkwell::passes::PassManager;
+use inkwell::types::AsTypeRef;
+use inkwell::types::FunctionType;
 use std::ffi::c_void;
 use std::path::Path;
 use std::process::exit;
@@ -25,6 +31,35 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             2 => OptimizationLevel::Default,
             3 => OptimizationLevel::Aggressive,
             _ => panic!(),
+        }
+    }
+
+    pub(crate) fn build_entry_point(&mut self) {
+        if let Some(main_func) = self.entry_point {
+            // wrap actual main_func as entry point
+            let return_type = self.context.i32_type();
+            let mut param_types: Vec<*mut LLVMType> = Vec::new();
+            let fn_type = unsafe {
+                FunctionType::new(LLVMFunctionType(
+                    return_type.as_type_ref(),
+                    param_types.as_mut_ptr(),
+                    param_types.len() as u32,
+                    0,
+                ))
+            };
+
+            let entry_point = self.module.add_function("main", fn_type, Some(Linkage::External));
+            let entry_block = self.context.append_basic_block(entry_point, "entry");
+            self.builder.position_at_end(entry_block);
+            self.builder.build_call(main_func, &[], "call_main").unwrap();
+            self.builder.build_return(Some(&return_type.const_int(0, false))).unwrap();
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::NoEntryPointDetected,
+                location: None,
+            });
+            exit(1);
         }
     }
 
