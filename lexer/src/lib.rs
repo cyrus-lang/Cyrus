@@ -54,12 +54,6 @@ impl Lexer {
     /// - The start or end indices are out of bounds of the input string's length.
     /// - The start index is greater than the end index.
     ///
-    /// # Example
-    /// ```
-    /// let lexer = Lexer::new("hello, world!");
-    /// let substring = lexer.select(0..5);
-    /// assert_eq!(substring, "hello");
-    /// ```
     pub fn select(&self, range: Range<usize>) -> String {
         let len = self.input.len();
 

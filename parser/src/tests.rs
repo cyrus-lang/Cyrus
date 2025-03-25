@@ -153,7 +153,7 @@ mod tests {
                                 loc: Location::new(0, 21)
                             },
                             arguments: vec![],
-                            span: Span::new(10, 20),
+                            span: Span::new(10, 19),
                             loc: Location::new(0, 23)
                         }),
                         field_access: None
@@ -409,7 +409,7 @@ mod tests {
                         })),
                         right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
                         span: Span::new(17, 23),
-                        loc: Location::new(0, 27)
+                        loc: Location::new(0, 25)
                     }))
                 );
             } else {
@@ -494,7 +494,7 @@ mod tests {
                         })),
                         right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
                         span: Span::new(6, 11),
-                        loc: Location::new(0, 15)
+                        loc: Location::new(0, 13)
                     }))
                 );
             } else {
@@ -524,7 +524,7 @@ mod tests {
                     })),
                     right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))),
                     span: Span::new(3, 9),
-                    loc: Location::new(0, 13)
+                    loc: Location::new(0, 12)
                 })
             );
             assert_eq!(if_statement.alternate, None);

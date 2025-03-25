@@ -624,15 +624,16 @@ impl<'a> Parser<'a> {
 
         let condition = self.parse_expression(Precedence::Lowest, None)?.0;
         if !self.current_token_is(TokenKind::LeftBrace) {
+            self.next_token();
             self.expect_current(TokenKind::Semicolon)?;
         }
 
         let mut increment: Option<Expression> = None;
-
         if !self.current_token_is(TokenKind::LeftBrace) {
             increment = Some(self.parse_expression(Precedence::Lowest, None)?.0);
+            self.next_token(); // consume increment token
         }
-
+        
         let body = self.parse_for_loop_body(start)?;
 
         Ok(Statement::For(For {

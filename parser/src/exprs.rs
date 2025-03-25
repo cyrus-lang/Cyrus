@@ -310,16 +310,15 @@ impl<'a> Parser<'a> {
     pub fn parse_func_call(&mut self, left: Expression, left_start: usize) -> Result<FuncCall, ParseError> {
         let arguments = self.parse_expression_series(TokenKind::RightParen)?;
         let start = self.current_token.span.start;
+        
         let expr = match left {
-            Expression::ModuleImport(module_import) => FuncCall {
-                func_name: module_import,
+            Expression::ModuleImport(module_import) => {
+                FuncCall {
+                func_name: module_import.clone(),
                 arguments: arguments.0,
-                span: Span {
-                    start: left_start,
-                    end: self.current_token.span.end,
-                },
+                span: module_import.span.clone(),
                 loc: self.current_location(),
-            },
+            }},
             Expression::Identifier(identifier) => FuncCall {
                 func_name: ModuleImport {
                     sub_modules: vec![],
