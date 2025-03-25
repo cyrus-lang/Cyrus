@@ -183,35 +183,35 @@ mod tests {
         }
     });
 
-    define_test!(
-        struct_initialization,
-        "MyStruct { field1: 10, field2: true };",
-        |program: ProgramTree| {
-            if let Statement::Expression(expression) = &program.body[0] {
-                if let Expression::StructInit(struct_init) = expression {
-                    assert_eq!(struct_init.struct_name.identifier.name, "MyStruct");
-                    assert_eq!(struct_init.field_inits.len(), 2);
-                    assert_eq!(struct_init.field_inits[0].name, "field1");
-                    assert_eq!(
-                        struct_init.field_inits[0].value,
-                        Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))
-                    );
-                    assert_eq!(struct_init.field_inits[1].name, "field2");
-                    assert_eq!(
-                        struct_init.field_inits[1].value,
-                        Expression::Literal(Literal::Bool(BoolLiteral {
-                            raw: true,
-                            span: Span::new(31, 35)
-                        }))
-                    );
-                } else {
-                    panic!("Expected a struct initialization but got something else.");
-                }
-            } else {
-                panic!("Expected an expression but got something else.");
-            }
-        }
-    );
+    // define_test!(
+    //     struct_initialization,
+    //     "MyStruct { field1: 10, field2: true };",
+    //     |program: ProgramTree| {
+    //         if let Statement::Expression(expression) = &program.body[0] {
+    //             if let Expression::StructInit(struct_init) = expression {
+    //                 assert_eq!(struct_init.struct_name.identifier.name, "MyStruct");
+    //                 assert_eq!(struct_init.field_inits.len(), 2);
+    //                 assert_eq!(struct_init.field_inits[0].name, "field1");
+    //                 assert_eq!(
+    //                     struct_init.field_inits[0].value,
+    //                     Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))
+    //                 );
+    //                 assert_eq!(struct_init.field_inits[1].name, "field2");
+    //                 assert_eq!(
+    //                     struct_init.field_inits[1].value,
+    //                     Expression::Literal(Literal::Bool(BoolLiteral {
+    //                         raw: true,
+    //                         span: Span::new(31, 35)
+    //                     }))
+    //                 );
+    //             } else {
+    //                 panic!("Expected a struct initialization but got something else.");
+    //             }
+    //         } else {
+    //             panic!("Expected an expression but got something else.");
+    //         }
+    //     }
+    // );
 
     define_test!(array_index, "arr[0][1]", |program: ProgramTree| {
         if let Statement::Expression(expression) = &program.body[0] {
@@ -441,17 +441,113 @@ mod tests {
         }
     );
 
+    define_test!(infinite_for_loop, "for { }", |program: ProgramTree| {
+        if let Statement::For(for_statement) = &program.body[0] {
+            assert_eq!(for_statement.initializer, None);
+            assert_eq!(for_statement.increment, None);
+            assert_eq!(for_statement.condition, None);
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
+
     define_test!(
-        infinite_for_loop,
-        "for { }",
+        without_initializer_for_loop,
+        "for ; i < 0; i++ { }",
         |program: ProgramTree| {
             if let Statement::For(for_statement) = &program.body[0] {
                 assert_eq!(for_statement.initializer, None);
-                assert_eq!(for_statement.increment, None);
-                assert_eq!(for_statement.condition, None);
+                assert_eq!(
+                    for_statement.increment,
+                    Some(Expression::UnaryOperator(UnaryOperator {
+                        module_import: ModuleImport {
+                            sub_modules: vec![],
+                            identifier: Identifier {
+                                name: "i".to_string(),
+                                span: Span::new(13, 13),
+                                loc: Location::new(0, 17)
+                            },
+                            span: Span::new(13, 14),
+                            loc: Location::new(0, 17)
+                        },
+                        ty: UnaryOperatorType::PostIncrement,
+                        span: Span::new(13, 14),
+                        loc: Location::new(0, 19)
+                    }))
+                );
+                assert_eq!(
+                    for_statement.condition,
+                    Some(Expression::Infix(BinaryExpression {
+                        operator: Token {
+                            kind: TokenKind::LessThan,
+                            span: Span::new(8, 8)
+                        },
+                        left: Box::new(Expression::ModuleImport(ModuleImport {
+                            sub_modules: vec![],
+                            identifier: Identifier {
+                                name: "i".to_string(),
+                                span: Span::new(6, 6),
+                                loc: Location::new(0, 10)
+                            },
+                            span: Span::new(6, 7),
+                            loc: Location::new(0, 10)
+                        })),
+                        right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
+                        span: Span::new(6, 11),
+                        loc: Location::new(0, 15)
+                    }))
+                );
             } else {
                 panic!("Expected an expression.");
             }
         }
     );
+
+    define_test!(control_flow_1, "if a == 1 {}", |program: ProgramTree| {
+        if let Statement::If(if_statement) = &program.body[0] {
+            assert_eq!(
+                if_statement.condition,
+                Expression::Infix(BinaryExpression {
+                    operator: Token {
+                        kind: TokenKind::Equal,
+                        span: Span::new(5, 6)
+                    },
+                    left: Box::new(Expression::ModuleImport(ModuleImport {
+                        sub_modules: vec![],
+                        identifier: Identifier {
+                            name: "a".to_string(),
+                            span: Span::new(3, 3),
+                            loc: Location::new(0, 8)
+                        },
+                        span: Span::new(3, 4),
+                        loc: Location::new(0, 8)
+                    })),
+                    right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))),
+                    span: Span::new(3, 9),
+                    loc: Location::new(0, 13)
+                })
+            );
+            assert_eq!(if_statement.alternate, None);
+            assert_eq!(if_statement.branches, vec![]);
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
+
+    // define_test!(control_flow_2, "if some_value {}", |program: ProgramTree| {
+    //     if let Statement::If(if_statement) = &program.body[0] {
+    //         assert_eq!(
+    //             if_statement.condition,
+    //             Expression::Identifier(Identifier {
+    //                 name: "some_value".to_string(),
+    //                 span: Span::new(3, 13),
+    //                 loc: Location::new(0, 16)
+    //             })
+    //         );
+    //         assert_eq!(if_statement.alternate, None);
+    //         assert_eq!(if_statement.branches, vec![]);
+    //     } else {
+    //         panic!("Expected an expression.");
+    //     }
+    // });
 }

@@ -1,15 +1,15 @@
 use crate::ParseError;
 use crate::Parser;
-use crate::precedences::*;
+use crate::prec::*;
 use ast::ast::*;
 use ast::token::*;
 use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
-    pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParseError> {
+    pub fn parse_expression(&mut self, precedence: Precedence, until: Option<TokenKind>) -> Result<(Expression, Span), ParseError> {
         let mut left_start = self.current_token.span.start;
-        let mut left = self.parse_prefix_expression()?;
+        let mut left = self.parse_prefix_expression(until)?;
 
         if self.current_token_is(TokenKind::As) || self.peek_token_is(TokenKind::As) {
             return self.parse_cast_as_expression(left, left_start);
@@ -39,21 +39,10 @@ impl<'a> Parser<'a> {
         }
 
         let end = self.current_token.span.end;
-
-        // exclude some tokens of being consumed
-        if !(self.current_token_is(TokenKind::Semicolon)
-            || self.current_token_is(TokenKind::LeftBrace)
-            || self.current_token_is(TokenKind::RightBracket)
-            || self.current_token_is(TokenKind::Comma)
-            || self.current_token_is(TokenKind::RightParen))
-        {
-            self.next_token();
-        }
-
         Ok((left, Span { start: left_start, end }))
     }
 
-    pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_prefix_expression(&mut self, until: Option<TokenKind>) -> Result<Expression, ParseError> {
         let span: Span = self.current_token.span.clone();
 
         let expr = match &self.current_token.clone().kind {
@@ -62,7 +51,7 @@ impl<'a> Parser<'a> {
 
                 if self.peek_token_is(TokenKind::Dot) {
                     self.next_token();
-                    return self.parse_field_access_or_method_call(Box::new(Expression::ModuleImport(module_import)));
+                    self.parse_field_access_or_method_call(Box::new(Expression::ModuleImport(module_import)))?
                 } else if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
@@ -91,20 +80,27 @@ impl<'a> Parser<'a> {
                     } else {
                         Expression::ArrayIndex(array_index)
                     }
-                } else if self.peek_token_is(TokenKind::LeftBrace) {
-                    self.next_token(); // consume struct_name
-                    self.parse_struct_init(module_import)?
-                } else {
-                    Expression::ModuleImport(module_import)
+                }
+                else {
+                    if let Some(token_kind) = until {
+                        if self.peek_token_is(TokenKind::LeftBrace) && !self.peek_token_is(token_kind) {
+                            self.next_token(); // consume struct_name
+                            self.parse_struct_init(module_import)?
+                        } else {
+                            Expression::ModuleImport(module_import)
+                        }
+                    } else {
+                        Expression::ModuleImport(module_import)
+                    }
                 }
             }
             TokenKind::Ampersand => {
                 self.next_token();
-                Expression::AddressOf(Box::new(self.parse_prefix_expression()?))
+                Expression::AddressOf(Box::new(self.parse_prefix_expression(None)?))
             }
             TokenKind::Asterisk => {
                 self.next_token();
-                Expression::Dereference(Box::new(self.parse_prefix_expression()?))
+                Expression::Dereference(Box::new(self.parse_prefix_expression(None)?))
             }
             TokenKind::Null => Expression::Literal(Literal::Null),
             token_kind @ TokenKind::Increment | token_kind @ TokenKind::Decrement => {
@@ -164,11 +160,8 @@ impl<'a> Parser<'a> {
             TokenKind::Minus | TokenKind::Bang => {
                 let start = self.current_token.span.start;
                 let prefix_operator = self.current_token.clone();
-
                 self.next_token(); // consume the prefix operator
-
-                let (expr, span) = self.parse_expression(Precedence::Prefix)?;
-
+                let (expr, span) = self.parse_expression(Precedence::Prefix, None)?;
                 Expression::Prefix(UnaryExpression {
                     operator: prefix_operator,
                     operand: Box::new(expr),
@@ -178,7 +171,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LeftParen => {
                 self.next_token();
-                let expr = self.parse_expression(Precedence::Lowest)?.0;
+                let expr = self.parse_expression(Precedence::Lowest, None)?.0;
                 self.expect_peek(TokenKind::RightParen)?;
                 expr
             }
@@ -224,7 +217,7 @@ impl<'a> Parser<'a> {
                 let precedence = token_precedence_of(operator.kind.clone());
                 self.next_token(); // consume the operator
 
-                let (right, span) = self.parse_expression(precedence).ok()?;
+                let (right, span) = self.parse_expression(precedence, None).ok()?;
 
                 Some(Ok(Expression::Infix(BinaryExpression {
                     operator,
@@ -242,39 +235,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parses a series of expressions terminated by a specified token.
-    ///
-    /// This function collects a series of comma-separated expressions and ensures that the series
-    /// ends with the specified terminating token. It also handles empty expression series and
-    /// trailing commas before the end token.
-    ///
-    /// # Parameters
-    /// - `end`: The `TokenKind` that signifies the end of the expression series (e.g., `RightParen`, `RightBracket`).
-    ///
-    /// # Returns
-    /// - `Ok((Vec<Expression>, Span))`:
-    ///   - A vector of parsed expressions.
-    ///   - A `Span` indicating the start and end positions of the entire series.
-    /// - `Err(ParseError)`: If the series is not properly terminated or contains syntax errors.
-    ///
-    /// # Behavior
-    /// - If the series is empty (i.e., immediately followed by the `end` token), it returns an empty vector and the corresponding span.
-    /// - Parses each expression in the series, separated by commas (`TokenKind::Comma`).
-    /// - Allows trailing commas before the terminating token.
-    /// - Advances the lexer as it consumes tokens for expressions, commas, and the terminating token.
-    ///
-    /// # Errors
-    /// - Returns an error if the terminating token is missing or mismatched.
-    /// - Returns an error if there are syntax issues while parsing individual expressions.
-    ///
     pub fn parse_expression_series(&mut self, end: TokenKind) -> Result<(Vec<Expression>, Span), ParseError> {
         let start = self.current_token.span.start;
         let mut series: Vec<Expression> = Vec::new();
 
-        // Detect empty series of expressions
+        // detect empty series of expressions
         if self.peek_token_is(end.clone()) {
             self.next_token();
-
             return Ok((
                 series,
                 Span {
@@ -283,29 +250,17 @@ impl<'a> Parser<'a> {
                 },
             ));
         }
-        self.next_token(); // consume left brace
+        self.next_token();
 
-        loop {
-            let expr = self.parse_expression(Precedence::Lowest)?.0;
-            series.push(expr);
+        series.push(self.parse_expression(Precedence::Lowest, None)?.0);
 
-            if !self.current_token_is(end.clone()) {
-                self.expect_current(TokenKind::Comma)?;
-            } else {
-                break;
-            }
+        while self.peek_token_is(TokenKind::Comma) {
+            self.next_token();
+            self.next_token();
+            series.push(self.parse_expression(Precedence::Lowest, None)?.0);
         }
 
-        if !(self.current_token_is(end.clone()) || self.current_token_is(TokenKind::EOF)) {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), end),
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                verbose: None,
-                caret: true,
-            });
-        }
+        self.expect_peek(end)?;
 
         Ok((
             series,
@@ -398,6 +353,7 @@ impl<'a> Parser<'a> {
         &mut self,
         object_expr: Box<Expression>,
     ) -> Result<Expression, ParseError> {
+        self.next_token(); // consume identifier
         let start = self.current_token.span.start.clone();
         let mut chains: Vec<FieldAccessOrMethodCall> = Vec::new();
 
@@ -505,11 +461,7 @@ impl<'a> Parser<'a> {
 
             return Ok(Expression::FieldAccessOrMethodCall(chains));
         } else {
-            self.next_token();
             let func_call = self.parse_func_call(*object_expr, start)?;
-            if self.current_token_is(TokenKind::RightParen) {
-                self.next_token();
-            }
             Ok(Expression::FieldAccessOrMethodCall(vec![FieldAccessOrMethodCall {
                 method_call: Some(func_call),
                 field_access: None,
@@ -550,7 +502,7 @@ impl<'a> Parser<'a> {
             };
             self.expect_current(TokenKind::Colon)?;
 
-            let value = self.parse_expression(Precedence::Lowest)?.0;
+            let value = self.parse_expression(Precedence::Lowest, None)?.0;
             if !(self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace)) {
                 self.next_token(); // consume expr
             }
@@ -604,7 +556,7 @@ impl<'a> Parser<'a> {
     pub fn parse_assignment(&mut self, module_import: ModuleImport) -> Result<Expression, ParseError> {
         let start: usize = self.current_token.span.start;
         self.expect_current(TokenKind::Assign)?;
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
+        let expr = self.parse_expression(Precedence::Lowest, None)?.0;
         let end = self.current_token.span.end;
         Ok(Expression::Assignment(Box::new(Assignment {
             identifier: module_import,
@@ -616,7 +568,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_array_index_assign(&mut self, array_index: ArrayIndex) -> Result<Expression, ParseError> {
         self.expect_current(TokenKind::Assign)?;
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
+        let expr = self.parse_expression(Precedence::Lowest, None)?.0;
         Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
             module_import: array_index.module_import,
             dimensions: array_index.dimensions,

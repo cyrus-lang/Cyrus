@@ -2,7 +2,6 @@ use crate::ParseError;
 use crate::Parser;
 use ast::ast::*;
 use ast::token::*;
-use std::vec;
 use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 

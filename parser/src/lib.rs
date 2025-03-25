@@ -6,9 +6,9 @@ use utils::compile_time_errors::parser_errors::ParserErrorType;
 use utils::fs::read_file;
 
 mod common;
-mod expressions;
-mod precedences;
-mod statements;
+mod exprs;
+mod prec;
+mod stmts;
 mod tests;
 
 pub type ParseError = CompileTimeError<ParserErrorType>;
