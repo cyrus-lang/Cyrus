@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install -y software-properties-common llvm-19 llvm-19-dev clang zlib1g zlib1g-dev
+          sudo apt install -y software-properties-common llvm-19 llvm-19-dev clang zlib1g zlib1g-dev polly
 
       - name: Build 
         run: cargo build --verbose --release
