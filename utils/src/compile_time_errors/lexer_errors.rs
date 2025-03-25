@@ -1,5 +1,4 @@
 use super::errors::CompileTypeErrorType;
-use crate::compile_time_errors::errors::ERROR_PIPE_STR;
 use core::fmt;
 
 #[derive(Debug)]
@@ -36,21 +35,9 @@ impl CompileTypeErrorType for LexicalErrorType {
 }
 
 pub fn lexer_invalid_char_error(file_name: String, line: usize, column: usize, ch: char) {
-    println!("| Error: Lexination Failed {}", ERROR_PIPE_STR);
-    println!("| Path: {}", file_name);
-    println!("| At: {}:{}\n", line, column);
-    println!(
-        "\tLexical error at line {}, column {} because of invalid char '{}'.\n",
-        line, column, ch
-    );
+    eprintln!("Lexer:{}:{}:{}: Invalid char '{}' detected.", file_name, line, column, ch);
 }
 
 pub fn lexer_unknown_char_error(file_name: String, line: usize, column: usize) {
-    println!("| Error: Lexination Failed {}", ERROR_PIPE_STR);
-    println!("| Path: {}", file_name);
-    println!("| At: {}:{}\n", line, column);
-    println!(
-        "\tLexical error at line {}, column {} because of invalid char.\n",
-        line, column
-    );
+    eprintln!("Lexer:{}:{}:{}: Unknown char detected.", file_name, line, column);
 }

@@ -3,7 +3,6 @@ use ast::token::*;
 use lexer::*;
 use utils::compile_time_errors::errors::*;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
-use utils::compiler_error;
 use utils::fs::read_file;
 
 mod common;
@@ -35,7 +34,7 @@ pub fn parse_program(file_path: String) -> (ProgramTree, String) {
             if let Node::ProgramTree(program) = result {
                 program
             } else {
-                compiler_error!("Expected a program given as input to the compiler but got unknown.", file_path);
+                panic!("Expected a program given as input to the compiler but got unknown.");
             }
         }
         Err(errors) => {

@@ -47,13 +47,13 @@ impl fmt::Display for DiagKind {
             DiagKind::NoEntryPointDetected => "No entry point detected.",
             DiagKind::NonInternalEntryPoint => "Entry pont must be defined internally.",
             DiagKind::TypeAnnotationRequired(param, func) => &format!(
-                        "Type annotation required for parameter '{}' in function '{}'.",
-                        param, func
-                    ),
+                "Type annotation required for parameter '{}' in function '{}'.",
+                param, func
+            ),
             DiagKind::InfixNonBasic => "Cannot build infix expression for non-basic value.",
             DiagKind::InvalidTokenAsArrayCapacity => "Invalid token given as array capacity.",
             DiagKind::IdentifierNotDefined(value) => &format!("The '{}' not defined in this scope.", value),
-                    };
+        };
         write!(f, "{}", msg)
     }
 }

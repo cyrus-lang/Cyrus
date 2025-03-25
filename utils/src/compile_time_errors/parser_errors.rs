@@ -39,17 +39,17 @@ impl CompileTypeErrorType for ParserErrorType {
     fn context(&self) -> String {
         match self {
             ParserErrorType::UnexpectedToken(current, expected) => {
-                format!("Expected token '{}' but got '{}'", expected, current)
+                format!("Expected token '{}' but got '{}'.", expected, current)
             }
             ParserErrorType::InvalidToken(token_kind) => {
-                format!("Unexpected token: '{}'", token_kind)
+                format!("Unexpected token: '{}'.", token_kind)
             }
             ParserErrorType::InvalidTypeToken(token_kind) => {
                 format!(
-                    "Expected one of the following type tokens: \n
-                    'i8', 'i16', 'i32', 'i64', 'i128', 'u8', 'u16', 'u32', 'u64', 'u128', \n
-                    'float', 'double', 'size_t', 'char', 'bool', 'void', 'string', '*', '&', or an identifier \n
-                    (e.g., user-defined type), but got '{}'",
+                    "Expected one of the following type tokens:\n
+                    'i8', 'i16', 'i32', 'i64', 'i128', 'u8', 'u16', 'u32', 'u64', 'u128',\n
+                    'float', 'double', 'size_t', 'char', 'bool', 'void', 'string', or an identifier\n
+                    (e.g., user-defined type), but got '{}'.",
                     token_kind
                 )
             }
@@ -63,7 +63,7 @@ impl CompileTypeErrorType for ParserErrorType {
             ParserErrorType::IncompleteConditionalForLoop => {
                 format!(
                     "Defined a conditional for loop with incomplete condition. \n
-                    Mind to add a condition to current for loop or change it into unconditional for loop."
+                    Consider to add a condition to current for loop or change it into unconditional for loop."
                 )
             }
         }

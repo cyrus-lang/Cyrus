@@ -64,29 +64,3 @@ impl<ErrorType: CompileTypeErrorType> fmt::Display for CompileTimeError<ErrorTyp
         write!(f, "")
     }
 }
-
-pub fn compiled_successfully() {
-    colorize_println("Compilation complete.", colorized::Colors::GreenFg);
-}
-
-pub fn compilation_failed_message(file_name: String) {
-    colorize_print("error", colorized::Colors::RedFg);
-    println!(": compiling file `{}` failed.", file_name);
-}
-
-#[macro_export]
-macro_rules! compiler_error {
-    ($s:expr, $file_name:expr) => {{
-        println!("{}\n", $s);
-        compilation_failed_message($file_name);
-        std::process::exit(1);
-    }};
-}
-
-#[macro_export]
-macro_rules! lexer_error {
-    ($s:expr) => {{
-        println!("(lexer) cyrus: {}", $s);
-        std::process::exit(1);
-    }};
-}

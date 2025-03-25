@@ -29,7 +29,7 @@ impl<'a> Parser<'a> {
                 }
             }
             TokenKind::Return => self.parse_return(),
-            TokenKind::Hashtag => self.parse_var_decl(),
+            TokenKind::Hashtag => self.parse_variable(),
             TokenKind::For => self.parse_for_loop(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
@@ -599,8 +599,10 @@ impl<'a> Parser<'a> {
         }
 
         let mut initializer: Option<Variable> = None;
-        if let Statement::Variable(var) = self.parse_var_decl()? {
-            initializer = Some(var);
+        if !self.current_token_is(TokenKind::Semicolon) {
+            if let Statement::Variable(var) = self.parse_variable()? {
+                initializer = Some(var);
+            }
         }
         self.expect_current(TokenKind::Semicolon)?;
 
@@ -621,7 +623,9 @@ impl<'a> Parser<'a> {
         }
 
         let condition = self.parse_expression(Precedence::Lowest)?.0;
-        self.expect_current(TokenKind::Semicolon)?;
+        if !self.current_token_is(TokenKind::LeftBrace) {
+            self.expect_current(TokenKind::Semicolon)?;
+        }
 
         let mut increment: Option<Expression> = None;
 
@@ -644,7 +648,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_var_decl(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_variable(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
         self.next_token(); // consume sharp token
 
@@ -699,27 +703,11 @@ impl<'a> Parser<'a> {
         }
         self.expect_current(TokenKind::Assign)?;
 
-        // ANCHOR
         let (expr, span) = self.parse_expression(Precedence::Lowest)?;
 
-        // NOTE
-        // This line here is potential to raise some serious problems
-        // in parsing process. But now i don't have any idea that how we can fix it.
-        // The reason is that some expressions need consume last token (before semicolon) and some does not.
         if self.peek_token_is(TokenKind::Semicolon) {
             self.next_token();
         }
-
-        // if !self.current_token_is(TokenKind::Semicolon) {
-        //     return Err(CompileTimeError {
-        //         location: self.current_location(),
-        //         etype: ParserErrorType::MissingSemicolon,
-        //         file_name: Some(self.lexer.file_name.clone()),
-        //         code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-        //         verbose: None,
-        //         caret: true,
-        //     });
-        // }
 
         Ok(Statement::Variable(Variable {
             name,

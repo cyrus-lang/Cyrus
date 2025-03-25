@@ -356,4 +356,102 @@ mod tests {
             panic!("Expected an expression.");
         }
     });
+
+    define_test!(
+        complete_for_loop,
+        "for #i: i32 = 0; i < 10; i++ { }",
+        |program: ProgramTree| {
+            if let Statement::For(for_statement) = &program.body[0] {
+                assert_eq!(
+                    for_statement.initializer,
+                    Some(Variable {
+                        name: "i".to_string(),
+                        ty: Some(TokenKind::I32),
+                        expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
+                        span: Span::new(4, 15),
+                        loc: Location::new(0, 19)
+                    })
+                );
+                assert_eq!(
+                    for_statement.increment,
+                    Some(Expression::UnaryOperator(UnaryOperator {
+                        module_import: ModuleImport {
+                            sub_modules: vec![],
+                            identifier: Identifier {
+                                name: "i".to_string(),
+                                span: Span::new(25, 25),
+                                loc: Location::new(0, 29)
+                            },
+                            span: Span::new(25, 26),
+                            loc: Location::new(0, 29)
+                        },
+                        ty: UnaryOperatorType::PostIncrement,
+                        span: Span::new(25, 26),
+                        loc: Location::new(0, 31)
+                    }))
+                );
+                assert_eq!(
+                    for_statement.condition,
+                    Some(Expression::Infix(BinaryExpression {
+                        operator: Token {
+                            kind: TokenKind::LessThan,
+                            span: Span::new(19, 19)
+                        },
+                        left: Box::new(Expression::ModuleImport(ModuleImport {
+                            sub_modules: vec![],
+                            identifier: Identifier {
+                                name: "i".to_string(),
+                                span: Span::new(17, 17),
+                                loc: Location::new(0, 21)
+                            },
+                            span: Span::new(17, 18),
+                            loc: Location::new(0, 21)
+                        })),
+                        right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
+                        span: Span::new(17, 23),
+                        loc: Location::new(0, 27)
+                    }))
+                );
+            } else {
+                panic!("Expected an expression.");
+            }
+        }
+    );
+
+    define_test!(
+        only_initializer_for_loop,
+        "for #i: i32 = 0; { }",
+        |program: ProgramTree| {
+            if let Statement::For(for_statement) = &program.body[0] {
+                assert_eq!(
+                    for_statement.initializer,
+                    Some(Variable {
+                        name: "i".to_string(),
+                        ty: Some(TokenKind::I32),
+                        expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
+                        span: Span::new(4, 15),
+                        loc: Location::new(0, 19)
+                    })
+                );
+                assert_eq!(for_statement.increment, None);
+                assert_eq!(for_statement.condition, None);
+            } else {
+                panic!("Expected an expression.");
+            }
+        }
+    );
+
+    define_test!(
+        infinite_for_loop,
+        "for { }",
+        |program: ProgramTree| {
+            if let Statement::For(for_statement) = &program.body[0] {
+                assert_eq!(for_statement.initializer, None);
+                assert_eq!(for_statement.increment, None);
+                assert_eq!(for_statement.condition, None);
+            } else {
+                panic!("Expected an expression.");
+            }
+        }
+    );
 }
