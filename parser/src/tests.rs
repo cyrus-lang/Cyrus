@@ -122,10 +122,10 @@ mod tests {
         }
     });
 
-    define_test!(array_literal, "[1, 2, 3]", |program: ProgramTree| {
+    define_test!(array_literal, "[1, 2, 3, func_call()]", |program: ProgramTree| {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::Array(array) = expression {
-                assert_eq!(array.elements.len(), 3);
+                assert_eq!(array.elements.len(), 4);
                 assert_eq!(
                     array.elements[0],
                     Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))
@@ -137,6 +137,27 @@ mod tests {
                 assert_eq!(
                     array.elements[2],
                     Expression::Literal(Literal::Integer(IntegerLiteral::I32(3)))
+                );
+                assert_eq!(
+                    array.elements[3],
+                    Expression::FieldAccessOrMethodCall(vec![FieldAccessOrMethodCall {
+                        method_call: Some(FuncCall {
+                            func_name: ModuleImport {
+                                sub_modules: vec![],
+                                identifier: Identifier {
+                                    name: "func_call".to_string(),
+                                    span: Span::new(10, 18),
+                                    loc: Location::new(0, 21)
+                                },
+                                span: Span::new(10, 19),
+                                loc: Location::new(0, 21)
+                            },
+                            arguments: vec![],
+                            span: Span::new(10, 20),
+                            loc: Location::new(0, 23)
+                        }),
+                        field_access: None
+                    }])
                 );
             } else {
                 panic!("Expected an array literal but got something else.");
@@ -227,8 +248,8 @@ mod tests {
                     module_import.sub_modules[0],
                     ModulePath::SubModule(Identifier {
                         name: "object".to_string(),
-                        span: Span { start: 0, end: 5 },
-                        loc: Location { line: 0, column: 8 },
+                        span: Span::new(0, 5),
+                        loc: Location::new(0, 8),
                     })
                 );
                 assert_eq!(module_import.identifier.name, "field");
@@ -259,17 +280,18 @@ mod tests {
                         method_call.func_name.identifier,
                         Identifier {
                             name: "method".to_string(),
-                            span: Span { start: 7, end: 12 },
+                            span: Span::new(7, 12),
                             loc: Location { line: 0, column: 14 }
                         }
                     );
-                    assert_eq!(method_call.func_name.sub_modules, vec![
-                        ModulePath::SubModule(Identifier {
+                    assert_eq!(
+                        method_call.func_name.sub_modules,
+                        vec![ModulePath::SubModule(Identifier {
                             name: "object".to_string(),
-                            span: Span { start: 0, end: 5 },
+                            span: Span::new(0, 5),
                             loc: Location { line: 0, column: 8 }
-                        })
-                    ])
+                        })]
+                    )
                 } else {
                     panic!("Expected a field access or method call but got something else.");
                 }
@@ -278,4 +300,60 @@ mod tests {
             }
         }
     );
+
+    define_test!(cast_as, "10 as float", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::CastAs(cast_as) = expression {
+                assert_eq!(
+                    *cast_as.expr,
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))
+                );
+                assert_eq!(cast_as.type_token, TokenKind::Float);
+            } else {
+                panic!("Expected a cast as but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
+
+    define_test!(pre_increment, "++my_var", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::UnaryOperator(unary_operator) = expression {
+                assert_eq!(
+                    unary_operator.module_import.identifier,
+                    Identifier {
+                        name: "my_var".to_string(),
+                        span: Span::new(2, 7),
+                        loc: Location::new(0, 9)
+                    }
+                );
+                assert_eq!(unary_operator.ty, UnaryOperatorType::PreIncrement);
+            } else {
+                panic!("Expected a unary operator expression.");
+            }
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
+
+    define_test!(post_decrement, "my_var--", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::UnaryOperator(unary_operator) = expression {
+                assert_eq!(
+                    unary_operator.module_import.identifier,
+                    Identifier {
+                        name: "my_var".to_string(),
+                        span: Span { start: 0, end: 5 },
+                        loc: Location { line: 0, column: 9 }
+                    }
+                );
+                assert_eq!(unary_operator.ty, UnaryOperatorType::PostDecrement);
+            } else {
+                panic!("Expected a unary operator expression.");
+            }
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
 }

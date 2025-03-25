@@ -205,19 +205,15 @@ pub struct Span {
     pub end: usize,
 }
 
-impl Default for Span {
-    fn default() -> Self {
-        Self { start: Default::default(), end: Default::default() }
-    }
-}
-
 impl Span {
     pub fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
+}
 
-    pub fn new_empty_span() -> Self {
-        Self { start: 0, end: 0 }
+impl Default for Span {
+    fn default() -> Self {
+        Self { start: Default::default(), end: Default::default() }
     }
 }
 
@@ -225,6 +221,12 @@ impl Span {
 pub struct Location {
     pub line: usize,
     pub column: usize,
+}
+
+impl Location {
+    pub fn new(line: usize, column: usize) -> Self {
+        Self { line, column }
+    }
 }
 
 impl Default for Location {
