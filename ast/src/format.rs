@@ -229,7 +229,13 @@ impl fmt::Display for ProgramTree {
 
 impl fmt::Display for ModuleImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!();
-        // FIXME
+        for module_import in self.sub_modules.clone() {
+            match module_import {
+                ModulePath::Wildcard => write!(f, "*")?,
+                ModulePath::SubModule(identifier) => write!(f, "{}.", identifier.name)?,
+            }
+        }
+        write!(f, "{}", self.identifier.name)?;
+        Ok(())
     }
 }

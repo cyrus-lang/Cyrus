@@ -243,6 +243,84 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_module_import(&mut self) -> Result<ModuleImport, ParseError> {
+        let start = self.current_token.span.start;
+        let mut sub_modules: Vec<ModulePath> = match self.current_token.kind.clone() {
+            TokenKind::Identifier { name } => vec![ModulePath::SubModule(Identifier {
+                name,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end - 1,
+                },
+                loc: self.current_location(),
+            })],
+            _ => {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::ExpectedIdentifier,
+                    file_name: Some(self.lexer.file_name.clone()),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                    verbose: None,
+                    caret: true,
+                });
+            }
+        };
+
+        while self.peek_token_is(TokenKind::Dot) {
+            let start = self.current_token.span.end + 1;
+            self.next_token();
+
+            match self.peek_token.kind.clone() {
+                TokenKind::Identifier { name } => {
+                    sub_modules.push(ModulePath::SubModule(Identifier {
+                        name,
+                        span: Span {
+                            start,
+                            end: self.peek_token.span.end - 1,
+                        },
+                        loc: self.current_location(),
+                    }));
+                }
+                _ => {
+                    break;
+                }
+            }
+
+            self.next_token();
+        }
+
+        if sub_modules.len() == 1 {
+            if let ModulePath::SubModule(identifier) = sub_modules[0].clone() {
+                Ok(ModuleImport {
+                    identifier,
+                    sub_modules: vec![],
+                    span: Span {
+                        start,
+                        end: self.current_token.span.end,
+                    },
+                    loc: self.current_location(),
+                })
+            } else {
+                unreachable!();
+            }
+        } else {
+            if let ModulePath::SubModule(identifier) = sub_modules.last().unwrap().clone() {
+                sub_modules.pop();
+                Ok(ModuleImport {
+                    identifier,
+                    sub_modules,
+                    span: Span {
+                        start,
+                        end: self.current_token.span.end,
+                    },
+                    loc: self.current_location(),
+                })
+            } else {
+                unreachable!();
+            }
+        }
+    }
+
     pub fn parse_module_paths(&mut self, parse_start: usize) -> Result<Vec<ModulePath>, ParseError> {
         let mut module_paths: Vec<ModulePath> = vec![];
 

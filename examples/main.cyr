@@ -1,6 +1,0 @@
-import std.io;
-import std.io.*;
-
-fn main() {
-    #a = ptr.name;
-}

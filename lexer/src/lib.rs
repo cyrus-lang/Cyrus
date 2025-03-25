@@ -171,6 +171,7 @@ impl Lexer {
             '}' => TokenKind::RightBrace,
             '[' => TokenKind::LeftBracket,
             ']' => TokenKind::RightBracket,
+            ':' => TokenKind::Colon,
             ',' => TokenKind::Comma,
             '.' => {
                 self.read_char();

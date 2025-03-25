@@ -1,6 +1,0 @@
-import std.io;
-import std.io { println, readln };
-
-fn main() {
-    std.io.println("Hello, world!");
-}

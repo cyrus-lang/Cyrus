@@ -79,7 +79,8 @@ impl<'a> Parser<'a> {
                         span,
                         loc: self.current_location(),
                     })
-                } else if self.current_token_is(TokenKind::Assign) {
+                } else if self.peek_token_is(TokenKind::Assign) {
+                    self.next_token(); // consume identifier
                     self.parse_assignment(module_import)?
                 } else if self.peek_token_is(TokenKind::LeftBracket) {
                     self.next_token(); // consume identifier
@@ -602,13 +603,9 @@ impl<'a> Parser<'a> {
 
     pub fn parse_assignment(&mut self, module_import: ModuleImport) -> Result<Expression, ParseError> {
         let start: usize = self.current_token.span.start;
-
-        self.next_token(); // consume assign
-
+        self.expect_current(TokenKind::Assign)?;
         let expr = self.parse_expression(Precedence::Lowest)?.0;
-
         let end = self.current_token.span.end;
-
         Ok(Expression::Assignment(Box::new(Assignment {
             identifier: module_import,
             expr,
@@ -619,9 +616,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_array_index_assign(&mut self, array_index: ArrayIndex) -> Result<Expression, ParseError> {
         self.expect_current(TokenKind::Assign)?;
-
         let expr = self.parse_expression(Precedence::Lowest)?.0;
-
         Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
             module_import: array_index.module_import,
             dimensions: array_index.dimensions,

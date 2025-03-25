@@ -222,7 +222,7 @@ mod tests {
                 method_call: Some(FuncCall {
                     func_name: ModuleImport {
                         sub_modules: vec![ModulePath::SubModule(Identifier {
-                            name: String::from("my_pkg"),
+                            name: String::from("my_module"),
                             span: Span::default(),
                             loc: Location::default(),
                         })],
@@ -274,7 +274,7 @@ mod tests {
 
         assert_eq!(
             Expression::FieldAccessOrMethodCall(chains).to_string(),
-            "my_pkg::sample().nested_method().some_field"
+            "my_module.sample().nested_method().some_field"
         );
     }
 }

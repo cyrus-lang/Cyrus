@@ -1,22 +1,20 @@
 #[cfg(test)]
 mod tests {
-    use std::ops::Index;
-
-    use ast::{
-        ast::{Expression, IntegerLiteral, Literal},
-        token::*,
-    };
+    use crate::Parser;
+    use ast::ast::*;
+    use ast::token::*;
     use lexer::Lexer;
 
-    use crate::{Parser, precedences::Precedence};
-
-    fn assert_parse(input: &'static str) {
-        let mut lexer = Lexer::new(input.to_string(), String::from("parser_test.cyr"));
+    fn parse(test_name: String, input: &'static str) -> ProgramTree {
+        let mut lexer = Lexer::new(input.to_string(), format!("cyrus_parser_{}_test.cyr", test_name));
         let mut parser = Parser::new(&mut lexer);
 
         match parser.parse() {
             Ok(program) => {
-                println!("{:#?}", program);
+                return match program {
+                    Node::ProgramTree(program) => program,
+                    _ => panic!("Expected a program tree but got something else."),
+                };
             }
             Err(parse_errors) => {
                 panic!("{:#?}", parse_errors);
@@ -24,169 +22,260 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_expression() {
-        let input = "1 + 2";
-        let mut lexer = Lexer::new(input.to_string(), String::from("parser_test.cyr"));
-        let mut parser = Parser::new(&mut lexer);
-        let expr = parser.parse_expression(Precedence::Lowest).unwrap().0;
-        dbg!(expr);
+    macro_rules! define_test {
+        ($name:ident, $input:expr, $body:expr) => {
+            #[test]
+            fn $name() {
+                let test_name = stringify!($name);
+                let program = parse(test_name.to_string(), $input);
+                $body(program)
+            }
+        };
     }
 
-    #[test]
-    fn test_parser_simple_expression() {
-        assert_parse("1 == 11");
-        assert_parse("1 != 1");
-        assert_parse("1 < 1");
-        assert_parse("1 > 1");
-        assert_parse("100 <= 100");
-        assert_parse("100 >= 100");
-        assert_parse("1 + 2");
-        assert_parse("1 - 2");
-        assert_parse("1 * 2");
-        assert_parse("1 / 2");
-        assert_parse("1 + 2 / 2");
-        assert_parse("1 + 2 / 2 - 10");
-        assert_parse("i < 0");
-        assert_parse("0 >= i");
-    }
-
-    #[test]
-    fn test_parse_bool_expressions() {
-        assert_parse("false");
-        assert_parse("true == true");
-        assert_parse("false == false");
-        assert_parse("true == false");
-        assert_parse("false == true");
-    }
-
-    #[test]
-    fn test_variable_declaration() {
-        assert_parse("#my_var0: i32 = 1 + 2 * 3;");
-        assert_parse("#my_var1: i64 = 0;");
-        assert_parse("#my_var2: f32 = 0;");
-        assert_parse("#my_var3: bool = false;");
-        assert_parse("#my_var4 = 0;");
-        assert_parse("#my_var4 = sample();");
-    }
-
-    #[test]
-    fn test_if_statement2() {
-        // FIXME
-        assert_parse(
-            "
-        if (next() == 0) {
-            print(10 / 2 * 3 + 1);
+    define_test!(simple_arithmetic_expression, "1 + 2 * 3", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::Infix(binary_expression) = expression {
+                assert_eq!(binary_expression.operator.kind, TokenKind::Plus);
+                assert_eq!(
+                    binary_expression.left,
+                    Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(1))))
+                );
+                if let Expression::Infix(right_expression) = *binary_expression.right.clone() {
+                    assert_eq!(right_expression.operator.kind, TokenKind::Asterisk);
+                    assert_eq!(
+                        right_expression.left,
+                        Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(2))))
+                    );
+                    assert_eq!(
+                        right_expression.right,
+                        Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(3))))
+                    );
+                } else {
+                    panic!("Expected an infix expression but got something else.");
+                }
+            } else {
+                panic!("Expected an infix expression but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
         }
-        ",
-        );
-    }
+    });
 
-    #[test]
-    fn test_parse_block_statement() {
-        let mut binding = Lexer::new(String::from("{ 1 + 2; hello(); }"), String::from("parser_test.cyr"));
-        let mut parser = Parser::new(&mut binding);
-        let block = parser.parse_block_statement().unwrap();
-        println!("{:#?}", block);
-    }
+    define_test!(unary_minus, "-5", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::Prefix(unary_expression) = expression {
+                assert_eq!(unary_expression.operator.kind, TokenKind::Minus);
+                assert_eq!(
+                    unary_expression.operand,
+                    Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(5))))
+                );
+            } else {
+                panic!("Expected a prefix expression but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-    #[test]
-    fn test_return_statement() {
-        assert_parse("return j + 2;");
-    }
+    define_test!(unary_neg, "!0", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::Prefix(unary_expression) = expression {
+                assert_eq!(unary_expression.operator.kind, TokenKind::Bang);
+                assert_eq!(
+                    unary_expression.operand,
+                    Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0))))
+                );
+            } else {
+                panic!("Expected a prefix expression but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-    #[test]
-    fn test_parse_function_params() {
-        let mut lexer = Lexer::new(
-            String::from("(a: i32, b: u32, c: string)"),
-            String::from("parser_test.cyr"),
-        );
-        let mut parser = Parser::new(&mut lexer);
-        let params = parser.parse_func_params(0).unwrap().list;
+    define_test!(function_call, "foo(1, 2)", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::FieldAccessOrMethodCall(field_accesses) = expression {
+                if let Some(FuncCall {
+                    func_name, arguments, ..
+                }) = &field_accesses[0].method_call
+                {
+                    assert_eq!(func_name.identifier.name, "foo");
+                    assert_eq!(arguments.len(), 2);
+                    assert_eq!(
+                        arguments[0],
+                        Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))
+                    );
+                    assert_eq!(
+                        arguments[1],
+                        Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
+                    );
+                } else {
+                    panic!("Expected function call.");
+                }
+            } else {
+                panic!("Expected a function call but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-        assert_eq!(params.index(0).identifier.name, "a");
-        assert_eq!(params.index(0).default_value.is_none(), true);
-        assert_eq!(params.index(0).ty.clone() == Some(TokenKind::I32), true);
+    define_test!(array_literal, "[1, 2, 3]", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::Array(array) = expression {
+                assert_eq!(array.elements.len(), 3);
+                assert_eq!(
+                    array.elements[0],
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))
+                );
+                assert_eq!(
+                    array.elements[1],
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
+                );
+                assert_eq!(
+                    array.elements[2],
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(3)))
+                );
+            } else {
+                panic!("Expected an array literal but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-        assert_eq!(params.index(1).identifier.name, "b");
-        assert_eq!(params.index(1).ty.clone() == Some(TokenKind::U32), true);
+    define_test!(variable_assignment, "x = 5;", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::Assignment(assignment) = expression {
+                assert_eq!(assignment.identifier.identifier.name, "x");
+                assert_eq!(
+                    assignment.expr,
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(5)))
+                );
+            } else {
+                panic!("Expected an assignment but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-        assert_eq!(params.index(2).identifier.name, "c");
-        assert_eq!(params.index(2).default_value.is_none(), true);
-        assert_eq!(params.index(2).ty.clone() == Some(TokenKind::String), true);
-    }
+    define_test!(
+        struct_initialization,
+        "MyStruct { field1: 10, field2: true };",
+        |program: ProgramTree| {
+            if let Statement::Expression(expression) = &program.body[0] {
+                if let Expression::StructInit(struct_init) = expression {
+                    assert_eq!(struct_init.struct_name.identifier.name, "MyStruct");
+                    assert_eq!(struct_init.field_inits.len(), 2);
+                    assert_eq!(struct_init.field_inits[0].name, "field1");
+                    assert_eq!(
+                        struct_init.field_inits[0].value,
+                        Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))
+                    );
+                    assert_eq!(struct_init.field_inits[1].name, "field2");
+                    assert_eq!(
+                        struct_init.field_inits[1].value,
+                        Expression::Literal(Literal::Bool(BoolLiteral {
+                            raw: true,
+                            span: Span::new(31, 35)
+                        }))
+                    );
+                } else {
+                    panic!("Expected a struct initialization but got something else.");
+                }
+            } else {
+                panic!("Expected an expression but got something else.");
+            }
+        }
+    );
 
-    #[test]
-    fn test_parse_expression_series() {
-        let mut lexer = Lexer::new(String::from("[1, 2, 3, ]"), String::from("parser_test.cyr"));
-        let mut parser = Parser::new(&mut lexer);
-        let params = parser.parse_expression_series(TokenKind::RightBracket).unwrap().0;
-        assert_eq!(params[0], Expression::Literal(Literal::Integer(IntegerLiteral::I32(1))));
-        assert_eq!(params[1], Expression::Literal(Literal::Integer(IntegerLiteral::I32(2))));
-        assert_eq!(params[2], Expression::Literal(Literal::Integer(IntegerLiteral::I32(3))));
-    }
+    define_test!(array_index, "arr[0][1]", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::ArrayIndex(array_index) = expression {
+                assert_eq!(array_index.dimensions.len(), 2);
+                assert_eq!(
+                    array_index.dimensions[0],
+                    Expression::Array(Array {
+                        elements: vec![Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))],
+                        span: Span::new(3, 5),
+                        loc: Location { line: 0, column: 8 }
+                    })
+                );
+                assert_eq!(
+                    array_index.dimensions[1],
+                    Expression::Array(Array {
+                        elements: vec![Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))],
+                        span: Span::new(6, 8),
+                        loc: Location { line: 0, column: 10 }
+                    })
+                );
+            } else {
+                panic!("Expected an array index but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-    #[test]
-    fn test_function_statement() {
-        assert_parse("fn foo_bar(a: i32, b: i32): i32 { return a + b; }");
-        assert_parse("fn foo_bar2(a: i32, b: i32) { }");
-    }
+    define_test!(module_import, "object.field;", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::ModuleImport(module_import) = expression {
+                assert_eq!(
+                    module_import.sub_modules[0],
+                    ModulePath::SubModule(Identifier {
+                        name: "object".to_string(),
+                        span: Span { start: 0, end: 5 },
+                        loc: Location { line: 0, column: 8 },
+                    })
+                );
+                assert_eq!(module_import.identifier.name, "field");
+            } else {
+                panic!("Expected a module import but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-    #[test]
-    fn test_func_call_expresion() {
-        // FIXME
-        // assert_parse("foo_bar();");
-        // assert_parse("print(1);");
-        // assert_parse("foo_bar(1, 2);");
-        // assert_parse("print(1 + 2)");
-        // assert_parse("print(1 as double)");
-        // assert_parse("print(nested());");
-
-        // assert_parse("print(!true);");
-        // assert_parse("print(!false);");
-        // assert_parse("print(\"Cyrus Lang =)\");");
-        // assert_parse("print(3 % 2);");
-        // assert_parse("print(\"result: %d\n\", ident as float);");
-    }
-
-    #[test]
-    fn test_comparative_expression() {
-        assert_parse("i < 10;");
-        assert_parse("i > 10;");
-        assert_parse("i <= 10");
-        assert_parse("i >= 10");
-        assert_parse("i == 10");
-        assert_parse("i != 10");
-    }
-
-    #[test]
-    fn test_increment_decrement_expression() {
-        assert_parse("++i");
-        assert_parse("--i");
-        assert_parse("i++");
-        assert_parse("i--");
-    }
-
-    #[test]
-    fn test_parse_for_statement() {
-        assert_parse("for #i = 0; i < 10; i++ {  }");
-        assert_parse("for #i = 0; i < 10; {  }");
-        assert_parse("for #i = 0; {  }");
-        assert_parse("for {  }");
-    }
-
-    #[test]
-    fn test_arrays() {
-        assert_parse("#a: i32[3] = [1, 2, 3]");
-        assert_parse("#a: string[2] = [\"Cyrus\", \"Lang\"]");
-        assert_parse("arr[0][1]");
-        assert_parse("my_var[1] = 555;");
-
-    }
-
-    #[test]
-    fn test_ptr_identifier() {
-        assert_parse("*my_var");
-        assert_parse("&**my_var");
-    }
+    define_test!(
+        field_access_or_method_call,
+        "object.method(1, 2)",
+        |program: ProgramTree| {
+            if let Statement::Expression(expression) = &program.body[0] {
+                if let Expression::FieldAccessOrMethodCall(field_access_or_method_call) = expression {
+                    let method_call = field_access_or_method_call[0].method_call.clone().unwrap();
+                    assert_eq!(
+                        method_call.arguments[0],
+                        Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))
+                    );
+                    assert_eq!(
+                        method_call.arguments[1],
+                        Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
+                    );
+                    assert_eq!(
+                        method_call.func_name.identifier,
+                        Identifier {
+                            name: "method".to_string(),
+                            span: Span { start: 7, end: 12 },
+                            loc: Location { line: 0, column: 14 }
+                        }
+                    );
+                    assert_eq!(method_call.func_name.sub_modules, vec![
+                        ModulePath::SubModule(Identifier {
+                            name: "object".to_string(),
+                            span: Span { start: 0, end: 5 },
+                            loc: Location { line: 0, column: 8 }
+                        })
+                    ])
+                } else {
+                    panic!("Expected a field access or method call but got something else.");
+                }
+            } else {
+                panic!("Expected an expression but got something else.");
+            }
+        }
+    );
 }
