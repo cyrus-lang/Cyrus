@@ -2,20 +2,13 @@
 
 Cyrus is a general-purpose, statically-typed, manually memory-managed programming language designed for performance-critical applications. It leverages **LLVM** as its compiler backend, providing efficient code generation and optimization capabilities. The language syntax is heavily influenced by C, offering familiarity to developers experienced with C-like languages.
 
-## Key Features
-
-- **General-purpose**: Suitable for a wide range of applications, including systems programming, game development, and scientific computing.
-- **Statically-typed**: Enforces type safety at compile time, reducing runtime errors and improving code reliability.
-- **LLVM**: Enables efficient code generation and optimization across various platforms and architectures.
-- **C-inspired syntax**: Offers a familiar and concise syntax for developers accustomed to C-like languages.
-
 ## Target Audience
 
 Cyrus is primarily aimed at experienced programmers who value performance, control, and low-level system interactions. Developers seeking to build high-performance applications that require precise memory management will find this language well-suited to their needs.
 
 ## Testing, Documentation, and API References
 
-All information about testing `Cyrus` in a development environment, along with comprehensive documentation and API references, is available on our website at this [link](https://cyrus-lang.netlify.app).
+All information about testing `Cyrus` in a development environment, along with comprehensive documentation and API references, is available on our website at this [link](https://cyrus-lang-v2.netlify.app).
 
 ### Contributing to Documentation
 
