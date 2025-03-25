@@ -62,7 +62,7 @@ impl<'a> Parser<'a> {
 
                 if self.peek_token_is(TokenKind::Dot) {
                     self.next_token();
-                    return self.parse_struct_member(Box::new(Expression::ModuleImport(module_import)));
+                    return self.parse_field_access_or_method_call(Box::new(Expression::ModuleImport(module_import)));
                 } else if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
@@ -236,7 +236,7 @@ impl<'a> Parser<'a> {
                     loc: self.current_location(),
                 })))
             }
-            TokenKind::LeftParen => Some(self.parse_struct_member(Box::new(left))),
+            TokenKind::LeftParen => Some(self.parse_field_access_or_method_call(Box::new(left))),
             _ => None,
         }
     }
@@ -266,7 +266,6 @@ impl<'a> Parser<'a> {
     /// - Returns an error if the terminating token is missing or mismatched.
     /// - Returns an error if there are syntax issues while parsing individual expressions.
     ///
-    /// TODO Improve error handling
     pub fn parse_expression_series(&mut self, end: TokenKind) -> Result<(Vec<Expression>, Span), ParseError> {
         let start = self.current_token.span.start;
         let mut series: Vec<Expression> = Vec::new();
@@ -394,7 +393,10 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    pub fn parse_struct_member(&mut self, object_expr: Box<Expression>) -> Result<Expression, ParseError> {
+    pub fn parse_field_access_or_method_call(
+        &mut self,
+        object_expr: Box<Expression>,
+    ) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start.clone();
         let mut chains: Vec<FieldAccessOrMethodCall> = Vec::new();
 
@@ -421,9 +423,8 @@ impl<'a> Parser<'a> {
                     }
                 };
 
+                // parse method call
                 if self.peek_token_is(TokenKind::LeftParen) {
-                    // parse struct method call
-
                     self.next_token(); // consume method name
 
                     let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
@@ -460,8 +461,7 @@ impl<'a> Parser<'a> {
                         _ => break,
                     }
                 } else {
-                    // parse struct field access
-
+                    // parse field access
                     let field_name = match self.current_token.kind.clone() {
                         TokenKind::Identifier { name } => Identifier {
                             name,
@@ -502,15 +502,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            return Ok(Expression::StructFieldAccess(Box::new(StructFieldAccess {
-                expr: *object_expr,
-                chains,
-                span: Span {
-                    start,
-                    end: self.current_token.span.end,
-                },
-                loc: self.current_location(),
-            })));
+            return Ok(Expression::FieldAccessOrMethodCall(chains));
         } else {
             self.next_token();
             let func_call = self.parse_func_call(*object_expr, start)?;
@@ -526,7 +518,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<Expression, ParseError> {
         self.expect_current(TokenKind::LeftBrace)?;
-        
+
         let mut field_inits: Vec<FieldInit> = Vec::new();
         let start = self.current_token.span.start;
 
@@ -536,7 +528,7 @@ impl<'a> Parser<'a> {
                 field_inits: Vec::new(),
                 loc: self.current_location(),
             }));
-        } 
+        }
 
         loop {
             let field_name = match self.current_token.kind.clone() {

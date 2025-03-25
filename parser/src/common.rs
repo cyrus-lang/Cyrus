@@ -1,9 +1,8 @@
-use std::vec;
-
 use crate::ParseError;
 use crate::Parser;
 use ast::ast::*;
 use ast::token::*;
+use std::vec;
 use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
@@ -47,8 +46,8 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        if let ModulePath::SubModule(identifier) = sub_modules[0].clone() {
-            if sub_modules.len() == 1 {
+        if sub_modules.len() == 1 {
+            if let ModulePath::SubModule(identifier) = sub_modules[0].clone() {
                 Ok(ModuleImport {
                     identifier,
                     sub_modules: vec![],
@@ -59,6 +58,10 @@ impl<'a> Parser<'a> {
                     loc: self.current_location(),
                 })
             } else {
+                unreachable!();
+            }
+        } else {
+            if let ModulePath::SubModule(identifier) = sub_modules.last().unwrap().clone() {
                 sub_modules.pop();
                 Ok(ModuleImport {
                     identifier,
@@ -69,9 +72,9 @@ impl<'a> Parser<'a> {
                     },
                     loc: self.current_location(),
                 })
+            } else {
+                unreachable!();
             }
-        } else {
-            unreachable!();
         }
     }
 

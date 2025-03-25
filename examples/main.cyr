@@ -1,5 +1,6 @@
+import std.io;
 import std.io.*;
 
 fn main() {
-    std.io.println("Hello World");
+    #a = ptr.name;
 }

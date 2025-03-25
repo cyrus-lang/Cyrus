@@ -30,13 +30,13 @@ impl ProgramTree {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
+    CastAs(CastAs),
     Identifier(Identifier),
     ModuleImport(ModuleImport),
     Assignment(Box<Assignment>),
     Literal(Literal),
     Prefix(UnaryExpression),
     Infix(BinaryExpression),
-    FieldAccessOrMethodCall(Vec<FieldAccessOrMethodCall>),
     UnaryOperator(UnaryOperator),
     Array(Array),
     ArrayIndex(ArrayIndex),
@@ -44,8 +44,7 @@ pub enum Expression {
     AddressOf(Box<Expression>),
     Dereference(Box<Expression>),
     StructInit(StructInit),
-    StructFieldAccess(Box<StructFieldAccess>),
-    CastAs(CastAs),
+    FieldAccessOrMethodCall(Vec<FieldAccessOrMethodCall>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,14 +83,6 @@ pub struct FuncCall {
 pub struct FieldAccessOrMethodCall {
     pub method_call: Option<FuncCall>,
     pub field_access: Option<FieldAccess>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct StructFieldAccess {
-    pub expr: Expression,
-    pub chains: Vec<FieldAccessOrMethodCall>,
-    pub span: Span,
-    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]

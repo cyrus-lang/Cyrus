@@ -25,56 +25,6 @@ mod tests {
     }
 
     #[test]
-    fn test_struct_field_access() {
-        let loc = Location { line: 0, column: 0 };
-        let expr = Expression::StructFieldAccess(Box::new(StructFieldAccess {
-            expr: Expression::Dereference(Box::new(Expression::Identifier(Identifier {
-                name: String::from("self"),
-                span: Span::default(),
-                loc: Location::default(),
-            }))),
-            chains: vec![
-                FieldAccessOrMethodCall {
-                    method_call: None,
-                    field_access: Some(FieldAccess {
-                        identifier: Identifier {
-                            name: String::from("my_field"),
-                            span: Span::default(),
-                            loc: Location::default(),
-                        },
-                        span: Span::default(),
-                        loc: Location::default(),
-                    }),
-                },
-                FieldAccessOrMethodCall {
-                    method_call: Some(FuncCall {
-                        func_name: ModuleImport {
-                            sub_modules: vec![],
-                            identifier: Identifier {
-                                name: String::from("my_method"),
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
-                            span: Span::default(),
-                            loc: loc.clone(),
-                        },
-                        arguments: vec![Expression::Literal(Literal::String(StringLiteral {
-                            raw: String::from("my_string"),
-                            span: Span::default(),
-                        }))],
-                        span: Span::default(),
-                        loc: Location::default(),
-                    }),
-                    field_access: None,
-                },
-            ],
-            span: Span::default(),
-            loc,
-        }));
-        assert_eq!(expr.to_string(), "(*self).my_field.my_method(\"my_string\")");
-    }
-
-    #[test]
     fn test_binary_expression() {
         let loc = Location { line: 7, column: 3 };
         let bin_expr = BinaryExpression {

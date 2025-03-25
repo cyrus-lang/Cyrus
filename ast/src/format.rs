@@ -185,43 +185,6 @@ impl fmt::Display for Expression {
                 }
                 write!(f, "}}")
             }
-            Expression::StructFieldAccess(struct_field_access) => {
-                write!(f, "{}", struct_field_access.expr)?;
-
-                for item in &struct_field_access.chains {
-                    if let Some(field_access) = item.field_access.clone() {
-                        write!(f, ".{}", field_access.identifier.name)?;
-                    }
-
-                    if let Some(method_call) = item.method_call.clone() {
-                        write!(
-                            f,
-                            ".{}(",
-                            Expression::ModuleImport(ModuleImport {
-                                sub_modules: method_call.func_name.sub_modules,
-                                identifier: method_call.func_name.identifier,
-                                span: method_call.span,
-                                loc: method_call.loc
-                            })
-                            .to_string()
-                        )?;
-
-                        if method_call.arguments.len() > 0 {
-                            for (idx, arg) in method_call.arguments.iter().enumerate() {
-                                if idx == method_call.arguments.len() - 1 {
-                                    write!(f, "{})", arg)?;
-                                } else {
-                                    write!(f, "{}, ", arg)?;
-                                }
-                            }
-                        } else {
-                            write!(f, ")")?;
-                        }
-                    }
-                }
-
-                write!(f, "")
-            }
             Expression::CastAs(cast_as) => {
                 write!(f, "{}", cast_as)
             }
