@@ -673,6 +673,8 @@ impl Lexer {
             "size_t" => TokenKind::SizeT,
             "char" => TokenKind::Char,
             "bool" => TokenKind::Bool,
+            "in" => TokenKind::In,
+            "enum" => TokenKind::Enum,
             "void" => TokenKind::Void,
             "dyn" => TokenKind::Dyn,
             "string" => TokenKind::String,

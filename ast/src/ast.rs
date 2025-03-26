@@ -50,13 +50,13 @@ pub enum Expression {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Enum {
     pub name: Identifier,
-    variants: Vec<EnumVariant>
+    pub variants: Vec<EnumVariant>
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumVariant {
     pub name: Identifier,
-    fields: Option<Vec<EnumVariant>>
+    pub fields: Option<Vec<EnumField>>
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -237,6 +237,7 @@ pub enum Statement {
     BlockStatement(BlockStatement),
     Break(Location),
     Continue(Location),
+    Enum(Enum)
 }
 
 pub fn format_expressions(exprs: &Vec<Expression>) -> String {

@@ -6,6 +6,29 @@ use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
+    pub fn parse_identifier(&mut self) -> Result<Identifier, CompileTimeError<ParserErrorType>> {
+        match self.current_token.kind.clone() {
+            TokenKind::Identifier { name } => Ok(Identifier {
+                name,
+                span: self.current_token.span.clone(),
+                loc: self.current_location(),
+            }),
+            _ => {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::ExpectedIdentifier,
+                    file_name: Some(self.lexer.file_name.clone()),
+                    code_raw: Some(
+                        self.lexer
+                            .select(self.current_token.span.start..self.current_token.span.end),
+                    ),
+                    verbose: None,
+                    caret: true,
+                });
+            }
+        }
+    }
+
     // The get_type_token function is responsible for parsing a type token from the source code and returning its corresponding TokenKind.
     // This function supports both primitive types (e.g., integers, floating points, booleans) and user-defined types.
     // Additionally, it handles pointer types by recognizing dereference (*) and reference (&) symbols.

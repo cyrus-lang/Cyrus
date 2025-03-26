@@ -9,8 +9,8 @@ use utils::compile_time_errors::parser_errors::ParserErrorType;
 impl<'a> Parser<'a> {
     pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start.clone();
-
         match self.current_token.kind {
+            TokenKind::Enum => self.parse_enum(),
             TokenKind::If => self.parse_if(),
             TokenKind::Function | TokenKind::Decl | TokenKind::Extern | TokenKind::Pub | TokenKind::Inline => {
                 if self.current_token_is(TokenKind::Function) || self.peek_token_is(TokenKind::Function) {
@@ -48,6 +48,83 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Statement::Expression(expr))
+    }
+
+    pub fn parse_enum_variant(&mut self) -> Result<EnumVariant, ParseError> {
+        let start = self.current_token.span.start;
+        let variant_name = self.parse_identifier()?;
+        self.next_token();
+        let mut variant_fields: Option<Vec<EnumField>> = None;
+
+        if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
+            return Ok(EnumVariant {
+                name: variant_name,
+                fields: variant_fields,
+            });
+        } else if self.current_token_is(TokenKind::LeftParen) {
+            self.next_token(); // consume left paren
+            let mut fields: Vec<EnumField> = Vec::new();
+            loop {
+                if self.current_token_is(TokenKind::RightParen) {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        verbose: Some(String::from("Consider to add a field to variant or remove the parenthesis.")),
+                        caret: true,
+                    });
+                }
+
+                let field_name = self.parse_identifier()?;
+                self.next_token(); // consume field name
+                self.expect_current(TokenKind::Colon)?;
+                let field_type = self.parse_type_token()?;
+                fields.push(EnumField {
+                    name: field_name,
+                    field_type: field_type,
+                });
+
+                if self.current_token_is(TokenKind::RightParen) {
+                    self.next_token();
+                    break;
+                } else {
+                    self.expect_current(TokenKind::Comma)?;
+                }
+            }
+            variant_fields = Some(fields);
+        }
+
+        Ok(EnumVariant {
+            name: variant_name,
+            fields: variant_fields,
+        })
+    }
+
+    pub fn parse_enum(&mut self) -> Result<Statement, ParseError> {
+        self.next_token(); // parse enum keyword
+        let enum_name = self.parse_identifier()?;
+        self.next_token(); // consume enum name
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut enum_variants: Vec<EnumVariant> = Vec::new();
+        enum_variants.push(self.parse_enum_variant()?);
+
+        while self.current_token_is(TokenKind::Comma) {
+            self.next_token(); // consume comma
+            enum_variants.push(self.parse_enum_variant()?);
+            if !self.current_token_is(TokenKind::RightBrace) {
+                self.expect_current(TokenKind::Comma)?;
+            }
+        }
+
+        enum_variants.push(self.parse_enum_variant()?);
+        self.expect_current(TokenKind::RightBrace)?;
+
+        Ok(Statement::Enum(Enum {
+            name: enum_name,
+            variants: enum_variants,
+        }))
     }
 
     pub fn parse_struct(&mut self) -> Result<Statement, ParseError> {
@@ -633,7 +710,7 @@ impl<'a> Parser<'a> {
             increment = Some(self.parse_expression(Precedence::Lowest, None)?.0);
             self.next_token(); // consume increment token
         }
-        
+
         let body = self.parse_for_loop_body(start)?;
 
         Ok(Statement::For(For {
@@ -937,9 +1014,7 @@ impl<'a> Parser<'a> {
 
         self.expect_current(TokenKind::If)?;
 
-        let condition = self
-            .parse_expression(Precedence::Lowest, Some(TokenKind::LeftBrace))?
-            .0;
+        let condition = self.parse_expression(Precedence::Lowest, Some(TokenKind::LeftBrace))?.0;
         let consequent = Box::new(self.parse_block_statement()?);
 
         if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
