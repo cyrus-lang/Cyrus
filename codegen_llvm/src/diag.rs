@@ -13,6 +13,7 @@ pub enum DiagKind {
     IdentifierNotDefined(String),
     TypeAnnotationRequiredForParam(String, String),
     TypeAnnotationRequired,
+    InconsistentArrayItemTypes,
     FuncNotFound(String),
     Custom(String),
 }
@@ -57,6 +58,7 @@ impl fmt::Display for DiagKind {
             DiagKind::InvalidTokenAsArrayCapacity => "Invalid token given as array capacity.",
             DiagKind::IdentifierNotDefined(value) => &format!("The '{}' not defined in this scope.", value),
             DiagKind::FuncNotFound(func_name) => &format!("Function '{}' not found in this module.", func_name),
+            DiagKind::InconsistentArrayItemTypes => "Inconsistent array element types."
         };
         write!(f, "{}", msg)
     }

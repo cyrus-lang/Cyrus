@@ -231,7 +231,7 @@ pub enum Statement {
     FuncDef(FuncDef),
     FuncDecl(FuncDecl),
     For(For),
-    Match(Match),
+    Switch(Switch),
     Struct(Struct),
     Import(Import),
     BlockStatement(BlockStatement),
@@ -310,7 +310,7 @@ pub struct For {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Match {
+pub struct Switch {
     pub value: Expression,
     pub sections: Option<Vec<MatchPattern>>,
     pub default: BlockStatement,

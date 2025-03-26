@@ -3,6 +3,7 @@ use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRef};
 use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam, VisType};
 use ast::token::{Location, Span, Token, TokenKind};
+use inkwell::llvm_sys::prelude::{LLVMTypeRef, LLVMValueRef};
 use inkwell::llvm_sys::LLVMValue;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::types::FunctionType;
@@ -28,7 +29,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_loc: Location,
         span_end: usize,
         params: Vec<FuncParam>,
-    ) -> Vec<*mut LLVMType> {
+    ) -> Vec<LLVMTypeRef> {
         params
             .iter()
             .map(|param| {
@@ -225,7 +226,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef,
         field_access_or_method_calls: Vec<FieldAccessOrMethodCall>,
     ) -> AnyValueEnum {
-        let mut final_result: *mut LLVMValue = null_mut();
+        let mut final_result: LLVMValueRef = null_mut();
 
         for field_access_or_method_call in field_access_or_method_calls {
             if let Some(method_call) = field_access_or_method_call.method_call {

@@ -1,6 +1,7 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use ast::ast::VisType;
+use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::OptimizationLevel;
 use inkwell::execution_engine::FunctionLookupError;
 use inkwell::execution_engine::JitFunction;
@@ -56,7 +57,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             // wrap actual main_func as entry point
             let return_type = self.context.i32_type();
-            let mut param_types: Vec<*mut LLVMType> = Vec::new();
+            let mut param_types: Vec<LLVMTypeRef> = Vec::new();
             let fn_type = unsafe {
                 FunctionType::new(LLVMFunctionType(
                     return_type.as_type_ref(),

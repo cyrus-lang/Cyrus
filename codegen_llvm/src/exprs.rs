@@ -5,8 +5,9 @@ use crate::{
 use ast::{ast::*, token::TokenKind};
 use inkwell::{
     AddressSpace,
-    types::AnyTypeEnum,
-    values::{AnyValueEnum, FloatValue, IntValue, PointerValue},
+    llvm_sys::prelude::LLVMValueRef,
+    types::{AnyTypeEnum, BasicType},
+    values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{process::exit, rc::Rc};
 
@@ -29,7 +30,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => {
                 self.build_field_access_or_method_call(Rc::clone(&scope), field_access_or_method_calls)
             }
-            Expression::Array(array) => self.build_array(array),
+            Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
             Expression::ArrayIndex(array_index) => todo!(),
             Expression::ArrayIndexAssign(array_index_assign) => todo!(),
             Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import),
@@ -101,8 +102,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         todo!();
     }
 
-    pub(crate) fn build_array(&self, array: Array) -> AnyValueEnum {
-        todo!();
+    pub(crate) fn build_array(&self, scope: ScopeRef, array: Array) -> AnyValueEnum {
+        let elements: Vec<BasicValueEnum> = array
+            .elements
+            .iter()
+            .map(|item| unsafe { BasicValueEnum::new(self.build_expr(Rc::clone(&scope), item.clone()).as_value_ref()) })
+            .collect();
+        assert!(!elements.is_empty());
+
+        let first_element_type = elements[0].get_type();
+        let _ = elements.iter().map(|item| {
+            if first_element_type != item.get_type() {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::InconsistentArrayItemTypes,
+                    location: None,
+                });
+            }
+        });
+
+        let array_type = first_element_type.array_type(elements.len().try_into().unwrap());
+        let array_elements = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
+        AnyValueEnum::ArrayValue(array_type.const_array(&[array_elements]))
     }
 
     pub(crate) fn build_literal(&self, literal: Literal) -> AnyValueEnum {

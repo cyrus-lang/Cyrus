@@ -139,7 +139,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_func_decl(func_decl);
             }
             Statement::For(_) => todo!(),
-            Statement::Match(_) => todo!(),
+            Statement::Switch(_) => todo!(),
             Statement::Struct(_) => todo!(),
             Statement::Break(location) => todo!(),
             Statement::Continue(location) => todo!(),
