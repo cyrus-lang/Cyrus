@@ -2,6 +2,7 @@ use ast::ast::*;
 use ast::token::{Location, TokenKind};
 use diag::*;
 use funcs::FuncTable;
+use inkwell::llvm_sys::prelude::LLVMValueRef;
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -26,6 +27,7 @@ pub mod opts;
 mod scope;
 mod tests;
 mod types;
+mod runtime;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -39,6 +41,7 @@ pub struct CodeGenLLVM<'ctx> {
     reporter: DiagReporter,
     entry_point: Option<FuncDef>,
     func_table: FuncTable<'ctx>,
+    internal_funcs_table: HashMap<String, LLVMValueRef>, // FIXME
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -71,7 +74,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module.set_triple(&target_triple);
         module.set_data_layout(&target_machine.get_target_data().get_data_layout());
 
-        Ok(CodeGenLLVM {
+        let mut codegen_llvm = CodeGenLLVM {
             opts,
             context,
             module,
@@ -82,7 +85,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             target_machine,
             entry_point: None,
             func_table: FuncTable::new(),
-        })
+            internal_funcs_table: HashMap::new(),
+        };  
+
+        codegen_llvm.load_runtime();
+        Ok(codegen_llvm)
     }
 
     pub fn new_context() -> Context {

@@ -5,11 +5,14 @@ use crate::{
 use ast::{ast::*, token::TokenKind};
 use inkwell::{
     AddressSpace,
-    llvm_sys::prelude::LLVMValueRef,
-    types::{AnyTypeEnum, BasicType},
-    values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    llvm_sys::core::{LLVMGetArrayLength2, LLVMGetElementType},
+    types::{AnyTypeEnum, ArrayType, AsTypeRef, BasicType},
+    values::{
+        AnyValue, AnyValueEnum, ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue,
+        FloatValue, FunctionValue, IntValue, PointerValue,
+    },
 };
-use std::{process::exit, rc::Rc};
+use std::{process::exit, ptr::null_mut, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
@@ -31,7 +34,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_field_access_or_method_call(Rc::clone(&scope), field_access_or_method_calls)
             }
             Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
-            Expression::ArrayIndex(array_index) => todo!(),
+            Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
             Expression::ArrayIndexAssign(array_index_assign) => todo!(),
             Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import),
         }
@@ -124,6 +127,90 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let array_type = first_element_type.array_type(elements.len().try_into().unwrap());
         let array_elements = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
         AnyValueEnum::ArrayValue(array_type.const_array(&[array_elements]))
+    }
+
+    pub(crate) fn build_array_index(&self, scope: ScopeRef, array_index: ArrayIndex) -> AnyValueEnum {
+        if let AnyValueEnum::PointerValue(ptr) = self.build_module_import(Rc::clone(&scope), array_index.module_import)
+        {
+            let pointee_ty = self.context.ptr_type(AddressSpace::default());
+            let ordered_indexes: Vec<IntValue<'_>> = array_index
+                .dimensions
+                .iter()
+                .map(|item| {
+                    if let Expression::Array(array) = item {
+                        if array.elements.len() != 1 {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom(
+                                    "Expected only one integer literal when accessing array but got something else."
+                                        .to_string(),
+                                ),
+                                location: None,
+                            });
+                            exit(1);
+                        }
+
+                        if let AnyValueEnum::IntValue(index) =
+                            self.build_expr(Rc::clone(&scope), array.elements[0].clone())
+                        {
+                            // let check_bounds = self.internal_funcs_table.get("check_bounds").unwrap();
+                            // let check_bounds_result = self
+                            //     .builder
+                            //     .build_call(
+                            //         unsafe { FunctionValue::new(*check_bounds).unwrap() },
+                            //         &[
+                            //             BasicMetadataValueEnum::PointerValue(ptr),
+                            //             BasicMetadataValueEnum::IntValue(index),
+                            //         ],
+                            //         "check_bounds_result",
+                            //     )
+                            //     .unwrap().as_value_ref();
+
+                            // if let AnyValueEnum::IntValue(check_bounds_result) = unsafe { AnyValueEnum::new(check_bounds_result) } {
+                            //     dbg!(check_bounds_result.get_sign_extended_constant());
+                            //     dbg!(check_bounds_result.get_zero_extended_constant());
+                            // } else {
+                            //     unreachable!();
+                            // }
+
+                            index
+                        } else {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom(
+                                    "Cannot build array indexing with a non-integer index.".to_string(),
+                                ),
+                                location: None,
+                            });
+                            exit(1);
+                        }
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(
+                                "Expected an integer literal as index but got something else.".to_string(),
+                            ),
+                            location: None,
+                        });
+                        exit(1);
+                    }
+                })
+                .collect();
+
+            let value = unsafe {
+                self.builder
+                    .build_gep(pointee_ty, ptr, &ordered_indexes, "array_gep")
+                    .unwrap()
+            };
+            AnyValueEnum::PointerValue(value)
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Cannot apply array indexing to a non-array pointer type.".to_string()),
+                location: None,
+            });
+            exit(1);
+        }
     }
 
     pub(crate) fn build_literal(&self, literal: Literal) -> AnyValueEnum {
