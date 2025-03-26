@@ -127,6 +127,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Break(location) => todo!(),
             Statement::Continue(location) => todo!(),
             Statement::Import(import) => todo!(),
+            Statement::Enum(_) => todo!(),
         }
     }
 
