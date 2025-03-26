@@ -71,7 +71,9 @@ impl<'a> Parser<'a> {
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
                         code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                        verbose: Some(String::from("Consider to add a field to variant or remove the parenthesis.")),
+                        verbose: Some(String::from(
+                            "Consider to add a field to variant or remove the parenthesis.",
+                        )),
                         caret: true,
                     });
                 }
@@ -108,6 +110,14 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut enum_variants: Vec<EnumVariant> = Vec::new();
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Statement::Enum(Enum {
+                name: enum_name,
+                variants: enum_variants,
+            }));
+        }
+
         enum_variants.push(self.parse_enum_variant()?);
 
         while self.current_token_is(TokenKind::Comma) {
@@ -118,7 +128,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        enum_variants.push(self.parse_enum_variant()?);
+        // consume optional comma at the end of the variant
+        if self.current_token_is(TokenKind::Comma) {
+            self.next_token();
+        }
+
         self.expect_current(TokenKind::RightBrace)?;
 
         Ok(Statement::Enum(Enum {
