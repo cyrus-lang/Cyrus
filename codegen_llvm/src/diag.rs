@@ -12,6 +12,7 @@ pub enum DiagKind {
     InvalidTokenAsArrayCapacity,
     IdentifierNotDefined(String),
     TypeAnnotationRequired(String, String),
+    FuncNotFound(String),
     Custom(String),
 }
 
@@ -53,6 +54,7 @@ impl fmt::Display for DiagKind {
             DiagKind::InfixNonBasic => "Cannot build infix expression for non-basic value.",
             DiagKind::InvalidTokenAsArrayCapacity => "Invalid token given as array capacity.",
             DiagKind::IdentifierNotDefined(value) => &format!("The '{}' not defined in this scope.", value),
+            DiagKind::FuncNotFound(func_name) => &format!("Function '{}' not found in this module.", func_name),
         };
         write!(f, "{}", msg)
     }

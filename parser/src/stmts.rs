@@ -975,7 +975,7 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume return token
 
         let argument = self.parse_expression(Precedence::Lowest, None)?.0;
-
+        self.next_token();
         self.expect_current(TokenKind::Semicolon)?;
 
         let end = self.current_token.span.end;

@@ -1,16 +1,25 @@
 use crate::CodeGenLLVM;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRef};
-use ast::ast::{FuncDecl, FuncDef, FuncParam, VisType};
+use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam, VisType};
 use ast::token::{Location, Span, Token, TokenKind};
+use inkwell::llvm_sys::LLVMValue;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::types::FunctionType;
-use inkwell::values::{AnyValueEnum, FunctionValue};
+use inkwell::values::{AnyValueEnum, AsValueRef, BasicMetadataValueEnum, CallSiteValue, FunctionValue};
 use inkwell::{llvm_sys::LLVMType, types::AsTypeRef};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::process::exit;
+use std::ptr::null_mut;
 use std::rc::Rc;
-use utils::generate_random_hex::generate_random_hex;
+
+pub struct FuncMetadata<'a> {
+    pub ptr: FunctionValue<'a>,
+    pub vis_type: VisType,
+}
+
+pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_func_params(
@@ -77,17 +86,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.module.add_function(&func_decl.name, fn_type, Some(func_linkage))
     }
 
-    pub(crate) fn build_func_def(&mut self, mut func_def: FuncDef) -> FunctionValue<'ctx> {
+    pub(crate) fn build_func_def(&mut self, func_def: FuncDef) -> FunctionValue<'ctx> {
         let scope: ScopeRef = Rc::new(RefCell::new(Scope::new()));
-
-        if func_def.name == "main" && self.entry_point.is_some() {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom(String::from("Multiple entry point not allowed.")),
-                location: None,
-            });
-            exit(1);
-        }
 
         let is_var_args = func_def.params.variadic.is_some();
         let mut param_types = self.build_func_params(
@@ -116,12 +116,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let mut is_main = false;
-        if func_def.name == "main" {
-            func_def.name = format!("main_{}", generate_random_hex());
-            is_main = true;
-        }
-
         let func_linkage = self.build_linkage(func_def.vis_type.clone());
         let func = self.module.add_function(&func_def.name, fn_type, Some(func_linkage));
 
@@ -146,7 +140,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "The function '{}' is not allowed to have a return statement.",
-                        if is_main { "main" } else { &func_def.name }
+                        &func_def.name
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -164,7 +158,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
                     "The function '{}' is missing a return statement.",
-                    if is_main { "main" } else { &func_def.name }
+                    &func_def.name
                 )),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -178,23 +172,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         func.verify(true);
 
-        if is_main {
-            if func_def.vis_type != VisType::Internal {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::NonInternalEntryPoint,
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: func_def.loc.line,
-                        column: func_def.loc.column,
-                        length: func_def.span.end,
-                    }),
-                });
-                exit(1);
-            }
-
-            self.entry_point = Some(func);
-        }
+        self.func_table.insert(
+            func_def.name,
+            FuncMetadata {
+                ptr: func,
+                vis_type: func_def.vis_type,
+            },
+        );
 
         return func;
     }
@@ -221,6 +205,86 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!("Cannot store value in pointer:\n{}", err.to_string())),
                 location: None,
+            });
+            exit(1);
+        }
+    }
+
+    pub(crate) fn build_field_access_or_method_call(
+        &self,
+        scope: ScopeRef,
+        field_access_or_method_calls: Vec<FieldAccessOrMethodCall>,
+    ) -> AnyValueEnum {
+        let mut final_result: *mut LLVMValue = null_mut();
+
+        for field_access_or_method_call in field_access_or_method_calls {
+            if let Some(method_call) = field_access_or_method_call.method_call {
+                final_result = self.build_func_call(Rc::clone(&scope), method_call).as_value_ref();
+            } else if let Some(field_access) = field_access_or_method_call.field_access {
+                todo!();
+            } else {
+                unreachable!();
+            }
+        }
+
+        unsafe { AnyValueEnum::new(final_result) }
+    }
+
+    pub(crate) fn build_arguments(
+        &self,
+        scope: ScopeRef,
+        arguments: Vec<Expression>,
+        loc: Location,
+        span_end: usize,
+    ) -> Vec<BasicMetadataValueEnum<'_>> {
+        arguments
+            .iter()
+            .map(|arg| match self.build_expr(Rc::clone(&scope), arg.clone()) {
+                AnyValueEnum::ArrayValue(array_value) => BasicMetadataValueEnum::ArrayValue(array_value),
+                AnyValueEnum::IntValue(int_value) => BasicMetadataValueEnum::IntValue(int_value),
+                AnyValueEnum::FloatValue(float_value) => BasicMetadataValueEnum::FloatValue(float_value),
+                AnyValueEnum::PointerValue(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value),
+                AnyValueEnum::StructValue(struct_value) => BasicMetadataValueEnum::StructValue(struct_value),
+                AnyValueEnum::VectorValue(vector_value) => BasicMetadataValueEnum::VectorValue(vector_value),
+                AnyValueEnum::MetadataValue(metadata_value) => BasicMetadataValueEnum::MetadataValue(metadata_value),
+                _ => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Cannot build non-basic value as an argument in func call.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            })
+            .collect()
+    }
+
+    // FIXME func_call.func_name.identifier.name
+    pub(crate) fn build_func_call(&self, scope: ScopeRef, func_call: FuncCall) -> CallSiteValue<'_> {
+        let arguments = &self.build_arguments(
+            Rc::clone(&scope),
+            func_call.arguments,
+            func_call.loc.clone(),
+            func_call.span.end,
+        );
+
+        if let Some(func_metadata) = self.func_table.get(&func_call.func_name.identifier.name.clone()) {
+            return self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap();
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncNotFound(func_call.func_name.identifier.name),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_call.loc.line,
+                    column: func_call.loc.column,
+                    length: func_call.span.end,
+                }),
             });
             exit(1);
         }

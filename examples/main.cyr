@@ -1,0 +1,7 @@
+fn simple_literal(): i32 {
+    return 10;
+}
+
+fn main() {
+    #a: i32 = simple_literal();
+}

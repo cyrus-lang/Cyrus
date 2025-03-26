@@ -1,5 +1,6 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
+use ast::ast::VisType;
 use inkwell::OptimizationLevel;
 use inkwell::execution_engine::FunctionLookupError;
 use inkwell::execution_engine::JitFunction;
@@ -12,6 +13,7 @@ use inkwell::types::FunctionType;
 use std::ffi::c_void;
 use std::path::Path;
 use std::process::exit;
+use utils::generate_random_hex::generate_random_hex;
 
 type MainFunc = unsafe extern "C" fn() -> c_void;
 
@@ -33,8 +35,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_entry_point(&self) {
-        if let Some(main_func) = self.entry_point {
+    pub(crate) fn build_entry_point(&mut self) {
+        if let Some(mut main_func) = self.entry_point.clone() {
+            main_func.name = format!("main_{}", generate_random_hex());
+            if main_func.vis_type != VisType::Internal {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::NonInternalEntryPoint,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: main_func.loc.line,
+                        column: main_func.loc.column,
+                        length: main_func.span.end,
+                    }),
+                });
+                exit(1);
+            }
+
+            let main_func_ptr = self.build_func_def(main_func.clone());
+
             // wrap actual main_func as entry point
             let return_type = self.context.i32_type();
             let mut param_types: Vec<*mut LLVMType> = Vec::new();
@@ -50,7 +69,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let entry_point = self.module.add_function("main", fn_type, Some(Linkage::External));
             let entry_block = self.context.append_basic_block(entry_point, "entry");
             self.builder.position_at_end(entry_block);
-            self.builder.build_call(main_func, &[], "call_main").unwrap();
+            self.builder.build_call(main_func_ptr, &[], "call_main").unwrap();
             self.builder
                 .build_return(Some(&return_type.const_int(0, false)))
                 .unwrap();

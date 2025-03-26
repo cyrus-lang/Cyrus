@@ -26,7 +26,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Dereference(expression) => todo!(),
             Expression::CastAs(cast_as) => self.build_cast_as(Rc::clone(&scope), cast_as),
             Expression::StructInit(struct_init) => todo!(),
-            Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => todo!(),
+            Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => {
+                self.build_field_access_or_method_call(Rc::clone(&scope), field_access_or_method_calls)
+            }
             Expression::Array(array) => self.build_array(array),
             Expression::ArrayIndex(array_index) => todo!(),
             Expression::ArrayIndexAssign(array_index_assign) => todo!(),

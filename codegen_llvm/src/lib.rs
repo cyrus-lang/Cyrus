@@ -1,6 +1,7 @@
 use ast::ast::*;
 use ast::token::{Location, TokenKind};
 use diag::*;
+use funcs::FuncTable;
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -12,6 +13,7 @@ use inkwell::values::{AnyValueEnum, AsValueRef, FunctionValue, PointerValue};
 use opts::CodeGenLLVMOptions;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::process::exit;
 use std::rc::Rc;
 
@@ -35,7 +37,8 @@ pub struct CodeGenLLVM<'ctx> {
     program: ProgramTree,
     file_path: String,
     reporter: DiagReporter,
-    entry_point: Option<FunctionValue<'ctx>>,
+    entry_point: Option<FuncDef>,
+    func_table: FuncTable<'ctx>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -78,6 +81,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             reporter,
             target_machine,
             entry_point: None,
+            func_table: FuncTable::new(),
         })
     }
 
@@ -116,7 +120,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::If(_) => todo!(),
             Statement::Return(_) => todo!(),
             Statement::FuncDef(func_def) => {
-                self.build_func_def(func_def.clone());
+                if func_def.name == "main" {
+                    if self.entry_point.is_some() {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(String::from("Multiple entry point not allowed.")),
+                            location: None,
+                        });
+                        exit(1);
+                    }
+
+                    self.entry_point = Some(func_def);
+                } else {
+                    self.build_func_def(func_def.clone());
+                }
             }
             Statement::FuncDecl(func_decl) => {
                 self.build_func_decl(func_decl);
