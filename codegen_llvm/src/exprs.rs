@@ -92,7 +92,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
         let ptr = unsafe { PointerValue::new(record.borrow_mut().ptr) };
-        let value = self.builder.build_load(self.context.i32_type(), ptr, "load").unwrap();
+        let pointee_ty = self.context.ptr_type(AddressSpace::default());
+        let value = self.builder.build_load(pointee_ty, ptr, "load").unwrap();
         value.into()
     }
 
@@ -139,14 +140,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> PointerValue {
-        let i8_array_type = self
-            .context
-            .i8_type()
-            .array_type((string_literal.raw.len() + 1).try_into().unwrap());
+        let mut bytes = string_literal.raw.into_bytes();
+        bytes.push(0); // null terminator
+
+        let i8_array_type = self.context.i8_type().array_type(bytes.len() as u32);
+
         let string_global = self
             .module
-            .add_global(i8_array_type, Some(AddressSpace::default()), "str");
+            .add_global(i8_array_type, Some(AddressSpace::default()), ".str");
+
+        let const_string = self.context.const_string(&bytes, false);
+        string_global.set_initializer(&const_string);
         string_global.set_constant(true);
+        string_global.set_linkage(inkwell::module::Linkage::Private);
+
         string_global.as_pointer_value()
     }
 

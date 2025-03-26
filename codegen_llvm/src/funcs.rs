@@ -38,7 +38,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 } else {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::TypeAnnotationRequired(param.identifier.name.clone(), func_name.clone()),
+                        kind: DiagKind::TypeAnnotationRequiredForParam(param.identifier.name.clone(), func_name.clone()),
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: func_loc.line,
@@ -82,8 +82,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let func_linkage = self.build_linkage(func_decl.vis_type);
-        self.module.add_function(&func_decl.name, fn_type, Some(func_linkage))
+        let func_linkage = self.build_linkage(func_decl.vis_type.clone());
+        let func_ptr = self.module.add_function(&func_decl.name, fn_type, Some(func_linkage));
+
+        self.func_table.insert(
+            func_decl.name,
+            FuncMetadata {
+                ptr: func_ptr,
+                vis_type: func_decl.vis_type,
+            },
+        );
+
+        func_ptr
     }
 
     pub(crate) fn build_func_def(&mut self, func_def: FuncDef) -> FunctionValue<'ctx> {

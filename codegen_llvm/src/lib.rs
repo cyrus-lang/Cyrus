@@ -8,7 +8,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::types::AnyTypeEnum;
+use inkwell::types::{AnyTypeEnum, AsTypeRef, BasicTypeEnum};
 use inkwell::values::{AnyValueEnum, AsValueRef, FunctionValue, PointerValue};
 use opts::CodeGenLLVMOptions;
 use scope::{Scope, ScopeRef};
@@ -157,11 +157,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> PointerValue {
         let any_type = self.build_type(var_type_token, loc.clone(), span_end);
         let ptr_value = match any_type {
+            AnyTypeEnum::StructType(struct_type) => todo!(),
+            AnyTypeEnum::VectorType(vector_type) => todo!(),
             AnyTypeEnum::IntType(int_type) => self.builder.build_alloca(int_type, &var_name),
             AnyTypeEnum::FloatType(float_type) => self.builder.build_alloca(float_type, &var_name),
             AnyTypeEnum::PointerType(pointer_type) => self.builder.build_alloca(pointer_type, &var_name),
-            AnyTypeEnum::StructType(struct_type) => todo!(),
-            AnyTypeEnum::VectorType(vector_type) => todo!(),
             AnyTypeEnum::ArrayType(array_type) => self.builder.build_alloca(array_type, &var_name),
             _ => {
                 display_single_diag(Diag {
@@ -223,30 +223,50 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_variable(&self, scope: ScopeRef, variable: Variable) {
-        let var_type_token = match variable.ty {
-            Some(ty) => ty,
-            None => {
-                todo!();
+        match variable.ty {
+            Some(var_type_token) => {
+                let ptr = self.build_alloca(
+                    var_type_token,
+                    variable.name.clone(),
+                    variable.loc.clone(),
+                    variable.span.end,
+                );
+
+                if let Some(expr) = variable.expr {
+                    let value = self.build_expr(Rc::clone(&scope), expr);
+                    self.build_store(ptr, value);
+                }
+
+                scope.borrow_mut().insert(
+                    variable.name,
+                    scope::ScopeRecord {
+                        ptr: ptr.as_value_ref(),
+                    },
+                );
             }
-        };
+            None => {
+                if let Some(expr) = variable.expr {
+                    let value = self.build_expr(Rc::clone(&scope), expr);
+                    let var_type = unsafe { BasicTypeEnum::new(value.get_type().as_type_ref()) };
+                    let ptr = self.builder.build_alloca(var_type, &variable.name).unwrap();
 
-        let ptr = self.build_alloca(
-            var_type_token,
-            variable.name.clone(),
-            variable.loc.clone(),
-            variable.span.end,
-        );
+                    self.build_store(ptr, value);
 
-        if let Some(expr) = variable.expr {
-            let value = self.build_expr(Rc::clone(&scope), expr);
-            self.build_store(ptr, value);
+                    scope.borrow_mut().insert(
+                        variable.name,
+                        scope::ScopeRecord {
+                            ptr: ptr.as_value_ref(),
+                        },
+                    );
+                } else {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::TypeAnnotationRequired,
+                        location: None,
+                    });
+                    exit(1);
+                }
+            }
         }
-
-        scope.borrow_mut().insert(
-            variable.name,
-            scope::ScopeRecord {
-                ptr: ptr.as_value_ref(),
-            },
-        );
     }
 }

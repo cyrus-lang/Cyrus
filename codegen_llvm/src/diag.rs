@@ -11,7 +11,8 @@ pub enum DiagKind {
     UnimplementedFeature,
     InvalidTokenAsArrayCapacity,
     IdentifierNotDefined(String),
-    TypeAnnotationRequired(String, String),
+    TypeAnnotationRequiredForParam(String, String),
+    TypeAnnotationRequired,
     FuncNotFound(String),
     Custom(String),
 }
@@ -47,10 +48,11 @@ impl fmt::Display for DiagKind {
             DiagKind::DerefNonPointerType => "Cannot dereference a non-pointer type.",
             DiagKind::NoEntryPointDetected => "No entry point detected.",
             DiagKind::NonInternalEntryPoint => "Entry pont must be defined internally.",
-            DiagKind::TypeAnnotationRequired(param, func) => &format!(
+            DiagKind::TypeAnnotationRequiredForParam(param, func) => &format!(
                 "Type annotation required for parameter '{}' in function '{}'.",
                 param, func
             ),
+            DiagKind::TypeAnnotationRequired => &format!("Type annotation required.",),
             DiagKind::InfixNonBasic => "Cannot build infix expression for non-basic value.",
             DiagKind::InvalidTokenAsArrayCapacity => "Invalid token given as array capacity.",
             DiagKind::IdentifierNotDefined(value) => &format!("The '{}' not defined in this scope.", value),
