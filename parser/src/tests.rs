@@ -183,35 +183,35 @@ mod tests {
         }
     });
 
-    // define_test!(
-    //     struct_initialization,
-    //     "MyStruct { field1: 10, field2: true };",
-    //     |program: ProgramTree| {
-    //         if let Statement::Expression(expression) = &program.body[0] {
-    //             if let Expression::StructInit(struct_init) = expression {
-    //                 assert_eq!(struct_init.struct_name.identifier.name, "MyStruct");
-    //                 assert_eq!(struct_init.field_inits.len(), 2);
-    //                 assert_eq!(struct_init.field_inits[0].name, "field1");
-    //                 assert_eq!(
-    //                     struct_init.field_inits[0].value,
-    //                     Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))
-    //                 );
-    //                 assert_eq!(struct_init.field_inits[1].name, "field2");
-    //                 assert_eq!(
-    //                     struct_init.field_inits[1].value,
-    //                     Expression::Literal(Literal::Bool(BoolLiteral {
-    //                         raw: true,
-    //                         span: Span::new(31, 35)
-    //                     }))
-    //                 );
-    //             } else {
-    //                 panic!("Expected a struct initialization but got something else.");
-    //             }
-    //         } else {
-    //             panic!("Expected an expression but got something else.");
-    //         }
-    //     }
-    // );
+    define_test!(
+        struct_initialization,
+        "MyStruct { field1: 10, field2: true };",
+        |program: ProgramTree| {
+            if let Statement::Expression(expression) = &program.body[0] {
+                if let Expression::StructInit(struct_init) = expression {
+                    assert_eq!(struct_init.struct_name.identifier.name, "MyStruct");
+                    assert_eq!(struct_init.field_inits.len(), 2);
+                    assert_eq!(struct_init.field_inits[0].name, "field1");
+                    assert_eq!(
+                        struct_init.field_inits[0].value,
+                        Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))
+                    );
+                    assert_eq!(struct_init.field_inits[1].name, "field2");
+                    assert_eq!(
+                        struct_init.field_inits[1].value,
+                        Expression::Literal(Literal::Bool(BoolLiteral {
+                            raw: true,
+                            span: Span::new(31, 35)
+                        }))
+                    );
+                } else {
+                    panic!("Expected a struct initialization but got something else.");
+                }
+            } else {
+                panic!("Expected an expression but got something else.");
+            }
+        }
+    );
 
     define_test!(array_index, "arr[0][1]", |program: ProgramTree| {
         if let Statement::Expression(expression) = &program.body[0] {
@@ -301,14 +301,14 @@ mod tests {
         }
     );
 
-    define_test!(cast_as, "10 as float", |program: ProgramTree| {
+    define_test!(cast_as, "10 as f64", |program: ProgramTree| {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::CastAs(cast_as) = expression {
                 assert_eq!(
                     *cast_as.expr,
                     Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))
                 );
-                assert_eq!(cast_as.type_token, TokenKind::Float);
+                assert_eq!(cast_as.type_token, TokenKind::F64);
             } else {
                 panic!("Expected a cast as but got something else.");
             }

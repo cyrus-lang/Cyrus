@@ -48,6 +48,24 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Enum {
+    pub name: Identifier,
+    variants: Vec<EnumVariant>
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumVariant {
+    pub name: Identifier,
+    fields: Option<Vec<EnumVariant>>
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumField {
+    pub name: Identifier,
+    pub field_type: TokenKind
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CastAs {
     pub expr: Box<Expression>,
     pub type_token: TokenKind,

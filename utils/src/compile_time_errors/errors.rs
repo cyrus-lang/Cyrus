@@ -1,5 +1,4 @@
 use ast::token::Location;
-use colorized::*;
 use core::fmt;
 use std::fmt::{Debug, Display};
 

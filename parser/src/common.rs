@@ -23,8 +23,10 @@ impl<'a> Parser<'a> {
             | TokenKind::U32
             | TokenKind::U64
             | TokenKind::U128
-            | TokenKind::Float
-            | TokenKind::Double
+            | TokenKind::F16
+            | TokenKind::F32
+            | TokenKind::F64
+            | TokenKind::F128
             | TokenKind::SizeT
             | TokenKind::Char
             | TokenKind::Bool

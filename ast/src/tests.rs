@@ -207,12 +207,12 @@ mod tests {
     fn test_cast_as() {
         let cast_as_expression = CastAs {
             expr: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
-            type_token: TokenKind::Float,
+            type_token: TokenKind::F64,
             span: Span::default(),
             loc: Location::default(),
         };
 
-        assert_eq!(cast_as_expression.to_string(), "10 as float");
+        assert_eq!(cast_as_expression.to_string(), "10 as f64");
     }
 
     #[test]

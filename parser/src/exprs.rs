@@ -7,7 +7,11 @@ use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
-    pub fn parse_expression(&mut self, precedence: Precedence, until: Option<TokenKind>) -> Result<(Expression, Span), ParseError> {
+    pub fn parse_expression(
+        &mut self,
+        precedence: Precedence,
+        until: Option<TokenKind>,
+    ) -> Result<(Expression, Span), ParseError> {
         let mut left_start = self.current_token.span.start;
         let mut left = self.parse_prefix_expression(until)?;
 
@@ -80,18 +84,20 @@ impl<'a> Parser<'a> {
                     } else {
                         Expression::ArrayIndex(array_index)
                     }
-                }
-                else {
+                } else if self.peek_token_is(TokenKind::LeftBrace) {
                     if let Some(token_kind) = until {
-                        if self.peek_token_is(TokenKind::LeftBrace) && !self.peek_token_is(token_kind) {
+                        if self.peek_token_is(token_kind) {
+                            Expression::ModuleImport(module_import)
+                        } else {
                             self.next_token(); // consume struct_name
                             self.parse_struct_init(module_import)?
-                        } else {
-                            Expression::ModuleImport(module_import)
                         }
                     } else {
-                        Expression::ModuleImport(module_import)
+                        self.next_token(); // consume struct_name
+                        self.parse_struct_init(module_import)?
                     }
+                } else {
+                    Expression::ModuleImport(module_import)
                 }
             }
             TokenKind::Ampersand => {
@@ -310,15 +316,14 @@ impl<'a> Parser<'a> {
     pub fn parse_func_call(&mut self, left: Expression, left_start: usize) -> Result<FuncCall, ParseError> {
         let arguments = self.parse_expression_series(TokenKind::RightParen)?;
         let start = self.current_token.span.start;
-        
+
         let expr = match left {
-            Expression::ModuleImport(module_import) => {
-                FuncCall {
+            Expression::ModuleImport(module_import) => FuncCall {
                 func_name: module_import.clone(),
                 arguments: arguments.0,
                 span: module_import.span.clone(),
                 loc: self.current_location(),
-            }},
+            },
             Expression::Identifier(identifier) => FuncCall {
                 func_name: ModuleImport {
                     sub_modules: vec![],
