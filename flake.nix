@@ -53,6 +53,7 @@
           glibc
           gcc_multi
           clang-tools
+          clang
           libffi
           libffi.dev
           isl

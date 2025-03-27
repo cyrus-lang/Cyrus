@@ -1,4 +1,8 @@
+extern fn printf(msg: string, ...void);
+
 fn main() {
-    #arr = [1, 2];
-    #a = arr[0];
+   printf("\tHello World\n");
+   printf("\tHello World\n");
+   printf("\tHello World\n");
+
 }

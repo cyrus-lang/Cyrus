@@ -5,19 +5,16 @@ use crate::{
 use ast::{ast::*, token::TokenKind};
 use inkwell::{
     AddressSpace,
-    llvm_sys::core::{LLVMGetArrayLength2, LLVMGetElementType},
-    types::{AnyTypeEnum, ArrayType, AsTypeRef, BasicType},
-    values::{
-        AnyValue, AnyValueEnum, ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue,
-        FloatValue, FunctionValue, IntValue, PointerValue,
-    },
+    llvm_sys::{core::LLVMBuildGEP2, prelude::LLVMValueRef},
+    types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum},
+    values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
-use std::{process::exit, ptr::null_mut, rc::Rc};
+use std::{ffi::CString, process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
         match expr {
-            Expression::Identifier(identifier) => self.build_load(Rc::clone(&scope), identifier),
+            Expression::Identifier(identifier) => self.build_load_value(Rc::clone(&scope), identifier).0,
             Expression::Assignment(assignment) => {
                 self.build_assignment(assignment);
                 inkwell::values::AnyValueEnum::PointerValue(self.build_null_literal())
@@ -26,23 +23,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
             Expression::Infix(binary_expression) => self.build_infix_expr(Rc::clone(&scope), binary_expression),
             Expression::UnaryOperator(unary_operator) => self.build_unary_operator(Rc::clone(&scope), unary_operator),
-            Expression::AddressOf(expression) => todo!(),
-            Expression::Dereference(expression) => todo!(),
             Expression::CastAs(cast_as) => self.build_cast_as(Rc::clone(&scope), cast_as),
-            Expression::StructInit(struct_init) => todo!(),
             Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => {
                 self.build_field_access_or_method_call(Rc::clone(&scope), field_access_or_method_calls)
             }
+            Expression::AddressOf(expression) => todo!(),
+            Expression::Dereference(expression) => todo!(),
+            Expression::StructInit(struct_init) => todo!(),
             Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
             Expression::ArrayIndexAssign(array_index_assign) => todo!(),
-            Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import),
+            Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import).0,
         }
     }
 
     pub(crate) fn build_unary_operator(&self, scope: ScopeRef, unary_operator: UnaryOperator) -> AnyValueEnum {
         let int_one = self.context.i32_type().const_int(1, false);
-        let value = self.build_module_import(Rc::clone(&scope), unary_operator.module_import);
+        let value = self
+            .build_module_import(Rc::clone(&scope), unary_operator.module_import)
+            .0;
         match value {
             AnyValueEnum::IntValue(int_value) => match unary_operator.ty {
                 UnaryOperatorType::PreIncrement => {
@@ -73,16 +72,41 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_module_import(&self, scope: ScopeRef, module_import: ModuleImport) -> AnyValueEnum {
+    pub(crate) fn build_module_import(
+        &self,
+        scope: ScopeRef,
+        module_import: ModuleImport,
+    ) -> (AnyValueEnum, BasicTypeEnum) {
         if module_import.sub_modules.is_empty() {
-            return self.build_load(Rc::clone(&scope), module_import.identifier);
+            return self.build_load_value(Rc::clone(&scope), module_import.identifier);
         }
 
         todo!();
     }
 
-    pub(crate) fn build_load(&self, scope: ScopeRef, identifier: Identifier) -> AnyValueEnum {
-        let record = {
+    pub(crate) fn build_load_ptr(&self, scope: ScopeRef, module_import: ModuleImport) -> (AnyValueEnum, BasicTypeEnum) {
+        let binding = {
+            match scope.borrow_mut().get(module_import.identifier.name.clone()) {
+                Some(record) => record,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::IdentifierNotDefined(module_import.identifier.name),
+                        location: None,
+                    });
+                    exit(1);
+                }
+            }
+        };
+        let record = binding.borrow_mut();
+
+        (unsafe { AnyValueEnum::new(record.ptr) }, unsafe {
+            BasicTypeEnum::new(record.ty)
+        })
+    }
+
+    pub(crate) fn build_load_value(&self, scope: ScopeRef, identifier: Identifier) -> (AnyValueEnum, BasicTypeEnum) {
+        let binding = {
             match scope.borrow_mut().get(identifier.name.clone()) {
                 Some(record) => record,
                 None => {
@@ -95,10 +119,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
         };
-        let ptr = unsafe { PointerValue::new(record.borrow_mut().ptr) };
+        let record = binding.borrow_mut();
+
+        let ptr = unsafe { PointerValue::new(record.ptr) };
         let pointee_ty = self.context.ptr_type(AddressSpace::default());
+        // let pointee_ty = unsafe { BasicTypeEnum::new(record.ty) };
         let value = self.builder.build_load(pointee_ty, ptr, "load").unwrap();
-        value.into()
+        (value.into(), unsafe { BasicTypeEnum::new(record.ty) })
     }
 
     pub(crate) fn build_assignment(&self, assignment: Box<Assignment>) {
@@ -129,80 +156,70 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         AnyValueEnum::ArrayValue(array_type.const_array(&[array_elements]))
     }
 
+    pub(crate) fn build_ordered_indexes(&self, scope: ScopeRef, dimensions: Vec<Expression>) -> Vec<IntValue<'_>> {
+        let mut ordered_indexes: Vec<IntValue> = Vec::new();
+        ordered_indexes.push(self.context.i32_type().const_int(0, false));
+        for item in dimensions {
+            if let Expression::Array(array) = item {
+                if array.elements.len() != 1 {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(
+                            "Expected only one integer literal when accessing array but got something else."
+                                .to_string(),
+                        ),
+                        location: None,
+                    });
+                    exit(1);
+                }
+
+                if let AnyValueEnum::IntValue(index) = self.build_expr(Rc::clone(&scope), array.elements[0].clone()) {
+                    ordered_indexes.push(index);
+                } else {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Cannot build array indexing with a non-integer index.".to_string()),
+                        location: None,
+                    });
+                    exit(1);
+                }
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Expected an integer literal as index but got something else.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
+        }
+        ordered_indexes
+    }
+
     pub(crate) fn build_array_index(&self, scope: ScopeRef, array_index: ArrayIndex) -> AnyValueEnum {
-        if let AnyValueEnum::PointerValue(ptr) = self.build_module_import(Rc::clone(&scope), array_index.module_import)
-        {
-            let pointee_ty = self.context.ptr_type(AddressSpace::default());
-            let ordered_indexes: Vec<IntValue<'_>> = array_index
-                .dimensions
-                .iter()
-                .map(|item| {
-                    if let Expression::Array(array) = item {
-                        if array.elements.len() != 1 {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom(
-                                    "Expected only one integer literal when accessing array but got something else."
-                                        .to_string(),
-                                ),
-                                location: None,
-                            });
-                            exit(1);
-                        }
+        let (any_value, pointee_ty) = self.build_load_ptr(Rc::clone(&scope), array_index.module_import);
 
-                        if let AnyValueEnum::IntValue(index) =
-                            self.build_expr(Rc::clone(&scope), array.elements[0].clone())
-                        {
-                            // let check_bounds = self.internal_funcs_table.get("check_bounds").unwrap();
-                            // let check_bounds_result = self
-                            //     .builder
-                            //     .build_call(
-                            //         unsafe { FunctionValue::new(*check_bounds).unwrap() },
-                            //         &[
-                            //             BasicMetadataValueEnum::PointerValue(ptr),
-                            //             BasicMetadataValueEnum::IntValue(index),
-                            //         ],
-                            //         "check_bounds_result",
-                            //     )
-                            //     .unwrap().as_value_ref();
+        if let AnyValueEnum::PointerValue(array_ptr) = any_value {
+            let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
 
-                            // if let AnyValueEnum::IntValue(check_bounds_result) = unsafe { AnyValueEnum::new(check_bounds_result) } {
-                            //     dbg!(check_bounds_result.get_sign_extended_constant());
-                            //     dbg!(check_bounds_result.get_zero_extended_constant());
-                            // } else {
-                            //     unreachable!();
-                            // }
-
-                            index
-                        } else {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom(
-                                    "Cannot build array indexing with a non-integer index.".to_string(),
-                                ),
-                                location: None,
-                            });
-                            exit(1);
-                        }
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(
-                                "Expected an integer literal as index but got something else.".to_string(),
-                            ),
-                            location: None,
-                        });
-                        exit(1);
-                    }
-                })
-                .collect();
-
-            let value = unsafe {
-                self.builder
-                    .build_gep(pointee_ty, ptr, &ordered_indexes, "array_gep")
-                    .unwrap()
+            let index_ptr = unsafe {
+                let name = CString::new("gep").unwrap();
+                let mut indices: Vec<LLVMValueRef> = ordered_indexes.iter().map(|item| item.as_value_ref()).collect();
+                PointerValue::new(LLVMBuildGEP2(
+                    self.builder.as_mut_ptr(),
+                    pointee_ty.as_type_ref(),
+                    array_ptr.as_value_ref(),
+                    indices.as_mut_ptr(),
+                    ordered_indexes.len().try_into().unwrap(),
+                    name.as_ptr(),
+                ))
             };
-            AnyValueEnum::PointerValue(value)
+
+            let index_value = self
+                .builder
+                .build_load(self.context.i32_type(), index_ptr, "load")
+                .unwrap();
+
+            index_value.into()
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -247,8 +264,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    fn unescape_string(&self, s: &str) -> String {
+        s.replace("\\n", "\n")
+         .replace("\\t", "\t")
+         .replace("\\r", "\r")
+         .replace("\\\"", "\"")
+         .replace("\\'", "'")
+         .replace("\\\\", "\\")
+    }
+
     pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> PointerValue {
-        let mut bytes = string_literal.raw.into_bytes();
+        let mut bytes = self.unescape_string(&string_literal.raw).into_bytes();
         bytes.push(0); // null terminator
 
         let i8_array_type = self.context.i8_type().array_type(bytes.len() as u32);

@@ -1,4 +1,4 @@
-use inkwell::llvm_sys::{prelude::LLVMValueRef, LLVMValue};
+use inkwell::llvm_sys::prelude::{LLVMTypeRef, LLVMValueRef};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub type ScopeRef = Rc<RefCell<Scope>>;
@@ -8,6 +8,7 @@ pub struct ScopeRecord {
     // FIXME
     // Consider to change this to use safe PointerValue<'_>
     pub ptr: LLVMValueRef,
+    pub ty: LLVMTypeRef,
 }
 
 pub struct Scope {

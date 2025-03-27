@@ -2,10 +2,10 @@ use ast::ast::*;
 use ast::token::{Location, TokenKind};
 use diag::*;
 use funcs::FuncTable;
-use inkwell::llvm_sys::prelude::LLVMValueRef;
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
+use inkwell::llvm_sys::prelude::LLVMValueRef;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
@@ -24,10 +24,10 @@ mod exprs;
 mod funcs;
 mod linkage;
 pub mod opts;
+mod runtime;
 mod scope;
 mod tests;
 mod types;
-mod runtime;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -86,7 +86,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             entry_point: None,
             func_table: FuncTable::new(),
             internal_funcs_table: HashMap::new(),
-        };  
+        };
 
         codegen_llvm.load_runtime();
         Ok(codegen_llvm)
@@ -124,8 +124,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_expr(Rc::clone(&scope), expression);
             }
             Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
-            Statement::If(_) => todo!(),
-            Statement::Return(_) => todo!(),
+            Statement::Return(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(String::from("Cannot build return statement outside of a function.")),
+                    location: None,
+                });
+                exit(1);
+            }
             Statement::FuncDef(func_def) => {
                 if func_def.name == "main" {
                     if self.entry_point.is_some() {
@@ -145,13 +151,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::FuncDecl(func_decl) => {
                 self.build_func_decl(func_decl);
             }
+            Statement::If(_) => todo!(),
             Statement::For(_) => todo!(),
             Statement::Switch(_) => todo!(),
-            Statement::Struct(_) => todo!(),
             Statement::Break(location) => todo!(),
             Statement::Continue(location) => todo!(),
-            Statement::Import(import) => todo!(),
+            Statement::Struct(_) => todo!(),
             Statement::Enum(_) => todo!(),
+            Statement::Import(import) => todo!(),
         }
     }
 
@@ -161,35 +168,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         var_name: String,
         loc: Location,
         span_end: usize,
-    ) -> PointerValue {
+    ) -> (PointerValue, BasicTypeEnum) {
         let any_type = self.build_type(var_type_token, loc.clone(), span_end);
-        let ptr_value = match any_type {
+        match any_type {
             AnyTypeEnum::StructType(struct_type) => todo!(),
             AnyTypeEnum::VectorType(vector_type) => todo!(),
-            AnyTypeEnum::IntType(int_type) => self.builder.build_alloca(int_type, &var_name),
-            AnyTypeEnum::FloatType(float_type) => self.builder.build_alloca(float_type, &var_name),
-            AnyTypeEnum::PointerType(pointer_type) => self.builder.build_alloca(pointer_type, &var_name),
-            AnyTypeEnum::ArrayType(array_type) => self.builder.build_alloca(array_type, &var_name),
+            AnyTypeEnum::IntType(int_type) => {
+                (self.builder.build_alloca(int_type, &var_name).unwrap(), int_type.into())
+            }
+            AnyTypeEnum::FloatType(float_type) => (
+                self.builder.build_alloca(float_type, &var_name).unwrap(),
+                float_type.into(),
+            ),
+            AnyTypeEnum::PointerType(pointer_type) => (
+                self.builder.build_alloca(pointer_type, &var_name).unwrap(),
+                pointer_type.into(),
+            ),
+            AnyTypeEnum::ArrayType(array_type) => (
+                self.builder.build_alloca(array_type, &var_name).unwrap(),
+                array_type.into(),
+            ),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot allocate memory for non-basic type.".to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-        };
-        match ptr_value {
-            Ok(ptr_value) => return ptr_value,
-            Err(err) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!("Failed to allocate memory for value:\n{}", err.to_string())),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
                         line: loc.line,
@@ -232,7 +234,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_variable(&self, scope: ScopeRef, variable: Variable) {
         match variable.ty {
             Some(var_type_token) => {
-                let ptr = self.build_alloca(
+                let (ptr, ty) = self.build_alloca(
                     var_type_token,
                     variable.name.clone(),
                     variable.loc.clone(),
@@ -248,6 +250,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     variable.name,
                     scope::ScopeRecord {
                         ptr: ptr.as_value_ref(),
+                        ty: ty.as_type_ref(),
                     },
                 );
             }
@@ -263,6 +266,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         variable.name,
                         scope::ScopeRecord {
                             ptr: ptr.as_value_ref(),
+                            ty: var_type.as_type_ref(),
                         },
                     );
                 } else {
