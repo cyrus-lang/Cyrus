@@ -154,7 +154,7 @@ impl fmt::Display for Expression {
             Expression::Assignment(assignment) => write!(
                 f,
                 "{} = {}",
-                Expression::ModuleImport(assignment.identifier.clone()).to_string(),
+                Expression::ModuleImport(assignment.module_import.clone()).to_string(),
                 assignment.expr
             ),
             Expression::ArrayIndexAssign(array_index_assign) => {

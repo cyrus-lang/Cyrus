@@ -170,7 +170,7 @@ mod tests {
     define_test!(variable_assignment, "x = 5;", |program: ProgramTree| {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::Assignment(assignment) = expression {
-                assert_eq!(assignment.identifier.identifier.name, "x");
+                assert_eq!(assignment.module_import.identifier.name, "x");
                 assert_eq!(
                     assignment.expr,
                     Expression::Literal(Literal::Integer(IntegerLiteral::I32(5)))

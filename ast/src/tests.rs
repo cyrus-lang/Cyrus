@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn test_assignment() {
         let assignment = Assignment {
-            identifier: ModuleImport {
+            module_import: ModuleImport {
                 sub_modules: vec![],
                 identifier: Identifier {
                     name: "x".to_string(),
@@ -141,7 +141,7 @@ mod tests {
             loc: Location::default(),
         };
 
-        assert_eq!(assignment.identifier.identifier.name, "x");
+        assert_eq!(assignment.module_import.identifier.name, "x");
     }
 
     #[test]

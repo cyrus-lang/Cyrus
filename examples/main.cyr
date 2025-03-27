@@ -1,8 +1,8 @@
 extern fn printf(msg: string, ...void);
 
 fn main() {
-   printf("\tHello World\n");
-   printf("\tHello World\n");
-   printf("\tHello World\n");
-
+   #a: i32 = 23;
+   printf("result: %d\n", a);
+   a = 15;
+   printf("result: %d\n", a);
 }

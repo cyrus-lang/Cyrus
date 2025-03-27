@@ -280,4 +280,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         }
     }
+
+    fn unescape_string(&self, s: &str) -> String {
+        s.replace("\\n", "\n")
+         .replace("\\t", "\t")
+         .replace("\\r", "\r")
+         .replace("\\\"", "\"")
+         .replace("\\'", "'")
+         .replace("\\\\", "\\")
+    }
 }

@@ -374,7 +374,7 @@ pub struct Variable {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignment {
-    pub identifier: ModuleImport,
+    pub module_import: ModuleImport,
     pub expr: Expression,
     pub span: Span,
     pub loc: Location,

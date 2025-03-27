@@ -563,7 +563,7 @@ impl<'a> Parser<'a> {
         let expr = self.parse_expression(Precedence::Lowest, None)?.0;
         let end = self.current_token.span.end;
         Ok(Expression::Assignment(Box::new(Assignment {
-            identifier: module_import,
+            module_import: module_import,
             expr,
             span: Span { start, end },
             loc: self.current_location(),

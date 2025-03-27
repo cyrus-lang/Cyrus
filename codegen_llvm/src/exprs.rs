@@ -16,8 +16,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         match expr {
             Expression::Identifier(identifier) => self.build_load_value(Rc::clone(&scope), identifier).0,
             Expression::Assignment(assignment) => {
-                self.build_assignment(assignment);
-                inkwell::values::AnyValueEnum::PointerValue(self.build_null_literal())
+                self.build_assignment(Rc::clone(&scope), assignment);
+                AnyValueEnum::PointerValue(self.build_null_literal())
             }
             Expression::Literal(literal) => self.build_literal(literal),
             Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
@@ -106,7 +106,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_load_value(&self, scope: ScopeRef, identifier: Identifier) -> (AnyValueEnum, BasicTypeEnum) {
-        let binding = {
+        let binding: Rc<std::cell::RefCell<crate::scope::ScopeRecord>> = {
             match scope.borrow_mut().get(identifier.name.clone()) {
                 Some(record) => record,
                 None => {
@@ -123,13 +123,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let ptr = unsafe { PointerValue::new(record.ptr) };
         let pointee_ty = self.context.ptr_type(AddressSpace::default());
-        // let pointee_ty = unsafe { BasicTypeEnum::new(record.ty) };
         let value = self.builder.build_load(pointee_ty, ptr, "load").unwrap();
         (value.into(), unsafe { BasicTypeEnum::new(record.ty) })
     }
 
-    pub(crate) fn build_assignment(&self, assignment: Box<Assignment>) {
-        todo!();
+    pub(crate) fn build_assignment(&self, scope: ScopeRef, assignment: Box<Assignment>) {
+        let (ptr, _) = self.build_load_ptr(Rc::clone(&scope), assignment.module_import);
+        let value = self.build_expr(Rc::clone(&scope), assignment.expr);
+        if let AnyValueEnum::PointerValue(ptr) = ptr {
+            self.build_store(ptr, value);
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Cannot store value in non-pointer allocation.".to_string()),
+                location: None,
+            });
+            exit(1);
+        }
     }
 
     pub(crate) fn build_array(&self, scope: ScopeRef, array: Array) -> AnyValueEnum {
@@ -138,7 +148,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .iter()
             .map(|item| unsafe { BasicValueEnum::new(self.build_expr(Rc::clone(&scope), item.clone()).as_value_ref()) })
             .collect();
-        assert!(!elements.is_empty());
 
         let first_element_type = elements[0].get_type();
         let _ = elements.iter().map(|item| {
@@ -148,6 +157,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     kind: DiagKind::InconsistentArrayItemTypes,
                     location: None,
                 });
+                exit(1);
             }
         });
 
@@ -262,15 +272,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             FloatLiteral::Float(val) => self.context.f32_type().const_float(val.into()),
             FloatLiteral::Double(val) => self.context.f64_type().const_float(val),
         }
-    }
-
-    fn unescape_string(&self, s: &str) -> String {
-        s.replace("\\n", "\n")
-         .replace("\\t", "\t")
-         .replace("\\r", "\r")
-         .replace("\\\"", "\"")
-         .replace("\\'", "'")
-         .replace("\\\\", "\\")
     }
 
     pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> PointerValue {
