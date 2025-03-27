@@ -1,7 +1,7 @@
 extern fn printf(msg: string, ...void);
 
 fn main() {
-   #users = ["Taha", "Cyrus"];
+   #users: string[3] = ["Taha", "Cyrus"];
    #user = users[0];
-   printf("result: %s\n", user);
+   printf("result: %s\n", users);
 }

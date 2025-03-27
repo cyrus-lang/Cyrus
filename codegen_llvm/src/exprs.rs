@@ -4,7 +4,13 @@ use crate::{
 };
 use ast::{ast::*, token::TokenKind};
 use inkwell::{
-    llvm_sys::{core::{LLVMBuildGEP2, LLVMGetElementType}, prelude::LLVMValueRef}, types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum}, values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue}, AddressSpace
+    AddressSpace,
+    llvm_sys::{
+        core::{LLVMBuildGEP2, LLVMGetElementType},
+        prelude::LLVMValueRef,
+    },
+    types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum},
+    values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{ffi::CString, process::exit, rc::Rc};
 
@@ -29,7 +35,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::StructInit(struct_init) => todo!(),
             Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
-            Expression::ArrayIndexAssign(array_index_assign) => todo!(),
+            Expression::ArrayIndexAssign(array_index_assign) => {
+                self.build_array_index_assign(Rc::clone(&scope), *array_index_assign);
+                AnyValueEnum::PointerValue(self.build_null_literal())
+            }
             Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import).0,
         }
     }
@@ -221,11 +230,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ))
             };
 
-            let element_type = unsafe{ LLVMGetElementType(pointee_ty.as_type_ref()) };
+            let element_type = unsafe { LLVMGetElementType(pointee_ty.as_type_ref()) };
 
             let index_value = self
                 .builder
-                .build_load(unsafe{ BasicTypeEnum::new(element_type) }, index_ptr, "load")
+                .build_load(unsafe { BasicTypeEnum::new(element_type) }, index_ptr, "load")
                 .unwrap();
 
             index_value.into()
@@ -237,6 +246,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         }
+    }
+
+    pub(crate) fn build_array_index_assign(&self, scope: ScopeRef, array_index_assign: ArrayIndexAssign) { 
+        todo!();
     }
 
     pub(crate) fn build_literal(&self, literal: Literal) -> AnyValueEnum {

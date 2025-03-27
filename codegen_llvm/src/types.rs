@@ -76,24 +76,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     match data_type {
                         AnyTypeEnum::IntType(int_type) => {
-                            data_type = inkwell::types::AnyTypeEnum::ArrayType(
-                                int_type.array_type(capacity.try_into().unwrap()),
-                            );
+                            data_type = AnyTypeEnum::ArrayType(int_type.array_type(capacity.try_into().unwrap()));
                         }
                         AnyTypeEnum::FloatType(float_type) => {
-                            data_type = inkwell::types::AnyTypeEnum::ArrayType(
-                                float_type.array_type(capacity.try_into().unwrap()),
-                            );
+                            data_type = AnyTypeEnum::ArrayType(float_type.array_type(capacity.try_into().unwrap()));
                         }
                         AnyTypeEnum::ArrayType(array_type) => {
-                            data_type = inkwell::types::AnyTypeEnum::ArrayType(
-                                array_type.array_type(capacity.try_into().unwrap()),
-                            );
+                            data_type = AnyTypeEnum::ArrayType(array_type.array_type(capacity.try_into().unwrap()));
                         }
                         AnyTypeEnum::StructType(struct_type) => todo!(),
                         AnyTypeEnum::VectorType(vector_type) => todo!(),
                         AnyTypeEnum::VoidType(void_type) => todo!(),
-                        AnyTypeEnum::PointerType(pointer_type) => todo!(),
+                        AnyTypeEnum::PointerType(pointer_type) => {
+                            data_type = AnyTypeEnum::ArrayType(pointer_type.array_type(capacity.try_into().unwrap()));
+                        }
                         _ => {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
