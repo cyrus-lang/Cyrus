@@ -4,10 +4,7 @@ use crate::{
 };
 use ast::{ast::*, token::TokenKind};
 use inkwell::{
-    AddressSpace,
-    llvm_sys::{core::LLVMBuildGEP2, prelude::LLVMValueRef},
-    types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum},
-    values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    llvm_sys::{core::{LLVMBuildGEP2, LLVMGetElementType}, prelude::LLVMValueRef}, types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum}, values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue}, AddressSpace
 };
 use std::{ffi::CString, process::exit, rc::Rc};
 
@@ -224,9 +221,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ))
             };
 
+            let element_type = unsafe{ LLVMGetElementType(pointee_ty.as_type_ref()) };
+
             let index_value = self
                 .builder
-                .build_load(self.context.i32_type(), index_ptr, "load")
+                .build_load(unsafe{ BasicTypeEnum::new(element_type) }, index_ptr, "load")
                 .unwrap();
 
             index_value.into()
