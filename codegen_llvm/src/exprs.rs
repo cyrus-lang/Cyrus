@@ -32,7 +32,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Expression::AddressOf(expr) => self.build_address_of(Rc::clone(&scope), *expr),
             Expression::Dereference(expression) => self.build_deref(Rc::clone(&scope), *expression),
-            Expression::StructInit(struct_init) => todo!(),
+            Expression::StructInit(struct_init) => self.build_struct_init(Rc::clone(&scope), struct_init),
             Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
             Expression::ArrayIndexAssign(array_index_assign) => {
@@ -279,11 +279,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_array_index_assign(
-        &self,
-        scope: ScopeRef,
-        array_index_assign: ArrayIndexAssign,
-    ) {
+    pub(crate) fn build_array_index_assign(&self, scope: ScopeRef, array_index_assign: ArrayIndexAssign) {
         let (any_value, pointee_ty) = self.build_load_ptr(Rc::clone(&scope), array_index_assign.module_import);
 
         if let AnyValueEnum::PointerValue(array_ptr) = any_value {

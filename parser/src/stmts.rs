@@ -143,7 +143,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_struct(&mut self) -> Result<Statement, ParseError> {
         let loc = self.current_location();
-        let start = self.current_token.span.start.clone();
+        let struct_start = self.current_token.span.start.clone();
 
         let vis_type = self
             .parse_vis_type(self.current_token.clone())
@@ -153,7 +153,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::ExpectedIdentifier,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
                 verbose: Some(String::from("Token 'inline' is not a valid vistype for structs.")),
                 caret: true,
             });
@@ -168,7 +168,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                    code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
                     verbose: None,
                     caret: true,
                 });
@@ -192,7 +192,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::MissingOpeningBrace,
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                            code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
                             verbose: None,
                             caret: true,
                         });
@@ -214,7 +214,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::ExpectedIdentifier,
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                            code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
                             verbose: None,
                             caret: true,
                         });
@@ -238,7 +238,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
                         verbose: None,
                         caret: true,
                     });
@@ -252,7 +252,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                            code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
                             verbose: Some(format!(
                                 "Expected method definition inside struct '{}'",
                                 struct_name.clone()
@@ -262,6 +262,8 @@ impl<'a> Parser<'a> {
                     }
                 }
                 TokenKind::Identifier { name: field_name } => {
+                    let start = self.current_token.span.start;
+
                     self.next_token(); // consume identifier
                     self.expect_current(TokenKind::Colon)?;
                     let type_token = self.parse_type_token()?;
@@ -271,6 +273,10 @@ impl<'a> Parser<'a> {
                         name: field_name,
                         ty: type_token,
                         loc: self.current_location(),
+                        span: Span {
+                            start,
+                            end: self.current_token.span.end,
+                        },
                     };
 
                     fields.push(field);
@@ -280,7 +286,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
                         verbose: Some(String::from("Invalid token inside a struct definition.")),
                         caret: true,
                     });
@@ -295,6 +301,7 @@ impl<'a> Parser<'a> {
             fields,
             methods,
             loc,
+            span: Span { start: struct_start, end: self.current_token.span.end }
         }))
     }
 

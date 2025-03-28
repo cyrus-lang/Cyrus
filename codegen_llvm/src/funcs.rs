@@ -3,12 +3,11 @@ use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRef};
 use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam, VisType};
 use ast::token::{Location, Span, Token, TokenKind};
-use inkwell::llvm_sys::prelude::{LLVMTypeRef, LLVMValueRef};
-use inkwell::llvm_sys::LLVMValue;
 use inkwell::llvm_sys::core::LLVMFunctionType;
+use inkwell::llvm_sys::prelude::{LLVMTypeRef, LLVMValueRef};
+use inkwell::types::AsTypeRef;
 use inkwell::types::FunctionType;
 use inkwell::values::{AnyValueEnum, AsValueRef, BasicMetadataValueEnum, CallSiteValue, FunctionValue};
-use inkwell::{llvm_sys::LLVMType, types::AsTypeRef};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
@@ -39,7 +38,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 } else {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::TypeAnnotationRequiredForParam(param.identifier.name.clone(), func_name.clone()),
+                        kind: DiagKind::TypeAnnotationRequiredForParam(
+                            param.identifier.name.clone(),
+                            func_name.clone(),
+                        ),
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: func_loc.line,

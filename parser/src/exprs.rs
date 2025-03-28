@@ -474,16 +474,17 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<Expression, ParseError> {
+        let start = self.current_token.span.start;
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut field_inits: Vec<FieldInit> = Vec::new();
-        let start = self.current_token.span.start;
 
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Expression::StructInit(StructInit {
                 struct_name: struct_name.clone(),
                 field_inits: Vec::new(),
                 loc: self.current_location(),
+                span: Span { start, end: self.current_token.span.end },
             }));
         }
 
@@ -554,6 +555,7 @@ impl<'a> Parser<'a> {
             struct_name,
             field_inits,
             loc: self.current_location(),
+            span: Span { start, end: self.current_token.span.end },
         }));
     }
 

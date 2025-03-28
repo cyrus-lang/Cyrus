@@ -1,9 +1,8 @@
-extern fn printf(msg: string, ...void);
+struct Person {
+   name: string;  
+   age: i32;
+}
 
 fn main() {
-   #a: string[3] = ["Taha", "Cyrus"];
-   a[2] = "aaa";
-   #b = a[2];
-
-   printf("result: %s\n", b);
+   #person = Person { name: "Taha", age: 18 };
 }

@@ -10,9 +10,10 @@ use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::types::{AnyTypeEnum, AsTypeRef, BasicTypeEnum};
-use inkwell::values::{AnyValueEnum, AsValueRef, FunctionValue, PointerValue};
+use inkwell::values::{AnyValueEnum, AsValueRef, PointerValue};
 use opts::CodeGenLLVMOptions;
 use scope::{Scope, ScopeRef};
+use structs::StructTable;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
@@ -28,6 +29,8 @@ mod runtime;
 mod scope;
 mod tests;
 mod types;
+mod structs;
+mod enums;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -41,6 +44,7 @@ pub struct CodeGenLLVM<'ctx> {
     reporter: DiagReporter,
     entry_point: Option<FuncDef>,
     func_table: FuncTable<'ctx>,
+    struct_table: StructTable<'ctx>,
     internal_funcs_table: HashMap<String, LLVMValueRef>,
 }
 
@@ -85,6 +89,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             target_machine,
             entry_point: None,
             func_table: FuncTable::new(),
+            struct_table: StructTable::new(),
             internal_funcs_table: HashMap::new(),
         };
 
@@ -156,12 +161,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Switch(_) => todo!(),
             Statement::Break(location) => todo!(),
             Statement::Continue(location) => todo!(),
-            Statement::Struct(_) => todo!(),
-            Statement::Enum(_) => todo!(),
+            Statement::Struct(struct_statement) => self.build_struct(struct_statement),
+            Statement::Enum(enum_statement) => self.build_enum(enum_statement),
             Statement::Import(import) => todo!(),
         }
     }
-
+    
     pub(crate) fn build_alloca(
         &self,
         var_type_token: TokenKind,
@@ -211,6 +216,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             AnyValueEnum::ArrayValue(array_value) => self.builder.build_store(ptr, array_value),
             AnyValueEnum::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value),
             AnyValueEnum::VectorValue(vector_value) => self.builder.build_store(ptr, vector_value),
+            AnyValueEnum::StructValue(struct_value) => self.builder.build_store(ptr, struct_value),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,

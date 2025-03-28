@@ -276,6 +276,7 @@ pub struct Struct {
     pub fields: Vec<Field>,
     pub methods: Vec<FuncDef>,
     pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -283,6 +284,7 @@ pub struct StructInit {
     pub struct_name: ModuleImport,
     pub field_inits: Vec<FieldInit>,
     pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -290,6 +292,7 @@ pub struct Field {
     pub name: String,
     pub ty: TokenKind,
     pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
