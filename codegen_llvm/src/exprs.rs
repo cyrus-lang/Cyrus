@@ -4,10 +4,13 @@ use crate::{
 };
 use ast::{ast::*, token::TokenKind};
 use inkwell::{
+    AddressSpace,
     llvm_sys::{
-        core::{LLVMBuildGEP2, LLVMBuildPointerCast, LLVMGetElementType, LLVMPrintTypeToString},
+        core::{LLVMBuildGEP2, LLVMBuildPointerCast, LLVMGetElementType},
         prelude::LLVMValueRef,
-    }, types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum}, values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue}, AddressSpace
+    },
+    types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum},
+    values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{ffi::CString, process::exit, rc::Rc};
 
@@ -27,15 +30,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => {
                 self.build_field_access_or_method_call(Rc::clone(&scope), field_access_or_method_calls)
             }
-            Expression::AddressOf(expr) => {
-                let any_value = self.build_expr(Rc::clone(&scope), *expr);
-                let ptr = self
-                    .builder
-                    .build_alloca(self.context.ptr_type(AddressSpace::default()), "addr_of")
-                    .unwrap();
-                self.build_store(ptr, any_value);
-                AnyValueEnum::PointerValue(ptr)
-            }
+            Expression::AddressOf(expr) => self.build_address_of(Rc::clone(&scope), *expr),
             Expression::Dereference(expression) => self.build_deref(Rc::clone(&scope), *expression),
             Expression::StructInit(struct_init) => todo!(),
             Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
@@ -48,21 +43,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn build_address_of(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
+        let any_value = self.build_expr(Rc::clone(&scope), expr);
+        let ptr = self
+            .builder
+            .build_alloca(self.context.ptr_type(AddressSpace::default()), "addr_of")
+            .unwrap();
+        self.build_store(ptr, any_value);
+        AnyValueEnum::PointerValue(ptr)
+    }
+
     pub(crate) fn build_deref(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
         match any_value {
             AnyValueEnum::PointerValue(pointer_value) => {
-                dbg!(unsafe { CString::from_raw(LLVMPrintTypeToString(pointer_value.get_type().as_type_ref())) });
-                // let element_type =
-                //     unsafe { BasicTypeEnum::new(LLVMGetElementType(pointer_value.get_type().as_type_ref())) };
-
-                let raw_element_type = unsafe { LLVMGetElementType(pointer_value.get_type().as_type_ref()) };
-                dbg!(unsafe { CString::from_raw(LLVMPrintTypeToString(raw_element_type)) });
-
-                // let value = self.builder.build_load(element_type, pointer_value, "deref").unwrap();
-
-                // value.into()
-                AnyValueEnum::PointerValue(self.build_null_literal())
+                let pointee_ty = self.context.ptr_type(AddressSpace::default());
+                self.builder
+                    .build_load(pointee_ty, pointer_value, "deref")
+                    .unwrap()
+                    .into()
             }
             _ => {
                 display_single_diag(Diag {

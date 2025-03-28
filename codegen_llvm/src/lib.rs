@@ -41,7 +41,7 @@ pub struct CodeGenLLVM<'ctx> {
     reporter: DiagReporter,
     entry_point: Option<FuncDef>,
     func_table: FuncTable<'ctx>,
-    internal_funcs_table: HashMap<String, LLVMValueRef>, // FIXME
+    internal_funcs_table: HashMap<String, LLVMValueRef>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -283,10 +283,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     fn unescape_string(&self, s: &str) -> String {
         s.replace("\\n", "\n")
-         .replace("\\t", "\t")
-         .replace("\\r", "\r")
-         .replace("\\\"", "\"")
-         .replace("\\'", "'")
-         .replace("\\\\", "\\")
+            .replace("\\t", "\t")
+            .replace("\\r", "\r")
+            .replace("\\\"", "\"")
+            .replace("\\'", "'")
+            .replace("\\\\", "\\")
     }
 }
