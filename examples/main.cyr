@@ -1,7 +1,11 @@
 extern fn printf(msg: string, ...void);
 
 fn main() {
-   #users: string[3] = ["Taha", "Cyrus"];
-   #user = users[0];
-   printf("result: %s\n", users);
+   #a: i32 = 10;
+   #ptr: *void = &a;
+
+   #b = ptr as *i32;
+   *b;
+   
+   // printf("result: %d\n", c);
 }

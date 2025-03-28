@@ -84,9 +84,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         AnyTypeEnum::ArrayType(array_type) => {
                             data_type = AnyTypeEnum::ArrayType(array_type.array_type(capacity.try_into().unwrap()));
                         }
-                        AnyTypeEnum::StructType(struct_type) => todo!(),
-                        AnyTypeEnum::VectorType(vector_type) => todo!(),
-                        AnyTypeEnum::VoidType(void_type) => todo!(),
+                        AnyTypeEnum::StructType(struct_type) => {
+                            data_type = AnyTypeEnum::ArrayType(struct_type.array_type(capacity.try_into().unwrap()));
+                        }
+                        AnyTypeEnum::VectorType(vector_type) => {
+                            data_type = AnyTypeEnum::ArrayType(vector_type.array_type(capacity.try_into().unwrap()));
+                        }
+                        AnyTypeEnum::VoidType(void_type) => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom("Void cannot be an array element type.".to_string()),
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: loc.line,
+                                    column: loc.column,
+                                    length: span_end,
+                                }),
+                            });
+                            exit(1);
+                        }
                         AnyTypeEnum::PointerType(pointer_type) => {
                             data_type = AnyTypeEnum::ArrayType(pointer_type.array_type(capacity.try_into().unwrap()));
                         }

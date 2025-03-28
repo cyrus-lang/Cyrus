@@ -4,13 +4,10 @@ use crate::{
 };
 use ast::{ast::*, token::TokenKind};
 use inkwell::{
-    AddressSpace,
     llvm_sys::{
-        core::{LLVMBuildGEP2, LLVMGetElementType},
+        core::{LLVMBuildGEP2, LLVMBuildPointerCast, LLVMGetElementType, LLVMPrintTypeToString},
         prelude::LLVMValueRef,
-    },
-    types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum},
-    values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    }, types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum}, values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue}, AddressSpace
 };
 use std::{ffi::CString, process::exit, rc::Rc};
 
@@ -30,8 +27,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => {
                 self.build_field_access_or_method_call(Rc::clone(&scope), field_access_or_method_calls)
             }
-            Expression::AddressOf(expression) => todo!(),
-            Expression::Dereference(expression) => todo!(),
+            Expression::AddressOf(expr) => {
+                let any_value = self.build_expr(Rc::clone(&scope), *expr);
+                let ptr = self
+                    .builder
+                    .build_alloca(self.context.ptr_type(AddressSpace::default()), "addr_of")
+                    .unwrap();
+                self.build_store(ptr, any_value);
+                AnyValueEnum::PointerValue(ptr)
+            }
+            Expression::Dereference(expression) => self.build_deref(Rc::clone(&scope), *expression),
             Expression::StructInit(struct_init) => todo!(),
             Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
@@ -40,6 +45,33 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 AnyValueEnum::PointerValue(self.build_null_literal())
             }
             Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import).0,
+        }
+    }
+
+    pub(crate) fn build_deref(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
+        let any_value = self.build_expr(Rc::clone(&scope), expr);
+        match any_value {
+            AnyValueEnum::PointerValue(pointer_value) => {
+                dbg!(unsafe { CString::from_raw(LLVMPrintTypeToString(pointer_value.get_type().as_type_ref())) });
+                // let element_type =
+                //     unsafe { BasicTypeEnum::new(LLVMGetElementType(pointer_value.get_type().as_type_ref())) };
+
+                let raw_element_type = unsafe { LLVMGetElementType(pointer_value.get_type().as_type_ref()) };
+                dbg!(unsafe { CString::from_raw(LLVMPrintTypeToString(raw_element_type)) });
+
+                // let value = self.builder.build_load(element_type, pointer_value, "deref").unwrap();
+
+                // value.into()
+                AnyValueEnum::PointerValue(self.build_null_literal())
+            }
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot dereference non-pointer value.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
         }
     }
 
@@ -248,7 +280,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_array_index_assign(&self, scope: ScopeRef, array_index_assign: ArrayIndexAssign) { 
+    pub(crate) fn build_array_index_assign(&self, scope: ScopeRef, array_index_assign: ArrayIndexAssign) {
         todo!();
     }
 
@@ -369,6 +401,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
             },
+            AnyValueEnum::PointerValue(pointer_value) => {
+                let name = CString::new("cast_ptr").unwrap();
+                let ptr = unsafe {
+                    LLVMBuildPointerCast(
+                        self.builder.as_mut_ptr(),
+                        pointer_value.as_value_ref(),
+                        target.as_type_ref(),
+                        name.as_ptr(),
+                    )
+                };
+                AnyValueEnum::PointerValue(unsafe { PointerValue::new(ptr) })
+            }
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
