@@ -279,8 +279,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_array_index_assign(&self, scope: ScopeRef, array_index_assign: ArrayIndexAssign) {
-        todo!();
+    pub(crate) fn build_array_index_assign(
+        &self,
+        scope: ScopeRef,
+        array_index_assign: ArrayIndexAssign,
+    ) {
+        let (any_value, pointee_ty) = self.build_load_ptr(Rc::clone(&scope), array_index_assign.module_import);
+
+        if let AnyValueEnum::PointerValue(array_ptr) = any_value {
+            let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index_assign.dimensions);
+
+            let index_ptr = unsafe {
+                let name = CString::new("gep").unwrap();
+                let mut indices: Vec<LLVMValueRef> = ordered_indexes.iter().map(|item| item.as_value_ref()).collect();
+                PointerValue::new(LLVMBuildGEP2(
+                    self.builder.as_mut_ptr(),
+                    pointee_ty.as_type_ref(),
+                    array_ptr.as_value_ref(),
+                    indices.as_mut_ptr(),
+                    ordered_indexes.len().try_into().unwrap(),
+                    name.as_ptr(),
+                ))
+            };
+
+            let value = unsafe {
+                BasicValueEnum::new(
+                    self.build_expr(Rc::clone(&scope), array_index_assign.expr)
+                        .as_value_ref(),
+                )
+            };
+
+            self.builder.build_store(index_ptr, value).unwrap();
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Cannot apply array index assign to a non-array pointer type.".to_string()),
+                location: None,
+            });
+            exit(1);
+        }
     }
 
     pub(crate) fn build_literal(&self, literal: Literal) -> AnyValueEnum {
