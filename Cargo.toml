@@ -19,3 +19,4 @@ ast = { path = "./ast", version = "*" }
 parser = { path = "./parser", version = "*" }
 utils = { path = "./utils", version = "*" }
 codegen_llvm = { path = "./codegen_llvm", version = "*" }
+toml = "0.8.20"

@@ -90,7 +90,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         AnyTypeEnum::VectorType(vector_type) => {
                             data_type = AnyTypeEnum::ArrayType(vector_type.array_type(capacity.try_into().unwrap()));
                         }
-                        AnyTypeEnum::VoidType(void_type) => {
+                        AnyTypeEnum::VoidType(_) => {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
                                 kind: DiagKind::Custom("Void cannot be an array element type.".to_string()),

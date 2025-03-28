@@ -10,3 +10,4 @@ ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
 parser = { path = "../parser", version = "*" }
 colorized = "1.0.0"
+serde = { version = "1.0.219", features = ["derive"] }

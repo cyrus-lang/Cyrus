@@ -20,7 +20,7 @@ use std::process::exit;
 use std::rc::Rc;
 
 mod build;
-mod diag;
+pub mod diag;
 mod exprs;
 mod funcs;
 mod linkage;

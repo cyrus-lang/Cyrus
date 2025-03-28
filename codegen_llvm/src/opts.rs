@@ -1,6 +1,8 @@
-#[derive(Debug, Clone)]
+use serde::Deserialize;
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct CodeGenLLVMOptions {
-    pub optimization_level: i32,
+    pub opt_level: i32,
     pub library_path: Vec<String>,
     pub libraries: Vec<String>,
     pub build_dir: String
@@ -9,7 +11,7 @@ pub struct CodeGenLLVMOptions {
 impl CodeGenLLVMOptions {
     pub fn default() -> Self {
         Self {
-            optimization_level: 0,
+            opt_level: 0,
             library_path: Vec::new(),
             libraries: Vec::new(),
             build_dir: String::new(),

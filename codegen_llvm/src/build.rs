@@ -85,7 +85,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn execute(&mut self) {
-        let opt_level = self.build_optimization_level(self.opts.optimization_level);
+        let opt_level = self.build_optimization_level(self.opts.opt_level);
         let execution_engine = self.module.create_jit_execution_engine(opt_level).unwrap();
 
         let main_func_result: Result<JitFunction<'ctx, MainFunc>, FunctionLookupError> =
