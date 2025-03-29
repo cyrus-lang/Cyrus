@@ -142,7 +142,6 @@ fn compiler_options_from_toml() -> Option<CodeGenLLVMOptions> {
     })
 }
 
-
 macro_rules! init_compiler {
     ($context:expr, $file_path:expr, $opts:expr) => {{
         if let Some(file_path) = $file_path {
@@ -201,7 +200,7 @@ macro_rules! init_compiler {
 
                     
                 let (program, file_name) = parse_program(main_file_path.clone());
-                let codegen_llvm = match CodeGenLLVM::new($context, main_file_path, file_name.clone(), program, $opts) {
+                let codegen_llvm = match CodeGenLLVM::new($context, main_file_path, file_name.clone(), program, opts) {
                     Ok(instance) => instance,
                     Err(err) => {
                         display_single_diag(Diag {

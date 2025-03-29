@@ -5,7 +5,6 @@ use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::OptimizationLevel;
 use inkwell::execution_engine::FunctionLookupError;
 use inkwell::execution_engine::JitFunction;
-use inkwell::llvm_sys::LLVMType;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::module::Linkage;
 use inkwell::passes::PassManager;

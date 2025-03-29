@@ -1,3 +1,5 @@
+default: run
+
 dump:
 	cargo run -- dump ./examples/main.cyr ir ./tmp/main.ll
 
@@ -9,3 +11,6 @@ build:
 
 generate-sample-llvm-ir:
 	clang -S -emit-llvm -O0 -Xclang -disable-O0-optnone -fno-inline ./tmp/sample.c -o ./tmp/sample.ll 
+
+test: 
+	cargo test --all
