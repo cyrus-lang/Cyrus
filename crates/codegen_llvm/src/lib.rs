@@ -1,5 +1,6 @@
 use ast::ast::*;
 use ast::token::{Location, TokenKind};
+use build::BuildManifest;
 use diag::*;
 use funcs::FuncTable;
 use inkwell::OptimizationLevel;
@@ -39,6 +40,7 @@ pub struct CodeGenLLVM<'ctx> {
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     target_machine: TargetMachine,
+    build_manifest: BuildManifest,
     program: ProgramTree,
     file_path: String,
     reporter: DiagReporter,
@@ -91,6 +93,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_table: FuncTable::new(),
             struct_table: StructTable::new(),
             internal_funcs_table: HashMap::new(),
+            build_manifest: BuildManifest::default(),
         };
 
         codegen_llvm.load_runtime();
@@ -112,6 +115,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.optimize();
         self.build_entry_point();
+        self.ensure_build_directory();
+        self.ensure_build_manifest();
+        if !self.source_code_changed() {
+            // self.generate_object_file(output_path);
+            todo!();
+        }
     }
 
     pub(crate) fn build_statements(&mut self, scope: ScopeRef, stmts: Vec<Statement>) {

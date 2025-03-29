@@ -1,3 +1,4 @@
+use std::fs;
 use ::parser::parse_program;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
@@ -11,7 +12,9 @@ enum CpuValue {
 
 impl std::fmt::Display for CpuValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        match self {
+            CpuValue::None => write!(f, "none"),
+        }
     }
 }
 
@@ -121,39 +124,39 @@ enum Commands {
     #[clap(about = "Compile source code into an executable", display_order = 3)]
     Build {
         file_path: Option<String>,
-        output_path: String,
+        output_path: Option<String>,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
 
     #[clap(about = "Generate an object file", display_order = 4)]
-    Obj {
-        file_path: Option<String>,
+    Object {
         output_path: String,
+        file_path: Option<String>,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
 
     #[clap(about = "Generate a dynamic library (shared object)", display_order = 5)]
     Dylib {
-        file_path: Option<String>,
         output_path: String,
+        file_path: Option<String>,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
 
     #[clap(about = "Emit LLVM IR as a .ll file per module.", display_order = 6)]
     EmitLLVM {
-        file_path: Option<String>,
         output_path: String,
+        file_path: Option<String>,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
 
     #[clap(about = "Emit asm as a .s file per module.", display_order = 7)]
     EmitASM {
-        file_path: Option<String>,
         output_path: String,
+        file_path: Option<String>,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
@@ -197,52 +200,55 @@ macro_rules! init_compiler {
                 std::process::exit(1);
             }
 
-            if let Ok(options) = codegen_llvm::opts::Options::read_toml("Project.toml".to_string()) {
-                if !std::path::Path::new("src/main.cyr").exists() {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("'src/main.cyr' file not found.".to_string()),
-                        location: None,
-                    });
-                    std::process::exit(1);
-                }
-
-                let main_file_path = std::path::Path::new("src/main.cyr")
-                    .canonicalize()
-                    .unwrap_or_else(|_| {
+            match codegen_llvm::opts::Options::read_toml("Project.toml".to_string()) {
+                Ok(options) => {
+                    if !std::path::Path::new("src/main.cyr").exists() {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
-                            kind: DiagKind::Custom("Failed to get absolute path for 'src/main.cyr'.".to_string()),
-                            location: None,
-                        });
-                        std::process::exit(1);
-                    })
-                    .to_str()
-                    .unwrap()
-                    .to_string();
-
-                let (program, file_name) = parse_program(main_file_path.clone());
-                let codegen_llvm = match CodeGenLLVM::new($context, main_file_path, file_name.clone(), program, options)
-                {
-                    Ok(instance) => instance,
-                    Err(err) => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(format!("Creating CodeGenLLVM instance failed:{}", err.to_string())),
+                            kind: DiagKind::Custom("'src/main.cyr' file not found.".to_string()),
                             location: None,
                         });
                         std::process::exit(1);
                     }
-                };
-
-                codegen_llvm
-            } else {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("'Project.toml' contains an invalid configuration.".to_string()),
-                    location: None,
-                });
-                std::process::exit(1);
+    
+                    let main_file_path = std::path::Path::new("src/main.cyr")
+                        .canonicalize()
+                        .unwrap_or_else(|_| {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom("Failed to get absolute path for 'src/main.cyr'.".to_string()),
+                                location: None,
+                            });
+                            std::process::exit(1);
+                        })
+                        .to_str()
+                        .unwrap()
+                        .to_string();
+    
+                    let (program, file_name) = parse_program(main_file_path.clone());
+                    let codegen_llvm = match CodeGenLLVM::new($context, main_file_path, file_name.clone(), program, options)
+                    {
+                        Ok(instance) => instance,
+                        Err(err) => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom(format!("Creating CodeGenLLVM instance failed:{}", err.to_string())),
+                                location: None,
+                            });
+                            std::process::exit(1);
+                        }
+                    };
+    
+                    codegen_llvm
+                }
+                Err(err) => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(err.to_string()),
+                        location: None,
+                    });
+                    std::process::exit(1);
+                }
             }
         }
     }};
@@ -291,7 +297,11 @@ pub fn main() {
             output_path,
             compiler_options,
         } => {
-            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options()
+            );
             codegen_llvm.compile();
             codegen_llvm.emit_llvm_ir(output_path);
         }
@@ -300,7 +310,11 @@ pub fn main() {
             output_path,
             compiler_options,
         } => {
-            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options()
+            );
             codegen_llvm.compile();
             codegen_llvm.emit_asm(output_path);
         }
@@ -310,38 +324,35 @@ pub fn main() {
             compiler_options,
         } => {
             let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
-            // compiler.compile();
-            // compiler.make_executable_file(output_path);
+            codegen_llvm.compile();
+            // codegen_llvm.generate_executable_file(output_path);
+            todo!();
         }
-        Commands::Obj {
+        Commands::Object {
             file_path,
             output_path,
             compiler_options,
         } => {
-            // let mut compiler = init_compiler!(file_path.clone());
-            // compiler.set_opts(CompilerOptions {
-            //     opt_level: compiler_options.optimization_level.as_integer(),
-            //     library_path: compiler_options.library_path,
-            //     libraries: compiler_options.libraries,
-            //     build_dir: compiler_options.build_dir,
-            // });
-            // compiler.compile();
-            // compiler.make_object_file(output_path);
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options()
+            );
+            codegen_llvm.compile();
+            codegen_llvm.generate_object_file(output_path);
         }
         Commands::Dylib {
             file_path,
             output_path,
             compiler_options,
         } => {
-            // let mut compiler = init_compiler!(file_path.clone());
-            // compiler.set_opts(CompilerOptions {
-            //     opt_level: compiler_options.optimization_level.as_integer(),
-            //     library_path: compiler_options.library_path,
-            //     libraries: compiler_options.libraries,
-            //     build_dir: compiler_options.build_dir,
-            // });
-            // compiler.compile();
-            // compiler.make_dynamic_library(output_path);
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options()
+            );
+            codegen_llvm.compile();
+            codegen_llvm.generate_dynamic_library(output_path);
         }
         Commands::Version => {
             println!("Cyrus {}", version)

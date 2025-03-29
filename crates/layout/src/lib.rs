@@ -59,6 +59,7 @@ library_path = []
 
 [compiler]
 cpu = \"generic\"
+optimize = \"o1\"
 sources = [\"src/*\"]
 version = \"{}\"
 ",
@@ -110,6 +111,7 @@ library_path = []
 
 [compiler]
 cpu = \"generic\"
+optimize = \"o1\"
 sources = [\"src/*\"]
 version = \"{}\"
 ",

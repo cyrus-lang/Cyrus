@@ -46,12 +46,22 @@ impl Options {
                 .as_table()
                 .ok_or("Failed to parse 'compiler' options from 'Project.toml'.")?;
 
-            options.opt_level = table
+            let optimize: String = table
                 .get("optimize")
-                .and_then(|v| v.as_integer())
-                .ok_or("Invalid value given for 'optimize' key in 'Project.toml'.")?
+                .and_then(|v| v.as_str())
+                .ok_or("'optimize' key must be string in 'Project.toml'.")?
                 .try_into()
                 .unwrap();
+
+            options.opt_level = match optimize.as_str() {
+                "none" => 0,
+                "o1" => 1,
+                "o2" => 2,
+                "o3" => 3,
+                _ => {
+                    return Err("'optimize' key in 'Project.toml' must be one of o1, o2, o3 or none.".to_string());
+                }
+            };
         }
 
         if let Some(value) = file_toml.get("dependencies") {
