@@ -2,7 +2,18 @@ use ::parser::parse_program;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::diag::*;
-use std::fmt;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum CpuValue {
+    None,
+    // TODO
+}
+
+impl std::fmt::Display for CpuValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum OptimizeLevel {
@@ -23,7 +34,7 @@ impl OptimizeLevel {
     }
 }
 
-impl fmt::Display for OptimizeLevel {
+impl std::fmt::Display for OptimizeLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OptimizeLevel::None => write!(f, "none"),
@@ -36,14 +47,20 @@ impl fmt::Display for OptimizeLevel {
 
 #[derive(Parser, Debug, Clone)]
 struct CompilerOptions {
+    #[clap(long, value_enum, default_value_t = CpuValue::None, help = "Set CPU name")]
+    cpu: CpuValue,
+
     #[clap(long, value_enum, default_value_t = OptimizeLevel::None, help = "Set optimization level")]
     optimize: OptimizeLevel,
 
-    #[clap(long, value_name = "PATH", help = "Add a library search path")]
+    #[clap(long, value_name = "LIBRARY_PATH", help = "Add a library search path")]
     library_path: Vec<String>,
 
     #[clap(long = "library", value_name = "LIB", help = "Link a library")]
     libraries: Vec<String>,
+
+    #[clap(long = "sources", value_name = "SOURCES", help = "Source files")]
+    sources_dir: Vec<String>,
 
     #[clap(
         long = "build-dir",
@@ -57,6 +74,23 @@ generated during the build process. If not provided, a default directory \
     build_dir: String,
 }
 
+impl CompilerOptions {
+    pub fn to_compiler_options(&self) -> codegen_llvm::opts::Options {
+        codegen_llvm::opts::Options {
+            opt_level: self.optimize.as_integer(),
+            cpu: self.cpu.to_string(),
+            library_path: self.library_path.clone(),
+            libraries: self.libraries.clone(),
+            build_dir: self.build_dir.clone(),
+            sources_dir: self.sources_dir.clone(),
+            project_name: None,
+            project_version: None,
+            cyrus_version: None,
+            authors: None,
+        }
+    }
+}
+
 #[derive(clap::Parser, Clone)]
 #[command()]
 struct Args {
@@ -64,38 +98,26 @@ struct Args {
     cmd: Commands,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum DumpType {
-    Ir,
-    Asm,
-}
-
 #[derive(clap::Subcommand, Debug, Clone)]
 enum Commands {
-    #[clap(about = "Create a new project")]
+    #[clap(about = "Create a new project", display_order = 0)]
     New {
         project_name: String,
         #[clap(long, default_value_t = false)]
         lib: bool,
     },
 
-    #[clap(about = "Execute a compiled program")]
+    #[clap(about = "Execute a compiled program", display_order = 1)]
     Run {
         file_path: Option<String>,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Dump LLVM-ir or Assembly code")]
-    Dump {
-        file_path: Option<String>,
-        dump_type: DumpType,
-        output_path: String,
-        #[clap(flatten)]
-        compiler_options: CompilerOptions,
-    },
+    #[clap(about = "Fetches a library into vendor directory.", display_order = 2)]
+    Fetch { libraries: String },
 
-    #[clap(about = "Compile source code into an executable")]
+    #[clap(about = "Compile source code into an executable", display_order = 3)]
     Build {
         file_path: Option<String>,
         output_path: String,
@@ -103,7 +125,7 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Generate an object file")]
+    #[clap(about = "Generate an object file", display_order = 4)]
     Obj {
         file_path: Option<String>,
         output_path: String,
@@ -111,7 +133,7 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Generate a dynamic library (shared object)")]
+    #[clap(about = "Generate a dynamic library (shared object)", display_order = 5)]
     Dylib {
         file_path: Option<String>,
         output_path: String,
@@ -119,7 +141,23 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Print version information")]
+    #[clap(about = "Emit LLVM IR as a .ll file per module.", display_order = 6)]
+    EmitLLVM {
+        file_path: Option<String>,
+        output_path: String,
+        #[clap(flatten)]
+        compiler_options: CompilerOptions,
+    },
+
+    #[clap(about = "Emit asm as a .s file per module.", display_order = 7)]
+    EmitASM {
+        file_path: Option<String>,
+        output_path: String,
+        #[clap(flatten)]
+        compiler_options: CompilerOptions,
+    },
+
+    #[clap(about = "Print version information", display_order = 8)]
     Version,
 }
 
@@ -215,6 +253,9 @@ pub fn main() {
     let args = Args::parse();
 
     match args.cmd {
+        Commands::Fetch { .. } => {
+            todo!();
+        }
         Commands::New { project_name, lib } => {
             if lib {
                 if let Err(err) = layout::create_library_project(project_name) {
@@ -240,57 +281,34 @@ pub fn main() {
             file_path,
             compiler_options,
         } => {
-            let mut codegen_llvm = init_compiler!(
-                &context,
-                file_path.clone(),
-                codegen_llvm::opts::Options {
-                    opt_level: compiler_options.optimize.as_integer(),
-                    library_path: compiler_options.library_path,
-                    libraries: compiler_options.libraries,
-                    build_dir: compiler_options.build_dir,
-                }
-            );
+            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
             codegen_llvm.compile();
             codegen_llvm.execute();
         }
-        Commands::Dump {
+        Commands::EmitLLVM {
             file_path,
-            dump_type,
             output_path,
             compiler_options,
         } => {
-            let mut codegen_llvm = init_compiler!(
-                &context,
-                file_path.clone(),
-                codegen_llvm::opts::Options {
-                    opt_level: compiler_options.optimize.as_integer(),
-                    library_path: compiler_options.library_path,
-                    libraries: compiler_options.libraries,
-                    build_dir: compiler_options.build_dir,
-                }
-            );
+            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
             codegen_llvm.compile();
-
-            match dump_type {
-                DumpType::Ir => codegen_llvm.emit_llvm_ir(output_path),
-                DumpType::Asm => codegen_llvm.emit_asm(output_path),
-            }
+            codegen_llvm.emit_llvm_ir(output_path);
+        }
+        Commands::EmitASM {
+            file_path,
+            output_path,
+            compiler_options,
+        } => {
+            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
+            codegen_llvm.compile();
+            codegen_llvm.emit_asm(output_path);
         }
         Commands::Build {
             file_path,
             output_path,
             compiler_options,
         } => {
-            let mut codegen_llvm = init_compiler!(
-                &context,
-                file_path.clone(),
-                codegen_llvm::opts::Options {
-                    opt_level: compiler_options.optimize.as_integer(),
-                    library_path: compiler_options.library_path,
-                    libraries: compiler_options.libraries,
-                    build_dir: compiler_options.build_dir,
-                }
-            );
+            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
             // compiler.compile();
             // compiler.make_executable_file(output_path);
         }

@@ -2,19 +2,31 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Options {
+    pub project_name: Option<String>, 
+    pub project_version: Option<String>,
+    pub cyrus_version: Option<String>,
+    pub authors: Option<Vec<String>>,
+    pub cpu: String,
     pub opt_level: i32,
     pub library_path: Vec<String>,
     pub libraries: Vec<String>,
+    pub sources_dir: Vec<String>,
     pub build_dir: String,
 }
 
 impl Options {
     pub fn default() -> Self {
         Self {
+            project_name: None,
+            authors: None,
             opt_level: 0,
+            cpu: String::new(),
             library_path: Vec::new(),
             libraries: Vec::new(),
             build_dir: String::new(),
+            sources_dir: Vec::new(),
+            cyrus_version: None,
+            project_version: None,
         }
     }
 
