@@ -10,10 +10,10 @@ use utils::generate_random_hex::generate_random_hex;
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn load_runtime(&mut self) {
         self.internal_funcs_table
-            .insert("check_bounds".to_string(), self.internal_array_index().as_value_ref());
+            .insert("check_bounds".to_string(), self.internal_check_bounds().as_value_ref());
     }
 
-    fn internal_array_index(&self) -> FunctionValue<'_> {
+    fn internal_check_bounds(&self) -> FunctionValue<'_> {
         let return_type = self.context.i32_type();
         let func_type = return_type.fn_type(
             &[

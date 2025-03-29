@@ -11,7 +11,7 @@ use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::types::{AnyTypeEnum, AsTypeRef, BasicTypeEnum};
 use inkwell::values::{AnyValueEnum, AsValueRef, PointerValue};
-use opts::CodeGenLLVMOptions;
+use opts::Options;
 use scope::{Scope, ScopeRef};
 use structs::StructTable;
 use std::cell::RefCell;
@@ -34,7 +34,7 @@ mod enums;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
-    opts: CodeGenLLVMOptions,
+    opts: Options,
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
@@ -54,7 +54,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         file_path: String,
         file_name: String,
         program: ProgramTree,
-        opts: CodeGenLLVMOptions,
+        opts: Options,
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
         let module = context.create_module(&file_name);

@@ -1,14 +1,14 @@
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct CodeGenLLVMOptions {
+pub struct Options {
     pub opt_level: i32,
     pub library_path: Vec<String>,
     pub libraries: Vec<String>,
-    pub build_dir: String
+    pub build_dir: String,
 }
 
-impl CodeGenLLVMOptions {
+impl Options {
     pub fn default() -> Self {
         Self {
             opt_level: 0,
@@ -17,4 +17,48 @@ impl CodeGenLLVMOptions {
             build_dir: String::new(),
         }
     }
+
+    pub fn read_toml(file_path: String) -> Result<Options, String> {
+        let mut options = Options::default();
+
+        let file_content =
+            std::fs::read_to_string(file_path).map_err(|_| "Failed to read file 'Project.toml' content.")?;
+
+        let file_toml: toml::Value =
+            toml::from_str(&file_content).map_err(|_| "Failed to parse 'Project.toml' content.")?;
+
+        if let Some(value) = file_toml.get("compiler") {
+            let table = value
+                .as_table()
+                .ok_or("Failed to parse 'compiler' options from 'Project.toml'.")?;
+
+            options.opt_level = table
+                .get("optimize")
+                .and_then(|v| v.as_integer())
+                .ok_or("Invalid value given for 'optimize' key in 'Project.toml'.")?
+                .try_into()
+                .unwrap();
+        }
+
+        if let Some(value) = file_toml.get("dependencies") {
+            let table = value
+                .as_table()
+                .ok_or("Failed to parse 'dependencies' from 'Project.toml'.")?;
+
+            options.library_path = table
+                .get("library_path")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_else(Vec::new);
+
+            options.libraries = table
+                .get("libraries")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_else(Vec::new);
+        }
+
+        Ok(options)
+    }
 }
+

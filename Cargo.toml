@@ -6,16 +6,17 @@ resolver = "2"
 
 [workspace]
 members = [
-    "crates/ast",
     "crates/codegen_llvm",
     "crates/lexer",
     "crates/parser",
+    "crates/ast",
     "crates/utils",
+    "crates/cli",
 ]
 
 [[bin]]
 name = "cyrus"
-path = "./cli.rs"
+path = "./crates/cli/src/main.rs"
 
 [dependencies]
 codegen_llvm = { path = "./crates/codegen_llvm", version = "*" }

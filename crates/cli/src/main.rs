@@ -1,33 +1,43 @@
-use ::parser::parse_program;
-use clap::Parser as ClapParser;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::diag::*;
-use codegen_llvm::opts::CodeGenLLVMOptions;
+use ::parser::parse_program;
+use std::fmt;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-pub enum ClapOptimizationLevel {
+enum OptimizeLevel {
     None,
     O1,
     O2,
     O3,
 }
 
-impl ClapOptimizationLevel {
+impl OptimizeLevel {
     pub fn as_integer(&self) -> i32 {
         match self {
-            ClapOptimizationLevel::None => 0,
-            ClapOptimizationLevel::O1 => 1,
-            ClapOptimizationLevel::O2 => 2,
-            ClapOptimizationLevel::O3 => 3,
+            OptimizeLevel::None => 0,
+            OptimizeLevel::O1 => 1,
+            OptimizeLevel::O2 => 2,
+            OptimizeLevel::O3 => 3,
+        }
+    }
+}
+
+impl fmt::Display for OptimizeLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OptimizeLevel::None => write!(f, "none"),
+            OptimizeLevel::O1 => write!(f, "o1"),
+            OptimizeLevel::O2 => write!(f, "o2"),
+            OptimizeLevel::O3 => write!(f, "o3"),
         }
     }
 }
 
 #[derive(Parser, Debug, Clone)]
-pub struct ClapCompilerOptions {
-    #[clap(long, value_enum, default_value_t = ClapOptimizationLevel::None, help = "Set optimization level")]
-    optimize: ClapOptimizationLevel,
+struct CompilerOptions {
+    #[clap(long, value_enum, default_value_t = OptimizeLevel::None, help = "Set optimization level")]
+    optimize: OptimizeLevel,
 
     #[clap(long, value_name = "PATH", help = "Add a library search path")]
     library_path: Vec<String>,
@@ -66,7 +76,7 @@ enum Commands {
     Run {
         file_path: Option<String>,
         #[clap(flatten)]
-        compiler_options: ClapCompilerOptions,
+        compiler_options: CompilerOptions,
     },
 
     #[clap(about = "Dump LLVM-ir or Assembly code")]
@@ -75,7 +85,7 @@ enum Commands {
         dump_type: DumpType,
         output_path: String,
         #[clap(flatten)]
-        compiler_options: ClapCompilerOptions,
+        compiler_options: CompilerOptions,
     },
 
     #[clap(about = "Compile source code into an executable")]
@@ -83,7 +93,7 @@ enum Commands {
         file_path: Option<String>,
         output_path: String,
         #[clap(flatten)]
-        compiler_options: ClapCompilerOptions,
+        compiler_options: CompilerOptions,
     },
 
     #[clap(about = "Generate an object file")]
@@ -91,7 +101,7 @@ enum Commands {
         file_path: Option<String>,
         output_path: String,
         #[clap(flatten)]
-        compiler_options: ClapCompilerOptions,
+        compiler_options: CompilerOptions,
     },
 
     #[clap(about = "Generate a dynamic library (shared object)")]
@@ -99,47 +109,11 @@ enum Commands {
         file_path: Option<String>,
         output_path: String,
         #[clap(flatten)]
-        compiler_options: ClapCompilerOptions,
+        compiler_options: CompilerOptions,
     },
 
     #[clap(about = "Print version information")]
     Version,
-}
-
-fn compiler_options_from_toml() -> Option<CodeGenLLVMOptions> {
-    let file_content = std::fs::read_to_string("Project.toml").ok()?;
-    let file_toml: toml::Value = toml::from_str(&file_content).ok()?;
-    
-    let options = file_toml.get("compiler")?.as_table()?;
-    let deps = file_toml.get("dependencies")?.as_table()?;
-
-    let optimize = options
-        .get("optimize")
-        .and_then(|v| v.as_integer())
-        .unwrap_or(0)
-        .try_into()
-        .ok()?;
-
-    let library_path = deps
-        .get("library_path")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .unwrap_or_else(Vec::new);
-    
-    let libraries = deps
-        .get("libraries")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .unwrap_or_else(Vec::new);
-
-    let build_dir = String::from("./build");
-
-    Some(CodeGenLLVMOptions {
-        opt_level: optimize,
-        library_path,
-        libraries,
-        build_dir,
-    })
 }
 
 macro_rules! init_compiler {
@@ -177,7 +151,7 @@ macro_rules! init_compiler {
                 std::process::exit(1);
             }
 
-            if let Some(opts) = compiler_options_from_toml() {
+            if let Ok(options) = codegen_llvm::opts::Options::read_toml("Project.toml".to_string()) {
                 if !std::path::Path::new("src/main.cyr").exists() {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -196,11 +170,13 @@ macro_rules! init_compiler {
                             location: None,
                         });
                         std::process::exit(1);
-                    }).to_str().unwrap().to_string();
+                    })
+                    .to_str()
+                    .unwrap()
+                    .to_string();
 
-                    
                 let (program, file_name) = parse_program(main_file_path.clone());
-                let codegen_llvm = match CodeGenLLVM::new($context, main_file_path, file_name.clone(), program, opts) {
+                let codegen_llvm = match CodeGenLLVM::new($context, main_file_path, file_name.clone(), program, options) {
                     Ok(instance) => instance,
                     Err(err) => {
                         display_single_diag(Diag {
@@ -211,7 +187,7 @@ macro_rules! init_compiler {
                         std::process::exit(1);
                     }
                 };
-                
+
                 codegen_llvm
             } else {
                 display_single_diag(Diag {
@@ -227,7 +203,6 @@ macro_rules! init_compiler {
 
 pub fn main() {
     let context = CodeGenLLVM::new_context();
-
     let version = env!("CARGO_PKG_VERSION");
     let args = Args::parse();
 
@@ -239,7 +214,7 @@ pub fn main() {
             let mut codegen_llvm = init_compiler!(
                 &context,
                 file_path.clone(),
-                CodeGenLLVMOptions {
+                codegen_llvm::opts::Options {
                     opt_level: compiler_options.optimize.as_integer(),
                     library_path: compiler_options.library_path,
                     libraries: compiler_options.libraries,
@@ -258,7 +233,7 @@ pub fn main() {
             let mut codegen_llvm = init_compiler!(
                 &context,
                 file_path.clone(),
-                CodeGenLLVMOptions {
+                codegen_llvm::opts::Options {
                     opt_level: compiler_options.optimize.as_integer(),
                     library_path: compiler_options.library_path,
                     libraries: compiler_options.libraries,
@@ -280,7 +255,7 @@ pub fn main() {
             let mut codegen_llvm = init_compiler!(
                 &context,
                 file_path.clone(),
-                CodeGenLLVMOptions {
+                codegen_llvm::opts::Options {
                     opt_level: compiler_options.optimize.as_integer(),
                     library_path: compiler_options.library_path,
                     libraries: compiler_options.libraries,
