@@ -1,7 +1,7 @@
+use ::parser::parse_program;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::diag::*;
-use ::parser::parse_program;
 use std::fmt;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -72,6 +72,13 @@ enum DumpType {
 
 #[derive(clap::Subcommand, Debug, Clone)]
 enum Commands {
+    #[clap(about = "Create a new project")]
+    New {
+        project_name: String,
+        #[clap(long, default_value_t = false)]
+        lib: bool,
+    },
+
     #[clap(about = "Execute a compiled program")]
     Run {
         file_path: Option<String>,
@@ -176,7 +183,8 @@ macro_rules! init_compiler {
                     .to_string();
 
                 let (program, file_name) = parse_program(main_file_path.clone());
-                let codegen_llvm = match CodeGenLLVM::new($context, main_file_path, file_name.clone(), program, options) {
+                let codegen_llvm = match CodeGenLLVM::new($context, main_file_path, file_name.clone(), program, options)
+                {
                     Ok(instance) => instance,
                     Err(err) => {
                         display_single_diag(Diag {
@@ -207,6 +215,27 @@ pub fn main() {
     let args = Args::parse();
 
     match args.cmd {
+        Commands::New { project_name, lib } => {
+            if lib {
+                if let Err(err) = layout::create_library_project(project_name) {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(err),
+                        location: None,
+                    });
+                    std::process::exit(1);
+                }
+            } else {
+                if let Err(err) = layout::create_project(project_name) {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(err),
+                        location: None,
+                    });
+                    std::process::exit(1);
+                }
+            }
+        }
         Commands::Run {
             file_path,
             compiler_options,

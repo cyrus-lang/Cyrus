@@ -12,6 +12,7 @@ members = [
     "crates/ast",
     "crates/utils",
     "crates/cli",
+    "crates/layout",
 ]
 
 [[bin]]
@@ -20,6 +21,7 @@ path = "./crates/cli/src/main.rs"
 
 [dependencies]
 codegen_llvm = { path = "./crates/codegen_llvm", version = "*" }
+layout = { path = "./crates/layout", version = "*" }
 parser = { path = "./crates/parser", version = "*" }
 clap = { version = "4.5.34", features = ["derive"] }
 lexer = { path = "./crates/lexer", version = "*" }
