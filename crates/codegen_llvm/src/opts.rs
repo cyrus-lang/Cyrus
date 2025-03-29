@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Options {
+    pub project_type: Option<String>,
     pub project_name: Option<String>, 
     pub project_version: Option<String>,
     pub cyrus_version: Option<String>,
@@ -17,6 +18,7 @@ pub struct Options {
 impl Options {
     pub fn default() -> Self {
         Self {
+            project_type: None,
             project_name: None,
             authors: None,
             opt_level: 0,

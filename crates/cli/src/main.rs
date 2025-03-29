@@ -87,6 +87,7 @@ impl CompilerOptions {
             project_version: None,
             cyrus_version: None,
             authors: None,
+            project_type: None,
         }
     }
 }

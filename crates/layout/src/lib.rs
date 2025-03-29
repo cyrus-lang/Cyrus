@@ -2,7 +2,12 @@ use codegen_llvm::diag::{Diag, DiagKind, DiagLevel, display_single_diag};
 use std::{
     fs::{self, File},
     io::Write,
+    path::Path,
 };
+
+fn cyrus_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
 
 fn create_common_files(output: String) -> Result<(), String> {
     if fs::exists(output.clone()).map_err(|err| err.to_string())? {
@@ -29,8 +34,40 @@ fn create_common_files(output: String) -> Result<(), String> {
 pub fn create_project(project_name: String) -> Result<(), String> {
     create_common_files(project_name.clone())?;
 
-    File::create(format!("{}/Project.toml", project_name))
+    let mut project_file = File::create(format!("{}/Project.toml", project_name))
         .map_err(|_| "Failed to create 'Project.toml' file.".to_string())?;
+
+    let pure_project_name = Path::new(&project_name.clone())
+        .file_name()
+        .ok_or("Failed to retrieve project directory name.")?
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    project_file
+        .write(
+            format!(
+                "[project]
+name = \"{}\"
+version = \"0.0.1\"
+type = \"exec\"
+authors = [ \"<John Doe> john_doe@mail.com\"]
+
+[dependencies]
+libraries = []
+library_path = []
+
+[compiler]
+cpu = \"generic\"
+sources = [\"src/*\"]
+version = \"{}\"
+",
+                pure_project_name,
+                cyrus_version()
+            )
+            .as_bytes(),
+        )
+        .map_err(|err| err.to_string())?;
 
     fs::create_dir(format!("{}/src", project_name))
         .map_err(|_| format!("Failed to create '{}/src' directory.", project_name))?;
@@ -48,8 +85,40 @@ pub fn create_project(project_name: String) -> Result<(), String> {
 pub fn create_library_project(project_name: String) -> Result<(), String> {
     create_common_files(project_name.clone())?;
 
-    File::create(format!("{}/Project.toml", project_name))
+    let mut project_file = File::create(format!("{}/Project.toml", project_name))
         .map_err(|_| "Failed to create 'Project.toml' file.".to_string())?;
+
+    let pure_project_name = Path::new(&project_name.clone())
+        .file_name()
+        .ok_or("Failed to retrieve project directory name.")?
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    project_file
+        .write(
+            format!(
+                "[project]
+name = \"{}\"
+version = \"0.0.1\"
+type = \"lib\"
+authors = [ \"<John Doe> john_doe@mail.com\"]
+
+[dependencies]
+libraries = []
+library_path = []
+
+[compiler]
+cpu = \"generic\"
+sources = [\"src/*\"]
+version = \"{}\"
+",
+                pure_project_name,
+                cyrus_version()
+            )
+            .as_bytes(),
+        )
+        .map_err(|err| err.to_string())?;
 
     fs::create_dir(format!("{}/src", project_name))
         .map_err(|_| format!("Failed to create '{}/src' directory.", project_name))?;
@@ -78,7 +147,7 @@ Remember to:
 
 Happy coding!
 */\n\n"
-            .as_bytes(),
+                .as_bytes(),
         )
         .map_err(|err| err.to_string())?;
 
