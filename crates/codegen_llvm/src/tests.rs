@@ -14,7 +14,8 @@ mod tests {
                 body: vec![],
                 span: ast::token::Span::default(),
             },
-            Options::default()
+            Options::default(),
+            true
         );
     }
 }
