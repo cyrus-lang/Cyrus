@@ -219,10 +219,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let output_dir = Path::new(&output_path);
         ensure_output_dir(output_dir);
         let output_file = get_output_file_path(output_dir, Path::new(&self.file_path));
+        self.generate_object_file_internal(output_file.to_str().unwrap().to_string());
+    }
 
+    pub(crate) fn generate_object_file_internal(&self, output_path: String) {
         if let Err(err) = self
             .target_machine
-            .write_to_file(&self.module, FileType::Object, Path::new(&output_file))
+            .write_to_file(&self.module, FileType::Object, Path::new(&output_path))
         {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -294,7 +297,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.build_manifest.sources.insert(file_path.clone(), output_file);
                     self.build_manifest.save_file();
                     true
-                },
+                }
             }
         } else {
             let output_file = self.save_source_hash(output_dir, current_hash);
@@ -305,7 +308,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn save_source_hash(&self, output_dir: String, hash_str: String) -> String {
-        let rng = rand::thread_rng();
+        let rng = rand::rng();
         let random_hex: String = rng.sample_iter(&Alphanumeric).take(30).map(char::from).collect();
         let output_file = format!("{}/{}", output_dir, random_hex);
         File::create_new(output_file.clone())
@@ -313,5 +316,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .write(hash_str.as_bytes())
             .unwrap();
         output_file
+    }
+
+    pub(crate) fn save_object_file(&mut self) {
+        let rng = rand::rng();
+        let random_hex: String = rng.sample_iter(&Alphanumeric).take(30).map(char::from).collect();
+        let output_file = format!("build/obj/{}.o", random_hex);
+
+        let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
+        let file_path = utils::fs::absolute_to_relative(self.file_path.clone(), wd).unwrap();
+
+        // remove previous object_file
+        let _ = fs::remove_file(self.build_manifest.objects.get(&file_path.clone()).unwrap()).unwrap();
+
+        // generate new object_file
+        self.generate_object_file_internal(output_file.clone());
+        self.build_manifest.objects.insert(file_path.clone(), output_file);
+        self.build_manifest.save_file();
     }
 }

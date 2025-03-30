@@ -14,24 +14,24 @@ use inkwell::types::{AnyTypeEnum, AsTypeRef, BasicTypeEnum};
 use inkwell::values::{AnyValueEnum, AsValueRef, PointerValue};
 use opts::Options;
 use scope::{Scope, ScopeRef};
-use structs::StructTable;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
 use std::rc::Rc;
+use structs::StructTable;
 
 mod build;
 pub mod diag;
+mod enums;
 mod exprs;
 mod funcs;
 mod linkage;
 pub mod opts;
 mod runtime;
 mod scope;
+mod structs;
 mod tests;
 mod types;
-mod structs;
-mod enums;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -118,8 +118,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.ensure_build_directory();
         self.ensure_build_manifest();
         if self.source_code_changed() {
-            // self.generate_object_file(output_path);
-            todo!();
+            self.save_object_file();
         }
     }
 
@@ -175,7 +174,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Import(import) => todo!(),
         }
     }
-    
+
     pub(crate) fn build_alloca(
         &self,
         var_type_token: TokenKind,
