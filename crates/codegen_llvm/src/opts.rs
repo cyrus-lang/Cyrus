@@ -3,7 +3,7 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug, Clone)]
 pub struct Options {
     pub project_type: Option<String>,
-    pub project_name: Option<String>, 
+    pub project_name: Option<String>,
     pub project_version: Option<String>,
     pub cyrus_version: Option<String>,
     pub authors: Option<Vec<String>>,
@@ -82,7 +82,20 @@ impl Options {
                 .unwrap_or_else(Vec::new);
         }
 
+        if let Some(value) = file_toml.get("project") {
+            let table = value
+                .as_table()
+                .ok_or("Failed to parse 'project' from 'Project.toml'.")?;
+
+            options.project_name = Some(
+                table
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Failed to parse 'project name' in 'Project.toml'.")?
+                    .to_string(),
+            );
+        }
+
         Ok(options)
     }
 }
-

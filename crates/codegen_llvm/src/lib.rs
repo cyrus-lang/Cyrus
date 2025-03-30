@@ -117,7 +117,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.build_entry_point();
         self.ensure_build_directory();
         self.ensure_build_manifest();
-        if self.source_code_changed() {
+        if self.source_code_changed() || !self.object_file_exists() {
             self.save_object_file();
         }
     }

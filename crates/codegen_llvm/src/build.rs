@@ -32,6 +32,7 @@ const BUILD_DIR_PATH: &str = "build/";
 const SOURCES_DIR_PATH: &str = "build/sources";
 const OBJ_DIR_PATH: &str = "build/obj";
 const MANIFEST_FILE_PATH: &str = "build/manifest.json";
+const OUTPUT_FILE_PATH: &str = "build/output";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildManifest {
@@ -170,22 +171,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub fn emit_llvm_ir(&mut self, output_path: String) {
-        let output_dir = Path::new(&output_path);
-        ensure_output_dir(output_dir);
-        let output_file = get_output_file_path(output_dir, Path::new(&self.file_path));
+    // TODO
+    pub fn emit_llvm_ir(&mut self, output_path: Option<String>) {
+        // let output_dir = Path::new(&output_path);
+        // ensure_output_dir(output_dir);
+        // let output_file = get_output_file_path(output_dir, Path::new(&self.file_path));
 
-        if let Err(err) = self.module.print_to_file(output_file) {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!("Failed to print llvm-ir into file:\n{}", err.to_string())),
-                location: None,
-            });
-            exit(1);
-        }
+        // if let Err(err) = self.module.print_to_file(output_file) {
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::Custom(format!("Failed to print llvm-ir into file:\n{}", err.to_string())),
+        //         location: None,
+        //     });
+        //     exit(1);
+        // }
     }
 
-    pub fn emit_asm(&mut self, output_path: String) {
+    // TODO
+    pub fn emit_asm(&mut self, output_path: Option<String>) {
         todo!();
         // if let Err(err) = self.target_machine.write_to_file(
         //     &self.module,
@@ -201,29 +204,92 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         // }
     }
 
-    pub fn generate_executable_file(&self, output_path: String) {
-        // // Link object file into executable (using system linker)
-        // let output_executable_path = Path::new("my_executable");
-        // let linker_output = std::process::Command::new("cc")
-        //     .arg("my_module.o")
-        //     .arg("-o")
-        //     .arg("my_executable")
-        //     .output()
-        //     .expect("failed to execute linker");
+    pub fn generate_executable_file(&self, output_path: Option<String>) {
+        let mut output_path = {
+            if let Some(path) = output_path {
+                path
+            } else {
+                ensure_output_dir(Path::new(OUTPUT_FILE_PATH));
+                format!("{}/{}", OUTPUT_FILE_PATH, {
+                    if let Some(file_name) = &self.opts.project_name {
+                        file_name.clone()
+                    } else {
+                        dbg!(self.file_path.clone());
+                        let file_name = Path::new(&self.file_path)
+                            .file_stem()
+                            .unwrap()
+                            .to_str()
+                            .unwrap()
+                            .replace(".", "_")
+                            .replace("/", "")
+                            .to_string();
+                        file_name.clone()
+                    }
+                })
+            }
+        };
+        if cfg!(windows) {
+            output_path = format!("{}.exe", output_path)
+        }
 
-        // if !linker_output.status.success() {
-        //     eprintln!("Linker error: {}", String::from_utf8_lossy(&linker_output.stderr));
-        //     std::fs::remove_file("my_module.o").unwrap();
-        //     return;
-        // }
+        let object_files = self
+            .build_manifest
+            .objects
+            .values()
+            .map(|s| s.as_str()) // Convert &String to &str if needed
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        // TODO Consider to make linker dynamic through Project.toml and CLI Program.
+        let linker = "cc";
+
+        let linker_output = std::process::Command::new(linker)
+            .arg(object_files)
+            .arg("-o")
+            .arg(output_path)
+            .output();
+
+        match linker_output {
+            Ok(output) => {
+                if !output.status.success() {
+                    eprintln!("Linker error: {}", String::from_utf8_lossy(&output.stderr));
+                    return;
+                }
+            }
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Failed execute linker ({}):\n{}", linker, err.to_string())),
+                    location: None,
+                });
+                exit(1);
+            }
+        }
+    }
+
+    // TODO
+    pub fn generate_dynamic_library(&self, output_path: Option<String>) {
+        // let output_dir = Path::new(&output_path);
+        // ensure_output_dir(output_dir);
+        // let output_file = get_output_file_path(output_dir, Path::new(&self.file_path));
+
         todo!();
     }
 
-    pub fn generate_object_file(&self, output_path: String) {
-        let output_dir = Path::new(&output_path);
-        ensure_output_dir(output_dir);
-        let output_file = get_output_file_path(output_dir, Path::new(&self.file_path));
-        self.generate_object_file_internal(output_file.to_str().unwrap().to_string());
+    pub fn generate_object_file(&self, output_path: Option<String>) {
+        if let Some(output_path) = output_path {
+            let output_dir = Path::new(&output_path);
+            ensure_output_dir(output_dir);
+            let output_file = get_output_file_path(output_dir, Path::new(&self.file_path));
+            self.generate_object_file_internal(output_file.to_str().unwrap().to_string());
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Output directory path must be specified to generate object files.".to_string()),
+                location: None,
+            });
+            exit(1);
+        }
     }
 
     pub(crate) fn generate_object_file_internal(&self, output_path: String) {
@@ -238,14 +304,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         }
-    }
-
-    pub fn generate_dynamic_library(&self, output_path: String) {
-        let output_dir = Path::new(&output_path);
-        ensure_output_dir(output_dir);
-        let output_file = get_output_file_path(output_dir, Path::new(&self.file_path));
-
-        todo!();
     }
 
     pub(crate) fn ensure_build_manifest(&mut self) {
@@ -282,6 +340,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn hash_source_code(&mut self) -> String {
         let source_code = utils::fs::read_file(self.file_path.clone()).0;
         crc32fast::hash(source_code.as_bytes()).to_string()
+    }
+
+    pub(crate) fn object_file_exists(&mut self) -> bool {
+        let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
+        let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
+        self.build_manifest.objects.get(&file_path.clone()).is_some()
     }
 
     pub(crate) fn source_code_changed(&mut self) -> bool {
@@ -334,7 +398,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
 
         // remove previous object_file
-        let _ = fs::remove_file(self.build_manifest.objects.get(&file_path.clone()).unwrap()).unwrap();
+        if let Some(obj_file) = self.build_manifest.objects.get(&file_path.clone()) {
+            if fs::exists(obj_file).unwrap() {
+                let _ = fs::remove_file(obj_file).unwrap();
+            }
+        }
 
         // generate new object_file
         self.generate_object_file_internal(output_file.clone());
