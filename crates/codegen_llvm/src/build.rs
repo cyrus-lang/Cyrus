@@ -11,15 +11,19 @@ use inkwell::passes::PassManager;
 use inkwell::targets::FileType;
 use inkwell::types::AsTypeRef;
 use inkwell::types::FunctionType;
+use rand::Rng;
+use rand::distr::Alphanumeric;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs;
 use std::fs::File;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::process::exit;
+use utils::fs::absolute_to_relative;
 use utils::fs::ensure_output_dir;
 use utils::fs::get_output_file_path;
 use utils::generate_random_hex::generate_random_hex;
@@ -41,10 +45,10 @@ impl Default for BuildManifest {
 
 impl BuildManifest {
     fn save_file(&self) {
-        File::open("build/manifest.json")
-            .unwrap()
-            .write(serde_json::to_string(&self).unwrap().as_bytes())
-            .unwrap();
+        let file_path = "build/manifest.json";
+        fs::remove_file(file_path).unwrap();
+        let mut file = File::create(file_path).unwrap();
+        file.write(serde_json::to_string(&self).unwrap().as_bytes()).unwrap();
     }
 
     fn read_file(&self) -> Self {
@@ -266,23 +270,48 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn hash_source_code(&mut self) -> String {
-        let output_dir = "build/sources".to_string();
         let source_code = utils::fs::read_file(self.file_path.clone()).0;
-        let checksum = crc32fast::hash(source_code.as_bytes()).to_string();
-        let output_file = format!("{}/{}", output_dir, generate_random_hex());
-        File::create_new(output_file.clone())
-            .unwrap()
-            .write(checksum.as_bytes())
-            .unwrap();
-
-        self.build_manifest.sources.insert(self.file_path.clone(), output_file.clone());
-        output_file
+        crc32fast::hash(source_code.as_bytes()).to_string()
     }
 
-    pub(crate) fn source_code_changed(&self) -> bool {
+    pub(crate) fn source_code_changed(&mut self) -> bool {
+        let output_dir = "build/sources".to_string();
         let current_hash = self.hash_source_code();
-        // source: String, hash: String
-        // !(source == hash)
-        todo!();
+        let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
+        let file_path = utils::fs::absolute_to_relative(self.file_path.clone(), wd).unwrap();
+        if let Some(hash_file_path) = self.build_manifest.read_file().sources.get(&file_path.clone()) {
+            match File::open(hash_file_path.clone()) {
+                Ok(mut file) => {
+                    let mut saved_hash = String::new();
+                    file.read_to_string(&mut saved_hash).unwrap();
+                    !(current_hash == *saved_hash)
+                }
+                Err(_) => {
+                    // saved hash does not exist in sources directory
+                    // let's remove it from BuildManifest and create a new one
+                    self.build_manifest.sources.remove(&file_path.clone());
+                    let output_file = self.save_source_hash(output_dir, current_hash);
+                    self.build_manifest.sources.insert(file_path.clone(), output_file);
+                    self.build_manifest.save_file();
+                    true
+                },
+            }
+        } else {
+            let output_file = self.save_source_hash(output_dir, current_hash);
+            self.build_manifest.sources.insert(file_path.clone(), output_file);
+            self.build_manifest.save_file();
+            true
+        }
+    }
+
+    pub(crate) fn save_source_hash(&self, output_dir: String, hash_str: String) -> String {
+        let rng = rand::thread_rng();
+        let random_hex: String = rng.sample_iter(&Alphanumeric).take(30).map(char::from).collect();
+        let output_file = format!("{}/{}", output_dir, random_hex);
+        File::create_new(output_file.clone())
+            .unwrap()
+            .write(hash_str.as_bytes())
+            .unwrap();
+        output_file
     }
 }

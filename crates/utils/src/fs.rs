@@ -65,3 +65,14 @@ pub fn handle_file_generation_error(err: impl ToString, file_path: &Path) -> ! {
         err.to_string());
     exit(1);
 }
+
+/// Converts an absolute path to a relative path based on the given base directory.
+/// Returns `None` if the path is not a child of the base directory.
+pub fn absolute_to_relative(absolute_path: String, base_dir: String) -> Option<String> {
+    let abs_path = Path::new(&absolute_path).canonicalize().ok()?;
+    let base_path = Path::new(&base_dir).canonicalize().ok()?;
+
+    let relative_path = abs_path.strip_prefix(base_path).ok()?;
+
+    Some(relative_path.to_string_lossy().replace('\\', "/"))
+}
