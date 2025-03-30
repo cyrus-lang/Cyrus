@@ -16,6 +16,7 @@ use rand::distr::Alphanumeric;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::env;
 use std::ffi::c_void;
 use std::fs;
 use std::fs::File;
@@ -171,44 +172,81 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // TODO
     pub fn emit_llvm_ir(&mut self, output_path: Option<String>) {
-        // let output_dir = Path::new(&output_path);
-        // ensure_output_dir(output_dir);
-        // let output_file = get_output_file_path(output_dir, Path::new(&self.file_path));
-
-        // if let Err(err) = self.module.print_to_file(output_file) {
-        //     display_single_diag(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: DiagKind::Custom(format!("Failed to print llvm-ir into file:\n{}", err.to_string())),
-        //         location: None,
-        //     });
-        //     exit(1);
-        // }
+        if let Some(output_path) = output_path {
+            if let Err(err) = self.module.print_to_file(output_path) {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Failed to print llvm-ir into file:\n{}", err.to_string())),
+                    location: None,
+                });
+                exit(1);
+            }
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Output file path must be specified to generate llvm-ir..".to_string()),
+                location: None,
+            });
+            exit(1);
+        }
     }
 
-    // TODO
     pub fn emit_asm(&mut self, output_path: Option<String>) {
-        todo!();
-        // if let Err(err) = self.target_machine.write_to_file(
-        //     &self.module,
-        //     inkwell::targets::FileType::Assembly,
-        //     Path::new(&output_path),
-        // ) {
-        //     display_single_diag(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: DiagKind::Custom(format!("Failed to print assembly into file:\n{}", err.to_string())),
-        //         location: None,
-        //     });
-        //     exit(1);
-        // }
+        if let Some(output_path) = output_path {
+            if let Err(err) = self.target_machine.write_to_file(
+                &self.module,
+                FileType::Assembly,
+                Path::new(&output_path),
+            ) {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Failed to print assembly into file:\n{}", err.to_string())),
+                    location: None,
+                });
+                exit(1);
+            }
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Output file path must be specified to generate llvm-ir..".to_string()),
+                location: None,
+            });
+            exit(1);
+        }
     }
 
     pub fn generate_executable_file(&self, output_path: Option<String>) {
-        let mut output_path = {
+        let object_files: String;
+        let output_path = {
             if let Some(path) = output_path {
+                // generate object file path and save it in system temp
+                let mut temp_path = env::temp_dir();
+                temp_path.push(format!("{}.o", generate_random_hex()));
+                let temp_path_str = temp_path.to_str().unwrap().to_string();
+                self.generate_object_file_internal(temp_path_str.clone());
+                object_files = temp_path_str;
                 path
             } else {
+                if self.compiler_invoked_single {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(
+                            "Output file path must be specified to generate executable.".to_string(),
+                        ),
+                        location: None,
+                    });
+                    exit(1);
+                }
+
+                object_files = self
+                    .build_manifest
+                    .objects
+                    .values()
+                    .map(|s| s.as_str()) // Convert &String to &str if needed
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
                 ensure_output_dir(Path::new(OUTPUT_FILE_PATH));
                 format!("{}/{}", OUTPUT_FILE_PATH, {
                     if let Some(file_name) = &self.opts.project_name {
@@ -228,17 +266,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 })
             }
         };
-        if cfg!(windows) {
-            output_path = format!("{}.exe", output_path)
-        }
-
-        let object_files = self
-            .build_manifest
-            .objects
-            .values()
-            .map(|s| s.as_str()) // Convert &String to &str if needed
-            .collect::<Vec<_>>()
-            .join(" ");
 
         // TODO Consider to make linker dynamic through Project.toml and CLI Program.
         let linker = "cc";
@@ -267,13 +294,55 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // TODO
     pub fn generate_dynamic_library(&self, output_path: Option<String>) {
-        // let output_dir = Path::new(&output_path);
-        // ensure_output_dir(output_dir);
-        // let output_file = get_output_file_path(output_dir, Path::new(&self.file_path));
+        let object_files: String;
+        let output_path = {
+            if let Some(path) = output_path {
+                // generate object file path and save it in system temp
+                let mut temp_path = env::temp_dir();
+                temp_path.push(format!("{}.o", generate_random_hex()));
+                let temp_path_str = temp_path.to_str().unwrap().to_string();
+                self.generate_object_file_internal(temp_path_str.clone());
+                object_files = temp_path_str;
+                path
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(
+                        "Output file path must be specified to generate dynamic library.".to_string(),
+                    ),
+                    location: None,
+                });
+                exit(1);
+            }
+        };
 
-        todo!();
+        // TODO Consider to make linker dynamic through Project.toml and CLI Program.
+        let linker = "cc";
+
+        let linker_output = std::process::Command::new(linker)
+            .arg(object_files)
+            .arg("-fPIC")
+            .arg("-o")
+            .arg(output_path)
+            .output();
+
+        match linker_output {
+            Ok(output) => {
+                if !output.status.success() {
+                    eprintln!("Linker error: {}", String::from_utf8_lossy(&output.stderr));
+                    return;
+                }
+            }
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Failed execute linker ({}):\n{}", linker, err.to_string())),
+                    location: None,
+                });
+                exit(1);
+            }
+        }
     }
 
     pub fn generate_object_file(&self, output_path: Option<String>) {

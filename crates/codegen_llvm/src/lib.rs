@@ -48,6 +48,7 @@ pub struct CodeGenLLVM<'ctx> {
     func_table: FuncTable<'ctx>,
     struct_table: StructTable<'ctx>,
     internal_funcs_table: HashMap<String, LLVMValueRef>,
+    compiler_invoked_single: bool
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -57,6 +58,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         file_name: String,
         program: ProgramTree,
         opts: Options,
+        compiler_invoked_single: bool
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
         let module = context.create_module(&file_name);
@@ -94,6 +96,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             struct_table: StructTable::new(),
             internal_funcs_table: HashMap::new(),
             build_manifest: BuildManifest::default(),
+            compiler_invoked_single
         };
 
         codegen_llvm.load_runtime();
@@ -115,10 +118,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.optimize();
         self.build_entry_point();
-        self.ensure_build_directory();
-        self.ensure_build_manifest();
-        if self.source_code_changed() || !self.object_file_exists() {
-            self.save_object_file();
+
+        if !self.compiler_invoked_single {
+            self.ensure_build_directory();
+            self.ensure_build_manifest();
+            if self.source_code_changed() || !self.object_file_exists() {
+                self.save_object_file();
+            }
         }
     }
 
