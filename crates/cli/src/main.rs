@@ -2,7 +2,6 @@ use ::parser::parse_program;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::diag::*;
-use std::process::exit;
 
 const PROJECT_FILE_PATH: &str = "Project.toml";
 

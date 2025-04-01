@@ -1,15 +1,14 @@
+use crate::{
+    CodeGenLLVM,
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    scope::ScopeRef,
+};
 use ast::ast::{Field, Struct, StructInit, VisType};
 use inkwell::{
     types::{BasicTypeEnum, StructType},
     values::{AnyValueEnum, AsValueRef, StructValue},
 };
 use std::{collections::HashMap, process::exit, rc::Rc};
-
-use crate::{
-    CodeGenLLVM,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    scope::ScopeRef,
-};
 
 pub struct StructMetadata<'a> {
     pub struct_type: StructType<'a>,
@@ -120,7 +119,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     let field_ptr = self
                         .builder
-                        .build_struct_gep(struct_def.struct_type, struct_ptr, field_idx.try_into().unwrap(), "set_field")
+                        .build_struct_gep(
+                            struct_def.struct_type,
+                            struct_ptr,
+                            field_idx.try_into().unwrap(),
+                            "set_field",
+                        )
                         .unwrap();
 
                     self.build_store(field_ptr, field_value);
@@ -140,8 +144,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
+        } else {
+            todo!();
         }
-
-        todo!();
     }
 }

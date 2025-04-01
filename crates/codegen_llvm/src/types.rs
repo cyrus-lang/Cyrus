@@ -1,10 +1,9 @@
-use std::process::exit;
-
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use ast::token::*;
 use inkwell::AddressSpace;
 use inkwell::types::AnyTypeEnum;
+use std::process::exit;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyTypeEnum {
