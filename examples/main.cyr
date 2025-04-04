@@ -1,11 +1,23 @@
 extern fn printf(msg: string, ...void);
 
 fn main() {
-   #a: i32 = 0;
+   #a = 1;
 
-   if a != 0 {
-      printf("yes\n");
-   } else {
-      printf("no\n");
+   if a == 1 {
+      printf("a is 1\n");
+
+      if a == 1 {
+      printf("a is 1\n");
+      } else if a == 2 {
+         printf("a is 2\n");
+      }
+      else {
+         printf("a is unknown\n");
+      }
+   } else if a == 2 {
+      printf("a is 2\n");
+   }
+   else {
+      printf("a is unknown\n");
    }
 }

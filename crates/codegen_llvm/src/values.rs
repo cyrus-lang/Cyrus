@@ -3,7 +3,7 @@ use inkwell::{
     FloatPredicate, IntPredicate,
     types::{AnyType, AnyTypeEnum, BasicTypeEnum},
     values::{
-        ArrayValue, BasicValue, BasicValueEnum, CallSiteValue, FloatValue, IntValue, PointerValue, StructValue,
+        ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue,
         VectorValue,
     },
 };
@@ -508,6 +508,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder
                     .build_float_compare(FloatPredicate::ONE, left, right, "cmp_lt")
                     .unwrap(),
+            )),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn bin_op_or<'a>(&self, left_value: AnyValue<'a>, right_value: AnyValue<'a>) -> Option<AnyValue<'ctx>>
+    where
+        'a: 'ctx,
+    {
+        match (left_value, right_value) {
+            (AnyValue::IntValue(left), AnyValue::IntValue(right)) => Some(AnyValue::IntValue(
+                self.builder.build_or(left, right, "or").unwrap()
+            )),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn bin_op_and<'a>(&self, left_value: AnyValue<'a>, right_value: AnyValue<'a>) -> Option<AnyValue<'ctx>>
+    where
+        'a: 'ctx,
+    {
+        match (left_value, right_value) {
+            (AnyValue::IntValue(left), AnyValue::IntValue(right)) => Some(AnyValue::IntValue(
+                self.builder.build_and(left, right, "and").unwrap()
             )),
             _ => None,
         }

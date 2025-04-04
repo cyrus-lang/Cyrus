@@ -74,17 +74,44 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     if_statement.span.end,
                 );
 
-                // construct conditional branch for current_block
                 self.builder.position_at_end(current_block);
                 self.builder
                     .build_conditional_branch(cond, then_block, else_block)
                     .unwrap();
 
                 self.builder.position_at_end(then_block);
+                self.current_block_ref = Some(then_block);
                 self.build_statements(Rc::clone(&scope), if_statement.consequent.exprs);
                 self.builder.build_unconditional_branch(end_block).unwrap();
 
-                self.builder.position_at_end(else_block);
+                let mut current_else_block = else_block;
+                for else_if in if_statement.branches {
+                    let new_else_block = self.context.append_basic_block(current_func, "else_if");
+                    let new_then_block = self.context.append_basic_block(current_func, "else_if.then");
+
+                    self.builder.position_at_end(current_else_block);
+                    let else_if_cond = self.build_cond(
+                        Rc::clone(&scope),
+                        else_if.condition,
+                        else_if.loc.clone(),
+                        else_if.span.end,
+                    );
+
+                    self.builder
+                        .build_conditional_branch(else_if_cond, new_then_block, new_else_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(new_then_block);
+                    self.current_block_ref = Some(new_then_block);
+                    self.build_statements(Rc::clone(&scope), else_if.consequent.exprs);
+                    self.builder.build_unconditional_branch(end_block).unwrap();
+
+                    current_else_block = new_else_block;
+                }
+
+                // Handle the final "else" block (if it exists)
+                self.builder.position_at_end(current_else_block);
+                self.current_block_ref = Some(current_else_block);
                 if let Some(alternate) = if_statement.alternate {
                     self.build_statements(Rc::clone(&scope), alternate.exprs);
                 }
@@ -137,7 +164,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.build_store(ptr, value);
                 }
 
-                scope.borrow_mut().insert(variable.name.clone(), ScopeRecord { ptr, ty });
+                scope
+                    .borrow_mut()
+                    .insert(variable.name.clone(), ScopeRecord { ptr, ty });
             }
             None => {
                 if let Some(expr) = variable.expr {

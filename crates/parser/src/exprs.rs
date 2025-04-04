@@ -217,6 +217,8 @@ impl<'a> Parser<'a> {
             | TokenKind::LessThan
             | TokenKind::GreaterEqual
             | TokenKind::GreaterThan
+            | TokenKind::And
+            | TokenKind::Or
             | TokenKind::Identifier { .. } => {
                 self.next_token(); // consume left expression
                 let operator = self.current_token.clone();

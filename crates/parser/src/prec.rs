@@ -19,6 +19,8 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
         TokenKind::As => Precedence::Cast,
         TokenKind::Equal => Precedence::Equals,
         TokenKind::NotEqual => Precedence::Equals,
+        TokenKind::And => Precedence::Equals,
+        TokenKind::Or => Precedence::Equals,
         TokenKind::LessThan => Precedence::LessGreater,
         TokenKind::LessEqual => Precedence::LessGreater,
         TokenKind::GreaterThan => Precedence::LessGreater,

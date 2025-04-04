@@ -1,7 +1,7 @@
 default: run
 
-dump:
-	cargo run -- dump ./examples/main.cyr ir ./tmp/main.ll
+emit-llvm:
+	cargo run -- emit-llvm ./examples/main.cyr -o ./tmp/main.ll
 
 run:
 	cargo run -- run ./examples/main.cyr
