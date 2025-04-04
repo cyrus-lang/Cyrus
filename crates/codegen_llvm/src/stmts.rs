@@ -1,19 +1,19 @@
+use crate::scope::ScopeRecord;
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use crate::{diag::*, scope};
 use ast::ast::{If, Statement, Variable};
 use inkwell::types::{AsTypeRef, BasicTypeEnum};
-use inkwell::values::AsValueRef;
 use std::process::exit;
 use std::rc::Rc;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_statements(&mut self, scope: ScopeRef, stmts: Vec<Statement>) {
+    pub(crate) fn build_statements(&mut self, scope: ScopeRef<'ctx>, stmts: Vec<Statement>) {
         for stmt in stmts {
             self.build_statement(Rc::clone(&scope), stmt.clone());
         }
     }
 
-    pub(crate) fn build_statement(&mut self, scope: ScopeRef, stmt: Statement) {
+    pub(crate) fn build_statement(&mut self, scope: ScopeRef<'ctx>, stmt: Statement) {
         match stmt {
             Statement::BlockStatement(block_statement) => {
                 self.build_statements(Rc::clone(&scope), block_statement.exprs);
@@ -60,7 +60,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_if(&mut self, scope: ScopeRef, if_statement: If) {
+    pub(crate) fn build_if(&mut self, scope: ScopeRef<'ctx>, if_statement: If) {
         if let Some(current_func) = self.current_func_ref {
             let then_block = self.context.append_basic_block(current_func, "if.then");
             let else_block = self.context.append_basic_block(current_func, "if.else");
@@ -122,7 +122,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_variable(&self, scope: ScopeRef, variable: Variable) {
+    pub(crate) fn build_variable(&self, scope: ScopeRef<'ctx>, variable: Variable) {
         match variable.ty {
             Some(var_type_token) => {
                 let (ptr, ty) = self.build_alloca(
@@ -137,13 +137,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.build_store(ptr, value);
                 }
 
-                scope.borrow_mut().insert(
-                    variable.name,
-                    scope::ScopeRecord {
-                        ptr: ptr.as_value_ref(),
-                        ty: ty.as_type_ref(),
-                    },
-                );
+                scope.borrow_mut().insert(variable.name.clone(), ScopeRecord { ptr, ty });
             }
             None => {
                 if let Some(expr) = variable.expr {
@@ -153,13 +147,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     self.build_store(ptr, value);
 
-                    scope.borrow_mut().insert(
-                        variable.name,
-                        scope::ScopeRecord {
-                            ptr: ptr.as_value_ref(),
-                            ty: var_type.as_type_ref(),
-                        },
-                    );
+                    scope
+                        .borrow_mut()
+                        .insert(variable.name, ScopeRecord { ptr, ty: var_type });
                 } else {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,

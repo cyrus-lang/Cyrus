@@ -1,6 +1,7 @@
 use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    values::{AnyValue, TypedPointerValue},
 };
 use ast::{
     ast::*,
@@ -9,21 +10,32 @@ use ast::{
 use inkwell::{
     AddressSpace,
     llvm_sys::{
-        core::{LLVMBuildGEP2, LLVMBuildPointerCast, LLVMGetElementType},
+        core::{LLVMBuildGEP2, LLVMGetElementType},
         prelude::LLVMValueRef,
     },
     types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum},
-    values::{AnyValueEnum, ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    values::{ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{ffi::CString, process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_expr(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         match expr {
-            Expression::Identifier(identifier) => self.build_load_value(Rc::clone(&scope), identifier).0,
+            Expression::Identifier(identifier) => {
+                self.build_load(
+                    Rc::clone(&scope),
+                    ModuleImport {
+                        sub_modules: Vec::new(),
+                        identifier: identifier.clone(),
+                        span: identifier.span,
+                        loc: identifier.loc,
+                    },
+                )
+                .0
+            }
             Expression::Assignment(assignment) => {
                 self.build_assignment(Rc::clone(&scope), assignment);
-                AnyValueEnum::PointerValue(self.build_null_literal())
+                AnyValue::PointerValue(self.build_null_literal())
             }
             Expression::Literal(literal) => self.build_literal(literal),
             Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
@@ -40,32 +52,34 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
             Expression::ArrayIndexAssign(array_index_assign) => {
                 self.build_array_index_assign(Rc::clone(&scope), *array_index_assign);
-                AnyValueEnum::PointerValue(self.build_null_literal())
+                AnyValue::PointerValue(self.build_null_literal())
             }
             Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import).0,
         }
     }
 
-    pub(crate) fn build_address_of(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_address_of(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
         let ptr = self
             .builder
             .build_alloca(self.context.ptr_type(AddressSpace::default()), "addr_of")
             .unwrap();
-        self.build_store(ptr, any_value);
-        AnyValueEnum::PointerValue(ptr)
+        self.build_store(ptr, any_value.clone());
+        AnyValue::PointerValue(TypedPointerValue {
+            ptr,
+            pointee_ty: BasicTypeEnum::try_from(any_value.get_type()).unwrap(),
+        })
     }
 
-    pub(crate) fn build_deref(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
         match any_value {
-            AnyValueEnum::PointerValue(pointer_value) => {
-                let pointee_ty = self.context.ptr_type(AddressSpace::default());
+            AnyValue::PointerValue(pointer_value) => AnyValue::try_from(
                 self.builder
-                    .build_load(pointee_ty, pointer_value, "deref")
-                    .unwrap()
-                    .into()
-            }
+                    .build_load(pointer_value.pointee_ty, pointer_value.ptr, "deref")
+                    .unwrap(),
+            )
+            .unwrap(),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -77,18 +91,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_unary_operator(&self, scope: ScopeRef, unary_operator: UnaryOperator) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_unary_operator(&self, scope: ScopeRef<'ctx>, unary_operator: UnaryOperator) -> AnyValue<'ctx> {
         let int_one = self.context.i32_type().const_int(1, false);
         let value = self
             .build_module_import(Rc::clone(&scope), unary_operator.module_import)
             .0;
         match value {
-            AnyValueEnum::IntValue(int_value) => match unary_operator.ty {
+            AnyValue::IntValue(int_value) => match unary_operator.ty {
                 UnaryOperatorType::PreIncrement => {
-                    return AnyValueEnum::IntValue(self.builder.build_int_add(int_value, int_one, "unaryop").unwrap());
+                    return AnyValue::IntValue(self.builder.build_int_add(int_value, int_one, "unaryop").unwrap());
                 }
                 UnaryOperatorType::PreDecrement => {
-                    return AnyValueEnum::IntValue(self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap());
+                    return AnyValue::IntValue(self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap());
                 }
                 UnaryOperatorType::PostIncrement => {
                     let clone = value.clone();
@@ -114,18 +128,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_module_import(
         &self,
-        scope: ScopeRef,
+        scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
-    ) -> (AnyValueEnum<'ctx>, BasicTypeEnum<'ctx>) {
+    ) -> (AnyValue<'ctx>, BasicTypeEnum<'ctx>) {
         if module_import.sub_modules.is_empty() {
-            return self.build_load_value(Rc::clone(&scope), module_import.identifier);
+            return self.build_load(Rc::clone(&scope), module_import);
         }
 
         todo!();
     }
 
-    pub(crate) fn build_load_ptr(&self, scope: ScopeRef, module_import: ModuleImport) -> (AnyValueEnum, BasicTypeEnum) {
-        let binding = {
+    pub(crate) fn build_load(
+        &self,
+        scope: ScopeRef<'ctx>,
+        module_import: ModuleImport,
+    ) -> (AnyValue<'ctx>, BasicTypeEnum<'ctx>) {
+        let binding: Rc<std::cell::RefCell<crate::scope::ScopeRecord>> = {
             match scope.borrow_mut().get(module_import.identifier.name.clone()) {
                 Some(record) => record,
                 None => {
@@ -140,42 +158,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
         let record = binding.borrow_mut();
 
-        (unsafe { AnyValueEnum::new(record.ptr) }, unsafe {
-            BasicTypeEnum::new(record.ty)
-        })
+        let value = self.builder.build_load(record.ty, record.ptr, "load").unwrap();
+        (AnyValue::try_from(value).unwrap(), record.ty)
     }
 
-    pub(crate) fn build_load_value(
-        &self,
-        scope: ScopeRef,
-        identifier: Identifier,
-    ) -> (AnyValueEnum<'ctx>, BasicTypeEnum<'ctx>) {
-        let binding: Rc<std::cell::RefCell<crate::scope::ScopeRecord>> = {
-            match scope.borrow_mut().get(identifier.name.clone()) {
-                Some(record) => record,
-                None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::IdentifierNotDefined(identifier.name),
-                        location: None,
-                    });
-                    exit(1);
-                }
-            }
-        };
-        let record = binding.borrow_mut();
-
-        let ptr = unsafe { PointerValue::new(record.ptr) };
-        let pointee_ty = self.context.ptr_type(AddressSpace::default());
-        let value = self.builder.build_load(pointee_ty, ptr, "load").unwrap();
-        (value.into(), unsafe { BasicTypeEnum::new(record.ty) })
-    }
-
-    pub(crate) fn build_assignment(&self, scope: ScopeRef, assignment: Box<Assignment>) {
-        let (ptr, _) = self.build_load_ptr(Rc::clone(&scope), assignment.module_import);
+    pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
+        let (ptr, _) = self.build_load(Rc::clone(&scope), assignment.module_import);
         let value = self.build_expr(Rc::clone(&scope), assignment.expr);
-        if let AnyValueEnum::PointerValue(ptr) = ptr {
-            self.build_store(ptr, value);
+        if let AnyValue::PointerValue(pointer_value) = ptr {
+            self.build_store(pointer_value.ptr, value);
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -186,11 +177,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_array(&self, scope: ScopeRef, array: Array) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> AnyValue<'ctx> {
         let elements: Vec<BasicValueEnum> = array
             .elements
             .iter()
-            .map(|item| unsafe { BasicValueEnum::new(self.build_expr(Rc::clone(&scope), item.clone()).as_value_ref()) })
+            .map(|item| BasicValueEnum::from(self.build_expr(Rc::clone(&scope), item.clone())))
             .collect();
 
         let first_element_type = elements[0].get_type();
@@ -207,10 +198,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let array_type = first_element_type.array_type(elements.len().try_into().unwrap());
         let array_elements = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
-        AnyValueEnum::ArrayValue(array_type.const_array(&[array_elements]))
+        AnyValue::ArrayValue(array_type.const_array(&[array_elements]))
     }
 
-    pub(crate) fn build_ordered_indexes(&self, scope: ScopeRef, dimensions: Vec<Expression>) -> Vec<IntValue<'_>> {
+    pub(crate) fn build_ordered_indexes(
+        &self,
+        scope: ScopeRef<'ctx>,
+        dimensions: Vec<Expression>,
+    ) -> Vec<IntValue<'_>> {
         let mut ordered_indexes: Vec<IntValue> = Vec::new();
         ordered_indexes.push(self.context.i32_type().const_int(0, false));
         for item in dimensions {
@@ -227,7 +222,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                if let AnyValueEnum::IntValue(index) = self.build_expr(Rc::clone(&scope), array.elements[0].clone()) {
+                if let AnyValue::IntValue(index) = self.build_expr(Rc::clone(&scope), array.elements[0].clone()) {
                     ordered_indexes.push(index);
                 } else {
                     display_single_diag(Diag {
@@ -249,10 +244,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         ordered_indexes
     }
 
-    pub(crate) fn build_array_index(&self, scope: ScopeRef, array_index: ArrayIndex) -> AnyValueEnum<'ctx> {
-        let (any_value, pointee_ty) = self.build_load_ptr(Rc::clone(&scope), array_index.module_import);
+    pub(crate) fn build_array_index(&self, scope: ScopeRef<'ctx>, array_index: ArrayIndex) -> AnyValue<'ctx> {
+        let (any_value, pointee_ty) = self.build_load(Rc::clone(&scope), array_index.module_import);
 
-        if let AnyValueEnum::PointerValue(array_ptr) = any_value {
+        if let AnyValue::PointerValue(pointer_value) = any_value {
             let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
 
             let index_ptr = unsafe {
@@ -261,7 +256,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 PointerValue::new(LLVMBuildGEP2(
                     self.builder.as_mut_ptr(),
                     pointee_ty.as_type_ref(),
-                    array_ptr.as_value_ref(),
+                    pointer_value.ptr.as_value_ref(),
                     indices.as_mut_ptr(),
                     ordered_indexes.len().try_into().unwrap(),
                     name.as_ptr(),
@@ -275,7 +270,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .build_load(unsafe { BasicTypeEnum::new(element_type) }, index_ptr, "load")
                 .unwrap();
 
-            index_value.into()
+            AnyValue::try_from(index_value).unwrap()
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -286,10 +281,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_array_index_assign(&self, scope: ScopeRef, array_index_assign: ArrayIndexAssign) {
-        let (any_value, pointee_ty) = self.build_load_ptr(Rc::clone(&scope), array_index_assign.module_import);
+    pub(crate) fn build_array_index_assign(&self, scope: ScopeRef<'ctx>, array_index_assign: ArrayIndexAssign) {
+        let (any_value, pointee_ty) = self.build_load(Rc::clone(&scope), array_index_assign.module_import);
 
-        if let AnyValueEnum::PointerValue(array_ptr) = any_value {
+        if let AnyValue::PointerValue(pointer_value) = any_value {
             let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index_assign.dimensions);
 
             let index_ptr = unsafe {
@@ -298,20 +293,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 PointerValue::new(LLVMBuildGEP2(
                     self.builder.as_mut_ptr(),
                     pointee_ty.as_type_ref(),
-                    array_ptr.as_value_ref(),
+                    pointer_value.ptr.as_value_ref(),
                     indices.as_mut_ptr(),
                     ordered_indexes.len().try_into().unwrap(),
                     name.as_ptr(),
                 ))
             };
 
-            let value = unsafe {
-                BasicValueEnum::new(
-                    self.build_expr(Rc::clone(&scope), array_index_assign.expr)
-                        .as_value_ref(),
-                )
-            };
-
+            let value: BasicValueEnum = self.build_expr(Rc::clone(&scope), array_index_assign.expr).into();
             self.builder.build_store(index_ptr, value).unwrap();
         } else {
             display_single_diag(Diag {
@@ -323,14 +312,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_literal(&self, literal: Literal) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_literal(&self, literal: Literal) -> AnyValue<'ctx> {
         match literal {
-            Literal::Integer(integer_literal) => AnyValueEnum::IntValue(self.build_integer_literal(integer_literal)),
-            Literal::Float(float_literal) => AnyValueEnum::FloatValue(self.build_float_literal(float_literal)),
-            Literal::Bool(bool_literal) => AnyValueEnum::IntValue(self.build_bool_literal(bool_literal)),
-            Literal::String(string_literal) => AnyValueEnum::PointerValue(self.build_string_literal(string_literal)),
-            Literal::Char(char_literal) => AnyValueEnum::IntValue(self.build_char_literal(char_literal)),
-            Literal::Null => AnyValueEnum::PointerValue(self.build_null_literal()),
+            Literal::Integer(integer_literal) => AnyValue::IntValue(self.build_integer_literal(integer_literal)),
+            Literal::Float(float_literal) => AnyValue::FloatValue(self.build_float_literal(float_literal)),
+            Literal::Bool(bool_literal) => AnyValue::IntValue(self.build_bool_literal(bool_literal)),
+            Literal::String(string_literal) => self.build_string_literal(string_literal),
+            Literal::Char(char_literal) => AnyValue::IntValue(self.build_char_literal(char_literal)),
+            Literal::Null => AnyValue::PointerValue(self.build_null_literal()),
         }
     }
 
@@ -357,7 +346,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> PointerValue<'ctx> {
+    pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> AnyValue<'ctx> {
         let mut bytes = self.unescape_string(&string_literal.raw).into_bytes();
         bytes.push(0); // null terminator
 
@@ -372,15 +361,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         string_global.set_constant(true);
         string_global.set_linkage(inkwell::module::Linkage::Private);
 
-        string_global.as_pointer_value()
+        AnyValue::PointerValue(TypedPointerValue {
+            ptr: string_global.as_pointer_value(),
+            pointee_ty: BasicTypeEnum::ArrayType(i8_array_type),
+        })
     }
 
     pub(crate) fn build_char_literal(&self, char_literal: CharLiteral) -> IntValue<'ctx> {
         self.context.i8_type().const_int(char_literal.raw as u8 as u64, false)
     }
 
-    pub(crate) fn build_null_literal(&self) -> PointerValue<'ctx> {
-        self.context.ptr_type(AddressSpace::default()).const_null()
+    pub(crate) fn build_null_literal(&self) -> TypedPointerValue<'ctx> {
+        let pointee_ty = self.context.ptr_type(AddressSpace::default());
+        TypedPointerValue {
+            ptr: pointee_ty.const_null(),
+            pointee_ty: BasicTypeEnum::PointerType(pointee_ty),
+        }
     }
 
     pub(crate) fn build_bool_literal(&self, bool_literal: BoolLiteral) -> IntValue<'ctx> {
@@ -389,16 +385,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .const_int(if bool_literal.raw { 1 } else { 0 }, false)
     }
 
-    pub(crate) fn build_cast_as(&self, scope: ScopeRef, cast_as: CastAs) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_cast_as(&self, scope: ScopeRef<'ctx>, cast_as: CastAs) -> AnyValue<'ctx> {
         let expr = self.build_expr(Rc::clone(&scope), *cast_as.expr.clone());
         let target = self.build_type(cast_as.type_token, cast_as.loc.clone(), cast_as.span.end);
 
         match expr {
-            AnyValueEnum::IntValue(int_value) => match target {
+            AnyValue::IntValue(int_value) => match target {
                 AnyTypeEnum::IntType(int_type) => {
-                    AnyValueEnum::IntValue(self.builder.build_int_cast(int_value, int_type, "cast").unwrap())
+                    AnyValue::IntValue(self.builder.build_int_cast(int_value, int_type, "cast").unwrap())
                 }
-                AnyTypeEnum::FloatType(float_type) => AnyValueEnum::FloatValue(
+                AnyTypeEnum::FloatType(float_type) => AnyValue::FloatValue(
                     self.builder
                         .build_signed_int_to_float(int_value, float_type, "cast")
                         .unwrap(),
@@ -417,14 +413,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
             },
-            AnyValueEnum::FloatValue(float_value) => match target {
-                AnyTypeEnum::IntType(int_type) => AnyValueEnum::IntValue(
+            AnyValue::FloatValue(float_value) => match target {
+                AnyTypeEnum::IntType(int_type) => AnyValue::IntValue(
                     self.builder
                         .build_float_to_signed_int(float_value, int_type, "cast")
                         .unwrap(),
                 ),
                 AnyTypeEnum::FloatType(float_type) => {
-                    AnyValueEnum::FloatValue(self.builder.build_float_cast(float_value, float_type, "cast").unwrap())
+                    AnyValue::FloatValue(self.builder.build_float_cast(float_value, float_type, "cast").unwrap())
                 }
                 _ => {
                     display_single_diag(Diag {
@@ -440,18 +436,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
             },
-            AnyValueEnum::PointerValue(pointer_value) => {
-                let name = CString::new("cast_ptr").unwrap();
-                let ptr = unsafe {
-                    LLVMBuildPointerCast(
-                        self.builder.as_mut_ptr(),
-                        pointer_value.as_value_ref(),
-                        target.as_type_ref(),
-                        name.as_ptr(),
-                    )
-                };
-                AnyValueEnum::PointerValue(unsafe { PointerValue::new(ptr) })
-            }
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -468,15 +452,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_prefix_expr(&self, scope: ScopeRef, unary_expression: UnaryExpression) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_prefix_expr(&self, scope: ScopeRef<'ctx>, unary_expression: UnaryExpression) -> AnyValue<'ctx> {
         let operand = self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone());
         match unary_expression.operator.kind {
             TokenKind::Minus => match operand {
-                AnyValueEnum::IntValue(int_value) => {
-                    AnyValueEnum::IntValue(self.builder.build_int_neg(int_value, "prefix_iminus").unwrap())
+                AnyValue::IntValue(int_value) => {
+                    AnyValue::IntValue(self.builder.build_int_neg(int_value, "prefix_iminus").unwrap())
                 }
-                AnyValueEnum::FloatValue(float_value) => {
-                    AnyValueEnum::FloatValue(self.builder.build_float_neg(float_value, "prefix_fminus").unwrap())
+                AnyValue::FloatValue(float_value) => {
+                    AnyValue::FloatValue(self.builder.build_float_neg(float_value, "prefix_fminus").unwrap())
                 }
                 _ => {
                     display_single_diag(Diag {
@@ -493,7 +477,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             },
             TokenKind::Bang => match operand {
-                AnyValueEnum::IntValue(int_value) => {
+                AnyValue::IntValue(int_value) => {
                     let zero = int_value.get_type().const_int(0, false);
                     let one = int_value.get_type().const_int(1, false);
 
@@ -503,9 +487,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         .unwrap();
 
                     if is_zero.get_zero_extended_constant().unwrap() == 0 {
-                        AnyValueEnum::IntValue(zero)
+                        AnyValue::IntValue(zero)
                     } else {
-                        AnyValueEnum::IntValue(one)
+                        AnyValue::IntValue(one)
                     }
                 }
                 _ => {
@@ -538,7 +522,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_infix_expr(&self, scope: ScopeRef, binary_expression: BinaryExpression) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_infix_expr(
+        &self,
+        scope: ScopeRef<'ctx>,
+        binary_expression: BinaryExpression,
+    ) -> AnyValue<'ctx> {
         let left = self.build_expr(Rc::clone(&scope), *binary_expression.left);
         let right = self.build_expr(Rc::clone(&scope), *binary_expression.right);
 
@@ -586,12 +574,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_cond(
         &self,
-        scope: ScopeRef,
+        scope: ScopeRef<'ctx>,
         expr: Expression,
         loc: Location,
         span_end: usize,
     ) -> IntValue<'ctx> {
-        if let AnyValueEnum::IntValue(value) = self.build_expr(scope, expr) {
+        if let AnyValue::IntValue(value) = self.build_expr(scope, expr) {
             value
         } else {
             display_single_diag(Diag {

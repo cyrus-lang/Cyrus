@@ -1,22 +1,20 @@
-use inkwell::llvm_sys::prelude::{LLVMTypeRef, LLVMValueRef};
+use inkwell::{types::BasicTypeEnum, values::PointerValue};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-pub type ScopeRef = Rc<RefCell<Scope>>;
+pub type ScopeRef<'a> = Rc<RefCell<Scope<'a>>>;
 
 #[derive(Debug, Clone)]
-pub struct ScopeRecord {
-    // FIXME
-    // Consider to change this to use safe PointerValue<'_>
-    pub ptr: LLVMValueRef,
-    pub ty: LLVMTypeRef,
+pub struct ScopeRecord<'a> {
+    pub ptr: PointerValue<'a>,
+    pub ty: BasicTypeEnum<'a>,
 }
 
-pub struct Scope {
-    pub records: HashMap<String, Rc<RefCell<ScopeRecord>>>,
-    pub parent: Option<Box<Scope>>,
+pub struct Scope<'a> {
+    pub records: HashMap<String, Rc<RefCell<ScopeRecord<'a>>>>,
+    pub parent: Option<Box<Scope<'a>>>,
 }
 
-impl Scope {
+impl<'a> Scope<'a> {
     pub fn new() -> Self {
         Self {
             records: HashMap::new(),
@@ -24,7 +22,7 @@ impl Scope {
         }
     }
 
-    pub fn get(&self, key: String) -> Option<Rc<RefCell<ScopeRecord>>> {
+    pub fn get(&self, key: String) -> Option<Rc<RefCell<ScopeRecord<'a>>>> {
         match self.records.get(&key) {
             Some(value) => Some(Rc::clone(value)),
             None => {
@@ -37,7 +35,7 @@ impl Scope {
         }
     }
 
-    pub fn insert(&mut self, key: String, record: ScopeRecord) {
+    pub fn insert(&mut self, key: String, record: ScopeRecord<'a>) {
         self.records.insert(key, Rc::new(RefCell::new(record)));
     }
 }

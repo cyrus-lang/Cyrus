@@ -2,11 +2,10 @@ extern fn printf(msg: string, ...void);
 
 fn main() {
    #a: i32 = 0;
-   printf("Program start.\n");
 
-   if a < 10 {
+   if a != 0 {
       printf("yes\n");
+   } else {
+      printf("no\n");
    }
-
-   printf("Program end.\n");
 }

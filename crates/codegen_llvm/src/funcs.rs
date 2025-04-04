@@ -1,18 +1,18 @@
 use crate::CodeGenLLVM;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRef};
+use crate::values::AnyValue;
 use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam, VisType};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
-use inkwell::llvm_sys::prelude::{LLVMTypeRef, LLVMValueRef};
+use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::types::AsTypeRef;
 use inkwell::types::FunctionType;
-use inkwell::values::{AnyValueEnum, AsValueRef, BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
+use inkwell::values::{BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
-use std::ptr::null_mut;
 use std::rc::Rc;
 
 pub struct FuncMetadata<'a> {
@@ -101,7 +101,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_func_def(&mut self, func_def: FuncDef) -> FunctionValue<'ctx> {
-        let scope: ScopeRef = Rc::new(RefCell::new(Scope::new()));
+        let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
 
         let is_var_args = func_def.params.variadic.is_some();
         let mut param_types = self.build_func_params(
@@ -199,14 +199,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         return func;
     }
 
-    pub(crate) fn build_return(&self, value: AnyValueEnum) {
+    pub(crate) fn build_return(&self, value: AnyValue) {
         let result: Result<InstructionValue, BuilderError> = match value {
-            AnyValueEnum::IntValue(int_value) => self.builder.build_return(Some(&int_value)),
-            AnyValueEnum::FloatValue(float_value) => self.builder.build_return(Some(&float_value)),
-            AnyValueEnum::PointerValue(pointer_value) => self.builder.build_return(Some(&pointer_value)),
-            AnyValueEnum::VectorValue(vector_value) => self.builder.build_return(Some(&vector_value)),
-            AnyValueEnum::ArrayValue(array_value) => self.builder.build_return(Some(&array_value)),
-            AnyValueEnum::StructValue(struct_value) => self.builder.build_return(Some(&struct_value)),
+            AnyValue::IntValue(int_value) => self.builder.build_return(Some(&int_value)),
+            AnyValue::FloatValue(float_value) => self.builder.build_return(Some(&float_value)),
+            AnyValue::PointerValue(pointer_value) => self.builder.build_return(Some(&pointer_value.ptr)),
+            AnyValue::VectorValue(vector_value) => self.builder.build_return(Some(&vector_value)),
+            AnyValue::ArrayValue(array_value) => self.builder.build_return(Some(&array_value)),
+            AnyValue::StructValue(struct_value) => self.builder.build_return(Some(&struct_value)),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -229,14 +229,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_field_access_or_method_call(
         &self,
-        scope: ScopeRef,
+        scope: ScopeRef<'ctx>,
         field_access_or_method_calls: Vec<FieldAccessOrMethodCall>,
-    ) -> AnyValueEnum<'ctx> {
-        let mut final_result: LLVMValueRef = null_mut();
+    ) -> AnyValue<'ctx> {
+        let mut final_result = AnyValue::PointerValue(self.build_null_literal());
 
         for field_access_or_method_call in field_access_or_method_calls {
             if let Some(method_call) = field_access_or_method_call.method_call {
-                final_result = self.build_func_call(Rc::clone(&scope), method_call).as_value_ref();
+                let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
+                if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
+                    final_result = AnyValue::try_from(basic_value).unwrap();
+                }
             } else if let Some(field_access) = field_access_or_method_call.field_access {
                 todo!();
             } else {
@@ -244,26 +247,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         }
 
-        unsafe { AnyValueEnum::new(final_result) }
+        final_result
     }
 
     pub(crate) fn build_arguments(
         &self,
-        scope: ScopeRef,
+        scope: ScopeRef<'ctx>,
         arguments: Vec<Expression>,
         loc: Location,
         span_end: usize,
-    ) -> Vec<BasicMetadataValueEnum<'_>> {
+    ) -> Vec<BasicMetadataValueEnum<'ctx>> {
         arguments
             .iter()
             .map(|arg| match self.build_expr(Rc::clone(&scope), arg.clone()) {
-                AnyValueEnum::ArrayValue(array_value) => BasicMetadataValueEnum::ArrayValue(array_value),
-                AnyValueEnum::IntValue(int_value) => BasicMetadataValueEnum::IntValue(int_value),
-                AnyValueEnum::FloatValue(float_value) => BasicMetadataValueEnum::FloatValue(float_value),
-                AnyValueEnum::PointerValue(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value),
-                AnyValueEnum::StructValue(struct_value) => BasicMetadataValueEnum::StructValue(struct_value),
-                AnyValueEnum::VectorValue(vector_value) => BasicMetadataValueEnum::VectorValue(vector_value),
-                AnyValueEnum::MetadataValue(metadata_value) => BasicMetadataValueEnum::MetadataValue(metadata_value),
+                AnyValue::ArrayValue(array_value) => BasicMetadataValueEnum::ArrayValue(array_value),
+                AnyValue::IntValue(int_value) => BasicMetadataValueEnum::IntValue(int_value),
+                AnyValue::FloatValue(float_value) => BasicMetadataValueEnum::FloatValue(float_value),
+                AnyValue::PointerValue(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value.ptr),
+                AnyValue::StructValue(struct_value) => BasicMetadataValueEnum::StructValue(struct_value),
+                AnyValue::VectorValue(vector_value) => BasicMetadataValueEnum::VectorValue(vector_value),
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -282,7 +284,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     // FIXME func_call.func_name.identifier.name
-    pub(crate) fn build_func_call(&self, scope: ScopeRef, func_call: FuncCall) -> CallSiteValue<'_> {
+    pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
         let arguments = &self.build_arguments(
             Rc::clone(&scope),
             func_call.arguments,
@@ -291,7 +293,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
 
         if let Some(func_metadata) = self.func_table.get(&func_call.func_name.identifier.name.clone()) {
-            return self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap();
+            self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

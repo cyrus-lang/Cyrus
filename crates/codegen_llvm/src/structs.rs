@@ -1,12 +1,10 @@
 use crate::{
-    CodeGenLLVM,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    scope::ScopeRef,
+    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, scope::ScopeRef, AnyValue, CodeGenLLVM
 };
 use ast::ast::{Field, Struct, StructInit, VisType};
 use inkwell::{
     types::{BasicTypeEnum, StructType},
-    values::{AnyValueEnum, AsValueRef, StructValue},
+    values::{AsValueRef, StructValue},
 };
 use std::{collections::HashMap, process::exit, rc::Rc};
 
@@ -56,7 +54,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
     }
 
-    pub(crate) fn build_struct_init(&self, scope: ScopeRef, struct_init: StructInit) -> AnyValueEnum<'ctx> {
+    pub(crate) fn build_struct_init(&self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> AnyValue<'ctx> {
         if struct_init.struct_name.sub_modules.len() == 0 {
             if let Some(struct_def) = self.struct_table.get(&struct_init.struct_name.identifier.name) {
                 if struct_def.fields.len() != struct_init.field_inits.len() {
@@ -130,7 +128,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.build_store(field_ptr, field_value);
                 }
 
-                return AnyValueEnum::StructValue(unsafe { StructValue::new(struct_ptr.as_value_ref()) });
+                return AnyValue::StructValue(unsafe { StructValue::new(struct_ptr.as_value_ref()) });
             } else {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,

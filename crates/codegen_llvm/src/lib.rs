@@ -3,16 +3,16 @@ use ast::token::{Location, TokenKind};
 use build::BuildManifest;
 use diag::*;
 use funcs::FuncTable;
-use inkwell::basic_block::BasicBlock;
 use inkwell::OptimizationLevel;
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::llvm_sys::prelude::LLVMValueRef;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::types::{AnyTypeEnum, AsTypeRef, BasicTypeEnum};
-use inkwell::values::{AnyValueEnum, AsValueRef, FunctionValue, PointerValue};
+use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
+use inkwell::values::{FunctionValue, PointerValue};
 use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
+use values::AnyValue;
 
 mod build;
 pub mod diag;
@@ -30,11 +31,11 @@ mod linkage;
 pub mod opts;
 mod runtime;
 mod scope;
+mod stmts;
 mod structs;
 mod tests;
 mod types;
-mod stmts;
-mod value;
+mod values;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -63,7 +64,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         file_name: String,
         program: ProgramTree,
         opts: Options,
-        compiler_invoked_single: bool
+        compiler_invoked_single: bool,
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
         let module = context.create_module(&file_name);
@@ -115,7 +116,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn compile(&mut self) {
-        let scope: ScopeRef = Rc::new(RefCell::new(Scope::new()));
+        let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         self.build_statements(Rc::clone(&scope), self.program.body.clone());
 
         if self.reporter.has_errors() {
@@ -141,7 +142,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         var_name: String,
         loc: Location,
         span_end: usize,
-    ) -> (PointerValue, BasicTypeEnum) {
+    ) -> (PointerValue<'ctx>, BasicTypeEnum<'ctx>) {
         let any_type = self.build_type(var_type_token, loc.clone(), span_end);
         match any_type {
             AnyTypeEnum::StructType(struct_type) => todo!(),
@@ -177,14 +178,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_store(&self, ptr: PointerValue, value: AnyValueEnum) {
+    pub(crate) fn build_store(&self, ptr: PointerValue, value: AnyValue) {
         let result = match value {
-            AnyValueEnum::IntValue(int_value) => self.builder.build_store(ptr, int_value),
-            AnyValueEnum::FloatValue(float_value) => self.builder.build_store(ptr, float_value),
-            AnyValueEnum::ArrayValue(array_value) => self.builder.build_store(ptr, array_value),
-            AnyValueEnum::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value),
-            AnyValueEnum::VectorValue(vector_value) => self.builder.build_store(ptr, vector_value),
-            AnyValueEnum::StructValue(struct_value) => self.builder.build_store(ptr, struct_value),
+            AnyValue::IntValue(int_value) => self.builder.build_store(ptr, int_value),
+            AnyValue::FloatValue(float_value) => self.builder.build_store(ptr, float_value),
+            AnyValue::ArrayValue(array_value) => self.builder.build_store(ptr, array_value),
+            AnyValue::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value.ptr),
+            AnyValue::VectorValue(vector_value) => self.builder.build_store(ptr, vector_value),
+            AnyValue::StructValue(struct_value) => self.builder.build_store(ptr, struct_value),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
