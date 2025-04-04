@@ -132,9 +132,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let func_linkage = self.build_linkage(func_def.vis_type.clone());
         let func = self.module.add_function(&func_def.name, fn_type, Some(func_linkage));
+        self.current_func_ref = Some(func);
 
         let entry_block = self.context.append_basic_block(func, "entry");
         self.builder.position_at_end(entry_block);
+        self.current_block_ref = Some(entry_block);
 
         let mut build_return = false;
         for expr in func_def.body.exprs {

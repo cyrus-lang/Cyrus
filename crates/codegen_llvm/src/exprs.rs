@@ -541,7 +541,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_infix_expr(&self, scope: ScopeRef, binary_expression: BinaryExpression) -> AnyValueEnum<'ctx> {
         let left = self.build_expr(Rc::clone(&scope), *binary_expression.left);
         let right = self.build_expr(Rc::clone(&scope), *binary_expression.right);
-        
+
         let result = match binary_expression.operator.kind {
             TokenKind::Plus => self.bin_op_add(left, right),
             TokenKind::Minus => self.bin_op_sub(left, right),
