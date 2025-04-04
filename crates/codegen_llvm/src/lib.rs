@@ -55,6 +55,7 @@ pub struct CodeGenLLVM<'ctx> {
     compiler_invoked_single: bool,
     current_func_ref: Option<FunctionValue<'ctx>>,
     current_block_ref: Option<BasicBlock<'ctx>>,
+    terminated_blocks: Vec<BasicBlock<'ctx>>
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -105,6 +106,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             compiler_invoked_single,
             current_func_ref: None,
             current_block_ref: None,
+            terminated_blocks: Vec::new(),
         };
 
         codegen_llvm.load_runtime();

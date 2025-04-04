@@ -199,7 +199,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         return func;
     }
 
-    pub(crate) fn build_return(&self, value: AnyValue) {
+    pub(crate) fn build_return(&mut self, value: AnyValue) {
         let result: Result<InstructionValue, BuilderError> = match value {
             AnyValue::IntValue(int_value) => self.builder.build_return(Some(&int_value)),
             AnyValue::FloatValue(float_value) => self.builder.build_return(Some(&float_value)),
@@ -224,6 +224,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 location: None,
             });
             exit(1);
+        }
+
+        // mark entry block terminated
+        if let Some(current_block) = self.current_block_ref {
+            self.mark_block_terminated(current_block);
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Failed to mark block terminated.".to_string()),
+                location: None,
+            });
         }
     }
 

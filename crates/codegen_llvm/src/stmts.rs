@@ -1,7 +1,8 @@
+use crate::diag::*;
 use crate::scope::ScopeRecord;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use crate::{diag::*, scope};
 use ast::ast::{If, Statement, Variable};
+use inkwell::basic_block::BasicBlock;
 use inkwell::types::{AsTypeRef, BasicTypeEnum};
 use std::process::exit;
 use std::rc::Rc;
@@ -22,13 +23,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_expr(Rc::clone(&scope), expression);
             }
             Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
-            Statement::Return(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(String::from("Cannot build return statement outside of a function.")),
-                    location: None,
-                });
-                exit(1);
+            Statement::Return(statement) => {
+                self.build_return(self.build_expr(Rc::clone(&scope), statement.argument));
             }
             Statement::FuncDef(func_def) => {
                 if func_def.name == "main" {
@@ -60,6 +56,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn block_terminated(&self, block: BasicBlock<'ctx>) -> bool {
+        self.terminated_blocks.contains(&block)
+    }
+
+    pub(crate) fn mark_block_terminated(&mut self, block: BasicBlock<'ctx>) {
+        self.terminated_blocks.push(block);
+    }
+
     pub(crate) fn build_if(&mut self, scope: ScopeRef<'ctx>, if_statement: If) {
         if let Some(current_func) = self.current_func_ref {
             let then_block = self.context.append_basic_block(current_func, "if.then");
@@ -75,14 +79,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 );
 
                 self.builder.position_at_end(current_block);
-                self.builder
-                    .build_conditional_branch(cond, then_block, else_block)
-                    .unwrap();
+                if !self.block_terminated(current_block) {
+                    self.builder
+                        .build_conditional_branch(cond, then_block, else_block)
+                        .unwrap();
+                    self.mark_block_terminated(current_block);
+                }
 
                 self.builder.position_at_end(then_block);
                 self.current_block_ref = Some(then_block);
                 self.build_statements(Rc::clone(&scope), if_statement.consequent.exprs);
-                self.builder.build_unconditional_branch(end_block).unwrap();
+                if !self.block_terminated(then_block) {
+                    self.builder.build_unconditional_branch(end_block).unwrap();
+                    self.mark_block_terminated(then_block);
+                }
 
                 let mut current_else_block = else_block;
                 for else_if in if_statement.branches {
@@ -97,25 +107,34 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         else_if.span.end,
                     );
 
-                    self.builder
-                        .build_conditional_branch(else_if_cond, new_then_block, new_else_block)
-                        .unwrap();
+                    if !self.block_terminated(current_else_block) {
+                        self.builder
+                            .build_conditional_branch(else_if_cond, new_then_block, new_else_block)
+                            .unwrap();
+                        self.mark_block_terminated(current_else_block);
+                    }
 
                     self.builder.position_at_end(new_then_block);
                     self.current_block_ref = Some(new_then_block);
                     self.build_statements(Rc::clone(&scope), else_if.consequent.exprs);
-                    self.builder.build_unconditional_branch(end_block).unwrap();
+                    if !self.block_terminated(new_then_block) {
+                        self.builder.build_unconditional_branch(end_block).unwrap();
+                        self.mark_block_terminated(new_then_block);
+                    }
 
                     current_else_block = new_else_block;
                 }
 
-                // Handle the final "else" block (if it exists)
+                // handle the final "else" block
                 self.builder.position_at_end(current_else_block);
                 self.current_block_ref = Some(current_else_block);
                 if let Some(alternate) = if_statement.alternate {
                     self.build_statements(Rc::clone(&scope), alternate.exprs);
                 }
-                self.builder.build_unconditional_branch(end_block).unwrap();
+                if !self.block_terminated(current_else_block) {
+                    self.builder.build_unconditional_branch(end_block).unwrap();
+                    self.mark_block_terminated(current_else_block);
+                }
 
                 self.builder.position_at_end(end_block);
                 self.current_block_ref = Some(end_block);
