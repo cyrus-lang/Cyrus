@@ -1,6 +1,6 @@
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use crate::{diag::*, scope};
-use ast::ast::{Statement, Variable};
+use ast::ast::{If, Statement, Variable};
 use inkwell::types::{AsTypeRef, BasicTypeEnum};
 use inkwell::values::AsValueRef;
 use std::process::exit;
@@ -49,7 +49,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::FuncDecl(func_decl) => {
                 self.build_func_decl(func_decl);
             }
-            Statement::If(_) => todo!(),
+            Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),
             Statement::For(_) => todo!(),
             Statement::Switch(_) => todo!(),
             Statement::Break(location) => todo!(),
@@ -57,6 +57,68 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Struct(struct_statement) => self.build_struct(struct_statement),
             Statement::Enum(enum_statement) => self.build_enum(enum_statement),
             Statement::Import(import) => todo!(),
+        }
+    }
+
+    pub(crate) fn build_if(&mut self, scope: ScopeRef, if_statement: If) {
+        if let Some(current_func) = self.current_func_ref {
+            let then_block = self.context.append_basic_block(current_func, "if.then");
+            let else_block = self.context.append_basic_block(current_func, "if.else");
+            let end_block = self.context.append_basic_block(current_func, "if.end");
+
+            if let Some(current_block) = self.current_block_ref {
+                let cond = self.build_cond(
+                    Rc::clone(&scope),
+                    if_statement.condition,
+                    if_statement.loc.clone(),
+                    if_statement.span.end,
+                );
+
+                // construct conditional branch for current_block
+                self.builder.position_at_end(current_block);
+                self.builder
+                    .build_conditional_branch(cond, then_block, else_block)
+                    .unwrap();
+
+                self.builder.position_at_end(then_block);
+                self.build_statements(Rc::clone(&scope), if_statement.consequent.exprs);
+                self.builder.build_unconditional_branch(end_block).unwrap();
+
+                self.builder.position_at_end(else_block);
+                if let Some(alternate) = if_statement.alternate {
+                    self.build_statements(Rc::clone(&scope), alternate.exprs);
+                }
+                self.builder.build_unconditional_branch(end_block).unwrap();
+
+                self.builder.position_at_end(end_block);
+                self.current_block_ref = Some(end_block);
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(
+                        "Cannot build if statement without having reference to current block.".to_string(),
+                    ),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: if_statement.loc.line,
+                        column: if_statement.loc.column,
+                        length: if_statement.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Cannot build if statement outside of a function.".to_string()),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: if_statement.loc.line,
+                    column: if_statement.loc.column,
+                    length: if_statement.span.end,
+                }),
+            });
+            exit(1);
         }
     }
 

@@ -6,7 +6,7 @@ use inkwell::types::AnyTypeEnum;
 use std::process::exit;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyTypeEnum {
+    pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyTypeEnum<'ctx> {
         match token_kind {
             TokenKind::I8 => AnyTypeEnum::IntType(self.context.i8_type()),
             TokenKind::I16 => AnyTypeEnum::IntType(self.context.i16_type()),

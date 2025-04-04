@@ -56,7 +56,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
     }
 
-    pub(crate) fn build_struct_init(&self, scope: ScopeRef, struct_init: StructInit) -> AnyValueEnum {
+    pub(crate) fn build_struct_init(&self, scope: ScopeRef, struct_init: StructInit) -> AnyValueEnum<'ctx> {
         if struct_init.struct_name.sub_modules.len() == 0 {
             if let Some(struct_def) = self.struct_table.get(&struct_init.struct_name.identifier.name) {
                 if struct_def.fields.len() != struct_init.field_inits.len() {

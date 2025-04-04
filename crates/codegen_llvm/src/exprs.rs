@@ -2,7 +2,10 @@ use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
 };
-use ast::{ast::*, token::TokenKind};
+use ast::{
+    ast::*,
+    token::{Location, TokenKind},
+};
 use inkwell::{
     AddressSpace,
     llvm_sys::{
@@ -15,7 +18,7 @@ use inkwell::{
 use std::{ffi::CString, process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_expr(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
+    pub(crate) fn build_expr(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum<'ctx> {
         match expr {
             Expression::Identifier(identifier) => self.build_load_value(Rc::clone(&scope), identifier).0,
             Expression::Assignment(assignment) => {
@@ -43,7 +46,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_address_of(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
+    pub(crate) fn build_address_of(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
         let ptr = self
             .builder
@@ -53,7 +56,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         AnyValueEnum::PointerValue(ptr)
     }
 
-    pub(crate) fn build_deref(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum {
+    pub(crate) fn build_deref(&self, scope: ScopeRef, expr: Expression) -> AnyValueEnum<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
         match any_value {
             AnyValueEnum::PointerValue(pointer_value) => {
@@ -74,7 +77,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_unary_operator(&self, scope: ScopeRef, unary_operator: UnaryOperator) -> AnyValueEnum {
+    pub(crate) fn build_unary_operator(&self, scope: ScopeRef, unary_operator: UnaryOperator) -> AnyValueEnum<'ctx> {
         let int_one = self.context.i32_type().const_int(1, false);
         let value = self
             .build_module_import(Rc::clone(&scope), unary_operator.module_import)
@@ -113,7 +116,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         scope: ScopeRef,
         module_import: ModuleImport,
-    ) -> (AnyValueEnum, BasicTypeEnum) {
+    ) -> (AnyValueEnum<'ctx>, BasicTypeEnum<'ctx>) {
         if module_import.sub_modules.is_empty() {
             return self.build_load_value(Rc::clone(&scope), module_import.identifier);
         }
@@ -142,7 +145,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         })
     }
 
-    pub(crate) fn build_load_value(&self, scope: ScopeRef, identifier: Identifier) -> (AnyValueEnum, BasicTypeEnum) {
+    pub(crate) fn build_load_value(
+        &self,
+        scope: ScopeRef,
+        identifier: Identifier,
+    ) -> (AnyValueEnum<'ctx>, BasicTypeEnum<'ctx>) {
         let binding: Rc<std::cell::RefCell<crate::scope::ScopeRecord>> = {
             match scope.borrow_mut().get(identifier.name.clone()) {
                 Some(record) => record,
@@ -179,7 +186,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_array(&self, scope: ScopeRef, array: Array) -> AnyValueEnum {
+    pub(crate) fn build_array(&self, scope: ScopeRef, array: Array) -> AnyValueEnum<'ctx> {
         let elements: Vec<BasicValueEnum> = array
             .elements
             .iter()
@@ -242,7 +249,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         ordered_indexes
     }
 
-    pub(crate) fn build_array_index(&self, scope: ScopeRef, array_index: ArrayIndex) -> AnyValueEnum {
+    pub(crate) fn build_array_index(&self, scope: ScopeRef, array_index: ArrayIndex) -> AnyValueEnum<'ctx> {
         let (any_value, pointee_ty) = self.build_load_ptr(Rc::clone(&scope), array_index.module_import);
 
         if let AnyValueEnum::PointerValue(array_ptr) = any_value {
@@ -316,7 +323,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_literal(&self, literal: Literal) -> AnyValueEnum {
+    pub(crate) fn build_literal(&self, literal: Literal) -> AnyValueEnum<'ctx> {
         match literal {
             Literal::Integer(integer_literal) => AnyValueEnum::IntValue(self.build_integer_literal(integer_literal)),
             Literal::Float(float_literal) => AnyValueEnum::FloatValue(self.build_float_literal(float_literal)),
@@ -327,7 +334,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_integer_literal(&self, integer_literal: IntegerLiteral) -> IntValue {
+    pub(crate) fn build_integer_literal(&self, integer_literal: IntegerLiteral) -> IntValue<'ctx> {
         match integer_literal {
             IntegerLiteral::I8(val) => self.context.i8_type().const_int(val.try_into().unwrap(), true),
             IntegerLiteral::I16(val) => self.context.i16_type().const_int(val.try_into().unwrap(), true),
@@ -343,14 +350,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_float_literal(&self, float_literal: FloatLiteral) -> FloatValue {
+    pub(crate) fn build_float_literal(&self, float_literal: FloatLiteral) -> FloatValue<'ctx> {
         match float_literal {
             FloatLiteral::Float(val) => self.context.f32_type().const_float(val.into()),
             FloatLiteral::Double(val) => self.context.f64_type().const_float(val),
         }
     }
 
-    pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> PointerValue {
+    pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> PointerValue<'ctx> {
         let mut bytes = self.unescape_string(&string_literal.raw).into_bytes();
         bytes.push(0); // null terminator
 
@@ -368,21 +375,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         string_global.as_pointer_value()
     }
 
-    pub(crate) fn build_char_literal(&self, char_literal: CharLiteral) -> IntValue {
+    pub(crate) fn build_char_literal(&self, char_literal: CharLiteral) -> IntValue<'ctx> {
         self.context.i8_type().const_int(char_literal.raw as u8 as u64, false)
     }
 
-    pub(crate) fn build_null_literal(&self) -> PointerValue {
+    pub(crate) fn build_null_literal(&self) -> PointerValue<'ctx> {
         self.context.ptr_type(AddressSpace::default()).const_null()
     }
 
-    pub(crate) fn build_bool_literal(&self, bool_literal: BoolLiteral) -> IntValue {
+    pub(crate) fn build_bool_literal(&self, bool_literal: BoolLiteral) -> IntValue<'ctx> {
         self.context
             .bool_type()
             .const_int(if bool_literal.raw { 1 } else { 0 }, false)
     }
 
-    pub(crate) fn build_cast_as(&self, scope: ScopeRef, cast_as: CastAs) -> AnyValueEnum {
+    pub(crate) fn build_cast_as(&self, scope: ScopeRef, cast_as: CastAs) -> AnyValueEnum<'ctx> {
         let expr = self.build_expr(Rc::clone(&scope), *cast_as.expr.clone());
         let target = self.build_type(cast_as.type_token, cast_as.loc.clone(), cast_as.span.end);
 
@@ -461,7 +468,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_prefix_expr(&self, scope: ScopeRef, unary_expression: UnaryExpression) -> AnyValueEnum {
+    pub(crate) fn build_prefix_expr(&self, scope: ScopeRef, unary_expression: UnaryExpression) -> AnyValueEnum<'ctx> {
         let operand = self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone());
         match unary_expression.operator.kind {
             TokenKind::Minus => match operand {
@@ -531,316 +538,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_infix_expr(&self, scope: ScopeRef, binary_expression: BinaryExpression) -> AnyValueEnum {
+    pub(crate) fn build_infix_expr(&self, scope: ScopeRef, binary_expression: BinaryExpression) -> AnyValueEnum<'ctx> {
         let left = self.build_expr(Rc::clone(&scope), *binary_expression.left);
         let right = self.build_expr(Rc::clone(&scope), *binary_expression.right);
-
-        match binary_expression.operator.kind {
-            TokenKind::Plus => {
-                if let AnyValueEnum::IntValue(left) = left {
-                    if let AnyValueEnum::IntValue(right) = right {
-                        AnyValueEnum::IntValue(self.builder.build_int_add(left, right, "infix_iadd").unwrap())
-                    } else if let AnyValueEnum::FloatValue(right) = right {
-                        let left_float = {
-                            self.builder
-                                .build_signed_int_to_float(left, right.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_add(left_float, right, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else if let AnyValueEnum::FloatValue(left) = left {
-                    if let AnyValueEnum::FloatValue(right) = right {
-                        AnyValueEnum::FloatValue(self.builder.build_float_add(left, right, "infix_fadd").unwrap())
-                    } else if let AnyValueEnum::IntValue(right) = right {
-                        let right_float = {
-                            self.builder
-                                .build_signed_int_to_float(right, left.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_add(left, right_float, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::InfixNonBasic,
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: binary_expression.loc.line,
-                            column: binary_expression.loc.column,
-                            length: binary_expression.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
-            }
-            TokenKind::Minus => {
-                if let AnyValueEnum::IntValue(left) = left {
-                    if let AnyValueEnum::IntValue(right) = right {
-                        AnyValueEnum::IntValue(self.builder.build_int_sub(left, right, "infix_iadd").unwrap())
-                    } else if let AnyValueEnum::FloatValue(right) = right {
-                        let left_float = {
-                            self.builder
-                                .build_signed_int_to_float(left, right.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_sub(left_float, right, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else if let AnyValueEnum::FloatValue(left) = left {
-                    if let AnyValueEnum::FloatValue(right) = right {
-                        AnyValueEnum::FloatValue(self.builder.build_float_sub(left, right, "infix_fadd").unwrap())
-                    } else if let AnyValueEnum::IntValue(right) = right {
-                        let right_float = {
-                            self.builder
-                                .build_signed_int_to_float(right, left.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_sub(left, right_float, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::InfixNonBasic,
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: binary_expression.loc.line,
-                            column: binary_expression.loc.column,
-                            length: binary_expression.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
-            }
-            TokenKind::Asterisk => {
-                if let AnyValueEnum::IntValue(left) = left {
-                    if let AnyValueEnum::IntValue(right) = right {
-                        AnyValueEnum::IntValue(self.builder.build_int_mul(left, right, "infix_iadd").unwrap())
-                    } else if let AnyValueEnum::FloatValue(right) = right {
-                        let left_float = {
-                            self.builder
-                                .build_signed_int_to_float(left, right.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_mul(left_float, right, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else if let AnyValueEnum::FloatValue(left) = left {
-                    if let AnyValueEnum::FloatValue(right) = right {
-                        AnyValueEnum::FloatValue(self.builder.build_float_mul(left, right, "infix_fadd").unwrap())
-                    } else if let AnyValueEnum::IntValue(right) = right {
-                        let right_float = {
-                            self.builder
-                                .build_signed_int_to_float(right, left.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_mul(left, right_float, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::InfixNonBasic,
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: binary_expression.loc.line,
-                            column: binary_expression.loc.column,
-                            length: binary_expression.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
-            }
-            TokenKind::Slash => {
-                if let AnyValueEnum::IntValue(left) = left {
-                    if let AnyValueEnum::IntValue(right) = right {
-                        AnyValueEnum::IntValue(self.builder.build_int_signed_div(left, right, "infix_iadd").unwrap())
-                    } else if let AnyValueEnum::FloatValue(right) = right {
-                        let left_float = {
-                            self.builder
-                                .build_signed_int_to_float(left, right.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_div(left_float, right, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else if let AnyValueEnum::FloatValue(left) = left {
-                    if let AnyValueEnum::FloatValue(right) = right {
-                        AnyValueEnum::FloatValue(self.builder.build_float_div(left, right, "infix_fadd").unwrap())
-                    } else if let AnyValueEnum::IntValue(right) = right {
-                        let right_float = {
-                            self.builder
-                                .build_signed_int_to_float(right, left.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_div(left, right_float, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::InfixNonBasic,
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: binary_expression.loc.line,
-                            column: binary_expression.loc.column,
-                            length: binary_expression.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
-            }
-            TokenKind::Percent => {
-                if let AnyValueEnum::IntValue(left) = left {
-                    if let AnyValueEnum::IntValue(right) = right {
-                        AnyValueEnum::IntValue(self.builder.build_int_signed_rem(left, right, "infix_iadd").unwrap())
-                    } else if let AnyValueEnum::FloatValue(right) = right {
-                        let left_float = {
-                            self.builder
-                                .build_signed_int_to_float(left, right.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_rem(left_float, right, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else if let AnyValueEnum::FloatValue(left) = left {
-                    if let AnyValueEnum::FloatValue(right) = right {
-                        AnyValueEnum::FloatValue(self.builder.build_float_rem(left, right, "infix_fadd").unwrap())
-                    } else if let AnyValueEnum::IntValue(right) = right {
-                        let right_float = {
-                            self.builder
-                                .build_signed_int_to_float(right, left.get_type(), "cast")
-                                .unwrap()
-                        };
-                        AnyValueEnum::FloatValue(self.builder.build_float_rem(left, right_float, "infix_fadd").unwrap())
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InfixNonBasic,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: binary_expression.loc.line,
-                                column: binary_expression.loc.column,
-                                length: binary_expression.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                } else {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::InfixNonBasic,
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: binary_expression.loc.line,
-                            column: binary_expression.loc.column,
-                            length: binary_expression.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
-            }
+        
+        let result = match binary_expression.operator.kind {
+            TokenKind::Plus => self.bin_op_add(left, right),
+            TokenKind::Minus => self.bin_op_sub(left, right),
+            TokenKind::Asterisk => self.bin_op_mul(left, right),
+            TokenKind::Slash => self.bin_op_div(left, right),
+            TokenKind::Percent => self.bin_op_rem(left, right),
+            TokenKind::LessThan => self.bin_op_lt(left, right),
+            TokenKind::LessEqual => self.bin_op_le(left, right),
+            TokenKind::GreaterThan => self.bin_op_gt(left, right),
+            TokenKind::GreaterEqual => self.bin_op_ge(left, right),
+            TokenKind::Equal => self.bin_op_eq(left, right),
+            TokenKind::NotEqual => self.bin_op_neq(left, right),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -854,6 +567,44 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
+        };
+
+        result.unwrap_or_else(|| {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::InfixNonBasic,
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: binary_expression.loc.line,
+                    column: binary_expression.loc.column,
+                    length: binary_expression.span.end,
+                }),
+            });
+            exit(1);
+        })
+    }
+
+    pub(crate) fn build_cond(
+        &self,
+        scope: ScopeRef,
+        expr: Expression,
+        loc: Location,
+        span_end: usize,
+    ) -> IntValue<'ctx> {
+        if let AnyValueEnum::IntValue(value) = self.build_expr(scope, expr) {
+            value
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Condition result must be an integer value.".to_string()),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
         }
     }
 }

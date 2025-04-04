@@ -109,8 +109,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
 
-            let main_func_ptr = self.build_func_def(main_func.clone());
-
             // wrap actual main_func as entry point
             let return_type = self.context.i32_type();
             let mut param_types: Vec<LLVMTypeRef> = Vec::new();
@@ -122,6 +120,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     0,
                 ))
             };
+
+            let main_func_ptr = self.build_func_def(main_func.clone());
 
             let entry_point = self.module.add_function("main", fn_type, Some(Linkage::External));
             let entry_block = self.context.append_basic_block(entry_point, "entry");
@@ -194,11 +194,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn emit_asm(&mut self, output_path: Option<String>) {
         if let Some(output_path) = output_path {
-            if let Err(err) = self.target_machine.write_to_file(
-                &self.module,
-                FileType::Assembly,
-                Path::new(&output_path),
-            ) {
+            if let Err(err) =
+                self.target_machine
+                    .write_to_file(&self.module, FileType::Assembly, Path::new(&output_path))
+            {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!("Failed to print assembly into file:\n{}", err.to_string())),

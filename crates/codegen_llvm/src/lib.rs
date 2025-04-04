@@ -3,6 +3,7 @@ use ast::token::{Location, TokenKind};
 use build::BuildManifest;
 use diag::*;
 use funcs::FuncTable;
+use inkwell::basic_block::BasicBlock;
 use inkwell::OptimizationLevel;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -11,7 +12,7 @@ use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::types::{AnyTypeEnum, AsTypeRef, BasicTypeEnum};
-use inkwell::values::{AnyValueEnum, AsValueRef, PointerValue};
+use inkwell::values::{AnyValueEnum, AsValueRef, FunctionValue, PointerValue};
 use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
@@ -33,6 +34,7 @@ mod structs;
 mod tests;
 mod types;
 mod stmts;
+mod value;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -49,7 +51,9 @@ pub struct CodeGenLLVM<'ctx> {
     func_table: FuncTable<'ctx>,
     struct_table: StructTable<'ctx>,
     internal_funcs_table: HashMap<String, LLVMValueRef>,
-    compiler_invoked_single: bool
+    compiler_invoked_single: bool,
+    current_func_ref: Option<FunctionValue<'ctx>>,
+    current_block_ref: Option<BasicBlock<'ctx>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -97,7 +101,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             struct_table: StructTable::new(),
             internal_funcs_table: HashMap::new(),
             build_manifest: BuildManifest::default(),
-            compiler_invoked_single
+            compiler_invoked_single,
+            current_func_ref: None,
+            current_block_ref: None,
         };
 
         codegen_llvm.load_runtime();

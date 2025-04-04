@@ -3,11 +3,12 @@ use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRef};
 use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam, VisType};
 use ast::token::{Location, Span, Token, TokenKind};
+use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::{LLVMTypeRef, LLVMValueRef};
 use inkwell::types::AsTypeRef;
 use inkwell::types::FunctionType;
-use inkwell::values::{AnyValueEnum, AsValueRef, BasicMetadataValueEnum, CallSiteValue, FunctionValue};
+use inkwell::values::{AnyValueEnum, AsValueRef, BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
@@ -197,12 +198,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_return(&self, value: AnyValueEnum) {
-        let result = match value {
+        let result: Result<InstructionValue, BuilderError> = match value {
             AnyValueEnum::IntValue(int_value) => self.builder.build_return(Some(&int_value)),
             AnyValueEnum::FloatValue(float_value) => self.builder.build_return(Some(&float_value)),
             AnyValueEnum::PointerValue(pointer_value) => self.builder.build_return(Some(&pointer_value)),
             AnyValueEnum::VectorValue(vector_value) => self.builder.build_return(Some(&vector_value)),
             AnyValueEnum::ArrayValue(array_value) => self.builder.build_return(Some(&array_value)),
+            AnyValueEnum::StructValue(struct_value) => self.builder.build_return(Some(&struct_value)),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -216,7 +218,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         if let Err(err) = result {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!("Cannot store value in pointer:\n{}", err.to_string())),
+                kind: DiagKind::Custom(format!("Cannot build return statement:\n{}", err.to_string())),
                 location: None,
             });
             exit(1);
@@ -227,7 +229,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         scope: ScopeRef,
         field_access_or_method_calls: Vec<FieldAccessOrMethodCall>,
-    ) -> AnyValueEnum {
+    ) -> AnyValueEnum<'ctx> {
         let mut final_result: LLVMValueRef = null_mut();
 
         for field_access_or_method_call in field_access_or_method_calls {
