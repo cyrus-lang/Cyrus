@@ -1,20 +1,7 @@
 extern fn printf(msg: string, ...void);
 
-fn main(): i32 {
-   #a = 1;
+fn main() {
+   #name: string = "Hello World";
 
-   if a == 1 {
-      printf("a is 1\n");
-
-      return 0;
-
-      printf("continue...\n");
-   } else if a == 2 {
-      printf("a is 2\n");
-   }
-   else {
-      printf("a is unknown\n");
-   }
-
-   return 0;
+   printf("Name: %s\n", name);
 }

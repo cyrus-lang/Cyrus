@@ -156,7 +156,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
         };
-        let record = binding.borrow_mut();
+        let record: std::cell::RefMut<'_, crate::scope::ScopeRecord<'_>> = binding.borrow_mut();
+
+        dbg!(record.ty);
 
         let value = self.builder.build_load(record.ty, record.ptr, "load").unwrap();
         (AnyValue::try_from(value).unwrap(), record.ty)

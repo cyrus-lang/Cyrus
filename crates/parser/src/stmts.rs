@@ -154,7 +154,7 @@ impl<'a> Parser<'a> {
                 etype: ParserErrorType::ExpectedIdentifier,
                 file_name: Some(self.lexer.file_name.clone()),
                 code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
-                verbose: Some(String::from("Token 'inline' is not a valid vistype for structs.")),
+                verbose: Some(String::from("Token 'inline' is not a valid 'vis_type' for struct definition.")),
                 caret: true,
             });
         }
