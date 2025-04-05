@@ -1,11 +1,6 @@
-// extern fn printf(msg: string, ...void);
-
-fn sample(msg: string) {
-
-}
+extern fn printf(msg: string, ...void);
 
 fn main() {
    #name: string = "Hello World";
-   *name;
-   // printf("name: %s\n", name);
+  
 }

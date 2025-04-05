@@ -17,8 +17,8 @@ pub(crate) enum AnyValue<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StringValue<'a> {
-    pub data_ptr: PointerValue<'a>,
-    pub len: u32,
+    pub data_ptr: ArrayValue<'a>,
+    pub len: IntValue<'a>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,7 +89,7 @@ impl<'a> From<AnyValue<'a>> for BasicValueEnum<'a> {
             AnyValue::StructValue(v) => v.as_basic_value_enum(),
             AnyValue::VectorValue(v) => v.as_basic_value_enum(),
             AnyValue::PointerValue(v) => v.ptr.as_basic_value_enum(),
-            AnyValue::StringValue(v) => todo!(),
+            AnyValue::StringValue(v) => v.data_ptr.as_basic_value_enum(),
         }
     }
 }

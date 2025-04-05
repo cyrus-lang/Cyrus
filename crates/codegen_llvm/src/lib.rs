@@ -158,8 +158,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .build_struct_gep(string_type.struct_type, ptr, 1, "gep_len")
             .unwrap();
 
-        let len_val = self.context.i64_type().const_int(string_val.len as u64, false);
-        self.builder.build_store(gep_len, len_val).unwrap();
+        self.builder.build_store(gep_len, string_val.len).unwrap();
 
         ptr
     }
