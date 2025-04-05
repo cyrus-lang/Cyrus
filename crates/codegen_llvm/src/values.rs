@@ -18,7 +18,6 @@ pub(crate) enum AnyValue<'a> {
 #[derive(Debug, Clone)]
 pub(crate) struct StringValue<'a> {
     pub data_ptr: ArrayValue<'a>,
-    pub len: IntValue<'a>,
 }
 
 #[derive(Debug, Clone)]

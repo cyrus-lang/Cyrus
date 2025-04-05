@@ -56,7 +56,6 @@ pub struct CodeGenLLVM<'ctx> {
     current_func_ref: Option<FunctionValue<'ctx>>,
     current_block_ref: Option<BasicBlock<'ctx>>,
     terminated_blocks: Vec<BasicBlock<'ctx>>,
-    string_type: StringType<'ctx>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -108,7 +107,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_func_ref: None,
             current_block_ref: None,
             terminated_blocks: Vec::new(),
-            string_type: CodeGenLLVM::build_string_type(context),
         };
 
         codegen_llvm.load_runtime();
@@ -140,28 +138,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_alloca_string_value(
-        &self,
-        string_type: &StringType<'ctx>,
-        string_val: StringValue<'ctx>,
-    ) -> PointerValue<'ctx> {
-        let ptr = self.builder.build_alloca(string_type.struct_type, "store").unwrap();
+    // pub(crate) fn build_alloca_string_value(
+    //     &self,
+    //     string_type: &StringType<'ctx>,
+    //     string_val: StringValue<'ctx>,
+    // ) -> PointerValue<'ctx> {
+    //     let ptr = self.builder.build_alloca(string_type.struct_type, "store").unwrap();
 
-        let gep_data_ptr = self
-            .builder
-            .build_struct_gep(string_type.struct_type, ptr, 0, "gep_data_ptr")
-            .unwrap();
-        self.builder.build_store(gep_data_ptr, string_val.data_ptr).unwrap();
+    //     let gep_data_ptr = self
+    //         .builder
+    //         .build_struct_gep(string_type.struct_type, ptr, 0, "gep_data_ptr")
+    //         .unwrap();
+    //     self.builder.build_store(gep_data_ptr, string_val.data_ptr).unwrap();
 
-        let gep_len = self
-            .builder
-            .build_struct_gep(string_type.struct_type, ptr, 1, "gep_len")
-            .unwrap();
+    //     let gep_len = self
+    //         .builder
+    //         .build_struct_gep(string_type.struct_type, ptr, 1, "gep_len")
+    //         .unwrap();
 
-        self.builder.build_store(gep_len, string_val.len).unwrap();
+    //     self.builder.build_store(gep_len, string_val.len).unwrap();
 
-        ptr
-    }
+    //     ptr
+    // }
 
     pub(crate) fn build_alloca(
         &self,
@@ -194,9 +192,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 AnyType::ArrayType(array_type),
             ),
             AnyType::StringType(string_type) => (
-                self.builder.build_alloca(string_type.struct_type, &var_name).unwrap(),
+                self.builder.build_alloca(string_type.array_type, &var_name).unwrap(),
                 AnyType::StringType(StringType {
-                    struct_type: string_type.struct_type,
+                    array_type: string_type.array_type,
                 }),
             ),
             _ => {
@@ -224,8 +222,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             AnyValue::VectorValue(vector_value) => self.builder.build_store(ptr, vector_value),
             AnyValue::StructValue(struct_value) => self.builder.build_store(ptr, struct_value),
             AnyValue::StringValue(string_value) => {
-                let str_obj = self.build_alloca_string_value(&self.string_type, string_value);
-                self.builder.build_store(ptr, str_obj)
+                self.builder.build_store(ptr, string_value.data_ptr)
             }
             _ => {
                 display_single_diag(Diag {

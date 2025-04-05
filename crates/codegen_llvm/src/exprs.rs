@@ -433,21 +433,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let i8_array_type = self.context.i8_type().array_type(bytes.len() as u32);
 
-        let string_global = self
-            .module
-            .add_global(i8_array_type, Some(AddressSpace::default()), ".str");
+        // let string_global = self
+        //     .module
+        //     .add_global(i8_array_type, Some(AddressSpace::default()), ".str");
 
         let const_string = self.context.const_string(&bytes, false);
-        string_global.set_initializer(&const_string);
-        string_global.set_constant(true);
-        string_global.set_linkage(inkwell::module::Linkage::Private);
+        // string_global.set_initializer(&const_string);
+        // string_global.set_constant(true);
+        // string_global.set_linkage(inkwell::module::Linkage::Private);
 
         AnyValue::StringValue(StringValue {
             data_ptr: const_string,
-            len: self
-                .context
-                .i64_type()
-                .const_int(bytes.len().try_into().unwrap(), false),
         })
     }
 

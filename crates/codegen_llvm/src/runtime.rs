@@ -6,11 +6,11 @@ use utils::generate_random_hex::generate_random_hex;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn load_runtime(&mut self) {
-        self.internal_funcs_table
-            .insert("malloc".to_string(), self.internal_malloc().as_value_ref());
+        // self.internal_funcs_table
+        //     .insert("malloc".to_string(), self.internal_malloc().as_value_ref());
 
-        self.internal_memcpy();
-        self.internal_load_string();
+        // self.internal_memcpy();
+        // self.internal_load_string();
     }
 
     fn internal_load_string(&self) {
