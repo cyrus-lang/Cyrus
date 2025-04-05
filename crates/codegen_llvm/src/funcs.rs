@@ -7,9 +7,8 @@ use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
-use inkwell::types::AsTypeRef;
 use inkwell::types::FunctionType;
-use inkwell::values::{ArrayValue, BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
+use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue, InstructionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
@@ -277,6 +276,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 AnyValue::PointerValue(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value.ptr),
                 AnyValue::StructValue(struct_value) => BasicMetadataValueEnum::StructValue(struct_value),
                 AnyValue::VectorValue(vector_value) => BasicMetadataValueEnum::VectorValue(vector_value),
+                AnyValue::StringValue(string_value) => {
+                    BasicMetadataValueEnum::StructValue(self.string_type.struct_type.const_named_struct(&[
+                        BasicValueEnum::PointerValue(string_value.data_ptr),
+                        BasicValueEnum::IntValue(string_value.len),
+                    ]))
+                }
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,

@@ -189,7 +189,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             None => {
                 if let Some(expr) = variable.expr {
                     let value = self.build_expr(Rc::clone(&scope), expr);
-                    let var_type = value.get_type();
+                    let var_type = value.get_type(self.string_type.clone());
                     let ptr = self
                         .builder
                         .build_alloca(var_type.to_basic_type(), &variable.name)

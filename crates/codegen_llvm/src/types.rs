@@ -37,7 +37,7 @@ pub(crate) struct TypedPointerType<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StringType<'a> {
-    pub array_type: ArrayType<'a>,
+    pub struct_type: StructType<'a>,
 }
 
 impl<'a> TryFrom<BasicTypeEnum<'a>> for AnyType<'a> {
@@ -64,7 +64,7 @@ impl<'a> AnyType<'a> {
             AnyType::StructType(t) => (*t).as_basic_type_enum(),
             AnyType::VectorType(t) => (*t).as_basic_type_enum(),
             AnyType::PointerType(t) => t.ptr_type.as_basic_type_enum(),
-            AnyType::StringType(t) => (*t).array_type.as_basic_type_enum(),
+            AnyType::StringType(t) => (*t).struct_type.as_basic_type_enum(),
             AnyType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).try_into().unwrap(),
         }
     }
@@ -77,7 +77,7 @@ impl<'a> AnyType<'a> {
             AnyType::StructType(t) => t.as_type_ref(),
             AnyType::VectorType(t) => t.as_type_ref(),
             AnyType::PointerType(t) => t.ptr_type.as_type_ref(),
-            AnyType::StringType(t) => t.array_type.as_type_ref(),
+            AnyType::StringType(t) => t.struct_type.as_type_ref(),
             AnyType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).as_type_ref(),
         }
     }
@@ -90,7 +90,11 @@ impl<'a> AnyType<'a> {
                 format!("f{}", t.get_alignment().get_type().get_bit_width())
             }
             AnyType::ArrayType(t) => {
-                format!("{}[{}]", t.get_element_type(), t.len(),)
+                format!(
+                    "{}[{}]",
+                    t.get_element_type(),
+                    t.len(),
+                )
             }
             AnyType::StructType(t) => {
                 if let Some(name) = t.get_name() {
@@ -99,9 +103,8 @@ impl<'a> AnyType<'a> {
                     "anonymous struct".to_string()
                 }
             }
-            AnyType::VectorType(_) => {
-                // TODO
-                todo!();
+            AnyType::VectorType(t) => {
+                todo!()
             }
             AnyType::PointerType(tp) => {
                 format!("{}*", tp.pointee_ty.to_string())
@@ -113,6 +116,16 @@ impl<'a> AnyType<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn build_string_type(context: &'ctx Context) -> StringType<'ctx> {
+        let i8_ptr_type = context.ptr_type(AddressSpace::default());
+        let i64_type = context.i64_type();
+
+        let struct_type = context.opaque_struct_type("str");
+        struct_type.set_body(&[i8_ptr_type.into(), i64_type.into()], false);
+
+        StringType { struct_type }
+    }
+
     pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyType<'ctx> {
         match token_kind {
             TokenKind::UserDefinedType(identifier) => todo!(),
@@ -128,7 +141,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TokenKind::F128 => AnyType::FloatType(self.context.f128_type()),
             TokenKind::Void => AnyType::VoidType(self.context.void_type()),
             TokenKind::Bool => AnyType::IntType(self.context.bool_type()),
-            TokenKind::String => todo!(),
+            TokenKind::String => AnyType::StringType(self.string_type.clone()),
             TokenKind::Dereference(inner_data_type) => {
                 let pointee_ty = self.build_type(*inner_data_type, loc.clone(), span_end);
                 AnyType::PointerType(Box::new(TypedPointerType {

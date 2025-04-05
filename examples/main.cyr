@@ -1,6 +1,6 @@
 extern fn printf(msg: string, ...void);
 
 fn main() {
-   #name = "Hello World";
-   printf(name);
+   #name: string = "Hello World";
+     
 }

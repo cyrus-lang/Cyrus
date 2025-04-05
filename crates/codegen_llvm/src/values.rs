@@ -1,7 +1,6 @@
-use crate::{AnyType, CodeGenLLVM, types::TypedPointerType};
+use crate::{types::TypedPointerType, AnyType, CodeGenLLVM, StringType};
 use inkwell::{
-    FloatPredicate, IntPredicate,
-    values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue, VectorValue},
+    context::Context, values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue, VectorValue}, FloatPredicate, IntPredicate
 };
 
 #[derive(Debug, Clone)]
@@ -17,7 +16,8 @@ pub(crate) enum AnyValue<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StringValue<'a> {
-    pub data_ptr: ArrayValue<'a>,
+    pub data_ptr: PointerValue<'a>,
+    pub len: IntValue<'a>
 }
 
 #[derive(Debug, Clone)]
@@ -27,7 +27,7 @@ pub(crate) struct TypedPointerValue<'a> {
 }
 
 impl<'a> AnyValue<'a> {
-    pub fn get_type(&self) -> AnyType<'a> {
+    pub fn get_type(&self, string_type: StringType<'a>) -> AnyType<'a> {
         match self {
             AnyValue::IntValue(v) => AnyType::IntType(v.get_type()),
             AnyValue::FloatValue(v) => AnyType::FloatType(v.get_type()),
@@ -38,7 +38,7 @@ impl<'a> AnyValue<'a> {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
             })),
-            AnyValue::StringValue(string_value) => todo!(),
+            AnyValue::StringValue(_) => AnyType::StringType(string_type),
         }
     }
 }
@@ -88,7 +88,7 @@ impl<'a> From<AnyValue<'a>> for BasicValueEnum<'a> {
             AnyValue::StructValue(v) => v.as_basic_value_enum(),
             AnyValue::VectorValue(v) => v.as_basic_value_enum(),
             AnyValue::PointerValue(v) => v.ptr.as_basic_value_enum(),
-            AnyValue::StringValue(v) => v.data_ptr.as_basic_value_enum(),
+            AnyValue::StringValue(v) => todo!(),
         }
     }
 }
