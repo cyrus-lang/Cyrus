@@ -3,7 +3,6 @@ use crate::scope::ScopeRecord;
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use ast::ast::{If, Statement, Variable};
 use inkwell::basic_block::BasicBlock;
-use inkwell::types::{AsTypeRef, BasicTypeEnum};
 use std::process::exit;
 use std::rc::Rc;
 
@@ -190,8 +189,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             None => {
                 if let Some(expr) = variable.expr {
                     let value = self.build_expr(Rc::clone(&scope), expr);
-                    let var_type = unsafe { BasicTypeEnum::new(value.get_type().as_type_ref()) };
-                    let ptr = self.builder.build_alloca(var_type, &variable.name).unwrap();
+                    let var_type = value.get_type();
+                    let ptr = self
+                        .builder
+                        .build_alloca(var_type.to_basic_type(), &variable.name)
+                        .unwrap();
 
                     self.build_store(ptr, value);
 

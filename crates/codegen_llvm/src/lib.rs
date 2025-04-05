@@ -11,7 +11,6 @@ use inkwell::llvm_sys::prelude::LLVMValueRef;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
 use inkwell::values::{FunctionValue, PointerValue};
 use opts::Options;
 use scope::{Scope, ScopeRef};
@@ -20,7 +19,8 @@ use std::collections::HashMap;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
-use values::AnyValue;
+use types::{AnyType, StringType};
+use values::{AnyValue, StringValue};
 
 mod build;
 pub mod diag;
@@ -55,7 +55,8 @@ pub struct CodeGenLLVM<'ctx> {
     compiler_invoked_single: bool,
     current_func_ref: Option<FunctionValue<'ctx>>,
     current_block_ref: Option<BasicBlock<'ctx>>,
-    terminated_blocks: Vec<BasicBlock<'ctx>>
+    terminated_blocks: Vec<BasicBlock<'ctx>>,
+    string_type: StringType<'ctx>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -107,6 +108,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_func_ref: None,
             current_block_ref: None,
             terminated_blocks: Vec::new(),
+            string_type: CodeGenLLVM::build_string_type(context),
         };
 
         codegen_llvm.load_runtime();
@@ -138,31 +140,65 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn build_alloca_string_value(
+        &self,
+        string_type: &StringType<'ctx>,
+        string_val: StringValue<'ctx>,
+    ) -> PointerValue<'ctx> {
+        let ptr = self.builder.build_alloca(string_type.struct_type, "store").unwrap();
+
+        let gep_data_ptr = self
+            .builder
+            .build_struct_gep(string_type.struct_type, ptr, 0, "gep_data_ptr")
+            .unwrap();
+        self.builder.build_store(gep_data_ptr, string_val.data_ptr).unwrap();
+
+        let gep_len = self
+            .builder
+            .build_struct_gep(string_type.struct_type, ptr, 1, "gep_len")
+            .unwrap();
+
+        let len_val = self.context.i64_type().const_int(string_val.len as u64, false);
+        self.builder.build_store(gep_len, len_val).unwrap();
+
+        ptr
+    }
+
     pub(crate) fn build_alloca(
         &self,
         var_type_token: TokenKind,
         var_name: String,
         loc: Location,
         span_end: usize,
-    ) -> (PointerValue<'ctx>, BasicTypeEnum<'ctx>) {
+    ) -> (PointerValue<'ctx>, AnyType<'ctx>) {
         let any_type = self.build_type(var_type_token, loc.clone(), span_end);
         match any_type {
-            AnyTypeEnum::StructType(struct_type) => todo!(),
-            AnyTypeEnum::VectorType(vector_type) => todo!(),
-            AnyTypeEnum::IntType(int_type) => {
-                (self.builder.build_alloca(int_type, &var_name).unwrap(), int_type.into())
-            }
-            AnyTypeEnum::FloatType(float_type) => (
+            AnyType::VectorType(vector_type) => todo!(),
+            AnyType::StructType(struct_type) => (
+                self.builder.build_alloca(struct_type, &var_name).unwrap(),
+                AnyType::StructType(struct_type),
+            ),
+            AnyType::IntType(int_type) => (
+                self.builder.build_alloca(int_type, &var_name).unwrap(),
+                AnyType::IntType(int_type),
+            ),
+            AnyType::FloatType(float_type) => (
                 self.builder.build_alloca(float_type, &var_name).unwrap(),
-                float_type.into(),
+                AnyType::FloatType(float_type),
             ),
-            AnyTypeEnum::PointerType(pointer_type) => (
-                self.builder.build_alloca(pointer_type, &var_name).unwrap(),
-                pointer_type.into(),
+            AnyType::PointerType(typed_pointer) => (
+                self.builder.build_alloca(typed_pointer.ptr_type, &var_name).unwrap(),
+                typed_pointer.pointee_ty,
             ),
-            AnyTypeEnum::ArrayType(array_type) => (
+            AnyType::ArrayType(array_type) => (
                 self.builder.build_alloca(array_type, &var_name).unwrap(),
-                array_type.into(),
+                AnyType::ArrayType(array_type),
+            ),
+            AnyType::StringType(string_type) => (
+                self.builder.build_alloca(string_type.struct_type, &var_name).unwrap(),
+                AnyType::StringType(StringType {
+                    struct_type: string_type.struct_type,
+                }),
             ),
             _ => {
                 display_single_diag(Diag {
@@ -180,7 +216,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_store(&self, ptr: PointerValue, value: AnyValue) {
+    pub(crate) fn build_store(&self, ptr: PointerValue, value: AnyValue<'ctx>) {
         let result = match value {
             AnyValue::IntValue(int_value) => self.builder.build_store(ptr, int_value),
             AnyValue::FloatValue(float_value) => self.builder.build_store(ptr, float_value),
@@ -188,6 +224,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             AnyValue::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value.ptr),
             AnyValue::VectorValue(vector_value) => self.builder.build_store(ptr, vector_value),
             AnyValue::StructValue(struct_value) => self.builder.build_store(ptr, struct_value),
+            AnyValue::StringValue(string_value) => {
+                let str_obj = self.build_alloca_string_value(&self.string_type, string_value);
+                self.builder.build_store(ptr, str_obj)
+            }
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,

@@ -1,4 +1,5 @@
-use inkwell::{types::BasicTypeEnum, values::PointerValue};
+use crate::AnyType;
+use inkwell::values::PointerValue;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub type ScopeRef<'a> = Rc<RefCell<Scope<'a>>>;
@@ -6,7 +7,7 @@ pub type ScopeRef<'a> = Rc<RefCell<Scope<'a>>>;
 #[derive(Debug, Clone)]
 pub struct ScopeRecord<'a> {
     pub ptr: PointerValue<'a>,
-    pub ty: BasicTypeEnum<'a>,
+    pub ty: AnyType<'a>,
 }
 
 pub struct Scope<'a> {
@@ -40,69 +41,5 @@ impl<'a> Scope<'a> {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn test_scope_new() {
-//         let scope: Scope<String> = Scope::new();
-//         assert!(scope.records.is_empty());
-//         assert!(scope.parent.is_none());
-//     }
-
-//     #[test]
-//     fn test_scope_insert_and_get() {
-//         let mut scope: Scope<String> = Scope::new();
-//         let record = ScopeRecord {
-//             ptr: "test_value".to_string(),
-//         };
-//         scope.insert("test_key".to_string(), record.clone());
-
-//         let retrieved_record = scope.get("test_key".to_string()).unwrap();
-//         assert_eq!(retrieved_record.borrow().ptr, "test_value".to_string());
-//     }
-
-//     #[test]
-//     fn test_scope_get_nonexistent() {
-//         let scope: Scope<String> = Scope::new();
-//         assert!(scope.get("nonexistent_key".to_string()).is_none());
-//     }
-
-//     #[test]
-//     fn test_scope_parent_get() {
-//         let mut parent_scope: Scope<String> = Scope::new();
-//         let record = ScopeRecord {
-//             ptr: "parent_value".to_string(),
-//         };
-//         parent_scope.insert("parent_key".to_string(), record.clone());
-
-//         let mut child_scope: Scope<String> = Scope::new();
-//         child_scope.parent = Some(Box::new(parent_scope));
-
-//         let retrieved_record = child_scope.get("parent_key".to_string()).unwrap();
-//         assert_eq!(retrieved_record.borrow().ptr, "parent_value".to_string());
-
-//         assert!(child_scope.get("child_key".to_string()).is_none());
-//     }
-
-//     #[test]
-//     fn test_scope_parent_get_shadowing() {
-//         let mut parent_scope: Scope<String> = Scope::new();
-//         let record_parent = ScopeRecord {
-//             ptr: "parent_value".to_string(),
-//         };
-//         parent_scope.insert("shared_key".to_string(), record_parent.clone());
-
-//         let mut child_scope: Scope<String> = Scope::new();
-//         child_scope.parent = Some(Box::new(parent_scope));
-
-//         let record_child = ScopeRecord {
-//             ptr: "child_value".to_string(),
-//         };
-//         child_scope.insert("shared_key".to_string(), record_child.clone());
-
-//         let retrieved_child_record = child_scope.get("shared_key".to_string()).unwrap();
-//         assert_eq!(retrieved_child_record.borrow().ptr, "child_value".to_string());
-//     }
-// }
+// TODO 
+// Write unit test for this section

@@ -9,7 +9,7 @@ use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::types::AsTypeRef;
 use inkwell::types::FunctionType;
-use inkwell::values::{BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
+use inkwell::values::{ArrayValue, BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
@@ -243,7 +243,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         field_access_or_method_calls: Vec<FieldAccessOrMethodCall>,
     ) -> AnyValue<'ctx> {
-        let mut final_result = AnyValue::PointerValue(self.build_null_literal());
+        let mut final_result = AnyValue::PointerValue(self.build_null());
 
         for field_access_or_method_call in field_access_or_method_calls {
             if let Some(method_call) = field_access_or_method_call.method_call {

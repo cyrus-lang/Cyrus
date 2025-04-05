@@ -1,5 +1,7 @@
 use crate::{
-    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, scope::ScopeRef, AnyValue, CodeGenLLVM
+    AnyValue, CodeGenLLVM,
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    scope::ScopeRef,
 };
 use ast::ast::{Field, Struct, StructInit, VisType};
 use inkwell::{
@@ -22,8 +24,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .iter()
             .map(|field| {
                 self.build_type(field.ty.clone(), field.loc.clone(), field.span.end)
-                    .try_into()
-                    .unwrap()
+                    .to_basic_type()
             })
             .collect()
     }
@@ -92,12 +93,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     let field_type = self
                         .build_type(field.ty.clone(), field.loc.clone(), field.span.end)
-                        .try_into()
-                        .unwrap();
+                        .to_basic_type();
 
                     let field_value = self.build_expr(Rc::clone(&scope), field_init.value.clone());
 
-                    if field_value.get_type() != field_type {
+                    if field_value.get_type().to_basic_type() != field_type {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(format!(

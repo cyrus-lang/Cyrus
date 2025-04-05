@@ -251,7 +251,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     if let Some(file_name) = &self.opts.project_name {
                         file_name.clone()
                     } else {
-                        dbg!(self.file_path.clone());
                         let file_name = Path::new(&self.file_path)
                             .file_stem()
                             .unwrap()

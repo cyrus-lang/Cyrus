@@ -1,7 +1,8 @@
 use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    values::{AnyValue, TypedPointerValue},
+    types::{AnyType, TypedPointerType},
+    values::{AnyValue, StringValue, TypedPointerValue},
 };
 use ast::{
     ast::*,
@@ -13,8 +14,8 @@ use inkwell::{
         core::{LLVMBuildGEP2, LLVMGetElementType},
         prelude::LLVMValueRef,
     },
-    types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum},
-    values::{ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    types::{AsTypeRef, BasicType, BasicTypeEnum},
+    values::{ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue},
 };
 use std::{ffi::CString, process::exit, rc::Rc};
 
@@ -35,7 +36,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Expression::Assignment(assignment) => {
                 self.build_assignment(Rc::clone(&scope), assignment);
-                AnyValue::PointerValue(self.build_null_literal())
+                AnyValue::PointerValue(self.build_null())
             }
             Expression::Literal(literal) => self.build_literal(literal),
             Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
@@ -52,7 +53,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
             Expression::ArrayIndexAssign(array_index_assign) => {
                 self.build_array_index_assign(Rc::clone(&scope), *array_index_assign);
-                AnyValue::PointerValue(self.build_null_literal())
+                AnyValue::PointerValue(self.build_null())
             }
             Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import).0,
         }
@@ -67,19 +68,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.build_store(ptr, any_value.clone());
         AnyValue::PointerValue(TypedPointerValue {
             ptr,
-            pointee_ty: BasicTypeEnum::try_from(any_value.get_type()).unwrap(),
+            pointee_ty: any_value.get_type(),
         })
     }
 
     pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
-        let any_value = self.build_expr(Rc::clone(&scope), expr);
-        match any_value {
+        match self.build_expr(Rc::clone(&scope), expr) {
             AnyValue::PointerValue(pointer_value) => AnyValue::try_from(
                 self.builder
-                    .build_load(pointer_value.pointee_ty, pointer_value.ptr, "deref")
+                    .build_load(pointer_value.pointee_ty.to_basic_type(), pointer_value.ptr, "deref")
                     .unwrap(),
             )
             .unwrap(),
+            AnyValue::StringValue(string_value) => AnyValue::try_from(self.build_load_string(string_value)).unwrap(),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -130,7 +131,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
-    ) -> (AnyValue<'ctx>, BasicTypeEnum<'ctx>) {
+    ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
         if module_import.sub_modules.is_empty() {
             return self.build_load(Rc::clone(&scope), module_import);
         }
@@ -138,12 +139,81 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         todo!();
     }
 
+    pub(crate) fn string_from_struct_value(&self, struct_ptr: PointerValue<'ctx>) -> StringValue<'ctx> {
+        let data_ptr = self
+            .builder
+            .build_struct_gep(self.string_type.struct_type, struct_ptr, 0, "struct_gep")
+            .expect("Failed to extract data pointer when trying to get string_from_struct_value.");
+
+        let len_pointee_ty = self.context.i64_type();
+        let len_ptr = self
+            .builder
+            .build_struct_gep(self.string_type.struct_type, struct_ptr, 1, "struct_gep")
+            .expect("Failed to extract string length when trying to get string_from_struct_value.");
+        let len_value = self
+            .builder
+            .build_load(len_pointee_ty, len_ptr, "load")
+            .unwrap()
+            .into_int_value();
+            // .get_zero_extended_constant()
+            // .unwrap();
+
+        StringValue {
+            data_ptr,
+            len: 12,
+        }
+    }
+
+    // ANCHOR
+    pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> BasicValueEnum<'ctx> {
+        let data_pointee_ty = self.context.i8_type().array_type(string_value.len);
+        self
+            .builder
+            .build_load(data_pointee_ty.clone(), string_value.data_ptr, "load")
+            .unwrap()
+    }
+
     pub(crate) fn build_load(
         &self,
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
-    ) -> (AnyValue<'ctx>, BasicTypeEnum<'ctx>) {
-        let binding: Rc<std::cell::RefCell<crate::scope::ScopeRecord>> = {
+    ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
+        let binding = {
+            match scope.borrow_mut().get(module_import.identifier.name.clone()) {
+                Some(record) => record,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::IdentifierNotDefined(module_import.identifier.name),
+                        location: None,
+                    });
+                    exit(1);
+                }
+            }
+        };
+        let record = binding.borrow_mut();
+
+        let value = self
+            .builder
+            .build_load(record.ty.to_basic_type(), record.ptr, "load")
+            .unwrap();
+
+        if value.get_type() == BasicTypeEnum::StructType(self.string_type.struct_type.clone()) {
+            (
+                AnyValue::StringValue(self.string_from_struct_value(record.ptr)),
+                record.ty.clone(),
+            )
+        } else {
+            (AnyValue::try_from(value).unwrap(), record.ty.clone())
+        }
+    }
+
+    pub(crate) fn build_load_ptr(
+        &self,
+        scope: ScopeRef<'ctx>,
+        module_import: ModuleImport,
+    ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
+        let binding = {
             match scope.borrow_mut().get(module_import.identifier.name.clone()) {
                 Some(record) => record,
                 None => {
@@ -157,15 +227,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
         let record: std::cell::RefMut<'_, crate::scope::ScopeRecord<'_>> = binding.borrow_mut();
-
-        dbg!(record.ty);
-
-        let value = self.builder.build_load(record.ty, record.ptr, "load").unwrap();
-        (AnyValue::try_from(value).unwrap(), record.ty)
+        (
+            AnyValue::PointerValue(TypedPointerValue {
+                ptr: record.ptr,
+                pointee_ty: record.ty.clone(),
+            }),
+            record.ty.clone(),
+        )
     }
 
     pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
-        let (ptr, _) = self.build_load(Rc::clone(&scope), assignment.module_import);
+        let (ptr, _) = self.build_load_ptr(Rc::clone(&scope), assignment.module_import);
         let value = self.build_expr(Rc::clone(&scope), assignment.expr);
         if let AnyValue::PointerValue(pointer_value) = ptr {
             self.build_store(pointer_value.ptr, value);
@@ -321,7 +393,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Literal::Bool(bool_literal) => AnyValue::IntValue(self.build_bool_literal(bool_literal)),
             Literal::String(string_literal) => self.build_string_literal(string_literal),
             Literal::Char(char_literal) => AnyValue::IntValue(self.build_char_literal(char_literal)),
-            Literal::Null => AnyValue::PointerValue(self.build_null_literal()),
+            Literal::Null => AnyValue::PointerValue(self.build_null()),
         }
     }
 
@@ -363,9 +435,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         string_global.set_constant(true);
         string_global.set_linkage(inkwell::module::Linkage::Private);
 
-        AnyValue::PointerValue(TypedPointerValue {
-            ptr: string_global.as_pointer_value(),
-            pointee_ty: BasicTypeEnum::ArrayType(i8_array_type),
+        AnyValue::StringValue(StringValue {
+            data_ptr: string_global.as_pointer_value(),
+            len: bytes.len() as u32,
         })
     }
 
@@ -373,11 +445,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.context.i8_type().const_int(char_literal.raw as u8 as u64, false)
     }
 
-    pub(crate) fn build_null_literal(&self) -> TypedPointerValue<'ctx> {
-        let pointee_ty = self.context.ptr_type(AddressSpace::default());
+    pub(crate) fn build_null(&self) -> TypedPointerValue<'ctx> {
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
         TypedPointerValue {
-            ptr: pointee_ty.const_null(),
-            pointee_ty: BasicTypeEnum::PointerType(pointee_ty),
+            ptr: ptr_type.const_null(),
+            pointee_ty: AnyType::PointerType(Box::new(TypedPointerType {
+                ptr_type,
+                pointee_ty: AnyType::IntType(self.context.i32_type()),
+            })),
         }
     }
 
@@ -393,10 +468,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         match expr {
             AnyValue::IntValue(int_value) => match target {
-                AnyTypeEnum::IntType(int_type) => {
+                AnyType::IntType(int_type) => {
                     AnyValue::IntValue(self.builder.build_int_cast(int_value, int_type, "cast").unwrap())
                 }
-                AnyTypeEnum::FloatType(float_type) => AnyValue::FloatValue(
+                AnyType::FloatType(float_type) => AnyValue::FloatValue(
                     self.builder
                         .build_signed_int_to_float(int_value, float_type, "cast")
                         .unwrap(),
@@ -416,12 +491,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             },
             AnyValue::FloatValue(float_value) => match target {
-                AnyTypeEnum::IntType(int_type) => AnyValue::IntValue(
+                AnyType::IntType(int_type) => AnyValue::IntValue(
                     self.builder
                         .build_float_to_signed_int(float_value, int_type, "cast")
                         .unwrap(),
                 ),
-                AnyTypeEnum::FloatType(float_type) => {
+                AnyType::FloatType(float_type) => {
                     AnyValue::FloatValue(self.builder.build_float_cast(float_value, float_type, "cast").unwrap())
                 }
                 _ => {

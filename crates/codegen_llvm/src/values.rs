@@ -1,11 +1,7 @@
-use crate::CodeGenLLVM;
+use crate::{AnyType, CodeGenLLVM, types::TypedPointerType};
 use inkwell::{
     FloatPredicate, IntPredicate,
-    types::{AnyType, AnyTypeEnum, BasicTypeEnum},
-    values::{
-        ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue,
-        VectorValue,
-    },
+    values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue, VectorValue},
 };
 
 #[derive(Debug, Clone)]
@@ -16,23 +12,34 @@ pub(crate) enum AnyValue<'a> {
     StructValue(StructValue<'a>),
     VectorValue(VectorValue<'a>),
     PointerValue(TypedPointerValue<'a>),
+    StringValue(StringValue<'a>),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StringValue<'a> {
+    pub data_ptr: PointerValue<'a>,
+    pub len: u32,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct TypedPointerValue<'a> {
     pub ptr: PointerValue<'a>,
-    pub pointee_ty: BasicTypeEnum<'a>,
+    pub pointee_ty: AnyType<'a>,
 }
 
 impl<'a> AnyValue<'a> {
-    pub fn get_type(&self) -> AnyTypeEnum<'a> {
+    pub fn get_type(&self) -> AnyType<'a> {
         match self {
-            AnyValue::IntValue(v) => v.get_type().as_any_type_enum(),
-            AnyValue::FloatValue(v) => v.get_type().as_any_type_enum(),
-            AnyValue::ArrayValue(v) => v.get_type().as_any_type_enum(),
-            AnyValue::StructValue(v) => v.get_type().as_any_type_enum(),
-            AnyValue::VectorValue(v) => v.get_type().as_any_type_enum(),
-            AnyValue::PointerValue(v) => v.pointee_ty.as_any_type_enum(),
+            AnyValue::IntValue(v) => AnyType::IntType(v.get_type()),
+            AnyValue::FloatValue(v) => AnyType::FloatType(v.get_type()),
+            AnyValue::ArrayValue(v) => AnyType::ArrayType(v.get_type()),
+            AnyValue::StructValue(v) => AnyType::StructType(v.get_type()),
+            AnyValue::VectorValue(v) => AnyType::VectorType(v.get_type()),
+            AnyValue::PointerValue(v) => AnyType::PointerType(Box::new(TypedPointerType {
+                ptr_type: v.ptr.get_type(),
+                pointee_ty: v.pointee_ty.clone(),
+            })),
+            AnyValue::StringValue(string_value) => todo!(),
         }
     }
 }
@@ -82,6 +89,7 @@ impl<'a> From<AnyValue<'a>> for BasicValueEnum<'a> {
             AnyValue::StructValue(v) => v.as_basic_value_enum(),
             AnyValue::VectorValue(v) => v.as_basic_value_enum(),
             AnyValue::PointerValue(v) => v.ptr.as_basic_value_enum(),
+            AnyValue::StringValue(v) => todo!(),
         }
     }
 }
@@ -96,7 +104,7 @@ impl<'a> TryFrom<BasicValueEnum<'a>> for AnyValue<'a> {
             BasicValueEnum::ArrayValue(v) => Ok(AnyValue::ArrayValue(v)),
             BasicValueEnum::StructValue(v) => Ok(AnyValue::StructValue(v)),
             BasicValueEnum::VectorValue(v) => Ok(AnyValue::VectorValue(v)),
-            BasicValueEnum::PointerValue(v) => Err("Cannot infer pointee type from BasicValueEnum::PointerValue"),
+            BasicValueEnum::PointerValue(_) => Err("Cannot infer pointee type from BasicValueEnum::PointerValue"),
         }
     }
 }
@@ -518,9 +526,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (AnyValue::IntValue(left), AnyValue::IntValue(right)) => Some(AnyValue::IntValue(
-                self.builder.build_or(left, right, "or").unwrap()
-            )),
+            (AnyValue::IntValue(left), AnyValue::IntValue(right)) => {
+                Some(AnyValue::IntValue(self.builder.build_or(left, right, "or").unwrap()))
+            }
             _ => None,
         }
     }
@@ -530,9 +538,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (AnyValue::IntValue(left), AnyValue::IntValue(right)) => Some(AnyValue::IntValue(
-                self.builder.build_and(left, right, "and").unwrap()
-            )),
+            (AnyValue::IntValue(left), AnyValue::IntValue(right)) => {
+                Some(AnyValue::IntValue(self.builder.build_and(left, right, "and").unwrap()))
+            }
             _ => None,
         }
     }
