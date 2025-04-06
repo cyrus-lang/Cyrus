@@ -6,7 +6,7 @@ use crate::{
 };
 use ast::{
     ast::*,
-    token::{Location, Span, TokenKind},
+    token::{Location, TokenKind},
 };
 use inkwell::{
     AddressSpace,
@@ -14,9 +14,9 @@ use inkwell::{
         core::{LLVMBuildGEP2, LLVMGetElementType},
         prelude::LLVMValueRef,
     },
-    types::{AsTypeRef, BasicType, BasicTypeEnum},
+    types::{BasicType, BasicTypeEnum},
     values::{
-        ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue,
+        ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue,
     },
 };
 use std::{ffi::CString, process::exit, rc::Rc};
@@ -82,7 +82,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .unwrap(),
             )
             .unwrap(),
-            AnyValue::StringValue(string_value) => AnyValue::try_from(self.build_load_string(string_value)).unwrap(),
+            AnyValue::StringValue(string_value) => self.build_load_string(string_value),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -164,21 +164,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> BasicValueEnum<'ctx> {
+    pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {
         let func = self.module.get_function("internal_load_string").unwrap();
         let args = &[
             BasicMetadataValueEnum::PointerValue(string_value.data_ptr),
             BasicMetadataValueEnum::IntValue(string_value.len),
         ];
         let result = self.builder.build_call(func, args, "call_load_string").unwrap();
-        // result.try_as_basic_value().unwrap_left()
-        BasicValueEnum::IntValue(self.context.i32_type().const_int(0, false))
-    }
+        let basic_value = result.try_as_basic_value().unwrap_left();
 
-    // pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> BasicValueEnum<'ctx> {
-    //     let pointee_ty = self.context.i8_type().array_type(12);
-    //     self.builder.build_load(pointee_ty, string_value.data_ptr, "load").unwrap()
-    // }
+        AnyValue::OpaquePointer(basic_value.into_pointer_value())
+    }
 
     pub(crate) fn build_load(
         &self,
@@ -344,11 +340,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ))
             };
 
-            let element_type = unsafe { LLVMGetElementType(pointee_ty.as_type_ref()) };
-
             let index_value = self
                 .builder
-                .build_load(unsafe { BasicTypeEnum::new(element_type) }, index_ptr, "load")
+                .build_load(pointee_ty.to_basic_type(), index_ptr, "load")
                 .unwrap();
 
             AnyValue::try_from(index_value).unwrap()

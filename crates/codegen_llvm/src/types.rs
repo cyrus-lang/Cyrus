@@ -2,8 +2,8 @@ use crate::AnyValue;
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use ast::token::*;
-use inkwell::context::Context;
 use inkwell::AddressSpace;
+use inkwell::context::Context;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::types::ArrayType;
 use inkwell::types::AsTypeRef;
@@ -17,25 +17,26 @@ use inkwell::types::VectorType;
 use inkwell::types::VoidType;
 use std::process::exit;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum AnyType<'a> {
     IntType(IntType<'a>),
     FloatType(FloatType<'a>),
     ArrayType(ArrayType<'a>),
     StructType(StructType<'a>),
     VectorType(VectorType<'a>),
-    PointerType(Box<TypedPointerType<'a>>),
     StringType(StringType<'a>),
     VoidType(VoidType<'a>),
+    OpaquePointer(PointerType<'a>),
+    PointerType(Box<TypedPointerType<'a>>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TypedPointerType<'a> {
     pub ptr_type: PointerType<'a>,
     pub pointee_ty: AnyType<'a>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StringType<'a> {
     pub struct_type: StructType<'a>,
 }
@@ -65,6 +66,7 @@ impl<'a> AnyType<'a> {
             AnyType::VectorType(t) => (*t).as_basic_type_enum(),
             AnyType::PointerType(t) => t.ptr_type.as_basic_type_enum(),
             AnyType::StringType(t) => (*t).struct_type.as_basic_type_enum(),
+            AnyType::OpaquePointer(t) => t.as_basic_type_enum(),
             AnyType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).try_into().unwrap(),
         }
     }
@@ -78,6 +80,7 @@ impl<'a> AnyType<'a> {
             AnyType::VectorType(t) => t.as_type_ref(),
             AnyType::PointerType(t) => t.ptr_type.as_type_ref(),
             AnyType::StringType(t) => t.struct_type.as_type_ref(),
+            AnyType::OpaquePointer(t) => t.as_type_ref(),
             AnyType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).as_type_ref(),
         }
     }
@@ -90,11 +93,7 @@ impl<'a> AnyType<'a> {
                 format!("f{}", t.get_alignment().get_type().get_bit_width())
             }
             AnyType::ArrayType(t) => {
-                format!(
-                    "{}[{}]",
-                    t.get_element_type(),
-                    t.len(),
-                )
+                format!("{}[{}]", t.get_element_type(), t.len(),)
             }
             AnyType::StructType(t) => {
                 if let Some(name) = t.get_name() {
@@ -111,6 +110,7 @@ impl<'a> AnyType<'a> {
             }
             AnyType::StringType(_) => "string".to_string(),
             AnyType::VoidType(_) => "void".to_string(),
+            AnyType::OpaquePointer(_) => "ptr".to_string(),
         }
     }
 }

@@ -274,6 +274,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 AnyValue::IntValue(int_value) => BasicMetadataValueEnum::IntValue(int_value),
                 AnyValue::FloatValue(float_value) => BasicMetadataValueEnum::FloatValue(float_value),
                 AnyValue::PointerValue(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value.ptr),
+                AnyValue::OpaquePointer(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value),
                 AnyValue::StructValue(struct_value) => BasicMetadataValueEnum::StructValue(struct_value),
                 AnyValue::VectorValue(vector_value) => BasicMetadataValueEnum::VectorValue(vector_value),
                 AnyValue::StringValue(string_value) => {

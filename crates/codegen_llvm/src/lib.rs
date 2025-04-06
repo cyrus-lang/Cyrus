@@ -230,6 +230,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     BasicValueEnum::IntValue(string_value.len),
                 ]),
             ),
+            AnyValue::OpaquePointer(pointer_value) => self.builder.build_store(ptr, pointer_value),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
