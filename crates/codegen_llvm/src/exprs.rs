@@ -10,14 +10,9 @@ use ast::{
 };
 use inkwell::{
     AddressSpace,
-    llvm_sys::{
-        core::{LLVMBuildGEP2, LLVMGetElementType},
-        prelude::LLVMValueRef,
-    },
+    llvm_sys::{core::LLVMBuildGEP2, prelude::LLVMValueRef},
     types::{BasicType, BasicTypeEnum},
-    values::{
-        ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue,
-    },
+    values::{ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{ffi::CString, process::exit, rc::Rc};
 
@@ -25,7 +20,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         match expr {
             Expression::Identifier(identifier) => {
-                self.build_load(
+                self.build_load_ptr(
                     Rc::clone(&scope),
                     ModuleImport {
                         sub_modules: Vec::new(),
@@ -164,16 +159,29 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {
-        let func = self.module.get_function("internal_load_string").unwrap();
-        let args = &[
-            BasicMetadataValueEnum::PointerValue(string_value.data_ptr),
-            BasicMetadataValueEnum::IntValue(string_value.len),
-        ];
-        let result = self.builder.build_call(func, args, "call_load_string").unwrap();
-        let basic_value = result.try_as_basic_value().unwrap_left();
+    // pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {
+    //     let func = self.module.get_function("internal_load_string").unwrap();
+    //     let args = &[
+    //         BasicMetadataValueEnum::PointerValue(string_value.data_ptr),
+    //         BasicMetadataValueEnum::IntValue(string_value.len),
+    //     ];
+    //     let result = self.builder.build_call(func, args, "call_load_string").unwrap();
+    //     let data_ptr = result.try_as_basic_value().unwrap_left().into_pointer_value();
+    //     let data_str = self
+    //         .builder
+    //         .build_load(string_value.data_ptr.get_type(), data_ptr, "load")
+    //         .unwrap();
 
-        AnyValue::OpaquePointer(basic_value.into_pointer_value())
+    //     AnyValue::OpaquePointer(data_str.into_pointer_value())
+    // }
+
+    pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {
+        let data_str = self
+            .builder
+            .build_load(string_value.data_ptr.get_type(), string_value.data_ptr, "load_string")
+            .unwrap();
+
+        AnyValue::OpaquePointer(data_str.into_pointer_value())
     }
 
     pub(crate) fn build_load(
