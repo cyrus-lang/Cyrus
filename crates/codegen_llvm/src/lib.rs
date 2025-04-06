@@ -11,7 +11,7 @@ use inkwell::llvm_sys::prelude::LLVMValueRef;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::values::{FunctionValue, PointerValue};
+use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
@@ -158,8 +158,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .build_struct_gep(string_type.struct_type, ptr, 1, "gep_len")
             .unwrap();
 
-        let len_val = self.context.i64_type().const_int(string_val.len as u64, false);
-        self.builder.build_store(gep_len, len_val).unwrap();
+        self.builder.build_store(gep_len, string_val.len).unwrap();
 
         ptr
     }
@@ -224,10 +223,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             AnyValue::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value.ptr),
             AnyValue::VectorValue(vector_value) => self.builder.build_store(ptr, vector_value),
             AnyValue::StructValue(struct_value) => self.builder.build_store(ptr, struct_value),
-            AnyValue::StringValue(string_value) => {
-                let str_obj = self.build_alloca_string_value(&self.string_type, string_value);
-                self.builder.build_store(ptr, str_obj)
-            }
+            AnyValue::StringValue(string_value) => self.builder.build_store(
+                ptr,
+                self.string_type.struct_type.const_named_struct(&[
+                    BasicValueEnum::PointerValue(string_value.data_ptr),
+                    BasicValueEnum::IntValue(string_value.len),
+                ]),
+            ),
+            AnyValue::OpaquePointer(pointer_value) => self.builder.build_store(ptr, pointer_value),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,

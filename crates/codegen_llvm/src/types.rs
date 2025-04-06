@@ -2,8 +2,8 @@ use crate::AnyValue;
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use ast::token::*;
-use inkwell::context::Context;
 use inkwell::AddressSpace;
+use inkwell::context::Context;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::types::ArrayType;
 use inkwell::types::AsTypeRef;
@@ -17,25 +17,26 @@ use inkwell::types::VectorType;
 use inkwell::types::VoidType;
 use std::process::exit;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum AnyType<'a> {
     IntType(IntType<'a>),
     FloatType(FloatType<'a>),
     ArrayType(ArrayType<'a>),
     StructType(StructType<'a>),
     VectorType(VectorType<'a>),
-    PointerType(Box<TypedPointerType<'a>>),
     StringType(StringType<'a>),
     VoidType(VoidType<'a>),
+    OpaquePointer(PointerType<'a>),
+    PointerType(Box<TypedPointerType<'a>>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TypedPointerType<'a> {
     pub ptr_type: PointerType<'a>,
     pub pointee_ty: AnyType<'a>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct StringType<'a> {
     pub struct_type: StructType<'a>,
 }
@@ -65,6 +66,7 @@ impl<'a> AnyType<'a> {
             AnyType::VectorType(t) => (*t).as_basic_type_enum(),
             AnyType::PointerType(t) => t.ptr_type.as_basic_type_enum(),
             AnyType::StringType(t) => (*t).struct_type.as_basic_type_enum(),
+            AnyType::OpaquePointer(t) => t.as_basic_type_enum(),
             AnyType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).try_into().unwrap(),
         }
     }
@@ -78,6 +80,7 @@ impl<'a> AnyType<'a> {
             AnyType::VectorType(t) => t.as_type_ref(),
             AnyType::PointerType(t) => t.ptr_type.as_type_ref(),
             AnyType::StringType(t) => t.struct_type.as_type_ref(),
+            AnyType::OpaquePointer(t) => t.as_type_ref(),
             AnyType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).as_type_ref(),
         }
     }
@@ -99,24 +102,20 @@ impl<'a> AnyType<'a> {
                     "anonymous struct".to_string()
                 }
             }
-            AnyType::VectorType(_) => {
-                // TODO
-                todo!();
+            AnyType::VectorType(t) => {
+                todo!()
             }
             AnyType::PointerType(tp) => {
                 format!("{}*", tp.pointee_ty.to_string())
             }
             AnyType::StringType(_) => "string".to_string(),
             AnyType::VoidType(_) => "void".to_string(),
+            AnyType::OpaquePointer(_) => "ptr".to_string(),
         }
     }
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    /// This function must be called only once after the context is created.
-    /// Calling it multiple times or after initialization is not allowed,
-    /// as it defines the body of an opaque struct type ("str") which must
-    /// not be redefined.
     pub(crate) fn build_string_type(context: &'ctx Context) -> StringType<'ctx> {
         let i8_ptr_type = context.ptr_type(AddressSpace::default());
         let i64_type = context.i64_type();

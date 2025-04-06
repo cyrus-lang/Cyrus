@@ -1,6 +1,7 @@
-use crate::{AnyType, CodeGenLLVM, types::TypedPointerType};
+use crate::{AnyType, CodeGenLLVM, StringType, types::TypedPointerType};
 use inkwell::{
     FloatPredicate, IntPredicate,
+    context::Context,
     values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue, VectorValue},
 };
 
@@ -11,14 +12,15 @@ pub(crate) enum AnyValue<'a> {
     ArrayValue(ArrayValue<'a>),
     StructValue(StructValue<'a>),
     VectorValue(VectorValue<'a>),
-    PointerValue(TypedPointerValue<'a>),
     StringValue(StringValue<'a>),
+    OpaquePointer(PointerValue<'a>),
+    PointerValue(TypedPointerValue<'a>),
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct StringValue<'a> {
     pub data_ptr: PointerValue<'a>,
-    pub len: u32,
+    pub len: IntValue<'a>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,7 +30,7 @@ pub(crate) struct TypedPointerValue<'a> {
 }
 
 impl<'a> AnyValue<'a> {
-    pub fn get_type(&self) -> AnyType<'a> {
+    pub fn get_type(&self, string_type: StringType<'a>) -> AnyType<'a> {
         match self {
             AnyValue::IntValue(v) => AnyType::IntType(v.get_type()),
             AnyValue::FloatValue(v) => AnyType::FloatType(v.get_type()),
@@ -39,7 +41,8 @@ impl<'a> AnyValue<'a> {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
             })),
-            AnyValue::StringValue(string_value) => todo!(),
+            AnyValue::StringValue(_) => AnyType::StringType(string_type),
+            AnyValue::OpaquePointer(v) => AnyType::OpaquePointer(v.get_type()),
         }
     }
 }
@@ -89,6 +92,7 @@ impl<'a> From<AnyValue<'a>> for BasicValueEnum<'a> {
             AnyValue::StructValue(v) => v.as_basic_value_enum(),
             AnyValue::VectorValue(v) => v.as_basic_value_enum(),
             AnyValue::PointerValue(v) => v.ptr.as_basic_value_enum(),
+            AnyValue::OpaquePointer(v) => v.as_basic_value_enum(),
             AnyValue::StringValue(v) => todo!(),
         }
     }
@@ -104,7 +108,7 @@ impl<'a> TryFrom<BasicValueEnum<'a>> for AnyValue<'a> {
             BasicValueEnum::ArrayValue(v) => Ok(AnyValue::ArrayValue(v)),
             BasicValueEnum::StructValue(v) => Ok(AnyValue::StructValue(v)),
             BasicValueEnum::VectorValue(v) => Ok(AnyValue::VectorValue(v)),
-            BasicValueEnum::PointerValue(_) => Err("Cannot infer pointee type from BasicValueEnum::PointerValue"),
+            BasicValueEnum::PointerValue(v) => Ok(AnyValue::OpaquePointer(v)),
         }
     }
 }

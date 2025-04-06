@@ -97,13 +97,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     let field_value = self.build_expr(Rc::clone(&scope), field_init.value.clone());
 
-                    if field_value.get_type().to_basic_type() != field_type {
+                    if field_value.get_type(self.string_type.clone()).to_basic_type() != field_type {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(format!(
                                 "Expected type '{}' but got type '{}'.",
                                 field_type.to_string(),
-                                field_value.get_type().to_string()
+                                field_value.get_type(self.string_type.clone()).to_string()
                             )),
                             location: Some(DiagLoc {
                                 file: self.file_path.clone(),

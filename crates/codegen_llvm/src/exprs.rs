@@ -10,12 +10,9 @@ use ast::{
 };
 use inkwell::{
     AddressSpace,
-    llvm_sys::{
-        core::{LLVMBuildGEP2, LLVMGetElementType},
-        prelude::LLVMValueRef,
-    },
-    types::{AsTypeRef, BasicType, BasicTypeEnum},
-    values::{ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue},
+    llvm_sys::{core::LLVMBuildGEP2, prelude::LLVMValueRef},
+    types::{BasicType, BasicTypeEnum},
+    values::{ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{ffi::CString, process::exit, rc::Rc};
 
@@ -23,7 +20,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         match expr {
             Expression::Identifier(identifier) => {
-                self.build_load(
+                self.build_load_ptr(
                     Rc::clone(&scope),
                     ModuleImport {
                         sub_modules: Vec::new(),
@@ -68,7 +65,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.build_store(ptr, any_value.clone());
         AnyValue::PointerValue(TypedPointerValue {
             ptr,
-            pointee_ty: any_value.get_type(),
+            pointee_ty: any_value.get_type(self.string_type.clone()),
         })
     }
 
@@ -80,7 +77,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .unwrap(),
             )
             .unwrap(),
-            AnyValue::StringValue(string_value) => AnyValue::try_from(self.build_load_string(string_value)).unwrap(),
+            AnyValue::StringValue(string_value) => self.build_load_string(string_value),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -155,22 +152,36 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .build_load(len_pointee_ty, len_ptr, "load")
             .unwrap()
             .into_int_value();
-            // .get_zero_extended_constant()
-            // .unwrap();
 
         StringValue {
             data_ptr,
-            len: 12,
+            len: len_value,
         }
     }
 
-    // ANCHOR
-    pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> BasicValueEnum<'ctx> {
-        let data_pointee_ty = self.context.i8_type().array_type(string_value.len);
-        self
+    // pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {
+    //     let func = self.module.get_function("internal_load_string").unwrap();
+    //     let args = &[
+    //         BasicMetadataValueEnum::PointerValue(string_value.data_ptr),
+    //         BasicMetadataValueEnum::IntValue(string_value.len),
+    //     ];
+    //     let result = self.builder.build_call(func, args, "call_load_string").unwrap();
+    //     let data_ptr = result.try_as_basic_value().unwrap_left().into_pointer_value();
+    //     let data_str = self
+    //         .builder
+    //         .build_load(string_value.data_ptr.get_type(), data_ptr, "load")
+    //         .unwrap();
+
+    //     AnyValue::OpaquePointer(data_str.into_pointer_value())
+    // }
+
+    pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {
+        let data_str = self
             .builder
-            .build_load(data_pointee_ty.clone(), string_value.data_ptr, "load")
-            .unwrap()
+            .build_load(string_value.data_ptr.get_type(), string_value.data_ptr, "load_string")
+            .unwrap();
+
+        AnyValue::OpaquePointer(data_str.into_pointer_value())
     }
 
     pub(crate) fn build_load(
@@ -337,11 +348,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ))
             };
 
-            let element_type = unsafe { LLVMGetElementType(pointee_ty.as_type_ref()) };
-
             let index_value = self
                 .builder
-                .build_load(unsafe { BasicTypeEnum::new(element_type) }, index_ptr, "load")
+                .build_load(pointee_ty.to_basic_type(), index_ptr, "load")
                 .unwrap();
 
             AnyValue::try_from(index_value).unwrap()
@@ -437,7 +446,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         AnyValue::StringValue(StringValue {
             data_ptr: string_global.as_pointer_value(),
-            len: bytes.len() as u32,
+            len: self
+                .context
+                .i64_type()
+                .const_int(bytes.len().try_into().unwrap(), false),
         })
     }
 
