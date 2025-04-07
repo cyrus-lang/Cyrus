@@ -154,7 +154,9 @@ impl<'a> Parser<'a> {
                 etype: ParserErrorType::ExpectedIdentifier,
                 file_name: Some(self.lexer.file_name.clone()),
                 code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
-                verbose: Some(String::from("Token 'inline' is not a valid 'vis_type' for struct definition.")),
+                verbose: Some(String::from(
+                    "Token 'inline' is not a valid 'vis_type' for struct definition.",
+                )),
                 caret: true,
             });
         }
@@ -301,7 +303,10 @@ impl<'a> Parser<'a> {
             fields,
             methods,
             loc,
-            span: Span { start: struct_start, end: self.current_token.span.end }
+            span: Span {
+                start: struct_start,
+                end: self.current_token.span.end,
+            },
         }))
     }
 
@@ -344,14 +349,17 @@ impl<'a> Parser<'a> {
     pub fn parse_module_import(&mut self) -> Result<ModuleImport, ParseError> {
         let start = self.current_token.span.start;
         let mut sub_modules: Vec<ModulePath> = match self.current_token.kind.clone() {
-            TokenKind::Identifier { name } => vec![ModulePath::SubModule(Identifier {
-                name,
-                span: Span {
-                    start,
-                    end: self.current_token.span.end - 1,
-                },
-                loc: self.current_location(),
-            })],
+            TokenKind::Identifier { name } => {
+                self.next_token();
+                vec![ModulePath::SubModule(Identifier {
+                    name,
+                    span: Span {
+                        start,
+                        end: self.current_token.span.end - 1,
+                    },
+                    loc: self.current_location(),
+                })]
+            }
             _ => {
                 return Err(CompileTimeError {
                     location: self.current_location(),
@@ -364,12 +372,18 @@ impl<'a> Parser<'a> {
             }
         };
 
-        while self.peek_token_is(TokenKind::Dot) {
+        while self.current_token_is(TokenKind::Dot) {
             let start = self.current_token.span.end + 1;
             self.next_token();
 
-            match self.peek_token.kind.clone() {
+            match self.current_token.kind.clone() {
                 TokenKind::Identifier { name } => {
+                    if self.peek_token_is(TokenKind::LeftParen) {
+                        // this means that this module_import is a part of func call
+                        // so we should not consider func_name as a sub_module here.
+                        break;
+                    }
+
                     sub_modules.push(ModulePath::SubModule(Identifier {
                         name,
                         span: Span {
@@ -387,36 +401,12 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        if sub_modules.len() == 1 {
-            if let ModulePath::SubModule(identifier) = sub_modules[0].clone() {
-                Ok(ModuleImport {
-                    identifier,
-                    sub_modules: vec![],
-                    span: Span {
-                        start,
-                        end: self.current_token.span.end,
-                    },
-                    loc: self.current_location(),
-                })
-            } else {
-                unreachable!();
-            }
-        } else {
-            if let ModulePath::SubModule(identifier) = sub_modules.last().unwrap().clone() {
-                sub_modules.pop();
-                Ok(ModuleImport {
-                    identifier,
-                    sub_modules,
-                    span: Span {
-                        start,
-                        end: self.current_token.span.end,
-                    },
-                    loc: self.current_location(),
-                })
-            } else {
-                unreachable!();
-            }
-        }
+        let end = self.current_token.span.end;
+        Ok(ModuleImport {
+            sub_modules,
+            span: Span::new(start, end),
+            loc: self.current_location(),
+        })
     }
 
     pub fn parse_module_paths(&mut self, parse_start: usize) -> Result<Vec<ModulePath>, ParseError> {

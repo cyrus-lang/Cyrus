@@ -7,6 +7,7 @@ edition = "2024"
 lexer = {path = "../lexer", version = "*"}
 ast = {path = "../ast", version = "*"}
 utils = {path = "../utils", version = "*"}
+either = "1.9"
 
 [lib]
 name = "parser"

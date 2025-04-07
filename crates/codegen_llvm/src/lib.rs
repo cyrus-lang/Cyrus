@@ -11,7 +11,7 @@ use inkwell::llvm_sys::prelude::LLVMValueRef;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
+use inkwell::values::{FunctionValue, PointerValue};
 use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;

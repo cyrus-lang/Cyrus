@@ -1,6 +1,7 @@
 use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    scope::ScopeRecord,
     types::{AnyType, TypedPointerType},
     values::{AnyValue, StringValue, TypedPointerValue},
 };
@@ -14,7 +15,7 @@ use inkwell::{
     types::{BasicType, BasicTypeEnum},
     values::{ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
-use std::{ffi::CString, process::exit, rc::Rc};
+use std::{ffi::CString, ops::Deref, process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
@@ -133,7 +134,82 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             return self.build_load(Rc::clone(&scope), module_import);
         }
 
-        todo!();
+        let mut record: (PointerValue<'ctx>, AnyType<'ctx>);
+
+        let first_sub_module = {
+            if let ModulePath::SubModule(sub_module) = module_import.sub_modules.first().unwrap() {
+                sub_module
+            } else {
+                unreachable!();
+            }
+        };
+
+        let binding = {
+            match scope.borrow_mut().get(first_sub_module.name.clone()) {
+                Some(record) => record,
+                None => {
+                    // TODO 
+                    // Look up for imported libraries
+                    todo!();
+                }
+            }
+        };
+        let scope_record = binding.borrow_mut().deref().clone();
+        record = (scope_record.ptr.clone(), scope_record.ty.clone());
+
+        for module in module_import.sub_modules.clone() {
+            match module {
+                ModulePath::Wildcard => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("ModulePath::Wildcard not allowed in build_load.".to_string()),
+                        location: None,
+                    });
+                    exit(1);
+                }
+                ModulePath::SubModule(identifier) => {
+                    // in this part of loading, we expect our object to be a struct or a sub_module.
+                    if let AnyType::StructType(struct_type)  = record.1 {
+                        // self.builder.build_load(pointee_ty, ptr, name)
+                    } else {
+                        // TODO
+                        // Look up for imported libraries
+                        todo!();
+                    }
+                }
+            }
+        }
+
+        self.build_load_internal(record.0, record.1)
+        // if let Some((ptr, pointee_ty)) = record {
+        // } else {
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::IdentifierNotDefined(module_import.to_string()),
+        //         location: None,
+        //     });
+        //     exit(1);
+        // }
+    }
+
+    pub(crate) fn build_load_internal(
+        &self,
+        ptr: PointerValue<'ctx>,
+        pointee_ty: AnyType<'ctx>,
+    ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
+        let value = self
+            .builder
+            .build_load(pointee_ty.to_basic_type(), ptr, "load")
+            .unwrap();
+
+        if value.get_type() == BasicTypeEnum::StructType(self.string_type.struct_type.clone()) {
+            (
+                AnyValue::StringValue(self.string_from_struct_value(ptr)),
+                pointee_ty.clone(),
+            )
+        } else {
+            (AnyValue::try_from(value).unwrap(), pointee_ty.clone())
+        }
     }
 
     pub(crate) fn build_load(
@@ -156,19 +232,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
         let record = binding.borrow_mut();
 
-        let value = self
-            .builder
-            .build_load(record.ty.to_basic_type(), record.ptr, "load")
-            .unwrap();
-
-        if value.get_type() == BasicTypeEnum::StructType(self.string_type.struct_type.clone()) {
-            (
-                AnyValue::StringValue(self.string_from_struct_value(record.ptr)),
-                record.ty.clone(),
-            )
-        } else {
-            (AnyValue::try_from(value).unwrap(), record.ty.clone())
-        }
+        self.build_load_internal(record.ptr.clone(), record.ty.clone())
     }
 
     pub(crate) fn build_load_ptr(

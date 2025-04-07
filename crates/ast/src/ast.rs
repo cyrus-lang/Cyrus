@@ -1,3 +1,7 @@
+use std::fmt;
+
+use either::Either;
+
 use crate::token::*;
 
 #[derive(Debug)]
@@ -44,25 +48,25 @@ pub enum Expression {
     AddressOf(Box<Expression>),
     Dereference(Box<Expression>),
     StructInit(StructInit),
-    FieldAccessOrMethodCall(Vec<FieldAccessOrMethodCall>),
+    FieldAccessOrMethodCall(FieldAccessOrMethodCall),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Enum {
     pub name: Identifier,
-    pub variants: Vec<EnumVariant>
+    pub variants: Vec<EnumVariant>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumVariant {
     pub name: Identifier,
-    pub fields: Option<Vec<EnumField>>
+    pub fields: Option<Vec<EnumField>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumField {
     pub name: Identifier,
-    pub field_type: TokenKind
+    pub field_type: TokenKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -91,7 +95,7 @@ pub struct UnaryOperator {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncCall {
-    pub func_name: ModuleImport,
+    pub identifier: Identifier,
     pub arguments: Vec<Expression>,
     pub span: Span,
     pub loc: Location,
@@ -99,8 +103,8 @@ pub struct FuncCall {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldAccessOrMethodCall {
-    pub method_call: Option<FuncCall>,
-    pub field_access: Option<FieldAccess>,
+    pub expr: Box<Expression>,
+    pub chains: Vec<Either<FuncCall, FieldAccess>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,7 +124,6 @@ pub struct Identifier {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModuleImport {
     pub sub_modules: Vec<ModulePath>,
-    pub identifier: Identifier,
     pub span: Span,
     pub loc: Location,
 }
@@ -237,7 +240,7 @@ pub enum Statement {
     BlockStatement(BlockStatement),
     Break(Location),
     Continue(Location),
-    Enum(Enum)
+    Enum(Enum),
 }
 
 pub fn format_expressions(exprs: &Vec<Expression>) -> String {
@@ -259,6 +262,15 @@ pub struct Return {
 pub enum ModulePath {
     Wildcard,
     SubModule(Identifier),
+}
+
+impl fmt::Display for ModulePath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ModulePath::Wildcard => write!(f, "*"),
+            ModulePath::SubModule(identifier) => write!(f, "{}", identifier.name),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -88,6 +88,26 @@ impl fmt::Display for CastAs {
     }
 }
 
+impl fmt::Display for FuncCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, ".{}(", self.identifier.name)?;
+        self.arguments.iter().map(|s| s).fold(String::new(), |mut acc, s| {
+            if !acc.is_empty() {
+                acc.push_str(", ");
+            }
+            acc.push_str(&s.to_string());
+            acc
+        });
+        write!(f, ")")
+    }
+}
+
+impl fmt::Display for FieldAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, ".{}", self.identifier.name)
+    }
+}
+
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -107,45 +127,27 @@ impl fmt::Display for Expression {
             }) => {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
-            Expression::FieldAccessOrMethodCall(chains) => {
-                let mut chains = chains.clone();
+            Expression::FieldAccessOrMethodCall(field_access_or_method_call) => {
+                write!(f, "{}", field_access_or_method_call.expr.to_string())?;
 
-                let first = chains.first().unwrap().method_call.clone().unwrap();
-                write!(
-                    f,
-                    "{}({})",
-                    Expression::ModuleImport(ModuleImport {
-                        sub_modules: first.func_name.sub_modules,
-                        identifier: first.func_name.identifier,
-                        span: first.span,
-                        loc: first.loc
-                    })
-                    .to_string(),
-                    format_expressions(&first.arguments)
-                )?;
-                chains.remove(0);
-
-                for item in chains {
-                    if let Some(method_call) = &item.method_call {
-                        write!(
-                            f,
-                            ".{}({})",
-                            method_call.func_name.identifier.name,
-                            format_expressions(&method_call.arguments)
-                        )?;
-                    }
-
-                    if let Some(field_access) = &item.field_access {
-                        write!(f, ".{}", field_access.identifier.name,)?;
-                    }
+                for item in field_access_or_method_call.chains.clone() {
+                    match item {
+                        either::Either::Left(expr) => expr.to_string(),
+                        either::Either::Right(expr) => expr.to_string(),
+                    };
                 }
-                write!(f, "")
+
+                Ok(())
             }
             Expression::Array(array) => {
                 write!(f, "[{}]", array_items_to_string(array.clone()))
             }
             Expression::ArrayIndex(array_index) => {
-                write!(f, "{}", Expression::ModuleImport(array_index.module_import.clone()).to_string())?;
+                write!(
+                    f,
+                    "{}",
+                    Expression::ModuleImport(array_index.module_import.clone()).to_string()
+                )?;
                 for item in &array_index.dimensions {
                     write!(f, "[{}]", item)?;
                 }
@@ -229,13 +231,13 @@ impl fmt::Display for ProgramTree {
 
 impl fmt::Display for ModuleImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for module_import in self.sub_modules.clone() {
-            match module_import {
-                ModulePath::Wildcard => write!(f, "*")?,
-                ModulePath::SubModule(identifier) => write!(f, "{}.", identifier.name)?,
+        for (idx, module_path) in self.sub_modules.iter().enumerate().clone() {
+            if idx == self.sub_modules.len() - 1 {
+                write!(f, "{}", module_path.to_string())?;
+            } else {
+                write!(f, "{}.", module_path.to_string())?;
             }
         }
-        write!(f, "{}", self.identifier.name)?;
         Ok(())
     }
 }

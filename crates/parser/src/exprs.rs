@@ -3,6 +3,7 @@ use crate::Parser;
 use crate::prec::*;
 use ast::ast::*;
 use ast::token::*;
+use either::Either;
 use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
@@ -53,10 +54,7 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier { .. } => {
                 let module_import = self.parse_module_import()?;
 
-                if self.peek_token_is(TokenKind::Dot) {
-                    self.next_token();
-                    self.parse_field_access_or_method_call(Box::new(Expression::ModuleImport(module_import)))?
-                } else if self.peek_token_is(TokenKind::Increment) {
+                if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
                         module_import: module_import.clone(),
@@ -178,7 +176,8 @@ impl<'a> Parser<'a> {
             TokenKind::LeftParen => {
                 self.next_token();
                 let expr = self.parse_expression(Precedence::Lowest, None)?.0;
-                self.expect_peek(TokenKind::RightParen)?;
+                self.next_token();
+                self.expect_current(TokenKind::RightParen)?;
                 expr
             }
             TokenKind::LeftBracket => self.parse_array_items()?,
@@ -196,6 +195,11 @@ impl<'a> Parser<'a> {
                 });
             }
         };
+
+        if self.current_token_is(TokenKind::Dot) {
+            self.next_token();
+            return Ok(self.parse_field_access_or_method_call(Box::new(expr))?);
+        }
 
         Ok(expr)
     }
@@ -238,7 +242,7 @@ impl<'a> Parser<'a> {
                     loc: self.current_location(),
                 })))
             }
-            TokenKind::LeftParen => Some(self.parse_field_access_or_method_call(Box::new(left))),
+            TokenKind::LeftParen => Some(Ok(self.parse_field_access_or_method_call(Box::new(left)).ok()?)),
             _ => None,
         }
     }
@@ -250,13 +254,9 @@ impl<'a> Parser<'a> {
         // detect empty series of expressions
         if self.peek_token_is(end.clone()) {
             self.next_token();
-            return Ok((
-                series,
-                Span {
-                    start,
-                    end: self.current_token.span.end,
-                },
-            ));
+            return Ok((series, Span::new(start, self.current_token.span.end)));
+        } else if self.current_token_is(end.clone()) {
+            return Ok((series, Span::new(start, self.current_token.span.end)));
         }
         self.next_token();
 
@@ -315,164 +315,64 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // FIXME
+    // Create a new AST for simple calls.
+    // User might wanted to call:
+    // (Person { name: "John" }).to_string()
     pub fn parse_func_call(&mut self, left: Expression, left_start: usize) -> Result<FuncCall, ParseError> {
-        let arguments = self.parse_expression_series(TokenKind::RightParen)?;
-        let start = self.current_token.span.start;
+        // let arguments = self.parse_expression_series(TokenKind::RightParen)?;
 
-        let expr = match left {
-            Expression::ModuleImport(module_import) => FuncCall {
-                func_name: module_import.clone(),
-                arguments: arguments.0,
-                span: module_import.span.clone(),
-                loc: self.current_location(),
-            },
-            Expression::Identifier(identifier) => FuncCall {
-                func_name: ModuleImport {
-                    sub_modules: vec![],
-                    identifier,
-                    span: self.current_token.span.clone(),
-                    loc: self.current_location(),
-                },
-                arguments: arguments.0,
-                span: Span {
-                    start: left_start,
-                    end: self.current_token.span.end,
-                },
-                loc: self.current_location(),
-            },
-            _ => {
-                return Err(CompileTimeError {
-                    location: self.current_location(),
-                    etype: ParserErrorType::ExpectedIdentifier,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                    verbose: None,
-                    caret: true,
-                });
-            }
-        };
-
-        Ok(expr)
+        // Ok(FuncCall {
+        //     expr: Box::new(left),
+        //     arguments: arguments.0,
+        //     span: Span {
+        //         start: left_start,
+        //         end: self.current_token.span.end,
+        //     },
+        //     loc: self.current_location(),
+        // })
+        todo!();
     }
 
-    pub fn parse_field_access_or_method_call(
-        &mut self,
-        object_expr: Box<Expression>,
-    ) -> Result<Expression, ParseError> {
-        self.next_token(); // consume identifier
-        let start = self.current_token.span.start.clone();
-        let mut chains: Vec<FieldAccessOrMethodCall> = Vec::new();
+    pub fn parse_field_access_or_method_call(&mut self, expr: Box<Expression>) -> Result<Expression, ParseError> {
+        let mut chains: Vec<Either<FuncCall, FieldAccess>> = Vec::new();
 
-        if self.current_token_is(TokenKind::Dot) {
-            self.next_token();
+        loop {
+            let member_start = self.current_token.span.start.clone();
+            let identifier = self.parse_identifier()?;
+            self.next_token(); // consume identifier
 
-            loop {
-                let member_start = self.current_token.span.start.clone();
-                let method_name = match self.current_token.kind.clone() {
-                    TokenKind::Identifier { name } => Identifier {
-                        name,
-                        span: self.current_token.span.clone(),
-                        loc: self.current_location(),
-                    },
-                    _ => {
-                        return Err(CompileTimeError {
-                            location: self.current_location(),
-                            etype: ParserErrorType::ExpectedIdentifier,
-                            file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                            verbose: None,
-                            caret: true,
-                        });
-                    }
+            if self.current_token_is(TokenKind::LeftParen) {
+                let arguments = self.parse_expression_series(TokenKind::RightParen).unwrap().0;
+                self.expect_current(TokenKind::RightParen)?;
+
+                let method_call = FuncCall {
+                    identifier,
+                    arguments,
+                    span: Span::new(member_start, self.current_token.span.end),
+                    loc: self.current_location(),
                 };
 
-                // parse method call
-                if self.peek_token_is(TokenKind::LeftParen) {
-                    self.next_token(); // consume method name
+                chains.push(Either::Left(method_call));
 
-                    let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
-                    self.expect_current(TokenKind::RightParen)?;
+                if self.peek_token_is(TokenKind::EOF) {
+                    break;
+                }
 
-                    let method_call = FuncCall {
-                        func_name: ModuleImport {
-                            sub_modules: vec![],
-                            identifier: method_name,
-                            span: Span {
-                                start: member_start,
-                                end: self.current_token.span.end,
-                            },
-                            loc: self.current_location(),
-                        },
-                        arguments,
-                        span: Span {
-                            start: member_start,
-                            end: self.current_token.span.end,
-                        },
-                        loc: self.current_location(),
-                    };
-
-                    chains.push(FieldAccessOrMethodCall {
-                        method_call: Some(method_call),
-                        field_access: None,
-                    });
-
-                    match self.current_token.kind {
-                        TokenKind::Dot => {
-                            self.next_token();
-                            continue;
-                        }
-                        _ => break,
+                match self.current_token.kind {
+                    TokenKind::Dot => {
+                        self.next_token();
+                        continue;
                     }
-                } else {
-                    // parse field access
-                    let field_name = match self.current_token.kind.clone() {
-                        TokenKind::Identifier { name } => Identifier {
-                            name,
-                            span: self.current_token.span.clone(),
-                            loc: self.current_location(),
-                        },
-                        _ => {
-                            return Err(CompileTimeError {
-                                location: self.current_location(),
-                                etype: ParserErrorType::ExpectedIdentifier,
-                                file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                                verbose: None,
-                                caret: true,
-                            });
-                        }
-                    };
-                    self.next_token();
-
-                    chains.push(FieldAccessOrMethodCall {
-                        method_call: None,
-                        field_access: Some(FieldAccess {
-                            identifier: field_name,
-                            span: self.current_token.span.clone(),
-                            loc: self.current_location(),
-                        }),
-                    });
-
-                    match self.current_token.kind {
-                        TokenKind::Dot => {
-                            self.next_token(); // consume field_name
-                            continue;
-                        }
-                        _ => {
-                            break;
-                        }
-                    }
+                    _ => break,
                 }
             }
-
-            return Ok(Expression::FieldAccessOrMethodCall(chains));
-        } else {
-            let func_call = self.parse_func_call(*object_expr, start)?;
-            Ok(Expression::FieldAccessOrMethodCall(vec![FieldAccessOrMethodCall {
-                method_call: Some(func_call),
-                field_access: None,
-            }]))
         }
+        
+        return Ok(Expression::FieldAccessOrMethodCall(FieldAccessOrMethodCall {
+            expr,
+            chains,
+        }));
     }
 
     pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<Expression, ParseError> {
@@ -486,7 +386,10 @@ impl<'a> Parser<'a> {
                 struct_name: struct_name.clone(),
                 field_inits: Vec::new(),
                 loc: self.current_location(),
-                span: Span { start, end: self.current_token.span.end },
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
             }));
         }
 
@@ -557,7 +460,10 @@ impl<'a> Parser<'a> {
             struct_name,
             field_inits,
             loc: self.current_location(),
-            span: Span { start, end: self.current_token.span.end },
+            span: Span {
+                start,
+                end: self.current_token.span.end,
+            },
         }));
     }
 

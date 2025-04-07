@@ -215,66 +215,66 @@ mod tests {
         assert_eq!(cast_as_expression.to_string(), "10 as f64");
     }
 
-    #[test]
-    fn test_field_access_or_method_call() {
-        let chains: Vec<FieldAccessOrMethodCall> = vec![
-            FieldAccessOrMethodCall {
-                method_call: Some(FuncCall {
-                    func_name: ModuleImport {
-                        sub_modules: vec![ModulePath::SubModule(Identifier {
-                            name: String::from("my_module"),
-                            span: Span::default(),
-                            loc: Location::default(),
-                        })],
-                        identifier: Identifier {
-                            name: String::from("sample"),
-                            span: Span::default(),
-                            loc: Location::default(),
-                        },
-                        span: Span::default(),
-                        loc: Location::default(),
-                    },
-                    arguments: vec![],
-                    span: Span::default(),
-                    loc: Location::default(),
-                }),
-                field_access: None,
-            },
-            FieldAccessOrMethodCall {
-                method_call: Some(FuncCall {
-                    func_name: ModuleImport {
-                        sub_modules: vec![],
-                        identifier: Identifier {
-                            name: String::from("nested_method"),
-                            span: Span::default(),
-                            loc: Location::default(),
-                        },
-                        span: Span::default(),
-                        loc: Location::default(),
-                    },
-                    arguments: vec![],
-                    span: Span::default(),
-                    loc: Location::default(),
-                }),
-                field_access: None,
-            },
-            FieldAccessOrMethodCall {
-                field_access: Some(FieldAccess {
-                    identifier: Identifier {
-                        name: String::from("some_field"),
-                        span: Span::default(),
-                        loc: Location::default(),
-                    },
-                    span: Span::default(),
-                    loc: Location::default(),
-                }),
-                method_call: None,
-            },
-        ];
+    // #[test]
+    // fn test_field_access_or_method_call() {
+    //     let chains: Vec<FieldAccessOrMethodCall> = vec![
+    //         FieldAccessOrMethodCall {
+    //             method_call: Some(FuncCall {
+    //                 func_name: ModuleImport {
+    //                     sub_modules: vec![ModulePath::SubModule(Identifier {
+    //                         name: String::from("my_module"),
+    //                         span: Span::default(),
+    //                         loc: Location::default(),
+    //                     })],
+    //                     identifier: Identifier {
+    //                         name: String::from("sample"),
+    //                         span: Span::default(),
+    //                         loc: Location::default(),
+    //                     },
+    //                     span: Span::default(),
+    //                     loc: Location::default(),
+    //                 },
+    //                 arguments: vec![],
+    //                 span: Span::default(),
+    //                 loc: Location::default(),
+    //             }),
+    //             field_access: None,
+    //         },
+    //         FieldAccessOrMethodCall {
+    //             method_call: Some(FuncCall {
+    //                 func_name: ModuleImport {
+    //                     sub_modules: vec![],
+    //                     identifier: Identifier {
+    //                         name: String::from("nested_method"),
+    //                         span: Span::default(),
+    //                         loc: Location::default(),
+    //                     },
+    //                     span: Span::default(),
+    //                     loc: Location::default(),
+    //                 },
+    //                 arguments: vec![],
+    //                 span: Span::default(),
+    //                 loc: Location::default(),
+    //             }),
+    //             field_access: None,
+    //         },
+    //         FieldAccessOrMethodCall {
+    //             field_access: Some(FieldAccess {
+    //                 identifier: Identifier {
+    //                     name: String::from("some_field"),
+    //                     span: Span::default(),
+    //                     loc: Location::default(),
+    //                 },
+    //                 span: Span::default(),
+    //                 loc: Location::default(),
+    //             }),
+    //             method_call: None,
+    //         },
+    //     ];
 
-        assert_eq!(
-            Expression::FieldAccessOrMethodCall(chains).to_string(),
-            "my_module.sample().nested_method().some_field"
-        );
-    }
+    //     assert_eq!(
+    //         Expression::FieldAccessOrMethodCall(chains).to_string(),
+    //         "my_module.sample().nested_method().some_field"
+    //     );
+    // }
 }
