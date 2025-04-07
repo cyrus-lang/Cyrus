@@ -277,12 +277,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 AnyValue::OpaquePointer(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value),
                 AnyValue::StructValue(struct_value) => BasicMetadataValueEnum::StructValue(struct_value),
                 AnyValue::VectorValue(vector_value) => BasicMetadataValueEnum::VectorValue(vector_value),
-                AnyValue::StringValue(string_value) => {
-                    BasicMetadataValueEnum::StructValue(self.string_type.struct_type.const_named_struct(&[
-                        BasicValueEnum::PointerValue(string_value.data_ptr),
-                        BasicValueEnum::IntValue(string_value.len),
-                    ]))
-                }
+                AnyValue::StringValue(string_value) => BasicMetadataValueEnum::StructValue(string_value.struct_value),
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,

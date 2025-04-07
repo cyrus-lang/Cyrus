@@ -1,7 +1,6 @@
 use crate::{AnyType, CodeGenLLVM, StringType, types::TypedPointerType};
 use inkwell::{
     FloatPredicate, IntPredicate,
-    context::Context,
     values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue, VectorValue},
 };
 
@@ -19,8 +18,7 @@ pub(crate) enum AnyValue<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StringValue<'a> {
-    pub data_ptr: PointerValue<'a>,
-    pub len: IntValue<'a>,
+    pub struct_value: StructValue<'a>
 }
 
 #[derive(Debug, Clone)]

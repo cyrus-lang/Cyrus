@@ -20,7 +20,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         match expr {
             Expression::Identifier(identifier) => {
-                self.build_load_ptr(
+                self.build_load(
                     Rc::clone(&scope),
                     ModuleImport {
                         sub_modules: Vec::new(),
@@ -137,48 +137,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn string_from_struct_value(&self, struct_ptr: PointerValue<'ctx>) -> StringValue<'ctx> {
+        let struct_type = self.string_type.struct_type;
+        let mut struct_value = struct_type.get_undef();
+
+        let data_pointee_ty = self.context.ptr_type(AddressSpace::default());
         let data_ptr = self
             .builder
-            .build_struct_gep(self.string_type.struct_type, struct_ptr, 0, "struct_gep")
-            .expect("Failed to extract data pointer when trying to get string_from_struct_value.");
+            .build_struct_gep(struct_type, struct_ptr, 0, "data_gep")
+            .expect("Failed to get GEP for data_ptr");
+        let loaded_data_ptr = self
+            .builder
+            .build_load(data_pointee_ty, data_ptr, "load_data_ptr")
+            .unwrap();
 
         let len_pointee_ty = self.context.i64_type();
         let len_ptr = self
             .builder
-            .build_struct_gep(self.string_type.struct_type, struct_ptr, 1, "struct_gep")
-            .expect("Failed to extract string length when trying to get string_from_struct_value.");
-        let len_value = self
+            .build_struct_gep(struct_type, struct_ptr, 1, "len_gep")
+            .expect("Failed to get GEP for len");
+        let loaded_len = self.builder.build_load(len_pointee_ty, len_ptr, "load_len").unwrap();
+
+        struct_value = self
             .builder
-            .build_load(len_pointee_ty, len_ptr, "load")
+            .build_insert_value(struct_value, loaded_data_ptr, 0, "insert_data")
             .unwrap()
-            .into_int_value();
+            .into_struct_value();
 
-        StringValue {
-            data_ptr,
-            len: len_value,
-        }
+        struct_value = self
+            .builder
+            .build_insert_value(struct_value, loaded_len, 1, "insert_len")
+            .unwrap()
+            .into_struct_value();
+
+        StringValue { struct_value } // 👈 This is the actual fix
     }
-
-    // pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {
-    //     let func = self.module.get_function("internal_load_string").unwrap();
-    //     let args = &[
-    //         BasicMetadataValueEnum::PointerValue(string_value.data_ptr),
-    //         BasicMetadataValueEnum::IntValue(string_value.len),
-    //     ];
-    //     let result = self.builder.build_call(func, args, "call_load_string").unwrap();
-    //     let data_ptr = result.try_as_basic_value().unwrap_left().into_pointer_value();
-    //     let data_str = self
-    //         .builder
-    //         .build_load(string_value.data_ptr.get_type(), data_ptr, "load")
-    //         .unwrap();
-
-    //     AnyValue::OpaquePointer(data_str.into_pointer_value())
-    // }
 
     pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {
         let data_str = self
             .builder
-            .build_load(string_value.data_ptr.get_type(), string_value.data_ptr, "load_string")
+            .build_extract_value(string_value.struct_value, 0, "load_string")
             .unwrap();
 
         AnyValue::OpaquePointer(data_str.into_pointer_value())
@@ -445,11 +442,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         string_global.set_linkage(inkwell::module::Linkage::Private);
 
         AnyValue::StringValue(StringValue {
-            data_ptr: string_global.as_pointer_value(),
-            len: self
-                .context
-                .i64_type()
-                .const_int(bytes.len().try_into().unwrap(), false),
+            struct_value: self.string_type.struct_type.const_named_struct(&[
+                BasicValueEnum::PointerValue(string_global.as_pointer_value()),
+                BasicValueEnum::IntValue(
+                    self.context
+                        .i64_type()
+                        .const_int(bytes.len().try_into().unwrap(), false),
+                ),
+            ]),
         })
     }
 

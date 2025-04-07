@@ -140,29 +140,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_alloca_string_value(
-        &self,
-        string_type: &StringType<'ctx>,
-        string_val: StringValue<'ctx>,
-    ) -> PointerValue<'ctx> {
-        let ptr = self.builder.build_alloca(string_type.struct_type, "store").unwrap();
-
-        let gep_data_ptr = self
-            .builder
-            .build_struct_gep(string_type.struct_type, ptr, 0, "gep_data_ptr")
-            .unwrap();
-        self.builder.build_store(gep_data_ptr, string_val.data_ptr).unwrap();
-
-        let gep_len = self
-            .builder
-            .build_struct_gep(string_type.struct_type, ptr, 1, "gep_len")
-            .unwrap();
-
-        self.builder.build_store(gep_len, string_val.len).unwrap();
-
-        ptr
-    }
-
     pub(crate) fn build_alloca(
         &self,
         var_type_token: TokenKind,
@@ -223,13 +200,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             AnyValue::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value.ptr),
             AnyValue::VectorValue(vector_value) => self.builder.build_store(ptr, vector_value),
             AnyValue::StructValue(struct_value) => self.builder.build_store(ptr, struct_value),
-            AnyValue::StringValue(string_value) => self.builder.build_store(
-                ptr,
-                self.string_type.struct_type.const_named_struct(&[
-                    BasicValueEnum::PointerValue(string_value.data_ptr),
-                    BasicValueEnum::IntValue(string_value.len),
-                ]),
-            ),
+            AnyValue::StringValue(string_value) => self.builder.build_store(ptr, string_value.struct_value),
             AnyValue::OpaquePointer(pointer_value) => self.builder.build_store(ptr, pointer_value),
             _ => {
                 display_single_diag(Diag {
