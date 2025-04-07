@@ -36,6 +36,7 @@ mod structs;
 mod tests;
 mod types;
 mod values;
+mod strings;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]

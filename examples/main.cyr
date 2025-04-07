@@ -1,7 +1,5 @@
 extern fn printf(fmt: *i8);
 
 fn main() {
-   #name: string = "Hello World";
-   #clone: string = name;
-   printf(*clone);
+   printf(*"Hello World");
 }
