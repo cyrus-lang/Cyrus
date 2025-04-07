@@ -378,349 +378,343 @@ mod tests {
         }
     );
 
-    // define_test!(cast_as, "10 as f64", |program: ProgramTree| {
-    //     if let Statement::Expression(expression) = &program.body[0] {
-    //         if let Expression::CastAs(cast_as) = expression {
-    //             assert_eq!(
-    //                 *cast_as.expr,
-    //                 Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))
-    //             );
-    //             assert_eq!(cast_as.type_token, TokenKind::F64);
-    //         } else {
-    //             panic!("Expected a cast as but got something else.");
-    //         }
-    //     } else {
-    //         panic!("Expected an expression but got something else.");
-    //     }
-    // });
+    define_test!(cast_as, "10 as f64", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::CastAs(cast_as) = expression {
+                assert_eq!(
+                    *cast_as.expr,
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))
+                );
+                assert_eq!(cast_as.type_token, TokenKind::F64);
+            } else {
+                panic!("Expected a cast as but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-    // define_test!(pre_increment, "++my_var", |program: ProgramTree| {
-    //     if let Statement::Expression(expression) = &program.body[0] {
-    //         if let Expression::UnaryOperator(unary_operator) = expression {
-    //             assert_eq!(
-    //                 unary_operator.module_import.identifier,
-    //                 Identifier {
-    //                     name: "my_var".to_string(),
-    //                     span: Span::new(2, 7),
-    //                     loc: Location::new(0, 9)
-    //                 }
-    //             );
-    //             assert_eq!(unary_operator.ty, UnaryOperatorType::PreIncrement);
-    //         } else {
-    //             panic!("Expected a unary operator expression.");
-    //         }
-    //     } else {
-    //         panic!("Expected an expression.");
-    //     }
-    // });
+    define_test!(pre_increment, "++my_var", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::UnaryOperator(unary_operator) = expression {
+                assert_eq!(
+                    unary_operator.module_import.sub_modules,
+                    vec![ModulePath::SubModule(Identifier {
+                        name: "my_var".to_string(),
+                        span: Span::new(2, 7),
+                        loc: Location::new(0, 9)
+                    })]
+                );
+                assert_eq!(unary_operator.ty, UnaryOperatorType::PreIncrement);
+            } else {
+                panic!("Expected a unary operator expression.");
+            }
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
 
-    // define_test!(post_decrement, "my_var--", |program: ProgramTree| {
-    //     if let Statement::Expression(expression) = &program.body[0] {
-    //         if let Expression::UnaryOperator(unary_operator) = expression {
-    //             assert_eq!(
-    //                 unary_operator.module_import.identifier,
-    //                 Identifier {
-    //                     name: "my_var".to_string(),
-    //                     span: Span { start: 0, end: 5 },
-    //                     loc: Location { line: 0, column: 9 }
-    //                 }
-    //             );
-    //             assert_eq!(unary_operator.ty, UnaryOperatorType::PostDecrement);
-    //         } else {
-    //             panic!("Expected a unary operator expression.");
-    //         }
-    //     } else {
-    //         panic!("Expected an expression.");
-    //     }
-    // });
+    define_test!(post_decrement, "my_var--", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::UnaryOperator(unary_operator) = expression {
+                assert_eq!(
+                    unary_operator.module_import.sub_modules,
+                    vec![ModulePath::SubModule(Identifier {
+                        name: "my_var".to_string(),
+                        span: Span { start: 0, end: 5 },
+                        loc: Location { line: 0, column: 9 }
+                    })]
+                );
+                assert_eq!(unary_operator.ty, UnaryOperatorType::PostDecrement);
+            } else {
+                panic!("Expected a unary operator expression.");
+            }
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
 
-    // define_test!(
-    //     complete_for_loop,
-    //     "for #i: i32 = 0; i < 10; i++ { }",
-    //     |program: ProgramTree| {
-    //         if let Statement::For(for_statement) = &program.body[0] {
-    //             assert_eq!(
-    //                 for_statement.initializer,
-    //                 Some(Variable {
-    //                     name: "i".to_string(),
-    //                     ty: Some(TokenKind::I32),
-    //                     expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
-    //                     span: Span::new(4, 15),
-    //                     loc: Location::new(0, 19)
-    //                 })
-    //             );
-    //             assert_eq!(
-    //                 for_statement.increment,
-    //                 Some(Expression::UnaryOperator(UnaryOperator {
-    //                     module_import: ModuleImport {
-    //                         sub_modules: vec![],
-    //                         identifier: Identifier {
-    //                             name: "i".to_string(),
-    //                             span: Span::new(25, 25),
-    //                             loc: Location::new(0, 29)
-    //                         },
-    //                         span: Span::new(25, 26),
-    //                         loc: Location::new(0, 29)
-    //                     },
-    //                     ty: UnaryOperatorType::PostIncrement,
-    //                     span: Span::new(25, 26),
-    //                     loc: Location::new(0, 31)
-    //                 }))
-    //             );
-    //             assert_eq!(
-    //                 for_statement.condition,
-    //                 Some(Expression::Infix(BinaryExpression {
-    //                     operator: Token {
-    //                         kind: TokenKind::LessThan,
-    //                         span: Span::new(19, 19)
-    //                     },
-    //                     left: Box::new(Expression::ModuleImport(ModuleImport {
-    //                         sub_modules: vec![],
-    //                         identifier: Identifier {
-    //                             name: "i".to_string(),
-    //                             span: Span::new(17, 17),
-    //                             loc: Location::new(0, 21)
-    //                         },
-    //                         span: Span::new(17, 18),
-    //                         loc: Location::new(0, 21)
-    //                     })),
-    //                     right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
-    //                     span: Span::new(17, 23),
-    //                     loc: Location::new(0, 25)
-    //                 }))
-    //             );
-    //         } else {
-    //             panic!("Expected an expression.");
-    //         }
-    //     }
-    // );
+    define_test!(
+        complete_for_loop,
+        "for #i: i32 = 0; i < 10; i++ { }",
+        |program: ProgramTree| {
+            if let Statement::For(for_statement) = &program.body[0] {
+                assert_eq!(
+                    for_statement.initializer,
+                    Some(Variable {
+                        name: "i".to_string(),
+                        ty: Some(TokenKind::I32),
+                        expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
+                        span: Span::new(4, 15),
+                        loc: Location::new(0, 19)
+                    })
+                );
+                assert_eq!(
+                    for_statement.increment,
+                    Some(Expression::UnaryOperator(UnaryOperator {
+                        module_import: ModuleImport {
+                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                                name: "i".to_string(),
+                                span: Span::new(25, 25),
+                                loc: Location::new(0, 29)
+                            })],
+                            span: Span::new(25, 26),
+                            loc: Location::new(0, 29)
+                        },
+                        ty: UnaryOperatorType::PostIncrement,
+                        span: Span::new(25, 26),
+                        loc: Location::new(0, 31)
+                    }))
+                );
+                assert_eq!(
+                    for_statement.condition,
+                    Some(Expression::Infix(BinaryExpression {
+                        operator: Token {
+                            kind: TokenKind::LessThan,
+                            span: Span::new(19, 19)
+                        },
+                        left: Box::new(Expression::ModuleImport(ModuleImport {
+                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                                name: "i".to_string(),
+                                span: Span::new(17, 17),
+                                loc: Location::new(0, 21)
+                            })],
+                            span: Span::new(17, 18),
+                            loc: Location::new(0, 21)
+                        })),
+                        right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
+                        span: Span::new(17, 23),
+                        loc: Location::new(0, 25)
+                    }))
+                );
+            } else {
+                panic!("Expected an expression.");
+            }
+        }
+    );
 
-    // define_test!(
-    //     only_initializer_for_loop,
-    //     "for #i: i32 = 0; { }",
-    //     |program: ProgramTree| {
-    //         if let Statement::For(for_statement) = &program.body[0] {
-    //             assert_eq!(
-    //                 for_statement.initializer,
-    //                 Some(Variable {
-    //                     name: "i".to_string(),
-    //                     ty: Some(TokenKind::I32),
-    //                     expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
-    //                     span: Span::new(4, 15),
-    //                     loc: Location::new(0, 19)
-    //                 })
-    //             );
-    //             assert_eq!(for_statement.increment, None);
-    //             assert_eq!(for_statement.condition, None);
-    //         } else {
-    //             panic!("Expected an expression.");
-    //         }
-    //     }
-    // );
+    define_test!(
+        only_initializer_for_loop,
+        "for #i: i32 = 0; { }",
+        |program: ProgramTree| {
+            if let Statement::For(for_statement) = &program.body[0] {
+                assert_eq!(
+                    for_statement.initializer,
+                    Some(Variable {
+                        name: "i".to_string(),
+                        ty: Some(TokenKind::I32),
+                        expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
+                        span: Span::new(4, 15),
+                        loc: Location::new(0, 19)
+                    })
+                );
+                assert_eq!(for_statement.increment, None);
+                assert_eq!(for_statement.condition, None);
+            } else {
+                panic!("Expected an expression.");
+            }
+        }
+    );
 
-    // define_test!(infinite_for_loop, "for { }", |program: ProgramTree| {
-    //     if let Statement::For(for_statement) = &program.body[0] {
-    //         assert_eq!(for_statement.initializer, None);
-    //         assert_eq!(for_statement.increment, None);
-    //         assert_eq!(for_statement.condition, None);
-    //     } else {
-    //         panic!("Expected an expression.");
-    //     }
-    // });
+    define_test!(infinite_for_loop, "for { }", |program: ProgramTree| {
+        if let Statement::For(for_statement) = &program.body[0] {
+            assert_eq!(for_statement.initializer, None);
+            assert_eq!(for_statement.increment, None);
+            assert_eq!(for_statement.condition, None);
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
 
-    // define_test!(
-    //     without_initializer_for_loop,
-    //     "for ; i < 0; i++ { }",
-    //     |program: ProgramTree| {
-    //         if let Statement::For(for_statement) = &program.body[0] {
-    //             assert_eq!(for_statement.initializer, None);
-    //             assert_eq!(
-    //                 for_statement.increment,
-    //                 Some(Expression::UnaryOperator(UnaryOperator {
-    //                     module_import: ModuleImport {
-    //                         sub_modules: vec![],
-    //                         identifier: Identifier {
-    //                             name: "i".to_string(),
-    //                             span: Span::new(13, 13),
-    //                             loc: Location::new(0, 17)
-    //                         },
-    //                         span: Span::new(13, 14),
-    //                         loc: Location::new(0, 17)
-    //                     },
-    //                     ty: UnaryOperatorType::PostIncrement,
-    //                     span: Span::new(13, 14),
-    //                     loc: Location::new(0, 19)
-    //                 }))
-    //             );
-    //             assert_eq!(
-    //                 for_statement.condition,
-    //                 Some(Expression::Infix(BinaryExpression {
-    //                     operator: Token {
-    //                         kind: TokenKind::LessThan,
-    //                         span: Span::new(8, 8)
-    //                     },
-    //                     left: Box::new(Expression::ModuleImport(ModuleImport {
-    //                         sub_modules: vec![],
-    //                         identifier: Identifier {
-    //                             name: "i".to_string(),
-    //                             span: Span::new(6, 6),
-    //                             loc: Location::new(0, 10)
-    //                         },
-    //                         span: Span::new(6, 7),
-    //                         loc: Location::new(0, 10)
-    //                     })),
-    //                     right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
-    //                     span: Span::new(6, 11),
-    //                     loc: Location::new(0, 13)
-    //                 }))
-    //             );
-    //         } else {
-    //             panic!("Expected an expression.");
-    //         }
-    //     }
-    // );
+    define_test!(
+        without_initializer_for_loop,
+        "for ; i < 0; i++ { }",
+        |program: ProgramTree| {
+            if let Statement::For(for_statement) = &program.body[0] {
+                assert_eq!(for_statement.initializer, None);
+                assert_eq!(
+                    for_statement.increment,
+                    Some(Expression::UnaryOperator(UnaryOperator {
+                        module_import: ModuleImport {
+                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                                name: "i".to_string(),
+                                span: Span::new(13, 13),
+                                loc: Location::new(0, 17)
+                            })],
+                            span: Span::new(13, 14),
+                            loc: Location::new(0, 17)
+                        },
+                        ty: UnaryOperatorType::PostIncrement,
+                        span: Span::new(13, 14),
+                        loc: Location::new(0, 19)
+                    }))
+                );
+                assert_eq!(
+                    for_statement.condition,
+                    Some(Expression::Infix(BinaryExpression {
+                        operator: Token {
+                            kind: TokenKind::LessThan,
+                            span: Span::new(8, 8)
+                        },
+                        left: Box::new(Expression::ModuleImport(ModuleImport {
+                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                                name: "i".to_string(),
+                                span: Span::new(6, 6),
+                                loc: Location::new(0, 10)
+                            })],
+                            span: Span::new(6, 7),
+                            loc: Location::new(0, 10)
+                        })),
+                        right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
+                        span: Span::new(6, 11),
+                        loc: Location::new(0, 13)
+                    }))
+                );
+            } else {
+                panic!("Expected an expression.");
+            }
+        }
+    );
 
-    // define_test!(control_flow_1, "if a == 1 {}", |program: ProgramTree| {
-    //     if let Statement::If(if_statement) = &program.body[0] {
-    //         assert_eq!(
-    //             if_statement.condition,
-    //             Expression::Infix(BinaryExpression {
-    //                 operator: Token {
-    //                     kind: TokenKind::Equal,
-    //                     span: Span::new(5, 6)
-    //                 },
-    //                 left: Box::new(Expression::ModuleImport(ModuleImport {
-    //                     sub_modules: vec![],
-    //                     identifier: Identifier {
-    //                         name: "a".to_string(),
-    //                         span: Span::new(3, 3),
-    //                         loc: Location::new(0, 8)
-    //                     },
-    //                     span: Span::new(3, 4),
-    //                     loc: Location::new(0, 8)
-    //                 })),
-    //                 right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))),
-    //                 span: Span::new(3, 9),
-    //                 loc: Location::new(0, 12)
-    //             })
-    //         );
-    //         assert_eq!(if_statement.alternate, None);
-    //         assert_eq!(if_statement.branches, vec![]);
-    //     } else {
-    //         panic!("Expected an expression.");
-    //     }
-    // });
+    define_test!(control_flow_1, "if a == 1 {}", |program: ProgramTree| {
+        if let Statement::If(if_statement) = &program.body[0] {
+            assert_eq!(
+                if_statement.condition,
+                Expression::Infix(BinaryExpression {
+                    operator: Token {
+                        kind: TokenKind::Equal,
+                        span: Span::new(5, 6)
+                    },
+                    left: Box::new(Expression::ModuleImport(ModuleImport {
+                        sub_modules: vec![ModulePath::SubModule(Identifier {
+                            name: "a".to_string(),
+                            span: Span::new(3, 3),
+                            loc: Location::new(0, 8)
+                        })],
+                        span: Span::new(3, 4),
+                        loc: Location::new(0, 8)
+                    })),
+                    right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))),
+                    span: Span::new(3, 9),
+                    loc: Location::new(0, 12)
+                })
+            );
+            assert_eq!(if_statement.alternate, None);
+            assert_eq!(if_statement.branches, vec![]);
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
 
-    // define_test!(control_flow_2, "if some_value {}", |program: ProgramTree| {
-    //     if let Statement::If(if_statement) = &program.body[0] {
-    //         assert_eq!(
-    //             if_statement.condition,
-    //             Expression::ModuleImport(ModuleImport {
-    //                 sub_modules: vec![],
-    //                 identifier: Identifier {
-    //                     name: "some_value".to_string(),
-    //                     span: Span::new(3, 12),
-    //                     loc: Location::new(0, 16)
-    //                 },
-    //                 span: Span::new(3, 13),
-    //                 loc: Location::new(0, 16)
-    //             })
-    //         );
-    //         assert_eq!(if_statement.alternate, None);
-    //         assert_eq!(if_statement.branches, vec![]);
-    //     } else {
-    //         panic!("Expected an expression.");
-    //     }
-    // });
+    define_test!(control_flow_2, "if some_value {}", |program: ProgramTree| {
+        if let Statement::If(if_statement) = &program.body[0] {
+            assert_eq!(
+                if_statement.condition,
+                Expression::ModuleImport(ModuleImport {
+                    sub_modules: vec![ModulePath::SubModule(Identifier {
+                        name: "some_value".to_string(),
+                        span: Span::new(3, 12),
+                        loc: Location::new(0, 16)
+                    })],
+                    span: Span::new(3, 13),
+                    loc: Location::new(0, 16)
+                })
+            );
+            assert_eq!(if_statement.alternate, None);
+            assert_eq!(if_statement.branches, vec![]);
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
 
-    // define_test!(
-    //     enum_1,
-    //     "enum Color { RED, BLUE(variant: string, opacity: f64) }",
-    //     |program: ProgramTree| {
-    //         if let Statement::Enum(enum_decl) = &program.body[0] {
-    //             assert_eq!(enum_decl.name.name, "Color");
-    //             assert_eq!(enum_decl.variants.len(), 2);
-    //             assert_eq!(
-    //                 enum_decl.variants,
-    //                 vec![
-    //                     EnumVariant {
-    //                         name: Identifier {
-    //                             name: "RED".to_string(),
-    //                             span: Span::new(13, 16),
-    //                             loc: Location::new(0, 18)
-    //                         },
-    //                         fields: None,
-    //                     },
-    //                     EnumVariant {
-    //                         name: Identifier {
-    //                             name: "BLUE".to_string(),
-    //                             span: Span::new(18, 22),
-    //                             loc: Location::new(0, 24)
-    //                         },
-    //                         fields: Some(vec![
-    //                             EnumField {
-    //                                 name: Identifier {
-    //                                     name: "variant".to_string(),
-    //                                     span: Span::new(23, 30),
-    //                                     loc: Location::new(0, 32)
-    //                                 },
-    //                                 field_type: TokenKind::String,
-    //                             },
-    //                             EnumField {
-    //                                 name: Identifier {
-    //                                     name: "opacity".to_string(),
-    //                                     span: Span::new(40, 47),
-    //                                     loc: Location::new(0, 49)
-    //                                 },
-    //                                 field_type: TokenKind::F64,
-    //                             }
-    //                         ]),
-    //                     }
-    //                 ]
-    //             );
-    //         } else {
-    //             panic!("Expected an expression.");
-    //         }
-    //     }
-    // );
+    define_test!(
+        enum_1,
+        "enum Color { RED, BLUE(variant: string, opacity: f64) }",
+        |program: ProgramTree| {
+            if let Statement::Enum(enum_decl) = &program.body[0] {
+                assert_eq!(enum_decl.name.name, "Color");
+                assert_eq!(enum_decl.variants.len(), 2);
+                assert_eq!(
+                    enum_decl.variants,
+                    vec![
+                        EnumVariant {
+                            name: Identifier {
+                                name: "RED".to_string(),
+                                span: Span::new(13, 16),
+                                loc: Location::new(0, 18)
+                            },
+                            fields: None,
+                        },
+                        EnumVariant {
+                            name: Identifier {
+                                name: "BLUE".to_string(),
+                                span: Span::new(18, 22),
+                                loc: Location::new(0, 24)
+                            },
+                            fields: Some(vec![
+                                EnumField {
+                                    name: Identifier {
+                                        name: "variant".to_string(),
+                                        span: Span::new(23, 30),
+                                        loc: Location::new(0, 32)
+                                    },
+                                    field_type: TokenKind::String,
+                                },
+                                EnumField {
+                                    name: Identifier {
+                                        name: "opacity".to_string(),
+                                        span: Span::new(40, 47),
+                                        loc: Location::new(0, 49)
+                                    },
+                                    field_type: TokenKind::F64,
+                                }
+                            ]),
+                        }
+                    ]
+                );
+            } else {
+                panic!("Expected an expression.");
+            }
+        }
+    );
 
-    // define_test!(enum_2, "enum Color { RED, BLUE }", |program: ProgramTree| {
-    //     if let Statement::Enum(enum_decl) = &program.body[0] {
-    //         assert_eq!(enum_decl.name.name, "Color");
-    //         assert_eq!(enum_decl.variants.len(), 2);
-    //         assert_eq!(
-    //             enum_decl.variants,
-    //             vec![
-    //                 EnumVariant {
-    //                     name: Identifier {
-    //                         name: "RED".to_string(),
-    //                         span: Span::new(13, 16),
-    //                         loc: Location::new(0, 18)
-    //                     },
-    //                     fields: None,
-    //                 },
-    //                 EnumVariant {
-    //                     name: Identifier {
-    //                         name: "BLUE".to_string(),
-    //                         span: Span::new(18, 22),
-    //                         loc: Location::new(0, 25)
-    //                     },
-    //                     fields: None
-    //                 }
-    //             ]
-    //         );
-    //     } else {
-    //         panic!("Expected an expression.");
-    //     }
-    // });
+    define_test!(enum_2, "enum Color { RED, BLUE }", |program: ProgramTree| {
+        if let Statement::Enum(enum_decl) = &program.body[0] {
+            assert_eq!(enum_decl.name.name, "Color");
+            assert_eq!(enum_decl.variants.len(), 2);
+            assert_eq!(
+                enum_decl.variants,
+                vec![
+                    EnumVariant {
+                        name: Identifier {
+                            name: "RED".to_string(),
+                            span: Span::new(13, 16),
+                            loc: Location::new(0, 18)
+                        },
+                        fields: None,
+                    },
+                    EnumVariant {
+                        name: Identifier {
+                            name: "BLUE".to_string(),
+                            span: Span::new(18, 22),
+                            loc: Location::new(0, 25)
+                        },
+                        fields: None
+                    }
+                ]
+            );
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
 
-    // define_test!(enum_3, "enum Color { }", |program: ProgramTree| {
-    //     if let Statement::Enum(enum_decl) = &program.body[0] {
-    //         assert_eq!(enum_decl.name.name, "Color");
-    //         assert_eq!(enum_decl.variants.len(), 0);
-    //         assert_eq!(enum_decl.variants, vec![]);
-    //     } else {
-    //         panic!("Expected an expression.");
-    //     }
-    // });
+    define_test!(enum_3, "enum Color { }", |program: ProgramTree| {
+        if let Statement::Enum(enum_decl) = &program.body[0] {
+            assert_eq!(enum_decl.name.name, "Color");
+            assert_eq!(enum_decl.variants.len(), 0);
+            assert_eq!(enum_decl.variants, vec![]);
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
 }
