@@ -54,9 +54,6 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier { .. } => {
                 if self.peek_token_is(TokenKind::LeftParen) {
                     let func_call = self.parse_func_call()?;
-                    if self.current_token_is(TokenKind::Dot) {
-                        self.next_token();
-                    }
                     return Ok(self.parse_field_access_or_method_call(Box::new(func_call))?);
                 }
 
@@ -203,7 +200,7 @@ impl<'a> Parser<'a> {
                 });
             }
         };
-
+        
         if self.current_token_is(TokenKind::Dot) {
             return Ok(self.parse_field_access_or_method_call(Box::new(expr))?);
         }
@@ -249,7 +246,9 @@ impl<'a> Parser<'a> {
                     loc: self.current_location(),
                 })))
             }
-            TokenKind::LeftParen => Some(Ok(self.parse_field_access_or_method_call(Box::new(left)).ok()?)),
+            TokenKind::LeftParen =>{
+                return Some(Ok(self.parse_field_access_or_method_call(Box::new(left)).ok()?));
+            }
             _ => None,
         }
     }
@@ -328,7 +327,7 @@ impl<'a> Parser<'a> {
         let identifier = self.parse_identifier()?;
         self.next_token(); // consume identifier
 
-        let arguments = self.parse_expression_series(TokenKind::RightParen).unwrap().0;
+        let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
         if !self.current_token_is(TokenKind::RightParen) {
             return Err(CompileTimeError {
                 location: self.current_location(),
@@ -355,7 +354,9 @@ impl<'a> Parser<'a> {
             loop {
                 if self.current_token_is(TokenKind::Dot) {
                     self.next_token();
-                } else {
+                } 
+                else if self.peek_token_is(TokenKind::LeftParen) {}
+                else {
                     break;
                 }
 
@@ -382,12 +383,6 @@ impl<'a> Parser<'a> {
                         loc: self.current_location(),
                     }));
                 }
-
-                dbg!(self.current_token.kind.clone());
-
-                // if !self.current_token_is(TokenKind::Dot) {
-                //     break;
-                // }
             }
         }
 

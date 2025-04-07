@@ -3,6 +3,7 @@ mod tests {
     use crate::Parser;
     use ast::ast::*;
     use ast::token::*;
+    use either::Either;
     use lexer::Lexer;
 
     fn parse(test_name: String, input: &'static str) -> ProgramTree {
@@ -122,48 +123,48 @@ mod tests {
         }
     });
 
-    // define_test!(array_literal, "[1, 2, 3, func_call(1, 2)]", |program: ProgramTree| {
-    //     if let Statement::Expression(expression) = &program.body[0] {
-    //         if let Expression::Array(array) = expression {
-    //             assert_eq!(array.elements.len(), 4);
-    //             assert_eq!(
-    //                 array.elements[0],
-    //                 Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))
-    //             );
-    //             assert_eq!(
-    //                 array.elements[1],
-    //                 Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
-    //             );
-    //             assert_eq!(
-    //                 array.elements[2],
-    //                 Expression::Literal(Literal::Integer(IntegerLiteral::I32(3)))
-    //             );
-    //             assert_eq!(
-    //                 array.elements[3],
-    //                 Expression::FieldAccessOrMethodCall(FieldAccessOrMethodCall {
-    //                     expr: Box::new(Expression::FuncCall(FuncCall {
-    //                         identifier: Identifier {
-    //                             name: "func_call".to_string(),
-    //                             span: Span::new(10, 19),
-    //                             loc: Location::new(0, 21)
-    //                         },
-    //                         arguments: vec![
-    //                             Expression::Literal(Literal::Integer(IntegerLiteral::I32(1))),
-    //                             Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
-    //                         ],
-    //                         span: Span::new(10, 24),
-    //                         loc: Location::new(0, 27)
-    //                     })),
-    //                     chains: Vec::new()
-    //                 })
-    //             );
-    //         } else {
-    //             panic!("Expected an array literal but got something else.");
-    //         }
-    //     } else {
-    //         panic!("Expected an expression but got something else.");
-    //     }
-    // });
+    define_test!(array_literal, "[1, 2, 3, func_call(1, 2)]", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::Array(array) = expression {
+                assert_eq!(array.elements.len(), 4);
+                assert_eq!(
+                    array.elements[0],
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))
+                );
+                assert_eq!(
+                    array.elements[1],
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
+                );
+                assert_eq!(
+                    array.elements[2],
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(3)))
+                );
+                assert_eq!(
+                    array.elements[3],
+                    Expression::FieldAccessOrMethodCall(FieldAccessOrMethodCall {
+                        expr: Box::new(Expression::FuncCall(FuncCall {
+                            identifier: Identifier {
+                                name: "func_call".to_string(),
+                                span: Span::new(10, 19),
+                                loc: Location::new(0, 21)
+                            },
+                            arguments: vec![
+                                Expression::Literal(Literal::Integer(IntegerLiteral::I32(1))),
+                                Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
+                            ],
+                            span: Span::new(10, 24),
+                            loc: Location::new(0, 27)
+                        })),
+                        chains: Vec::new()
+                    })
+                );
+            } else {
+                panic!("Expected an array literal but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
     define_test!(variable_assignment, "x = 5;", |program: ProgramTree| {
         if let Statement::Expression(expression) = &program.body[0] {
@@ -225,136 +226,157 @@ mod tests {
         }
     );
 
-    // define_test!(array_index, "arr[0][1]", |program: ProgramTree| {
-    //     if let Statement::Expression(expression) = &program.body[0] {
-    //         if let Expression::ArrayIndex(array_index) = expression {
-    //             assert_eq!(array_index.dimensions.len(), 2);
-    //             assert_eq!(
-    //                 array_index.dimensions[0],
-    //                 Expression::Array(Array {
-    //                     elements: vec![Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))],
-    //                     span: Span::new(3, 5),
-    //                     loc: Location { line: 0, column: 8 }
-    //                 })
-    //             );
-    //             assert_eq!(
-    //                 array_index.dimensions[1],
-    //                 Expression::Array(Array {
-    //                     elements: vec![Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))],
-    //                     span: Span::new(6, 8),
-    //                     loc: Location { line: 0, column: 10 }
-    //                 })
-    //             );
-    //         } else {
-    //             panic!("Expected an array index but got something else.");
-    //         }
-    //     } else {
-    //         panic!("Expected an expression but got something else.");
-    //     }
-    // });
+    define_test!(array_index, "arr[0][1]", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::ArrayIndex(array_index) = expression {
+                assert_eq!(array_index.dimensions.len(), 2);
+                assert_eq!(
+                    array_index.dimensions[0],
+                    Expression::Array(Array {
+                        elements: vec![Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))],
+                        span: Span::new(3, 5),
+                        loc: Location { line: 0, column: 8 }
+                    })
+                );
+                assert_eq!(
+                    array_index.dimensions[1],
+                    Expression::Array(Array {
+                        elements: vec![Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))],
+                        span: Span::new(6, 8),
+                        loc: Location { line: 0, column: 10 }
+                    })
+                );
+            } else {
+                panic!("Expected an array index but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-    // define_test!(module_import, "object.field;", |program: ProgramTree| {
-    //     if let Statement::Expression(expression) = &program.body[0] {
-    //         if let Expression::ModuleImport(module_import) = expression {
-    //             assert_eq!(
-    //                 module_import.sub_modules[0],
-    //                 ModulePath::SubModule(Identifier {
-    //                     name: "object".to_string(),
-    //                     span: Span::new(0, 5),
-    //                     loc: Location::new(0, 8),
-    //                 })
-    //             );
-    //             assert_eq!(module_import.identifier.name, "field");
-    //         } else {
-    //             panic!("Expected a module import but got something else.");
-    //         }
-    //     } else {
-    //         panic!("Expected an expression but got something else.");
-    //     }
-    // });
+    define_test!(module_import, "object.field;", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::ModuleImport(module_import) = expression {
+                assert_eq!(
+                    module_import.sub_modules[0],
+                    ModulePath::SubModule(Identifier {
+                        name: "object".to_string(),
+                        span: Span::new(0, 5),
+                        loc: Location::new(0, 8),
+                    })
+                );
+                assert_eq!(
+                    module_import.sub_modules[1],
+                    ModulePath::SubModule(Identifier {
+                        name: "field".to_string(),
+                        span: Span::new(7, 11),
+                        loc: Location::new(0, 14),
+                    })
+                );
+            } else {
+                panic!("Expected a module import but got something else.");
+            }
+        } else {
+            panic!("Expected an expression but got something else.");
+        }
+    });
 
-    // // define_test!(
-    // //     field_access_or_method_call_1,
-    // //     "object.method(1, 2)",
-    // //     |program: ProgramTree| {
-    // //         if let Statement::Expression(expression) = &program.body[0] {
-    // //             if let Expression::FieldAccessOrMethodCall(field_access_or_method_call) = expression {
-    // //                 let method_call = field_access_or_method_call[0].method_call.clone().unwrap();
-    // //                 assert_eq!(
-    // //                     method_call.arguments[0],
-    // //                     Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))
-    // //                 );
-    // //                 assert_eq!(
-    // //                     method_call.arguments[1],
-    // //                     Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
-    // //                 );
-    // //                 assert_eq!(
-    // //                     method_call.func_name.identifier,
-    // //                     Identifier {
-    // //                         name: "method".to_string(),
-    // //                         span: Span::new(7, 12),
-    // //                         loc: Location { line: 0, column: 14 }
-    // //                     }
-    // //                 );
-    // //                 assert_eq!(
-    // //                     method_call.func_name.sub_modules,
-    // //                     vec![ModulePath::SubModule(Identifier {
-    // //                         name: "object".to_string(),
-    // //                         span: Span::new(0, 5),
-    // //                         loc: Location { line: 0, column: 8 }
-    // //                     })]
-    // //                 )
-    // //             } else {
-    // //                 panic!("Expected a field access or method call but got something else.");
-    // //             }
-    // //         } else {
-    // //             panic!("Expected an expression but got something else.");
-    // //         }
-    // //     }
-    // // );
+    define_test!(
+        field_access_or_method_call_1,
+        "object.method(1, 2)",
+        |program: ProgramTree| {
+            if let Statement::Expression(expression) = &program.body[0] {
+                if let Expression::FieldAccessOrMethodCall(field_access_or_method_call) = expression {
+                    assert_eq!(
+                        field_access_or_method_call.expr,
+                        Box::new(Expression::ModuleImport(ModuleImport {
+                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                                name: "object".to_string(),
+                                span: Span::new(0, 5),
+                                loc: Location::new(0, 8),
+                            })],
+                            span: Span::new(0, 13),
+                            loc: Location::new(0, 15)
+                        }))
+                    );
+                    assert_eq!(
+                        field_access_or_method_call.chains,
+                        vec![Either::Left(FuncCall {
+                            identifier: Identifier {
+                                name: "method".to_string(),
+                                span: Span::new(7, 13),
+                                loc: Location::new(0, 15)
+                            },
+                            arguments: vec![
+                                Expression::Literal(Literal::Integer(IntegerLiteral::I32(1))),
+                                Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
+                            ],
+                            span: Span::new(7, 19),
+                            loc: Location::new(0, 20)
+                        })]
+                    )
+                } else {
+                    panic!("Expected a field access or method call but got something else.");
+                }
+            } else {
+                panic!("Expected an expression but got something else.");
+            }
+        }
+    );
 
-    // define_test!(
-    //     field_access_or_method_call_2,
-    //     "object.method(1, 2).field_access",
-    //     |program: ProgramTree| {
-    //         if let Statement::Expression(expression) = &program.body[0] {
-    //             if let Expression::FieldAccessOrMethodCall(field_access_or_method_call) = expression {
-    //                 // let field_access = field_access_or_method_call[1].field_access.clone().unwrap();
-    //                 // assert_eq!(field_access.identifier.name, "field_access");
-
-    //                 // let method_call = field_access_or_method_call[0].method_call.clone().unwrap();
-    //                 // assert_eq!(
-    //                 //     method_call.arguments[0],
-    //                 //     Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))
-    //                 // );
-    //                 // assert_eq!(
-    //                 //     method_call.arguments[1],
-    //                 //     Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
-    //                 // );
-    //                 // assert_eq!(
-    //                 //     method_call.func_name.identifier,
-    //                 //     Identifier {
-    //                 //         name: "method".to_string(),
-    //                 //         span: Span::new(7, 12),
-    //                 //         loc: Location { line: 0, column: 14 }
-    //                 //     }
-    //                 // );
-    //                 // assert_eq!(
-    //                 //     method_call.func_name.sub_modules,
-    //                 //     vec![ModulePath::SubModule(Identifier {
-    //                 //         name: "object".to_string(),
-    //                 //         span: Span::new(0, 5),
-    //                 //         loc: Location { line: 0, column: 8 }
-    //                 //     })]
-    //                 // )
-    //             } else {
-    //                 panic!("Expected a field access or method call but got something else.");
-    //             }
-    //         } else {
-    //             panic!("Expected an expression but got something else.");
-    //         }
-    //     }
-    // );
+    define_test!(
+        field_access_or_method_call_2,
+        "object.method(1, 2).field_access",
+        |program: ProgramTree| {
+            if let Statement::Expression(expression) = &program.body[0] {
+                if let Expression::FieldAccessOrMethodCall(field_access_or_method_call) = expression {
+                    assert_eq!(
+                        field_access_or_method_call.expr,
+                        Box::new(Expression::ModuleImport(ModuleImport {
+                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                                name: "object".to_string(),
+                                span: Span::new(0, 5),
+                                loc: Location::new(0, 8),
+                            })],
+                            span: Span::new(0, 13),
+                            loc: Location::new(0, 15)
+                        }))
+                    );
+                    assert_eq!(
+                        field_access_or_method_call.chains,
+                        vec![
+                            Either::Left(FuncCall {
+                                identifier: Identifier {
+                                    name: "method".to_string(),
+                                    span: Span::new(7, 13),
+                                    loc: Location::new(0, 15)
+                                },
+                                arguments: vec![
+                                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(1))),
+                                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
+                                ],
+                                span: Span::new(7, 19),
+                                loc: Location::new(0, 33)
+                            }),
+                            Either::Right(FieldAccess {
+                                identifier: Identifier {
+                                    name: "field_access".to_string(),
+                                    span: Span::new(20, 32),
+                                    loc: Location::new(0, 33)
+                                },
+                                span: Span::new(20, 32),
+                                loc: Location::new(0, 33)
+                            })
+                        ]
+                    )
+                } else {
+                    panic!("Expected a field access or method call but got something else.");
+                }
+            } else {
+                panic!("Expected an expression but got something else.");
+            }
+        }
+    );
 
     // define_test!(cast_as, "10 as f64", |program: ProgramTree| {
     //     if let Statement::Expression(expression) = &program.body[0] {
