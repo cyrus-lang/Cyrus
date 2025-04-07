@@ -48,6 +48,7 @@ pub enum Expression {
     AddressOf(Box<Expression>),
     Dereference(Box<Expression>),
     StructInit(StructInit),
+    FuncCall(FuncCall),
     FieldAccessOrMethodCall(FieldAccessOrMethodCall),
 }
 

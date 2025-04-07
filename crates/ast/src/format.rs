@@ -127,6 +127,14 @@ impl fmt::Display for Expression {
             }) => {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
+            Expression::FuncCall(func_call) => {
+                write!(
+                    f,
+                    "{}({})",
+                    func_call.identifier.name,
+                    expression_series_to_string(func_call.arguments.clone())
+                )
+            }
             Expression::FieldAccessOrMethodCall(field_access_or_method_call) => {
                 write!(f, "{}", field_access_or_method_call.expr.to_string())?;
 
@@ -140,7 +148,7 @@ impl fmt::Display for Expression {
                 Ok(())
             }
             Expression::Array(array) => {
-                write!(f, "[{}]", array_items_to_string(array.clone()))
+                write!(f, "[{}]", expression_series_to_string(array.elements.clone()))
             }
             Expression::ArrayIndex(array_index) => {
                 write!(
@@ -197,14 +205,9 @@ impl fmt::Display for Expression {
     }
 }
 
-fn array_items_to_string(array: Array) -> String {
-    let arr_str = array
-        .elements
-        .iter()
-        .map(|c| c.to_string())
-        .collect::<Vec<String>>()
-        .join(", ");
-    arr_str
+fn expression_series_to_string(exprs: Vec<Expression>) -> String {
+    let str = exprs.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
+    str
 }
 
 impl fmt::Display for Statement {
