@@ -24,8 +24,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_load(
                     Rc::clone(&scope),
                     ModuleImport {
-                        sub_modules: Vec::new(),
-                        identifier: identifier.clone(),
+                        sub_modules: vec![ModulePath::SubModule(identifier.clone())],
                         span: identifier.span,
                         loc: identifier.loc,
                     },
@@ -41,8 +40,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Infix(binary_expression) => self.build_infix_expr(Rc::clone(&scope), binary_expression),
             Expression::UnaryOperator(unary_operator) => self.build_unary_operator(Rc::clone(&scope), unary_operator),
             Expression::CastAs(cast_as) => self.build_cast_as(Rc::clone(&scope), cast_as),
-            Expression::FieldAccessOrMethodCall(field_access_or_method_calls) => {
-                self.build_field_access_or_method_call(Rc::clone(&scope), field_access_or_method_calls)
+            Expression::FieldAccessOrMethodCall(field_access_or_method_call) => {
+                self.build_field_access_or_method_call(Rc::clone(&scope), field_access_or_method_call)
             }
             Expression::AddressOf(expr) => self.build_address_of(Rc::clone(&scope), *expr),
             Expression::Dereference(expression) => self.build_deref(Rc::clone(&scope), *expression),
@@ -54,6 +53,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 AnyValue::PointerValue(self.build_null())
             }
             Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import).0,
+            Expression::FuncCall(func_call) => {
+                let call_site_value = self.build_func_call(Rc::clone(&scope), func_call);
+                if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
+                    AnyValue::try_from(basic_value).unwrap()
+                } else {
+                    AnyValue::PointerValue(self.build_null())
+                }
+            }
         }
     }
 
@@ -148,7 +155,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match scope.borrow_mut().get(first_sub_module.name.clone()) {
                 Some(record) => record,
                 None => {
-                    // TODO 
+                    // TODO
                     // Look up for imported libraries
                     todo!();
                 }
@@ -169,7 +176,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
                 ModulePath::SubModule(identifier) => {
                     // in this part of loading, we expect our object to be a struct or a sub_module.
-                    if let AnyType::StructType(struct_type)  = record.1 {
+                    if let AnyType::StructType(struct_type) = record.1 {
                         // self.builder.build_load(pointee_ty, ptr, name)
                     } else {
                         // TODO

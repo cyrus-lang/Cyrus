@@ -240,20 +240,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_field_access_or_method_call(
         &self,
         scope: ScopeRef<'ctx>,
-        field_access_or_method_calls: Vec<FieldAccessOrMethodCall>,
+        field_access_or_method_call: FieldAccessOrMethodCall,
     ) -> AnyValue<'ctx> {
-        let mut final_result = AnyValue::PointerValue(self.build_null());
+        let mut final_result = self.build_expr(Rc::clone(&scope), *field_access_or_method_call.expr);
 
-        for field_access_or_method_call in field_access_or_method_calls {
-            if let Some(method_call) = field_access_or_method_call.method_call {
-                let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
-                if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-                    final_result = AnyValue::try_from(basic_value).unwrap();
+        for item in field_access_or_method_call.chains {
+            match item {
+                either::Either::Left(method_call) => {
+                    let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
+                    if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
+                        final_result = AnyValue::try_from(basic_value).unwrap();
+                    }
                 }
-            } else if let Some(field_access) = field_access_or_method_call.field_access {
-                todo!();
-            } else {
-                unreachable!();
+                either::Either::Right(_) => todo!(),
             }
         }
 

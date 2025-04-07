@@ -149,6 +149,7 @@ dependencies = [
  "clap",
  "colorized",
  "crc32fast",
+ "either",
  "inkwell",
  "parser",
  "rand 0.9.0",
