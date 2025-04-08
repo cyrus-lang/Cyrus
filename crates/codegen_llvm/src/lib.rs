@@ -17,6 +17,7 @@ use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::DerefMut;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
@@ -45,7 +46,7 @@ pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
     opts: Options,
     context: &'ctx Context,
-    module: Module<'ctx>,
+    module: Rc<RefCell<Module<'ctx>>>,
     builder: Builder<'ctx>,
     target_machine: TargetMachine,
     build_manifest: BuildManifest,
@@ -76,15 +77,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
         // TODO Assure module names to be unique by their absolute path
-        let module = context.create_module(&file_name);
+        let module = Rc::new(RefCell::new(context.create_module(&file_name)));
         let builder = context.create_builder();
 
-        let target_machine = CodeGenLLVM::target_machine(&module);
+        let target_machine = CodeGenLLVM::target_machine(Rc::clone(&module));
 
         let mut codegen_llvm = CodeGenLLVM {
             opts,
             context,
-            module,
             builder,
             program,
             file_path,
@@ -101,6 +101,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_block_ref: None,
             terminated_blocks: Vec::new(),
             string_type: CodeGenLLVM::build_string_type(context),
+            module,
             loaded_modules: HashMap::new(),
         };
 
@@ -108,7 +109,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         Ok(codegen_llvm)
     }
 
-    pub fn target_machine(module: &Module) -> TargetMachine {
+    pub fn target_machine(module: Rc<RefCell<Module>>) -> TargetMachine {
+        let module = module.borrow_mut();
         Target::initialize_native(&InitializationConfig::default()).unwrap();
         let target_triple = TargetMachine::get_default_triple();
         let cpu = TargetMachine::get_host_cpu_name().to_string();

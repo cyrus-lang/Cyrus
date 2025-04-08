@@ -11,12 +11,13 @@ use inkwell::types::FunctionType;
 use inkwell::values::{BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::DerefMut;
 use std::process::exit;
 use std::rc::Rc;
 
 pub struct FuncMetadata<'a> {
     pub ptr: FunctionValue<'a>,
-    pub vis_type: VisType,
+    pub func_decl: FuncDecl,
 }
 
 pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
@@ -61,18 +62,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_decl.name.clone(),
             func_decl.loc.clone(),
             func_decl.span.end,
-            func_decl.params.list,
+            func_decl.params.list.clone(),
         );
 
         let return_type = self.build_type(
             func_decl
                 .return_type
+                .clone()
                 .unwrap_or(Token {
                     kind: TokenKind::Void,
                     span: Span::default(),
                 })
                 .kind,
-            func_decl.loc,
+            func_decl.loc.clone(),
             func_decl.span.end,
         );
 
@@ -86,13 +88,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let func_linkage = self.build_linkage(func_decl.vis_type.clone());
-        let func_ptr = self.module.add_function(&func_decl.name, fn_type, Some(func_linkage));
+        let func_ptr = self
+            .module
+            .borrow_mut()
+            .deref_mut()
+            .add_function(&func_decl.name, fn_type, Some(func_linkage));
 
         self.func_table.insert(
-            func_decl.name,
+            func_decl.name.clone(),
             FuncMetadata {
+                func_decl: func_decl.clone(),
                 ptr: func_ptr,
-                vis_type: func_decl.vis_type,
             },
         );
 
@@ -101,6 +107,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_func_def(&mut self, func_def: FuncDef) -> FunctionValue<'ctx> {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+
+        let func_decl = FuncDecl {
+            name: func_def.name.clone(),
+            params: func_def.params.clone(),
+            return_type: func_def.return_type.clone(),
+            vis_type: func_def.vis_type.clone(),
+            renamed_as: None,
+            span: func_def.span.clone(),
+            loc: func_def.loc.clone(),
+        };
 
         let is_var_args = func_def.params.variadic.is_some();
         let mut param_types = self.build_func_params(
@@ -130,7 +146,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let func_linkage = self.build_linkage(func_def.vis_type.clone());
-        let func = self.module.add_function(&func_def.name, fn_type, Some(func_linkage));
+        let func = self
+            .module
+            .borrow_mut()
+            .deref_mut()
+            .add_function(&func_def.name, fn_type, Some(func_linkage));
         self.current_func_ref = Some(func);
 
         let entry_block = self.context.append_basic_block(func, "entry");
@@ -190,8 +210,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.func_table.insert(
             func_def.name,
             FuncMetadata {
+                func_decl,
                 ptr: func,
-                vis_type: func_def.vis_type,
             },
         );
 
@@ -298,7 +318,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
         // FIXME
         todo!();
-        
+
         // let arguments = &self.build_arguments(
         //     Rc::clone(&scope),
         //     func_call.arguments,

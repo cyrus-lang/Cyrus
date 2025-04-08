@@ -22,6 +22,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::process::exit;
 use std::thread::sleep;
@@ -78,7 +79,7 @@ type MainFunc = unsafe extern "C" fn() -> c_void;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn optimize(&self) {
-        let fpm = PassManager::create(&self.module);
+        let fpm = PassManager::create(self.module.borrow_mut().deref_mut());
         self.target_machine.add_analysis_passes(&fpm);
         fpm.initialize();
         fpm.finalize();
@@ -125,7 +126,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             let main_func_ptr = self.build_func_def(main_func.clone());
 
-            let entry_point = self.module.add_function("main", fn_type, Some(Linkage::External));
+            let entry_point = self.module.borrow_mut().deref_mut().add_function("main", fn_type, Some(Linkage::External));
             let entry_block = self.context.append_basic_block(entry_point, "entry");
             self.builder.position_at_end(entry_block);
             self.builder.build_call(main_func_ptr, &[], "call_main").unwrap();
@@ -145,7 +146,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn execute(&mut self) {
         let opt_level = self.build_optimization_level(self.opts.opt_level);
-        let execution_engine = self.module.create_jit_execution_engine(opt_level).unwrap();
+        let execution_engine = self.module.borrow_mut().deref_mut().create_jit_execution_engine(opt_level).unwrap();
 
         // TODO
         // Perform in-memory linkage
@@ -180,7 +181,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn emit_llvm_ir(&mut self, output_path: Option<String>) {
         if let Some(output_path) = output_path {
-            if let Err(err) = self.module.print_to_file(output_path) {
+            if let Err(err) = self.module.borrow_mut().deref_mut().print_to_file(output_path) {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!("Failed to print llvm-ir into file:\n{}", err.to_string())),
@@ -202,7 +203,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         if let Some(output_path) = output_path {
             if let Err(err) =
                 self.target_machine
-                    .write_to_file(&self.module, FileType::Assembly, Path::new(&output_path))
+                    .write_to_file(&self.module.borrow_mut().deref_mut(), FileType::Assembly, Path::new(&output_path))
             {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -222,7 +223,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn generate_executable_file(&self, output_path: Option<String>) {
-        let object_files: String;
+        let object_files: Vec<String>;
         let output_path = {
             if let Some(path) = output_path {
                 // generate object file path and save it in system temp
@@ -230,7 +231,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 temp_path.push(format!("{}.o", generate_random_hex()));
                 let temp_path_str = temp_path.to_str().unwrap().to_string();
                 self.generate_object_file_internal(temp_path_str.clone());
-                object_files = temp_path_str;
+                object_files = vec![temp_path_str];
                 path
             } else {
                 if self.compiler_invoked_single {
@@ -244,13 +245,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                object_files = self
-                    .build_manifest
-                    .objects
-                    .values()
-                    .map(|s| s.as_str()) // Convert &String to &str if needed
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                object_files = self.build_manifest.objects.values().cloned().collect();
 
                 ensure_output_dir(Path::new(OUTPUT_FILE_PATH));
                 format!("{}/{}", OUTPUT_FILE_PATH, {
@@ -271,17 +266,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
+        // dbg!(object_files);
+        // dbg!(self.build_manifest.clone());
+        // todo!();
+
         // TODO Consider to make linker dynamic through Project.toml and CLI Program.
         let linker = "cc";
 
-        dbg!("linking");
-        sleep(Duration::from_secs(2));
+        let mut linker_command = std::process::Command::new(linker);
 
-        let linker_output = std::process::Command::new(linker)
-            .arg(object_files)
-            .arg("-o")
-            .arg(output_path)
-            .output();
+        for path in object_files {
+            linker_command.arg(path);
+        }
+
+        let linker_output = linker_command.arg("-o").arg(output_path).output();
 
         match linker_output {
             Ok(output) => {
@@ -371,7 +369,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn generate_object_file_internal(&self, output_path: String) {
         if let Err(err) = self
             .target_machine
-            .write_to_file(&self.module, FileType::Object, Path::new(&output_path))
+            .write_to_file(&self.module.borrow_mut().deref_mut(), FileType::Object, Path::new(&output_path))
         {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

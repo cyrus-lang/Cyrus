@@ -1,3 +1,5 @@
+use std::ops::DerefMut;
+
 use crate::CodeGenLLVM;
 use inkwell::{
     AddressSpace,
@@ -19,9 +21,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let malloc_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
 
-        match self.module.get_function("malloc") {
+        let module = self.module.borrow_mut();
+
+        match module.get_function("malloc") {
             Some(v) => v,
-            None => self.module.add_function("malloc", malloc_type, None),
+            None => module.add_function("malloc", malloc_type, None),
         }
     }
 
@@ -34,7 +38,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ],
             false,
         );
-        let func = self.module.add_function(
+        let func = self.module.borrow_mut().deref_mut().add_function(
             &format!("check_bounds_{}", generate_random_hex()),
             func_type,
             Some(Linkage::Private),

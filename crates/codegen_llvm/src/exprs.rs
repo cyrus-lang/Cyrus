@@ -14,7 +14,7 @@ use inkwell::{
     types::{BasicType, BasicTypeEnum},
     values::{ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
-use std::{ffi::CString, ops::Deref, process::exit, rc::Rc};
+use std::{ffi::CString, ops::{Deref, DerefMut}, process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
@@ -462,8 +462,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let i8_array_type = self.context.i8_type().array_type(bytes.len() as u32);
 
-        let string_global = self
-            .module
+        let string_global = self.module.borrow_mut().deref_mut()
             .add_global(i8_array_type, Some(AddressSpace::default()), ".str");
 
         let const_string = self.context.const_string(&bytes, false);

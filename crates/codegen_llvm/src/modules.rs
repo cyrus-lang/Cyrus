@@ -1,13 +1,15 @@
-use crate::{CodeGenLLVM, build::BuildManifest, diag::*};
+use crate::{CodeGenLLVM, build::BuildManifest, diag::*, funcs::FuncTable};
 use ast::ast::{Field, FuncDecl, Identifier, Import, ModulePath, VisType};
 use inkwell::module::Module;
-use std::{collections::HashMap, process::exit};
+use std::{cell::RefCell, collections::HashMap, process::exit, rc::Rc};
 use utils::fs::find_file_from_sources;
 
+#[derive(Debug, Clone)]
 pub struct ExportedFuncMetadata {
     pub func_decl: FuncDecl,
 }
 
+#[derive(Debug, Clone)]
 pub struct ExportedStructMetadata {
     pub name: String,
     pub vis_type: VisType,
@@ -16,8 +18,9 @@ pub struct ExportedStructMetadata {
     pub methods: Vec<FuncDecl>,
 }
 
+#[derive(Debug, Clone)]
 pub struct ModuleMetadata<'ctx> {
-    pub module: Module<'ctx>,
+    pub module: Rc<RefCell<Module<'ctx>>>,
     pub exported_funcs: HashMap<String, ExportedFuncMetadata>,
     pub exported_struct: HashMap<String, ExportedStructMetadata>,
 }
@@ -64,7 +67,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
         }
-         
+
         for file_path in imported_files {
             self.build_sub_module(file_path);
         }
@@ -73,23 +76,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn build_sub_module(&mut self, file_path: String) {
         // TODO Assure module names to be unique by their absolute path
         let module_name = file_path.clone();
-        let sub_module = self.context.create_module(&module_name);
+        let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_name)));
         let sub_builder = self.context.create_builder();
-        let target_machine = CodeGenLLVM::target_machine(&sub_module);
+        let target_machine = CodeGenLLVM::target_machine(Rc::clone(&sub_module));
         let program = parser::parse_program(file_path.clone()).0;
-        
+
         let mut sub_codegen = CodeGenLLVM {
             program,
             opts: self.opts.clone(),
             context: self.context,
-            module: sub_module,
+            module: Rc::clone(&sub_module),
             builder: sub_builder,
             target_machine,
-            build_manifest: self.build_manifest.clone(),
+            build_manifest: BuildManifest::default(),
             file_path: file_path.clone(),
             reporter: self.reporter.clone(),
             entry_point: None,
-            is_entry_point: false, 
+            is_entry_point: false,
             func_table: HashMap::new(),
             struct_table: HashMap::new(),
             internal_funcs_table: self.internal_funcs_table.clone(),
@@ -102,8 +105,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         sub_codegen.compile();
-        dbg!(sub_codegen.build_manifest.clone());
-        dbg!(self.build_manifest.clone());
-        // self.build_manifest = sub_codegen.build_manifest.clone();
+        self.build_manifest = sub_codegen.build_manifest.clone();
+
+        self.loaded_modules.insert(
+            module_name,
+            ModuleMetadata {
+                module: Rc::clone(&sub_module),
+                exported_funcs: self.collect_exported_funcs(sub_codegen.func_table),
+                exported_struct: HashMap::new(), // TODO
+            },
+        );
+    }
+
+    fn collect_exported_funcs(&self, func_table: FuncTable) -> HashMap<String, ExportedFuncMetadata> {
+        let mut exported_funcs: HashMap<String, ExportedFuncMetadata> = HashMap::new();
+
+        for (_, (func_name, metadata)) in func_table.iter().enumerate() {
+            // only pub funcs are exported imported from sub_module 
+            if metadata.func_decl.vis_type == VisType::Pub {
+                exported_funcs.insert(func_name.to_string(), ExportedFuncMetadata { func_decl: metadata.func_decl.clone() });
+            }
+        }
+
+        exported_funcs
     }
 }
