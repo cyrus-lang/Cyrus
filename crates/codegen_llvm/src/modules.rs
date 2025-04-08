@@ -104,27 +104,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ModulePath::SubModule(identifier) => {
                     // check current identifier that, it's a sub_module or a thing that must be imported from latest module
                     let temp_path = format!("{}/{}", begging_path.to_str().unwrap(), identifier.name.clone());
-                    match find_file_from_sources(temp_path, sources.clone()) {
+                    match find_file_from_sources(temp_path.clone(), sources.clone()) {
                         Some(new_begging_path) => {
                             begging_path = new_begging_path;
                         }
                         None => {
-                            import_single = Some(ImportSingle::Object(identifier.name.clone()));
-
-                            // it import_single isn't the latest item of module_paths
-                            // means that it could not find a sub_module and this is not a real import_single
-                            if !(idx == module_paths.len() - 1) {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::ModuleNotFound(import_alias.clone()),
-                                    location: Some(DiagLoc {
-                                        file: self.file_path.clone(),
-                                        line: import.loc.line,
-                                        column: import.loc.column,
-                                        length: import.span.end,
-                                    }),
-                                });
-                                exit(1);
+                            if let Some(new_begging_path) =
+                                find_file_from_sources(format!("{}.cyr", temp_path), sources.clone())
+                            {
+                                begging_path = new_begging_path;
+                            } else {
+                                if idx != module_paths.len() - 1 {
+                                    display_single_diag(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                                        location: Some(DiagLoc {
+                                            file: self.file_path.clone(),
+                                            line: import.loc.line,
+                                            column: import.loc.column,
+                                            length: import.span.end,
+                                        }),
+                                    });
+                                    exit(1);
+                                } else {
+                                    import_single = Some(ImportSingle::Object(identifier.name.clone()));
+                                }
                             }
                         }
                     }
@@ -162,21 +166,47 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         sources.clone(),
                     ) {
                         Some(file_path) => {
-                            self.build_sub_module(file_path.to_str().unwrap().to_string(), import_alias.clone())
+                            self.build_imported_module(file_path.to_str().unwrap().to_string(), import_alias.clone())
                         }
                         None => {
-                            // ANCHOR
-                            // self.build_sub_module(file_path, import_alias.clone());
-                            todo!("Import object from latest module not implemented yet.")
+                            if begging_path.is_file() {
+                                self.build_imported_module(
+                                    begging_path.to_str().unwrap().to_string(),
+                                    import_alias.clone(),
+                                );
+                                self.build_import_single(object_name);
+                            } else {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: import.loc.line,
+                                        column: import.loc.column,
+                                        length: import.span.end,
+                                    }),
+                                });
+                                exit(1);
+                            }
                         }
                     }
                 }
                 ImportSingle::Wildcard => {
-                    // import_single does not have a meaning when wildcard is used :)
-                    let directory_path = begging_path.to_str().unwrap();
-                    let file_paths = list_files(directory_path.clone(), "cyr");
-                    for file_path in file_paths {
-                        self.build_sub_module(format!("{}/{}", directory_path, file_path), import_alias.clone());
+                    if begging_path.is_dir() {
+                        // wildcard for files
+                        let directory_path = begging_path.to_str().unwrap();
+                        let file_paths = list_files(directory_path, "cyr");
+                        for file_path in file_paths {
+                            self.build_imported_module(
+                                format!("{}/{}", directory_path, file_path),
+                                import_alias.clone(),
+                            );
+                        }
+                    } else {
+                        self.build_wildcard_imported_module(
+                            begging_path.to_str().unwrap().to_string(),
+                            import_alias.clone(),
+                        );
                     }
                 }
             }
@@ -195,7 +225,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    fn build_sub_module(&mut self, file_path: String, import_alias: String) {
+    fn build_import_single(&self, object_name: String) {
+        // Import `thing` with optional alias
+        todo!();
+    }
+
+    fn build_wildcard_imported_module(&mut self, file_path: String, import_alias: String) {
+        // Import `things` with optional alias
+        todo!();
+    }
+
+    fn build_imported_module(&mut self, file_path: String, import_alias: String) {
+        // Import things with alias
+
         // TODO Assure module names to be unique by their absolute path
         let module_name = file_path.clone();
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_name)));
