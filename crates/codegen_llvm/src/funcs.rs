@@ -2,7 +2,7 @@ use crate::CodeGenLLVM;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRef};
 use crate::values::AnyValue;
-use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam, VisType};
+use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
@@ -15,6 +15,7 @@ use std::ops::DerefMut;
 use std::process::exit;
 use std::rc::Rc;
 
+#[derive(Debug, Clone)]
 pub struct FuncMetadata<'a> {
     pub ptr: FunctionValue<'a>,
     pub func_decl: FuncDecl,
@@ -56,7 +57,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl) -> FunctionValue {
+    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl) -> FunctionValue<'ctx> {
         let is_var_args = func_decl.params.variadic.is_some();
         let mut param_types = self.build_func_params(
             func_decl.name.clone(),
@@ -207,13 +208,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         func.verify(true);
 
-        self.func_table.insert(
-            func_def.name,
-            FuncMetadata {
-                func_decl,
-                ptr: func,
-            },
-        );
+        self.func_table
+            .insert(func_def.name, FuncMetadata { func_decl, ptr: func });
 
         return func;
     }

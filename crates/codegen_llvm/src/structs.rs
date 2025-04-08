@@ -4,12 +4,10 @@ use crate::{
     scope::ScopeRef,
 };
 use ast::ast::{Field, Struct, StructInit, VisType};
-use inkwell::{
-    types::{BasicTypeEnum, StructType},
-    values::{AsValueRef, StructValue},
-};
-use std::{collections::HashMap, process::exit, rc::Rc};
+use inkwell::types::{BasicTypeEnum, StructType};
+use std::{collections::HashMap, process::exit};
 
+#[derive(Debug, Clone)]
 pub struct StructMetadata<'a> {
     pub struct_type: StructType<'a>,
     pub fields: Vec<Field>,
@@ -35,7 +33,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         if !matches!(struct_statement.vis_type, VisType::Pub | VisType::Internal) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom("Struct definition can only be public or internal".to_string()),
+                kind: DiagKind::Custom("Structs can only be defined public or internal.".to_string()),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
                     line: struct_statement.loc.line,
