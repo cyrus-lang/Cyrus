@@ -3,7 +3,7 @@ use crate::{
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
-    structs::{StructMetadata, StructTable},
+    structs::StructTable,
 };
 use ast::{
     ast::{Field, FuncDecl, Identifier, Import, ModulePath, VisType},
@@ -236,7 +236,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    fn build_import_module_object(
+    fn build_import_module_single(
         &mut self,
         module_metadata: ModuleMetadata<'ctx>,
         object_name: String,
@@ -283,15 +283,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) {
-        // Import `thing` with optional alias
+        // Import with optional alias
         let module_metadata = self.build_imported_module(file_path, import_alias.clone());
-        self.build_import_module_object(module_metadata, object_name, import_alias, loc, span_end);
-        
-        dbg!(self.func_table.values());
+        self.build_import_module_single(module_metadata, object_name, import_alias, loc, span_end);
     }
 
     fn build_wildcard_imported_module(&mut self, file_path: String, import_alias: String) {
-        // Import `things` with optional alias
+        // Import with optional alias
         todo!();
     }
 
