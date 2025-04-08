@@ -26,9 +26,9 @@ impl Options {
             library_path: Vec::new(),
             libraries: Vec::new(),
             build_dir: String::new(),
-            sources_dir: Vec::new(),
             cyrus_version: None,
             project_version: None,
+            sources_dir: vec!["./".to_string()],
         }
     }
 
@@ -79,7 +79,7 @@ impl Options {
                 .get("libraries")
                 .and_then(|v| v.as_array())
                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                .unwrap_or_else(Vec::new);
+                .unwrap_or_default();
         }
 
         if let Some(value) = file_toml.get("project") {
@@ -94,6 +94,12 @@ impl Options {
                     .ok_or("Failed to parse 'project name' in 'Project.toml'.")?
                     .to_string(),
             );
+
+            options.sources_dir = table
+                .get("sources")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
         }
 
         Ok(options)

@@ -1,7 +1,6 @@
 use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    scope::ScopeRecord,
     types::{AnyType, TypedPointerType},
     values::{AnyValue, StringValue, TypedPointerValue},
 };
@@ -224,22 +223,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
-        let binding = {
-            match scope.borrow_mut().get(module_import.identifier.name.clone()) {
-                Some(record) => record,
-                None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::IdentifierNotDefined(module_import.identifier.name),
-                        location: None,
-                    });
-                    exit(1);
-                }
-            }
-        };
-        let record = binding.borrow_mut();
+        // FIXME
+        todo!();
+        // let binding = {
+        //     match scope.borrow_mut().get(module_import.identifier.name.clone()) {
+        //         Some(record) => record,
+        //         None => {
+        //             display_single_diag(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: DiagKind::IdentifierNotDefined(module_import.identifier.name),
+        //                 location: None,
+        //             });
+        //             exit(1);
+        //         }
+        //     }
+        // };
+        // let record = binding.borrow_mut();
 
-        self.build_load_internal(record.ptr.clone(), record.ty.clone())
+        // self.build_load_internal(record.ptr.clone(), record.ty.clone())
     }
 
     pub(crate) fn build_load_ptr(
@@ -247,27 +248,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
-        let binding = {
-            match scope.borrow_mut().get(module_import.identifier.name.clone()) {
-                Some(record) => record,
-                None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::IdentifierNotDefined(module_import.identifier.name),
-                        location: None,
-                    });
-                    exit(1);
-                }
-            }
-        };
-        let record: std::cell::RefMut<'_, crate::scope::ScopeRecord<'_>> = binding.borrow_mut();
-        (
-            AnyValue::PointerValue(TypedPointerValue {
-                ptr: record.ptr,
-                pointee_ty: record.ty.clone(),
-            }),
-            record.ty.clone(),
-        )
+        // FIXME
+        todo!();
+
+        // let binding = {
+        //     match scope.borrow_mut().get(module_import.identifier.name.clone()) {
+        //         Some(record) => record,
+        //         None => {
+        //             display_single_diag(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: DiagKind::IdentifierNotDefined(module_import.identifier.name),
+        //                 location: None,
+        //             });
+        //             exit(1);
+        //         }
+        //     }
+        // };
+        // let record: std::cell::RefMut<'_, crate::scope::ScopeRecord<'_>> = binding.borrow_mut();
+        // (
+        //     AnyValue::PointerValue(TypedPointerValue {
+        //         ptr: record.ptr,
+        //         pointee_ty: record.ty.clone(),
+        //     }),
+        //     record.ty.clone(),
+        // )
     }
 
     pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {

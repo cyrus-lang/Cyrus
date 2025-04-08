@@ -12,6 +12,7 @@ use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::values::{FunctionValue, PointerValue};
+use modules::ModuleMetadata;
 use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
@@ -20,6 +21,7 @@ use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
 use types::{AnyType, StringType};
+use utils::generate_random_hex::generate_random_hex;
 use values::{AnyValue, StringValue};
 
 mod build;
@@ -28,15 +30,16 @@ mod enums;
 mod exprs;
 mod funcs;
 mod linkage;
+mod modules;
 pub mod opts;
 mod runtime;
 mod scope;
 mod stmts;
+mod strings;
 mod structs;
 mod tests;
 mod types;
 mod values;
-mod strings;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -50,6 +53,7 @@ pub struct CodeGenLLVM<'ctx> {
     file_path: String,
     reporter: DiagReporter,
     entry_point: Option<FuncDef>,
+    is_entry_point: bool,
     func_table: FuncTable<'ctx>,
     struct_table: StructTable<'ctx>,
     internal_funcs_table: HashMap<String, LLVMValueRef>,
@@ -58,6 +62,7 @@ pub struct CodeGenLLVM<'ctx> {
     current_block_ref: Option<BasicBlock<'ctx>>,
     terminated_blocks: Vec<BasicBlock<'ctx>>,
     string_type: StringType<'ctx>,
+    loaded_modules: HashMap<String, ModuleMetadata<'ctx>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -70,9 +75,40 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         compiler_invoked_single: bool,
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
+        // TODO Assure module names to be unique by their absolute path
         let module = context.create_module(&file_name);
         let builder = context.create_builder();
 
+        let target_machine = CodeGenLLVM::target_machine(&module);
+
+        let mut codegen_llvm = CodeGenLLVM {
+            opts,
+            context,
+            module,
+            builder,
+            program,
+            file_path,
+            reporter,
+            target_machine,
+            entry_point: None,
+            is_entry_point: true,
+            func_table: FuncTable::new(),
+            struct_table: StructTable::new(),
+            internal_funcs_table: HashMap::new(),
+            build_manifest: BuildManifest::default(),
+            compiler_invoked_single,
+            current_func_ref: None,
+            current_block_ref: None,
+            terminated_blocks: Vec::new(),
+            string_type: CodeGenLLVM::build_string_type(context),
+            loaded_modules: HashMap::new(),
+        };
+
+        codegen_llvm.load_runtime();
+        Ok(codegen_llvm)
+    }
+
+    pub fn target_machine(module: &Module) -> TargetMachine {
         Target::initialize_native(&InitializationConfig::default()).unwrap();
         let target_triple = TargetMachine::get_default_triple();
         let cpu = TargetMachine::get_host_cpu_name().to_string();
@@ -90,30 +126,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .unwrap();
         module.set_triple(&target_triple);
         module.set_data_layout(&target_machine.get_target_data().get_data_layout());
-
-        let mut codegen_llvm = CodeGenLLVM {
-            opts,
-            context,
-            module,
-            builder,
-            program,
-            file_path,
-            reporter,
-            target_machine,
-            entry_point: None,
-            func_table: FuncTable::new(),
-            struct_table: StructTable::new(),
-            internal_funcs_table: HashMap::new(),
-            build_manifest: BuildManifest::default(),
-            compiler_invoked_single,
-            current_func_ref: None,
-            current_block_ref: None,
-            terminated_blocks: Vec::new(),
-            string_type: CodeGenLLVM::build_string_type(context),
-        };
-
-        codegen_llvm.load_runtime();
-        Ok(codegen_llvm)
+        target_machine
     }
 
     pub fn new_context() -> Context {
@@ -129,8 +142,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        self.optimize();
         self.build_entry_point();
+        self.optimize();
 
         if !self.compiler_invoked_single {
             self.ensure_build_directory();

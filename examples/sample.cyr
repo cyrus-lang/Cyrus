@@ -1,0 +1,1 @@
+fn do_something() {}

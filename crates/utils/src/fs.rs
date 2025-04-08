@@ -1,5 +1,10 @@
-use std::{fs::{self, File}, io::Read, path::{Path, PathBuf}, process::exit};
 use colorized::{Color, Colors};
+use std::{
+    fs::{self, File},
+    io::Read,
+    path::{Path, PathBuf},
+    process::exit,
+};
 
 // Reads the file and returns the file content and the name of the file.
 pub fn read_file(file_path: String) -> (String, String) {
@@ -17,7 +22,11 @@ pub fn read_file(file_path: String) -> (String, String) {
 
     match file.read_to_string(&mut contents) {
         Err(err) => {
-            eprintln!("{}: Failed to read the file content: {}", "Error".color(Colors::RedFg), err.to_string()); 
+            eprintln!(
+                "{}: Failed to read the file content: {}",
+                "Error".color(Colors::RedFg),
+                err.to_string()
+            );
             exit(1);
         }
         _ => {}
@@ -31,38 +40,49 @@ pub fn read_file(file_path: String) -> (String, String) {
 pub fn ensure_output_dir(output_dir: &Path) {
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).unwrap_or_else(|_| {
-            eprintln!("{}: Failed to create output directory: {}", 
-                "Error".color(Colors::RedFg), 
-                output_dir.display());
+            eprintln!(
+                "{}: Failed to create output directory: {}",
+                "Error".color(Colors::RedFg),
+                output_dir.display()
+            );
             exit(1);
         });
     } else if !output_dir.is_dir() {
-        eprintln!("{}: Output path must be a directory: {}", 
-            "Error".color(Colors::RedFg), 
-            output_dir.display());
+        eprintln!(
+            "{}: Output path must be a directory: {}",
+            "Error".color(Colors::RedFg),
+            output_dir.display()
+        );
         exit(1);
     }
 }
 
 pub fn get_output_file_path(output_dir: &Path, source_file: &Path) -> PathBuf {
-    output_dir.join(
-        source_file.file_stem()
-            .unwrap_or_else(|| {
-                eprintln!("{}: Invalid source file name: {}", 
-                    "Error".color(Colors::RedFg), 
-                    source_file.display());
-                exit(1);
-            })
-            .to_str()
-            .unwrap()
-    ).with_extension("o")
+    output_dir
+        .join(
+            source_file
+                .file_stem()
+                .unwrap_or_else(|| {
+                    eprintln!(
+                        "{}: Invalid source file name: {}",
+                        "Error".color(Colors::RedFg),
+                        source_file.display()
+                    );
+                    exit(1);
+                })
+                .to_str()
+                .unwrap(),
+        )
+        .with_extension("o")
 }
 
 pub fn handle_file_generation_error(err: impl ToString, file_path: &Path) -> ! {
-    eprintln!("{}: Failed to generate object file {}: {}", 
-        "Error".color(Colors::RedFg), 
+    eprintln!(
+        "{}: Failed to generate object file {}: {}",
+        "Error".color(Colors::RedFg),
         file_path.display(),
-        err.to_string());
+        err.to_string()
+    );
     exit(1);
 }
 
@@ -75,4 +95,22 @@ pub fn absolute_to_relative(absolute_path: String, base_dir: String) -> Option<S
     let relative_path = abs_path.strip_prefix(base_path).ok()?;
 
     Some(relative_path.to_string_lossy().replace('\\', "/"))
+}
+
+/// Tries to find `file_name` in any of the given `sources` directories.
+/// Returns the full path if found, otherwise returns `None`.
+pub fn find_file_from_sources(file_name: String, sources: Vec<String>) -> Option<PathBuf> {
+    for source in sources.iter() {
+        let path = Path::new(source).join(&file_name);
+        if path.exists() && path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+pub fn get_directory_of_file(file_path: String) -> Option<String> {
+    let path = Path::new(file_path.as_str());
+    path.parent()
+        .map(|parent| parent.to_str().unwrap_or_default().to_string())
 }

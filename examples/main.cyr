@@ -1,19 +1,5 @@
-// struct Person {
-//    name: string;
-//    age: i32;
-// }
-
-extern fn printf(fmt: *i8);
+import sample;
 
 fn main() {
-   // #person = Person {
-   //    name: "Taha",
-   //    age: 18
-   // };
-   // person.name;
-   // person.get_name().name;
-
-   #name = "Cyrus is on fire...";
-
-   printf(*name);
+   
 }

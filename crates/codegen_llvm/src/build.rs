@@ -24,6 +24,8 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::process::exit;
+use std::thread::sleep;
+use std::time::Duration;
 use utils::fs::absolute_to_relative;
 use utils::fs::ensure_output_dir;
 use utils::fs::get_output_file_path;
@@ -130,6 +132,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.builder
                 .build_return(Some(&return_type.const_int(0, false)))
                 .unwrap();
+        } else if !self.is_entry_point {
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -143,6 +146,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub fn execute(&mut self) {
         let opt_level = self.build_optimization_level(self.opts.opt_level);
         let execution_engine = self.module.create_jit_execution_engine(opt_level).unwrap();
+
+        // TODO
+        // Perform in-memory linkage
 
         let main_func_result: Result<JitFunction<'ctx, MainFunc>, FunctionLookupError> =
             unsafe { execution_engine.get_function("main") };
@@ -267,6 +273,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         // TODO Consider to make linker dynamic through Project.toml and CLI Program.
         let linker = "cc";
+
+        dbg!("linking");
+        sleep(Duration::from_secs(2));
 
         let linker_output = std::process::Command::new(linker)
             .arg(object_files)

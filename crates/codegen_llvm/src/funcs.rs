@@ -8,7 +8,7 @@ use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::types::FunctionType;
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, FunctionValue, InstructionValue};
+use inkwell::values::{BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
@@ -296,27 +296,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     // FIXME func_call.func_name.identifier.name
     pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
-        let arguments = &self.build_arguments(
-            Rc::clone(&scope),
-            func_call.arguments,
-            func_call.loc.clone(),
-            func_call.span.end,
-        );
+        // FIXME
+        todo!();
+        
+        // let arguments = &self.build_arguments(
+        //     Rc::clone(&scope),
+        //     func_call.arguments,
+        //     func_call.loc.clone(),
+        //     func_call.span.end,
+        // );
 
-        if let Some(func_metadata) = self.func_table.get(&func_call.func_name.identifier.name.clone()) {
-            self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncNotFound(func_call.func_name.identifier.name),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: func_call.loc.line,
-                    column: func_call.loc.column,
-                    length: func_call.span.end,
-                }),
-            });
-            exit(1);
-        }
+        // if let Some(func_metadata) = self.func_table.get(&func_call.func_name.identifier.name.clone()) {
+        //     self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
+        // } else {
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::FuncNotFound(func_call.func_name.identifier.name),
+        //         location: Some(DiagLoc {
+        //             file: self.file_path.clone(),
+        //             line: func_call.loc.line,
+        //             column: func_call.loc.column,
+        //             length: func_call.span.end,
+        //         }),
+        //     });
+        //     exit(1);
+        // }
     }
 }

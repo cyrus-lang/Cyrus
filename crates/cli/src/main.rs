@@ -2,6 +2,7 @@ use ::parser::parse_program;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::diag::*;
+use utils::fs::get_directory_of_file;
 
 const PROJECT_FILE_PATH: &str = "Project.toml";
 
@@ -194,8 +195,28 @@ macro_rules! init_compiler {
                 std::process::exit(1);
             }
 
+            let mut opts = $opts.clone();
+
+            opts.sources_dir = {
+                if $opts.sources_dir.len() > 0 {
+                    $opts.sources_dir.clone()
+                } else {
+                    match get_directory_of_file(file_path.clone()) {
+                        Some(source_dir) => [source_dir].to_vec(),
+                        None => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom("Could not get directory path of the input file.".to_string()),
+                                location: None,
+                            });
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            };
+
             let (program, file_name) = parse_program(file_path.clone());
-            let codegen_llvm = match CodeGenLLVM::new($context, file_path, file_name.clone(), program, $opts, true) {
+            let codegen_llvm = match CodeGenLLVM::new($context, file_path, file_name.clone(), program, opts, true) {
                 Ok(instance) => instance,
                 Err(err) => {
                     display_single_diag(Diag {
@@ -211,7 +232,7 @@ macro_rules! init_compiler {
             project_file_required();
 
             match codegen_llvm::opts::Options::read_toml(PROJECT_FILE_PATH.to_string()) {
-                Ok(options) => {
+                Ok(mut options) => {
                     if !std::path::Path::new("src/main.cyr").exists() {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
@@ -234,6 +255,26 @@ macro_rules! init_compiler {
                         .to_str()
                         .unwrap()
                         .to_string();
+
+                    options.sources_dir = {
+                        if $opts.sources_dir.len() > 0 {
+                            $opts.sources_dir.clone()
+                        } else {
+                            match get_directory_of_file(main_file_path.clone()) {
+                                Some(source_dir) => [source_dir].to_vec(),
+                                None => {
+                                    display_single_diag(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: DiagKind::Custom(
+                                            "Could not get directory path of the input file.".to_string(),
+                                        ),
+                                        location: None,
+                                    });
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                    };
 
                     let (program, file_name) = parse_program(main_file_path.clone());
                     let codegen_llvm =

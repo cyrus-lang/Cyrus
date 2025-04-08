@@ -51,7 +51,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Continue(location) => todo!(),
             Statement::Struct(struct_statement) => self.build_struct(struct_statement),
             Statement::Enum(enum_statement) => self.build_enum(enum_statement),
-            Statement::Import(import) => todo!(),
+            Statement::Import(import) => self.build_import(import),
         }
     }
 

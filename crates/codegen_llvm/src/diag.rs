@@ -64,6 +64,7 @@ impl fmt::Display for DiagKind {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct DiagReporter {
     diags: Vec<Diag>,
 }
