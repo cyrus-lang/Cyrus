@@ -102,7 +102,7 @@ pub fn absolute_to_relative(absolute_path: String, base_dir: String) -> Option<S
 pub fn find_file_from_sources(file_name: String, sources: Vec<String>) -> Option<PathBuf> {
     for source in sources.iter() {
         let path = Path::new(source).join(&file_name);
-        if path.exists() && path.is_file() {
+        if path.exists() && (path.is_file() || path.is_dir()) {
             return Some(path);
         }
     }
@@ -113,4 +113,29 @@ pub fn get_directory_of_file(file_path: String) -> Option<String> {
     let path = Path::new(file_path.as_str());
     path.parent()
         .map(|parent| parent.to_str().unwrap_or_default().to_string())
+}
+
+pub fn list_files(dir: &str, ext: &str) -> Vec<String> {
+    let path = Path::new(dir);
+    let mut file_names: Vec<String> = Vec::new();
+
+    if path.is_dir() {
+        for entry in fs::read_dir(path).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+
+            if let Some(e) = path.extension() {
+                if e == ext {
+                    if let Some(name) = path.file_name() {
+                        file_names.push(name.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    } else {
+        eprintln!("Error: '{}' must be a directory to collect file names inside it.", dir);
+        exit(1);
+    }
+
+    file_names
 }

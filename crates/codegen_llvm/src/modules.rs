@@ -1,8 +1,8 @@
-use crate::{CodeGenLLVM, build::BuildManifest, diag::*, funcs::FuncTable};
+use crate::{CodeGenLLVM, build::BuildManifest, diag::*, funcs::FuncTable, structs::StructTable};
 use ast::ast::{Field, FuncDecl, Identifier, Import, ModulePath, VisType};
 use inkwell::module::Module;
 use std::{cell::RefCell, collections::HashMap, process::exit, rc::Rc};
-use utils::fs::find_file_from_sources;
+use utils::fs::{find_file_from_sources, list_files};
 
 #[derive(Debug, Clone)]
 pub struct ExportedFuncMetadata {
@@ -20,60 +20,182 @@ pub struct ExportedStructMetadata {
 
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'ctx> {
+    pub import_alias: String,
     pub module: Rc<RefCell<Module<'ctx>>>,
-    pub exported_funcs: HashMap<String, ExportedFuncMetadata>,
-    pub exported_struct: HashMap<String, ExportedStructMetadata>,
+    pub imported_funcs: HashMap<String, ExportedFuncMetadata>,
+    pub imported_structs: HashMap<String, ExportedStructMetadata>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ImportSingle {
+    Object(String),
+    Wildcard,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    fn build_import_alias(&self, module_paths: Vec<ModulePath>) -> String {
+        module_paths
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<String>>()
+            .join(".")
+    }
+
     pub(crate) fn build_import(&mut self, import: Import) {
         let sources = &self.opts.sources_dir;
+        let import_alias = self.build_import_alias(import.module_paths.clone());
+        let mut module_paths = import.module_paths.clone();
+        let mut import_single: Option<ImportSingle> = None;
 
-        if let ModulePath::SubModule(identifier) = import.module_paths[0].clone() {
-            if identifier.name == "std" {
-                todo!("Import from standard library not implemented yet.");
+        let mut begging_path = {
+            if let ModulePath::SubModule(identifier) = module_paths.clone().first().unwrap() {
+                module_paths.remove(0);
+                let file_name = identifier.name.clone();
+                match find_file_from_sources(file_name, sources.clone()) {
+                    Some(path) => path,
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: import.loc.line,
+                                column: import.loc.column,
+                                length: import.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::InvalidWildcard,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: import.loc.line,
+                        column: import.loc.column,
+                        length: import.span.end,
+                    }),
+                });
+                exit(1);
             }
-        }
+        };
 
-        let mut imported_files: Vec<String> = Vec::new();
-
-        for module_path in import.module_paths {
+        for (idx, module_path) in module_paths.iter().enumerate() {
             match module_path {
-                ModulePath::Wildcard => todo!(),
+                ModulePath::Wildcard => {
+                    if idx == module_paths.len() - 1 {
+                        import_single = Some(ImportSingle::Wildcard)
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InvalidWildcard,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: import.loc.line,
+                                column: import.loc.column,
+                                length: import.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
                 ModulePath::SubModule(identifier) => {
-                    let file_name = format!("{}.cyr", identifier.name);
-
-                    match find_file_from_sources(file_name, sources.clone()) {
-                        Some(file_path) => {
-                            imported_files.push(file_path.to_str().unwrap().to_string());
+                    // check current identifier that, it's a sub_module or a thing that must be imported from latest module
+                    let temp_path = format!("{}/{}", begging_path.to_str().unwrap(), identifier.name.clone());
+                    match find_file_from_sources(temp_path, sources.clone()) {
+                        Some(new_begging_path) => {
+                            begging_path = new_begging_path;
                         }
                         None => {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom(format!(
-                                    "The module '{}' could not be found in any of the specified source directories.",
-                                    identifier.name
-                                )),
-                                location: Some(DiagLoc {
-                                    file: self.file_path.clone(),
-                                    line: import.loc.line,
-                                    column: import.loc.column,
-                                    length: import.span.end,
-                                }),
-                            });
-                            exit(1);
+                            import_single = Some(ImportSingle::Object(identifier.name.clone()));
+
+                            // it import_single isn't the latest item of module_paths
+                            // means that it could not find a sub_module and this is not a real import_single
+                            if !(idx == module_paths.len() - 1) {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: import.loc.line,
+                                        column: import.loc.column,
+                                        length: import.span.end,
+                                    }),
+                                });
+                                exit(1);
+                            }
                         }
                     }
                 }
             }
         }
 
-        for file_path in imported_files {
-            self.build_sub_module(file_path);
+        // import directory is not allowed
+        // only import module and wildcard is allowed
+        if begging_path.is_dir() && import_single.is_none() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Import module '{}' as directory is not allowed.",
+                    import_alias.clone()
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: import.loc.line,
+                    column: import.loc.column,
+                    length: import.span.end,
+                }),
+            });
+            exit(1);
+        }
+
+        // here we have two possibilities!
+        // if begging_path is a file, we import it.
+        // and if it's not, so it's a something that must be imported from latest module
+        if let Some(import_single) = import_single {
+            match import_single {
+                ImportSingle::Object(object_name) => {
+                    match find_file_from_sources(
+                        format!("{}/{}.cyr", begging_path.to_str().unwrap(), object_name),
+                        sources.clone(),
+                    ) {
+                        Some(file_path) => {
+                            self.build_sub_module(file_path.to_str().unwrap().to_string(), import_alias.clone())
+                        }
+                        None => {
+                            // ANCHOR
+                            // self.build_sub_module(file_path, import_alias.clone());
+                            todo!("Import object from latest module not implemented yet.")
+                        }
+                    }
+                }
+                ImportSingle::Wildcard => {
+                    // import_single does not have a meaning when wildcard is used :)
+                    let directory_path = begging_path.to_str().unwrap();
+                    let file_paths = list_files(directory_path.clone(), "cyr");
+                    for file_path in file_paths {
+                        self.build_sub_module(format!("{}/{}", directory_path, file_path), import_alias.clone());
+                    }
+                }
+            }
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: import.loc.line,
+                    column: import.loc.column,
+                    length: import.span.end,
+                }),
+            });
+            exit(1);
         }
     }
 
-    fn build_sub_module(&mut self, file_path: String) {
+    fn build_sub_module(&mut self, file_path: String, import_alias: String) {
         // TODO Assure module names to be unique by their absolute path
         let module_name = file_path.clone();
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_name)));
@@ -111,22 +233,42 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             module_name,
             ModuleMetadata {
                 module: Rc::clone(&sub_module),
-                exported_funcs: self.collect_exported_funcs(sub_codegen.func_table),
-                exported_struct: HashMap::new(), // TODO
+                imported_funcs: self.collect_imported_funcs(sub_codegen.func_table),
+                imported_structs: self.collect_imported_structs(sub_codegen.struct_table),
+                import_alias,
             },
         );
     }
 
-    fn collect_exported_funcs(&self, func_table: FuncTable) -> HashMap<String, ExportedFuncMetadata> {
-        let mut exported_funcs: HashMap<String, ExportedFuncMetadata> = HashMap::new();
+    fn collect_imported_funcs(&self, func_table: FuncTable) -> HashMap<String, ExportedFuncMetadata> {
+        let mut imported_funcs: HashMap<String, ExportedFuncMetadata> = HashMap::new();
 
         for (_, (func_name, metadata)) in func_table.iter().enumerate() {
-            // only pub funcs are exported imported from sub_module 
+            // only pub funcs are exported imported from sub_module
             if metadata.func_decl.vis_type == VisType::Pub {
-                exported_funcs.insert(func_name.to_string(), ExportedFuncMetadata { func_decl: metadata.func_decl.clone() });
+                imported_funcs.insert(
+                    func_name.to_string(),
+                    ExportedFuncMetadata {
+                        func_decl: metadata.func_decl.clone(),
+                    },
+                );
+
+                // ANCHOR
+                // self.build_func_decl(metadata.)
             }
         }
 
-        exported_funcs
+        imported_funcs
+    }
+
+    fn collect_imported_structs(&self, struct_table: StructTable) -> HashMap<String, ExportedStructMetadata> {
+        let mut imported_structs: HashMap<String, ExportedStructMetadata> = HashMap::new();
+
+        for (_, (func_name, metadata)) in struct_table.iter().enumerate() {
+            // only pub structs are exported imported from sub_module
+            todo!();
+        }
+
+        imported_structs
     }
 }

@@ -108,6 +108,15 @@ impl fmt::Display for FieldAccess {
     }
 }
 
+impl fmt::Display for ModulePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ModulePath::Wildcard => write!(f, "*"),
+            ModulePath::SubModule(identifier) => write!(f, "{}", identifier.name),
+        }
+    }
+}
+
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

@@ -1,7 +1,4 @@
-use std::fmt;
-
 use either::Either;
-
 use crate::token::*;
 
 #[derive(Debug)]
@@ -263,15 +260,6 @@ pub struct Return {
 pub enum ModulePath {
     Wildcard,
     SubModule(Identifier),
-}
-
-impl fmt::Display for ModulePath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ModulePath::Wildcard => write!(f, "*"),
-            ModulePath::SubModule(identifier) => write!(f, "{}", identifier.name),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
