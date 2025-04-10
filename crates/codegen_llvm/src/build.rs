@@ -22,11 +22,10 @@ use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
+use std::ops::Deref;
 use std::ops::DerefMut;
 use std::path::Path;
 use std::process::exit;
-use std::thread::sleep;
-use std::time::Duration;
 use utils::fs::absolute_to_relative;
 use utils::fs::ensure_output_dir;
 use utils::fs::get_output_file_path;
@@ -126,7 +125,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             let main_func_ptr = self.build_func_def(main_func.clone());
 
-            let entry_point = self.module.borrow_mut().deref_mut().add_function("main", fn_type, Some(Linkage::External));
+            let entry_point =
+                self.module
+                    .borrow_mut()
+                    .deref_mut()
+                    .add_function("main", fn_type, Some(Linkage::External));
             let entry_block = self.context.append_basic_block(entry_point, "entry");
             self.builder.position_at_end(entry_block);
             self.builder.build_call(main_func_ptr, &[], "call_main").unwrap();
@@ -146,10 +149,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn execute(&mut self) {
         let opt_level = self.build_optimization_level(self.opts.opt_level);
-        let execution_engine = self.module.borrow_mut().deref_mut().create_jit_execution_engine(opt_level).unwrap();
+        let execution_engine = self
+            .module
+            .borrow_mut()
+            .deref_mut()
+            .create_jit_execution_engine(opt_level)
+            .unwrap();
 
-        // TODO
-        // Perform in-memory linkage
+        let module = self.module.borrow_mut();
+        for module_metadata in self.loaded_modules.clone() {
+            let loaded_module = module_metadata.module.borrow_mut().deref().clone();
+            if let Err(err) = module.link_in_module(loaded_module) {
+                eprintln!("In-Memory linkage error: {}", err.to_string_lossy());
+                exit(1);
+            }
+        }
 
         let main_func_result: Result<JitFunction<'ctx, MainFunc>, FunctionLookupError> =
             unsafe { execution_engine.get_function("main") };
@@ -201,10 +215,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn emit_asm(&mut self, output_path: Option<String>) {
         if let Some(output_path) = output_path {
-            if let Err(err) =
-                self.target_machine
-                    .write_to_file(&self.module.borrow_mut().deref_mut(), FileType::Assembly, Path::new(&output_path))
-            {
+            if let Err(err) = self.target_machine.write_to_file(
+                &self.module.borrow_mut().deref_mut(),
+                FileType::Assembly,
+                Path::new(&output_path),
+            ) {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!("Failed to print assembly into file:\n{}", err.to_string())),
@@ -266,10 +281,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        // dbg!(object_files);
-        // dbg!(self.build_manifest.clone());
-        // todo!();
-
         // TODO Consider to make linker dynamic through Project.toml and CLI Program.
         let linker = "cc";
 
@@ -285,6 +296,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Ok(output) => {
                 if !output.status.success() {
                     eprintln!("Linker error: {}", String::from_utf8_lossy(&output.stderr));
+                    exit(1);
                     return;
                 }
             }
@@ -367,10 +379,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn generate_object_file_internal(&self, output_path: String) {
-        if let Err(err) = self
-            .target_machine
-            .write_to_file(&self.module.borrow_mut().deref_mut(), FileType::Object, Path::new(&output_path))
-        {
+        if let Err(err) = self.target_machine.write_to_file(
+            &self.module.borrow_mut().deref_mut(),
+            FileType::Object,
+            Path::new(&output_path),
+        ) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!("Failed to generate object file: {}", err.to_string())),
