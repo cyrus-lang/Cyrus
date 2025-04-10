@@ -287,7 +287,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
                                 kind: DiagKind::Custom(format!(
-                                    "The '{}' not defined found in module '{}'.",
+                                    "The function '{}' not defined in module '{}'.",
                                     method_call.identifier.name, imported_module_value.metadata.identifier
                                 )),
                                 location: None,
