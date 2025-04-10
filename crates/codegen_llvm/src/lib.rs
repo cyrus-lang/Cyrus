@@ -63,7 +63,7 @@ pub struct CodeGenLLVM<'ctx> {
     current_block_ref: Option<BasicBlock<'ctx>>,
     terminated_blocks: Vec<BasicBlock<'ctx>>,
     string_type: StringType<'ctx>,
-    loaded_modules: HashMap<String, ModuleMetadata<'ctx>>,
+    loaded_modules: Vec<ModuleMetadata<'ctx>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -102,7 +102,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             terminated_blocks: Vec::new(),
             string_type: CodeGenLLVM::build_string_type(context),
             module,
-            loaded_modules: HashMap::new(),
+            loaded_modules: Vec::new(),
         };
 
         codegen_llvm.load_runtime();

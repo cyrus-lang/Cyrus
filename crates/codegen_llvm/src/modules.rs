@@ -29,7 +29,8 @@ pub struct ExportedStructMetadata {
 
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'ctx> {
-    pub import_alias: String,
+    pub import_single: Option<Vec<String>>,
+    pub import_alias: Vec<ModulePath>,
     pub module: Rc<RefCell<Module<'ctx>>>,
     pub imported_funcs: HashMap<String, ExportedFuncMetadata>,
     pub imported_structs: HashMap<String, ExportedStructMetadata>,
@@ -42,7 +43,7 @@ pub enum ImportSingle {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    fn build_import_alias(&self, module_paths: Vec<ModulePath>) -> String {
+    pub(crate) fn import_alias_string(&self, module_paths: Vec<ModulePath>) -> String {
         module_paths
             .iter()
             .map(|p| p.to_string())
@@ -52,7 +53,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_import(&mut self, import: Import) {
         let sources = &self.opts.sources_dir;
-        let import_alias = self.build_import_alias(import.module_paths.clone());
         let mut module_paths = import.module_paths.clone();
         let mut import_single: Option<ImportSingle> = None;
 
@@ -65,7 +65,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     None => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
-                            kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                            kind: DiagKind::ModuleNotFound(self.import_alias_string(import.module_paths.clone())),
                             location: Some(DiagLoc {
                                 file: self.file_path.clone(),
                                 line: import.loc.line,
@@ -126,7 +126,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 if idx != module_paths.len() - 1 {
                                     display_single_diag(Diag {
                                         level: DiagLevel::Error,
-                                        kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                                        kind: DiagKind::ModuleNotFound(
+                                            self.import_alias_string(import.module_paths.clone()),
+                                        ),
                                         location: Some(DiagLoc {
                                             file: self.file_path.clone(),
                                             line: import.loc.line,
@@ -152,7 +154,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
                     "Import module '{}' as directory is not allowed.",
-                    import_alias.clone()
+                    self.import_alias_string(import.module_paths.clone())
                 )),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -175,13 +177,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         sources.clone(),
                     ) {
                         Some(file_path) => {
-                            self.build_imported_module(file_path.to_str().unwrap().to_string(), import_alias.clone());
+                            self.build_imported_module(
+                                file_path.to_str().unwrap().to_string(),
+                                import.module_paths.clone(),
+                                None,
+                            );
                         }
                         None => {
                             if begging_path.is_file() {
                                 self.build_import_single(
                                     begging_path.to_str().unwrap().to_string(),
-                                    import_alias.clone(),
+                                    import.module_paths.clone(),
                                     object_name,
                                     import.loc.clone(),
                                     import.span.end,
@@ -189,7 +195,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             } else {
                                 display_single_diag(Diag {
                                     level: DiagLevel::Error,
-                                    kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                                    kind: DiagKind::ModuleNotFound(
+                                        self.import_alias_string(import.module_paths.clone()),
+                                    ),
                                     location: Some(DiagLoc {
                                         file: self.file_path.clone(),
                                         line: import.loc.line,
@@ -210,13 +218,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         for file_path in file_paths {
                             self.build_imported_module(
                                 format!("{}/{}", directory_path, file_path),
-                                import_alias.clone(),
+                                import.module_paths.clone(),
+                                None,
                             );
                         }
                     } else {
                         self.build_wildcard_imported_module(
                             begging_path.to_str().unwrap().to_string(),
-                            import_alias.clone(),
+                            self.import_alias_string(import.module_paths.clone()),
                         );
                     }
                 }
@@ -224,7 +233,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                kind: DiagKind::ModuleNotFound(self.import_alias_string(import.module_paths.clone())),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
                     line: import.loc.line,
@@ -240,7 +249,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &mut self,
         module_metadata: ModuleMetadata<'ctx>,
         object_name: String,
-        import_alias: String,
+        import_alias: Vec<ModulePath>,
         loc: Location,
         span_end: usize,
     ) {
@@ -262,7 +271,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::ModuleNotFound(import_alias.clone()),
+                        kind: DiagKind::ModuleNotFound(self.import_alias_string(import_alias).clone()),
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: loc.line,
@@ -278,13 +287,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn build_import_single(
         &mut self,
         file_path: String,
-        import_alias: String,
+        import_alias: Vec<ModulePath>,
         object_name: String,
         loc: Location,
         span_end: usize,
     ) {
         // Import with optional alias
-        let module_metadata = self.build_imported_module(file_path, import_alias.clone());
+        let import_single = vec![import_alias.last().unwrap().to_string()];
+
+        let module_metadata = self.build_imported_module(
+            file_path,
+            import_alias[0..import_alias.len() - 1].to_vec(),
+            Some(import_single),
+        );
+
         self.build_import_module_single(module_metadata, object_name, import_alias, loc, span_end);
     }
 
@@ -293,7 +309,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         todo!();
     }
 
-    fn build_imported_module(&mut self, file_path: String, import_alias: String) -> ModuleMetadata<'ctx> {
+    fn build_imported_module(
+        &mut self,
+        file_path: String,
+        import_alias: Vec<ModulePath>,
+        import_single: Option<Vec<String>>,
+    ) -> ModuleMetadata<'ctx> {
         // Import things with alias
 
         // TODO Assure module names to be unique by their absolute path
@@ -323,7 +344,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_block_ref: None,
             terminated_blocks: Vec::new(),
             string_type: self.string_type.clone(),
-            loaded_modules: HashMap::new(),
+            loaded_modules: Vec::new(),
         };
 
         sub_codegen.compile();
@@ -334,10 +355,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             imported_funcs: self.collect_imported_funcs(sub_codegen.func_table),
             imported_structs: self.collect_imported_structs(sub_codegen.struct_table),
             import_alias,
+            import_single,
         };
 
-        self.loaded_modules.insert(module_name, module_metadata.clone());
-
+        self.loaded_modules.push(module_metadata.clone());
         module_metadata
     }
 

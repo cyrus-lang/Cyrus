@@ -1,5 +1,1 @@
-import sample;
-
-fn main() {
-   
-}
+import ( module_alias: module1.module2.module3; )

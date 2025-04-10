@@ -1,5 +1,5 @@
-use either::Either;
 use crate::token::*;
+use either::Either;
 
 #[derive(Debug)]
 pub enum Node {
@@ -121,7 +121,7 @@ pub struct Identifier {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModuleImport {
-    pub sub_modules: Vec<ModulePath>,
+    pub segments: Vec<ModuleSegment>,
     pub span: Span,
     pub loc: Location,
 }
@@ -257,14 +257,20 @@ pub struct Return {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ModulePath {
+pub enum ModuleSegment {
     Wildcard,
     SubModule(Identifier),
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ModulePath {
+    pub alias: Option<String>,
+    pub segments: Vec<ModuleSegment>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Import {
-    pub module_paths: Vec<ModulePath>,
+    pub paths: Vec<ModulePath>,
     pub span: Span,
     pub loc: Location,
 }

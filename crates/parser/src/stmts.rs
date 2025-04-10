@@ -348,9 +348,9 @@ impl<'a> Parser<'a> {
 
     pub fn parse_module_import(&mut self) -> Result<ModuleImport, ParseError> {
         let start = self.current_token.span.start;
-        let mut sub_modules: Vec<ModulePath> = match self.current_token.kind.clone() {
+        let mut segments = match self.current_token.kind.clone() {
             TokenKind::Identifier { name } => {
-                vec![ModulePath::SubModule(Identifier {
+                vec![ModuleSegment::SubModule(Identifier {
                     name,
                     span: Span {
                         start,
@@ -371,7 +371,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // this is because if there is only one sub_module, it should not be consume 
+        // this is because if there is only one sub_module, it should not be consume
         // due to mechanism of our parser that latest expression should not be consumed
         if self.peek_token_is(TokenKind::Dot) {
             self.next_token();
@@ -389,7 +389,7 @@ impl<'a> Parser<'a> {
                         break;
                     }
 
-                    sub_modules.push(ModulePath::SubModule(Identifier {
+                    segments.push(ModuleSegment::SubModule(Identifier {
                         name,
                         span: Span {
                             start,
@@ -408,30 +408,55 @@ impl<'a> Parser<'a> {
 
         let end = self.current_token.span.end;
         Ok(ModuleImport {
-            sub_modules,
+            segments,
             span: Span::new(start, end),
             loc: self.current_location(),
         })
     }
 
-    pub fn parse_module_paths(&mut self, parse_start: usize) -> Result<Vec<ModulePath>, ParseError> {
-        let mut module_paths: Vec<ModulePath> = vec![];
+    pub fn parse_module_path(&mut self, parse_start: usize) -> Result<ModulePath, ParseError> {
+        let mut module_path = ModulePath {
+            alias: None,
+            segments: Vec::new(),
+        };
 
         while !self.current_token_is(TokenKind::Semicolon) {
             match self.current_token.kind.clone() {
                 TokenKind::Identifier { name: identifier } => {
                     let span = self.current_token.span.clone();
-                    module_paths.push(ModulePath::SubModule(Identifier {
-                        name: identifier,
+                    self.next_token(); // consume identifier
+                    
+                    if self.current_token_is(TokenKind::Colon) {
+                        if module_path.alias.is_none() {
+                            self.next_token();
+                            module_path.alias = Some(identifier);
+                            continue;
+                        } else {
+                            return Err(CompileTimeError {
+                                location: self.current_location(),
+                                etype: ParserErrorType::UnexpectedToken(
+                                    TokenKind::Dot,
+                                    self.current_token.kind.clone(),
+                                ),
+                                file_name: Some(self.lexer.file_name.clone()),
+                                code_raw: Some(self.lexer.select(parse_start..self.current_token.span.end)),
+                                verbose: None,
+                                caret: true,
+                            });
+                        }
+                    }
+
+                    module_path.segments.push(ModuleSegment::SubModule(Identifier {
+                        name: identifier.clone(),
                         span: span.clone(),
                         loc: self.current_location(),
                     }));
-                    self.next_token(); // consume identifier
 
                     if self.current_token_is(TokenKind::Dot) {
                         continue;
                     } else if self.current_token_is(TokenKind::Semicolon) {
-                        return Ok(module_paths);
+                        self.next_token();
+                        return Ok(module_path);
                     } else {
                         return Err(CompileTimeError {
                             location: self.current_location(),
@@ -444,8 +469,8 @@ impl<'a> Parser<'a> {
                     }
                 }
                 TokenKind::Asterisk => {
-                    module_paths.push(ModulePath::Wildcard);
                     self.next_token();
+                    module_path.segments.push(ModuleSegment::Wildcard);
                 }
                 TokenKind::Dot => {
                     self.next_token();
@@ -464,38 +489,33 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(module_paths)
+        Ok(module_path)
     }
 
     pub fn parse_import(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+        self.next_token(); // consume import keyword
 
-        if self.current_token_is(TokenKind::Import) {
-            self.next_token(); // consume import keyword
+        let mut paths: Vec<ModulePath> = Vec::new();
 
-            let module_paths = self.parse_module_paths(start)?;
-
-            return Ok(Statement::Import(Import {
-                module_paths,
-                span: Span {
-                    start,
-                    end: self.current_token.span.end,
-                },
-                loc: self.current_location(),
-            }));
+        if self.current_token_is(TokenKind::LeftParen) {
+            self.expect_current(TokenKind::LeftParen)?;
+            while !self.current_token_is(TokenKind::RightParen) {
+                paths.push(self.parse_module_path(start)?);
+            }
+            self.expect_current(TokenKind::RightParen)?;
         } else {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(self.current_token.span.start..self.current_token.span.end),
-                ),
-                verbose: None,
-                caret: true,
-            });
+            paths = vec![self.parse_module_path(start)?];
         }
+
+        return Ok(Statement::Import(Import {
+            paths,
+            span: Span {
+                start,
+                end: self.current_token.span.end,
+            },
+            loc: self.current_location(),
+        }));
     }
 
     pub fn parse_func_params(&mut self, func_def_start: usize) -> Result<FuncParams, ParseError> {

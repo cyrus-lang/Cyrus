@@ -310,32 +310,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    // FIXME func_call.func_name.identifier.name
     pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
-        // FIXME
-        todo!();
+        let func_name = func_call.identifier.name;
 
-        // let arguments = &self.build_arguments(
-        //     Rc::clone(&scope),
-        //     func_call.arguments,
-        //     func_call.loc.clone(),
-        //     func_call.span.end,
-        // );
+        let arguments = &self.build_arguments(
+            Rc::clone(&scope),
+            func_call.arguments,
+            func_call.loc.clone(),
+            func_call.span.end,
+        );
 
-        // if let Some(func_metadata) = self.func_table.get(&func_call.func_name.identifier.name.clone()) {
-        //     self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
-        // } else {
-        //     display_single_diag(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: DiagKind::FuncNotFound(func_call.func_name.identifier.name),
-        //         location: Some(DiagLoc {
-        //             file: self.file_path.clone(),
-        //             line: func_call.loc.line,
-        //             column: func_call.loc.column,
-        //             length: func_call.span.end,
-        //         }),
-        //     });
-        //     exit(1);
-        // }
+        if let Some(func_metadata) = self.func_table.get(&func_name.clone()) {
+            self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncNotFound(func_name),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_call.loc.line,
+                    column: func_call.loc.column,
+                    length: func_call.span.end,
+                }),
+            });
+            exit(1);
+        }
     }
 }

@@ -170,8 +170,8 @@ mod tests {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::Assignment(assignment) = expression {
                 assert_eq!(
-                    assignment.module_import.sub_modules[0],
-                    ModulePath::SubModule(Identifier {
+                    assignment.module_import.segments[0],
+                    ModuleSegment::SubModule(Identifier {
                         name: "x".to_string(),
                         span: Span::new(0, 0),
                         loc: Location::new(0, 4)
@@ -196,8 +196,8 @@ mod tests {
             if let Statement::Expression(expression) = &program.body[0] {
                 if let Expression::StructInit(struct_init) = expression {
                     assert_eq!(
-                        struct_init.struct_name.sub_modules,
-                        vec![ModulePath::SubModule(Identifier {
+                        struct_init.struct_name.segments,
+                        vec![ModuleSegment::SubModule(Identifier {
                             name: "MyStruct".to_string(),
                             span: Span::new(0, 7),
                             loc: Location::new(0, 11)
@@ -258,16 +258,16 @@ mod tests {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::ModuleImport(module_import) = expression {
                 assert_eq!(
-                    module_import.sub_modules[0],
-                    ModulePath::SubModule(Identifier {
+                    module_import.segments[0],
+                    ModuleSegment::SubModule(Identifier {
                         name: "object".to_string(),
                         span: Span::new(0, 5),
                         loc: Location::new(0, 8),
                     })
                 );
                 assert_eq!(
-                    module_import.sub_modules[1],
-                    ModulePath::SubModule(Identifier {
+                    module_import.segments[1],
+                    ModuleSegment::SubModule(Identifier {
                         name: "field".to_string(),
                         span: Span::new(7, 11),
                         loc: Location::new(0, 14),
@@ -290,7 +290,7 @@ mod tests {
                     assert_eq!(
                         field_access_or_method_call.expr,
                         Box::new(Expression::ModuleImport(ModuleImport {
-                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "object".to_string(),
                                 span: Span::new(0, 5),
                                 loc: Location::new(0, 8),
@@ -333,7 +333,7 @@ mod tests {
                     assert_eq!(
                         field_access_or_method_call.expr,
                         Box::new(Expression::ModuleImport(ModuleImport {
-                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "object".to_string(),
                                 span: Span::new(0, 5),
                                 loc: Location::new(0, 8),
@@ -398,8 +398,8 @@ mod tests {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::UnaryOperator(unary_operator) = expression {
                 assert_eq!(
-                    unary_operator.module_import.sub_modules,
-                    vec![ModulePath::SubModule(Identifier {
+                    unary_operator.module_import.segments,
+                    vec![ModuleSegment::SubModule(Identifier {
                         name: "my_var".to_string(),
                         span: Span::new(2, 7),
                         loc: Location::new(0, 9)
@@ -418,8 +418,8 @@ mod tests {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::UnaryOperator(unary_operator) = expression {
                 assert_eq!(
-                    unary_operator.module_import.sub_modules,
-                    vec![ModulePath::SubModule(Identifier {
+                    unary_operator.module_import.segments,
+                    vec![ModuleSegment::SubModule(Identifier {
                         name: "my_var".to_string(),
                         span: Span { start: 0, end: 5 },
                         loc: Location { line: 0, column: 9 }
@@ -453,7 +453,7 @@ mod tests {
                     for_statement.increment,
                     Some(Expression::UnaryOperator(UnaryOperator {
                         module_import: ModuleImport {
-                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
                                 span: Span::new(25, 25),
                                 loc: Location::new(0, 29)
@@ -474,7 +474,7 @@ mod tests {
                             span: Span::new(19, 19)
                         },
                         left: Box::new(Expression::ModuleImport(ModuleImport {
-                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
                                 span: Span::new(17, 17),
                                 loc: Location::new(0, 21)
@@ -536,7 +536,7 @@ mod tests {
                     for_statement.increment,
                     Some(Expression::UnaryOperator(UnaryOperator {
                         module_import: ModuleImport {
-                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
                                 span: Span::new(13, 13),
                                 loc: Location::new(0, 17)
@@ -557,7 +557,7 @@ mod tests {
                             span: Span::new(8, 8)
                         },
                         left: Box::new(Expression::ModuleImport(ModuleImport {
-                            sub_modules: vec![ModulePath::SubModule(Identifier {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
                                 span: Span::new(6, 6),
                                 loc: Location::new(0, 10)
@@ -586,7 +586,7 @@ mod tests {
                         span: Span::new(5, 6)
                     },
                     left: Box::new(Expression::ModuleImport(ModuleImport {
-                        sub_modules: vec![ModulePath::SubModule(Identifier {
+                        segments: vec![ModuleSegment::SubModule(Identifier {
                             name: "a".to_string(),
                             span: Span::new(3, 3),
                             loc: Location::new(0, 8)
@@ -611,7 +611,7 @@ mod tests {
             assert_eq!(
                 if_statement.condition,
                 Expression::ModuleImport(ModuleImport {
-                    sub_modules: vec![ModulePath::SubModule(Identifier {
+                    segments: vec![ModuleSegment::SubModule(Identifier {
                         name: "some_value".to_string(),
                         span: Span::new(3, 12),
                         loc: Location::new(0, 16)
@@ -713,6 +713,66 @@ mod tests {
             assert_eq!(enum_decl.name.name, "Color");
             assert_eq!(enum_decl.variants.len(), 0);
             assert_eq!(enum_decl.variants, vec![]);
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
+
+    define_test!(import_1, "import module1.module2.module3;", |program: ProgramTree| {
+        if let Statement::Import(import) = &program.body[0] {
+            assert_eq!(
+                import.paths,
+                vec![ModulePath {
+                    alias: None,
+                    segments: vec![
+                        ModuleSegment::SubModule(Identifier {
+                            name: "module1".to_string(),
+                            span: Span::new(7, 14),
+                            loc: Location::new(0, 23)
+                        }),
+                        ModuleSegment::SubModule(Identifier {
+                            name: "module2".to_string(),
+                            span: Span::new(15, 22),
+                            loc: Location::new(0, 31)
+                        }),
+                        ModuleSegment::SubModule(Identifier {
+                            name: "module3".to_string(),
+                            span: Span::new(23, 30),
+                            loc: Location::new(0, 32)
+                        }),
+                    ]
+                }]
+            );
+        } else {
+            panic!("Expected an expression.");
+        }
+    });
+
+    define_test!(import_2, "import ( module_alias: module1.module2.module3; )", |program: ProgramTree| {
+        if let Statement::Import(import) = &program.body[0] {
+            assert_eq!(
+                import.paths,
+                vec![ModulePath {
+                    alias: Some("module_alias".to_string()),
+                    segments: vec![
+                        ModuleSegment::SubModule(Identifier {
+                            name: "module1".to_string(),
+                            span: Span::new(23, 30),
+                            loc: Location::new(0, 39)
+                        }),
+                        ModuleSegment::SubModule(Identifier {
+                            name: "module2".to_string(),
+                            span: Span::new(31, 38),
+                            loc: Location::new(0, 47)
+                        }),
+                        ModuleSegment::SubModule(Identifier {
+                            name: "module3".to_string(),
+                            span: Span::new(39, 46),
+                            loc: Location::new(0, 50)
+                        }),
+                    ]
+                }]
+            );
         } else {
             panic!("Expected an expression.");
         }

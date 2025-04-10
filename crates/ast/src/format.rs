@@ -108,11 +108,11 @@ impl fmt::Display for FieldAccess {
     }
 }
 
-impl fmt::Display for ModulePath {
+impl fmt::Display for ModuleSegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ModulePath::Wildcard => write!(f, "*"),
-            ModulePath::SubModule(identifier) => write!(f, "{}", identifier.name),
+            ModuleSegment::Wildcard => write!(f, "*"),
+            ModuleSegment::SubModule(identifier) => write!(f, "{}", identifier.name),
         }
     }
 }
@@ -243,13 +243,16 @@ impl fmt::Display for ProgramTree {
 
 impl fmt::Display for ModuleImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (idx, module_path) in self.sub_modules.iter().enumerate().clone() {
-            if idx == self.sub_modules.len() - 1 {
-                write!(f, "{}", module_path.to_string())?;
-            } else {
-                write!(f, "{}.", module_path.to_string())?;
-            }
-        }
-        Ok(())
+        todo!();
+        // write!(f, "import (")?;
+        // for (idx, module_path) in self.sub_modules.iter().enumerate().clone() {
+        //     if idx == self.sub_modules.len() - 1 {
+        //         write!(f, "{}", module_path.to_string())?;
+        //     } else {
+        //         write!(f, "{}.", module_path.to_string())?;
+        //     }
+        // }
+        // write!(f, "import )")?;
+        // Ok(())
     }
 }

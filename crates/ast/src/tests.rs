@@ -80,7 +80,7 @@ mod tests {
         }));
         let increment = Some(Expression::UnaryOperator(UnaryOperator {
             module_import: ModuleImport {
-                sub_modules: vec![ModulePath::SubModule(Identifier {
+                segments: vec![ModuleSegment::SubModule(Identifier {
                     name: "i".to_string(),
                     span: Span::default(),
                     loc: Location::default(),
@@ -126,7 +126,7 @@ mod tests {
     fn test_assignment() {
         let assignment = Assignment {
             module_import: ModuleImport {
-                sub_modules: vec![ModulePath::SubModule(Identifier {
+                segments: vec![ModuleSegment::SubModule(Identifier {
                     name: "i".to_string(),
                     span: Span::default(),
                     loc: Location::default(),
@@ -140,8 +140,8 @@ mod tests {
         };
 
         assert_eq!(
-            assignment.module_import.sub_modules[0],
-            ModulePath::SubModule(Identifier {
+            assignment.module_import.segments[0],
+            ModuleSegment::SubModule(Identifier {
                 name: "i".to_string(),
                 span: Span::default(),
                 loc: Location::default()
