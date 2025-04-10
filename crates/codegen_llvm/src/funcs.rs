@@ -258,21 +258,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         field_access_or_method_call: FieldAccessOrMethodCall,
     ) -> AnyValue<'ctx> {
-        let mut final_result = self.build_expr(Rc::clone(&scope), *field_access_or_method_call.expr);
+        todo!();
+        
+        // let mut final_result = self.build_expr(Rc::clone(&scope), *field_access_or_method_call.expr);
 
-        for item in field_access_or_method_call.chains {
-            match item {
-                either::Either::Left(method_call) => {
-                    let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
-                    if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-                        final_result = AnyValue::try_from(basic_value).unwrap();
-                    }
-                }
-                either::Either::Right(_) => todo!(),
-            }
-        }
+        // for item in field_access_or_method_call.chains {
+        //     match item {
+        //         either::Either::Left(method_call) => {
+        //             let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
+        //             if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
+        //                 final_result = AnyValue::try_from(basic_value).unwrap();
+        //             }
+        //         }
+        //         either::Either::Right(_) => todo!(),
+        //     }
+        // }
 
-        final_result
+        // final_result
     }
 
     pub(crate) fn build_arguments(
@@ -312,6 +314,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
         let func_name = func_call.identifier.name;
+
+        dbg!(func_name.clone());
 
         let arguments = &self.build_arguments(
             Rc::clone(&scope),

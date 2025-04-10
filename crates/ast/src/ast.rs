@@ -258,7 +258,6 @@ pub struct Return {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModuleSegment {
-    Wildcard,
     SubModule(Identifier),
 }
 

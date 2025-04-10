@@ -9,6 +9,7 @@ use utils::compile_time_errors::parser_errors::ParserErrorType;
 impl<'a> Parser<'a> {
     pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start.clone();
+
         match self.current_token.kind {
             TokenKind::Enum => self.parse_enum(),
             TokenKind::If => self.parse_if(),
@@ -425,7 +426,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Identifier { name: identifier } => {
                     let span = self.current_token.span.clone();
                     self.next_token(); // consume identifier
-                    
+
                     if self.current_token_is(TokenKind::Colon) {
                         if module_path.alias.is_none() {
                             self.next_token();
@@ -455,7 +456,6 @@ impl<'a> Parser<'a> {
                     if self.current_token_is(TokenKind::Dot) {
                         continue;
                     } else if self.current_token_is(TokenKind::Semicolon) {
-                        self.next_token();
                         return Ok(module_path);
                     } else {
                         return Err(CompileTimeError {
@@ -467,10 +467,6 @@ impl<'a> Parser<'a> {
                             caret: true,
                         });
                     }
-                }
-                TokenKind::Asterisk => {
-                    self.next_token();
-                    module_path.segments.push(ModuleSegment::Wildcard);
                 }
                 TokenKind::Dot => {
                     self.next_token();
@@ -500,10 +496,22 @@ impl<'a> Parser<'a> {
 
         if self.current_token_is(TokenKind::LeftParen) {
             self.expect_current(TokenKind::LeftParen)?;
+
             while !self.current_token_is(TokenKind::RightParen) {
                 paths.push(self.parse_module_path(start)?);
+                self.next_token();
             }
-            self.expect_current(TokenKind::RightParen)?;
+
+            if !self.current_token_is(TokenKind::RightParen) {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::MissingClosingParen,
+                    file_name: Some(self.lexer.file_name.clone()),
+                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                    verbose: None,
+                    caret: true,
+                });
+            }
         } else {
             paths = vec![self.parse_module_path(start)?];
         }

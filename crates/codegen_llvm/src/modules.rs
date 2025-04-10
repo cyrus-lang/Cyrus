@@ -1,17 +1,15 @@
-use crate::{
-    CodeGenLLVM,
-    build::BuildManifest,
-    diag::*,
-    funcs::{FuncMetadata, FuncTable},
-    structs::StructTable,
-};
+use crate::{CodeGenLLVM, build::BuildManifest, diag::*, funcs::FuncTable, structs::StructTable};
 use ast::{
-    ast::{Field, FuncDecl, Identifier, Import, ModulePath, VisType},
+    ast::{Field, FuncDecl, Identifier, Import, ModulePath, ModuleSegment, VisType},
+    format::module_segments_as_string,
     token::Location,
 };
 use inkwell::module::Module;
 use std::{cell::RefCell, collections::HashMap, process::exit, rc::Rc};
-use utils::fs::{find_file_from_sources, list_files};
+use utils::{
+    fs::find_file_from_sources,
+    generate_random_hex::{self, generate_random_hex},
+};
 
 #[derive(Debug, Clone)]
 pub struct ExportedFuncMetadata {
@@ -29,88 +27,45 @@ pub struct ExportedStructMetadata {
 
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'ctx> {
-    pub import_single: Option<Vec<String>>,
-    pub import_alias: Vec<ModulePath>,
+    pub identifier: String,
     pub module: Rc<RefCell<Module<'ctx>>>,
     pub imported_funcs: HashMap<String, ExportedFuncMetadata>,
     pub imported_structs: HashMap<String, ExportedStructMetadata>,
 }
 
-#[derive(Debug, Clone)]
-pub enum ImportSingle {
-    Object(String),
-    Wildcard,
-}
-
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn import_alias_string(&self, module_paths: Vec<ModulePath>) -> String {
-        module_paths
-            .iter()
-            .map(|p| p.to_string())
-            .collect::<Vec<String>>()
-            .join(".")
-    }
-
-    pub(crate) fn build_import(&mut self, import: Import) {
+    fn build_import_module_path(&mut self, mut segments: Vec<ModuleSegment>, loc: Location, span_end: usize) -> String {
         let sources = &self.opts.sources_dir;
-        let mut module_paths = import.module_paths.clone();
-        let mut import_single: Option<ImportSingle> = None;
+        let segments_str = module_segments_as_string(segments.clone());
 
         let mut begging_path = {
-            if let ModulePath::SubModule(identifier) = module_paths.clone().first().unwrap() {
-                module_paths.remove(0);
+            if let ModuleSegment::SubModule(identifier) = segments.clone().first().unwrap() {
+                segments.remove(0);
                 let file_name = identifier.name.clone();
                 match find_file_from_sources(file_name, sources.clone()) {
                     Some(path) => path,
                     None => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
-                            kind: DiagKind::ModuleNotFound(self.import_alias_string(import.module_paths.clone())),
+                            kind: DiagKind::ModuleNotFound(segments_str.clone()),
                             location: Some(DiagLoc {
                                 file: self.file_path.clone(),
-                                line: import.loc.line,
-                                column: import.loc.column,
-                                length: import.span.end,
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
                             }),
                         });
                         exit(1);
                     }
                 }
             } else {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::InvalidWildcard,
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: import.loc.line,
-                        column: import.loc.column,
-                        length: import.span.end,
-                    }),
-                });
-                exit(1);
+                unreachable!();
             }
         };
 
-        for (idx, module_path) in module_paths.iter().enumerate() {
+        for module_path in segments {
             match module_path {
-                ModulePath::Wildcard => {
-                    if idx == module_paths.len() - 1 {
-                        import_single = Some(ImportSingle::Wildcard)
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InvalidWildcard,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: import.loc.line,
-                                column: import.loc.column,
-                                length: import.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                }
-                ModulePath::SubModule(identifier) => {
+                ModuleSegment::SubModule(identifier) => {
                     // check current identifier that, it's a sub_module or a thing that must be imported from latest module
                     let temp_path = format!("{}/{}", begging_path.to_str().unwrap(), identifier.name.clone());
                     match find_file_from_sources(temp_path.clone(), sources.clone()) {
@@ -123,86 +78,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             {
                                 begging_path = new_begging_path;
                             } else {
-                                if idx != module_paths.len() - 1 {
-                                    display_single_diag(Diag {
-                                        level: DiagLevel::Error,
-                                        kind: DiagKind::ModuleNotFound(
-                                            self.import_alias_string(import.module_paths.clone()),
-                                        ),
-                                        location: Some(DiagLoc {
-                                            file: self.file_path.clone(),
-                                            line: import.loc.line,
-                                            column: import.loc.column,
-                                            length: import.span.end,
-                                        }),
-                                    });
-                                    exit(1);
-                                } else {
-                                    import_single = Some(ImportSingle::Object(identifier.name.clone()));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // import directory is not allowed
-        // only import module and wildcard is allowed
-        if begging_path.is_dir() && import_single.is_none() {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!(
-                    "Import module '{}' as directory is not allowed.",
-                    self.import_alias_string(import.module_paths.clone())
-                )),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: import.loc.line,
-                    column: import.loc.column,
-                    length: import.span.end,
-                }),
-            });
-            exit(1);
-        }
-
-        // here we have two possibilities!
-        // if begging_path is a file, we import it.
-        // and if it's not, so it's a something that must be imported from latest module
-        if let Some(import_single) = import_single {
-            match import_single {
-                ImportSingle::Object(object_name) => {
-                    match find_file_from_sources(
-                        format!("{}/{}.cyr", begging_path.to_str().unwrap(), object_name),
-                        sources.clone(),
-                    ) {
-                        Some(file_path) => {
-                            self.build_imported_module(
-                                file_path.to_str().unwrap().to_string(),
-                                import.module_paths.clone(),
-                                None,
-                            );
-                        }
-                        None => {
-                            if begging_path.is_file() {
-                                self.build_import_single(
-                                    begging_path.to_str().unwrap().to_string(),
-                                    import.module_paths.clone(),
-                                    object_name,
-                                    import.loc.clone(),
-                                    import.span.end,
-                                );
-                            } else {
                                 display_single_diag(Diag {
                                     level: DiagLevel::Error,
-                                    kind: DiagKind::ModuleNotFound(
-                                        self.import_alias_string(import.module_paths.clone()),
-                                    ),
+                                    kind: DiagKind::ModuleNotFound(segments_str.clone()),
                                     location: Some(DiagLoc {
                                         file: self.file_path.clone(),
-                                        line: import.loc.line,
-                                        column: import.loc.column,
-                                        length: import.span.end,
+                                        line: loc.line,
+                                        column: loc.column,
+                                        length: span_end,
                                     }),
                                 });
                                 exit(1);
@@ -210,115 +93,48 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }
                     }
                 }
-                ImportSingle::Wildcard => {
-                    if begging_path.is_dir() {
-                        // wildcard for files
-                        let directory_path = begging_path.to_str().unwrap();
-                        let file_paths = list_files(directory_path, "cyr");
-                        for file_path in file_paths {
-                            self.build_imported_module(
-                                format!("{}/{}", directory_path, file_path),
-                                import.module_paths.clone(),
-                                None,
-                            );
-                        }
-                    } else {
-                        self.build_wildcard_imported_module(
-                            begging_path.to_str().unwrap().to_string(),
-                            self.import_alias_string(import.module_paths.clone()),
-                        );
-                    }
-                }
             }
-        } else {
+        }
+
+        if begging_path.is_dir() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::ModuleNotFound(self.import_alias_string(import.module_paths.clone())),
+                kind: DiagKind::Custom(format!(
+                    "Import module '{}' as directory is not allowed.",
+                    segments_str.clone()
+                )),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
-                    line: import.loc.line,
-                    column: import.loc.column,
-                    length: import.span.end,
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
                 }),
             });
             exit(1);
         }
+
+        begging_path.to_str().unwrap().to_string()
     }
 
-    fn build_import_module_single(
-        &mut self,
-        module_metadata: ModuleMetadata<'ctx>,
-        object_name: String,
-        import_alias: Vec<ModulePath>,
-        loc: Location,
-        span_end: usize,
-    ) {
-        match module_metadata.imported_funcs.get(&object_name.clone()) {
-            Some(v) => {
-                let func_ptr = self.build_func_decl(v.func_decl.clone());
-                self.func_table.insert(
-                    v.func_decl.name.clone(),
-                    FuncMetadata {
-                        ptr: func_ptr,
-                        func_decl: v.func_decl.clone(),
-                    },
-                );
+    fn build_module_identifier(&self, module_path: ModulePath) -> String {
+        module_path.alias.unwrap_or({
+            match module_path.segments.last().unwrap() {
+                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
             }
-            None => match module_metadata.imported_structs.get(&object_name.clone()) {
-                Some(_) => {
-                    todo!("Import struct is not implemented yet.");
-                }
-                None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::ModuleNotFound(self.import_alias_string(import_alias).clone()),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
-                }
-            },
+        })
+    }
+
+    pub(crate) fn build_import(&mut self, import: Import) {
+        for module_path in import.paths.clone() {
+            let file_path =
+                self.build_import_module_path(module_path.segments.clone(), import.loc.clone(), import.span.end);
+            let module_identifier = self.build_module_identifier(module_path);
+            self.build_imported_module(file_path, module_identifier);
         }
     }
-    fn build_import_single(
-        &mut self,
-        file_path: String,
-        import_alias: Vec<ModulePath>,
-        object_name: String,
-        loc: Location,
-        span_end: usize,
-    ) {
-        // Import with optional alias
-        let import_single = vec![import_alias.last().unwrap().to_string()];
 
-        let module_metadata = self.build_imported_module(
-            file_path,
-            import_alias[0..import_alias.len() - 1].to_vec(),
-            Some(import_single),
-        );
-
-        self.build_import_module_single(module_metadata, object_name, import_alias, loc, span_end);
-    }
-
-    fn build_wildcard_imported_module(&mut self, file_path: String, import_alias: String) {
-        // Import with optional alias
-        todo!();
-    }
-
-    fn build_imported_module(
-        &mut self,
-        file_path: String,
-        import_alias: Vec<ModulePath>,
-        import_single: Option<Vec<String>>,
-    ) -> ModuleMetadata<'ctx> {
-        // Import things with alias
-
-        // TODO Assure module names to be unique by their absolute path
-        let module_name = file_path.clone();
+    fn build_imported_module(&mut self, file_path: String, module_identifier: String) -> ModuleMetadata<'ctx> {
+        let module_name = format!("module_{}_{}", module_identifier.clone(), generate_random_hex());
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_name)));
         let sub_builder = self.context.create_builder();
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&sub_module));
@@ -354,8 +170,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             module: Rc::clone(&sub_module),
             imported_funcs: self.collect_imported_funcs(sub_codegen.func_table),
             imported_structs: self.collect_imported_structs(sub_codegen.struct_table),
-            import_alias,
-            import_single,
+            identifier: module_identifier,
         };
 
         self.loaded_modules.push(module_metadata.clone());

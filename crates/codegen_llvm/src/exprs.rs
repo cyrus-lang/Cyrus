@@ -28,7 +28,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_load(
                     Rc::clone(&scope),
                     ModuleImport {
-                        sub_modules: vec![ModulePath::SubModule(identifier.clone())],
+                        segments: vec![ModuleSegment::SubModule(identifier.clone())],
                         span: identifier.span,
                         loc: identifier.loc,
                     },
@@ -141,14 +141,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
-        if module_import.sub_modules.len() == 1 {
+        if module_import.segments.len() == 1 {
             return self.build_load(Rc::clone(&scope), module_import);
         }
 
         let mut record: (PointerValue<'ctx>, AnyType<'ctx>);
 
         let first_sub_module = {
-            if let ModulePath::SubModule(sub_module) = module_import.sub_modules.first().unwrap() {
+            if let ModuleSegment::SubModule(sub_module) = module_import.segments.first().unwrap() {
                 sub_module
             } else {
                 unreachable!();
@@ -159,7 +159,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match scope.borrow_mut().get(first_sub_module.name.clone()) {
                 Some(record) => record,
                 None => {
-                    dbg!(module_import.sub_modules.clone());
+                    dbg!(module_import.segments.clone());
                     dbg!(self.loaded_modules.clone());
                     // TODO
                     // Look up for imported libraries
@@ -170,17 +170,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let scope_record = binding.borrow_mut().deref().clone();
         record = (scope_record.ptr.clone(), scope_record.ty.clone());
 
-        for module in module_import.sub_modules.clone() {
+        for module in module_import.segments.clone() {
             match module {
-                ModulePath::Wildcard => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("ModulePath::Wildcard not allowed in build_load.".to_string()),
-                        location: None,
-                    });
-                    exit(1);
-                }
-                ModulePath::SubModule(identifier) => {
+                ModuleSegment::SubModule(identifier) => {
                     // in this part of loading, we expect our object to be a struct or a sub_module.
                     if let AnyType::StructType(struct_type) = record.1 {
                         // self.builder.build_load(pointee_ty, ptr, name)

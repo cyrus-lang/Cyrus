@@ -111,7 +111,6 @@ impl fmt::Display for FieldAccess {
 impl fmt::Display for ModuleSegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ModuleSegment::Wildcard => write!(f, "*"),
             ModuleSegment::SubModule(identifier) => write!(f, "{}", identifier.name),
         }
     }
@@ -255,4 +254,12 @@ impl fmt::Display for ModuleImport {
         // write!(f, "import )")?;
         // Ok(())
     }
+}
+
+pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
+    segments
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<String>>()
+        .join(".")
 }
