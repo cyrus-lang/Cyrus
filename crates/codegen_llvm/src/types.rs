@@ -28,6 +28,7 @@ pub(crate) enum AnyType<'a> {
     VoidType(VoidType<'a>),
     OpaquePointer(PointerType<'a>),
     PointerType(Box<TypedPointerType<'a>>),
+    ImportedModuleValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,6 +69,7 @@ impl<'a> AnyType<'a> {
             AnyType::StringType(t) => (*t).struct_type.as_basic_type_enum(),
             AnyType::OpaquePointer(t) => t.as_basic_type_enum(),
             AnyType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).try_into().unwrap(),
+            AnyType::ImportedModuleValue => unreachable!(),
         }
     }
 
@@ -82,6 +84,7 @@ impl<'a> AnyType<'a> {
             AnyType::StringType(t) => t.struct_type.as_type_ref(),
             AnyType::OpaquePointer(t) => t.as_type_ref(),
             AnyType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).as_type_ref(),
+            AnyType::ImportedModuleValue => unreachable!(),
         }
     }
 
@@ -111,6 +114,7 @@ impl<'a> AnyType<'a> {
             AnyType::StringType(_) => "string".to_string(),
             AnyType::VoidType(_) => "void".to_string(),
             AnyType::OpaquePointer(_) => "ptr".to_string(),
+            AnyType::ImportedModuleValue => unreachable!(),
         }
     }
 }

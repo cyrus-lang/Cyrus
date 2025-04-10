@@ -1,8 +1,5 @@
 use crate::{
-    CodeGenLLVM, ScopeRef,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    types::{AnyType, TypedPointerType},
-    values::{AnyValue, StringValue, TypedPointerValue},
+    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, types::{AnyType, TypedPointerType}, values::{AnyValue, ImportedModuleValue, StringValue, TypedPointerValue}, CodeGenLLVM, ScopeRef
 };
 use ast::{
     ast::*,
@@ -222,24 +219,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
-        // FIXME
-        todo!();
-        // let binding = {
-        //     match scope.borrow_mut().get(module_import.identifier.name.clone()) {
-        //         Some(record) => record,
-        //         None => {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::IdentifierNotDefined(module_import.identifier.name),
-        //                 location: None,
-        //             });
-        //             exit(1);
-        //         }
-        //     }
-        // };
-        // let record = binding.borrow_mut();
+        match module_import.segments.first().unwrap() {
+            ModuleSegment::SubModule(identifier) => {
+                let binding = {
+                    match scope.borrow_mut().get(identifier.name.clone()) {
+                        Some(record) => record,
+                        None => match self.find_loaded_module(identifier.name.clone()) {
+                            Some(metadata) => {
+                                return (AnyValue::ImportedModuleValue(ImportedModuleValue { metadata }), AnyType::ImportedModuleValue);
+                            },
+                            None => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),
+                                    location: None,
+                                });
+                                exit(1);
+                            }
+                        },
+                    }
+                };
+                let record = binding.borrow_mut();
 
-        // self.build_load_internal(record.ptr.clone(), record.ty.clone())
+                self.build_load_internal(record.ptr.clone(), record.ty.clone())
+            }
+        }
     }
 
     pub(crate) fn build_load_ptr(

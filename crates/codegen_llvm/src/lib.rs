@@ -17,12 +17,11 @@ use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::DerefMut;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
 use types::{AnyType, StringType};
-use utils::generate_random_hex::generate_random_hex;
+use utils::fs::file_stem;
 use values::{AnyValue, StringValue};
 
 mod build;
@@ -47,6 +46,7 @@ pub struct CodeGenLLVM<'ctx> {
     opts: Options,
     context: &'ctx Context,
     module: Rc<RefCell<Module<'ctx>>>,
+    module_name: String,
     builder: Builder<'ctx>,
     target_machine: TargetMachine,
     build_manifest: BuildManifest,
@@ -76,8 +76,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         compiler_invoked_single: bool,
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
-        // TODO Assure module names to be unique by their absolute path
-        let module = Rc::new(RefCell::new(context.create_module(&file_name)));
+        let module_name = file_stem(&file_name).unwrap_or(&file_name).to_string();
+        let module = Rc::new(RefCell::new(context.create_module(&module_name.clone())));
         let builder = context.create_builder();
 
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&module));
@@ -102,6 +102,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             terminated_blocks: Vec::new(),
             string_type: CodeGenLLVM::build_string_type(context),
             module,
+            module_name,
             loaded_modules: Vec::new(),
         };
 

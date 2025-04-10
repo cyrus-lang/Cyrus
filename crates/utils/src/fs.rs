@@ -139,3 +139,9 @@ pub fn list_files(dir: &str, ext: &str) -> Vec<String> {
 
     file_names
 }
+
+pub fn file_stem(file_name: &str) -> Option<&str> {
+    Path::new(file_name)
+        .file_stem()          // gets "main" from "main.cyr"
+        .and_then(|s| s.to_str())  // convert OsStr to &str
+}

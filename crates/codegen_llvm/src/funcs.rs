@@ -109,12 +109,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_func_def(&mut self, func_def: FuncDef) -> FunctionValue<'ctx> {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
 
-        let func_decl = FuncDecl {
+        let mut func_decl = FuncDecl {
             name: func_def.name.clone(),
             params: func_def.params.clone(),
             return_type: func_def.return_type.clone(),
             vis_type: func_def.vis_type.clone(),
-            renamed_as: None,
+            renamed_as: Some(func_def.name.clone()),
             span: func_def.span.clone(),
             loc: func_def.loc.clone(),
         };
@@ -146,12 +146,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
+        let actual_func_name = format!("{}.{}", self.module_name, func_def.name.clone());
+        func_decl.name = actual_func_name.clone();
+
         let func_linkage = self.build_linkage(func_def.vis_type.clone());
         let func = self
             .module
             .borrow_mut()
             .deref_mut()
-            .add_function(&func_def.name, fn_type, Some(func_linkage));
+            .add_function(&actual_func_name, fn_type, Some(func_linkage));
+
         self.current_func_ref = Some(func);
 
         let entry_block = self.context.append_basic_block(func, "entry");
@@ -208,8 +212,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         func.verify(true);
 
-        self.func_table
-            .insert(func_def.name, FuncMetadata { func_decl, ptr: func });
+        self.func_table.insert(
+            func_decl.renamed_as.clone().unwrap(),
+            FuncMetadata { func_decl, ptr: func },
+        );
 
         return func;
     }
@@ -258,23 +264,49 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         field_access_or_method_call: FieldAccessOrMethodCall,
     ) -> AnyValue<'ctx> {
-        todo!();
-        
-        // let mut final_result = self.build_expr(Rc::clone(&scope), *field_access_or_method_call.expr);
+        let mut final_result = self.build_expr(Rc::clone(&scope), *field_access_or_method_call.expr);
 
-        // for item in field_access_or_method_call.chains {
-        //     match item {
-        //         either::Either::Left(method_call) => {
-        //             let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
-        //             if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-        //                 final_result = AnyValue::try_from(basic_value).unwrap();
-        //             }
-        //         }
-        //         either::Either::Right(_) => todo!(),
-        //     }
-        // }
+        for item in field_access_or_method_call.chains {
+            match item {
+                either::Either::Left(method_call) => {
+                    // here we get the function from "imported module value"
+                    // we call it, and assign the result into final_result and continue the process as you can see.
+                    if let AnyValue::ImportedModuleValue(ref imported_module_value) = final_result {
+                        if let Some(func_metadata) = imported_module_value
+                            .metadata
+                            .imported_funcs
+                            .get(&method_call.identifier.name.clone())
+                        {
+                            let mut new_method_call = method_call.clone();
+                            new_method_call.identifier.name = func_metadata.func_decl.name.clone();
+                            let call_site_value = self.build_func_call(Rc::clone(&scope), new_method_call);
+                            if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
+                                final_result = AnyValue::try_from(basic_value).unwrap();
+                            }
+                        } else {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom(format!(
+                                    "The '{}' not defined found in module '{}'.",
+                                    method_call.identifier.name, imported_module_value.metadata.identifier
+                                )),
+                                location: None,
+                            });
+                            exit(1);
+                        }
+                    } else {
+                        // ordinary value
+                        let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
+                        if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
+                            final_result = AnyValue::try_from(basic_value).unwrap();
+                        }
+                    }
+                }
+                either::Either::Right(_) => todo!(),
+            }
+        }
 
-        // final_result
+        final_result
     }
 
     pub(crate) fn build_arguments(
@@ -314,8 +346,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
         let func_name = func_call.identifier.name;
-
-        dbg!(func_name.clone());
 
         let arguments = &self.build_arguments(
             Rc::clone(&scope),
