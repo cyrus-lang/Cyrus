@@ -15,7 +15,6 @@ use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;
 use serde::Serialize;
-use utils::fs::dylib_extension;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::c_void;
@@ -27,6 +26,7 @@ use std::ops::DerefMut;
 use std::path::Path;
 use std::process::exit;
 use utils::fs::absolute_to_relative;
+use utils::fs::dylib_extension;
 use utils::fs::ensure_output_dir;
 use utils::generate_random_hex::generate_random_hex;
 use utils::tui::tui_compiled;
@@ -86,6 +86,21 @@ impl BuildManifest {
 type MainFunc = unsafe extern "C" fn() -> c_void;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn generate_output_file_name(&self) -> String {
+        let mut file_name = Path::new(&self.file_path.clone())
+            .with_extension("")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let wd = env::current_dir().unwrap();
+        file_name = file_name.replace(wd.to_str().unwrap(), "");
+        file_name = file_name
+            .trim_start_matches('/') // remove leading slash
+            .replace('/', "_") // replace slashes with underscores
+            .to_string();
+        file_name
+    }
+
     pub(crate) fn generate_output(&mut self) {
         match &self.output_kind {
             OutputKind::LlvmIr(output_path) => self.emit_llvm_ir(output_path.clone()),
@@ -99,7 +114,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn emit_llvm_ir(&mut self, output_path: Option<String>) {
         if let Some(output_path) = output_path {
             ensure_output_dir(Path::new(&output_path.clone()));
-            let file_path = format!("{}/{}.ll", output_path, self.module_name);
+            let file_path = format!("{}/{}.ll", output_path, self.generate_output_file_name());
+
             if let Err(err) = self.module.borrow_mut().deref_mut().print_to_file(file_path) {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -121,7 +137,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn emit_asm(&mut self, output_path: Option<String>) {
         if let Some(output_path) = output_path {
             ensure_output_dir(Path::new(&output_path.clone()));
-            let file_path = format!("{}/{}.asm", output_path, self.module_name);
+            let file_path = format!("{}/{}.asm", output_path, self.generate_output_file_name());
             if let Err(err) = self.target_machine.write_to_file(
                 &self.module.borrow_mut().deref_mut(),
                 FileType::Assembly,
@@ -240,7 +256,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
         ensure_output_dir(Path::new(&output_path.clone()));
-        let file_path = format!("{}/{}.{}", output_path, self.module_name, dylib_extension());
+        let file_path = format!(
+            "{}/{}.{}",
+            output_path,
+            self.generate_output_file_name(),
+            dylib_extension()
+        );
 
         // TODO Consider to make linker dynamic through Project.toml and CLI Program.
         let linker = "cc";
@@ -273,7 +294,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn generate_object_file(&self, output_path: Option<String>) {
         if let Some(output_path) = output_path {
             ensure_output_dir(Path::new(&output_path.clone()));
-            let file_path = format!("{}/{}.o", output_path, self.module_name);
+            let file_path = format!("{}/{}.o", output_path, self.generate_output_file_name());
             self.generate_object_file_internal(file_path);
         } else {
             display_single_diag(Diag {
