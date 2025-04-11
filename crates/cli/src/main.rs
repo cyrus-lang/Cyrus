@@ -1,6 +1,7 @@
 use ::parser::parse_program;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
+use codegen_llvm::build::OutputKind;
 use codegen_llvm::diag::*;
 use utils::fs::get_directory_of_file;
 
@@ -184,7 +185,7 @@ fn project_file_required() {
 }
 
 macro_rules! init_compiler {
-    ($context:expr, $file_path:expr, $opts:expr) => {{
+    ($context:expr, $file_path:expr, $opts:expr, $output_kind:expr) => {{
         if let Some(file_path) = $file_path {
             if !file_path.ends_with(".cyr") {
                 display_single_diag(Diag {
@@ -216,7 +217,7 @@ macro_rules! init_compiler {
             };
 
             let (program, file_name) = parse_program(file_path.clone());
-            let codegen_llvm = match CodeGenLLVM::new($context, file_path, file_name.clone(), program, opts, true) {
+            let codegen_llvm = match CodeGenLLVM::new($context, file_path, file_name.clone(), program, opts, true, $output_kind) {
                 Ok(instance) => instance,
                 Err(err) => {
                     display_single_diag(Diag {
@@ -277,21 +278,28 @@ macro_rules! init_compiler {
                     };
 
                     let (program, file_name) = parse_program(main_file_path.clone());
-                    let codegen_llvm =
-                        match CodeGenLLVM::new($context, main_file_path, file_name.clone(), program, options, false) {
-                            Ok(instance) => instance,
-                            Err(err) => {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::Custom(format!(
-                                        "Creating CodeGenLLVM instance failed:{}",
-                                        err.to_string()
-                                    )),
-                                    location: None,
-                                });
-                                std::process::exit(1);
-                            }
-                        };
+                    let codegen_llvm = match CodeGenLLVM::new(
+                        $context,
+                        main_file_path,
+                        file_name.clone(),
+                        program,
+                        options,
+                        false,
+                        $output_kind,
+                    ) {
+                        Ok(instance) => instance,
+                        Err(err) => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom(format!(
+                                    "Creating CodeGenLLVM instance failed:{}",
+                                    err.to_string()
+                                )),
+                                location: None,
+                            });
+                            std::process::exit(1);
+                        }
+                    };
 
                     codegen_llvm
                 }
@@ -346,7 +354,12 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options(),
+                OutputKind::None
+            );
             codegen_llvm.compile();
             codegen_llvm.execute();
         }
@@ -359,9 +372,13 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options(),
+                OutputKind::LlvmIr(output_path)
+            );
             codegen_llvm.compile();
-            codegen_llvm.emit_llvm_ir(output_path);
         }
         Commands::EmitASM {
             file_path,
@@ -372,9 +389,13 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options(),
+                OutputKind::Asm(output_path)
+            );
             codegen_llvm.compile();
-            codegen_llvm.emit_asm(output_path);
         }
         Commands::Build {
             file_path,
@@ -385,7 +406,12 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options(),
+                OutputKind::None
+            );
             codegen_llvm.compile();
             codegen_llvm.generate_executable_file(output_path);
         }
@@ -398,9 +424,13 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options(),
+                OutputKind::ObjectFile(output_path)
+            );
             codegen_llvm.compile();
-            codegen_llvm.generate_object_file(output_path);
         }
         Commands::Dylib {
             file_path,
@@ -411,9 +441,13 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(&context, file_path.clone(), compiler_options.to_compiler_options());
+            let mut codegen_llvm = init_compiler!(
+                &context,
+                file_path.clone(),
+                compiler_options.to_compiler_options(),
+                OutputKind::Dylib(output_path)
+            );
             codegen_llvm.compile();
-            codegen_llvm.generate_dynamic_library(output_path);
         }
         Commands::Version => {
             println!("Cyrus {}", version)

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{opts::Options, CodeGenLLVM};
+    use crate::{build::OutputKind, opts::Options, CodeGenLLVM};
     use inkwell::context::Context;
 
     #[test]
@@ -15,7 +15,8 @@ mod tests {
                 span: ast::token::Span::default(),
             },
             Options::default(),
-            true
+            true,
+            OutputKind::None
         );
     }
 }

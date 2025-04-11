@@ -1,6 +1,6 @@
 use ast::ast::*;
 use ast::token::{Location, TokenKind};
-use build::BuildManifest;
+use build::{BuildManifest, OutputKind};
 use diag::*;
 use funcs::FuncTable;
 use inkwell::OptimizationLevel;
@@ -24,7 +24,7 @@ use types::{AnyType, StringType};
 use utils::fs::file_stem;
 use values::{AnyValue, StringValue};
 
-mod build;
+pub mod build;
 pub mod diag;
 mod enums;
 mod exprs;
@@ -66,6 +66,7 @@ pub struct CodeGenLLVM<'ctx> {
     string_type: StringType<'ctx>,
     loaded_modules: Vec<ModuleMetadata<'ctx>>,
     dependent_modules: HashMap<String, Vec<String>>,
+    output_kind: OutputKind,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -76,6 +77,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         program: ProgramTree,
         opts: Options,
         compiler_invoked_single: bool,
+        output_kind: OutputKind,
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
         let module_name = file_stem(&file_name).unwrap_or(&file_name).to_string();
@@ -107,6 +109,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             module_name: module_name.clone(),
             loaded_modules: Vec::new(),
             dependent_modules: HashMap::new(),
+            output_kind,
         };
 
         codegen_llvm.load_runtime();
@@ -158,6 +161,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.save_object_file();
             }
         }
+
+        self.generate_output();
     }
 
     pub(crate) fn build_alloca(

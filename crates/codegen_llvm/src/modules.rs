@@ -33,8 +33,6 @@ pub struct ModuleMetadata<'ctx> {
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn rebuild_dependent_modules(&mut self) {
-        dbg!(self.dependent_modules.clone());
-
         if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
             for file_path in module_deps {
                 // skip for rebuilding entry_point module
@@ -44,7 +42,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .find(|m| *m.file_path == *file_path)
                     .cloned()
                     .expect("Failed to get a loaded module by it's file path.");
-    
+
                 dbg!(module_metadata.identifier.clone());
             }
         }
@@ -186,15 +184,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             string_type: self.string_type.clone(),
             loaded_modules: Vec::new(),
             dependent_modules: HashMap::new(),
+            output_kind: self.output_kind.clone(),
         };
 
         // preventing entry_point of being in dependent_modules
-        if self.file_path !=  self.entry_point_path {
+        if self.file_path != self.entry_point_path {
             sub_codegen
-            .dependent_modules
-            .insert(file_path.clone(), vec![self.file_path.clone()]);
+                .dependent_modules
+                .insert(file_path.clone(), vec![self.file_path.clone()]);
         }
-        
+
         sub_codegen.compile();
         self.build_manifest = sub_codegen.build_manifest.clone();
 

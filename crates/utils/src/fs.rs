@@ -145,3 +145,13 @@ pub fn file_stem(file_name: &str) -> Option<&str> {
         .file_stem()          // gets "main" from "main.cyr"
         .and_then(|s| s.to_str())  // convert OsStr to &str
 }
+
+pub fn dylib_extension() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "dll"
+    } else if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    }
+}
