@@ -33,6 +33,8 @@ pub struct ModuleMetadata<'ctx> {
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn rebuild_dependent_modules(&mut self) {
+        dbg!(self.dependent_modules.clone());
+
         if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
             for file_path in module_deps {
                 // skip for rebuilding entry_point module

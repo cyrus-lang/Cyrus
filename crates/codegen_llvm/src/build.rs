@@ -7,6 +7,7 @@ use inkwell::execution_engine::JitFunction;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
+use inkwell::module::Module;
 use inkwell::passes::PassManager;
 use inkwell::targets::FileType;
 use inkwell::types::AsTypeRef;
@@ -15,6 +16,7 @@ use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::c_void;
@@ -26,6 +28,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::path::Path;
 use std::process::exit;
+use std::rc::Rc;
 use utils::fs::absolute_to_relative;
 use utils::fs::ensure_output_dir;
 use utils::fs::get_output_file_path;
@@ -149,17 +152,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn execute(&mut self) {
         let opt_level = self.build_optimization_level(self.opts.opt_level);
-        let execution_engine = self
-            .module
-            .borrow_mut()
-            .deref_mut()
-            .create_jit_execution_engine(opt_level)
-            .unwrap();
+        let module_ref = self.module.borrow();
+        let execution_engine = module_ref.create_jit_execution_engine(opt_level).unwrap();
 
-        let module = self.module.borrow_mut();
-        for module_metadata in self.loaded_modules.clone() {
-            let loaded_module = module_metadata.module.borrow_mut().deref().clone();
-            if let Err(err) = module.link_in_module(loaded_module) {
+        for loaded_module in self.loaded_modules.clone() {        
+            let module = loaded_module.module.borrow().clone();
+            if let Err(err) = module_ref.link_in_module(module) {
                 eprintln!("In-Memory linkage error: {}", err.to_string_lossy());
                 exit(1);
             }

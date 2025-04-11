@@ -81,7 +81,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let module_name = file_stem(&file_name).unwrap_or(&file_name).to_string();
         let module = Rc::new(RefCell::new(context.create_module(&module_name.clone())));
         let builder = context.create_builder();
-
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&module));
 
         let mut codegen_llvm = CodeGenLLVM {
@@ -109,14 +108,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             loaded_modules: Vec::new(),
             dependent_modules: HashMap::new(),
         };
-
-        codegen_llvm.loaded_modules.push(ModuleMetadata {
-            identifier: module_name,
-            file_path,
-            module,
-            imported_funcs: HashMap::new(),
-            imported_structs: HashMap::new(),
-        });
 
         codegen_llvm.load_runtime();
         Ok(codegen_llvm)
@@ -159,14 +150,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.build_entry_point();
         self.optimize();
-
-        if !self.is_entry_point {
-            self.rebuild_dependent_modules();
-        }
-
         if !self.compiler_invoked_single {
             self.ensure_build_directory();
             self.ensure_build_manifest();
+            self.rebuild_dependent_modules();
             if self.source_code_changed() || !self.object_file_exists() {
                 self.save_object_file();
             }
