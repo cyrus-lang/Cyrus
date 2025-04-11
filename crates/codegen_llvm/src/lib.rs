@@ -55,6 +55,7 @@ pub struct CodeGenLLVM<'ctx> {
     reporter: DiagReporter,
     entry_point: Option<FuncDef>,
     is_entry_point: bool,
+    entry_point_path: String,
     func_table: FuncTable<'ctx>,
     struct_table: StructTable<'ctx>,
     internal_funcs_table: HashMap<String, LLVMValueRef>,
@@ -64,6 +65,7 @@ pub struct CodeGenLLVM<'ctx> {
     terminated_blocks: Vec<BasicBlock<'ctx>>,
     string_type: StringType<'ctx>,
     loaded_modules: Vec<ModuleMetadata<'ctx>>,
+    dependent_modules: HashMap<String, Vec<String>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -87,10 +89,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             context,
             builder,
             program,
-            file_path,
+            file_path: file_path.clone(),
             reporter,
             target_machine,
             entry_point: None,
+            entry_point_path: file_path.clone(),
             is_entry_point: true,
             func_table: FuncTable::new(),
             struct_table: StructTable::new(),
@@ -101,10 +104,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_block_ref: None,
             terminated_blocks: Vec::new(),
             string_type: CodeGenLLVM::build_string_type(context),
-            module,
-            module_name,
+            module: module.clone(),
+            module_name: module_name.clone(),
             loaded_modules: Vec::new(),
+            dependent_modules: HashMap::new(),
         };
+
+        codegen_llvm.loaded_modules.push(ModuleMetadata {
+            identifier: module_name,
+            file_path,
+            module,
+            imported_funcs: HashMap::new(),
+            imported_structs: HashMap::new(),
+        });
 
         codegen_llvm.load_runtime();
         Ok(codegen_llvm)
@@ -147,6 +159,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.build_entry_point();
         self.optimize();
+
+        if !self.is_entry_point {
+            self.rebuild_dependent_modules();
+        }
 
         if !self.compiler_invoked_single {
             self.ensure_build_directory();

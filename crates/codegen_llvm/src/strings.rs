@@ -35,7 +35,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .unwrap()
             .into_struct_value();
 
-        StringValue { struct_value } // 👈 This is the actual fix
+        StringValue { struct_value } 
     }
 
     pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {

@@ -25,14 +25,34 @@ pub struct ExportedStructMetadata {
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'ctx> {
     pub identifier: String,
+    pub file_path: String,
     pub module: Rc<RefCell<Module<'ctx>>>,
     pub imported_funcs: HashMap<String, ExportedFuncMetadata>,
     pub imported_structs: HashMap<String, ExportedStructMetadata>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn rebuild_dependent_modules(&mut self) {
+        if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
+            for file_path in module_deps {
+                // skip for rebuilding entry_point module
+                let module_metadata = self
+                    .loaded_modules
+                    .iter()
+                    .find(|m| *m.file_path == *file_path)
+                    .cloned()
+                    .expect("Failed to get a loaded module by it's file path.");
+    
+                dbg!(module_metadata.identifier.clone());
+            }
+        }
+    }
+
     pub(crate) fn find_loaded_module(&self, module_identifier: String) -> Option<ModuleMetadata<'ctx>> {
-        self.loaded_modules.iter().find(|m| m.identifier == module_identifier).cloned()
+        self.loaded_modules
+            .iter()
+            .find(|m| m.identifier == module_identifier)
+            .cloned()
     }
 
     fn build_import_module_path(&mut self, mut segments: Vec<ModuleSegment>, loc: Location, span_end: usize) -> String {
@@ -130,7 +150,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let file_path =
                 self.build_import_module_path(module_path.segments.clone(), import.loc.clone(), import.span.end);
             let module_identifier = self.build_module_identifier(module_path);
-            self.build_imported_module(file_path, module_identifier);
+            self.build_imported_module(file_path.clone(), module_identifier);
         }
     }
 
@@ -153,6 +173,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             reporter: self.reporter.clone(),
             entry_point: None,
             is_entry_point: false,
+            entry_point_path: self.entry_point_path.clone(),
             func_table: HashMap::new(),
             struct_table: HashMap::new(),
             internal_funcs_table: self.internal_funcs_table.clone(),
@@ -162,8 +183,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             terminated_blocks: Vec::new(),
             string_type: self.string_type.clone(),
             loaded_modules: Vec::new(),
+            dependent_modules: HashMap::new(),
         };
 
+        // preventing entry_point of being in dependent_modules
+        if self.file_path !=  self.entry_point_path {
+            sub_codegen
+            .dependent_modules
+            .insert(file_path.clone(), vec![self.file_path.clone()]);
+        }
+        
         sub_codegen.compile();
         self.build_manifest = sub_codegen.build_manifest.clone();
 
@@ -172,6 +201,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             imported_funcs: self.build_imported_funcs(sub_codegen.func_table),
             imported_structs: self.build_imported_structs(sub_codegen.struct_table),
             identifier: module_identifier,
+            file_path,
         };
 
         self.loaded_modules.push(module_metadata.clone());
