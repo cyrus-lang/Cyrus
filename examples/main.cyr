@@ -1,3 +1,14 @@
+extern fn printf(msg: *i8);
+
+struct Person {
+    name: string;
+    age: i32;
+}
+
 fn main() {
-    
+    #user = Person { 
+        name: "Taha",
+        age: 18
+    };
+    printf(*"Hello Taha\n");
 }

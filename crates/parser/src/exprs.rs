@@ -64,7 +64,7 @@ impl<'a> Parser<'a> {
                     Expression::UnaryOperator(UnaryOperator {
                         module_import: module_import.clone(),
                         ty: UnaryOperatorType::PostIncrement,
-                        span,
+                        span: span.clone(),
                         loc: self.current_location(),
                     })
                 } else if self.peek_token_is(TokenKind::Decrement) {
@@ -72,7 +72,7 @@ impl<'a> Parser<'a> {
                     Expression::UnaryOperator(UnaryOperator {
                         module_import: module_import.clone(),
                         ty: UnaryOperatorType::PostDecrement,
-                        span,
+                        span: span.clone(),
                         loc: self.current_location(),
                     })
                 } else if self.peek_token_is(TokenKind::Assign) {
@@ -90,12 +90,15 @@ impl<'a> Parser<'a> {
                 } else if self.peek_token_is(TokenKind::LeftBrace) {
                     if let Some(token_kind) = until {
                         if self.peek_token_is(token_kind) {
+                            todo!();
                             Expression::ModuleImport(module_import)
                         } else {
                             self.next_token(); // consume struct_name
                             self.parse_struct_init(module_import)?
                         }
                     } else {
+                        dbg!(self.current_token.kind.clone());
+
                         self.next_token(); // consume struct_name
                         self.parse_struct_init(module_import)?
                     }
@@ -163,7 +166,10 @@ impl<'a> Parser<'a> {
                     _ => panic!(),
                 };
 
-                Expression::Literal(Literal::Bool(BoolLiteral { raw, span }))
+                Expression::Literal(Literal::Bool(BoolLiteral {
+                    raw,
+                    span: span.clone(),
+                }))
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
             TokenKind::Minus | TokenKind::Bang => {
@@ -200,9 +206,23 @@ impl<'a> Parser<'a> {
                 });
             }
         };
-        
+
         if self.current_token_is(TokenKind::Dot) {
             return Ok(self.parse_field_access_or_method_call(Box::new(expr))?);
+        } else if self.current_token_is(TokenKind::LeftBrace) {
+            if let Expression::ModuleImport(module_import) = expr.clone() {
+                let struct_init = self.parse_struct_init(module_import)?;
+                return Ok(struct_init);
+            } else {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                    file_name: Some(self.lexer.file_name.clone()),
+                    code_raw: Some(self.lexer.select(span.start..self.current_token.span.end)),
+                    verbose: None,
+                    caret: true,
+                });
+            }
         }
 
         Ok(expr)
@@ -246,7 +266,7 @@ impl<'a> Parser<'a> {
                     loc: self.current_location(),
                 })))
             }
-            TokenKind::LeftParen =>{
+            TokenKind::LeftParen => {
                 return Some(Ok(self.parse_field_access_or_method_call(Box::new(left)).ok()?));
             }
             _ => None,
@@ -354,9 +374,8 @@ impl<'a> Parser<'a> {
             loop {
                 if self.current_token_is(TokenKind::Dot) {
                     self.next_token();
-                } 
-                else if self.peek_token_is(TokenKind::LeftParen) {}
-                else {
+                } else if self.peek_token_is(TokenKind::LeftParen) {
+                } else {
                     break;
                 }
 
@@ -394,9 +413,8 @@ impl<'a> Parser<'a> {
 
     pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
-        self.expect_current(TokenKind::LeftBrace)?;
-
         let mut field_inits: Vec<FieldInit> = Vec::new();
+        self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Expression::StructInit(StructInit {
@@ -411,28 +429,12 @@ impl<'a> Parser<'a> {
         }
 
         loop {
-            let field_name = match self.current_token.kind.clone() {
-                TokenKind::Identifier { name } => {
-                    self.next_token(); // consume identifier
-                    name
-                }
-                _ => {
-                    return Err(CompileTimeError {
-                        location: self.current_location(),
-                        etype: ParserErrorType::ExpectedIdentifier,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                        verbose: None,
-                        caret: true,
-                    });
-                }
-            };
+            let field_name = self.parse_identifier()?.name;
+            self.next_token(); // consume identifier
             self.expect_current(TokenKind::Colon)?;
 
             let value = self.parse_expression(Precedence::Lowest, None)?.0;
-            if !(self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace)) {
-                self.next_token(); // consume expr
-            }
+            self.next_token();
 
             field_inits.push(FieldInit {
                 name: field_name,

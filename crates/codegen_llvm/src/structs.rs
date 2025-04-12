@@ -53,10 +53,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
     }
 
-    // FIXME
     pub(crate) fn build_struct_init(&self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> AnyValue<'ctx> {
-        todo!()
-        // if struct_init.struct_name.sub_modules.len() == 0 {
+        dbg!(self.loaded_modules.clone());
+        todo!();
+        // if struct_init.struct_name.segments.len() == 0 {
         //     if let Some(struct_def) = self.struct_table.get(&struct_init.struct_name.identifier.name) {
         //         if struct_def.fields.len() != struct_init.field_inits.len() {
         //             display_single_diag(Diag {
