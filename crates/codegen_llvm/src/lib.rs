@@ -165,7 +165,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.generate_output();
 
-        if self.is_entry_point {
+        if self.is_entry_point && !self.compiler_invoked_single {
             tui_compile_finished();
         }
     }
