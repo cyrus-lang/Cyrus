@@ -15,6 +15,7 @@ use inkwell::values::{FunctionValue, PointerValue};
 use modules::ModuleMetadata;
 use opts::Options;
 use scope::{Scope, ScopeRef};
+use utils::tui::tui_compile_finished;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
@@ -163,6 +164,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         self.generate_output();
+
+        if self.is_entry_point {
+            tui_compile_finished();
+        }
     }
 
     pub(crate) fn build_alloca(

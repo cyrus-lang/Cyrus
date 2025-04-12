@@ -1,5 +1,5 @@
-use colorized::*;
 use core::fmt;
+use utils::tui::{tui_error, tui_warning};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagKind {
@@ -24,7 +24,6 @@ pub enum DiagKind {
 pub enum DiagLevel {
     Error,
     Warning,
-    Note,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,7 +61,10 @@ impl fmt::Display for DiagKind {
             DiagKind::FuncNotFound(func_name) => &format!("Function '{}' not found in this module.", func_name),
             DiagKind::InconsistentArrayItemTypes => "Inconsistent array element types.",
             DiagKind::InvalidWildcard => "Wildcard cannot be used in the begging or middle of a module path.",
-            DiagKind::ModuleNotFound(name) => &format!("The module '{}' could not be found in any of the specified source directories.", name),
+            DiagKind::ModuleNotFound(name) => &format!(
+                "The module '{}' could not be found in any of the specified source directories.",
+                name
+            ),
         };
         write!(f, "{}", msg)
     }
@@ -92,9 +94,8 @@ impl DiagReporter {
     pub fn display_diags(&self) {
         for diag in &self.diags {
             match diag.level {
-                DiagLevel::Error => eprintln!("{}: {}", "Error".color(Colors::RedFg), self.fmt_diag(diag)),
-                DiagLevel::Warning => eprintln!("{}: {}", "Warning".color(Colors::YellowFg), self.fmt_diag(diag)),
-                DiagLevel::Note => eprintln!("{}: {}", "Note".color(Colors::BlueFg), self.fmt_diag(diag)),
+                DiagLevel::Error => tui_error(self.fmt_diag(diag)),
+                DiagLevel::Warning => tui_warning(self.fmt_diag(diag)),
             }
         }
     }
@@ -167,18 +168,5 @@ mod tests {
         assert_eq!(loc.line, 20);
         assert_eq!(loc.column, 15);
         assert_eq!(loc.length, 10);
-    }
-
-    #[test]
-    fn test_diag_struct() {
-        let diag = Diag {
-            level: DiagLevel::Note,
-            kind: DiagKind::UnimplementedFeature,
-            location: None,
-        };
-
-        assert_eq!(diag.level, DiagLevel::Note);
-        assert_eq!(diag.kind, DiagKind::UnimplementedFeature);
-        assert!(diag.location.is_none());
     }
 }

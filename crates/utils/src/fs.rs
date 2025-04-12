@@ -1,10 +1,11 @@
-use colorized::{Color, Colors};
 use std::{
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
     process::exit,
 };
+
+use crate::tui::tui_error;
 
 // Reads the file and returns the file content and the name of the file.
 pub fn read_file(file_path: String) -> (String, String) {
@@ -13,7 +14,7 @@ pub fn read_file(file_path: String) -> (String, String) {
     let mut file = match File::open(path) {
         Ok(content) => content,
         Err(_) => {
-            eprintln!("{}: No such file or directory.", "Error".color(Colors::RedFg));
+            tui_error("No such file or directory.".to_string());
             exit(1);
         }
     };
@@ -22,11 +23,7 @@ pub fn read_file(file_path: String) -> (String, String) {
 
     match file.read_to_string(&mut contents) {
         Err(err) => {
-            eprintln!(
-                "{}: Failed to read the file content: {}",
-                "Error".color(Colors::RedFg),
-                err.to_string()
-            );
+            tui_error(format!("Failed to read the file content: {}", err.to_string()));
             exit(1);
         }
         _ => {}
@@ -40,50 +37,13 @@ pub fn read_file(file_path: String) -> (String, String) {
 pub fn ensure_output_dir(output_dir: &Path) {
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).unwrap_or_else(|_| {
-            eprintln!(
-                "{}: Failed to create output directory: {}",
-                "Error".color(Colors::RedFg),
-                output_dir.display()
-            );
+            tui_error(format!("Failed to create output directory: {}", output_dir.display()));
             exit(1);
         });
     } else if !output_dir.is_dir() {
-        eprintln!(
-            "{}: Output path must be a directory: {}",
-            "Error".color(Colors::RedFg),
-            output_dir.display()
-        );
+        tui_error(format!("Output path must be a directory: {}", output_dir.display()));
         exit(1);
     }
-}
-
-pub fn get_output_file_path(output_dir: &Path, source_file: &Path) -> PathBuf {
-    output_dir
-        .join(
-            source_file
-                .file_stem()
-                .unwrap_or_else(|| {
-                    eprintln!(
-                        "{}: Invalid source file name: {}",
-                        "Error".color(Colors::RedFg),
-                        source_file.display()
-                    );
-                    exit(1);
-                })
-                .to_str()
-                .unwrap(),
-        )
-        .with_extension("o")
-}
-
-pub fn handle_file_generation_error(err: impl ToString, file_path: &Path) -> ! {
-    eprintln!(
-        "{}: Failed to generate object file {}: {}",
-        "Error".color(Colors::RedFg),
-        file_path.display(),
-        err.to_string()
-    );
-    exit(1);
 }
 
 /// Converts an absolute path to a relative path based on the given base directory.
@@ -115,35 +75,10 @@ pub fn get_directory_of_file(file_path: String) -> Option<String> {
         .map(|parent| parent.to_str().unwrap_or_default().to_string())
 }
 
-pub fn list_files(dir: &str, ext: &str) -> Vec<String> {
-    let path = Path::new(dir);
-    let mut file_names: Vec<String> = Vec::new();
-
-    if path.is_dir() {
-        for entry in fs::read_dir(path).unwrap() {
-            let entry = entry.unwrap();
-            let path = entry.path();
-
-            if let Some(e) = path.extension() {
-                if e == ext {
-                    if let Some(name) = path.file_name() {
-                        file_names.push(name.to_string_lossy().to_string());
-                    }
-                }
-            }
-        }
-    } else {
-        eprintln!("Error: '{}' must be a directory to collect file names inside it.", dir);
-        exit(1);
-    }
-
-    file_names
-}
-
 pub fn file_stem(file_name: &str) -> Option<&str> {
     Path::new(file_name)
-        .file_stem()          // gets "main" from "main.cyr"
-        .and_then(|s| s.to_str())  // convert OsStr to &str
+        .file_stem() // gets "main" from "main.cyr"
+        .and_then(|s| s.to_str()) // convert OsStr to &str
 }
 
 pub fn dylib_extension() -> &'static str {

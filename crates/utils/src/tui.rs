@@ -16,3 +16,19 @@ pub fn tui_compile_finished() {
         println!("    {}", "Finished");
     }
 }
+
+pub fn tui_error(msg: String) {
+    if user_attended() {
+        eprintln!("{}: {}", "Error".color(Colors::RedFg), msg)
+    } else {
+        eprintln!("{}: {}", "Error", msg)
+    }
+}
+
+pub fn tui_warning(msg: String) {
+    if user_attended() {
+        eprintln!("{}: {}", "Warning".color(Colors::YellowFg), msg);
+    } else {
+        eprintln!("{}: {}", "Warning", msg);
+    }
+}
