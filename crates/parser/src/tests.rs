@@ -436,7 +436,7 @@ mod tests {
 
     define_test!(
         complete_for_loop,
-        "for #i: i32 = 0; i < 10; i++ { }",
+        "for (#i: i32 = 0; i < 10; i++) { }",
         |program: ProgramTree| {
             if let Statement::For(for_statement) = &program.body[0] {
                 assert_eq!(
@@ -445,8 +445,8 @@ mod tests {
                         name: "i".to_string(),
                         ty: Some(TokenKind::I32),
                         expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
-                        span: Span::new(4, 15),
-                        loc: Location::new(0, 19)
+                        span: Span::new(5, 16),
+                        loc: Location::new(0, 20)
                     })
                 );
                 assert_eq!(
@@ -455,14 +455,14 @@ mod tests {
                         module_import: ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
-                                span: Span::new(25, 25),
-                                loc: Location::new(0, 29)
+                                span: Span::new(26, 26),
+                                loc: Location::new(0, 30)
                             })],
-                            span: Span::new(25, 26),
-                            loc: Location::new(0, 29)
+                            span: Span::new(26, 27),
+                            loc: Location::new(0, 30)
                         },
                         ty: UnaryOperatorType::PostIncrement,
-                        span: Span::new(25, 26),
+                        span: Span::new(26, 27),
                         loc: Location::new(0, 31)
                     }))
                 );
@@ -471,20 +471,20 @@ mod tests {
                     Some(Expression::Infix(BinaryExpression {
                         operator: Token {
                             kind: TokenKind::LessThan,
-                            span: Span::new(19, 19)
+                            span: Span::new(20, 20)
                         },
                         left: Box::new(Expression::ModuleImport(ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
-                                span: Span::new(17, 17),
-                                loc: Location::new(0, 21)
+                                span: Span::new(18, 18),
+                                loc: Location::new(0, 22)
                             })],
-                            span: Span::new(17, 18),
-                            loc: Location::new(0, 21)
+                            span: Span::new(18, 19),
+                            loc: Location::new(0, 22)
                         })),
                         right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
-                        span: Span::new(17, 23),
-                        loc: Location::new(0, 25)
+                        span: Span::new(18, 24),
+                        loc: Location::new(0, 26)
                     }))
                 );
             } else {
@@ -495,7 +495,7 @@ mod tests {
 
     define_test!(
         only_initializer_for_loop,
-        "for #i: i32 = 0; { }",
+        "for (#i: i32 = 0;) { }",
         |program: ProgramTree| {
             if let Statement::For(for_statement) = &program.body[0] {
                 assert_eq!(
@@ -504,7 +504,7 @@ mod tests {
                         name: "i".to_string(),
                         ty: Some(TokenKind::I32),
                         expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
-                        span: Span::new(4, 15),
+                        span: Span::new(5, 16),
                         loc: Location::new(0, 19)
                     })
                 );
@@ -528,7 +528,7 @@ mod tests {
 
     define_test!(
         without_initializer_for_loop,
-        "for ; i < 0; i++ { }",
+        "for (; i < 0; i++) { }",
         |program: ProgramTree| {
             if let Statement::For(for_statement) = &program.body[0] {
                 assert_eq!(for_statement.initializer, None);
@@ -538,14 +538,14 @@ mod tests {
                         module_import: ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
-                                span: Span::new(13, 13),
-                                loc: Location::new(0, 17)
+                                span: Span::new(14, 14),
+                                loc: Location::new(0, 18)
                             })],
-                            span: Span::new(13, 14),
-                            loc: Location::new(0, 17)
+                            span: Span::new(14, 15),
+                            loc: Location::new(0, 18)
                         },
                         ty: UnaryOperatorType::PostIncrement,
-                        span: Span::new(13, 14),
+                        span: Span::new(14, 15),
                         loc: Location::new(0, 19)
                     }))
                 );
@@ -554,20 +554,20 @@ mod tests {
                     Some(Expression::Infix(BinaryExpression {
                         operator: Token {
                             kind: TokenKind::LessThan,
-                            span: Span::new(8, 8)
+                            span: Span::new(9, 9)
                         },
                         left: Box::new(Expression::ModuleImport(ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
-                                span: Span::new(6, 6),
-                                loc: Location::new(0, 10)
+                                span: Span::new(7, 7),
+                                loc: Location::new(0, 11)
                             })],
-                            span: Span::new(6, 7),
-                            loc: Location::new(0, 10)
+                            span: Span::new(7, 8),
+                            loc: Location::new(0, 11)
                         })),
                         right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
-                        span: Span::new(6, 11),
-                        loc: Location::new(0, 13)
+                        span: Span::new(7, 12),
+                        loc: Location::new(0, 14)
                     }))
                 );
             } else {
@@ -576,26 +576,26 @@ mod tests {
         }
     );
 
-    define_test!(control_flow_1, "if a == 1 {}", |program: ProgramTree| {
+    define_test!(control_flow_1, "if (a == 1) {}", |program: ProgramTree| {
         if let Statement::If(if_statement) = &program.body[0] {
             assert_eq!(
                 if_statement.condition,
                 Expression::Infix(BinaryExpression {
                     operator: Token {
                         kind: TokenKind::Equal,
-                        span: Span::new(5, 6)
+                        span: Span::new(6, 7)
                     },
                     left: Box::new(Expression::ModuleImport(ModuleImport {
                         segments: vec![ModuleSegment::SubModule(Identifier {
                             name: "a".to_string(),
-                            span: Span::new(3, 3),
-                            loc: Location::new(0, 8)
+                            span: Span::new(4, 4),
+                            loc: Location::new(0, 9)
                         })],
-                        span: Span::new(3, 4),
-                        loc: Location::new(0, 8)
+                        span: Span::new(4, 5),
+                        loc: Location::new(0, 9)
                     })),
                     right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))),
-                    span: Span::new(3, 9),
+                    span: Span::new(4, 10),
                     loc: Location::new(0, 12)
                 })
             );
@@ -606,17 +606,17 @@ mod tests {
         }
     });
 
-    define_test!(control_flow_2, "if some_value {}", |program: ProgramTree| {
+    define_test!(control_flow_2, "if (some_value) {}", |program: ProgramTree| {
         if let Statement::If(if_statement) = &program.body[0] {
             assert_eq!(
                 if_statement.condition,
                 Expression::ModuleImport(ModuleImport {
                     segments: vec![ModuleSegment::SubModule(Identifier {
                         name: "some_value".to_string(),
-                        span: Span::new(3, 12),
+                        span: Span::new(4, 13),
                         loc: Location::new(0, 16)
                     })],
-                    span: Span::new(3, 13),
+                    span: Span::new(4, 14),
                     loc: Location::new(0, 16)
                 })
             );

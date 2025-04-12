@@ -14,7 +14,7 @@ impl<'a> Parser<'a> {
         until: Option<TokenKind>,
     ) -> Result<(Expression, Span), ParseError> {
         let mut left_start = self.current_token.span.start;
-        let mut left = self.parse_prefix_expression(until)?;
+        let mut left = self.parse_prefix_expression()?;
 
         if self.current_token_is(TokenKind::As) || self.peek_token_is(TokenKind::As) {
             return self.parse_cast_as_expression(left, left_start);
@@ -47,7 +47,7 @@ impl<'a> Parser<'a> {
         Ok((left, Span { start: left_start, end }))
     }
 
-    pub fn parse_prefix_expression(&mut self, until: Option<TokenKind>) -> Result<Expression, ParseError> {
+    pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
         let span: Span = self.current_token.span.clone();
 
         let expr = match &self.current_token.clone().kind {
@@ -87,32 +87,17 @@ impl<'a> Parser<'a> {
                     } else {
                         Expression::ArrayIndex(array_index)
                     }
-                } else if self.peek_token_is(TokenKind::LeftBrace) {
-                    if let Some(token_kind) = until {
-                        if self.peek_token_is(token_kind) {
-                            todo!();
-                            Expression::ModuleImport(module_import)
-                        } else {
-                            self.next_token(); // consume struct_name
-                            self.parse_struct_init(module_import)?
-                        }
-                    } else {
-                        dbg!(self.current_token.kind.clone());
-
-                        self.next_token(); // consume struct_name
-                        self.parse_struct_init(module_import)?
-                    }
                 } else {
                     Expression::ModuleImport(module_import)
                 }
             }
             TokenKind::Ampersand => {
                 self.next_token();
-                Expression::AddressOf(Box::new(self.parse_prefix_expression(None)?))
+                Expression::AddressOf(Box::new(self.parse_prefix_expression()?))
             }
             TokenKind::Asterisk => {
                 self.next_token();
-                Expression::Dereference(Box::new(self.parse_prefix_expression(None)?))
+                Expression::Dereference(Box::new(self.parse_prefix_expression()?))
             }
             TokenKind::Null => Expression::Literal(Literal::Null),
             token_kind @ TokenKind::Increment | token_kind @ TokenKind::Decrement => {
@@ -209,8 +194,9 @@ impl<'a> Parser<'a> {
 
         if self.current_token_is(TokenKind::Dot) {
             return Ok(self.parse_field_access_or_method_call(Box::new(expr))?);
-        } else if self.current_token_is(TokenKind::LeftBrace) {
+        } else if self.peek_token_is(TokenKind::LeftBrace) {
             if let Expression::ModuleImport(module_import) = expr.clone() {
+                self.next_token(); // consume struct name
                 let struct_init = self.parse_struct_init(module_import)?;
                 return Ok(struct_init);
             } else {

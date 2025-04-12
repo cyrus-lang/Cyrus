@@ -719,6 +719,8 @@ impl<'a> Parser<'a> {
             }));
         }
 
+        self.expect_current(TokenKind::LeftParen)?;
+
         let mut initializer: Option<Variable> = None;
         if !self.current_token_is(TokenKind::Semicolon) {
             if let Statement::Variable(var) = self.parse_variable()? {
@@ -728,7 +730,9 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::Semicolon)?;
 
         // for loop with only initializer expression
-        if self.current_token_is(TokenKind::LeftBrace) {
+        if self.peek_token_is(TokenKind::LeftBrace) {
+            self.expect_current(TokenKind::RightParen)?;
+
             let body = self.parse_for_loop_body(start)?;
             return Ok(Statement::For(For {
                 initializer,
@@ -744,17 +748,16 @@ impl<'a> Parser<'a> {
         }
 
         let condition = self.parse_expression(Precedence::Lowest, None)?.0;
-        if !self.current_token_is(TokenKind::LeftBrace) {
-            self.next_token();
-            self.expect_current(TokenKind::Semicolon)?;
-        }
-
+        self.expect_peek(TokenKind::Semicolon)?;
+        self.next_token();
+        
         let mut increment: Option<Expression> = None;
-        if !self.current_token_is(TokenKind::LeftBrace) {
+        if !self.current_token_is(TokenKind::RightParen) {
             increment = Some(self.parse_expression(Precedence::Lowest, None)?.0);
             self.next_token(); // consume increment token
         }
 
+        self.expect_current(TokenKind::RightParen)?;
         let body = self.parse_for_loop_body(start)?;
 
         Ok(Statement::For(For {
@@ -1058,6 +1061,17 @@ impl<'a> Parser<'a> {
 
         self.expect_current(TokenKind::If)?;
 
+        if !self.current_token_is(TokenKind::LeftParen) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingOpeningParen,
+                file_name: Some(self.lexer.file_name.clone()),
+                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                verbose: None,
+                caret: true,
+            });
+        }
+
         let condition = self.parse_expression(Precedence::Lowest, Some(TokenKind::LeftBrace))?.0;
         let consequent = Box::new(self.parse_block_statement()?);
 
@@ -1080,6 +1094,16 @@ impl<'a> Parser<'a> {
                 let start = self.current_token.span.start;
                 self.next_token(); // consume if token
 
+                if !self.current_token_is(TokenKind::LeftParen) {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::MissingOpeningParen,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                        verbose: None,
+                        caret: true,
+                    });
+                }
                 let (condition, _) = self.parse_expression(Precedence::Lowest, None)?;
 
                 let consequent = Box::new(self.parse_block_statement()?);
