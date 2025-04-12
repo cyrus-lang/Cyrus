@@ -3,13 +3,20 @@ use crate::{
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     scope::ScopeRef,
 };
-use ast::ast::{Field, Struct, StructInit, VisType};
-use inkwell::types::{BasicTypeEnum, StructType};
-use std::{collections::HashMap, process::exit};
+use ast::{
+    ast::{Field, Identifier, ModuleImport, ModulePath, Struct, StructInit, VisType},
+    token::Location,
+};
+use inkwell::{
+    types::{BasicTypeEnum, StructType},
+    values::{AggregateValueEnum, BasicValueEnum},
+};
+use std::{collections::HashMap, process::exit, rc::Rc};
 
 #[derive(Debug, Clone)]
 pub struct StructMetadata<'a> {
     pub struct_type: StructType<'a>,
+    pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub vis_type: VisType,
 }
@@ -27,7 +34,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn build_struct(&mut self, struct_statement: Struct) {
+    pub(crate) fn build_struct(&self, struct_statement: Struct) -> StructType<'ctx> {
         let field_types = self.build_struct_fields(struct_statement.fields.clone());
         let struct_type = self.context.struct_type(&field_types, false);
         if !matches!(struct_statement.vis_type, VisType::Pub | VisType::Internal) {
@@ -43,107 +50,152 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         }
-        self.struct_table.insert(
-            struct_statement.name,
-            StructMetadata {
-                struct_type,
-                fields: struct_statement.fields,
-                vis_type: struct_statement.vis_type,
-            },
-        );
+        struct_type
+    }
+
+    fn find_struct(
+        &self,
+        scope: ScopeRef<'ctx>,
+        struct_name: ModuleImport,
+        loc: Location,
+        span_end: usize,
+    ) -> StructMetadata<'ctx> {
+        // lookup in locals
+        match self
+            .struct_table
+            .get(&struct_name.segments.first().unwrap().to_string())
+        {
+            Some(metadata) => metadata.clone(),
+            None => {
+                // lookup in loaded modules
+                let (any_value, _) = self.build_module_import(Rc::clone(&scope), struct_name.clone());
+                match any_value {
+                    AnyValue::ImportedModuleValue(imported_module_value) => {
+                        match struct_name.segments.last().unwrap() {
+                            ast::ast::ModuleSegment::SubModule(identifier) => {
+                                match imported_module_value.metadata.imported_structs.get(&identifier.name) {
+                                    Some(struct_metadata) => StructMetadata {
+                                        struct_type: struct_metadata.struct_type.clone(),
+                                        inherits: struct_metadata.inherits.clone(),
+                                        fields: struct_metadata.fields.clone(),
+                                        vis_type: struct_metadata.vis_type.clone(),
+                                    },
+                                    None => {
+                                        display_single_diag(Diag {
+                                            level: DiagLevel::Error,
+                                            kind: DiagKind::Custom(format!(
+                                                "Struct '{}' not defined.",
+                                                struct_name.to_string()
+                                            )),
+                                            location: Some(DiagLoc {
+                                                file: self.file_path.clone(),
+                                                line: loc.line,
+                                                column: loc.column,
+                                                length: span_end,
+                                            }),
+                                        });
+                                        exit(1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(
+                                "Expected ImportedModuleValue as result of build_module_import but something else."
+                                    .to_string(),
+                            ),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            }
+        }
     }
 
     pub(crate) fn build_struct_init(&self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> AnyValue<'ctx> {
-        dbg!(self.loaded_modules.clone());
-        todo!();
-        // if struct_init.struct_name.segments.len() == 0 {
-        //     if let Some(struct_def) = self.struct_table.get(&struct_init.struct_name.identifier.name) {
-        //         if struct_def.fields.len() != struct_init.field_inits.len() {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::Custom(format!(
-        //                     "Struct '{}' has {} fields, but {} fields were provided.",
-        //                     struct_init.struct_name.to_string(),
-        //                     struct_def.fields.len(),
-        //                     struct_init.field_inits.len()
-        //                 )),
-        //                 location: Some(DiagLoc {
-        //                     file: self.file_path.clone(),
-        //                     line: struct_init.loc.line,
-        //                     column: struct_init.loc.column,
-        //                     length: struct_init.span.end,
-        //                 }),
-        //             });
-        //             exit(1);
-        //         }
+        let struct_metadata = self.find_struct(
+            Rc::clone(&scope),
+            struct_init.struct_name.clone(),
+            struct_init.loc.clone(),
+            struct_init.span.end,
+        );
 
-        //         let struct_ptr = self
-        //             .builder
-        //             .build_alloca(struct_def.struct_type, "struct_init")
-        //             .unwrap();
+        if struct_metadata.fields.len() != struct_init.field_inits.len() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Struct '{}' has {} fields, but {} fields were provided.",
+                    struct_init.struct_name.to_string(),
+                    struct_metadata.fields.len(),
+                    struct_init.field_inits.len()
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: struct_init.loc.line,
+                    column: struct_init.loc.column,
+                    length: struct_init.span.end,
+                }),
+            });
+            exit(1);
+        }
 
-        //         for field_init in struct_init.field_inits {
-        //             let field_idx = struct_def
-        //                 .fields
-        //                 .iter()
-        //                 .position(|field| field.name == field_init.name)
-        //                 .unwrap();
+        let mut struct_value = struct_metadata.struct_type.get_undef();
 
-        //             let field = struct_def.fields.get(field_idx).unwrap();
+        for field_init in struct_init.field_inits {
+            let field_idx = struct_metadata
+                .fields
+                .iter()
+                .position(|field| field.name == field_init.name)
+                .unwrap();
 
-        //             let field_type = self
-        //                 .build_type(field.ty.clone(), field.loc.clone(), field.span.end)
-        //                 .to_basic_type();
+            let field = struct_metadata.fields.get(field_idx).unwrap();
 
-        //             let field_value = self.build_expr(Rc::clone(&scope), field_init.value.clone());
+            let field_type = self
+                .build_type(field.ty.clone(), field.loc.clone(), field.span.end)
+                .to_basic_type();
 
-        //             if field_value.get_type(self.string_type.clone()).to_basic_type() != field_type {
-        //                 display_single_diag(Diag {
-        //                     level: DiagLevel::Error,
-        //                     kind: DiagKind::Custom(format!(
-        //                         "Expected type '{}' but got type '{}'.",
-        //                         field_type.to_string(),
-        //                         field_value.get_type(self.string_type.clone()).to_string()
-        //                     )),
-        //                     location: Some(DiagLoc {
-        //                         file: self.file_path.clone(),
-        //                         line: field_init.loc.line,
-        //                         column: field_init.loc.column,
-        //                         length: struct_init.span.end,
-        //                     }),
-        //                 });
-        //                 exit(1);
-        //             }
+            let field_any_value = self.build_expr(Rc::clone(&scope), field_init.value.clone());
 
-        //             let field_ptr = self
-        //                 .builder
-        //                 .build_struct_gep(
-        //                     struct_def.struct_type,
-        //                     struct_ptr,
-        //                     field_idx.try_into().unwrap(),
-        //                     "set_field",
-        //                 )
-        //                 .unwrap();
+            if field_any_value.get_type(self.string_type.clone()).to_basic_type() != field_type {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Expected type '{}' but got type '{}'.",
+                        field_type.to_string(),
+                        field_any_value.get_type(self.string_type.clone()).to_string()
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: field_init.loc.line,
+                        column: field_init.loc.column,
+                        length: struct_init.span.end,
+                    }),
+                });
+                exit(1);
+            }
 
-        //             self.build_store(field_ptr, field_value);
-        //         }
+            let field_value: BasicValueEnum<'ctx> = field_any_value.try_into().unwrap();
 
-        //         return AnyValue::StructValue(unsafe { StructValue::new(struct_ptr.as_value_ref()) });
-        //     } else {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::Custom(format!("Struct '{}' not found.", struct_init.struct_name.to_string())),
-        //             location: Some(DiagLoc {
-        //                 file: self.file_path.clone(),
-        //                 line: struct_init.loc.line,
-        //                 column: struct_init.loc.column,
-        //                 length: struct_init.span.end,
-        //             }),
-        //         });
-        //         exit(1);
-        //     }
-        // } else {
-        //     todo!();
-        // }
+            struct_value = self
+                .builder
+                .build_insert_value(
+                    AggregateValueEnum::StructValue(struct_value),
+                    field_value,
+                    field_idx.try_into().unwrap(),
+                    "insert_data",
+                )
+                .unwrap().into_struct_value();
+        }
+
+        AnyValue::StructValue(struct_value)
     }
 }

@@ -1,8 +1,9 @@
-use crate::{AnyType, CodeGenLLVM, StringType, modules::ModuleMetadata, types::TypedPointerType};
+use crate::{AnyType, CodeGenLLVM, StringType, diag::*, modules::ModuleMetadata, types::TypedPointerType};
 use inkwell::{
     FloatPredicate, IntPredicate,
     values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue, VectorValue},
 };
+use std::process::exit;
 
 #[derive(Debug, Clone)]
 pub(crate) enum AnyValue<'a> {
@@ -47,7 +48,14 @@ impl<'a> AnyValue<'a> {
             })),
             AnyValue::StringValue(_) => AnyType::StringType(string_type),
             AnyValue::OpaquePointer(v) => AnyType::OpaquePointer(v.get_type()),
-            AnyValue::ImportedModuleValue(imported_module_value) => unreachable!(),
+            AnyValue::ImportedModuleValue(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot get type of an ImportedModuleValue.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            },
         }
     }
 }
@@ -98,8 +106,15 @@ impl<'a> From<AnyValue<'a>> for BasicValueEnum<'a> {
             AnyValue::VectorValue(v) => v.as_basic_value_enum(),
             AnyValue::PointerValue(v) => v.ptr.as_basic_value_enum(),
             AnyValue::OpaquePointer(v) => v.as_basic_value_enum(),
-            AnyValue::StringValue(v) => panic!(),
-            AnyValue::ImportedModuleValue(_) => unreachable!(),
+            AnyValue::StringValue(v) => v.struct_value.as_basic_value_enum(),
+            AnyValue::ImportedModuleValue(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot get BasicValueEnum from an ImportedModuleValue.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
         }
     }
 }

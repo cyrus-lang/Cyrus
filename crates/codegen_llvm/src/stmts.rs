@@ -1,5 +1,6 @@
 use crate::diag::*;
 use crate::scope::ScopeRecord;
+use crate::structs::StructMetadata;
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use ast::ast::{If, Statement, Variable};
 use inkwell::basic_block::BasicBlock;
@@ -49,7 +50,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Switch(_) => todo!(),
             Statement::Break(location) => todo!(),
             Statement::Continue(location) => todo!(),
-            Statement::Struct(struct_statement) => self.build_struct(struct_statement),
+            Statement::Struct(struct_statement) => {
+                let struct_type = self.build_struct(struct_statement.clone());
+                self.struct_table.insert(
+                    struct_statement.name,
+                    StructMetadata {
+                        struct_type,
+                        fields: struct_statement.fields,
+                        vis_type: struct_statement.vis_type,
+                        inherits: struct_statement.inherits,
+                    },
+                );
+            }
             Statement::Enum(enum_statement) => self.build_enum(enum_statement),
             Statement::Import(import) => self.build_import(import),
         }

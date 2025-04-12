@@ -1,5 +1,8 @@
 use crate::{
-    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, types::{AnyType, TypedPointerType}, values::{AnyValue, ImportedModuleValue, StringValue, TypedPointerValue}, CodeGenLLVM, ScopeRef
+    CodeGenLLVM, ScopeRef,
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    types::{AnyType, TypedPointerType},
+    values::{AnyValue, ImportedModuleValue, StringValue, TypedPointerValue},
 };
 use ast::{
     ast::*,
@@ -142,13 +145,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             return self.build_load(Rc::clone(&scope), module_import);
         }
 
-        let mut record: (PointerValue<'ctx>, AnyType<'ctx>);
+        let record: (PointerValue<'ctx>, AnyType<'ctx>);
 
         let first_sub_module = {
-            if let ModuleSegment::SubModule(sub_module) = module_import.segments.first().unwrap() {
-                sub_module
-            } else {
-                unreachable!();
+            match module_import.segments.first().unwrap() {
+                ModuleSegment::SubModule(sub_module) => sub_module,
             }
         };
 
@@ -156,42 +157,34 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match scope.borrow_mut().get(first_sub_module.name.clone()) {
                 Some(record) => record,
                 None => {
-                    dbg!(module_import.segments.clone());
-                    dbg!(self.loaded_modules.clone());
-                    // TODO
-                    // Look up for imported libraries
-                    todo!();
+                    let module_identifier = self.build_module_identifier(ModulePath {
+                        alias: None,
+                        segments: module_import.segments[0..module_import.segments.len() - 1].to_vec(),
+                    });
+
+                    match self.find_loaded_module(module_identifier.clone()) {
+                        Some(metadata) => {
+                            return (
+                                AnyValue::ImportedModuleValue(ImportedModuleValue { metadata }),
+                                AnyType::ImportedModuleValue,
+                            );
+                        }
+                        None => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom(format!("Module '{}' not found.", module_identifier)),
+                                location: None,
+                            });
+                            exit(1);
+                        }
+                    }
                 }
             }
         };
         let scope_record = binding.borrow_mut().deref().clone();
         record = (scope_record.ptr.clone(), scope_record.ty.clone());
 
-        for module in module_import.segments.clone() {
-            match module {
-                ModuleSegment::SubModule(identifier) => {
-                    // in this part of loading, we expect our object to be a struct or a sub_module.
-                    if let AnyType::StructType(struct_type) = record.1 {
-                        // self.builder.build_load(pointee_ty, ptr, name)
-                    } else {
-                        // TODO
-                        // Look up for imported libraries
-                        todo!();
-                    }
-                }
-            }
-        }
-
         self.build_load_internal(record.0, record.1)
-        // if let Some((ptr, pointee_ty)) = record {
-        // } else {
-        //     display_single_diag(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: DiagKind::IdentifierNotDefined(module_import.to_string()),
-        //         location: None,
-        //     });
-        //     exit(1);
-        // }
     }
 
     pub(crate) fn build_load_internal(
@@ -219,6 +212,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
+        dbg!(module_import.clone());
+        
         match module_import.segments.first().unwrap() {
             ModuleSegment::SubModule(identifier) => {
                 let binding = {
@@ -226,8 +221,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         Some(record) => record,
                         None => match self.find_loaded_module(identifier.name.clone()) {
                             Some(metadata) => {
-                                return (AnyValue::ImportedModuleValue(ImportedModuleValue { metadata }), AnyType::ImportedModuleValue);
-                            },
+                                return (
+                                    AnyValue::ImportedModuleValue(ImportedModuleValue { metadata }),
+                                    AnyType::ImportedModuleValue,
+                                );
+                            }
                             None => {
                                 display_single_diag(Diag {
                                     level: DiagLevel::Error,

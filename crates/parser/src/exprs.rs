@@ -8,11 +8,7 @@ use utils::compile_time_errors::errors::CompileTimeError;
 use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
-    pub fn parse_expression(
-        &mut self,
-        precedence: Precedence,
-        until: Option<TokenKind>,
-    ) -> Result<(Expression, Span), ParseError> {
+    pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParseError> {
         let mut left_start = self.current_token.span.start;
         let mut left = self.parse_prefix_expression()?;
 
@@ -161,7 +157,7 @@ impl<'a> Parser<'a> {
                 let start = self.current_token.span.start;
                 let prefix_operator = self.current_token.clone();
                 self.next_token(); // consume the prefix operator
-                let (expr, span) = self.parse_expression(Precedence::Prefix, None)?;
+                let (expr, span) = self.parse_expression(Precedence::Prefix)?;
                 Expression::Prefix(UnaryExpression {
                     operator: prefix_operator,
                     operand: Box::new(expr),
@@ -171,7 +167,7 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LeftParen => {
                 self.next_token();
-                let expr = self.parse_expression(Precedence::Lowest, None)?.0;
+                let expr = self.parse_expression(Precedence::Lowest)?.0;
                 self.next_token();
                 self.expect_current(TokenKind::RightParen)?;
                 expr
@@ -209,7 +205,23 @@ impl<'a> Parser<'a> {
                     caret: true,
                 });
             }
-        }
+        } 
+        // else if self.current_token_is(TokenKind::LeftBrace) {
+        //     if let Expression::ModuleImport(module_import) = expr.clone() {
+        //         todo!();
+        //         let struct_init = self.parse_struct_init(module_import)?;
+        //         return Ok(struct_init);
+        //     } else {
+        //         return Err(CompileTimeError {
+        //             location: self.current_location(),
+        //             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+        //             file_name: Some(self.lexer.file_name.clone()),
+        //             code_raw: Some(self.lexer.select(span.start..self.current_token.span.end)),
+        //             verbose: None,
+        //             caret: true,
+        //         });
+        //     }
+        // }
 
         Ok(expr)
     }
@@ -239,7 +251,7 @@ impl<'a> Parser<'a> {
                 let precedence = token_precedence_of(operator.kind.clone());
                 self.next_token(); // consume the operator
 
-                let (right, span) = self.parse_expression(precedence, None).ok()?;
+                let (right, span) = self.parse_expression(precedence).ok()?;
 
                 Some(Ok(Expression::Infix(BinaryExpression {
                     operator,
@@ -272,12 +284,12 @@ impl<'a> Parser<'a> {
         }
         self.next_token();
 
-        series.push(self.parse_expression(Precedence::Lowest, None)?.0);
+        series.push(self.parse_expression(Precedence::Lowest)?.0);
 
         while self.peek_token_is(TokenKind::Comma) {
             self.next_token();
             self.next_token();
-            series.push(self.parse_expression(Precedence::Lowest, None)?.0);
+            series.push(self.parse_expression(Precedence::Lowest)?.0);
         }
 
         self.expect_peek(end)?;
@@ -419,7 +431,7 @@ impl<'a> Parser<'a> {
             self.next_token(); // consume identifier
             self.expect_current(TokenKind::Colon)?;
 
-            let value = self.parse_expression(Precedence::Lowest, None)?.0;
+            let value = self.parse_expression(Precedence::Lowest)?.0;
             self.next_token();
 
             field_inits.push(FieldInit {
@@ -475,7 +487,7 @@ impl<'a> Parser<'a> {
     pub fn parse_assignment(&mut self, module_import: ModuleImport) -> Result<Expression, ParseError> {
         let start: usize = self.current_token.span.start;
         self.expect_current(TokenKind::Assign)?;
-        let expr = self.parse_expression(Precedence::Lowest, None)?.0;
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
         let end = self.current_token.span.end;
         Ok(Expression::Assignment(Box::new(Assignment {
             module_import: module_import,
@@ -487,7 +499,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_array_index_assign(&mut self, array_index: ArrayIndex) -> Result<Expression, ParseError> {
         self.expect_current(TokenKind::Assign)?;
-        let expr = self.parse_expression(Precedence::Lowest, None)?.0;
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
         Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
             module_import: array_index.module_import,
             dimensions: array_index.dimensions,

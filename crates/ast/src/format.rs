@@ -242,17 +242,7 @@ impl fmt::Display for ProgramTree {
 
 impl fmt::Display for ModuleImport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!();
-        // write!(f, "import (")?;
-        // for (idx, module_path) in self.sub_modules.iter().enumerate().clone() {
-        //     if idx == self.sub_modules.len() - 1 {
-        //         write!(f, "{}", module_path.to_string())?;
-        //     } else {
-        //         write!(f, "{}.", module_path.to_string())?;
-        //     }
-        // }
-        // write!(f, "import )")?;
-        // Ok(())
+        write!(f, "{}", module_segments_as_string(self.segments.clone()))
     }
 }
 

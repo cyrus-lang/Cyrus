@@ -42,7 +42,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_expression_statement(&mut self) -> Result<Statement, ParseError> {
-        let expr = self.parse_expression(Precedence::Lowest, None)?.0;
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
 
         if self.peek_token_is(TokenKind::Semicolon) {
             self.next_token();
@@ -574,7 +574,7 @@ impl<'a> Parser<'a> {
                     if self.current_token_is(TokenKind::Assign) {
                         self.next_token(); // consume the assign
 
-                        default_value = Some(self.parse_expression(Precedence::Lowest, None)?.0);
+                        default_value = Some(self.parse_expression(Precedence::Lowest)?.0);
 
                         self.next_token(); // consume the expression
                     }
@@ -747,13 +747,13 @@ impl<'a> Parser<'a> {
             }));
         }
 
-        let condition = self.parse_expression(Precedence::Lowest, None)?.0;
+        let condition = self.parse_expression(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::Semicolon)?;
         self.next_token();
         
         let mut increment: Option<Expression> = None;
         if !self.current_token_is(TokenKind::RightParen) {
-            increment = Some(self.parse_expression(Precedence::Lowest, None)?.0);
+            increment = Some(self.parse_expression(Precedence::Lowest)?.0);
             self.next_token(); // consume increment token
         }
 
@@ -828,7 +828,7 @@ impl<'a> Parser<'a> {
         }
         self.expect_current(TokenKind::Assign)?;
 
-        let (expr, span) = self.parse_expression(Precedence::Lowest, None)?;
+        let (expr, span) = self.parse_expression(Precedence::Lowest)?;
 
         if self.peek_token_is(TokenKind::Semicolon) {
             self.next_token();
@@ -1007,7 +1007,7 @@ impl<'a> Parser<'a> {
         let start = self.current_token.span.start;
         self.next_token(); // consume return token
 
-        let argument = self.parse_expression(Precedence::Lowest, None)?.0;
+        let argument = self.parse_expression(Precedence::Lowest)?.0;
         self.next_token();
         self.expect_current(TokenKind::Semicolon)?;
 
@@ -1072,7 +1072,7 @@ impl<'a> Parser<'a> {
             });
         }
 
-        let condition = self.parse_expression(Precedence::Lowest, Some(TokenKind::LeftBrace))?.0;
+        let condition = self.parse_expression(Precedence::Lowest)?.0;
         let consequent = Box::new(self.parse_block_statement()?);
 
         if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
@@ -1104,7 +1104,7 @@ impl<'a> Parser<'a> {
                         caret: true,
                     });
                 }
-                let (condition, _) = self.parse_expression(Precedence::Lowest, None)?;
+                let (condition, _) = self.parse_expression(Precedence::Lowest)?;
 
                 let consequent = Box::new(self.parse_block_statement()?);
                 self.expect_current(TokenKind::RightBrace)?;

@@ -1,10 +1,10 @@
 use crate::{CodeGenLLVM, build::BuildManifest, diag::*, funcs::FuncTable, structs::StructTable};
 use ast::{
-    ast::{Field, FuncDecl, Identifier, Import, ModulePath, ModuleSegment, VisType},
+    ast::{Field, FuncDecl, Identifier, Import, ModulePath, ModuleSegment, Struct, VisType},
     format::module_segments_as_string,
-    token::Location,
+    token::{Location, Span},
 };
-use inkwell::module::Module;
+use inkwell::{module::Module, types::StructType};
 use std::{cell::RefCell, collections::HashMap, process::exit, rc::Rc};
 use utils::fs::find_file_from_sources;
 
@@ -14,12 +14,13 @@ pub struct ExportedFuncMetadata {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExportedStructMetadata {
+pub struct ExportedStructMetadata<'ctx> {
     pub name: String,
     pub vis_type: VisType,
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub methods: Vec<FuncDecl>,
+    pub struct_type: StructType<'ctx>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,7 +29,7 @@ pub struct ModuleMetadata<'ctx> {
     pub file_path: String,
     pub module: Rc<RefCell<Module<'ctx>>>,
     pub imported_funcs: HashMap<String, ExportedFuncMetadata>,
-    pub imported_structs: HashMap<String, ExportedStructMetadata>,
+    pub imported_structs: HashMap<String, ExportedStructMetadata<'ctx>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -137,7 +138,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         begging_path.to_str().unwrap().to_string()
     }
 
-    fn build_module_identifier(&self, module_path: ModulePath) -> String {
+    pub(crate) fn build_module_identifier(&self, module_path: ModulePath) -> String {
         module_path.alias.unwrap_or({
             match module_path.segments.last().unwrap() {
                 ModuleSegment::SubModule(identifier) => identifier.name.clone(),
@@ -145,11 +146,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         })
     }
 
+    fn check_import_twice(&self, module_identifier: String, module_path: ModulePath) {
+        if let Some(_) = self.find_loaded_module(module_identifier.clone()) {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Cannot import module '{}' twice.",
+                    module_segments_as_string(module_path.segments)
+                )),
+                location: None,
+            });
+            exit(1);
+        }
+    }
+
     pub(crate) fn build_import(&mut self, import: Import) {
         for module_path in import.paths.clone() {
             let file_path =
                 self.build_import_module_path(module_path.segments.clone(), import.loc.clone(), import.span.end);
-            let module_identifier = self.build_module_identifier(module_path);
+            let module_identifier = self.build_module_identifier(module_path.clone());
+            self.check_import_twice(module_identifier.clone(), module_path);
             self.build_imported_module(file_path.clone(), module_identifier);
         }
     }
@@ -229,12 +245,35 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         imported_funcs
     }
 
-    fn build_imported_structs(&self, struct_table: StructTable) -> HashMap<String, ExportedStructMetadata> {
+    // TODO
+    // Implement import struct methods
+    fn build_imported_structs(&self, struct_table: StructTable) -> HashMap<String, ExportedStructMetadata<'ctx>> {
         let mut imported_structs: HashMap<String, ExportedStructMetadata> = HashMap::new();
 
-        for (_, (func_name, metadata)) in struct_table.iter().enumerate() {
+        for (_, (struct_name, metadata)) in struct_table.iter().enumerate() {
             // only pub structs are exported imported from sub_module
-            todo!();
+            let struct_statement = Struct {
+                name: struct_name.clone(),
+                vis_type: metadata.vis_type.clone(),
+                inherits: metadata.inherits.clone(),
+                fields: metadata.fields.clone(),
+                methods: Vec::new(), // FIXME
+                loc: Location::default(),
+                span: Span::default(),
+            };
+            let struct_type = self.build_struct(struct_statement);
+
+            imported_structs.insert(
+                struct_name.clone(),
+                ExportedStructMetadata {
+                    name: struct_name.clone(),
+                    vis_type: metadata.vis_type.clone(),
+                    inherits: metadata.inherits.clone(),
+                    fields: metadata.fields.clone(),
+                    methods: Vec::new(), // FIXME
+                    struct_type,
+                },
+            );
         }
 
         imported_structs
