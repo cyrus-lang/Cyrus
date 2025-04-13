@@ -55,7 +55,12 @@ impl<'a> Parser<'a> {
 
                 let module_import = self.parse_module_import()?;
 
-                if self.peek_token_is(TokenKind::Increment) {
+                // dbg!(self.current_token.kind.clone());
+                // dbg!(self.peek_token.kind.clone());
+
+                if self.current_token_is(TokenKind::LeftBrace) {
+                    self.parse_struct_init(module_import)?
+                } else if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
                     Expression::UnaryOperator(UnaryOperator {
                         module_import: module_import.clone(),
@@ -205,7 +210,7 @@ impl<'a> Parser<'a> {
                     caret: true,
                 });
             }
-        } 
+        }
         // else if self.current_token_is(TokenKind::LeftBrace) {
         //     if let Expression::ModuleImport(module_import) = expr.clone() {
         //         todo!();
