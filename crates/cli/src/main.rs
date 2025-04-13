@@ -4,6 +4,7 @@ use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::build::OutputKind;
 use codegen_llvm::diag::*;
 use utils::fs::get_directory_of_file;
+use utils::tui::tui_compile_finished;
 
 const PROJECT_FILE_PATH: &str = "Project.toml";
 
@@ -360,6 +361,8 @@ pub fn main() {
                 compiler_options.to_compiler_options(),
                 OutputKind::None
             );
+            codegen_llvm.compile();
+            tui_compile_finished();
             codegen_llvm.execute();
         }
         Commands::EmitLLVM {
@@ -378,6 +381,7 @@ pub fn main() {
                 OutputKind::LlvmIr(output_path)
             );
             codegen_llvm.compile();
+            tui_compile_finished();
         }
         Commands::EmitASM {
             file_path,
@@ -395,6 +399,7 @@ pub fn main() {
                 OutputKind::Asm(output_path)
             );
             codegen_llvm.compile();
+            tui_compile_finished();
         }
         Commands::Build {
             file_path,
@@ -413,6 +418,7 @@ pub fn main() {
             );
             codegen_llvm.compile();
             codegen_llvm.generate_executable_file(output_path);
+            tui_compile_finished();
         }
         Commands::Object {
             file_path,
@@ -430,6 +436,7 @@ pub fn main() {
                 OutputKind::ObjectFile(output_path)
             );
             codegen_llvm.compile();
+            tui_compile_finished();
         }
         Commands::Dylib {
             file_path,
@@ -447,6 +454,7 @@ pub fn main() {
                 OutputKind::Dylib(output_path)
             );
             codegen_llvm.compile();
+            tui_compile_finished();
         }
         Commands::Version => {
             println!("Cyrus {}", version)

@@ -294,7 +294,9 @@ impl<'a> Parser<'a> {
             series.push(self.parse_expression(Precedence::Lowest)?.0);
         }
 
-        self.expect_peek(end)?;
+        if !self.current_token_is(end.clone()) {
+            self.expect_peek(end)?;
+        }
 
         Ok((
             series,

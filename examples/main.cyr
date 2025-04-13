@@ -1,3 +1,14 @@
+struct Owner {
+    name: string;
+    age: i32;
+}
+
 fn main() {
-    println("Hello %s.", "Taha");
+    #owner = Owner {
+        name: "Taha",
+        age: 18
+    };
+
+    println("Name: %s\n", owner.name);
+    println("Age: %d\n", owner.age);
 }

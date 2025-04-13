@@ -9,7 +9,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             VisType::Extern => Linkage::External,
             VisType::Pub => Linkage::External,
             VisType::Internal => Linkage::Private,
-            VisType::Inline => Linkage::LinkOnceODR,
+            VisType::Inline => Linkage::LinkOnceODRAutoHide,
         }
     }
 }

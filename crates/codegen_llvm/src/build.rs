@@ -13,6 +13,7 @@ use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;
 use serde::Serialize;
+use utils::tui::tui_compile_finished;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::c_void;
@@ -29,7 +30,6 @@ use utils::fs::dylib_extension;
 use utils::fs::ensure_output_dir;
 use utils::fs::executable_extension;
 use utils::generate_random_hex::generate_random_hex;
-use utils::tui::tui_compiled;
 
 const BUILD_DIR_PATH: &str = "build/";
 const SOURCES_DIR_PATH: &str = "build/sources";
@@ -82,8 +82,6 @@ impl BuildManifest {
         }
     }
 }
-
-type MainFunc = unsafe extern "C" fn() -> c_void;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn generate_output_file_name(&self) -> String {
@@ -316,16 +314,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         fpm.finalize();
     }
 
-    pub(crate) fn build_optimization_level(&mut self, opt_level: i32) -> OptimizationLevel {
-        match opt_level {
-            0 => OptimizationLevel::None,
-            1 => OptimizationLevel::Less,
-            2 => OptimizationLevel::Default,
-            3 => OptimizationLevel::Aggressive,
-            _ => panic!(),
-        }
-    }
-
     pub(crate) fn build_entry_point(&mut self) {
         if let Some(mut main_func) = self.entry_point.clone() {
             main_func.name = format!("main_{}", generate_random_hex());
@@ -414,8 +402,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         }
-
-        tui_compiled(self.file_path.clone());
     }
 
     pub(crate) fn ensure_build_manifest(&mut self) {
