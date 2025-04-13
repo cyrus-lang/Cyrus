@@ -14,3 +14,6 @@ generate-sample-llvm-ir:
 
 test: 
 	cargo test --all
+
+generate-internals:
+	gcc ./internals/tests.c ./internals/internal_funcs.c -o ./tmp/internals_tests;

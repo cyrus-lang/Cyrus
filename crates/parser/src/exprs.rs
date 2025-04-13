@@ -55,9 +55,6 @@ impl<'a> Parser<'a> {
 
                 let module_import = self.parse_module_import()?;
 
-                // dbg!(self.current_token.kind.clone());
-                // dbg!(self.peek_token.kind.clone());
-
                 if self.current_token_is(TokenKind::LeftBrace) {
                     self.parse_struct_init(module_import)?
                 } else if self.peek_token_is(TokenKind::Increment) {

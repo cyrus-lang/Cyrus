@@ -2,8 +2,6 @@ use crate::CodeGenLLVM;
 use crate::diag::*;
 use ast::ast::VisType;
 use inkwell::OptimizationLevel;
-use inkwell::execution_engine::FunctionLookupError;
-use inkwell::execution_engine::JitFunction;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
@@ -24,10 +22,12 @@ use std::io::Read;
 use std::io::Write;
 use std::ops::DerefMut;
 use std::path::Path;
+use std::process::Stdio;
 use std::process::exit;
 use utils::fs::absolute_to_relative;
 use utils::fs::dylib_extension;
 use utils::fs::ensure_output_dir;
+use utils::fs::executable_extension;
 use utils::generate_random_hex::generate_random_hex;
 use utils::tui::tui_compiled;
 
@@ -161,7 +161,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn generate_executable_file(&self, output_path: Option<String>) {
-        let object_files: Vec<String>;
+        let mut object_files: Vec<String>;
         let output_path = {
             if let Some(path) = output_path {
                 // generate object file path and save it in system temp
@@ -203,6 +203,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 })
             }
         };
+        object_files.extend(self.internal_object_modules.clone());
 
         // TODO Consider to make linker dynamic through Project.toml and CLI Program.
         let linker = "cc";
@@ -234,7 +235,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn generate_dynamic_library(&self, output_path: Option<String>) {
-        let object_files: String;
+        let mut object_files: String;
         let output_path = {
             if let Some(path) = output_path {
                 // generate object file path and save it in system temp
@@ -255,6 +256,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
         };
+        object_files.extend(self.internal_object_modules.clone());
+
         ensure_output_dir(Path::new(&output_path.clone()));
         let file_path = format!(
             "{}/{}.{}",
@@ -377,44 +380,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn execute(&mut self) {
-        let opt_level = self.build_optimization_level(self.opts.opt_level);
-        let module_ref = self.module.borrow();
-        let execution_engine = module_ref.create_jit_execution_engine(opt_level).unwrap();
-
-        for loaded_module in self.loaded_modules.clone() {
-            let module = loaded_module.module.borrow().clone();
-            if let Err(err) = module_ref.link_in_module(module) {
-                eprintln!("In-Memory linkage error: {}", err.to_string_lossy());
+        let temp_file_path = format!(
+            "{}/{}{}",
+            env::temp_dir().to_str().unwrap(),
+            generate_random_hex(),
+            executable_extension()
+        );
+        self.generate_executable_file(Some(temp_file_path.clone()));
+        std::process::Command::new(temp_file_path.clone())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .unwrap_or_else(|e| {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Failed to execute process: {}", e.to_string())),
+                    location: None,
+                });
                 exit(1);
-            }
-        }
-
-        let main_func_result: Result<JitFunction<'ctx, MainFunc>, FunctionLookupError> =
-            unsafe { execution_engine.get_function("main") };
-
-        match main_func_result {
-            Ok(main_func) => {
-                unsafe { main_func.as_raw()() };
-            }
-            Err(err) => match err {
-                FunctionLookupError::JITNotEnabled => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(String::from("JIT not enabled.")),
-                        location: None,
-                    });
-                    exit(1);
-                }
-                FunctionLookupError::FunctionNotFound => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::NoEntryPointDetected,
-                        location: None,
-                    });
-                    exit(1);
-                }
-            },
-        }
+            });
     }
 
     pub(crate) fn generate_object_file_internal(&self, output_path: String) {

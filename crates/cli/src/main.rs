@@ -360,7 +360,6 @@ pub fn main() {
                 compiler_options.to_compiler_options(),
                 OutputKind::None
             );
-            codegen_llvm.compile();
             codegen_llvm.execute();
         }
         Commands::EmitLLVM {

@@ -90,3 +90,11 @@ pub fn dylib_extension() -> &'static str {
         "so"
     }
 }
+
+pub fn executable_extension() -> &'static str {
+    if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    }
+}

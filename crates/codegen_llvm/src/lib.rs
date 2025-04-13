@@ -15,7 +15,6 @@ use inkwell::values::{FunctionValue, PointerValue};
 use modules::ModuleMetadata;
 use opts::Options;
 use scope::{Scope, ScopeRef};
-use utils::tui::tui_compile_finished;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
@@ -23,6 +22,7 @@ use std::rc::Rc;
 use structs::StructTable;
 use types::{AnyType, StringType};
 use utils::fs::file_stem;
+use utils::tui::tui_compile_finished;
 use values::{AnyValue, StringValue};
 
 pub mod build;
@@ -30,6 +30,7 @@ pub mod diag;
 mod enums;
 mod exprs;
 mod funcs;
+mod internals;
 mod linkage;
 mod modules;
 pub mod opts;
@@ -67,6 +68,7 @@ pub struct CodeGenLLVM<'ctx> {
     string_type: StringType<'ctx>,
     loaded_modules: Vec<ModuleMetadata<'ctx>>,
     dependent_modules: HashMap<String, Vec<String>>,
+    internal_object_modules: Vec<String>,
     output_kind: OutputKind,
 }
 
@@ -110,10 +112,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             module_name: module_name.clone(),
             loaded_modules: Vec::new(),
             dependent_modules: HashMap::new(),
+            internal_object_modules: Vec::new(),
             output_kind,
         };
 
         codegen_llvm.load_runtime();
+        codegen_llvm.build_internals();
         Ok(codegen_llvm)
     }
 
@@ -144,6 +148,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn compile(&mut self) {
+        self.load_internal_funcs();
+
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         self.build_statements(Rc::clone(&scope), self.program.body.clone());
 
