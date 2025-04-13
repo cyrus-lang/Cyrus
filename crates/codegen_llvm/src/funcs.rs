@@ -302,7 +302,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }
                     }
                 }
-                either::Either::Right(_) => todo!(),
+                either::Either::Right(field_access) => {
+                    // field_access.identifier
+                    todo!();
+                },
             }
         }
 

@@ -8,6 +8,7 @@ use ast::{
     ast::*,
     token::{Location, TokenKind},
 };
+use either::Either;
 use inkwell::{
     AddressSpace,
     llvm_sys::{core::LLVMBuildGEP2, prelude::LLVMValueRef},
@@ -147,15 +148,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let record: (PointerValue<'ctx>, AnyType<'ctx>);
 
-        let first_sub_module = {
+        let first_segment = {
             match module_import.segments.first().unwrap() {
                 ModuleSegment::SubModule(sub_module) => sub_module,
             }
         };
 
         let binding = {
-            match scope.borrow_mut().get(first_sub_module.name.clone()) {
-                Some(record) => record,
+            match scope.borrow().get(first_segment.name.clone()) {
+                Some(record) => {
+                    if module_import.segments.len() >= 2 {
+                        let chains: Vec<Either<FuncCall, FieldAccess>> = module_import.segments
+                            [1..module_import.segments.len()]
+                            .iter()
+                            .map(|s| match s {
+                                ModuleSegment::SubModule(identifier) => Either::Right(FieldAccess {
+                                    identifier: identifier.clone(),
+                                    span: identifier.span.clone(),
+                                    loc: identifier.loc.clone(),
+                                }),
+                            })
+                            .collect();
+
+                        let result = self.build_field_access_or_method_call(
+                            Rc::clone(&scope),
+                            FieldAccessOrMethodCall {
+                                expr: Box::new(Expression::ModuleImport(ModuleImport {
+                                    segments: vec![ModuleSegment::SubModule(first_segment.clone())],
+                                    span: module_import.span.clone(),
+                                    loc: module_import.loc.clone(),
+                                })),
+                                chains,
+                            },
+                        );
+
+                        return (result.clone(), result.get_type(self.string_type.clone()));
+                    } else {
+                        record
+                    }
+                }
                 None => {
                     let module_identifier = self.build_module_identifier(ModulePath {
                         alias: None,
@@ -212,12 +243,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
-        dbg!(module_import.clone());
-        
         match module_import.segments.first().unwrap() {
             ModuleSegment::SubModule(identifier) => {
                 let binding = {
-                    match scope.borrow_mut().get(identifier.name.clone()) {
+                    match scope.borrow().get(identifier.name.clone()) {
                         Some(record) => record,
                         None => match self.find_loaded_module(identifier.name.clone()) {
                             Some(metadata) => {
@@ -237,8 +266,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         },
                     }
                 };
-                let record = binding.borrow_mut();
-
+                let record = binding.borrow();
                 self.build_load_internal(record.ptr.clone(), record.ty.clone())
             }
         }
