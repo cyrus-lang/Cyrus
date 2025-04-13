@@ -4,7 +4,7 @@ use crate::{
     scope::ScopeRef,
 };
 use ast::{
-    ast::{Field, Identifier, ModuleImport, ModulePath, Struct, StructInit, VisType},
+    ast::{Field, Identifier, ModuleImport, Struct, StructInit, VisType},
     token::Location,
 };
 use inkwell::{
@@ -51,6 +51,57 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
         struct_type
+    }
+
+    pub(crate) fn find_struct_by_type(
+        &self,
+        struct_type: StructType<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> (String, StructMetadata<'ctx>) {
+        let mut record: Option<(String, StructMetadata<'ctx>)> = None;
+
+        for (_, (name, metadata)) in self.struct_table.iter().enumerate() {
+            if metadata.struct_type == struct_type {
+                record = Some((name.clone(), metadata.clone()));
+                break;
+            }
+        }
+
+        if record.is_none() {
+            for loaded_module in self.loaded_modules.clone() {
+                for (_, (name, metadata)) in loaded_module.imported_structs.iter().enumerate() {
+                    if metadata.struct_type == struct_type {
+                        record = Some((
+                            name.clone(),
+                            StructMetadata {
+                                struct_type,
+                                inherits: metadata.inherits.clone(),
+                                fields: metadata.fields.clone(),
+                                vis_type: metadata.vis_type.clone(),
+                            },
+                        ));
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some((struct_name, struct_metadata)) = record {
+            (struct_name, struct_metadata)
+        } else {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Unknown struct type.".to_string()),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
     }
 
     fn find_struct(
@@ -193,7 +244,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     field_idx.try_into().unwrap(),
                     "insert_data",
                 )
-                .unwrap().into_struct_value();
+                .unwrap()
+                .into_struct_value();
         }
 
         AnyValue::StructValue(struct_value)

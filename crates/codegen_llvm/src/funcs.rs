@@ -303,9 +303,46 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
                 either::Either::Right(field_access) => {
-                    // field_access.identifier
-                    todo!();
-                },
+                    if let AnyValue::StructValue(struct_value) = final_result {
+                        let (struct_name, struct_metadata) = self.find_struct_by_type(
+                            struct_value.get_type(),
+                            field_access.loc.clone(),
+                            field_access.span.end,
+                        );
+
+                        match struct_metadata
+                            .fields
+                            .iter()
+                            .position(|f| f.name == field_access.identifier.name)
+                        {
+                            Some(field_idx) => {
+                                let basic_value = self
+                                    .builder
+                                    .build_extract_value(struct_value, field_idx.try_into().unwrap(), "extract_value")
+                                    .unwrap();
+                                final_result = basic_value.try_into().unwrap();
+                            }
+                            None => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(format!(
+                                        "Undefined field '{}' for struct '{}'.",
+                                        field_access.identifier.name, struct_name,
+                                    )),
+                                    location: None,
+                                });
+                                exit(1);
+                            }
+                        }
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Cannot build field access for non-struct values.".to_string()),
+                            location: None,
+                        });
+                        exit(1);
+                    }
+                }
             }
         }
 
