@@ -52,10 +52,10 @@ void internal_panic(String file_name, int32_t line, int argc, ...) {
   }
 }
 
+int32_t internal_len_string(String input) { return input.len; }
+
 // TODO
 // Not completed yet
 void internal_copy(void *source, size_t source_len, size_t elem_len, void *dest,
                    size_t dest_len, size_t source_start_idx,
                    size_t dest_start_idx, size_t count) {}
-
-int32_t internal_len_string(String input) { return input.len; }

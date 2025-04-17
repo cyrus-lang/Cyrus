@@ -348,7 +348,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_call_internal_len(
         &self,
         func_call: FuncCall,
-        mut arguments: Vec<BasicMetadataValueEnum<'ctx>>,
+        arguments: Vec<BasicMetadataValueEnum<'ctx>>,
     ) -> CallSiteValue<'ctx> {
         if arguments.len() != 1 {
             display_single_diag(Diag {
