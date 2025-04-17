@@ -1,7 +1,6 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use ast::ast::VisType;
-use inkwell::OptimizationLevel;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
@@ -13,10 +12,8 @@ use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;
 use serde::Serialize;
-use utils::tui::tui_compile_finished;
 use std::collections::HashMap;
 use std::env;
-use std::ffi::c_void;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
@@ -84,6 +81,42 @@ impl BuildManifest {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn execute_linker(&self, output_path: String, object_files: Vec<String>, extra_args: Vec<String>) {
+        // TODO Consider to make linker dynamic through Project.toml and CLI Program.
+        let linker = "cc";
+
+        let mut linker_command = std::process::Command::new(linker);
+
+        linker_command.arg("-lgc");
+
+        for path in object_files {
+            linker_command.arg(path);
+        }
+
+        for path in extra_args {
+            linker_command.arg(path);
+        }
+
+        let linker_output = linker_command.arg("-o").arg(output_path).output();
+
+        match linker_output {
+            Ok(output) => {
+                if !output.status.success() {
+                    eprintln!("Linker error: {}", String::from_utf8_lossy(&output.stderr));
+                    exit(1);
+                }
+            }
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Failed execute linker ({}):\n{}", linker, err.to_string())),
+                    location: None,
+                });
+                exit(1);
+            }
+        }
+    }
+
     pub(crate) fn generate_output_file_name(&self) -> String {
         let mut file_name = Path::new(&self.file_path.clone())
             .with_extension("")
@@ -203,37 +236,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
         object_files.extend(self.internal_object_modules.clone());
 
-        // TODO Consider to make linker dynamic through Project.toml and CLI Program.
-        let linker = "cc";
-
-        let mut linker_command = std::process::Command::new(linker);
-
-        for path in object_files {
-            linker_command.arg(path);
-        }
-
-        let linker_output = linker_command.arg("-o").arg(output_path).output();
-
-        match linker_output {
-            Ok(output) => {
-                if !output.status.success() {
-                    eprintln!("Linker error: {}", String::from_utf8_lossy(&output.stderr));
-                    exit(1);
-                }
-            }
-            Err(err) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!("Failed execute linker ({}):\n{}", linker, err.to_string())),
-                    location: None,
-                });
-                exit(1);
-            }
-        }
+        self.execute_linker(output_path, object_files, Vec::new());
     }
 
     fn generate_dynamic_library(&self, output_path: Option<String>) {
-        let mut object_files: String;
+        let mut object_files: Vec<String> = Vec::new();
         let output_path = {
             if let Some(path) = output_path {
                 // generate object file path and save it in system temp
@@ -241,7 +248,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 temp_path.push(format!("{}.o", generate_random_hex()));
                 let temp_path_str = temp_path.to_str().unwrap().to_string();
                 self.generate_object_file_internal(temp_path_str.clone());
-                object_files = temp_path_str;
+                object_files.push(temp_path_str);
                 path
             } else {
                 display_single_diag(Diag {
@@ -257,39 +264,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         object_files.extend(self.internal_object_modules.clone());
 
         ensure_output_dir(Path::new(&output_path.clone()));
-        let file_path = format!(
+        let output_path = format!(
             "{}/{}.{}",
             output_path,
             self.generate_output_file_name(),
             dylib_extension()
         );
 
-        // TODO Consider to make linker dynamic through Project.toml and CLI Program.
-        let linker = "cc";
-
-        let linker_output = std::process::Command::new(linker)
-            .arg(object_files)
-            .arg("-fPIC")
-            .arg("-o")
-            .arg(file_path)
-            .output();
-
-        match linker_output {
-            Ok(output) => {
-                if !output.status.success() {
-                    eprintln!("Linker error: {}", String::from_utf8_lossy(&output.stderr));
-                    exit(1);
-                }
-            }
-            Err(err) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!("Failed execute linker ({}):\n{}", linker, err.to_string())),
-                    location: None,
-                });
-                exit(1);
-            }
-        }
+        self.execute_linker(output_path, object_files, vec![
+            "-fPIC".to_string()
+        ]);
     }
 
     fn generate_object_file(&self, output_path: Option<String>) {
@@ -350,9 +334,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .borrow_mut()
                     .deref_mut()
                     .add_function("main", fn_type, Some(Linkage::External));
+
             let entry_block = self.context.append_basic_block(entry_point, "entry");
             self.builder.position_at_end(entry_block);
             self.builder.build_call(main_func_ptr, &[], "call_main").unwrap();
+
+            self.load_runtime();
+
             self.builder
                 .build_return(Some(&return_type.const_int(0, false)))
                 .unwrap();

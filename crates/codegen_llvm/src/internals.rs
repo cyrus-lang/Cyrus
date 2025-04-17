@@ -1,11 +1,11 @@
-use crate::{CodeGenLLVM, diag::*, funcs::FuncMetadata, scope::ScopeRef};
+use crate::{CodeGenLLVM, diag::*, funcs::FuncMetadata};
 use ast::{
     ast::{FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, IntegerLiteral, StringLiteral, VisType},
     token::{Location, Span, Token, TokenKind},
 };
-use inkwell::values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, IntValue};
+use inkwell::values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue};
 use rust_embed::Embed;
-use std::{env, fs::File, io::Write, process::exit, rc::Rc};
+use std::{env, fs::File, io::Write, process::exit};
 use utils::generate_random_hex::generate_random_hex;
 
 #[derive(Embed)]
@@ -15,7 +15,7 @@ struct Asset;
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_internals(&mut self) {
         if cfg!(target_os = "linux") {
-            let asset_name = "internals_linux.o";
+            let asset_name = "internal_linux.o";
             match Asset::get(asset_name) {
                 Some(embedded_file) => {
                     let temp_file_path = format!("{}/{}.o", env::temp_dir().to_str().unwrap(), generate_random_hex());

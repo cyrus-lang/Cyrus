@@ -116,7 +116,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             output_kind,
         };
 
-        codegen_llvm.load_runtime();
         codegen_llvm.build_internals();
         Ok(codegen_llvm)
     }

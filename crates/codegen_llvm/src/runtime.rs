@@ -1,35 +1,17 @@
-use std::ops::DerefMut;
-
 use crate::CodeGenLLVM;
 use inkwell::{
     AddressSpace,
     module::Linkage,
     types::BasicMetadataTypeEnum,
-    values::{AsValueRef, BasicValueEnum, FunctionValue},
+    values::{BasicValueEnum, FunctionValue},
 };
+use std::ops::DerefMut;
 use utils::generate_random_hex::generate_random_hex;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn load_runtime(&mut self) {
-        self.internal_funcs_table
-            .insert("malloc".to_string(), self.internal_malloc().as_value_ref());
-    }
-    
-    fn internal_malloc(&self) -> FunctionValue<'ctx> {
-        let i8_ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
-        let i64_type = self.context.i64_type();
+    pub(crate) fn load_runtime(&mut self) {}
 
-        let malloc_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
-
-        let module = self.module.borrow_mut();
-
-        match module.get_function("malloc") {
-            Some(v) => v,
-            None => module.add_function("malloc", malloc_type, None),
-        }
-    }
-
-    fn internal_check_bounds(&self) -> FunctionValue<'ctx> {
+    fn runtime_check_bounds(&self) -> FunctionValue<'ctx> {
         let return_type = self.context.i32_type();
         let func_type = return_type.fn_type(
             &[

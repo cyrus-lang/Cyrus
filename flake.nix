@@ -83,6 +83,7 @@
         ];
 
         shellHook = ''
+          export BOEHM_GC_STATIC_LIB_PATH="${pkgs.boehmgc}/lib"
           export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH:${pkgs.boehmgc}/lib"
           export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
           alias cyrus="cargo run --"

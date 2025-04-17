@@ -1,3 +1,7 @@
+extern fn GC_init();
+
 fn main() {
+    GC_init();
     
+    println("Hello");
 }
