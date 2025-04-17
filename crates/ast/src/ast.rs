@@ -33,6 +33,7 @@ impl ProgramTree {
 pub enum Expression {
     CastAs(CastAs),
     Identifier(Identifier),
+    TypeToken(Token),
     ModuleImport(ModuleImport),
     Assignment(Box<Assignment>),
     Literal(Literal),

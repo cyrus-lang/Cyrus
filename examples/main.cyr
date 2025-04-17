@@ -1,7 +1,9 @@
-extern fn GC_init();
+struct Person {
+    a: i32;
+}
 
-fn main() {
-    GC_init();
-    
-    println("Hello");
+fn main() {   
+    #s = sizeof(Person);
+
+    println("sizeof: %d", s);
 }

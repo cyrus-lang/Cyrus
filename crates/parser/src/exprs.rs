@@ -47,6 +47,28 @@ impl<'a> Parser<'a> {
         let span: Span = self.current_token.span.clone();
 
         let expr = match &self.current_token.clone().kind {
+            kind @ TokenKind::I8
+            | kind @ TokenKind::I16
+            | kind @ TokenKind::I32
+            | kind @ TokenKind::I64
+            | kind @ TokenKind::I128
+            | kind @ TokenKind::U8
+            | kind @ TokenKind::U16
+            | kind @ TokenKind::U32
+            | kind @ TokenKind::U64
+            | kind @ TokenKind::U128
+            | kind @ TokenKind::Char
+            | kind @ TokenKind::F16
+            | kind @ TokenKind::F32
+            | kind @ TokenKind::F64
+            | kind @ TokenKind::F128
+            | kind @ TokenKind::SizeT
+            | kind @ TokenKind::Void
+            | kind @ TokenKind::String
+            | kind @ TokenKind::Bool => Expression::TypeToken(Token {
+                kind: kind.clone(),
+                span: Span::new(span.start, self.current_token.span.end),
+            }),
             TokenKind::Identifier { .. } => {
                 if self.peek_token_is(TokenKind::LeftParen) {
                     let func_call = self.parse_func_call()?;
@@ -208,22 +230,6 @@ impl<'a> Parser<'a> {
                 });
             }
         }
-        // else if self.current_token_is(TokenKind::LeftBrace) {
-        //     if let Expression::ModuleImport(module_import) = expr.clone() {
-        //         todo!();
-        //         let struct_init = self.parse_struct_init(module_import)?;
-        //         return Ok(struct_init);
-        //     } else {
-        //         return Err(CompileTimeError {
-        //             location: self.current_location(),
-        //             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-        //             file_name: Some(self.lexer.file_name.clone()),
-        //             code_raw: Some(self.lexer.select(span.start..self.current_token.span.end)),
-        //             verbose: None,
-        //             caret: true,
-        //         });
-        //     }
-        // }
 
         Ok(expr)
     }

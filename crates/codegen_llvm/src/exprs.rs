@@ -66,6 +66,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     AnyValue::PointerValue(self.build_null())
                 }
             }
+            Expression::TypeToken(_) => AnyValue::PointerValue(self.build_null()),
         }
     }
 

@@ -429,6 +429,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
         let func_name = func_call.identifier.name.clone();
 
+        if func_name == "sizeof" {
+            return self.build_call_internal_sizeof(Rc::clone(&scope), func_call.clone());
+        }
+
         let arguments = &self.build_arguments(
             Rc::clone(&scope),
             func_call.arguments.clone(),

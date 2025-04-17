@@ -1,9 +1,9 @@
-use crate::{CodeGenLLVM, diag::*, funcs::FuncMetadata};
+use crate::{AnyType, CodeGenLLVM, diag::*, funcs::FuncMetadata, scope::ScopeRef};
 use ast::{
-    ast::{FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, IntegerLiteral, StringLiteral, VisType},
+    ast::{Expression, FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, IntegerLiteral, StringLiteral, VisType},
     token::{Location, Span, Token, TokenKind},
 };
-use inkwell::values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue};
+use inkwell::values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, IntValue};
 use rust_embed::Embed;
 use std::{env, fs::File, io::Write, process::exit};
 use utils::generate_random_hex::generate_random_hex;
@@ -406,5 +406,92 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
         }
+    }
+
+    pub(crate) fn builder_sizeof_internal(
+        &self,
+        data_type: AnyType<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> IntValue<'ctx> {
+        match data_type {
+            crate::AnyType::IntType(int_type) => int_type.size_of(),
+            crate::AnyType::FloatType(float_type) => float_type.size_of(),
+            crate::AnyType::ArrayType(array_type) => array_type.size_of().unwrap(),
+            crate::AnyType::StructType(struct_type) => struct_type.size_of().unwrap(),
+            crate::AnyType::VectorType(vector_type) => vector_type.size_of().unwrap(),
+            crate::AnyType::StringType(string_type) => string_type.struct_type.size_of().unwrap(),
+            crate::AnyType::VoidType(_) => self.build_integer_literal(IntegerLiteral::U64(0)),
+            crate::AnyType::OpaquePointer(pointer_type) => pointer_type.size_of(),
+            crate::AnyType::PointerType(typed_pointer_type) => {
+                self.builder_sizeof_internal(typed_pointer_type.pointee_ty, loc, span_end)
+            }
+            crate::AnyType::ImportedModuleValue => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot get size of ImportedModuleValue.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+    }
+
+    pub(crate) fn build_call_internal_sizeof(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
+        if func_call.arguments.len() != 1 {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    "len".to_string(),
+                    1,
+                    func_call.arguments.len().try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_call.loc.line,
+                    column: func_call.loc.column,
+                    length: func_call.span.end,
+                }),
+            });
+            exit(1);
+        }
+
+        let argument = func_call.arguments.first().unwrap();
+
+        let value = {
+            if let Expression::TypeToken(type_token) = argument {
+                self.builder_sizeof_internal(
+                    self.build_type(type_token.kind.clone(), func_call.loc.clone(), func_call.span.end),
+                    func_call.loc.clone(),
+                    func_call.span.end,
+                )
+            } else if let Expression::ModuleImport(module_import) = argument {
+                // User defined type
+                self.find_struct(scope, module_import.clone(), func_call.loc.clone(), func_call.span.end)
+                    .struct_type
+                    .size_of()
+                    .unwrap()
+            } else {
+                dbg!(argument.clone());
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build get size of for non-type inputs.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: func_call.loc.line,
+                        column: func_call.loc.column,
+                        length: func_call.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        unsafe { CallSiteValue::new(value.as_value_ref()) }
     }
 }

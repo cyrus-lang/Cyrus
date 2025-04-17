@@ -209,6 +209,9 @@ impl fmt::Display for Expression {
             Expression::ModuleImport(module_import) => {
                 write!(f, "{}", module_import.to_string())
             }
+            Expression::TypeToken(token) => {
+                write!(f, "{}", token.kind)
+            }
         }
     }
 }

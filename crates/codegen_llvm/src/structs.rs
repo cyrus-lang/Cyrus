@@ -104,7 +104,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    fn find_struct(
+    pub(crate) fn find_struct(
         &self,
         scope: ScopeRef<'ctx>,
         struct_name: ModuleImport,

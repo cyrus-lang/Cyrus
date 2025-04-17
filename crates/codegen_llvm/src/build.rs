@@ -88,6 +88,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let mut linker_command = std::process::Command::new(linker);
 
         linker_command.arg("-lgc");
+        linker_command.arg("-o").arg(output_path);
 
         for path in object_files {
             linker_command.arg(path);
@@ -97,9 +98,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             linker_command.arg(path);
         }
 
-        let linker_output = linker_command.arg("-o").arg(output_path).output();
-
-        match linker_output {
+        match linker_command.output() {
             Ok(output) => {
                 if !output.status.success() {
                     eprintln!("Linker error: {}", String::from_utf8_lossy(&output.stderr));

@@ -1,15 +1,38 @@
+use std::ops::DerefMut;
 use crate::CodeGenLLVM;
+use ast::{
+    ast::{FuncDecl, FuncParams, VisType},
+    token::{Location, Span},
+};
 use inkwell::{
     AddressSpace,
     module::Linkage,
     types::BasicMetadataTypeEnum,
     values::{BasicValueEnum, FunctionValue},
 };
-use std::ops::DerefMut;
 use utils::generate_random_hex::generate_random_hex;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn load_runtime(&mut self) {}
+    pub(crate) fn load_runtime(&mut self) {
+        self.internal_init_gc();
+    }
+
+    fn internal_init_gc(&mut self) {
+        let func_decl = FuncDecl {
+            name: "GC_init".to_string(),
+            params: FuncParams {
+                list: Vec::new(),
+                variadic: None,
+            },
+            return_type: None,
+            vis_type: VisType::Inline,
+            renamed_as: None,
+            span: Span::default(),
+            loc: Location::default(),
+        };
+        let ptr = self.build_func_decl(func_decl.clone());
+        self.builder.build_call(ptr, &[], "call").unwrap();
+    }
 
     fn runtime_check_bounds(&self) -> FunctionValue<'ctx> {
         let return_type = self.context.i32_type();
