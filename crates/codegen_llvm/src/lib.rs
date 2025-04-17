@@ -22,7 +22,7 @@ use std::rc::Rc;
 use structs::StructTable;
 use types::{AnyType, StringType};
 use utils::fs::file_stem;
-use utils::tui::{tui_compile_finished, tui_compiled};
+use utils::tui::tui_compiled;
 use values::{AnyValue, StringValue};
 
 pub mod build;

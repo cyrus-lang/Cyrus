@@ -19,6 +19,7 @@ use std::rc::Rc;
 pub struct FuncMetadata<'a> {
     pub ptr: FunctionValue<'a>,
     pub func_decl: FuncDecl,
+    pub is_internal: bool,
 }
 
 pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
@@ -100,6 +101,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             FuncMetadata {
                 func_decl: func_decl.clone(),
                 ptr: func_ptr,
+                is_internal: false,
             },
         );
 
@@ -214,7 +216,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.func_table.insert(
             func_decl.renamed_as.clone().unwrap(),
-            FuncMetadata { func_decl, ptr: func },
+            FuncMetadata {
+                func_decl,
+                ptr: func,
+                is_internal: false,
+            },
         );
 
         return func;
@@ -384,18 +390,68 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
+    pub(crate) fn check_func_args_count_mismatch(&self, func_name: String, func_decl: FuncDecl, func_call: FuncCall) {
+        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != func_call.arguments.len() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    func_call.arguments.len().try_into().unwrap(),
+                    func_decl.params.list.len().try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_call.loc.line,
+                    column: func_call.loc.column,
+                    length: func_call.span.end,
+                }),
+            });
+            exit(1);
+        } else if func_decl.params.variadic.is_some() && func_call.arguments.len() < func_decl.params.list.len() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    func_call.arguments.len().try_into().unwrap(),
+                    func_decl.params.list.len().try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_call.loc.line,
+                    column: func_call.loc.column,
+                    length: func_call.span.end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
     pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
-        let func_name = func_call.identifier.name;
+        let func_name = func_call.identifier.name.clone();
 
         let arguments = &self.build_arguments(
             Rc::clone(&scope),
-            func_call.arguments,
+            func_call.arguments.clone(),
             func_call.loc.clone(),
             func_call.span.end,
         );
 
         if let Some(func_metadata) = self.func_table.get(&func_name.clone()) {
-            self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
+            if func_metadata.is_internal {
+                self.build_internal_func_call(
+                    func_call.clone(),
+                    func_metadata.clone(),
+                    arguments.clone(),
+                )
+            } else {
+                self.check_func_args_count_mismatch(
+                    func_metadata.func_decl.name.clone(),
+                    func_metadata.func_decl.clone(),
+                    func_call.clone(),
+                );
+                
+                self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
+            }
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

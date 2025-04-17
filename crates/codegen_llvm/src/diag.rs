@@ -17,6 +17,7 @@ pub enum DiagKind {
     FuncNotFound(String),
     InvalidWildcard,
     ModuleNotFound(String),
+    FuncCallArgumentCountMismatch(String, i32, i32),
     Custom(String),
 }
 
@@ -64,6 +65,10 @@ impl fmt::Display for DiagKind {
             DiagKind::ModuleNotFound(name) => &format!(
                 "The module '{}' could not be found in any of the specified source directories.",
                 name
+            ),
+            DiagKind::FuncCallArgumentCountMismatch(func_name, current, expected) => &format!(
+                "Expected {} arguments for function '{}', but got {}.",
+                expected, func_name, current
             ),
         };
         write!(f, "{}", msg)
