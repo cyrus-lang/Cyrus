@@ -3,9 +3,9 @@ use ast::{
     ast::{Expression, FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, IntegerLiteral, StringLiteral, VisType},
     token::{Location, Span, Token, TokenKind},
 };
-use inkwell::values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, IntValue};
+use inkwell::{types::BasicType, values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, IntValue}};
 use rust_embed::Embed;
-use std::{env, fs::File, io::Write, process::exit};
+use std::{env, fs::File, io::Write, process::exit, rc::Rc};
 use utils::generate_random_hex::generate_random_hex;
 
 #[derive(Embed)]
@@ -470,6 +470,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_call.loc.clone(),
                     func_call.span.end,
                 )
+                
             } else if let Expression::ModuleImport(module_import) = argument {
                 // User defined type
                 self.find_struct(scope, module_import.clone(), func_call.loc.clone(), func_call.span.end)
@@ -477,18 +478,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .size_of()
                     .unwrap()
             } else {
-                dbg!(argument.clone());
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot build get size of for non-type inputs.".to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: func_call.loc.line,
-                        column: func_call.loc.column,
-                        length: func_call.span.end,
-                    }),
-                });
-                exit(1);
+                self.builder_sizeof_internal(
+                    self.build_expr(Rc::clone(&scope), argument.clone()).get_type(self.string_type.clone()),
+                    func_call.loc.clone(),
+                    func_call.span.end,
+                )
             }
         };
 

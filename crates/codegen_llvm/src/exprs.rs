@@ -386,6 +386,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         ordered_indexes
     }
 
+    // FIXME
     pub(crate) fn build_array_index(&self, scope: ScopeRef<'ctx>, array_index: ArrayIndex) -> AnyValue<'ctx> {
         let (any_value, pointee_ty) = self.build_load(Rc::clone(&scope), array_index.module_import);
 

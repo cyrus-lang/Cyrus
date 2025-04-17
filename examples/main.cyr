@@ -1,9 +1,5 @@
-struct Person {
-    a: i32;
-}
-
 fn main() {   
-    #s = sizeof(Person);
+    #arr: string[2] = ["taha"];
 
-    println("sizeof: %d", s);
+    println("%s", arr[0]);
 }

@@ -219,6 +219,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .unwrap();
 
             data_type = match data_type {
+                AnyType::StringType(string_type) => {
+                    AnyType::ArrayType(string_type.struct_type.array_type(capacity.try_into().unwrap()))
+                }
                 AnyType::IntType(int_type) => AnyType::ArrayType(int_type.array_type(capacity.try_into().unwrap())),
                 AnyType::FloatType(float_type) => {
                     AnyType::ArrayType(float_type.array_type(capacity.try_into().unwrap()))
