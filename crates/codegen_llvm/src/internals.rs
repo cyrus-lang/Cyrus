@@ -3,7 +3,7 @@ use ast::{
     ast::{FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, IntegerLiteral, StringLiteral, VisType},
     token::{Location, Span, Token, TokenKind},
 };
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, CallSiteValue};
+use inkwell::values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, IntValue};
 use rust_embed::Embed;
 use std::{env, fs::File, io::Write, process::exit, rc::Rc};
 use utils::generate_random_hex::generate_random_hex;
@@ -294,6 +294,34 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_call.clone(),
                 );
             }
+            "internal_println" => {
+                self.check_func_args_count_mismatch(
+                    "println".to_string(),
+                    func_metadata.func_decl.clone(),
+                    func_call.clone(),
+                );
+            }
+            "internal_eprintln" => {
+                self.check_func_args_count_mismatch(
+                    "eprintln".to_string(),
+                    func_metadata.func_decl.clone(),
+                    func_call.clone(),
+                );
+            }
+            "internal_eprintf" => {
+                self.check_func_args_count_mismatch(
+                    "eprintf".to_string(),
+                    func_metadata.func_decl.clone(),
+                    func_call.clone(),
+                );
+            }
+            "internal_exit" => {
+                self.check_func_args_count_mismatch(
+                    "exit".to_string(),
+                    func_metadata.func_decl.clone(),
+                    func_call.clone(),
+                );
+            }
             "internal_panic" => {
                 let file_name = self.build_string_literal(StringLiteral {
                     raw: self.file_path.clone(),
@@ -303,25 +331,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 arguments.insert(0, TryInto::<BasicValueEnum>::try_into(file_name).unwrap().into());
                 arguments.insert(1, TryInto::<BasicValueEnum>::try_into(line).unwrap().into());
                 arguments.insert(2, BasicMetadataValueEnum::IntValue(argc));
-            }
-            "len" => {
-                if arguments.len() != 1 {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::FuncCallArgumentCountMismatch(
-                            "len".to_string(),
-                            1,
-                            arguments.len().try_into().unwrap(),
-                        ),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: func_call.loc.line,
-                            column: func_call.loc.column,
-                            length: func_call.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
             }
             _ => {
                 self.check_func_args_count_mismatch(
@@ -334,5 +343,68 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         self.builder.build_call(func_metadata.ptr, &arguments, "call").unwrap()
+    }
+
+    pub(crate) fn build_call_internal_len(
+        &self,
+        func_call: FuncCall,
+        mut arguments: Vec<BasicMetadataValueEnum<'ctx>>,
+    ) -> CallSiteValue<'ctx> {
+        if arguments.len() != 1 {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    "len".to_string(),
+                    1,
+                    arguments.len().try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_call.loc.line,
+                    column: func_call.loc.column,
+                    length: func_call.span.end,
+                }),
+            });
+            exit(1);
+        }
+        match arguments.first().unwrap() {
+            BasicMetadataValueEnum::ArrayValue(array_value) => unsafe {
+                let inner = self.builder.build_extract_value(*array_value, 0, "extract").unwrap();
+                let len = self.build_integer_literal(IntegerLiteral::U32(inner.into_array_value().get_type().len()));
+                CallSiteValue::new(len.as_value_ref())
+            },
+            BasicMetadataValueEnum::StructValue(struct_value) => {
+                let string_type = self.string_type.struct_type;
+                if string_type != struct_value.get_type() {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::LenCalledWithInvalidInput,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: func_call.loc.line,
+                            column: func_call.loc.column,
+                            length: func_call.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
+                let len_func = self.func_table.get("internal_len_string").unwrap();
+                return self.builder.build_call(len_func.ptr, &arguments, "call").unwrap();
+            }
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::LenCalledWithInvalidInput,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: func_call.loc.line,
+                        column: func_call.loc.column,
+                        length: func_call.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        }
     }
 }

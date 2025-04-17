@@ -43,9 +43,9 @@ void internal_panic(String file_name, int32_t line, int argc, ...) {
     fprintf(stderr, "\n");
     va_list args;
     va_start(args, argc);
-    for (int i = 0; i < argc; ++i) {    
+    for (int i = 0; i < argc; ++i) {
       String arg = va_arg(args, String);
-      fprintf(stderr, "%s\n", (char *) arg.data);
+      fprintf(stderr, "%s\n", (char *)arg.data);
     }
     va_end(args);
     exit(1);
@@ -58,6 +58,4 @@ void internal_copy(void *source, size_t source_len, size_t elem_len, void *dest,
                    size_t dest_len, size_t source_start_idx,
                    size_t dest_start_idx, size_t count) {}
 
-int32_t internal_len_string(String input) {
-    return input.len;
-}
+int32_t internal_len_string(String input) { return input.len; }

@@ -1,3 +1,5 @@
 fn main() {
-    
+    #arr = [1, 2, 3, 10];
+    #len = len(arr);
+    println("Length: %d", len);
 }

@@ -324,7 +324,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             Some(field_idx) => {
                                 let basic_value = self
                                     .builder
-                                    .build_extract_value(struct_value, field_idx.try_into().unwrap(), "extract_value")
+                                    .build_extract_value(struct_value, field_idx.try_into().unwrap(), "extract")
                                     .unwrap();
                                 final_result = basic_value.try_into().unwrap();
                             }
@@ -438,20 +438,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         if let Some(func_metadata) = self.func_table.get(&func_name.clone()) {
             if func_metadata.is_internal {
-                self.build_internal_func_call(
-                    func_call.clone(),
-                    func_metadata.clone(),
-                    arguments.clone(),
-                )
+                self.build_internal_func_call(func_call.clone(), func_metadata.clone(), arguments.clone())
             } else {
                 self.check_func_args_count_mismatch(
                     func_metadata.func_decl.name.clone(),
                     func_metadata.func_decl.clone(),
                     func_call.clone(),
                 );
-                
+
                 self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
             }
+        } else if func_name == "len" {
+            self.build_call_internal_len(func_call.clone(), arguments.clone())
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

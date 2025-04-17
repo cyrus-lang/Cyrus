@@ -18,6 +18,7 @@ pub enum DiagKind {
     InvalidWildcard,
     ModuleNotFound(String),
     FuncCallArgumentCountMismatch(String, i32, i32),
+    LenCalledWithInvalidInput,
     Custom(String),
 }
 
@@ -70,6 +71,7 @@ impl fmt::Display for DiagKind {
                 "Expected {} arguments for function '{}', but got {}.",
                 expected, func_name, current
             ),
+            DiagKind::LenCalledWithInvalidInput => "Cannot get length of non-string or non-array value.",
         };
         write!(f, "{}", msg)
     }
