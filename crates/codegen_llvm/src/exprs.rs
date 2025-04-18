@@ -26,7 +26,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         match expr {
             Expression::Identifier(identifier) => {
-                self.build_load(
+                self.build_load_ptr(
                     Rc::clone(&scope),
                     ModuleImport {
                         segments: vec![ModuleSegment::SubModule(identifier.clone())],
@@ -72,29 +72,53 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_address_of(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
-        let ptr = self
-            .builder
-            .build_alloca(self.context.ptr_type(AddressSpace::default()), "addr_of")
-            .unwrap();
-        self.build_store(ptr, any_value.clone());
-        AnyValue::PointerValue(TypedPointerValue {
-            ptr,
-            pointee_ty: any_value.get_type(self.string_type.clone()),
-        })
+
+        match any_value {
+            AnyValue::PointerValue(typed_pointer_value) => AnyValue::PointerValue(typed_pointer_value),
+            _ => {
+                let value_type = any_value.get_type(self.string_type.clone());
+                let alloca = self
+                    .builder
+                    .build_alloca(value_type.to_basic_type(), "addr_of")
+                    .unwrap();
+
+                self.build_store(alloca, any_value.clone());
+
+                let addr_of = TypedPointerValue {
+                    ptr: alloca,
+                    pointee_ty: AnyType::PointerType(Box::new(TypedPointerType {
+                        ptr_type: self.context.ptr_type(AddressSpace::default()),
+                        pointee_ty: value_type,
+                    })),
+                };
+            
+                AnyValue::PointerValue(addr_of)
+            }
+        }
     }
 
     pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
 
-        dbg!(any_value.clone());
-        
         match any_value {
-            AnyValue::PointerValue(pointer_value) => AnyValue::try_from(
-                self.builder
-                    .build_load(pointer_value.pointee_ty.to_basic_type(), pointer_value.ptr, "deref")
-                    .unwrap(),
-            )
-            .unwrap(),
+            AnyValue::PointerValue(pointer_value) => {
+                let inner_ptr_value = self
+                    .builder
+                    .build_load(
+                        self.context.ptr_type(AddressSpace::default()),
+                        pointer_value.ptr,
+                        "deref",
+                    )
+                    .unwrap()
+                    .into_pointer_value();
+
+                let ptr_value = self
+                    .builder
+                    .build_load(pointer_value.pointee_ty.to_basic_type(), inner_ptr_value, "load")
+                    .unwrap();
+
+                AnyValue::try_from(ptr_value).unwrap()
+            }
             AnyValue::StringValue(string_value) => self.build_load_string(string_value),
             _ => {
                 display_single_diag(Diag {
@@ -148,7 +172,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module_import: ModuleImport,
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
         if module_import.segments.len() == 1 {
-            return self.build_load(Rc::clone(&scope), module_import);
+            return self.build_load_ptr(Rc::clone(&scope), module_import);
         }
 
         let record: (PointerValue<'ctx>, AnyType<'ctx>);
@@ -305,6 +329,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         },
                     }
                 };
+
                 let record = binding.borrow();
                 (
                     AnyValue::PointerValue(TypedPointerValue {

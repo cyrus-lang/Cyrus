@@ -1,6 +1,8 @@
 fn main() {   
-    #obj: i32;
     #val = 3;
-    obj = val;
-    println("val: %d", obj);
+    #obj: *i32;
+
+    obj = &val;
+
+    println("val: %d\n", *obj);
 }
