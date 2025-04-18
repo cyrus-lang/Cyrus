@@ -1,9 +1,9 @@
-use crate::{AnyType, CodeGenLLVM, diag::*, funcs::FuncMetadata, scope::ScopeRef};
+use crate::{AnyType, AnyValue, CodeGenLLVM, diag::*, funcs::FuncMetadata, scope::ScopeRef};
 use ast::{
     ast::{Expression, FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, IntegerLiteral, StringLiteral, VisType},
     token::{Location, Span, Token, TokenKind},
 };
-use inkwell::{types::BasicType, values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, IntValue}};
+use inkwell::values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, IntValue};
 use rust_embed::Embed;
 use std::{env, fs::File, io::Write, process::exit, rc::Rc};
 use utils::generate_random_hex::generate_random_hex;
@@ -36,244 +36,231 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn load_internal_funcs(&mut self) {
-        let internal_funcs: Vec<(&str, FuncMetadata)> = vec![
-            ("println", {
-                let func_decl = FuncDecl {
-                    name: "internal_println".to_string(),
-                    params: FuncParams {
-                        list: vec![FuncParam {
-                            identifier: Identifier {
-                                name: "v".to_string(),
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
-                            ty: Some(TokenKind::String),
-                            default_value: None,
+        {
+            let func_decl = FuncDecl {
+                name: "cyrus_internal_println".to_string(),
+                params: FuncParams {
+                    list: vec![FuncParam {
+                        identifier: Identifier {
+                            name: "v".to_string(),
                             span: Span::default(),
                             loc: Location::default(),
-                        }],
-                        variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
-                    },
-                    return_type: None,
-                    vis_type: VisType::Inline,
-                    renamed_as: None,
-                    span: Span::default(),
-                    loc: Location::default(),
-                };
-                let ptr = self.build_func_decl(func_decl.clone());
-                FuncMetadata {
-                    ptr,
-                    func_decl,
-                    is_internal: true,
-                }
-            }),
-            ("printf", {
-                let func_decl = FuncDecl {
-                    name: "internal_printf".to_string(),
-                    params: FuncParams {
-                        list: vec![FuncParam {
-                            identifier: Identifier {
-                                name: "v".to_string(),
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
-                            ty: Some(TokenKind::String),
-                            default_value: None,
-                            span: Span::default(),
-                            loc: Location::default(),
-                        }],
-                        variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
-                    },
-                    return_type: None,
-                    vis_type: VisType::Inline,
-                    renamed_as: None,
-                    span: Span::default(),
-                    loc: Location::default(),
-                };
-                let ptr = self.build_func_decl(func_decl.clone());
-                FuncMetadata {
-                    ptr,
-                    func_decl,
-                    is_internal: true,
-                }
-            }),
-            ("eprintln", {
-                let func_decl = FuncDecl {
-                    name: "internal_eprintln".to_string(),
-                    params: FuncParams {
-                        list: vec![FuncParam {
-                            identifier: Identifier {
-                                name: "v".to_string(),
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
-                            ty: Some(TokenKind::String),
-                            default_value: None,
-                            span: Span::default(),
-                            loc: Location::default(),
-                        }],
-                        variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
-                    },
-                    return_type: None,
-                    vis_type: VisType::Inline,
-                    renamed_as: None,
-                    span: Span::default(),
-                    loc: Location::default(),
-                };
-                let ptr = self.build_func_decl(func_decl.clone());
-                FuncMetadata {
-                    ptr,
-                    func_decl,
-                    is_internal: true,
-                }
-            }),
-            ("eprintf", {
-                let func_decl = FuncDecl {
-                    name: "internal_eprintf".to_string(),
-                    params: FuncParams {
-                        list: vec![FuncParam {
-                            identifier: Identifier {
-                                name: "v".to_string(),
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
-                            ty: Some(TokenKind::String),
-                            default_value: None,
-                            span: Span::default(),
-                            loc: Location::default(),
-                        }],
-                        variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
-                    },
-                    return_type: None,
-                    vis_type: VisType::Inline,
-                    renamed_as: None,
-                    span: Span::default(),
-                    loc: Location::default(),
-                };
-                let ptr = self.build_func_decl(func_decl.clone());
-                FuncMetadata {
-                    ptr,
-                    func_decl,
-                    is_internal: true,
-                }
-            }),
-            ("exit", {
-                let func_decl = FuncDecl {
-                    name: "internal_exit".to_string(),
-                    params: FuncParams {
-                        list: vec![FuncParam {
-                            identifier: Identifier {
-                                name: "status".to_string(),
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
-                            ty: Some(TokenKind::I32),
-                            default_value: None,
-                            span: Span::default(),
-                            loc: Location::default(),
-                        }],
-                        variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
-                    },
-                    return_type: None,
-                    vis_type: VisType::Inline,
-                    renamed_as: None,
-                    span: Span::default(),
-                    loc: Location::default(),
-                };
-                let ptr = self.build_func_decl(func_decl.clone());
-                FuncMetadata {
-                    ptr,
-                    func_decl,
-                    is_internal: true,
-                }
-            }),
-            ("panic", {
-                let func_decl = FuncDecl {
-                    name: "internal_panic".to_string(),
-                    params: FuncParams {
-                        list: vec![
-                            FuncParam {
-                                identifier: Identifier {
-                                    name: "file_name".to_string(),
-                                    span: Span::default(),
-                                    loc: Location::default(),
-                                },
-                                ty: Some(TokenKind::String),
-                                default_value: None,
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
-                            FuncParam {
-                                identifier: Identifier {
-                                    name: "line".to_string(),
-                                    span: Span::default(),
-                                    loc: Location::default(),
-                                },
-                                ty: Some(TokenKind::I32),
-                                default_value: None,
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
-                        ],
-                        variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
-                    },
-                    return_type: None,
-                    vis_type: VisType::Inline,
-                    renamed_as: None,
-                    span: Span::default(),
-                    loc: Location::default(),
-                };
-                let ptr = self.build_func_decl(func_decl.clone());
-                FuncMetadata {
-                    ptr,
-                    func_decl,
-                    is_internal: true,
-                }
-            }),
-            ("internal_len_string", {
-                let func_decl = FuncDecl {
-                    name: "internal_len_string".to_string(),
-                    params: FuncParams {
-                        list: vec![FuncParam {
-                            identifier: Identifier {
-                                name: "input".to_string(),
-                                span: Span::default(),
-                                loc: Location::default(),
-                            },
-                            ty: Some(TokenKind::String),
-                            default_value: None,
-                            span: Span::default(),
-                            loc: Location::default(),
-                        }],
-                        variadic: None,
-                    },
-                    return_type: Some(Token {
-                        kind: TokenKind::I32,
+                        },
+                        ty: Some(TokenKind::String),
+                        default_value: None,
                         span: Span::default(),
-                    }),
-                    vis_type: VisType::Inline,
-                    renamed_as: None,
-                    span: Span::default(),
-                    loc: Location::default(),
-                };
-                let ptr = self.build_func_decl(func_decl.clone());
-                FuncMetadata {
-                    ptr,
-                    func_decl,
-                    is_internal: true,
-                }
-            }),
-        ];
-
-        for (func_name, func_metadata) in internal_funcs {
-            self.func_table.insert(
-                func_name.to_string(),
-                FuncMetadata {
-                    ptr: func_metadata.ptr,
-                    func_decl: func_metadata.func_decl,
-                    is_internal: func_metadata.is_internal,
+                        loc: Location::default(),
+                    }],
+                    variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
                 },
-            );
+                return_type: None,
+                vis_type: VisType::Inline,
+                renamed_as: Some("println".to_string()),
+                span: Span::default(),
+                loc: Location::default(),
+            };
+            self.build_func_decl(func_decl.clone(), true);
+        }
+
+        {
+            let func_decl = FuncDecl {
+                name: "cyrus_internal_printf".to_string(),
+                params: FuncParams {
+                    list: vec![FuncParam {
+                        identifier: Identifier {
+                            name: "v".to_string(),
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        ty: Some(TokenKind::String),
+                        default_value: None,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    }],
+                    variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
+                },
+                return_type: None,
+                vis_type: VisType::Inline,
+                renamed_as: Some("printf".to_string()),
+                span: Span::default(),
+                loc: Location::default(),
+            };
+            self.build_func_decl(func_decl.clone(), true);
+        }
+
+        {
+            let func_decl = FuncDecl {
+                name: "cyrus_internal_eprintln".to_string(),
+                params: FuncParams {
+                    list: vec![FuncParam {
+                        identifier: Identifier {
+                            name: "v".to_string(),
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        ty: Some(TokenKind::String),
+                        default_value: None,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    }],
+                    variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
+                },
+                return_type: None,
+                vis_type: VisType::Inline,
+                renamed_as: Some("eprintln".to_string()),
+                span: Span::default(),
+                loc: Location::default(),
+            };
+            self.build_func_decl(func_decl.clone(), true);
+        }
+
+        {
+            let func_decl = FuncDecl {
+                name: "cyrus_internal_eprintf".to_string(),
+                params: FuncParams {
+                    list: vec![FuncParam {
+                        identifier: Identifier {
+                            name: "v".to_string(),
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        ty: Some(TokenKind::String),
+                        default_value: None,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    }],
+                    variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
+                },
+                return_type: None,
+                vis_type: VisType::Inline,
+                renamed_as: Some("eprintf".to_string()),
+                span: Span::default(),
+                loc: Location::default(),
+            };
+            self.build_func_decl(func_decl.clone(), true);
+        }
+
+        {
+            let func_decl = FuncDecl {
+                name: "cyrus_internal_exit".to_string(),
+                params: FuncParams {
+                    list: vec![FuncParam {
+                        identifier: Identifier {
+                            name: "status".to_string(),
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        ty: Some(TokenKind::I32),
+                        default_value: None,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    }],
+                    variadic: None,
+                },
+                return_type: None,
+                vis_type: VisType::Inline,
+                renamed_as: Some("exit".to_string()),
+                span: Span::default(),
+                loc: Location::default(),
+            };
+            self.build_func_decl(func_decl.clone(), true);
+        }
+
+        {
+            let func_decl = FuncDecl {
+                name: "cyrus_internal_panic".to_string(),
+                params: FuncParams {
+                    list: vec![
+                        FuncParam {
+                            identifier: Identifier {
+                                name: "file_name".to_string(),
+                                span: Span::default(),
+                                loc: Location::default(),
+                            },
+                            ty: Some(TokenKind::String),
+                            default_value: None,
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        FuncParam {
+                            identifier: Identifier {
+                                name: "line".to_string(),
+                                span: Span::default(),
+                                loc: Location::default(),
+                            },
+                            ty: Some(TokenKind::U32),
+                            default_value: None,
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                    ],
+                    variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
+                },
+                return_type: None,
+                vis_type: VisType::Inline,
+                renamed_as: Some("panic".to_string()),
+                span: Span::default(),
+                loc: Location::default(),
+            };
+            self.build_func_decl(func_decl.clone(), true);
+        }
+
+        {
+            let func_decl = FuncDecl {
+                name: "cyrus_internal_len_string".to_string(),
+                params: FuncParams {
+                    list: vec![FuncParam {
+                        identifier: Identifier {
+                            name: "input".to_string(),
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        ty: Some(TokenKind::String),
+                        default_value: None,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    }],
+                    variadic: None,
+                },
+                return_type: Some(Token {
+                    kind: TokenKind::SizeT,
+                    span: Span::default(),
+                }),
+                vis_type: VisType::Inline,
+                renamed_as: None,
+                span: Span::default(),
+                loc: Location::default(),
+            };
+            self.build_func_decl(func_decl.clone(), true);
+        }
+
+        {
+            let func_decl = FuncDecl {
+                name: "GC_malloc_atomic".to_string(),
+                params: FuncParams {
+                    list: vec![FuncParam {
+                        identifier: Identifier {
+                            name: "size".to_string(),
+                            span: Span::default(),
+                            loc: Location::default(),
+                        },
+                        ty: Some(TokenKind::SizeT),
+                        default_value: None,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    }],
+                    variadic: None,
+                },
+                return_type: Some(Token {
+                    kind: TokenKind::Dereference(Box::new(TokenKind::Void)),
+                    span: Span::default(),
+                }),
+                vis_type: VisType::Inline,
+                renamed_as: Some("malloc".to_string()),
+                span: Span::default(),
+                loc: Location::default(),
+            };
+            self.build_func_decl(func_decl.clone(), true);
         }
     }
 
@@ -284,45 +271,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         mut arguments: Vec<BasicMetadataValueEnum<'ctx>>,
     ) -> CallSiteValue<'ctx> {
         let argc = self.build_integer_literal(IntegerLiteral::I32(arguments.len().try_into().unwrap()));
-        let func_name = func_metadata.func_decl.name.as_str();
+        let func_name = func_metadata
+            .func_decl
+            .renamed_as
+            .clone()
+            .unwrap_or(func_metadata.func_decl.name.clone());
 
-        match func_name {
-            "internal_printf" => {
-                self.check_func_args_count_mismatch(
-                    "printf".to_string(),
-                    func_metadata.func_decl.clone(),
-                    func_call.clone(),
-                );
-            }
-            "internal_println" => {
-                self.check_func_args_count_mismatch(
-                    "println".to_string(),
-                    func_metadata.func_decl.clone(),
-                    func_call.clone(),
-                );
-            }
-            "internal_eprintln" => {
-                self.check_func_args_count_mismatch(
-                    "eprintln".to_string(),
-                    func_metadata.func_decl.clone(),
-                    func_call.clone(),
-                );
-            }
-            "internal_eprintf" => {
-                self.check_func_args_count_mismatch(
-                    "eprintf".to_string(),
-                    func_metadata.func_decl.clone(),
-                    func_call.clone(),
-                );
-            }
-            "internal_exit" => {
-                self.check_func_args_count_mismatch(
-                    "exit".to_string(),
-                    func_metadata.func_decl.clone(),
-                    func_call.clone(),
-                );
-            }
-            "internal_panic" => {
+        match func_name.as_str() {
+            "panic" => {
                 let file_name = self.build_string_literal(StringLiteral {
                     raw: self.file_path.clone(),
                     span: Span::default(),
@@ -333,11 +289,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 arguments.insert(2, BasicMetadataValueEnum::IntValue(argc));
             }
             _ => {
-                self.check_func_args_count_mismatch(
-                    func_metadata.func_decl.name.clone(),
-                    func_metadata.func_decl.clone(),
-                    func_call.clone(),
-                );
+                self.check_func_args_count_mismatch(func_name, func_metadata.func_decl.clone(), func_call.clone());
                 return self.builder.build_call(func_metadata.ptr, &arguments, "call").unwrap();
             }
         };
@@ -447,7 +399,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
-                    "len".to_string(),
+                    "sizeof".to_string(),
                     1,
                     func_call.arguments.len().try_into().unwrap(),
                 ),
@@ -470,7 +422,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_call.loc.clone(),
                     func_call.span.end,
                 )
-                
             } else if let Expression::ModuleImport(module_import) = argument {
                 // User defined type
                 self.find_struct(scope, module_import.clone(), func_call.loc.clone(), func_call.span.end)
@@ -479,7 +430,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .unwrap()
             } else {
                 self.builder_sizeof_internal(
-                    self.build_expr(Rc::clone(&scope), argument.clone()).get_type(self.string_type.clone()),
+                    self.build_expr(Rc::clone(&scope), argument.clone())
+                        .get_type(self.string_type.clone()),
                     func_call.loc.clone(),
                     func_call.span.end,
                 )
@@ -487,5 +439,106 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         unsafe { CallSiteValue::new(value.as_value_ref()) }
+    }
+
+    pub(crate) fn build_call_internal_malloc(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
+        if func_call.arguments.len() != 1 {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    "malloc".to_string(),
+                    1,
+                    func_call.arguments.len().try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_call.loc.line,
+                    column: func_call.loc.column,
+                    length: func_call.span.end,
+                }),
+            });
+            exit(1);
+        }
+
+        let argument = func_call.arguments.first().unwrap();
+
+        let alloc_size: BasicValueEnum<'ctx> = {
+            match argument {
+                Expression::Literal(literal) => match literal {
+                    ast::ast::Literal::Integer(integer_literal) => {
+                        let integer_value: u64 = match *integer_literal {
+                            IntegerLiteral::I8(val) => val.try_into().unwrap(),
+                            IntegerLiteral::I16(val) => val.try_into().unwrap(),
+                            IntegerLiteral::I32(val) => val.try_into().unwrap(),
+                            IntegerLiteral::I64(val) => val.try_into().unwrap(),
+                            IntegerLiteral::I128(val) => val.try_into().unwrap(),
+                            IntegerLiteral::U8(val) => val.try_into().unwrap(),
+                            IntegerLiteral::U16(val) => val.try_into().unwrap(),
+                            IntegerLiteral::U32(val) => val.try_into().unwrap(),
+                            IntegerLiteral::U64(val) => val.try_into().unwrap(),
+                            IntegerLiteral::U128(val) => val.try_into().unwrap(),
+                            IntegerLiteral::SizeT(val) => val.try_into().unwrap(),
+                        };
+
+                        AnyValue::IntValue(
+                            self.build_integer_literal(IntegerLiteral::SizeT(integer_value.try_into().unwrap())),
+                        )
+                        .into()
+                    }
+                    _ => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(
+                                "Cannot allocate memory with a non-integer value as input.".to_string(),
+                            ),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: func_call.loc.line,
+                                column: func_call.loc.column,
+                                length: func_call.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                },
+                Expression::TypeToken(type_token) => {
+                    let data_type = self.build_type(type_token.kind.clone(), func_call.loc.clone(), func_call.span.end);
+                    let size_value = self.builder_sizeof_internal(data_type, func_call.loc.clone(), func_call.span.end);
+                    AnyValue::IntValue(size_value).into()
+                }
+                Expression::Dereference(expr) => {
+                    if let Expression::TypeToken(type_token) = *expr.clone() {
+                        let data_type = self.build_type(
+                            TokenKind::Dereference(Box::new(type_token.kind.clone())),
+                            func_call.loc.clone(),
+                            func_call.span.end,
+                        );
+                        let size_value =
+                            self.builder_sizeof_internal(data_type, func_call.loc.clone(), func_call.span.end);
+                        AnyValue::IntValue(size_value).into()
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(
+                                "Cannot allocate memory with a non-integer value as input.".to_string(),
+                            ),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: func_call.loc.line,
+                                column: func_call.loc.column,
+                                length: func_call.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+                _ => self.build_expr(Rc::clone(&scope), argument.clone()).into(),
+            }
+        };
+
+        let malloc_func = self.func_table.get("malloc").unwrap().ptr;
+        self.builder
+            .build_call(malloc_func, &[alloc_size.into()], "call")
+            .unwrap()
     }
 }

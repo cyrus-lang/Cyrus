@@ -84,7 +84,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
-        match self.build_expr(Rc::clone(&scope), expr) {
+        let any_value = self.build_expr(Rc::clone(&scope), expr);
+
+        dbg!(any_value.clone());
+        
+        match any_value {
             AnyValue::PointerValue(pointer_value) => AnyValue::try_from(
                 self.builder
                     .build_load(pointer_value.pointee_ty.to_basic_type(), pointer_value.ptr, "deref")
@@ -278,30 +282,39 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
-        // FIXME
-        todo!();
-
-        // let binding = {
-        //     match scope.borrow_mut().get(module_import.identifier.name.clone()) {
-        //         Some(record) => record,
-        //         None => {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::IdentifierNotDefined(module_import.identifier.name),
-        //                 location: None,
-        //             });
-        //             exit(1);
-        //         }
-        //     }
-        // };
-        // let record: std::cell::RefMut<'_, crate::scope::ScopeRecord<'_>> = binding.borrow_mut();
-        // (
-        //     AnyValue::PointerValue(TypedPointerValue {
-        //         ptr: record.ptr,
-        //         pointee_ty: record.ty.clone(),
-        //     }),
-        //     record.ty.clone(),
-        // )
+        match module_import.segments.first().unwrap() {
+            ModuleSegment::SubModule(identifier) => {
+                let binding = {
+                    match scope.borrow().get(identifier.name.clone()) {
+                        Some(record) => record,
+                        None => match self.find_loaded_module(identifier.name.clone()) {
+                            Some(metadata) => {
+                                return (
+                                    AnyValue::ImportedModuleValue(ImportedModuleValue { metadata }),
+                                    AnyType::ImportedModuleValue,
+                                );
+                            }
+                            None => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),
+                                    location: None,
+                                });
+                                exit(1);
+                            }
+                        },
+                    }
+                };
+                let record = binding.borrow();
+                (
+                    AnyValue::PointerValue(TypedPointerValue {
+                        ptr: record.ptr.clone(),
+                        pointee_ty: record.ty.clone(),
+                    }),
+                    record.ty.clone(),
+                )
+            }
+        }
     }
 
     pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
@@ -476,7 +489,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             IntegerLiteral::U32(val) => self.context.i32_type().const_int(val.try_into().unwrap(), false),
             IntegerLiteral::U64(val) => self.context.i64_type().const_int(val.try_into().unwrap(), false),
             IntegerLiteral::U128(val) => self.context.i128_type().const_int(val.try_into().unwrap(), false),
-            IntegerLiteral::SizeT(val) => todo!(),
+            IntegerLiteral::SizeT(val) => {
+                let data_layout = self.target_machine.get_target_data();
+                self.context
+                    .ptr_sized_int_type(&data_layout, None)
+                    .const_int(val.try_into().unwrap(), false)
+            }
         }
     }
 

@@ -192,7 +192,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             entry_point_path: self.entry_point_path.clone(),
             func_table: HashMap::new(),
             struct_table: HashMap::new(),
-            internal_funcs_table: self.internal_funcs_table.clone(),
             compiler_invoked_single: self.compiler_invoked_single,
             current_func_ref: None,
             current_block_ref: None,
@@ -239,7 +238,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     },
                 );
 
-                self.build_func_decl(metadata.func_decl.clone());
+                self.build_func_decl(metadata.func_decl.clone(), false);
             }
         }
 

@@ -1,5 +1,4 @@
-use std::ops::DerefMut;
-use crate::CodeGenLLVM;
+use crate::{CodeGenLLVM, funcs::FuncMetadata};
 use ast::{
     ast::{FuncDecl, FuncParams, VisType},
     token::{Location, Span},
@@ -10,14 +9,11 @@ use inkwell::{
     types::BasicMetadataTypeEnum,
     values::{BasicValueEnum, FunctionValue},
 };
+use std::ops::DerefMut;
 use utils::generate_random_hex::generate_random_hex;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn load_runtime(&mut self) {
-        self.internal_init_gc();
-    }
-
-    fn internal_init_gc(&mut self) {
+    pub(crate) fn runtime_init_gc(&mut self) {
         let func_decl = FuncDecl {
             name: "GC_init".to_string(),
             params: FuncParams {
@@ -30,7 +26,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             span: Span::default(),
             loc: Location::default(),
         };
-        let ptr = self.build_func_decl(func_decl.clone());
+        let ptr = self.build_func_decl(func_decl.clone(), true);
         self.builder.build_call(ptr, &[], "call").unwrap();
     }
 

@@ -58,7 +58,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl) -> FunctionValue<'ctx> {
+    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl, is_internal: bool) -> FunctionValue<'ctx> {
         let is_var_args = func_decl.params.variadic.is_some();
         let mut param_types = self.build_func_params(
             func_decl.name.clone(),
@@ -97,11 +97,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .add_function(&func_decl.name, fn_type, Some(func_linkage));
 
         self.func_table.insert(
-            func_decl.name.clone(),
+            if let Some(renamed_as) = func_decl.renamed_as.clone() {
+                renamed_as
+            } else {
+                func_decl.name.clone()
+            },
             FuncMetadata {
                 func_decl: func_decl.clone(),
                 ptr: func_ptr,
-                is_internal: false,
+                is_internal,
             },
         );
 
@@ -215,7 +219,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func.verify(true);
 
         self.func_table.insert(
-            func_decl.renamed_as.clone().unwrap(),
+            func_decl.name.clone(),
             FuncMetadata {
                 func_decl,
                 ptr: func,
@@ -431,6 +435,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         if func_name == "sizeof" {
             return self.build_call_internal_sizeof(Rc::clone(&scope), func_call.clone());
+        } else if func_name == "malloc" {
+            return self.build_call_internal_malloc(Rc::clone(&scope), func_call.clone());
         }
 
         let arguments = &self.build_arguments(

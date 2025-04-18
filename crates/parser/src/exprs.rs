@@ -65,7 +65,8 @@ impl<'a> Parser<'a> {
             | kind @ TokenKind::SizeT
             | kind @ TokenKind::Void
             | kind @ TokenKind::String
-            | kind @ TokenKind::Bool => Expression::TypeToken(Token {
+            | kind @ TokenKind::Bool
+            | kind @ TokenKind::Dereference(_) => Expression::TypeToken(Token {
                 kind: kind.clone(),
                 span: Span::new(span.start, self.current_token.span.end),
             }),

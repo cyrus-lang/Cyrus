@@ -1,5 +1,6 @@
 fn main() {   
-    #arr: string[2] = ["taha"];
-
-    println("%s", arr[0]);
+    #obj: i32;
+    #val = 3;
+    obj = val;
+    println("val: %d", obj);
 }

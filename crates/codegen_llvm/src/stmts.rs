@@ -43,7 +43,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
             Statement::FuncDecl(func_decl) => {
-                self.build_func_decl(func_decl);
+                self.build_func_decl(func_decl, false);
             }
             Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),
             Statement::For(_) => todo!(),

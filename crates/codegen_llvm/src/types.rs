@@ -133,7 +133,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyType<'ctx> {
         match token_kind {
             TokenKind::UserDefinedType(identifier) => todo!(),
-            TokenKind::SizeT => todo!(),
+            TokenKind::SizeT => {
+                let data_layout = self.target_machine.get_target_data();
+                AnyType::IntType(self.context
+                    .ptr_sized_int_type(&data_layout, None))
+            },
             TokenKind::I8 | TokenKind::U8 | TokenKind::Char => AnyType::IntType(self.context.i8_type()),
             TokenKind::I16 | TokenKind::U16 => AnyType::IntType(self.context.i16_type()),
             TokenKind::I32 | TokenKind::U32 => AnyType::IntType(self.context.i32_type()),

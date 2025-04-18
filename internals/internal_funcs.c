@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void internal_println(String v, ...) {
+void cyrus_internal_println(String v, ...) {
   va_list args;
   va_start(args, v);
   vprintf(v.data, args);
@@ -12,14 +12,14 @@ void internal_println(String v, ...) {
   putchar('\n');
 }
 
-void internal_printf(String v, ...) {
+void cyrus_internal_printf(String v, ...) {
   va_list args;
   va_start(args, v);
   vprintf(v.data, args);
   va_end(args);
 }
 
-void internal_eprintln(String v, ...) {
+void cyrus_internal_eprintln(String v, ...) {
   va_list args;
   va_start(args, v);
   vfprintf(stderr, v.data, args);
@@ -27,16 +27,16 @@ void internal_eprintln(String v, ...) {
   putchar('\n');
 }
 
-void internal_eprintf(String v, ...) {
+void cyrus_internal_eprintf(String v, ...) {
   va_list args;
   va_start(args, v);
   vfprintf(stderr, v.data, args);
   va_end(args);
 }
 
-void internal_exit(int32_t status) { exit(status); }
+void cyrus_internal_exit(int32_t status) { exit(status); }
 
-void internal_panic(String file_name, int32_t line, int argc, ...) {
+void cyrus_internal_panic(String file_name, int32_t line, int argc, ...) {
   fprintf(stderr, "explicit panic at %s:%d", (char *)file_name.data, line);
 
   if (argc > 0) {
@@ -52,10 +52,10 @@ void internal_panic(String file_name, int32_t line, int argc, ...) {
   }
 }
 
-int32_t internal_len_string(String input) { return input.len; }
+int32_t cyrus_internal_len_string(String input) { return input.len; }
 
 // TODO
 // Not completed yet
-void internal_copy(void *source, size_t source_len, size_t elem_len, void *dest,
+void cyrus_internal_copy(void *source, size_t source_len, size_t elem_len, void *dest,
                    size_t dest_len, size_t source_start_idx,
                    size_t dest_start_idx, size_t count) {}
