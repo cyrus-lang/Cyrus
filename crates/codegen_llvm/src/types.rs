@@ -58,7 +58,7 @@ impl<'a> TryFrom<BasicTypeEnum<'a>> for AnyType<'a> {
 }
 
 impl<'a> AnyType<'a> {
-    pub fn to_basic_type(&self) -> BasicTypeEnum<'a> {
+    pub fn to_basic_type(&self, ptr_type: PointerType<'a>) -> BasicTypeEnum<'a> {
         match self {
             AnyType::IntType(t) => (*t).as_basic_type_enum(),
             AnyType::FloatType(t) => (*t).as_basic_type_enum(),
@@ -68,7 +68,7 @@ impl<'a> AnyType<'a> {
             AnyType::PointerType(t) => t.ptr_type.as_basic_type_enum(),
             AnyType::StringType(t) => (*t).struct_type.as_basic_type_enum(),
             AnyType::OpaquePointer(t) => t.as_basic_type_enum(),
-            AnyType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).try_into().unwrap(),
+            AnyType::VoidType(_) => BasicTypeEnum::PointerType(ptr_type),
             AnyType::ImportedModuleValue => unreachable!(),
         }
     }
@@ -135,9 +135,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TokenKind::UserDefinedType(identifier) => todo!(),
             TokenKind::SizeT => {
                 let data_layout = self.target_machine.get_target_data();
-                AnyType::IntType(self.context
-                    .ptr_sized_int_type(&data_layout, None))
-            },
+                AnyType::IntType(self.context.ptr_sized_int_type(&data_layout, None))
+            }
             TokenKind::I8 | TokenKind::U8 | TokenKind::Char => AnyType::IntType(self.context.i8_type()),
             TokenKind::I16 | TokenKind::U16 => AnyType::IntType(self.context.i16_type()),
             TokenKind::I32 | TokenKind::U32 => AnyType::IntType(self.context.i32_type()),

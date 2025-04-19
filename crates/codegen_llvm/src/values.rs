@@ -1,6 +1,7 @@
 use crate::{AnyType, CodeGenLLVM, StringType, diag::*, modules::ModuleMetadata, types::TypedPointerType};
 use inkwell::{
-    FloatPredicate, IntPredicate,
+    AddressSpace, FloatPredicate, IntPredicate,
+    builder::Builder,
     values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue, VectorValue},
 };
 use std::process::exit;
@@ -55,7 +56,7 @@ impl<'a> AnyValue<'a> {
                     location: None,
                 });
                 exit(1);
-            },
+            }
         }
     }
 }
@@ -135,6 +136,36 @@ impl<'a> TryFrom<BasicValueEnum<'a>> for AnyValue<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn any_value_as_rvalue(&self, any_value: AnyValue<'ctx>) -> AnyValue<'ctx> {
+        match any_value {
+            AnyValue::IntValue(int_value) => AnyValue::IntValue(int_value),
+            AnyValue::FloatValue(float_value) => AnyValue::FloatValue(float_value),
+            AnyValue::ArrayValue(array_value) => AnyValue::ArrayValue(array_value),
+            AnyValue::StructValue(struct_value) => AnyValue::StructValue(struct_value),
+            AnyValue::VectorValue(vector_value) => AnyValue::VectorValue(vector_value),
+            AnyValue::StringValue(string_value) => AnyValue::StringValue(string_value),
+            AnyValue::OpaquePointer(pointer_value) => self
+                .builder
+                .build_load(pointer_value.get_type(), pointer_value, "load")
+                .unwrap()
+                .try_into()
+                .unwrap(),
+            AnyValue::PointerValue(typed_pointer_value) => {
+                let ptr_type = self.context.ptr_type(AddressSpace::default());
+                self.builder
+                    .build_load(
+                        typed_pointer_value.pointee_ty.to_basic_type(ptr_type),
+                        typed_pointer_value.ptr,
+                        "load",
+                    )
+                    .unwrap()
+                    .try_into()
+                    .unwrap()
+            }
+            AnyValue::ImportedModuleValue(_) => unreachable!(),
+        }
+    }
+
     pub(crate) fn bin_op_add<'a>(&self, left_value: AnyValue<'a>, right_value: AnyValue<'a>) -> Option<AnyValue<'ctx>>
     where
         'a: 'ctx,
@@ -471,17 +502,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         match (left_value, right_value) {
             (AnyValue::IntValue(left), AnyValue::IntValue(right)) => Some(AnyValue::IntValue(
                 self.builder
-                    .build_int_compare(IntPredicate::EQ, left, right, "cmp_lt")
+                    .build_int_compare(IntPredicate::EQ, left, right, "cmp_eq")
                     .unwrap(),
             )),
             (AnyValue::FloatValue(left), AnyValue::IntValue(right)) => {
                 let right = self
                     .builder
-                    .build_signed_int_to_float(right, left.get_type(), "cmp_lt")
+                    .build_signed_int_to_float(right, left.get_type(), "cmp_eq")
                     .unwrap();
                 Some(AnyValue::IntValue(
                     self.builder
-                        .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_lt")
+                        .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_eq")
                         .unwrap(),
                 ))
             }
@@ -492,13 +523,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .unwrap();
                 Some(AnyValue::IntValue(
                     self.builder
-                        .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_lt")
+                        .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_eq")
                         .unwrap(),
                 ))
             }
             (AnyValue::FloatValue(left), AnyValue::FloatValue(right)) => Some(AnyValue::IntValue(
                 self.builder
-                    .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_lt")
+                    .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_eq")
                     .unwrap(),
             )),
             _ => None,

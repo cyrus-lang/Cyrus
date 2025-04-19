@@ -26,7 +26,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         match expr {
             Expression::Identifier(identifier) => {
-                self.build_load_ptr(
+                self.build_load_lvalue(
                     Rc::clone(&scope),
                     ModuleImport {
                         segments: vec![ModuleSegment::SubModule(identifier.clone())],
@@ -76,23 +76,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         match any_value {
             AnyValue::PointerValue(typed_pointer_value) => AnyValue::PointerValue(typed_pointer_value),
             _ => {
-                let value_type = any_value.get_type(self.string_type.clone());
-                let alloca = self
-                    .builder
-                    .build_alloca(value_type.to_basic_type(), "addr_of")
-                    .unwrap();
-
-                self.build_store(alloca, any_value.clone());
-
-                let addr_of = TypedPointerValue {
-                    ptr: alloca,
-                    pointee_ty: AnyType::PointerType(Box::new(TypedPointerType {
-                        ptr_type: self.context.ptr_type(AddressSpace::default()),
-                        pointee_ty: value_type,
-                    })),
-                };
-            
-                AnyValue::PointerValue(addr_of)
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot take the address of an rvalue.".to_string()),
+                    location: None,
+                });
+                exit(1);
             }
         }
     }
@@ -112,12 +101,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .unwrap()
                     .into_pointer_value();
 
-                let ptr_value = self
-                    .builder
-                    .build_load(pointer_value.pointee_ty.to_basic_type(), inner_ptr_value, "load")
-                    .unwrap();
-
-                AnyValue::try_from(ptr_value).unwrap()
+                AnyValue::PointerValue(TypedPointerValue {
+                    ptr: inner_ptr_value,
+                    pointee_ty: pointer_value.pointee_ty,
+                })
             }
             AnyValue::StringValue(string_value) => self.build_load_string(string_value),
             _ => {
@@ -131,48 +118,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_unary_operator(&self, scope: ScopeRef<'ctx>, unary_operator: UnaryOperator) -> AnyValue<'ctx> {
-        let int_one = self.context.i32_type().const_int(1, false);
-        let value = self
-            .build_module_import(Rc::clone(&scope), unary_operator.module_import)
-            .0;
-        match value {
-            AnyValue::IntValue(int_value) => match unary_operator.ty {
-                UnaryOperatorType::PreIncrement => {
-                    return AnyValue::IntValue(self.builder.build_int_add(int_value, int_one, "unaryop").unwrap());
-                }
-                UnaryOperatorType::PreDecrement => {
-                    return AnyValue::IntValue(self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap());
-                }
-                UnaryOperatorType::PostIncrement => {
-                    let clone = value.clone();
-                    self.builder.build_int_add(int_value, int_one, "unaryop").unwrap();
-                    return clone;
-                }
-                UnaryOperatorType::PostDecrement => {
-                    let clone = value.clone();
-                    self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap();
-                    return clone;
-                }
-            },
-            _ => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(String::from("Cannot build unary operator for non-integer value.")),
-                    location: None,
-                });
-                exit(1);
-            }
-        }
-    }
-
     pub(crate) fn build_module_import(
         &self,
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
         if module_import.segments.len() == 1 {
-            return self.build_load_ptr(Rc::clone(&scope), module_import);
+            return self.build_load_lvalue(Rc::clone(&scope), module_import);
         }
 
         let record: (PointerValue<'ctx>, AnyType<'ctx>);
@@ -254,7 +206,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
         let value = self
             .builder
-            .build_load(pointee_ty.to_basic_type(), ptr, "load")
+            .build_load(
+                pointee_ty.to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                ptr,
+                "load",
+            )
             .unwrap();
 
         if value.get_type() == BasicTypeEnum::StructType(self.string_type.struct_type.clone()) {
@@ -267,7 +223,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_load(
+    pub(crate) fn build_load_rvalue(
         &self,
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
@@ -301,7 +257,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_load_ptr(
+    pub(crate) fn build_load_lvalue(
         &self,
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
@@ -343,7 +299,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
-        let (ptr, _) = self.build_load_ptr(Rc::clone(&scope), assignment.module_import);
+        let (ptr, _) = self.build_load_lvalue(Rc::clone(&scope), assignment.module_import);
         let value = self.build_expr(Rc::clone(&scope), assignment.expr);
         if let AnyValue::PointerValue(pointer_value) = ptr {
             self.build_store(pointer_value.ptr, value);
@@ -426,7 +382,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     // FIXME
     pub(crate) fn build_array_index(&self, scope: ScopeRef<'ctx>, array_index: ArrayIndex) -> AnyValue<'ctx> {
-        let (any_value, pointee_ty) = self.build_load(Rc::clone(&scope), array_index.module_import);
+        let (any_value, pointee_ty) = self.build_load_rvalue(Rc::clone(&scope), array_index.module_import);
 
         if let AnyValue::PointerValue(pointer_value) = any_value {
             let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
@@ -446,7 +402,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             let index_value = self
                 .builder
-                .build_load(pointee_ty.to_basic_type(), index_ptr, "load")
+                .build_load(
+                    pointee_ty.to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                    index_ptr,
+                    "load",
+                )
                 .unwrap();
 
             AnyValue::try_from(index_value).unwrap()
@@ -461,7 +421,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_array_index_assign(&self, scope: ScopeRef<'ctx>, array_index_assign: ArrayIndexAssign) {
-        let (any_value, pointee_ty) = self.build_load(Rc::clone(&scope), array_index_assign.module_import);
+        let (any_value, pointee_ty) = self.build_load_lvalue(Rc::clone(&scope), array_index_assign.module_import);
 
         if let AnyValue::PointerValue(pointer_value) = any_value {
             let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index_assign.dimensions);
@@ -717,13 +677,49 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn build_unary_operator(&self, scope: ScopeRef<'ctx>, unary_operator: UnaryOperator) -> AnyValue<'ctx> {
+        let int_one = self.context.i32_type().const_int(1, false);
+        let value = self.any_value_as_rvalue(self
+            .build_module_import(Rc::clone(&scope), unary_operator.module_import)
+            .0);
+        
+        match value {
+            AnyValue::IntValue(int_value) => match unary_operator.ty {
+                UnaryOperatorType::PreIncrement => {
+                    return AnyValue::IntValue(self.builder.build_int_add(int_value, int_one, "unaryop").unwrap());
+                }
+                UnaryOperatorType::PreDecrement => {
+                    return AnyValue::IntValue(self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap());
+                }
+                UnaryOperatorType::PostIncrement => {
+                    let clone = value.clone();
+                    self.builder.build_int_add(int_value, int_one, "unaryop").unwrap();
+                    return clone;
+                }
+                UnaryOperatorType::PostDecrement => {
+                    let clone = value.clone();
+                    self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap();
+                    return clone;
+                }
+            },
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(String::from("Cannot build unary operator for non-integer value.")),
+                    location: None,
+                });
+                exit(1);
+            }
+        }
+    }
+
     pub(crate) fn build_infix_expr(
         &self,
         scope: ScopeRef<'ctx>,
         binary_expression: BinaryExpression,
     ) -> AnyValue<'ctx> {
-        let left = self.build_expr(Rc::clone(&scope), *binary_expression.left);
-        let right = self.build_expr(Rc::clone(&scope), *binary_expression.right);
+        let left = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.left));
+        let right = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.right));
 
         let result = match binary_expression.operator.kind {
             TokenKind::Plus => self.bin_op_add(left, right),
@@ -776,7 +772,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> IntValue<'ctx> {
-        if let AnyValue::IntValue(value) = self.build_expr(scope, expr) {
+        if let AnyValue::IntValue(value) = self.any_value_as_rvalue(self.build_expr(scope, expr)) {
             value
         } else {
             display_single_diag(Diag {

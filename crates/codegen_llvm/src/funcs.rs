@@ -368,27 +368,35 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> Vec<BasicMetadataValueEnum<'ctx>> {
         arguments
             .iter()
-            .map(|arg| match self.build_expr(Rc::clone(&scope), arg.clone()) {
-                AnyValue::ArrayValue(array_value) => BasicMetadataValueEnum::ArrayValue(array_value),
-                AnyValue::IntValue(int_value) => BasicMetadataValueEnum::IntValue(int_value),
-                AnyValue::FloatValue(float_value) => BasicMetadataValueEnum::FloatValue(float_value),
-                AnyValue::PointerValue(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value.ptr),
-                AnyValue::OpaquePointer(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value),
-                AnyValue::StructValue(struct_value) => BasicMetadataValueEnum::StructValue(struct_value),
-                AnyValue::VectorValue(vector_value) => BasicMetadataValueEnum::VectorValue(vector_value),
-                AnyValue::StringValue(string_value) => BasicMetadataValueEnum::StructValue(string_value.struct_value),
-                _ => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Cannot build non-basic value as an argument in func call.".to_string()),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
+            .map(|arg| {
+                let rvalue = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), arg.clone()));
+
+                match rvalue {
+                    AnyValue::ArrayValue(array_value) => BasicMetadataValueEnum::ArrayValue(array_value),
+                    AnyValue::IntValue(int_value) => BasicMetadataValueEnum::IntValue(int_value),
+                    AnyValue::FloatValue(float_value) => BasicMetadataValueEnum::FloatValue(float_value),
+                    AnyValue::PointerValue(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value.ptr),
+                    AnyValue::OpaquePointer(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value),
+                    AnyValue::StructValue(struct_value) => BasicMetadataValueEnum::StructValue(struct_value),
+                    AnyValue::VectorValue(vector_value) => BasicMetadataValueEnum::VectorValue(vector_value),
+                    AnyValue::StringValue(string_value) => {
+                        BasicMetadataValueEnum::StructValue(string_value.struct_value)
+                    }
+                    _ => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(
+                                "Cannot build non-basic value as an argument in func call.".to_string(),
+                            ),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
                 }
             })
             .collect()

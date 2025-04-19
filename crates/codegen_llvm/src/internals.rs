@@ -307,8 +307,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
                     "len".to_string(),
-                    1,
                     arguments.len().try_into().unwrap(),
+                    1,
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -400,8 +400,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
                     "sizeof".to_string(),
-                    1,
                     func_call.arguments.len().try_into().unwrap(),
+                    1,
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -447,8 +447,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
                     "malloc".to_string(),
-                    1,
                     func_call.arguments.len().try_into().unwrap(),
+                    1,
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),

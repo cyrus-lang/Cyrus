@@ -4,6 +4,7 @@ use crate::structs::StructMetadata;
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use ast::ast::{If, Statement, Variable};
 use inkwell::basic_block::BasicBlock;
+use inkwell::AddressSpace;
 use std::process::exit;
 use std::rc::Rc;
 
@@ -204,7 +205,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     let var_type = value.get_type(self.string_type.clone());
                     let ptr = self
                         .builder
-                        .build_alloca(var_type.to_basic_type(), &variable.name)
+                        .build_alloca(var_type.to_basic_type(self.context.ptr_type(AddressSpace::default())), &variable.name)
                         .unwrap();
 
                     self.build_store(ptr, value);

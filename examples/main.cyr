@@ -1,8 +1,6 @@
 fn main() {   
-    #val = 3;
-    #obj: *i32;
+    #obj: *i32 = malloc(*i32);
+    *obj = 10;
 
-    obj = &val;
-
-    println("val: %d\n", *obj);
+    // println("val: %d", *obj);
 }

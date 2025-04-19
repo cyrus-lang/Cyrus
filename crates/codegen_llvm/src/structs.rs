@@ -9,7 +9,7 @@ use ast::{
 };
 use inkwell::{
     types::{BasicTypeEnum, StructType},
-    values::{AggregateValueEnum, BasicValueEnum},
+    values::{AggregateValueEnum, BasicValueEnum}, AddressSpace,
 };
 use std::{collections::HashMap, process::exit, rc::Rc};
 
@@ -29,7 +29,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .iter()
             .map(|field| {
                 self.build_type(field.ty.clone(), field.loc.clone(), field.span.end)
-                    .to_basic_type()
+                    .to_basic_type(self.context.ptr_type(AddressSpace::default()))
             })
             .collect()
     }
@@ -212,11 +212,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             let field_type = self
                 .build_type(field.ty.clone(), field.loc.clone(), field.span.end)
-                .to_basic_type();
+                .to_basic_type(self.context.ptr_type(AddressSpace::default()));
 
             let field_any_value = self.build_expr(Rc::clone(&scope), field_init.value.clone());
 
-            if field_any_value.get_type(self.string_type.clone()).to_basic_type() != field_type {
+            if field_any_value.get_type(self.string_type.clone()).to_basic_type(self.context.ptr_type(AddressSpace::default())) != field_type {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
