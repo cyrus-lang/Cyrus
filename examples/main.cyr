@@ -2,5 +2,5 @@ fn main() {
     #obj: *i32 = malloc(*i32);
     *obj = 100;
 
-    // println("val: %d", *obj);
+    println("val: %d", *obj);
 }

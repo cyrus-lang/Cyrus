@@ -170,10 +170,14 @@ mod tests {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::Assignment(assignment) = expression {
                 assert_eq!(
-                    assignment.module_import.segments[0],
-                    ModuleSegment::SubModule(Identifier {
-                        name: "x".to_string(),
-                        span: Span::new(0, 0),
+                    assignment.assign_to,
+                    Expression::ModuleImport(ModuleImport {
+                        segments: vec![ModuleSegment::SubModule(Identifier {
+                            name: "x".to_string(),
+                            span: Span::new(0, 0),
+                            loc: Location::new(0, 4)
+                        })],
+                        span: Span::new(0, 1),
                         loc: Location::new(0, 4)
                     })
                 );
@@ -748,33 +752,37 @@ mod tests {
         }
     });
 
-    define_test!(import_2, "import ( module_alias: module1.module2.module3; )", |program: ProgramTree| {
-        if let Statement::Import(import) = &program.body[0] {
-            assert_eq!(
-                import.paths,
-                vec![ModulePath {
-                    alias: Some("module_alias".to_string()),
-                    segments: vec![
-                        ModuleSegment::SubModule(Identifier {
-                            name: "module1".to_string(),
-                            span: Span::new(23, 30),
-                            loc: Location::new(0, 39)
-                        }),
-                        ModuleSegment::SubModule(Identifier {
-                            name: "module2".to_string(),
-                            span: Span::new(31, 38),
-                            loc: Location::new(0, 47)
-                        }),
-                        ModuleSegment::SubModule(Identifier {
-                            name: "module3".to_string(),
-                            span: Span::new(39, 46),
-                            loc: Location::new(0, 50)
-                        }),
-                    ]
-                }]
-            );
-        } else {
-            panic!("Expected an expression.");
+    define_test!(
+        import_2,
+        "import ( module_alias: module1.module2.module3; )",
+        |program: ProgramTree| {
+            if let Statement::Import(import) = &program.body[0] {
+                assert_eq!(
+                    import.paths,
+                    vec![ModulePath {
+                        alias: Some("module_alias".to_string()),
+                        segments: vec![
+                            ModuleSegment::SubModule(Identifier {
+                                name: "module1".to_string(),
+                                span: Span::new(23, 30),
+                                loc: Location::new(0, 39)
+                            }),
+                            ModuleSegment::SubModule(Identifier {
+                                name: "module2".to_string(),
+                                span: Span::new(31, 38),
+                                loc: Location::new(0, 47)
+                            }),
+                            ModuleSegment::SubModule(Identifier {
+                                name: "module3".to_string(),
+                                span: Span::new(39, 46),
+                                loc: Location::new(0, 50)
+                            }),
+                        ]
+                    }]
+                );
+            } else {
+                panic!("Expected an expression.");
+            }
         }
-    });
+    );
 }
