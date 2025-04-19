@@ -299,18 +299,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
-        let (ptr, _) = self.build_load_lvalue(Rc::clone(&scope), assignment.module_import);
-        let value = self.build_expr(Rc::clone(&scope), assignment.expr);
-        if let AnyValue::PointerValue(pointer_value) = ptr {
-            self.build_store(pointer_value.ptr, value);
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Cannot store value in non-pointer allocation.".to_string()),
-                location: None,
-            });
-            exit(1);
-        }
+        dbg!(assignment.clone());
+
+        todo!();
+        // let (ptr, _) = self.build_load_lvalue(Rc::clone(&scope), assignment.module_import);
+
+        // let value = self.build_expr(Rc::clone(&scope), assignment.expr);
+        // if let AnyValue::PointerValue(pointer_value) = ptr {
+        //     dbg!(pointer_value.clone());
+        //     todo!();
+        //     // self.build_store(pointer_value.ptr, value);
+        // } else {
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::Custom("Cannot store value in non-pointer allocation.".to_string()),
+        //         location: None,
+        //     });
+        //     exit(1);
+        // }
     }
 
     pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> AnyValue<'ctx> {

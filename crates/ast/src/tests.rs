@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn test_assignment() {
         let assignment = Assignment {
-            module_import: ModuleImport {
+            assign_to: Expression::ModuleImport(ModuleImport {
                 segments: vec![ModuleSegment::SubModule(Identifier {
                     name: "i".to_string(),
                     span: Span::default(),
@@ -133,18 +133,22 @@ mod tests {
                 })],
                 span: Span::default(),
                 loc: Location::default(),
-            },
+            }),
             expr: Expression::Literal(Literal::Integer(IntegerLiteral::I32(10))),
             span: Span::default(),
             loc: Location::default(),
         };
 
         assert_eq!(
-            assignment.module_import.segments[0],
-            ModuleSegment::SubModule(Identifier {
-                name: "i".to_string(),
-                span: Span::default(),
-                loc: Location::default()
+            assignment.assign_to,
+            Expression::ModuleImport(ModuleImport {
+                segments: vec![ModuleSegment::SubModule(Identifier {
+                    name: "i".to_string(),
+                    span: Span::default(),
+                    loc: Location::default()
+                })],
+                span: Span::new(0, 0),
+                loc: Location::new(0, 0)
             })
         );
     }

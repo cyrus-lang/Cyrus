@@ -14,6 +14,10 @@ impl<'a> Parser<'a> {
 
         if self.current_token_is(TokenKind::As) || self.peek_token_is(TokenKind::As) {
             return self.parse_cast_as_expression(left, left_start);
+        } else if self.peek_token_is(TokenKind::Assign) {
+            self.next_token();
+            let expr = self.parse_assignment(left, left_start)?;
+            return Ok((expr, Span::new(left_start, self.current_token.span.end)));
         }
 
         while self.current_token.kind != TokenKind::EOF
@@ -66,6 +70,7 @@ impl<'a> Parser<'a> {
             | kind @ TokenKind::Void
             | kind @ TokenKind::String
             | kind @ TokenKind::Bool
+            | kind @ TokenKind::Array(_, _)
             | kind @ TokenKind::Dereference(_) => Expression::TypeToken(Token {
                 kind: kind.clone(),
                 span: Span::new(span.start, self.current_token.span.end),
@@ -96,9 +101,6 @@ impl<'a> Parser<'a> {
                         span: span.clone(),
                         loc: self.current_location(),
                     })
-                } else if self.peek_token_is(TokenKind::Assign) {
-                    self.next_token(); // consume identifier
-                    self.parse_assignment(module_import)?
                 } else if self.peek_token_is(TokenKind::LeftBracket) {
                     self.next_token(); // consume identifier
                     let array_index = self.parse_array_index(module_import)?;
@@ -495,13 +497,12 @@ impl<'a> Parser<'a> {
         }));
     }
 
-    pub fn parse_assignment(&mut self, module_import: ModuleImport) -> Result<Expression, ParseError> {
-        let start: usize = self.current_token.span.start;
+    pub fn parse_assignment(&mut self, assign_to: Expression, start: usize) -> Result<Expression, ParseError> {
         self.expect_current(TokenKind::Assign)?;
         let expr = self.parse_expression(Precedence::Lowest)?.0;
         let end = self.current_token.span.end;
         Ok(Expression::Assignment(Box::new(Assignment {
-            module_import: module_import,
+            assign_to,
             expr,
             span: Span { start, end },
             loc: self.current_location(),
