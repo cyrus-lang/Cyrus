@@ -105,6 +105,28 @@ pub enum TokenKind {
     Inline,
 }
 
+pub const PRIMITIVE_TYPES: &[TokenKind] = &[
+    TokenKind::I8,
+    TokenKind::I16,
+    TokenKind::I32,
+    TokenKind::I64,
+    TokenKind::I128,
+    TokenKind::U8,
+    TokenKind::U16,
+    TokenKind::U32,
+    TokenKind::U64,
+    TokenKind::U128,
+    TokenKind::F16,
+    TokenKind::F32,
+    TokenKind::F64,
+    TokenKind::F128,
+    TokenKind::SizeT,
+    TokenKind::Char,
+    TokenKind::Bool,
+    TokenKind::Void,
+    TokenKind::String,
+];
+
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -223,7 +245,10 @@ impl Span {
 
 impl Default for Span {
     fn default() -> Self {
-        Self { start: Default::default(), end: Default::default() }
+        Self {
+            start: Default::default(),
+            end: Default::default(),
+        }
     }
 }
 

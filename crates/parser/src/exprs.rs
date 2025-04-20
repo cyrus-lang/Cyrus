@@ -51,30 +51,6 @@ impl<'a> Parser<'a> {
         let span: Span = self.current_token.span.clone();
 
         let expr = match &self.current_token.clone().kind {
-            kind @ TokenKind::I8
-            | kind @ TokenKind::I16
-            | kind @ TokenKind::I32
-            | kind @ TokenKind::I64
-            | kind @ TokenKind::I128
-            | kind @ TokenKind::U8
-            | kind @ TokenKind::U16
-            | kind @ TokenKind::U32
-            | kind @ TokenKind::U64
-            | kind @ TokenKind::U128
-            | kind @ TokenKind::Char
-            | kind @ TokenKind::F16
-            | kind @ TokenKind::F32
-            | kind @ TokenKind::F64
-            | kind @ TokenKind::F128
-            | kind @ TokenKind::SizeT
-            | kind @ TokenKind::Void
-            | kind @ TokenKind::String
-            | kind @ TokenKind::Bool
-            | kind @ TokenKind::Array(_, _)
-            | kind @ TokenKind::Dereference(_) => Expression::TypeToken(Token {
-                kind: kind.clone(),
-                span: Span::new(span.start, self.current_token.span.end),
-            }),
             TokenKind::Identifier { .. } => {
                 if self.peek_token_is(TokenKind::LeftParen) {
                     let func_call = self.parse_func_call()?;
@@ -103,13 +79,7 @@ impl<'a> Parser<'a> {
                     })
                 } else if self.peek_token_is(TokenKind::LeftBracket) {
                     self.next_token(); // consume identifier
-                    let array_index = self.parse_array_index(module_import)?;
-
-                    if self.current_token_is(TokenKind::Assign) {
-                        self.parse_array_index_assign(array_index)?
-                    } else {
-                        Expression::ArrayIndex(array_index)
-                    }
+                    Expression::ArrayIndex(self.parse_array_index(module_import)?)
                 } else {
                     Expression::ModuleImport(module_import)
                 }
@@ -201,17 +171,26 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LeftBracket => self.parse_array_items()?,
             _ => {
-                return Err(CompileTimeError {
-                    location: self.current_location(),
-                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                    file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(self.lexer.select(span.start..self.current_token.span.end)),
-                    verbose: Some(String::from(format!(
-                        "Unexpected token '{}'.",
-                        self.current_token.kind.clone()
-                    ))),
-                    caret: true,
-                });
+                if self.match_type_token() {
+                    let start = self.current_token.span.start;
+                    let token_kind = self.parse_type_token()?;
+                    Expression::TypeToken(Token {
+                        kind: token_kind,
+                        span: Span::new(start, self.current_token.span.end),
+                    })
+                } else {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                        file_name: Some(self.lexer.file_name.clone()),
+                        code_raw: Some(self.lexer.select(span.start..self.current_token.span.end)),
+                        verbose: Some(String::from(format!(
+                            "Unexpected token '{}'.",
+                            self.current_token.kind.clone()
+                        ))),
+                        caret: true,
+                    });
+                }
             }
         };
 
@@ -509,21 +488,6 @@ impl<'a> Parser<'a> {
         })))
     }
 
-    pub fn parse_array_index_assign(&mut self, array_index: ArrayIndex) -> Result<Expression, ParseError> {
-        self.expect_current(TokenKind::Assign)?;
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
-        Ok(Expression::ArrayIndexAssign(Box::new(ArrayIndexAssign {
-            module_import: array_index.module_import,
-            dimensions: array_index.dimensions,
-            span: Span {
-                start: array_index.span.start,
-                end: self.current_token.span.end,
-            },
-            loc: self.current_location(),
-            expr,
-        })))
-    }
-
     pub fn parse_array_index(&mut self, module_import: ModuleImport) -> Result<ArrayIndex, ParseError> {
         let start = self.current_token.span.start;
 
@@ -532,7 +496,9 @@ impl<'a> Parser<'a> {
         while self.current_token_is(TokenKind::LeftBracket) {
             let expr = self.parse_array_items()?;
             dimensions.push(expr);
-            self.next_token();
+            if self.peek_token_is(TokenKind::LeftBracket) {
+                self.next_token();
+            }
         }
 
         let end = self.current_token.span.end;
@@ -540,7 +506,7 @@ impl<'a> Parser<'a> {
         Ok(ArrayIndex {
             dimensions,
             span: Span { start, end },
-            module_import: module_import,
+            module_import,
             loc: self.current_location(),
         })
     }

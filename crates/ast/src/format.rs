@@ -175,21 +175,6 @@ impl fmt::Display for Expression {
                 assignment.assign_to.to_string(),
                 assignment.expr
             ),
-            Expression::ArrayIndexAssign(array_index_assign) => {
-                let array_index = ArrayIndex {
-                    module_import: array_index_assign.module_import.clone(),
-                    dimensions: array_index_assign.dimensions.clone(),
-                    span: array_index_assign.span.clone(),
-                    loc: array_index_assign.loc.clone(),
-                };
-
-                write!(
-                    f,
-                    "{} = {}",
-                    Expression::ArrayIndex(array_index).to_string(),
-                    array_index_assign.expr.to_string()
-                )
-            }
             Expression::AddressOf(expression) => write!(f, "&({})", expression),
             Expression::Dereference(expression) => write!(f, "(*{})", expression),
             Expression::StructInit(struct_init) => {

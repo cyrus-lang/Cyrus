@@ -29,94 +29,71 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // The get_type_token function is responsible for parsing a type token from the source code and returning its corresponding TokenKind.
-    // This function supports both primitive types (e.g., integers, floating points, booleans) and user-defined types.
-    // Additionally, it handles pointer types by recognizing dereference (*) and reference (&) symbols.
-    pub fn get_type_token(&mut self) -> Result<TokenKind, ParseError> {
-        let location = self.current_location();
-
-        let data_type = match self.current_token.kind.clone() {
-            TokenKind::I8
-            | TokenKind::I16
-            | TokenKind::I32
-            | TokenKind::I64
-            | TokenKind::I128
-            | TokenKind::U8
-            | TokenKind::U16
-            | TokenKind::U32
-            | TokenKind::U64
-            | TokenKind::U128
-            | TokenKind::F16
-            | TokenKind::F32
-            | TokenKind::F64
-            | TokenKind::F128
-            | TokenKind::SizeT
-            | TokenKind::Char
-            | TokenKind::Bool
-            | TokenKind::Void
-            | TokenKind::String => self.current_token.kind.clone(),
-            token_kind => match token_kind {
-                TokenKind::Asterisk => {
-                    self.next_token();
-                    return Ok(TokenKind::Dereference(Box::new(self.get_type_token()?)));
-                }
-                TokenKind::Ampersand => {
-                    self.next_token();
-                    return Ok(TokenKind::AddressOf(Box::new(self.get_type_token()?)));
-                }
-                TokenKind::Identifier { name: type_name } => TokenKind::UserDefinedType(Identifier {
-                    name: type_name.clone(),
-                    span: self.current_token.span.clone(),
-                    loc: self.current_location(),
-                }),
-                _ => {
-                    return Err(CompileTimeError {
-                        location,
-                        etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
-                        file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Some(
-                            self.lexer
-                                .select(self.current_token.span.start..self.current_token.span.end),
-                        ),
-                        verbose: None,
-                        caret: true,
-                    });
-                }
-            },
-        };
-
-        self.next_token(); // consume the data type
-        Ok(data_type)
+    pub fn match_type_token(&mut self) -> bool {
+        if PRIMITIVE_TYPES.contains(&self.current_token.kind.clone()) {
+            return true;
+        } else if let TokenKind::Identifier { .. } = self.current_token.kind.clone() {
+            return true;
+        } else {
+            matches!(
+                self.current_token.kind.clone(),
+                TokenKind::Asterisk | TokenKind::Ampersand
+            )
+        }
     }
 
-    // The parse_type_token function extends get_type_token by also handling array type parsing.
-    // It checks if the parsed type is followed by square brackets ([]), which indicate an array type.
-    // If brackets are present, it collects the array dimensions, including possible explicit capacities.
     pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
-        let data_type = self.get_type_token()?;
+        let location = self.current_location();
 
-        // Check for array data type
-        if self.current_token_is(TokenKind::LeftBracket) {
-            let mut dimensions: Vec<TokenKind> = Vec::new();
+        match self.current_token.kind.clone() {
+            token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(token_kind),
+            TokenKind::Asterisk => {
+                self.next_token();
+                Ok(TokenKind::Dereference(Box::new(self.parse_type_token()?)))
+            }
+            TokenKind::Ampersand => {
+                self.next_token();
+                Ok(TokenKind::AddressOf(Box::new(self.parse_type_token()?)))
+            }
+            TokenKind::Identifier { name: type_name } => Ok(TokenKind::UserDefinedType(Identifier {
+                name: type_name.clone(),
+                span: self.current_token.span.clone(),
+                loc: self.current_location(),
+            })),
+            TokenKind::LeftBracket => {
+                let mut dimensions: Vec<TokenKind> = Vec::new();
 
-            while self.current_token_is(TokenKind::LeftBracket) {
-                self.next_token(); // consume left bracket
+                while self.current_token_is(TokenKind::LeftBracket) {
+                    self.next_token(); // consume left bracket
 
-                if let TokenKind::Literal(_) = self.current_token.kind.clone() {
-                    let capacity = self.current_token.kind.clone();
-                    dimensions.push(capacity);
-                    self.next_token();
-                } else if TokenKind::Dyn == self.current_token.kind.clone() {
-                    dimensions.push(TokenKind::Dyn);
-                    self.next_token();
+                    if let TokenKind::Literal(_) = self.current_token.kind.clone() {
+                        let capacity = self.current_token.kind.clone();
+                        dimensions.push(capacity);
+                        self.next_token();
+                    } else if TokenKind::Dyn == self.current_token.kind.clone() {
+                        dimensions.push(TokenKind::Dyn);
+                        self.next_token();
+                    }
+
+                    self.expect_current(TokenKind::RightBracket)?;
                 }
 
-                self.expect_current(TokenKind::RightBracket)?;
-            }
+                let data_type = self.parse_type_token()?;
+                self.next_token();
 
-            Ok(TokenKind::Array(Box::new(data_type), dimensions))
-        } else {
-            Ok(data_type)
+                Ok(TokenKind::Array(Box::new(data_type), dimensions))
+            }
+            token_kind => Err(CompileTimeError {
+                location,
+                etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
+                file_name: Some(self.lexer.file_name.clone()),
+                code_raw: Some(
+                    self.lexer
+                        .select(self.current_token.span.start..self.current_token.span.end),
+                ),
+                verbose: None,
+                caret: true,
+            }),
         }
     }
 

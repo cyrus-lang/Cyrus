@@ -42,7 +42,6 @@ pub enum Expression {
     UnaryOperator(UnaryOperator),
     Array(Array),
     ArrayIndex(ArrayIndex),
-    ArrayIndexAssign(Box<ArrayIndexAssign>),
     AddressOf(Box<Expression>),
     Dereference(Box<Expression>),
     StructInit(StructInit),
@@ -204,15 +203,6 @@ pub struct Array {
 pub struct ArrayIndex {
     pub module_import: ModuleImport,
     pub dimensions: Vec<Expression>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ArrayIndexAssign {
-    pub module_import: ModuleImport,
-    pub dimensions: Vec<Expression>,
-    pub expr: Expression,
     pub span: Span,
     pub loc: Location,
 }
