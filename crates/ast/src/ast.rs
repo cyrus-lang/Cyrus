@@ -201,7 +201,7 @@ pub struct Array {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArrayIndex {
-    pub module_import: ModuleImport,
+    pub expr: Box<Expression>,
     pub dimensions: Vec<Expression>,
     pub span: Span,
     pub loc: Location,

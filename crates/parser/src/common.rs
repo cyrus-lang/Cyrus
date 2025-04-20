@@ -79,7 +79,12 @@ impl<'a> Parser<'a> {
                 }
 
                 let data_type = self.parse_type_token()?;
-                self.next_token();
+
+                // REVIEW
+                // Potential to raise errors
+                // Because we need to consume latest sometimes
+                // 
+                // self.next_token();
 
                 Ok(TokenKind::Array(Box::new(data_type), dimensions))
             }

@@ -81,8 +81,12 @@ impl<'a> Parser<'a> {
 
                 let field_name = self.parse_identifier()?;
                 self.next_token(); // consume field name
+
                 self.expect_current(TokenKind::Colon)?;
+
                 let field_type = self.parse_type_token()?;
+                self.next_token();
+
                 fields.push(EnumField {
                     name: field_name,
                     field_type: field_type,
@@ -164,19 +168,7 @@ impl<'a> Parser<'a> {
 
         self.next_token();
 
-        let struct_name = match self.current_token.kind.clone() {
-            TokenKind::Identifier { name } => name,
-            _ => {
-                return Err(CompileTimeError {
-                    location: self.current_location(),
-                    etype: ParserErrorType::ExpectedIdentifier,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(self.lexer.select(struct_start..self.current_token.span.end)),
-                    verbose: None,
-                    caret: true,
-                });
-            }
-        };
+        let struct_name = self.parse_identifier()?.name;
         self.next_token(); // consume struct name
 
         let mut inherits: Vec<Identifier> = Vec::new();
@@ -268,8 +260,12 @@ impl<'a> Parser<'a> {
                     let start = self.current_token.span.start;
 
                     self.next_token(); // consume identifier
+
                     self.expect_current(TokenKind::Colon)?;
+
                     let type_token = self.parse_type_token()?;
+                    self.next_token();
+                    
                     self.expect_current(TokenKind::Semicolon)?;
 
                     let field = Field {
@@ -540,6 +536,8 @@ impl<'a> Parser<'a> {
                     self.next_token(); // consume triple_dot
 
                     let variadic_data_type = self.parse_type_token()?;
+                    self.next_token();
+
                     variadic = Some(variadic_data_type);
 
                     if self.current_token_is(TokenKind::Comma) {
@@ -567,6 +565,7 @@ impl<'a> Parser<'a> {
                         self.next_token(); // consume the colon
 
                         var_type = Some(self.parse_type_token()?);
+                        self.next_token();
                     }
 
                     let mut default_value: Option<Expression> = None;
@@ -750,7 +749,7 @@ impl<'a> Parser<'a> {
         let condition = self.parse_expression(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::Semicolon)?;
         self.next_token();
-        
+
         let mut increment: Option<Expression> = None;
         if !self.current_token_is(TokenKind::RightParen) {
             increment = Some(self.parse_expression(Precedence::Lowest)?.0);
@@ -777,22 +776,8 @@ impl<'a> Parser<'a> {
         let start = self.current_token.span.start;
         self.next_token(); // consume sharp token
 
-        let identifier = self.current_token.clone(); // export the name of the identifier
-        self.next_token(); // consume identifier
-
-        let name = match identifier.kind {
-            TokenKind::Identifier { name } => name,
-            _ => {
-                return Err(CompileTimeError {
-                    location: self.current_location(),
-                    etype: ParserErrorType::ExpectedIdentifier,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
-                    verbose: None,
-                    caret: true,
-                });
-            }
-        };
+        let name = self.parse_identifier()?.name;
+        self.next_token();
 
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Statement::Variable(Variable {
@@ -812,6 +797,7 @@ impl<'a> Parser<'a> {
             self.next_token(); // consume the colon
 
             variable_type = Some(self.parse_type_token()?);
+            self.next_token();
         }
 
         if self.current_token_is(TokenKind::Semicolon) {
@@ -890,8 +876,10 @@ impl<'a> Parser<'a> {
             }
 
             let return_type_start = self.current_token.span.start.clone();
+            let return_type_token = self.parse_type_token()?;
+            self.next_token();
             return_type = Some(Token {
-                kind: self.parse_type_token()?,
+                kind: return_type_token,
                 span: Span {
                     start: return_type_start,
                     end: self.current_token.span.end,

@@ -1,1 +1,7 @@
-#obj: *[dyn][3]i32;
+struct Person {
+    rules: [2]string;
+}
+
+fn main() {
+    #person = Person { rules: ["BBLBBLB"] };
+}

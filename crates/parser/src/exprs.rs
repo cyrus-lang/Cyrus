@@ -77,9 +77,6 @@ impl<'a> Parser<'a> {
                         span: span.clone(),
                         loc: self.current_location(),
                     })
-                } else if self.peek_token_is(TokenKind::LeftBracket) {
-                    self.next_token(); // consume identifier
-                    Expression::ArrayIndex(self.parse_array_index(module_import)?)
                 } else {
                     Expression::ModuleImport(module_import)
                 }
@@ -211,6 +208,11 @@ impl<'a> Parser<'a> {
                     caret: true,
                 });
             }
+        } else if self.peek_token_is(TokenKind::LeftBracket) {
+            self.next_token();
+            return Ok(Expression::ArrayIndex(self.parse_array_index(expr)?));
+        } else if self.current_token_is(TokenKind::LeftBracket) {
+            return Ok(Expression::ArrayIndex(self.parse_array_index(expr)?));
         }
 
         Ok(expr)
@@ -295,6 +297,9 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    // FIXME
+    // Need to change totally change syntax style to 
+    // what C did. Current style isn't desired so much.
     pub fn parse_cast_as_expression(
         &mut self,
         left: Expression,
@@ -488,7 +493,7 @@ impl<'a> Parser<'a> {
         })))
     }
 
-    pub fn parse_array_index(&mut self, module_import: ModuleImport) -> Result<ArrayIndex, ParseError> {
+    pub fn parse_array_index(&mut self, expr: Expression) -> Result<ArrayIndex, ParseError> {
         let start = self.current_token.span.start;
 
         let mut dimensions: Vec<Expression> = Vec::new();
@@ -506,7 +511,7 @@ impl<'a> Parser<'a> {
         Ok(ArrayIndex {
             dimensions,
             span: Span { start, end },
-            module_import,
+            expr: Box::new(expr),
             loc: self.current_location(),
         })
     }

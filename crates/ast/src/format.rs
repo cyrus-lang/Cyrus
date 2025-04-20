@@ -162,7 +162,7 @@ impl fmt::Display for Expression {
                 write!(
                     f,
                     "{}",
-                    Expression::ModuleImport(array_index.module_import.clone()).to_string()
+                    array_index.expr.to_string()
                 )?;
                 for item in &array_index.dimensions {
                     write!(f, "[{}]", item)?;
