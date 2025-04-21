@@ -1,5 +1,5 @@
-use super::errors::CompileTypeErrorType;
 use ast::token::TokenKind;
+use diag::errors::CompileTypeErrorType;
 use core::fmt;
 
 #[derive(Debug, Clone)]

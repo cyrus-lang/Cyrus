@@ -1,5 +1,4 @@
 use core::fmt;
-
 use crate::Lexer;
 
 impl fmt::Display for Lexer {

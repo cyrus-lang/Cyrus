@@ -1,9 +1,9 @@
+use crate::diag::ParserErrorType;
 use crate::ParseError;
 use crate::Parser;
 use ast::ast::*;
 use ast::token::*;
-use utils::compile_time_errors::errors::CompileTimeError;
-use utils::compile_time_errors::parser_errors::ParserErrorType;
+use diag::errors::CompileTimeError;
 
 impl<'a> Parser<'a> {
     pub fn parse_identifier(&mut self) -> Result<Identifier, CompileTimeError<ParserErrorType>> {

@@ -1,11 +1,12 @@
+use ::diag::errors::CompileTimeError;
 use ast::ast::*;
 use ast::token::*;
+use diag::ParserErrorType;
 use lexer::*;
-use utils::compile_time_errors::errors::*;
-use utils::compile_time_errors::parser_errors::ParserErrorType;
 use utils::fs::read_file;
 
 mod common;
+mod diag;
 mod exprs;
 mod prec;
 mod stmts;

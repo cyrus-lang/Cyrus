@@ -1,5 +1,6 @@
-use super::errors::CompileTypeErrorType;
 use core::fmt;
+
+use diag::errors::CompileTypeErrorType;
 
 #[derive(Debug)]
 pub enum LexicalErrorType {

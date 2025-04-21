@@ -1,11 +1,11 @@
+use crate::diag::ParserErrorType;
 use crate::ParseError;
 use crate::Parser;
 use crate::prec::*;
 use ast::ast::*;
 use ast::token::*;
+use diag::errors::CompileTimeError;
 use either::Either;
-use utils::compile_time_errors::errors::CompileTimeError;
-use utils::compile_time_errors::parser_errors::ParserErrorType;
 
 impl<'a> Parser<'a> {
     pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParseError> {

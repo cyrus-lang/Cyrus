@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
+diag = { path = "../diag", version = "*" }
 unicode-segmentation = "1.9.0"
 
 [lib]

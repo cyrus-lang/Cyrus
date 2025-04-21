@@ -258,6 +258,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "diag"
+version = "0.1.0"
+dependencies = [
+ "ast",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -408,6 +415,7 @@ name = "lexer"
 version = "0.1.0"
 dependencies = [
  "ast",
+ "diag",
  "unicode-segmentation",
  "utils",
 ]
@@ -455,6 +463,7 @@ name = "parser"
 version = "0.1.0"
 dependencies = [
  "ast",
+ "diag",
  "either",
  "lexer",
  "utils",

@@ -13,7 +13,8 @@ members = [
     "crates/ast",
     "crates/utils",
     "crates/cli",
-    "crates/layout",
+    "crates/layout", 
+    "crates/diag",
 ]
 
 [[bin]]

@@ -2,15 +2,14 @@ use ast::{
     ast::{CharLiteral, FloatLiteral, IntegerLiteral, Literal, StringLiteral},
     token::*,
 };
+use ::diag::errors::CompileTimeError;
+use diag::{lexer_invalid_char_error, lexer_unknown_char_error, LexicalErrorType};
 use core::panic;
 use std::{fmt::Debug, ops::Range, process::exit};
-use utils::compile_time_errors::{
-    errors::CompileTimeError,
-    lexer_errors::{lexer_invalid_char_error, lexer_unknown_char_error, LexicalErrorType},
-};
 
+mod diag;
 mod format;
-mod lexer_test;
+mod tests;
 
 #[derive(Debug, Clone)]
 pub struct Lexer {
@@ -188,7 +187,7 @@ impl Lexer {
                         end: self.pos - 1,
                     },
                 };
-            },
+            }
             '#' => TokenKind::Hashtag,
             '"' => return self.read_string(),
             '\'' => return self.read_char_literal(),
@@ -364,7 +363,10 @@ impl Lexer {
 
             if self.is_eof() {
                 CompileTimeError {
-                    location: Location { line: self.line, column: self.column },
+                    location: Location {
+                        line: self.line,
+                        column: self.column,
+                    },
                     code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
@@ -395,7 +397,10 @@ impl Lexer {
             }
         } else {
             CompileTimeError {
-                location: Location { line: self.line, column: self.column },
+                location: Location {
+                    line: self.line,
+                    column: self.column,
+                },
                 code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
                 etype: LexicalErrorType::EmptyCharLiteral,
                 verbose: None,
@@ -423,7 +428,10 @@ impl Lexer {
 
             if self.is_eof() {
                 CompileTimeError {
-                    location: Location { line: self.line, column: self.column },
+                    location: Location {
+                        line: self.line,
+                        column: self.column,
+                    },
                     code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
@@ -503,7 +511,10 @@ impl Lexer {
                     Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::Float(value))),
                     Err(_) => {
                         CompileTimeError {
-                            location: Location { line: self.line, column: self.column },
+                            location: Location {
+                                line: self.line,
+                                column: self.column,
+                            },
                             code_raw: Some(self.select(start..end)),
                             etype: LexicalErrorType::InvalidFloatLiteral,
                             verbose: None,
@@ -521,7 +532,10 @@ impl Lexer {
                     Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
                     Err(_) => {
                         CompileTimeError {
-                            location: Location { line: self.line, column: self.column },
+                            location: Location {
+                                line: self.line,
+                                column: self.column,
+                            },
                             code_raw: Some(self.select(start..end)),
                             etype: LexicalErrorType::InvalidIntegerLiteral,
                             verbose: None,
@@ -611,7 +625,10 @@ impl Lexer {
                 if self.is_eof() || self.ch == '*' {
                     if self.peek_char() != '/' {
                         CompileTimeError {
-                            location: Location { line: self.line, column: self.column },
+                            location: Location {
+                                line: self.line,
+                                column: self.column,
+                            },
                             code_raw: Some(self.select(start..self.pos)),
                             etype: LexicalErrorType::UnterminatedMultiLineComment,
                             verbose: None,

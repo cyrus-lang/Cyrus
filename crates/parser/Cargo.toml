@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-lexer = {path = "../lexer", version = "*"}
-ast = {path = "../ast", version = "*"}
-utils = {path = "../utils", version = "*"}
+lexer = { path = "../lexer", version = "*" }
+ast = { path = "../ast", version = "*" }
+utils = { path = "../utils", version = "*" }
+diag = { path = "../diag", version = "*" }
 either = "1.9"
 
 [lib]
