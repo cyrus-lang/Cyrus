@@ -84,7 +84,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
-        
+
         match any_value {
             AnyValue::PointerValue(pointer_value) => {
                 let inner_ptr_value = self
@@ -341,34 +341,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> Vec<IntValue<'_>> {
         let mut ordered_indexes: Vec<IntValue> = Vec::new();
         ordered_indexes.push(self.context.i32_type().const_int(0, false));
-        for item in dimensions {
-            if let Expression::Array(array) = item {
-                if array.elements.len() != 1 {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(
-                            "Expected only one integer literal when accessing array but got something else."
-                                .to_string(),
-                        ),
-                        location: None,
-                    });
-                    exit(1);
-                }
-
-                if let AnyValue::IntValue(index) = self.build_expr(Rc::clone(&scope), array.elements[0].clone()) {
-                    ordered_indexes.push(index);
-                } else {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Cannot build array indexing with a non-integer index.".to_string()),
-                        location: None,
-                    });
-                    exit(1);
-                }
+        for index_expr in dimensions {
+            if let AnyValue::IntValue(index) = self.build_expr(Rc::clone(&scope), index_expr.clone()) {
+                ordered_indexes.push(index);
             } else {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Expected an integer literal as index but got something else.".to_string()),
+                    kind: DiagKind::Custom("Cannot build array indexing with a non-integer index.".to_string()),
                     location: None,
                 });
                 exit(1);
@@ -379,33 +358,46 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_array_index(&self, scope: ScopeRef<'ctx>, array_index: ArrayIndex) -> AnyValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), *array_index.expr);
-        
+
         if let AnyValue::PointerValue(pointer_value) = any_value {
-            let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
+            if let AnyType::ArrayType(array_type) = pointer_value.pointee_ty {
+                let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
 
-            let index_ptr = unsafe {
-                let name = CString::new("gep").unwrap();
-                let mut indices: Vec<LLVMValueRef> = ordered_indexes.iter().map(|item| item.as_value_ref()).collect();
-                PointerValue::new(LLVMBuildGEP2(
-                    self.builder.as_mut_ptr(),
-                    pointer_value.pointee_ty.as_type_ref(),
-                    pointer_value.ptr.as_value_ref(),
-                    indices.as_mut_ptr(),
-                    ordered_indexes.len().try_into().unwrap(),
-                    name.as_ptr(),
-                ))
-            };
+                let index_ptr = unsafe {
+                    let name = CString::new("gep").unwrap();
+                    let mut indices: Vec<LLVMValueRef> =
+                        ordered_indexes.iter().map(|item| item.as_value_ref()).collect();
 
-            let index_value = self
-                .builder
-                .build_load(
-                    pointer_value.pointee_ty.to_basic_type(self.context.ptr_type(AddressSpace::default())),
-                    index_ptr,
-                    "load",
-                )
-                .unwrap();
+                    PointerValue::new(LLVMBuildGEP2(
+                        self.builder.as_mut_ptr(),
+                        pointer_value.pointee_ty.as_type_ref(),
+                        pointer_value.ptr.as_value_ref(),
+                        indices.as_mut_ptr(),
+                        ordered_indexes.len().try_into().unwrap(),
+                        name.as_ptr(),
+                    ))
+                };
 
-            AnyValue::try_from(index_value).unwrap()
+                let index_value = self
+                    .builder
+                    .build_load(
+                        pointer_value
+                            .pointee_ty
+                            .to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                        index_ptr,
+                        "load",
+                    )
+                    .unwrap();
+
+                AnyValue::try_from(index_value).unwrap()
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build array indexing to a pointer with non-array pointee type.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

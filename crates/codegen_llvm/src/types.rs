@@ -176,47 +176,48 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn build_array_type(
         &self,
         type_token: TokenKind,
-        dimensions: Vec<TokenKind>,
+        dimensions: Vec<ArrayCapacity>,
         loc: Location,
         span_end: usize,
     ) -> AnyType<'ctx> {
         let mut data_type = self.build_type(type_token, loc.clone(), span_end);
 
-        for item in dimensions {
-            let capacity = match item {
-                TokenKind::Literal(literal) => {
-                    let literal_value = self.build_literal(literal);
-                    match literal_value {
-                        AnyValue::IntValue(int_value) => int_value,
-                        _ => {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::InvalidTokenAsArrayCapacity,
-                                location: Some(DiagLoc {
-                                    file: self.file_path.clone(),
-                                    line: loc.line,
-                                    column: loc.column,
-                                    length: span_end,
-                                }),
-                            });
-                            exit(1);
+        for array_capacity in dimensions {
+            let capacity = match array_capacity {
+                ArrayCapacity::Static(token_kind) => {
+                    if let TokenKind::Literal(literal) = token_kind {
+                        let literal_value = self.build_literal(literal);
+                        match literal_value {
+                            AnyValue::IntValue(int_value) => int_value,
+                            _ => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::InvalidTokenAsArrayCapacity,
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: loc.line,
+                                        column: loc.column,
+                                        length: span_end,
+                                    }),
+                                });
+                                exit(1);
+                            }
                         }
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InvalidTypeToken,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
                     }
                 }
-                TokenKind::Dyn => todo!(),
-                _ => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::InvalidTokenAsArrayCapacity,
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
-                }
+                ArrayCapacity::Dynamic => todo!(),
             }
             .get_zero_extended_constant()
             .unwrap();
