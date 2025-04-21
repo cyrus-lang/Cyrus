@@ -123,7 +123,7 @@ mod tests {
         }
     });
 
-    define_test!(array_literal, "[1, 2, 3, func_call(1, 2)]", |program: ProgramTree| {
+    define_test!(array_construction, "[]i32{1, 2, 3, func_call(1, 2)}", |program: ProgramTree| {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::Array(array) = expression {
                 assert_eq!(array.elements.len(), 4);
@@ -145,15 +145,15 @@ mod tests {
                         expr: Box::new(Expression::FuncCall(FuncCall {
                             identifier: Identifier {
                                 name: "func_call".to_string(),
-                                span: Span::new(10, 19),
-                                loc: Location::new(0, 21)
+                                span: Span::new(15, 24),
+                                loc: Location::new(0, 26)
                             },
                             arguments: vec![
                                 Expression::Literal(Literal::Integer(IntegerLiteral::I32(1))),
                                 Expression::Literal(Literal::Integer(IntegerLiteral::I32(2)))
                             ],
-                            span: Span::new(10, 24),
-                            loc: Location::new(0, 27)
+                            span: Span::new(15, 29),
+                            loc: Location::new(0, 32)
                         })),
                         chains: Vec::new()
                     })
@@ -236,19 +236,11 @@ mod tests {
                 assert_eq!(array_index.dimensions.len(), 2);
                 assert_eq!(
                     array_index.dimensions[0],
-                    Expression::Array(Array {
-                        elements: vec![Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))],
-                        span: Span::new(3, 5),
-                        loc: Location { line: 0, column: 8 }
-                    })
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))
                 );
                 assert_eq!(
                     array_index.dimensions[1],
-                    Expression::Array(Array {
-                        elements: vec![Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))],
-                        span: Span::new(6, 8),
-                        loc: Location { line: 0, column: 10 }
-                    })
+                    Expression::Literal(Literal::Integer(IntegerLiteral::I32(1)))
                 );
             } else {
                 panic!("Expected an array index but got something else.");
