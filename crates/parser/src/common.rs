@@ -29,16 +29,32 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn match_type_token(&mut self) -> bool {
-        if PRIMITIVE_TYPES.contains(&self.current_token.kind.clone()) {
+    pub fn match_type_token(&mut self, token_kind: TokenKind) -> bool {
+        if PRIMITIVE_TYPES.contains(&token_kind.clone()) {
             return true;
-        } else if let TokenKind::Identifier { .. } = self.current_token.kind.clone() {
+        } else if let TokenKind::Identifier { .. } = token_kind.clone() {
             return true;
         } else {
-            matches!(
-                self.current_token.kind.clone(),
-                TokenKind::Asterisk | TokenKind::Ampersand
-            )
+            matches!(token_kind.clone(), TokenKind::Asterisk | TokenKind::Ampersand)
+        }
+    }
+
+    pub fn parse_primitive_type_token(&mut self) -> Result<TokenKind, ParseError> {
+        let token_kind = self.current_token.kind.clone();
+        if PRIMITIVE_TYPES.contains(&token_kind) {
+            Ok(token_kind)
+        } else {
+            Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
+                file_name: Some(self.lexer.file_name.clone()),
+                code_raw: Some(
+                    self.lexer
+                        .select(self.current_token.span.start..self.current_token.span.end),
+                ),
+                verbose: None,
+                caret: true,
+            })
         }
     }
 
@@ -60,34 +76,7 @@ impl<'a> Parser<'a> {
                 span: self.current_token.span.clone(),
                 loc: self.current_location(),
             })),
-            TokenKind::LeftBracket => {
-                let mut dimensions: Vec<TokenKind> = Vec::new();
-
-                while self.current_token_is(TokenKind::LeftBracket) {
-                    self.next_token(); // consume left bracket
-
-                    if let TokenKind::Literal(_) = self.current_token.kind.clone() {
-                        let capacity = self.current_token.kind.clone();
-                        dimensions.push(capacity);
-                        self.next_token();
-                    } else if TokenKind::Dyn == self.current_token.kind.clone() {
-                        dimensions.push(TokenKind::Dyn);
-                        self.next_token();
-                    }
-
-                    self.expect_current(TokenKind::RightBracket)?;
-                }
-
-                let data_type = self.parse_type_token()?;
-
-                // REVIEW
-                // Potential to raise errors
-                // Because we need to consume latest sometimes
-                // 
-                // self.next_token();
-
-                Ok(TokenKind::Array(Box::new(data_type), dimensions))
-            }
+            TokenKind::LeftBracket => self.parse_array_type(),
             token_kind => Err(CompileTimeError {
                 location,
                 etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),

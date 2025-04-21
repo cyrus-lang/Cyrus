@@ -1,7 +1,1 @@
-struct Person {
-    rules: [2]string;
-}
-
-fn main() {
-    #person = Person { rules: ["BBLBBLB"] };
-}
+some[0][1]

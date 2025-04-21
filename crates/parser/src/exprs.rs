@@ -166,11 +166,12 @@ impl<'a> Parser<'a> {
                 self.expect_current(TokenKind::RightParen)?;
                 expr
             }
-            TokenKind::LeftBracket => self.parse_array_items()?,
+            TokenKind::LeftBracket => self.parse_array()?,
             _ => {
-                if self.match_type_token() {
+                if self.match_type_token(self.current_token.kind.clone()) {
                     let start = self.current_token.span.start;
                     let token_kind = self.parse_type_token()?;
+                    self.next_token();
                     Expression::TypeToken(Token {
                         kind: token_kind,
                         span: Span::new(start, self.current_token.span.end),
@@ -298,7 +299,7 @@ impl<'a> Parser<'a> {
     }
 
     // FIXME
-    // Need to change totally change syntax style to 
+    // Need to change totally change syntax style to
     // what C did. Current style isn't desired so much.
     pub fn parse_cast_as_expression(
         &mut self,
@@ -499,7 +500,7 @@ impl<'a> Parser<'a> {
         let mut dimensions: Vec<Expression> = Vec::new();
 
         while self.current_token_is(TokenKind::LeftBracket) {
-            let expr = self.parse_array_items()?;
+            let expr = self.parse_single_array_index()?;
             dimensions.push(expr);
             if self.peek_token_is(TokenKind::LeftBracket) {
                 self.next_token();
@@ -516,18 +517,70 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn parse_array_items(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_array(&mut self) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
+        let array_type = self.parse_array_type()?;
 
-        let elements = self.parse_expression_series(TokenKind::RightBracket)?;
+        if self.peek_token_is(TokenKind::LeftBrace) {
+            self.next_token();
+            let elements = self.parse_expression_series(TokenKind::RightBrace)?.0;
 
-        Ok(Expression::Array(Array {
-            elements: elements.0,
-            span: Span {
-                start,
-                end: elements.1.end,
-            },
-            loc: self.current_location(),
-        }))
+            Ok(Expression::Array(Array {
+                elements,
+                data_type: array_type,
+                span: Span::new(start, self.current_token.span.end),
+                loc: self.current_location(),
+            }))
+        } else {
+            Ok(Expression::TypeToken(Token {
+                kind: array_type,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+            }))
+        }
+    }
+
+    pub fn parse_array_type(&mut self) -> Result<TokenKind, ParseError> {
+        let mut dimensions: Vec<ArrayCapacity> = Vec::new();
+
+        while self.current_token_is(TokenKind::LeftBracket) {
+            let array_capacity = self.parse_single_array_capacity()?;
+            self.next_token(); // consume right bracket
+            dimensions.push(array_capacity);
+        }
+
+        let data_type = self.parse_primitive_type_token()?;
+
+        Ok(TokenKind::Array(Box::new(data_type), dimensions))
+    }
+
+    pub fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParseError> {
+        self.expect_current(TokenKind::LeftBracket)?;
+        if self.current_token_is(TokenKind::RightBracket) {
+            return Ok(ArrayCapacity::Dynamic);
+        }
+        let capacity = self.current_token.kind.clone();
+        self.expect_peek(TokenKind::RightBracket)?;
+        Ok(ArrayCapacity::Static(capacity))
+    }
+
+    pub fn parse_single_array_index(&mut self) -> Result<Expression, ParseError> {
+        let start = self.current_token.span.start;
+        self.expect_current(TokenKind::LeftBracket)?;
+        if self.current_token_is(TokenKind::RightBracket) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                file_name: Some(self.lexer.file_name.clone()),
+                code_raw: Some(self.lexer.select(start..self.current_token.span.end)),
+                verbose: None,
+                caret: true,
+            });
+        }
+        let index = self.parse_expression(Precedence::Lowest)?.0;
+        self.expect_peek(TokenKind::RightBracket)?;
+        Ok(index)
     }
 }

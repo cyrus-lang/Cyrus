@@ -194,6 +194,7 @@ pub struct StringLiteral {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Array {
+    pub data_type: TokenKind,
     pub elements: Vec<Expression>,
     pub span: Span,
     pub loc: Location,
