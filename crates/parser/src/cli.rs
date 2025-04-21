@@ -14,7 +14,7 @@ pub fn main() {
         Ok(result) => println!("{:#?}", result),
         Err(errors) => {
             for err in errors {
-                println!("{}", err);
+                err.print();
             }
         }
     }

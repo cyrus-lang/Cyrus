@@ -15,4 +15,4 @@ path = "./src/lib.rs"
 
 [[bin]]
 name = "lexer"
-path = "./src/lexer_cli.rs"
+path = "./src/cli.rs"

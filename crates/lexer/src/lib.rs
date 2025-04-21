@@ -1,10 +1,10 @@
+use ::diag::errors::CompileTimeError;
 use ast::{
     ast::{CharLiteral, FloatLiteral, IntegerLiteral, Literal, StringLiteral},
     token::*,
 };
-use ::diag::errors::CompileTimeError;
-use diag::{lexer_invalid_char_error, lexer_unknown_char_error, LexicalErrorType};
 use core::panic;
+use diag::{LexicalErrorType, lexer_invalid_char_error, lexer_unknown_char_error};
 use std::{fmt::Debug, ops::Range, process::exit};
 
 mod diag;
@@ -13,10 +13,10 @@ mod tests;
 
 #[derive(Debug, Clone)]
 pub struct Lexer {
-    input: String,
     pos: usize,
     next_pos: usize,
     ch: char,
+    pub input: String,
     pub file_name: String,
     pub line: usize,
     pub column: usize,
@@ -330,7 +330,13 @@ impl Lexer {
                 } else if self.is_numeric(self.ch) {
                     return self.read_integer();
                 } else {
-                    lexer_invalid_char_error(self.file_name.clone(), self.line, self.column - 1, self.ch);
+                    lexer_invalid_char_error(
+                        self.file_name.clone(),
+                        self.line,
+                        self.column - 1,
+                        self.ch,
+                        Box::new(self.input.clone()),
+                    );
                     exit(1);
                 }
             }
@@ -367,7 +373,8 @@ impl Lexer {
                         line: self.line,
                         column: self.column,
                     },
-                    code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
+                    source_content: Box::new(self.input.clone()),
+                    highlight_span: Some(Span::new(start - 1, self.pos)),
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
                     caret: true,
@@ -401,7 +408,8 @@ impl Lexer {
                     line: self.line,
                     column: self.column,
                 },
-                code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
+                source_content: Box::new(self.input.clone()),
+                highlight_span: Some(Span::new(start - 1, self.pos)),
                 etype: LexicalErrorType::EmptyCharLiteral,
                 verbose: None,
                 caret: true,
@@ -432,7 +440,8 @@ impl Lexer {
                         line: self.line,
                         column: self.column,
                     },
-                    code_raw: Some(self.select(start - 1..self.pos)), // -1 for encounter "
+                    source_content: Box::new(self.input.clone()),
+                    highlight_span: Some(Span::new(start - 1, self.pos)),
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
                     caret: true,
@@ -515,7 +524,8 @@ impl Lexer {
                                 line: self.line,
                                 column: self.column,
                             },
-                            code_raw: Some(self.select(start..end)),
+                            source_content: Box::new(self.input.clone()),
+                            highlight_span: Some(Span::new(start - 1, self.pos)),
                             etype: LexicalErrorType::InvalidFloatLiteral,
                             verbose: None,
                             caret: true,
@@ -536,7 +546,8 @@ impl Lexer {
                                 line: self.line,
                                 column: self.column,
                             },
-                            code_raw: Some(self.select(start..end)),
+                            source_content: Box::new(self.input.clone()),
+                            highlight_span: Some(Span::new(start, self.pos)),
                             etype: LexicalErrorType::InvalidIntegerLiteral,
                             verbose: None,
                             caret: true,
@@ -629,7 +640,8 @@ impl Lexer {
                                 line: self.line,
                                 column: self.column,
                             },
-                            code_raw: Some(self.select(start..self.pos)),
+                            source_content: Box::new(self.input.clone()),
+                            highlight_span: Some(Span::new(start - 1, self.pos)),
                             etype: LexicalErrorType::UnterminatedMultiLineComment,
                             verbose: None,
                             caret: true,

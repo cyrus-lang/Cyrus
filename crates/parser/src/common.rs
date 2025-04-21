@@ -1,6 +1,6 @@
-use crate::diag::ParserErrorType;
 use crate::ParseError;
 use crate::Parser;
+use crate::diag::ParserErrorType;
 use ast::ast::*;
 use ast::token::*;
 use diag::errors::CompileTimeError;
@@ -18,10 +18,8 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(
-                        self.lexer
-                            .select(self.current_token.span.start..self.current_token.span.end),
-                    ),
+                    source_content: self.lexer.input.clone(),
+                    highlight_span: Some(self.current_token.span.clone()),
                     verbose: None,
                     caret: true,
                 });
@@ -44,14 +42,12 @@ impl<'a> Parser<'a> {
         if PRIMITIVE_TYPES.contains(&token_kind) {
             Ok(token_kind)
         } else {
+            
             Err(CompileTimeError {
                 location: self.current_location(),
                 etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
-                    self.lexer
-                        .select(self.current_token.span.start..self.current_token.span.end),
-                ),
+                
                 verbose: None,
                 caret: true,
             })
@@ -59,6 +55,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
+        let start = self.current_token.span.start;
         let location = self.current_location();
 
         match self.current_token.kind.clone() {
@@ -77,17 +74,21 @@ impl<'a> Parser<'a> {
                 loc: self.current_location(),
             })),
             TokenKind::LeftBracket => self.parse_array_type(),
-            token_kind => Err(CompileTimeError {
+            token_kind => {
+                dbg!(start..self.current_token.span.end);
+
+                Err(CompileTimeError {
                 location,
                 etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Some(
+                code_raw: Box::new(
                     self.lexer
-                        .select(self.current_token.span.start..self.current_token.span.end),
+                        .select(start..self.current_token.span.end),
                 ),
                 verbose: None,
                 caret: true,
-            }),
+            })
+        },
         }
     }
 
@@ -106,7 +107,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Some(
+                    code_raw: Box::new(
                         self.lexer
                             .select(self.current_token.span.start..self.current_token.span.end),
                     ),

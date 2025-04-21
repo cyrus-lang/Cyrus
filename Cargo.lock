@@ -262,6 +262,9 @@ name = "diag"
 version = "0.1.0"
 dependencies = [
  "ast",
+ "colorized",
+ "console",
+ "utils",
 ]
 
 [[package]]

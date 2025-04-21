@@ -99,7 +99,7 @@ impl<'a> Parser<'a> {
 
     pub fn display_parser_errors(&mut self, errors: Vec<CompileTimeError<ParserErrorType>>) {
         if errors.len() > 0 {
-            println!("{}", errors[0]);
+            errors[0].print();
             std::process::exit(1);
         }
     }
@@ -148,7 +148,7 @@ impl<'a> Parser<'a> {
             location: self.current_location(),
             etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), token_kind),
             file_name: Some(self.lexer.file_name.clone()),
-            code_raw: Some(
+            code_raw: Box::new(
                 self.lexer
                     .select(self.current_token.span.start..self.current_token.span.end),
             ),
@@ -169,7 +169,7 @@ impl<'a> Parser<'a> {
             location: self.current_location(),
             etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), token_kind),
             file_name: Some(self.lexer.file_name.clone()),
-            code_raw: Some(
+            code_raw: Box::new(
                 self.lexer
                     .select(self.current_token.span.start..self.current_token.span.end),
             ),

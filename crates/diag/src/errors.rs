@@ -1,8 +1,8 @@
-use ast::token::Location;
-use core::fmt;
+use ast::token::{Location, Span};
+use colorized::{Color, Colors};
+use console::user_attended;
 use std::fmt::{Debug, Display};
-
-pub const ERROR_PIPE_STR: &str = "-------------------------";
+use utils::purify_string::unescape_string;
 
 pub trait CompileTypeErrorType: Display + Debug {
     fn context(&self) -> String;
@@ -12,54 +12,55 @@ pub struct CompileTimeError<ErrorType: CompileTypeErrorType> {
     pub etype: ErrorType,
     pub file_name: Option<String>,
     pub location: Location,
-    pub code_raw: Option<String>,
+    pub highlight_span: Option<Span>,
+    pub source_content: Box<String>,
     pub verbose: Option<String>,
     pub caret: bool,
 }
 
-impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
-    pub fn print(&self) {
-        println!("{}", self.to_string());
+fn saturating_sub(value: usize, input: usize) -> usize {
+    if input >= value {
+        return 0;
+    } else {
+        return value.saturating_sub(input);
     }
 }
 
-impl<ErrorType: CompileTypeErrorType> fmt::Display for CompileTimeError<ErrorType> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "| Error: {} {}\n", self.etype.to_string(), ERROR_PIPE_STR)?;
+impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
+    pub fn print(&self) {
+        let mut starting_line = saturating_sub(self.location.line, 5);
+        let source_content = unescape_string(*self.source_content.clone());
+        let sources_lines: Vec<&str> = source_content.split("\n").collect();
 
-        if let Some(file_name) = &self.file_name {
-            write!(f, "| Path: {}\n", file_name)?;
-        }
+        while starting_line < self.location.line + 5 {
+            if let Some(line_str) = sources_lines.get(starting_line) {
+                if let Some(span) = self.highlight_span.clone() {
+                    todo!();
+                } else {
+                    println!("{}| {}", starting_line, line_str);
+                }
 
-        write!(f, "| At: {}:{}\n\n", self.location.line, self.location.column)?;
+                if starting_line == self.location.line {
+                    let content = {
+                        if let Some(verbose) = self.verbose.clone() {
+                            verbose
+                        } else {
+                            for _ in 0..self.location.column {
+                                print!(" ");
+                            }
+                            self.etype.context()
+                        }
+                    };
 
-        if let Some(code_raw) = &self.code_raw {
-            let code_raw = code_raw.split("\n");
-
-            for (idx, line) in code_raw.clone().into_iter().enumerate() {
-                write!(f, "{}", line)?;
-
-                if idx == code_raw.clone().count() {
-                    write!(f, "\n")?;
+                    if user_attended() {
+                        println!("  {}", content.color(Colors::RedFg));
+                    } else {
+                        println!("{}", content);
+                    }
                 }
             }
+
+            starting_line += 1;
         }
-
-        if let Some(v) = &self.verbose {
-            write!(f, " // {}", v.trim())?;
-        }
-
-        write!(f, "\n")?;
-        write!(f, "\t")?;
-
-        for _ in 0..self.location.column {
-            write!(f, " ")?;
-        }
-
-        if self.caret {
-            write!(f, "^ {}\n", self.etype.context().trim())?;
-        }
-
-        write!(f, "")
     }
 }

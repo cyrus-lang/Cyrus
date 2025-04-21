@@ -1,6 +1,12 @@
-fn main() {
-    #a = [2][3]i32{1, 2};
-    #b: *[2][3]i32 = &a;
 
-    println("a: %d", (*b)[0]);
+
+
+extern fn printf();
+
+fn main() {
+    ^
 }
+
+extern fn A();
+extern fn B();
+extern fn C();
