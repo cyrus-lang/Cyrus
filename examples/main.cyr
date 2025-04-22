@@ -4,7 +4,7 @@
 extern fn printf();
 
 fn main() {
-    ^
+    #a: ;
 }
 
 extern fn A();

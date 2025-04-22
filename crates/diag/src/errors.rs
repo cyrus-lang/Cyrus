@@ -1,8 +1,8 @@
-use ast::token::{Location, Span};
+use ast::token::Location;
 use colorized::{Color, Colors};
 use console::user_attended;
 use std::fmt::{Debug, Display};
-use utils::purify_string::unescape_string;
+use utils::{purify_string::unescape_string, tui::tui_error};
 
 pub trait CompileTypeErrorType: Display + Debug {
     fn context(&self) -> String;
@@ -12,7 +12,6 @@ pub struct CompileTimeError<ErrorType: CompileTypeErrorType> {
     pub etype: ErrorType,
     pub file_name: Option<String>,
     pub location: Location,
-    pub highlight_span: Option<Span>,
     pub source_content: Box<String>,
     pub verbose: Option<String>,
     pub caret: bool,
@@ -34,13 +33,9 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
 
         while starting_line < self.location.line + 5 {
             if let Some(line_str) = sources_lines.get(starting_line) {
-                if let Some(span) = self.highlight_span.clone() {
-                    todo!();
-                } else {
-                    println!("{}| {}", starting_line, line_str);
-                }
+                print!("{}| {}", starting_line + 1, line_str);
 
-                if starting_line == self.location.line {
+                if starting_line + 1 == self.location.line {
                     let content = {
                         if let Some(verbose) = self.verbose.clone() {
                             verbose
@@ -61,6 +56,12 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
             }
 
             starting_line += 1;
+            print!("\n");
+        }
+
+        if let Some(file_name) = self.file_name.clone() {
+            println!();
+            tui_error(format!("{}:{}", file_name, self.location.line));
         }
     }
 }

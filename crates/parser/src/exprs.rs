@@ -1,6 +1,6 @@
-use crate::diag::ParserErrorType;
 use crate::ParseError;
 use crate::Parser;
+use crate::diag::ParserErrorType;
 use crate::prec::*;
 use ast::ast::*;
 use ast::token::*;
@@ -48,7 +48,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
-        let span: Span = self.current_token.span.clone();
+        let start = self.current_token.span.start;
 
         let expr = match &self.current_token.clone().kind {
             TokenKind::Identifier { .. } => {
@@ -66,7 +66,7 @@ impl<'a> Parser<'a> {
                     Expression::UnaryOperator(UnaryOperator {
                         module_import: module_import.clone(),
                         ty: UnaryOperatorType::PostIncrement,
-                        span: span.clone(),
+                        span: Span::new(start, self.current_token.span.end),
                         loc: self.current_location(),
                     })
                 } else if self.peek_token_is(TokenKind::Decrement) {
@@ -74,7 +74,7 @@ impl<'a> Parser<'a> {
                     Expression::UnaryOperator(UnaryOperator {
                         module_import: module_import.clone(),
                         ty: UnaryOperatorType::PostDecrement,
-                        span: span.clone(),
+                        span: Span::new(start, self.current_token.span.end),
                         loc: self.current_location(),
                     })
                 } else {
@@ -99,7 +99,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::InvalidToken(token_kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Box::new(self.lexer.select(span.start..self.current_token.span.end)),
+                            source_content: Box::new(self.lexer.input.clone()),
                             verbose: Some(String::from("Expected increment (++) or decrement (--) operator.")),
                             caret: true,
                         });
@@ -116,7 +116,7 @@ impl<'a> Parser<'a> {
                             module_import: module_import,
                             ty: unary_operator_type,
                             span: Span {
-                                start: span.start,
+                                start,
                                 end: self.current_token.span.end,
                             },
                             loc: self.current_location(),
@@ -127,7 +127,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::InvalidToken(token_kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Box::new(self.lexer.select(span.start..self.current_token.span.end)),
+                            source_content: Box::new(self.lexer.input.clone()),
                             verbose: Some(String::from("Expected an identifier.")),
                             caret: true,
                         });
@@ -143,7 +143,7 @@ impl<'a> Parser<'a> {
 
                 Expression::Literal(Literal::Bool(BoolLiteral {
                     raw,
-                    span: span.clone(),
+                    span: Span::new(start, self.current_token.span.end),
                 }))
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
@@ -181,11 +181,8 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(span.start..self.current_token.span.end)),
-                        verbose: Some(String::from(format!(
-                            "Unexpected token '{}'.",
-                            self.current_token.kind.clone()
-                        ))),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        verbose: None,
                         caret: true,
                     });
                 }
@@ -204,7 +201,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(self.lexer.select(span.start..self.current_token.span.end)),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
                     caret: true,
                 });
@@ -349,7 +346,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingClosingParen,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             });
@@ -444,7 +441,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
                         caret: true,
                     });
@@ -463,7 +460,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
                         caret: true,
                     });
@@ -574,7 +571,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             });

@@ -7,7 +7,6 @@ use inkwell::OptimizationLevel;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::llvm_sys::prelude::LLVMValueRef;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
@@ -180,7 +179,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> (PointerValue<'ctx>, AnyType<'ctx>) {
         let any_type = self.build_type(var_type_token, loc.clone(), span_end);
         match any_type {
-            AnyType::VectorType(vector_type) => todo!(),
+            AnyType::VectorType(_) => todo!(),
             AnyType::StructType(struct_type) => (
                 self.builder.build_alloca(struct_type, &var_name).unwrap(),
                 AnyType::StructType(struct_type),

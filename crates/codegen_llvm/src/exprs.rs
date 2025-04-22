@@ -21,6 +21,7 @@ use std::{
     process::exit,
     rc::Rc,
 };
+use utils::purify_string::unescape_string;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
@@ -218,41 +219,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (AnyValue::try_from(value).unwrap(), pointee_ty.clone())
         }
     }
-
-    pub(crate) fn build_load_rvalue(
-        &self,
-        scope: ScopeRef<'ctx>,
-        module_import: ModuleImport,
-    ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
-        match module_import.segments.first().unwrap() {
-            ModuleSegment::SubModule(identifier) => {
-                let binding = {
-                    match scope.borrow().get(identifier.name.clone()) {
-                        Some(record) => record,
-                        None => match self.find_loaded_module(identifier.name.clone()) {
-                            Some(metadata) => {
-                                return (
-                                    AnyValue::ImportedModuleValue(ImportedModuleValue { metadata }),
-                                    AnyType::ImportedModuleValue,
-                                );
-                            }
-                            None => {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),
-                                    location: None,
-                                });
-                                exit(1);
-                            }
-                        },
-                    }
-                };
-                let record = binding.borrow();
-                self.build_load_internal(record.ptr.clone(), record.ty.clone())
-            }
-        }
-    }
-
+    
     pub(crate) fn build_load_lvalue(
         &self,
         scope: ScopeRef<'ctx>,
@@ -393,7 +360,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             } else {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot build array indexing to a pointer with non-array pointee type.".to_string()),
+                    kind: DiagKind::Custom(
+                        "Cannot build array indexing to a pointer with non-array pointee type.".to_string(),
+                    ),
                     location: None,
                 });
                 exit(1);
@@ -448,7 +417,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> AnyValue<'ctx> {
-        let mut bytes = self.unescape_string(&string_literal.raw).into_bytes();
+        let mut bytes = unescape_string(string_literal.raw).into_bytes();
         bytes.push(0); // null terminator
 
         let i8_array_type = self.context.i8_type().array_type(bytes.len() as u32);

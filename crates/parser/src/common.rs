@@ -18,8 +18,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
-                    source_content: self.lexer.input.clone(),
-                    highlight_span: Some(self.current_token.span.clone()),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
                     caret: true,
                 });
@@ -42,12 +41,11 @@ impl<'a> Parser<'a> {
         if PRIMITIVE_TYPES.contains(&token_kind) {
             Ok(token_kind)
         } else {
-            
             Err(CompileTimeError {
                 location: self.current_location(),
                 etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
                 file_name: Some(self.lexer.file_name.clone()),
-                
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             })
@@ -75,20 +73,15 @@ impl<'a> Parser<'a> {
             })),
             TokenKind::LeftBracket => self.parse_array_type(),
             token_kind => {
-                dbg!(start..self.current_token.span.end);
-
                 Err(CompileTimeError {
-                location,
-                etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
-                file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(
-                    self.lexer
-                        .select(start..self.current_token.span.end),
-                ),
-                verbose: None,
-                caret: true,
-            })
-        },
+                    location,
+                    etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
+                    file_name: Some(self.lexer.file_name.clone()),
+                    source_content: Box::new(self.lexer.input.clone()),
+                    verbose: None,
+                    caret: true,
+                })
+            }
         }
     }
 
@@ -107,10 +100,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(
-                        self.lexer
-                            .select(self.current_token.span.start..self.current_token.span.end),
-                    ),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: Some(String::from(
                         "Expected one of: 'inline', 'extern', 'pub' as function visibility.",
                     )),

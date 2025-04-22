@@ -10,6 +10,7 @@ pub enum LexicalErrorType {
     InvalidIntegerLiteral,
     UnterminatedMultiLineComment,
     InvalidChar(char),
+    UnknownChar(char),
     EmptyCharLiteral,
 }
 
@@ -22,6 +23,7 @@ impl fmt::Display for LexicalErrorType {
             LexicalErrorType::UnterminatedMultiLineComment => write!(f, "UnterminatedMultiLineComment"),
             LexicalErrorType::EmptyCharLiteral => write!(f, "EmptyCharLiteral"),
             LexicalErrorType::InvalidChar(_) => write!(f, "InvalidChar"),
+            LexicalErrorType::UnknownChar(_) => write!(f, "UnknownChar"),
         }
     }
 }
@@ -34,7 +36,12 @@ impl CompileTypeErrorType for LexicalErrorType {
             LexicalErrorType::InvalidIntegerLiteral => "invalid integer literal",
             LexicalErrorType::UnterminatedMultiLineComment => "unterminated multi-line comment",
             LexicalErrorType::EmptyCharLiteral => "empty char literal is invalid",
-            LexicalErrorType::InvalidChar(ch) => "invalid char",
+            LexicalErrorType::InvalidChar(ch) => {
+                return format!("invalid char: '{}'", ch);
+            },
+            LexicalErrorType::UnknownChar(ch) => {
+                return format!("unknown char: '{}'", ch);
+            },
         })
     }
 }
@@ -46,11 +53,19 @@ pub fn lexer_invalid_char_error(file_name: String, line: usize, column: usize, c
         file_name: Some(file_name),
         verbose: None,
         caret: false,
-        highlight_span: None,
         source_content,
-    }.print();
+    }
+    .print();
 }
 
-pub fn lexer_unknown_char_error(file_name: String, line: usize, column: usize) {
-    eprintln!("Lexer:{}:{}:{}: Unknown char detected.", file_name, line, column);
+pub fn lexer_unknown_char_error(file_name: String, line: usize, column: usize, ch: char, source_content: Box<String>) {
+    CompileTimeError {
+        location: Location::new(line, column),
+        etype: LexicalErrorType::UnknownChar(ch),
+        file_name: Some(file_name),
+        verbose: None,
+        caret: false,
+        source_content,
+    }
+    .print();
 }

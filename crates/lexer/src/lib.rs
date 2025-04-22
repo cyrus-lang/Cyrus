@@ -70,7 +70,13 @@ impl Lexer {
             match self.input.chars().nth(self.next_pos) {
                 Some(ch) => ch,
                 None => {
-                    lexer_unknown_char_error(self.file_name.clone(), self.line, self.column - 1);
+                    lexer_unknown_char_error(
+                        self.file_name.clone(),
+                        self.line,
+                        self.column - 1,
+                        self.ch,
+                        Box::new(self.input.clone()),
+                    );
                     std::process::exit(1);
                 }
             }
@@ -374,7 +380,6 @@ impl Lexer {
                         column: self.column,
                     },
                     source_content: Box::new(self.input.clone()),
-                    highlight_span: Some(Span::new(start - 1, self.pos)),
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
                     caret: true,
@@ -409,7 +414,6 @@ impl Lexer {
                     column: self.column,
                 },
                 source_content: Box::new(self.input.clone()),
-                highlight_span: Some(Span::new(start - 1, self.pos)),
                 etype: LexicalErrorType::EmptyCharLiteral,
                 verbose: None,
                 caret: true,
@@ -441,7 +445,6 @@ impl Lexer {
                         column: self.column,
                     },
                     source_content: Box::new(self.input.clone()),
-                    highlight_span: Some(Span::new(start - 1, self.pos)),
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
                     caret: true,
@@ -525,7 +528,6 @@ impl Lexer {
                                 column: self.column,
                             },
                             source_content: Box::new(self.input.clone()),
-                            highlight_span: Some(Span::new(start - 1, self.pos)),
                             etype: LexicalErrorType::InvalidFloatLiteral,
                             verbose: None,
                             caret: true,
@@ -547,7 +549,6 @@ impl Lexer {
                                 column: self.column,
                             },
                             source_content: Box::new(self.input.clone()),
-                            highlight_span: Some(Span::new(start, self.pos)),
                             etype: LexicalErrorType::InvalidIntegerLiteral,
                             verbose: None,
                             caret: true,
@@ -641,7 +642,6 @@ impl Lexer {
                                 column: self.column,
                             },
                             source_content: Box::new(self.input.clone()),
-                            highlight_span: Some(Span::new(start - 1, self.pos)),
                             etype: LexicalErrorType::UnterminatedMultiLineComment,
                             verbose: None,
                             caret: true,

@@ -1,6 +1,6 @@
 use ast::token::TokenKind;
-use diag::errors::CompileTypeErrorType;
 use core::fmt;
+use diag::errors::CompileTypeErrorType;
 
 #[derive(Debug, Clone)]
 pub enum ParserErrorType {
@@ -45,13 +45,7 @@ impl CompileTypeErrorType for ParserErrorType {
                 format!("Unexpected token: '{}'.", token_kind)
             }
             ParserErrorType::InvalidTypeToken(token_kind) => {
-                format!(
-                    "Expected one of the following type tokens:\n
-                    'i8', 'i16', 'i32', 'i64', 'i128', 'u8', 'u16', 'u32', 'u64', 'u128',\n
-                    'float', 'double', 'size_t', 'char', 'bool', 'void', 'string', or an identifier\n
-                    (e.g., user-defined type), but got '{}'.",
-                    token_kind
-                )
+                format!("Expected type token but got '{}'.", token_kind)
             }
             ParserErrorType::MissingClosingBrace => format!("Missing closing brace '}}'"),
             ParserErrorType::MissingOpeningBrace => format!("Missing opening brace '{{'"),

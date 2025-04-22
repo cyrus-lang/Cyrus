@@ -1,6 +1,6 @@
-use crate::diag::ParserErrorType;
 use crate::ParseError;
 use crate::Parser;
+use crate::diag::ParserErrorType;
 use crate::prec::Precedence;
 use ast::ast::*;
 use ast::token::*;
@@ -23,7 +23,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: Some(String::from("Expected 'struct' or 'fn' after visibility token!")),
                         caret: false,
                     });
@@ -71,9 +71,9 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: Some(String::from(
-                            "Consider to add a field to variant or remove the parenthesis.",
+                            "Consider to add a field to enum variant or remove the parenthesis.",
                         )),
                         caret: true,
                     });
@@ -158,7 +158,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::ExpectedIdentifier,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(self.lexer.select(struct_start..self.current_token.span.end)),
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: Some(String::from(
                     "Token 'inline' is not a valid 'vis_type' for struct definition.",
                 )),
@@ -187,7 +187,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::MissingOpeningBrace,
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Box::new(self.lexer.select(struct_start..self.current_token.span.end)),
+                            source_content: Box::new(self.lexer.input.clone()),
                             verbose: None,
                             caret: true,
                         });
@@ -209,7 +209,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::ExpectedIdentifier,
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Box::new(self.lexer.select(struct_start..self.current_token.span.end)),
+                            source_content: Box::new(self.lexer.input.clone()),
                             verbose: None,
                             caret: true,
                         });
@@ -233,7 +233,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(struct_start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
                         caret: true,
                     });
@@ -247,7 +247,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Box::new(self.lexer.select(struct_start..self.current_token.span.end)),
+                            source_content: Box::new(self.lexer.input.clone()),
                             verbose: Some(format!(
                                 "Expected method definition inside struct '{}'",
                                 struct_name.clone()
@@ -265,7 +265,7 @@ impl<'a> Parser<'a> {
 
                     let type_token = self.parse_type_token()?;
                     self.next_token();
-                    
+
                     self.expect_current(TokenKind::Semicolon)?;
 
                     let field = Field {
@@ -285,7 +285,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(struct_start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: Some(String::from("Invalid token inside a struct definition.")),
                         caret: true,
                     });
@@ -316,7 +316,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingSemicolon,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             });
@@ -334,7 +334,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingSemicolon,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             });
@@ -361,7 +361,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
                     caret: true,
                 });
@@ -436,7 +436,7 @@ impl<'a> Parser<'a> {
                                     self.current_token.kind.clone(),
                                 ),
                                 file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Box::new(self.lexer.select(parse_start..self.current_token.span.end)),
+                                source_content: Box::new(self.lexer.input.clone()),
                                 verbose: None,
                                 caret: true,
                             });
@@ -458,7 +458,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Box::new(self.lexer.select(parse_start..self.current_token.span.end)),
+                            source_content: Box::new(self.lexer.input.clone()),
                             verbose: None,
                             caret: true,
                         });
@@ -473,7 +473,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::ExpectedIdentifier,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(parse_start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
                         caret: true,
                     });
@@ -503,7 +503,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::MissingClosingParen,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
                     caret: true,
                 });
@@ -545,7 +545,7 @@ impl<'a> Parser<'a> {
                             location: self.current_location(),
                             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
-                            code_raw: Box::new(self.lexer.select(func_def_start..self.current_token.span.end + 1)),
+                            source_content: Box::new(self.lexer.input.clone()),
                             verbose: Some(String::from("Define all parameters before the variadic argument.")),
                             caret: false,
                         });
@@ -606,7 +606,7 @@ impl<'a> Parser<'a> {
                                 location: self.current_location(),
                                 etype: ParserErrorType::MissingComma,
                                 file_name: Some(self.lexer.file_name.clone()),
-                                code_raw: Box::new(self.lexer.select(params_start..self.current_token.span.end)),
+                                source_content: Box::new(self.lexer.input.clone()),
                                 verbose: None,
                                 caret: true,
                             });
@@ -618,10 +618,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::ExpectedIdentifier,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(
-                            self.lexer
-                                .select(self.current_token.span.start..self.current_token.span.end),
-                        ),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
                         caret: true,
                     });
@@ -644,7 +641,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::MissingClosingBrace,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(self.lexer.select(expr_start..self.current_token.span.end)),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
                     caret: true,
                 });
@@ -658,10 +655,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingOpeningBrace,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(
-                    self.lexer
-                        .select(self.current_token.span.start..self.current_token.span.end),
-                ),
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             });
@@ -685,7 +679,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
                         caret: true,
                     });
@@ -699,7 +693,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::MissingOpeningBrace,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
                     caret: true,
                 });
@@ -848,7 +842,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
                     caret: true,
                 });
@@ -869,7 +863,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: Some(String::from("Return type required before closing brace '{'")),
                     caret: true,
                 });
@@ -912,7 +906,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::ExpectedIdentifier,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
                         caret: true,
                     });
@@ -926,7 +920,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::InvalidToken(self.peek_token.kind.clone()),
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: Some(String::from(
                         "FuncDecl does not accept a body. Use a semicolon `;` instead of a body `{ ... }`.",
                     )),
@@ -958,7 +952,7 @@ impl<'a> Parser<'a> {
                     location: self.current_location(),
                     etype: ParserErrorType::MissingClosingBrace,
                     file_name: Some(self.lexer.file_name.clone()),
-                    code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                    source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
                     caret: true,
                 });
@@ -985,7 +979,7 @@ impl<'a> Parser<'a> {
             location: self.current_location(),
             etype: ParserErrorType::MissingClosingBrace,
             file_name: Some(self.lexer.file_name.clone()),
-            code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+            source_content: Box::new(self.lexer.input.clone()),
             verbose: None,
             caret: true,
         });
@@ -1018,7 +1012,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingOpeningBrace,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             });
@@ -1054,7 +1048,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingOpeningParen,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             });
@@ -1068,7 +1062,7 @@ impl<'a> Parser<'a> {
                 location: self.current_location(),
                 etype: ParserErrorType::MissingClosingBrace,
                 file_name: Some(self.lexer.file_name.clone()),
-                code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             });
@@ -1087,7 +1081,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::MissingOpeningParen,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
                         caret: true,
                     });
@@ -1116,7 +1110,7 @@ impl<'a> Parser<'a> {
                         location: self.current_location(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
-                        code_raw: Box::new(self.lexer.select(start..self.current_token.span.end)),
+                        source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
                         caret: true,
                     });

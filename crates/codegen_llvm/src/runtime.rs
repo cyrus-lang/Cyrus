@@ -1,4 +1,4 @@
-use crate::{CodeGenLLVM, funcs::FuncMetadata};
+use crate::CodeGenLLVM;
 use ast::{
     ast::{FuncDecl, FuncParams, VisType},
     token::{Location, Span},
@@ -30,6 +30,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder.build_call(ptr, &[], "call").unwrap();
     }
 
+    #[allow(unused)]
     fn runtime_check_bounds(&self) -> FunctionValue<'ctx> {
         let return_type = self.context.i32_type();
         let func_type = return_type.fn_type(
