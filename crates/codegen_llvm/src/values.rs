@@ -1,8 +1,12 @@
 use crate::{AnyType, CodeGenLLVM, StringType, diag::*, modules::ModuleMetadata, types::TypedPointerType};
+use ast::token::Location;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     builder::Builder,
-    values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue, VectorValue},
+    values::{
+        ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntMathValue, IntValue,
+        PointerValue, StructValue, VectorValue,
+    },
 };
 use std::process::exit;
 
@@ -36,7 +40,28 @@ pub(crate) struct TypedPointerValue<'a> {
 }
 
 impl<'a> AnyValue<'a> {
-    pub fn get_type(&self, string_type: StringType<'a>) -> AnyType<'a> {
+    pub fn to_basic_metadata(&self) -> BasicMetadataValueEnum<'a> {
+        match self {
+            AnyValue::IntValue(v) => BasicMetadataValueEnum::IntValue(*v),
+            AnyValue::FloatValue(v) => BasicMetadataValueEnum::FloatValue(*v),
+            AnyValue::ArrayValue(v) => BasicMetadataValueEnum::ArrayValue(*v),
+            AnyValue::StructValue(v) => BasicMetadataValueEnum::StructValue(*v),
+            AnyValue::VectorValue(v) => BasicMetadataValueEnum::VectorValue(*v),
+            AnyValue::StringValue(v) => BasicMetadataValueEnum::StructValue(v.struct_value),
+            AnyValue::OpaquePointer(v) => BasicMetadataValueEnum::PointerValue(*v),
+            AnyValue::PointerValue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
+            AnyValue::ImportedModuleValue(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot convert ImportedModuleValue to BasicMetadataValueEnum.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
+        }
+    }
+
+    pub(crate) fn get_type(&self, string_type: StringType<'a>) -> AnyType<'a> {
         match self {
             AnyValue::IntValue(v) => AnyType::IntType(v.get_type()),
             AnyValue::FloatValue(v) => AnyType::FloatType(v.get_type()),
@@ -136,6 +161,10 @@ impl<'a> TryFrom<BasicValueEnum<'a>> for AnyValue<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn implicitly_casted(&self, rvalue: AnyValue<'ctx>, target_type: AnyType<'ctx>) -> BasicValueEnum<'ctx> {
+        self.build_cast_as_internal(rvalue, target_type, Location::default(), 0).into()
+    }
+
     pub(crate) fn any_value_as_rvalue(&self, any_value: AnyValue<'ctx>) -> AnyValue<'ctx> {
         match any_value {
             AnyValue::IntValue(int_value) => AnyValue::IntValue(int_value),

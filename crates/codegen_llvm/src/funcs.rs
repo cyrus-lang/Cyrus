@@ -3,7 +3,7 @@ use crate::scope::{Scope, ScopeRecord, ScopeRef};
 use crate::types::TypedPointerType;
 use crate::values::AnyValue;
 use crate::{AnyType, CodeGenLLVM};
-use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam};
+use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
@@ -402,40 +402,41 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         scope: ScopeRef<'ctx>,
         arguments: Vec<Expression>,
-        loc: Location,
-        span_end: usize,
+        params: Option<FuncParams>,
     ) -> Vec<BasicMetadataValueEnum<'ctx>> {
         arguments
             .iter()
-            .map(|arg| {
+            .enumerate()
+            .map(|(idx, arg)| {
                 let rvalue = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), arg.clone()));
 
-                match rvalue {
-                    AnyValue::ArrayValue(array_value) => BasicMetadataValueEnum::ArrayValue(array_value),
-                    AnyValue::IntValue(int_value) => BasicMetadataValueEnum::IntValue(int_value),
-                    AnyValue::FloatValue(float_value) => BasicMetadataValueEnum::FloatValue(float_value),
-                    AnyValue::PointerValue(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value.ptr),
-                    AnyValue::OpaquePointer(pointer_value) => BasicMetadataValueEnum::PointerValue(pointer_value),
-                    AnyValue::StructValue(struct_value) => BasicMetadataValueEnum::StructValue(struct_value),
-                    AnyValue::VectorValue(vector_value) => BasicMetadataValueEnum::VectorValue(vector_value),
-                    AnyValue::StringValue(string_value) => {
-                        BasicMetadataValueEnum::StructValue(string_value.struct_value)
+                if let Some(params) = &params {
+                    // checked before through check_func_args_count_mismatch
+                    if let Some(param) = params.list.get(idx) {
+                        if let Some(target_type) = &param.ty {
+                            self.implicitly_casted(
+                                rvalue,
+                                self.build_type(target_type.clone(), param.loc.clone(), param.span.end),
+                            )
+                            .into()
+                        } else {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom("Cannot build untyped function param as argument.".to_string()),
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: param.loc.line,
+                                    column: param.loc.column,
+                                    length: param.span.end,
+                                }),
+                            });
+                            exit(1);
+                        }
+                    } else {
+                        rvalue.to_basic_metadata()
                     }
-                    _ => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(
-                                "Cannot build non-basic value as an argument in func call.".to_string(),
-                            ),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
+                } else {
+                    rvalue.to_basic_metadata()
                 }
             })
             .collect()
@@ -486,14 +487,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             return self.build_call_internal_malloc(Rc::clone(&scope), func_call.clone());
         }
 
-        let arguments = &self.build_arguments(
-            Rc::clone(&scope),
-            func_call.arguments.clone(),
-            func_call.loc.clone(),
-            func_call.span.end,
-        );
-
         if let Some(func_metadata) = self.func_table.get(&func_name.clone()) {
+            let arguments = &self.build_arguments(
+                Rc::clone(&scope),
+                func_call.arguments.clone(),
+                Some(func_metadata.func_decl.params.clone()),
+            );
+
             if func_metadata.is_internal {
                 self.build_internal_func_call(func_call.clone(), func_metadata.clone(), arguments.clone())
             } else {
@@ -506,6 +506,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
             }
         } else if func_name == "len" {
+            let arguments = &self.build_arguments(Rc::clone(&scope), func_call.arguments.clone(), None);
             self.build_call_internal_len(func_call.clone(), arguments.clone())
         } else {
             display_single_diag(Diag {

@@ -10,10 +10,9 @@ use ast::{
 };
 use either::Either;
 use inkwell::{
-    AddressSpace,
-    llvm_sys::{core::LLVMBuildGEP2, prelude::LLVMValueRef},
-    types::{BasicType, BasicTypeEnum},
-    values::{ArrayValue, AsValueRef, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    llvm_sys::{
+        core::{LLVMBuildGEP2, LLVMGetIntrinsicDeclaration, LLVMGetIntrinsicID}, prelude::LLVMValueRef, LLVMType
+    }, types::{AsTypeRef, BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue}, AddressSpace
 };
 use std::{
     ffi::CString,
@@ -219,7 +218,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (AnyValue::try_from(value).unwrap(), pointee_ty.clone())
         }
     }
-    
+
     pub(crate) fn build_load_lvalue(
         &self,
         scope: ScopeRef<'ctx>,
@@ -327,7 +326,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), *array_index.expr);
 
         if let AnyValue::PointerValue(pointer_value) = any_value {
-            if let AnyType::ArrayType(array_type) = pointer_value.pointee_ty {
+            if let AnyType::ArrayType(_) = pointer_value.pointee_ty {
                 let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
 
                 let index_ptr = unsafe {
@@ -345,17 +344,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     ))
                 };
 
-                let index_value = self
-                    .builder
-                    .build_load(
-                        pointer_value
-                            .pointee_ty
-                            .to_basic_type(self.context.ptr_type(AddressSpace::default())),
-                        index_ptr,
-                        "load",
-                    )
-                    .unwrap();
+                let ptr_type = self.context.ptr_type(AddressSpace::default());
+                let array_element_type = pointer_value
+                    .pointee_ty
+                    .to_basic_type(ptr_type)
+                    .into_array_type()
+                    .get_element_type();
 
+                let index_value = self.builder.build_load(array_element_type, index_ptr, "load").unwrap();
                 AnyValue::try_from(index_value).unwrap()
             } else {
                 display_single_diag(Diag {
@@ -466,12 +462,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .const_int(if bool_literal.raw { 1 } else { 0 }, false)
     }
 
-    pub(crate) fn build_cast_as(&self, scope: ScopeRef<'ctx>, cast_as: CastAs) -> AnyValue<'ctx> {
-        let expr = self.build_expr(Rc::clone(&scope), *cast_as.expr.clone());
-        let target = self.build_type(cast_as.type_token, cast_as.loc.clone(), cast_as.span.end);
-
-        match expr {
-            AnyValue::IntValue(int_value) => match target {
+    pub(crate) fn build_cast_as_internal(
+        &self,
+        any_value: AnyValue<'ctx>,
+        target_type: AnyType<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> AnyValue<'ctx> {
+        match any_value {
+            AnyValue::IntValue(int_value) => match target_type {
                 AnyType::IntType(int_type) => {
                     AnyValue::IntValue(self.builder.build_int_cast(int_value, int_type, "cast").unwrap())
                 }
@@ -486,15 +485,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         kind: DiagKind::Custom(String::from("Cannot cast non-basic value.")),
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
-                            line: cast_as.loc.line,
-                            column: cast_as.loc.column,
-                            length: cast_as.span.end,
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
                         }),
                     });
                     exit(1);
                 }
             },
-            AnyValue::FloatValue(float_value) => match target {
+            AnyValue::FloatValue(float_value) => match target_type {
                 AnyType::IntType(int_type) => AnyValue::IntValue(
                     self.builder
                         .build_float_to_signed_int(float_value, int_type, "cast")
@@ -509,28 +508,174 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         kind: DiagKind::Custom(String::from("Cannot cast non-basic value.")),
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
-                            line: cast_as.loc.line,
-                            column: cast_as.loc.column,
-                            length: cast_as.span.end,
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
                         }),
                     });
                     exit(1);
                 }
             },
+            AnyValue::PointerValue(pointer_value) => match target_type {
+                AnyType::OpaquePointer(pointer_type) => {
+                    let casted_ptr = self
+                        .builder
+                        .build_pointer_cast(pointer_value.ptr, pointer_type, "cast_ptr")
+                        .unwrap();
+
+                    AnyValue::OpaquePointer(casted_ptr)
+                }
+                AnyType::PointerType(typed_pointer_type) => {
+                    let casted_ptr = self
+                        .builder
+                        .build_pointer_cast(pointer_value.ptr, typed_pointer_type.ptr_type, "cast_ptr")
+                        .unwrap();
+
+                    AnyValue::PointerValue(TypedPointerValue {
+                        ptr: casted_ptr,
+                        pointee_ty: typed_pointer_type.pointee_ty,
+                    })
+                }
+                _ => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(String::from("Cannot cast pointer to non-pointer value.")),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
+            AnyValue::StringValue(string_value) => {
+                match target_type {
+                    AnyType::PointerType(ref typed_pointer_type) => {
+                        match &typed_pointer_type.pointee_ty {
+                            // TODO Implement cast string as struct type
+                            AnyType::StructType(struct_type) => todo!("Might be implemented later"),
+                            AnyType::IntType(int_type) => {
+                                let alloca = self
+                                    .builder
+                                    .build_alloca(
+                                        target_type.to_basic_type(typed_pointer_type.ptr_type.clone()),
+                                        "alloca",
+                                    )
+                                    .unwrap();
+
+                                let data_str = self.build_load_string(string_value);
+                                let data_str_size = self.builder.build_extract_value(string_value.struct_value, 1, "extractvalue").unwrap();
+
+                                if let Some(func_ptr) = self.current_func_ref {
+                                    // REVIEW Refactor memcpy: move to another function.
+
+                                    let module = self.module.borrow();
+                                    let memcpy_name = "llvm.memcpy.p0i8.p0i8.i64";
+                                    let memcpy_param_types: [BasicMetadataTypeEnum<'ctx>; 4] = [
+                                        self.context
+                                            .ptr_type(AddressSpace::default())
+                                            .as_basic_type_enum()
+                                            .into(),
+                                        self.context
+                                            .ptr_type(AddressSpace::default())
+                                            .as_basic_type_enum()
+                                            .into(),
+                                        self.context.i64_type().as_basic_type_enum().into(),
+                                        self.context.i16_type().as_basic_type_enum().into(),
+                                    ];
+                                    let memcpy_func = module.get_function(memcpy_name).unwrap_or_else(|| {
+                                        let fn_type = self.context.void_type().fn_type(&memcpy_param_types, false);
+                                        module.add_function(memcpy_name, fn_type, None)
+                                    });
+
+                                    let is_volatile = self.context.i8_type().const_int(0, false);
+
+                                    self.builder.build_call(memcpy_func, &[
+                                        BasicMetadataValueEnum::PointerValue(alloca),
+                                        BasicMetadataValueEnum::PointerValue(data_str.to_basic_metadata().into_pointer_value()),
+                                        BasicMetadataValueEnum::IntValue(data_str_size.into_int_value()),
+                                        BasicMetadataValueEnum::IntValue(is_volatile)
+                                    ], "call").unwrap();
+
+                                    return AnyValue::PointerValue(TypedPointerValue {
+                                        ptr: alloca,
+                                        pointee_ty: target_type.clone(),
+                                    });
+                                } else {
+                                    display_single_diag(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: DiagKind::Custom(String::from(
+                                            "Cannot build cast string value to array value outside of a function.",
+                                        )),
+                                        location: Some(DiagLoc {
+                                            file: self.file_path.clone(),
+                                            line: loc.line,
+                                            column: loc.column,
+                                            length: span_end,
+                                        }),
+                                    });
+                                    exit(1);
+                                }
+                            }
+                            AnyType::ArrayType(array_type) => todo!(),
+                            AnyType::StringType(string_type) => todo!(),
+                            AnyType::OpaquePointer(pointer_type) => todo!(),
+                            AnyType::PointerType(typed_pointer_type) => todo!(),
+                            _ => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(String::from(
+                                        "Cannot cast string to non-pointer, non-array type.",
+                                    )),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: loc.line,
+                                        column: loc.column,
+                                        length: span_end,
+                                    }),
+                                });
+                                exit(1);
+                            }
+                        }
+                    }
+                    _ => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(String::from("Cannot cast string value to non-pointer type.")),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            }
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(String::from("Cannot cast non-basic value.")),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
-                        line: cast_as.loc.line,
-                        column: cast_as.loc.column,
-                        length: cast_as.span.end,
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
                     }),
                 });
                 exit(1);
             }
         }
+    }
+
+    pub(crate) fn build_cast_as(&self, scope: ScopeRef<'ctx>, cast_as: CastAs) -> AnyValue<'ctx> {
+        let any_value = self.build_expr(Rc::clone(&scope), *cast_as.expr.clone());
+        let target_type = self.build_type(cast_as.type_token, cast_as.loc.clone(), cast_as.span.end);
+
+        self.build_cast_as_internal(any_value, target_type, cast_as.loc.clone(), cast_as.span.end)
     }
 
     pub(crate) fn build_prefix_expr(&self, scope: ScopeRef<'ctx>, unary_expression: UnaryExpression) -> AnyValue<'ctx> {

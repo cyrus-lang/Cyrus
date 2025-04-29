@@ -521,9 +521,7 @@ impl<'a> Parser<'a> {
         }));
     }
 
-    pub fn parse_func_params(&mut self, func_def_start: usize) -> Result<FuncParams, ParseError> {
-        let params_start = self.current_token.span.start;
-
+    pub fn parse_func_params(&mut self) -> Result<FuncParams, ParseError> {
         self.expect_current(TokenKind::LeftParen)?;
 
         let mut variadic: Option<TokenKind> = None;
@@ -848,7 +846,7 @@ impl<'a> Parser<'a> {
         }; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
-        let params = self.parse_func_params(start)?;
+        let params = self.parse_func_params()?;
 
         let mut return_type: Option<Token> = None;
 

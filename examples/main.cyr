@@ -1,10 +1,12 @@
-fn sum(x: i32, y: i32): i32 {
-    return x + y;
-}
+extern fn printf(v: *char);
 
 fn main() {
-    #a = 10;
-    #b = 20;
-    #result = sum(a, b);
-    println("result: %d\n", result);
+    #name = "Taha";
+
+    #temp: [5]i8 = name;
+
+    #ch: char = temp[2];
+
+    printf("%c", ch);
+    // println("value: %c", ch);
 }
