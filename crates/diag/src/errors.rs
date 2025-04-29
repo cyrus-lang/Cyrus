@@ -36,6 +36,8 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
                 print!("{}| {}", starting_line + 1, line_str);
 
                 if starting_line + 1 == self.location.line {
+                    print!("\n");
+                    
                     let content = {
                         if let Some(verbose) = self.verbose.clone() {
                             verbose
@@ -53,6 +55,8 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
                         println!("{}", content);
                     }
                 }
+            } else {
+                break;
             }
 
             starting_line += 1;

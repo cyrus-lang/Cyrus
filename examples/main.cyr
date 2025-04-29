@@ -1,12 +1,5 @@
-
-
-
-extern fn printf();
-
 fn main() {
-    #a: ;
-}
+    #a: i32 = 10
 
-extern fn A();
-extern fn B();
-extern fn C();
+
+}

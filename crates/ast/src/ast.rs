@@ -53,12 +53,14 @@ pub enum Expression {
 pub struct Enum {
     pub name: Identifier,
     pub variants: Vec<EnumVariant>,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumVariant {
     pub name: Identifier,
     pub fields: Option<Vec<EnumField>>,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone, PartialEq)]
