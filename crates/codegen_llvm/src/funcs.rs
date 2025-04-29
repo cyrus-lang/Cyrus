@@ -1,7 +1,8 @@
-use crate::CodeGenLLVM;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
-use crate::scope::{Scope, ScopeRef};
+use crate::scope::{Scope, ScopeRecord, ScopeRef};
+use crate::types::TypedPointerType;
 use crate::values::AnyValue;
+use crate::{AnyType, CodeGenLLVM};
 use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
@@ -130,7 +131,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_def.name.clone(),
             func_def.loc.clone(),
             func_def.span.end,
-            func_def.params.list,
+            func_def.params.list.clone(),
         );
 
         let return_type_token = func_def
@@ -168,12 +169,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder.position_at_end(entry_block);
         self.current_block_ref = Some(entry_block);
 
+        let mut scope_borrowed = scope.borrow_mut();
+        for (idx, param) in func.get_param_iter().enumerate() {
+            let param_ptr = self.builder.build_alloca(param.get_type(), "param").unwrap();
+            self.builder.build_store(param_ptr, param).unwrap();
+            if let Some(func_param) = func_def.params.list.get(idx) {
+                let param_ptr_type = param.get_type().try_into().unwrap();
+
+                scope_borrowed.insert(
+                    func_param.identifier.name.clone(),
+                    ScopeRecord {
+                        ptr: param_ptr,
+                        ty: param_ptr_type,
+                    },
+                );
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Unmatched parameter for function '{}' when adding params to the scope.",
+                        &func_def.name
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: func_def.loc.line,
+                        column: func_def.loc.column,
+                        length: func_def.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+        drop(scope_borrowed);
+
         let mut build_return = false;
         for expr in func_def.body.exprs {
             match expr {
                 ast::ast::Statement::Return(return_statement) => {
                     build_return = true;
-                    let expr = self.build_expr(Rc::clone(&scope), return_statement.argument);
+                    let expr = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), return_statement.argument));
                     self.build_return(expr);
                 }
                 _ => self.build_statement(Rc::clone(&scope), expr),
@@ -219,7 +253,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func.verify(true);
 
         self.func_table.insert(
-            func_decl.name.clone(),
+            if let Some(renamed_as) = func_decl.renamed_as.clone() {
+                renamed_as
+            } else {
+                func_decl.name.clone()
+            },
             FuncMetadata {
                 func_decl,
                 ptr: func,
@@ -238,6 +276,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             AnyValue::VectorValue(vector_value) => self.builder.build_return(Some(&vector_value)),
             AnyValue::ArrayValue(array_value) => self.builder.build_return(Some(&array_value)),
             AnyValue::StructValue(struct_value) => self.builder.build_return(Some(&struct_value)),
+            AnyValue::OpaquePointer(opaque_value) => self.builder.build_return(Some(&opaque_value)),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -297,7 +336,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
                                 kind: DiagKind::Custom(format!(
-                                    "The function '{}' not defined in module '{}'.",
+                                    "Function '{}' not defined in module '{}'.",
                                     method_call.identifier.name, imported_module_value.metadata.identifier
                                 )),
                                 location: None,

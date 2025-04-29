@@ -3,8 +3,8 @@ use crate::scope::ScopeRecord;
 use crate::structs::StructMetadata;
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use ast::ast::{If, Statement, Variable};
-use inkwell::basic_block::BasicBlock;
 use inkwell::AddressSpace;
+use inkwell::basic_block::BasicBlock;
 use std::process::exit;
 use std::rc::Rc;
 
@@ -25,7 +25,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
             Statement::Return(statement) => {
-                self.build_return(self.build_expr(Rc::clone(&scope), statement.argument));
+                self.build_return(self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), statement.argument)));
             }
             Statement::FuncDef(func_def) => {
                 if func_def.name == "main" {
@@ -191,7 +191,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 );
 
                 if let Some(expr) = variable.expr {
-                    let value = self.build_expr(Rc::clone(&scope), expr);
+                    let value = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
                     self.build_store(ptr, value);
                 }
 
@@ -201,11 +201,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             None => {
                 if let Some(expr) = variable.expr {
-                    let value = self.build_expr(Rc::clone(&scope), expr);
+                    let value = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
                     let var_type = value.get_type(self.string_type.clone());
                     let ptr = self
                         .builder
-                        .build_alloca(var_type.to_basic_type(self.context.ptr_type(AddressSpace::default())), &variable.name)
+                        .build_alloca(
+                            var_type.to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                            &variable.name,
+                        )
                         .unwrap();
 
                     self.build_store(ptr, value);

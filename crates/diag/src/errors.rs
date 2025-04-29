@@ -59,7 +59,13 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
 
         if let Some(file_name) = self.file_name.clone() {
             println!();
-            tui_error(format!("{}:{}: {}", file_name, self.location.line, error_message));
+            tui_error(format!(
+                "{}:{}: {} ({})",
+                file_name,
+                self.location.line,
+                error_message,
+                self.etype.to_string()
+            ));
         }
     }
 }

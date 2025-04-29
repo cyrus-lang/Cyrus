@@ -58,7 +58,7 @@ impl<'a> Parser<'a> {
             return Ok(EnumVariant {
                 name: variant_name,
                 fields: variant_fields,
-                loc: self.current_location()
+                loc: self.current_location(),
             });
         } else if self.current_token_is(TokenKind::LeftParen) {
             self.next_token(); // consume left paren
@@ -103,7 +103,7 @@ impl<'a> Parser<'a> {
         Ok(EnumVariant {
             name: variant_name,
             fields: variant_fields,
-            loc: self.current_location()
+            loc: self.current_location(),
         })
     }
 
@@ -119,7 +119,7 @@ impl<'a> Parser<'a> {
             return Ok(Statement::Enum(Enum {
                 name: enum_name,
                 variants: enum_variants,
-                loc: self.current_location()
+                loc: self.current_location(),
             }));
         }
 
@@ -145,7 +145,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::Enum(Enum {
             name: enum_name,
             variants: enum_variants,
-            loc
+            loc,
         }))
     }
 
@@ -767,7 +767,6 @@ impl<'a> Parser<'a> {
 
     pub fn parse_variable(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
-        let loc = self.current_location();
 
         self.next_token(); // consume sharp token
 
@@ -783,7 +782,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc
+                loc: self.current_location(),
             }));
         }
 
@@ -804,15 +803,12 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc
+                loc: self.current_location(),
             }));
         }
         self.expect_current(TokenKind::Assign)?;
 
         let (expr, span) = self.parse_expression(Precedence::Lowest)?;
-
-        let loc = self.current_location();
-        
         self.expect_peek(TokenKind::Semicolon)?;
 
         Ok(Statement::Variable(Variable {
@@ -820,7 +816,7 @@ impl<'a> Parser<'a> {
             expr: Some(expr),
             span: Span { start, end: span.end },
             ty: variable_type,
-            loc,
+            loc: self.current_location(),
         }))
     }
 
@@ -940,7 +936,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc
+                loc,
             }));
         }
 
@@ -973,7 +969,7 @@ impl<'a> Parser<'a> {
                 return_type,
                 vis_type,
                 span: Span { start, end },
-                loc
+                loc,
             }));
         }
 
@@ -990,7 +986,7 @@ impl<'a> Parser<'a> {
     pub fn parse_return(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
         let loc = self.current_location();
-        
+
         self.next_token(); // consume return token
 
         let argument = self.parse_expression(Precedence::Lowest)?.0;
@@ -1002,7 +998,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::Return(Return {
             argument,
             span: Span { start, end },
-            loc
+            loc,
         }))
     }
 

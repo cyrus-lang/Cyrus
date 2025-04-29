@@ -5,6 +5,7 @@ use diag::errors::CompileTypeErrorType;
 #[derive(Debug, Clone)]
 pub enum ParserErrorType {
     UnexpectedToken(TokenKind, TokenKind),
+    ExpectedToken(TokenKind),
     InvalidTypeToken(TokenKind),
     InvalidToken(TokenKind),
     MissingClosingBrace,
@@ -21,6 +22,7 @@ impl fmt::Display for ParserErrorType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ParserErrorType::UnexpectedToken(_, _) => write!(f, "UnexpectedToken"),
+            ParserErrorType::ExpectedToken(_) => write!(f, "ExpectedToken"),
             ParserErrorType::InvalidTypeToken(_) => write!(f, "InvalidTypeToken"),
             ParserErrorType::InvalidToken(_) => write!(f, "InvalidToken"),
             ParserErrorType::MissingClosingBrace => write!(f, "MissingClosingBrace"),
@@ -39,25 +41,28 @@ impl CompileTypeErrorType for ParserErrorType {
     fn context(&self) -> String {
         match self {
             ParserErrorType::UnexpectedToken(current, expected) => {
-                format!("Expected token '{}' but got '{}'.", expected, current)
+                format!("Expected token '{}' but got '{}'", expected, current)
+            }
+            ParserErrorType::ExpectedToken(expected) => {
+                format!("Expected token '{}'", expected)
             }
             ParserErrorType::InvalidToken(token_kind) => {
-                format!("Unexpected token: '{}'.", token_kind)
+                format!("Unexpected token: '{}'", token_kind)
             }
             ParserErrorType::InvalidTypeToken(token_kind) => {
-                format!("Expected type token but got '{}'.", token_kind)
+                format!("Expected type token but got '{}'", token_kind)
             }
             ParserErrorType::MissingClosingBrace => format!("Missing closing brace '}}'"),
             ParserErrorType::MissingOpeningBrace => format!("Missing opening brace '{{'"),
             ParserErrorType::MissingClosingParen => format!("Missing closing paren ')'"),
             ParserErrorType::MissingOpeningParen => format!("Missing opening paren '('"),
-            ParserErrorType::ExpectedIdentifier => format!("Expected an identifier."),
-            ParserErrorType::MissingSemicolon => format!("Missing semicolon."),
-            ParserErrorType::MissingComma => format!("Missing comma."),
+            ParserErrorType::ExpectedIdentifier => format!("Expected an identifier"),
+            ParserErrorType::MissingSemicolon => format!("Missing semicolon"),
+            ParserErrorType::MissingComma => format!("Missing comma"),
             ParserErrorType::IncompleteConditionalForLoop => {
                 format!(
                     "Defined a conditional for loop with incomplete condition. \n
-                    Consider to add a condition to current for loop or change it into unconditional for loop."
+                    Consider to add a condition to current for loop or change it into unconditional for loop"
                 )
             }
         }

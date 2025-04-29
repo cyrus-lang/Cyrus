@@ -143,10 +143,10 @@ impl<'a> Parser<'a> {
             self.next_token(); // consume current token
             return Ok(());
         }
-
+        
         Err(CompileTimeError {
             location: self.current_location(),
-            etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), token_kind),
+            etype: ParserErrorType::ExpectedToken(token_kind),
             file_name: Some(self.lexer.file_name.clone()),
             source_content: Box::new(self.lexer.input.clone()),
             verbose: None,

@@ -31,16 +31,16 @@ impl fmt::Display for LexicalErrorType {
 impl CompileTypeErrorType for LexicalErrorType {
     fn context(&self) -> String {
         String::from(match self {
-            LexicalErrorType::UnterminatedStringLiteral => "expected terminate string literal with double quote.",
-            LexicalErrorType::InvalidFloatLiteral => "invalid float literal",
-            LexicalErrorType::InvalidIntegerLiteral => "invalid integer literal",
-            LexicalErrorType::UnterminatedMultiLineComment => "unterminated multi-line comment",
-            LexicalErrorType::EmptyCharLiteral => "empty char literal is invalid",
+            LexicalErrorType::UnterminatedStringLiteral => "Expected terminate string literal with double quote",
+            LexicalErrorType::InvalidFloatLiteral => "Invalid float literal",
+            LexicalErrorType::InvalidIntegerLiteral => "Invalid integer literal",
+            LexicalErrorType::UnterminatedMultiLineComment => "Unterminated multi-line comment",
+            LexicalErrorType::EmptyCharLiteral => "Empty char literal is invalid",
             LexicalErrorType::InvalidChar(ch) => {
-                return format!("invalid char: '{}'", ch);
+                return format!("Invalid char: '{}'", ch);
             },
             LexicalErrorType::UnknownChar(ch) => {
-                return format!("unknown char: '{}'", ch);
+                return format!("Unknown char: '{}'", ch);
             },
         })
     }

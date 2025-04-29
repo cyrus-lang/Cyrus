@@ -88,11 +88,11 @@ impl Lexer {
             self.ch = ' ';
         } else {
             self.ch = self.input.chars().nth(self.next_pos).unwrap_or(' ');
+        }
 
-            if self.ch == '\n' {
-                self.line += 1;
-                self.column = 0;
-            }
+        if self.ch == '\n' {
+            self.line += 1;
+            self.column = 0;
         }
 
         self.pos = self.next_pos;
