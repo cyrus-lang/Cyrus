@@ -767,6 +767,8 @@ impl<'a> Parser<'a> {
 
     pub fn parse_variable(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_location();
+
         self.next_token(); // consume sharp token
 
         let name = self.parse_identifier()?.name;
@@ -781,7 +783,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc: self.current_location(),
+                loc
             }));
         }
 
@@ -802,7 +804,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc: self.current_location(),
+                loc
             }));
         }
         self.expect_current(TokenKind::Assign)?;
@@ -987,6 +989,8 @@ impl<'a> Parser<'a> {
 
     pub fn parse_return(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_location();
+        
         self.next_token(); // consume return token
 
         let argument = self.parse_expression(Precedence::Lowest)?.0;

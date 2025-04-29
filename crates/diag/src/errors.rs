@@ -33,27 +33,13 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
 
         while starting_line < self.location.line + 5 {
             if let Some(line_str) = sources_lines.get(starting_line) {
-                print!("{}| {}", starting_line + 1, line_str);
-
-                if starting_line + 1 == self.location.line {
-                    print!("\n");
-                    
-                    let content = {
-                        if let Some(verbose) = self.verbose.clone() {
-                            verbose
-                        } else {
-                            for _ in 0..self.location.column {
-                                print!(" ");
-                            }
-                            self.etype.context()
-                        }
-                    };
-
-                    if user_attended() {
-                        println!("  {}", content.color(Colors::RedFg));
-                    } else {
-                        println!("{}", content);
-                    }
+                if starting_line + 1 == self.location.line && user_attended() {
+                    print!(
+                        "{}",
+                        format!("{}| {}", starting_line + 1, line_str).color(Colors::RedFg)
+                    );
+                } else {
+                    print!("{}| {}", starting_line + 1, line_str);
                 }
             } else {
                 break;
@@ -63,9 +49,17 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
             print!("\n");
         }
 
+        let error_message = {
+            if let Some(verbose) = self.verbose.clone() {
+                verbose
+            } else {
+                self.etype.context()
+            }
+        };
+
         if let Some(file_name) = self.file_name.clone() {
             println!();
-            tui_error(format!("{}:{}", file_name, self.location.line));
+            tui_error(format!("{}:{}: {}", file_name, self.location.line, error_message));
         }
     }
 }

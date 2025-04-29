@@ -640,6 +640,7 @@ mod tests {
                                 loc: Location::new(0, 18)
                             },
                             fields: None,
+                            loc: Location::default()
                         },
                         EnumVariant {
                             name: Identifier {
@@ -665,6 +666,7 @@ mod tests {
                                     field_type: TokenKind::F64,
                                 }
                             ]),
+                            loc: Location::default()
                         }
                     ]
                 );
@@ -688,6 +690,7 @@ mod tests {
                             loc: Location::new(0, 18)
                         },
                         fields: None,
+                        loc: Location::default()
                     },
                     EnumVariant {
                         name: Identifier {
@@ -695,7 +698,8 @@ mod tests {
                             span: Span::new(18, 22),
                             loc: Location::new(0, 25)
                         },
-                        fields: None
+                        fields: None,
+                        loc: Location::default()
                     }
                 ]
             );
