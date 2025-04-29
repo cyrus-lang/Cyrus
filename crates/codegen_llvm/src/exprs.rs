@@ -565,14 +565,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                     )
                                     .unwrap();
 
-                                let data_str = self.build_load_string(string_value);
+                                let data_str = self.build_load_string(string_value.clone());
                                 let data_str_size = self.builder.build_extract_value(string_value.struct_value, 1, "extractvalue").unwrap();
 
                                 if let Some(func_ptr) = self.current_func_ref {
                                     // REVIEW Refactor memcpy: move to another function.
 
                                     let module = self.module.borrow();
-                                    let memcpy_name = "llvm.memcpy.p0i8.p0i8.i64";
+                                    let memcpy_name = "llvm.memcpy.p0.p0.i64";
                                     let memcpy_param_types: [BasicMetadataTypeEnum<'ctx>; 4] = [
                                         self.context
                                             .ptr_type(AddressSpace::default())
@@ -583,14 +583,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                             .as_basic_type_enum()
                                             .into(),
                                         self.context.i64_type().as_basic_type_enum().into(),
-                                        self.context.i16_type().as_basic_type_enum().into(),
+                                        self.context.bool_type().as_basic_type_enum().into(),
                                     ];
                                     let memcpy_func = module.get_function(memcpy_name).unwrap_or_else(|| {
                                         let fn_type = self.context.void_type().fn_type(&memcpy_param_types, false);
                                         module.add_function(memcpy_name, fn_type, None)
                                     });
 
-                                    let is_volatile = self.context.i8_type().const_int(0, false);
+                                    let is_volatile = self.context.bool_type().const_int(0, false);
 
                                     self.builder.build_call(memcpy_func, &[
                                         BasicMetadataValueEnum::PointerValue(alloca),
