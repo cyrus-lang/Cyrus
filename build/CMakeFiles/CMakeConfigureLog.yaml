@@ -1,0 +1,472 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineSystem.cmake:205 (message)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      The system is: Linux - 6.12.10-zen1 - x86_64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: /home/taha/.nix-profile/bin/cc 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "a.out"
+      
+      The C compiler identification is Clang, found in:
+        /home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/3.30.5/CompilerIdC/a.out
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCXXCompiler.cmake:126 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: /home/taha/.nix-profile/bin/c++ 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "a.out"
+      
+      The CXX compiler identification is Clang, found in:
+        /home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/3.30.5/CompilerIdCXX/a.out
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:74 (try_compile)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p"
+      binary: "/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p"
+    cmakeVariables:
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/taha/.nix-profile/bin/clang-scan-deps"
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p'
+        
+        Run Build Command(s): /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/bin/cmake -E env VERBOSE=1 /home/taha/.nix-profile/bin/make -f Makefile cmTC_3f877/fast
+        make[1]: Entering directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p'
+        /home/taha/.nix-profile/bin/make  -f CMakeFiles/cmTC_3f877.dir/build.make CMakeFiles/cmTC_3f877.dir/build
+        make[2]: Entering directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p'
+        Building C object CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o
+        /home/taha/.nix-profile/bin/cc   -v -MD -MT CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -MF CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o.d -o CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -c /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeCCompilerABI.c
+        clang version 18.1.8
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin
+        Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Selected GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Candidate multilib: .;@m64
+        Selected multilib: .;@m64
+         (in-process)
+         "/nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin/clang-18" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model pic -pic-level 2 -pic-is-pie -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p -v -fcoverage-compilation-dir=/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p -nostdsysteminc -resource-dir /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root -dependency-file CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o.d -MT CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -sys-header-deps -idirafter /nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include -internal-isystem /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -x c /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeCCompilerABI.c
+        clang -cc1 version 18.1.8 based upon LLVM 18.1.8 default target x86_64-unknown-linux-gnu
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include
+         /nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include
+        End of search list.
+        Linking C executable cmTC_3f877
+        /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/bin/cmake -E cmake_link_script CMakeFiles/cmTC_3f877.dir/link.txt --verbose=1
+        /home/taha/.nix-profile/bin/cc  -v -Wl,-v CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -o cmTC_3f877
+        clang version 18.1.8
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin
+        Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Selected GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Candidate multilib: .;@m64
+        Selected multilib: .;@m64
+         "/nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -pie -o cmTC_3f877 /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o -L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0 -L/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib -L/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib -L/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0 -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64 -L/lib/../lib64 -L/lib -L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib -L/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib -L/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib -L/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib -L/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib -dynamic-linker=/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/ld-linux-x86-64.so.2 -v CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -lgcc --as-needed -lgcc_s --no-as-needed -lc -lgcc --as-needed -lgcc_s --no-as-needed /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o
+        GNU ld (GNU Binutils) 2.43.1
+        make[2]: Leaving directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p'
+        make[1]: Leaving directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:182 (message)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed C implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include]
+          add: [/nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include]
+        end of search list found
+        collapse include dir [/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include] ==> [/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include]
+        collapse include dir [/nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include] ==> [/nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include]
+        implicit include dirs: [/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include;/nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:218 (message)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(\\.[a-z]+)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(\\.[a-z]+)?))("|,| |$)]
+        ignore line: [Change Dir: '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p']
+        ignore line: []
+        ignore line: [Run Build Command(s): /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/bin/cmake -E env VERBOSE=1 /home/taha/.nix-profile/bin/make -f Makefile cmTC_3f877/fast]
+        ignore line: [make[1]: Entering directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p']
+        ignore line: [/home/taha/.nix-profile/bin/make  -f CMakeFiles/cmTC_3f877.dir/build.make CMakeFiles/cmTC_3f877.dir/build]
+        ignore line: [make[2]: Entering directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p']
+        ignore line: [Building C object CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o]
+        ignore line: [/home/taha/.nix-profile/bin/cc   -v -MD -MT CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -MF CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o.d -o CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -c /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeCCompilerABI.c]
+        ignore line: [clang version 18.1.8]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin]
+        ignore line: [Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Selected GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [ (in-process)]
+        ignore line: [ "/nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin/clang-18" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model pic -pic-level 2 -pic-is-pie -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p -v -fcoverage-compilation-dir=/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-QZlr7p -nostdsysteminc -resource-dir /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root -dependency-file CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o.d -MT CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -sys-header-deps -idirafter /nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include -internal-isystem /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -x c /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeCCompilerABI.c]
+        ignore line: [clang -cc1 version 18.1.8 based upon LLVM 18.1.8 default target x86_64-unknown-linux-gnu]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include]
+        ignore line: [ /nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include]
+        ignore line: [End of search list.]
+        ignore line: [Linking C executable cmTC_3f877]
+        ignore line: [/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/bin/cmake -E cmake_link_script CMakeFiles/cmTC_3f877.dir/link.txt --verbose=1]
+        ignore line: [/home/taha/.nix-profile/bin/cc  -v -Wl -v CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -o cmTC_3f877]
+        ignore line: [clang version 18.1.8]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin]
+        ignore line: [Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Selected GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        link line: [ "/nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -pie -o cmTC_3f877 /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o -L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0 -L/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib -L/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib -L/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0 -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64 -L/lib/../lib64 -L/lib -L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib -L/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib -L/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib -L/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib -L/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib -dynamic-linker=/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/ld-linux-x86-64.so.2 -v CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o -lgcc --as-needed -lgcc_s --no-as-needed -lc -lgcc --as-needed -lgcc_s --no-as-needed /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o]
+          arg [/nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-pie] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_3f877] ==> ignore
+          arg [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o] ==> obj [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o]
+          arg [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o] ==> obj [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o]
+          arg [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o] ==> obj [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o]
+          arg [-L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib] ==> dir [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib]
+          arg [-L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0] ==> dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0]
+          arg [-L/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib] ==> dir [/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib]
+          arg [-L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib] ==> dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib]
+          arg [-L/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib] ==> dir [/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib]
+          arg [-L/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib] ==> dir [/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib]
+          arg [-L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0] ==> dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+          arg [-L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64] ==> dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64]
+          arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+          arg [-L/lib] ==> dir [/lib]
+          arg [-L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib] ==> dir [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib]
+          arg [-L/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib] ==> dir [/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib]
+          arg [-L/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib] ==> dir [/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib]
+          arg [-L/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib] ==> dir [/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib]
+          arg [-L/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib] ==> dir [/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib]
+          arg [-dynamic-linker=/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/ld-linux-x86-64.so.2] ==> ignore
+          arg [-v] ==> ignore
+          arg [CMakeFiles/cmTC_3f877.dir/CMakeCCompilerABI.c.o] ==> ignore
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [-lc] ==> lib [c]
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o] ==> obj [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o]
+          arg [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o] ==> obj [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o]
+        linker tool for 'C': /nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld
+        collapse library dir [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib] ==> [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib]
+        collapse library dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        collapse library dir [/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib] ==> [/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib]
+        collapse library dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib]
+        collapse library dir [/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib] ==> [/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib]
+        collapse library dir [/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib] ==> [/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib]
+        collapse library dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        collapse library dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64]
+        collapse library dir [/lib/../lib64] ==> [/lib64]
+        collapse library dir [/lib] ==> [/lib]
+        collapse library dir [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib] ==> [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib]
+        collapse library dir [/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib] ==> [/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib]
+        collapse library dir [/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib] ==> [/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib]
+        collapse library dir [/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib] ==> [/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib]
+        collapse library dir [/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib] ==> [/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib]
+        implicit libs: [gcc;gcc_s;c;gcc;gcc_s]
+        implicit objs: [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o;/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o;/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o]
+        implicit dirs: [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0;/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib;/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib;/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64;/lib64;/lib;/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib;/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib;/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib;/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/Internal/CMakeDetermineLinkerId.cmake:40 (message)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:255 (cmake_determine_linker_id)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the C compiler's linker: "/nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld" "-v"
+      GNU ld (GNU Binutils) 2.43.1
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:74 (try_compile)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q"
+      binary: "/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q"
+    cmakeVariables:
+      CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS: "/home/taha/.nix-profile/bin/clang-scan-deps"
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q'
+        
+        Run Build Command(s): /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/bin/cmake -E env VERBOSE=1 /home/taha/.nix-profile/bin/make -f Makefile cmTC_e89da/fast
+        make[1]: Entering directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q'
+        /home/taha/.nix-profile/bin/make  -f CMakeFiles/cmTC_e89da.dir/build.make CMakeFiles/cmTC_e89da.dir/build
+        make[2]: Entering directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q'
+        Building CXX object CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o
+        /home/taha/.nix-profile/bin/c++   -v -MD -MT CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -MF CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o.d -o CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -c /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeCXXCompilerABI.cpp
+        clang version 18.1.8
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin
+        Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Selected GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Candidate multilib: .;@m64
+        Selected multilib: .;@m64
+         (in-process)
+         "/nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin/clang++" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCXXCompilerABI.cpp -mrelocation-model pic -pic-level 2 -pic-is-pie -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q -v -fcoverage-compilation-dir=/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q -nostdsysteminc -resource-dir /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root -dependency-file CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o.d -MT CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -sys-header-deps -idirafter /nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include -isystem /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0 -isystem /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0/x86_64-unknown-linux-gnu -internal-isystem /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include -fdeprecated-macro -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -fcxx-exceptions -fexceptions -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -x c++ /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeCXXCompilerABI.cpp
+        clang -cc1 version 18.1.8 based upon LLVM 18.1.8 default target x86_64-unknown-linux-gnu
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0
+         /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0/x86_64-unknown-linux-gnu
+         /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include
+         /nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include
+        End of search list.
+        Linking CXX executable cmTC_e89da
+        /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e89da.dir/link.txt --verbose=1
+        /home/taha/.nix-profile/bin/c++  -v -Wl,-v CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_e89da
+        clang version 18.1.8
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin
+        Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Selected GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0
+        Candidate multilib: .;@m64
+        Selected multilib: .;@m64
+         "/nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -pie -o cmTC_e89da /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o -L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0 -L/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib -L/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib -L/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0 -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64 -L/lib/../lib64 -L/lib -L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib -L/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib -L/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib -L/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib -L/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib -dynamic-linker=/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/ld-linux-x86-64.so.2 -v CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o
+        GNU ld (GNU Binutils) 2.43.1
+        make[2]: Leaving directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q'
+        make[1]: Leaving directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:182 (message)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CXX implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0]
+          add: [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0/x86_64-unknown-linux-gnu]
+          add: [/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include]
+          add: [/nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include]
+        end of search list found
+        collapse include dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0]
+        collapse include dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0/x86_64-unknown-linux-gnu] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0/x86_64-unknown-linux-gnu]
+        collapse include dir [/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include] ==> [/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include]
+        collapse include dir [/nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include] ==> [/nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include]
+        implicit include dirs: [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0/x86_64-unknown-linux-gnu;/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include;/nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:218 (message)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(\\.[a-z]+)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(\\.[a-z]+)?))("|,| |$)]
+        ignore line: [Change Dir: '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q']
+        ignore line: []
+        ignore line: [Run Build Command(s): /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/bin/cmake -E env VERBOSE=1 /home/taha/.nix-profile/bin/make -f Makefile cmTC_e89da/fast]
+        ignore line: [make[1]: Entering directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q']
+        ignore line: [/home/taha/.nix-profile/bin/make  -f CMakeFiles/cmTC_e89da.dir/build.make CMakeFiles/cmTC_e89da.dir/build]
+        ignore line: [make[2]: Entering directory '/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q']
+        ignore line: [Building CXX object CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o]
+        ignore line: [/home/taha/.nix-profile/bin/c++   -v -MD -MT CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -MF CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o.d -o CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -c /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [clang version 18.1.8]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin]
+        ignore line: [Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Selected GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [ (in-process)]
+        ignore line: [ "/nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin/clang++" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCXXCompilerABI.cpp -mrelocation-model pic -pic-level 2 -pic-is-pie -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q -v -fcoverage-compilation-dir=/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/CMakeScratch/TryCompile-j3co1q -nostdsysteminc -resource-dir /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root -dependency-file CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o.d -MT CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -sys-header-deps -idirafter /nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include -isystem /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0 -isystem /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0/x86_64-unknown-linux-gnu -internal-isystem /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include -fdeprecated-macro -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -fcxx-exceptions -fexceptions -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -x c++ /nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [clang -cc1 version 18.1.8 based upon LLVM 18.1.8 default target x86_64-unknown-linux-gnu]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0]
+        ignore line: [ /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0/x86_64-unknown-linux-gnu]
+        ignore line: [ /nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include]
+        ignore line: [ /nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include]
+        ignore line: [End of search list.]
+        ignore line: [Linking CXX executable cmTC_e89da]
+        ignore line: [/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e89da.dir/link.txt --verbose=1]
+        ignore line: [/home/taha/.nix-profile/bin/c++  -v -Wl -v CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_e89da]
+        ignore line: [clang version 18.1.8]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /nix/store/ylry4qi7nl32ipkbda4mwnjpb60r250v-clang-18.1.8/bin]
+        ignore line: [Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Found candidate GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Selected GCC installation: /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        link line: [ "/nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -pie -o cmTC_e89da /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o -L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0 -L/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib -L/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib -L/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0 -L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64 -L/lib/../lib64 -L/lib -L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib -L/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib -L/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib -L/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib -L/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib -dynamic-linker=/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/ld-linux-x86-64.so.2 -v CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o /nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o]
+          arg [/nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-pie] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_e89da] ==> ignore
+          arg [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o] ==> obj [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o]
+          arg [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o] ==> obj [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o]
+          arg [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o] ==> obj [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o]
+          arg [-L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib] ==> dir [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib]
+          arg [-L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0] ==> dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0]
+          arg [-L/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib] ==> dir [/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib]
+          arg [-L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib] ==> dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib]
+          arg [-L/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib] ==> dir [/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib]
+          arg [-L/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib] ==> dir [/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib]
+          arg [-L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0] ==> dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+          arg [-L/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64] ==> dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64]
+          arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+          arg [-L/lib] ==> dir [/lib]
+          arg [-L/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib] ==> dir [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib]
+          arg [-L/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib] ==> dir [/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib]
+          arg [-L/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib] ==> dir [/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib]
+          arg [-L/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib] ==> dir [/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib]
+          arg [-L/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib] ==> dir [/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib]
+          arg [-dynamic-linker=/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/ld-linux-x86-64.so.2] ==> ignore
+          arg [-v] ==> ignore
+          arg [CMakeFiles/cmTC_e89da.dir/CMakeCXXCompilerABI.cpp.o] ==> ignore
+          arg [-lstdc++] ==> lib [stdc++]
+          arg [-lm] ==> lib [m]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lc] ==> lib [c]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o] ==> obj [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o]
+          arg [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o] ==> obj [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o]
+        linker tool for 'CXX': /nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld
+        collapse library dir [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib] ==> [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib]
+        collapse library dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        collapse library dir [/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib] ==> [/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib]
+        collapse library dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0//lib] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib]
+        collapse library dir [/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib] ==> [/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib]
+        collapse library dir [/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib] ==> [/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib]
+        collapse library dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0]
+        collapse library dir [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0/../../../../lib64] ==> [/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64]
+        collapse library dir [/lib/../lib64] ==> [/lib64]
+        collapse library dir [/lib] ==> [/lib]
+        collapse library dir [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib] ==> [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib]
+        collapse library dir [/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib] ==> [/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib]
+        collapse library dir [/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib] ==> [/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib]
+        collapse library dir [/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib] ==> [/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib]
+        collapse library dir [/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib] ==> [/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib]
+        implicit libs: [stdc++;m;gcc_s;gcc;c;gcc_s;gcc]
+        implicit objs: [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/Scrt1.o;/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crti.o;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtbeginS.o;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0/crtendS.o;/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib/crtn.o]
+        implicit dirs: [/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0;/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib;/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib;/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64;/lib64;/lib;/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib;/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib;/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib;/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/Internal/CMakeDetermineLinkerId.cmake:40 (message)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeDetermineCompilerABI.cmake:255 (cmake_determine_linker_id)"
+      - "/nix/store/yxf0cmyfrar671zqh0ml8pcw15mxk0mh-cmake-3.30.5/share/cmake-3.30/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the CXX compiler's linker: "/nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld" "-v"
+      GNU ld (GNU Binutils) 2.43.1
+...
