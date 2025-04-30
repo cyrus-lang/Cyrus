@@ -7,7 +7,7 @@ BUILD_DIR = build
 SOURCE_DIR = src
 
 # Executable name 
-EXECUTABLE = cyrus # Or whatever you named it.
+EXECUTABLE = cyrus 
 
 # Compiler
 CXX = clang++
@@ -20,13 +20,11 @@ cmake:
 	@echo "===== Configuring CMake ====="
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && cmake .. 
-	@echo "===== CMake configuration done ====="
 
 # Build target
 build: cmake
 	@echo "===== Building project with make ====="
 	@cd $(BUILD_DIR) && $(MAKE) 
-	@echo "===== Build complete ====="
 
 # Run target
 run: build
@@ -35,9 +33,7 @@ run: build
 
 # Clean target
 clean:
-	@echo "===== Cleaning project ====="
 	@rm -rf $(BUILD_DIR)
-	@echo "===== Clean complete ====="
 
 # Rebuild target
 rebuild: clean build

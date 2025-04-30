@@ -2,7 +2,7 @@
 
 %{
 	#include <stdio.h>
-	#include "cyrus.tab.h"
+	#include "cyrus.tab.hpp"
 	#include <math.h>
 %}
 %%

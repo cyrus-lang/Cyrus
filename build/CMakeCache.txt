@@ -15,13 +15,13 @@
 ########################
 
 //path to the bison executable
-BISON_EXECUTABLE:FILEPATH=/nix/var/nix/profiles/default/bin/bison
+BISON_EXECUTABLE:FILEPATH=/nix/store/lgbc71zw66a1qvsy7fvj40cl5l3cv880-bison-3.8.2/bin/bison
 
 //Path to a program.
-CMAKE_ADDR2LINE:FILEPATH=/home/taha/.nix-profile/bin/addr2line
+CMAKE_ADDR2LINE:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/addr2line
 
 //Path to a program.
-CMAKE_AR:FILEPATH=/home/taha/.nix-profile/bin/ar
+CMAKE_AR:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/ar
 
 //Choose the type of build, options are: None Debug Release RelWithDebInfo
 // MinSizeRel ...
@@ -31,16 +31,16 @@ CMAKE_BUILD_TYPE:STRING=
 CMAKE_COLOR_MAKEFILE:BOOL=ON
 
 //CXX compiler
-CMAKE_CXX_COMPILER:FILEPATH=/home/taha/.nix-profile/bin/c++
+CMAKE_CXX_COMPILER:FILEPATH=/nix/store/32jfd5s845ys74nkzlgsh7cnq83y4lri-clang-wrapper-19.1.7/bin/clang++
 
 //LLVM archiver
-CMAKE_CXX_COMPILER_AR:FILEPATH=CMAKE_CXX_COMPILER_AR-NOTFOUND
+CMAKE_CXX_COMPILER_AR:FILEPATH=/nix/store/xias4520l552hx9c5kym0acq58h4j7bm-llvm-18.1.8/bin/llvm-ar
 
 //`clang-scan-deps` dependency scanner
-CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS:FILEPATH=/home/taha/.nix-profile/bin/clang-scan-deps
+CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS:FILEPATH=/nix/store/n09xp13xgxb257d58123gyni114h7yz6-clang-tools-19.1.7/bin/clang-scan-deps
 
 //Generate index for LLVM archive
-CMAKE_CXX_COMPILER_RANLIB:FILEPATH=CMAKE_CXX_COMPILER_RANLIB-NOTFOUND
+CMAKE_CXX_COMPILER_RANLIB:FILEPATH=/nix/store/xias4520l552hx9c5kym0acq58h4j7bm-llvm-18.1.8/bin/llvm-ranlib
 
 //Flags used by the CXX compiler during all build types.
 CMAKE_CXX_FLAGS:STRING=
@@ -58,16 +58,15 @@ CMAKE_CXX_FLAGS_RELEASE:STRING=-O3 -DNDEBUG
 CMAKE_CXX_FLAGS_RELWITHDEBINFO:STRING=-O2 -g -DNDEBUG
 
 //C compiler
-CMAKE_C_COMPILER:FILEPATH=/home/taha/.nix-profile/bin/cc
+CMAKE_C_COMPILER:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/gcc
 
-//LLVM archiver
-CMAKE_C_COMPILER_AR:FILEPATH=CMAKE_C_COMPILER_AR-NOTFOUND
+//A wrapper around 'ar' adding the appropriate '--plugin' option
+// for the GCC compiler
+CMAKE_C_COMPILER_AR:FILEPATH=/nix/store/qs54xir5n4vhhbi22aydbkvyyq4v8p0l-gcc-14.2.1.20250322/bin/gcc-ar
 
-//`clang-scan-deps` dependency scanner
-CMAKE_C_COMPILER_CLANG_SCAN_DEPS:FILEPATH=/home/taha/.nix-profile/bin/clang-scan-deps
-
-//Generate index for LLVM archive
-CMAKE_C_COMPILER_RANLIB:FILEPATH=CMAKE_C_COMPILER_RANLIB-NOTFOUND
+//A wrapper around 'ranlib' adding the appropriate '--plugin' option
+// for the GCC compiler
+CMAKE_C_COMPILER_RANLIB:FILEPATH=/nix/store/qs54xir5n4vhhbi22aydbkvyyq4v8p0l-gcc-14.2.1.20250322/bin/gcc-ranlib
 
 //Flags used by the C compiler during all build types.
 CMAKE_C_FLAGS:STRING=
@@ -85,7 +84,7 @@ CMAKE_C_FLAGS_RELEASE:STRING=-O3 -DNDEBUG
 CMAKE_C_FLAGS_RELWITHDEBINFO:STRING=-O2 -g -DNDEBUG
 
 //Path to a program.
-CMAKE_DLLTOOL:FILEPATH=CMAKE_DLLTOOL-NOTFOUND
+CMAKE_DLLTOOL:FILEPATH=/nix/store/xias4520l552hx9c5kym0acq58h4j7bm-llvm-18.1.8/bin/llvm-dlltool
 
 //Flags used by the linker during all build types.
 CMAKE_EXE_LINKER_FLAGS:STRING=
@@ -112,10 +111,10 @@ CMAKE_FIND_PACKAGE_REDIRECTS_DIR:STATIC=/home/taha/Code/Cyrus/Cyrus-Lang/build/C
 CMAKE_INSTALL_PREFIX:PATH=/var/empty/local
 
 //Path to a program.
-CMAKE_LINKER:FILEPATH=/home/taha/.nix-profile/bin/ld
+CMAKE_LINKER:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/ld
 
 //Path to a program.
-CMAKE_MAKE_PROGRAM:FILEPATH=/home/taha/.nix-profile/bin/make
+CMAKE_MAKE_PROGRAM:FILEPATH=/nix/store/70d32kg7b61450yjdgkbfi6jdn3am65v-gnumake-4.4.1/bin/make
 
 //Flags used by the linker during the creation of modules during
 // all build types.
@@ -138,13 +137,13 @@ CMAKE_MODULE_LINKER_FLAGS_RELEASE:STRING=
 CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO:STRING=
 
 //Path to a program.
-CMAKE_NM:FILEPATH=/home/taha/.nix-profile/bin/nm
+CMAKE_NM:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/nm
 
 //Path to a program.
-CMAKE_OBJCOPY:FILEPATH=/home/taha/.nix-profile/bin/objcopy
+CMAKE_OBJCOPY:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/objcopy
 
 //Path to a program.
-CMAKE_OBJDUMP:FILEPATH=/home/taha/.nix-profile/bin/objdump
+CMAKE_OBJDUMP:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/objdump
 
 //Value Computed by CMake
 CMAKE_PROJECT_DESCRIPTION:STATIC=
@@ -156,10 +155,10 @@ CMAKE_PROJECT_HOMEPAGE_URL:STATIC=
 CMAKE_PROJECT_NAME:STATIC=cyrus_language
 
 //Path to a program.
-CMAKE_RANLIB:FILEPATH=/home/taha/.nix-profile/bin/ranlib
+CMAKE_RANLIB:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/ranlib
 
 //Path to a program.
-CMAKE_READELF:FILEPATH=/home/taha/.nix-profile/bin/readelf
+CMAKE_READELF:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/readelf
 
 //Flags used by the linker during the creation of shared libraries
 // during all build types.
@@ -209,7 +208,7 @@ CMAKE_STATIC_LINKER_FLAGS_RELEASE:STRING=
 CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO:STRING=
 
 //Path to a program.
-CMAKE_STRIP:FILEPATH=/home/taha/.nix-profile/bin/strip
+CMAKE_STRIP:FILEPATH=/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/strip
 
 //Path to a program.
 CMAKE_TAPI:FILEPATH=CMAKE_TAPI-NOTFOUND
@@ -230,7 +229,7 @@ FFI_LIBRARIES:FILEPATH=FFI_LIBRARIES-NOTFOUND
 FFI_STATIC_LIBRARIES:FILEPATH=FFI_STATIC_LIBRARIES-NOTFOUND
 
 //path to the flex executable
-FLEX_EXECUTABLE:FILEPATH=/nix/var/nix/profiles/default/bin/flex
+FLEX_EXECUTABLE:FILEPATH=/nix/store/xbil0wbkn71zf55s0bfp9xi5pp7xg0wv-flex-2.6.4/bin/flex
 
 //Path to the flex headers
 FLEX_INCLUDE_DIR:PATH=FLEX_INCLUDE_DIR-NOTFOUND
@@ -245,10 +244,10 @@ LIBXML2_INCLUDE_DIR:PATH=LIBXML2_INCLUDE_DIR-NOTFOUND
 LIBXML2_LIBRARY:FILEPATH=LIBXML2_LIBRARY-NOTFOUND
 
 //Path to a program.
-LIBXML2_XMLLINT_EXECUTABLE:FILEPATH=/home/taha/.nix-profile/bin/xmllint
+LIBXML2_XMLLINT_EXECUTABLE:FILEPATH=/nix/store/hrjlaxgh368ns8047iy3q90fcy8p3nlb-libxml2-2.13.6-bin/bin/xmllint
 
 //The directory containing a CMake configuration file for LLVM.
-LLVM_DIR:PATH=/home/taha/.nix-profile/lib/cmake/llvm
+LLVM_DIR:PATH=/nix/store/19gmdqq62x11wv7ipni6grm5f8clcq7c-llvm-18.1.8-dev/lib/cmake/llvm
 
 //Arguments to supply to pkg-config
 PKG_CONFIG_ARGN:STRING=
@@ -326,8 +325,6 @@ CMAKE_CXX_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 CMAKE_C_COMPILER-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_C_COMPILER_AR
 CMAKE_C_COMPILER_AR-ADVANCED:INTERNAL=1
-//ADVANCED property for variable: CMAKE_C_COMPILER_CLANG_SCAN_DEPS
-CMAKE_C_COMPILER_CLANG_SCAN_DEPS-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_C_COMPILER_RANLIB
 CMAKE_C_COMPILER_RANLIB-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_C_FLAGS
@@ -430,7 +427,7 @@ CMAKE_STRIP-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_TAPI
 CMAKE_TAPI-ADVANCED:INTERNAL=1
 //uname command
-CMAKE_UNAME:INTERNAL=/run/current-system/sw/bin/uname
+CMAKE_UNAME:INTERNAL=/nix/store/h5rn37dd6vfvr9xb0jq85sq8hf6xchry-coreutils-9.6/bin/uname
 //ADVANCED property for variable: CMAKE_VERBOSE_MAKEFILE
 CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: FFI_INCLUDE_DIRS
@@ -440,9 +437,9 @@ FFI_LIBRARIES-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: FFI_STATIC_LIBRARIES
 FFI_STATIC_LIBRARIES-ADVANCED:INTERNAL=1
 //Details about finding BISON
-FIND_PACKAGE_MESSAGE_DETAILS_BISON:INTERNAL=[/nix/var/nix/profiles/default/bin/bison][v3.8.2()]
+FIND_PACKAGE_MESSAGE_DETAILS_BISON:INTERNAL=[/nix/store/lgbc71zw66a1qvsy7fvj40cl5l3cv880-bison-3.8.2/bin/bison][v3.8.2()]
 //Details about finding FLEX
-FIND_PACKAGE_MESSAGE_DETAILS_FLEX:INTERNAL=[/nix/var/nix/profiles/default/bin/flex][v2.6.4()]
+FIND_PACKAGE_MESSAGE_DETAILS_FLEX:INTERNAL=[/nix/store/xbil0wbkn71zf55s0bfp9xi5pp7xg0wv-flex-2.6.4/bin/flex][v2.6.4()]
 //ADVANCED property for variable: FLEX_EXECUTABLE
 FLEX_EXECUTABLE-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: FLEX_INCLUDE_DIR

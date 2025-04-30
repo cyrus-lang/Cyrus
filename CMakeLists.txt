@@ -37,19 +37,21 @@ include_directories(
     ${SOURCE_DIR}  
 )
 
-# Define Flex and Bison macros
 macro(FLEX_LEXER lexer_file output_file)
+    # Ensure the output directory exists before running Flex.
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/src/lexer)
     add_custom_command(
         OUTPUT ${output_file}
         COMMAND ${FLEX_EXECUTABLE} -o${output_file} ${lexer_file}
         DEPENDS ${lexer_file}
         COMMENT "Generating lexer from ${lexer_file}"
     )
-    #  set_source_files should be modified.
     set(LEXER_OUTPUT ${output_file})
 endmacro()
 
 macro(BISON_PARSER parser_file output_cpp_file output_hpp_file)
+    # Ensure the output directory exists before running Bison.
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/src/parser)
     add_custom_command(
         OUTPUT ${output_cpp_file} ${output_hpp_file}
         COMMAND ${BISON_EXECUTABLE} -d -o${output_cpp_file} ${parser_file}
@@ -58,22 +60,26 @@ macro(BISON_PARSER parser_file output_cpp_file output_hpp_file)
     )
     set(PARSER_OUTPUT_CPP ${output_cpp_file})
     set(PARSER_OUTPUT_HPP ${output_hpp_file})
+    set(PARSER_FILE ${parser_file}) # Store the parser file
 endmacro()
 
 # Generate Lexer Source
 FLEX_LEXER(
-    ${SOURCE_DIR}/lexer/cyrus.lex
-    ${CMAKE_CURRENT_BINARY_DIR}/src/lexer/cyrus.yy.cpp 
+    ${SOURCE_DIR}/lexer/cyrus.l
+    ${CMAKE_CURRENT_BINARY_DIR}/src/lexer/cyrus.yy.cpp
 )
-set(set_source_files ${set_source_files} ${CMAKE_CURRENT_BINARY_DIR}/src/lexer/my_language.yy.cpp)
+# Add the generated lexer source file to the source list
+set(set_source_files ${set_source_files} ${LEXER_OUTPUT})
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/src/lexer)
 
 # Generate Parser Source
 BISON_PARSER(
-    ${SOURCE_DIR}/parser/cyrus.yy
-    ${CMAKE_CURRENT_BINARY_DIR}/src/parser/cyrus.tab.cpp 
+    ${SOURCE_DIR}/parser/cyrus.y
+    ${CMAKE_CURRENT_BINARY_DIR}/src/parser/cyrus.tab.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/src/parser/cyrus.tab.hpp
 )
-set(set_source_files ${set_source_files} ${CMAKE_CURRENT_BINARY_DIR}/src/parser/cyrus.tab.cpp)
+set(set_source_files ${set_source_files} ${PARSER_OUTPUT_CPP} ${PARSER_OUTPUT_HPP})
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/src/parser)
 
 # Collect all source files.
 file(GLOB_RECURSE source_files
@@ -82,11 +88,12 @@ file(GLOB_RECURSE source_files
     ${SOURCE_DIR}/codegen/*.cpp
     ${SOURCE_DIR}/runtime/*.cpp
     ${SOURCE_DIR}/util/*.cpp
+    ${SOURCE_DIR}/cli/*.cpp
 )
 set(source_files ${source_files} ${set_source_files})
 
 # Create a Library
-add_library(cyrus_language_lib ${source_files})
+add_library(cyrus_lib ${source_files})
 
 # Link LLVM Libraries
 execute_process(
@@ -97,13 +104,8 @@ execute_process(
 
 string(REPLACE " " ";" LLVM_LIBRARIES_LIST "${LLVM_LIBRARIES_STRING}")
 
-target_link_libraries(cyrus_language_lib ${LLVM_LIBRARIES_LIST})
-
-get_target_property(LLVM_DEFINITIONS LLVM::LLVM_TARGET_DEFINITIONS INTERFACE_COMPILE_OPTIONS)
-if(LLVM_DEFINITIONS)
-  target_compile_definitions(cyrus_language_lib PUBLIC ${LLVM_DEFINITIONS})
-endif()
+target_link_libraries(cyrus_lib ${LLVM_LIBRARIES_LIST})
 
 # Create an executable
 add_executable(cyrus ${SOURCE_DIR}/cli/main.cpp) 
-target_link_libraries(cyrus cyrus_language_lib)
+target_link_libraries(cyrus cyrus_lib)

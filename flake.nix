@@ -27,8 +27,9 @@
           libgcc
           glibc
           gcc_multi
-          clang-tools
           clang
+          clang-tools
+          clangStdenv
           libffi
           libffi.dev
           isl
@@ -63,7 +64,6 @@
         buildInputs = with pkgs; [
           gcc
           libgcc
-          glibc
           gcc_multi
           clang-tools
           clang
@@ -78,7 +78,9 @@
         ];
 
         shellHook = ''
-          export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:${pkgs.flex}/lib:${pkgs.bison}/lib:$LIBRARY_PATH"
+          echo "${pkgs.clangStdenv}"
+          
+          export LIBRARY_PATH="${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:${pkgs.flex}/lib:${pkgs.bison}/lib:$LIBRARY_PATH"
           export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
         '';
       };

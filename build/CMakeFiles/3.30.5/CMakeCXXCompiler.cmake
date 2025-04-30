@@ -1,7 +1,7 @@
-set(CMAKE_CXX_COMPILER "/home/taha/.nix-profile/bin/c++")
+set(CMAKE_CXX_COMPILER "/nix/store/32jfd5s845ys74nkzlgsh7cnq83y4lri-clang-wrapper-19.1.7/bin/clang++")
 set(CMAKE_CXX_COMPILER_ARG1 "")
 set(CMAKE_CXX_COMPILER_ID "Clang")
-set(CMAKE_CXX_COMPILER_VERSION "18.1.8")
+set(CMAKE_CXX_COMPILER_VERSION "19.1.7")
 set(CMAKE_CXX_COMPILER_VERSION_INTERNAL "")
 set(CMAKE_CXX_COMPILER_WRAPPER "")
 set(CMAKE_CXX_STANDARD_COMPUTED_DEFAULT "17")
@@ -24,16 +24,16 @@ set(CMAKE_CXX_SIMULATE_VERSION "")
 
 
 
-set(CMAKE_AR "/home/taha/.nix-profile/bin/ar")
-set(CMAKE_CXX_COMPILER_AR "CMAKE_CXX_COMPILER_AR-NOTFOUND")
-set(CMAKE_RANLIB "/home/taha/.nix-profile/bin/ranlib")
-set(CMAKE_CXX_COMPILER_RANLIB "CMAKE_CXX_COMPILER_RANLIB-NOTFOUND")
-set(CMAKE_LINKER "/home/taha/.nix-profile/bin/ld")
+set(CMAKE_AR "/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/ar")
+set(CMAKE_CXX_COMPILER_AR "/nix/store/xias4520l552hx9c5kym0acq58h4j7bm-llvm-18.1.8/bin/llvm-ar")
+set(CMAKE_RANLIB "/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/ranlib")
+set(CMAKE_CXX_COMPILER_RANLIB "/nix/store/xias4520l552hx9c5kym0acq58h4j7bm-llvm-18.1.8/bin/llvm-ranlib")
+set(CMAKE_LINKER "/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/ld")
 set(CMAKE_LINKER_LINK "")
 set(CMAKE_LINKER_LLD "")
-set(CMAKE_CXX_COMPILER_LINKER "/nix/store/wd1dlav3z5vwwv6yqj69xkzhldk5hpvb-binutils-wrapper-2.43.1/bin/ld")
+set(CMAKE_CXX_COMPILER_LINKER "/nix/store/n6a48h70jhwqc4x09kqbbfqsgjhw3ljc-binutils-wrapper-2.44/bin/ld")
 set(CMAKE_CXX_COMPILER_LINKER_ID "GNU")
-set(CMAKE_CXX_COMPILER_LINKER_VERSION 2.43.1)
+set(CMAKE_CXX_COMPILER_LINKER_VERSION 2.44)
 set(CMAKE_CXX_COMPILER_LINKER_FRONTEND_VARIANT GNU)
 set(CMAKE_MT "")
 set(CMAKE_TAPI "CMAKE_TAPI-NOTFOUND")
@@ -87,11 +87,11 @@ endif()
 
 
 
-set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES "/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/include/c++/13.3.0/x86_64-unknown-linux-gnu;/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root/include;/nix/store/lcxvgkg659vbvdq86mhxa599wn48f35c-glibc-2.40-36-dev/include")
+set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES "/nix/store/fzvgdibcb218xby450sinqfdkbk2gdp5-libffi-3.4.7-dev/include;/nix/store/2fizwjisdrncv1d016qzzcmpvwsxyvql-isl-0.20/include;/nix/store/19gmdqq62x11wv7ipni6grm5f8clcq7c-llvm-18.1.8-dev/include;/nix/store/sd53azq9cmycvrz1x7c5wnmbb8isz8jg-ncurses-6.5-dev/include;/nix/store/p7mdvqshvv4lihh2lhchhjcjrij6mir0-zlib-1.3.1-dev/include;/nix/store/s4729mcil5rymvbrgfyv5y3ywmyxb7hx-libxml2-2.13.6-dev/include;/nix/store/xbil0wbkn71zf55s0bfp9xi5pp7xg0wv-flex-2.6.4/include;/nix/store/ipic076xnahpi2s83bdmnfp43b334c9d-compiler-rt-libc-19.1.7-dev/include;/nix/store/qs54xir5n4vhhbi22aydbkvyyq4v8p0l-gcc-14.2.1.20250322/include/c++/14.2.1.20250322;/nix/store/qs54xir5n4vhhbi22aydbkvyyq4v8p0l-gcc-14.2.1.20250322/include/c++/14.2.1.20250322/x86_64-unknown-linux-gnu;/nix/store/32jfd5s845ys74nkzlgsh7cnq83y4lri-clang-wrapper-19.1.7/resource-root/include;/nix/store/pz6jgrfqyl2il2785a75vmwdp9vypv0j-glibc-2.40-66-dev/include")
 set(CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "stdc++;m;gcc_s;gcc;c;gcc_s;gcc")
-set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib/gcc/x86_64-unknown-linux-gnu/13.3.0;/nix/store/4gk773fqcsv4fh2rfkhs9bgfih86fdq8-gcc-13.3.0-lib/lib;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib;/nix/store/bmjqxvy53752b3xfvbab6s87xq06hxbs-gcc-13.3.0-libgcc/lib;/nix/store/7im9970p5ccjv45jkymi4qzjd383xaym-clang-18.1.8-lib/lib;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64/gcc/x86_64-unknown-linux-gnu/13.3.0;/nix/store/62qjb50708fdhb4f2y7zxyqr1afir4fk-gcc-13.3.0/lib64;/lib64;/lib;/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib;/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib;/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib;/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib")
+set(CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "/nix/store/fzng86iv5f6gws4cdv97s7va7kxnd43q-gcc-14.2.1.20250322-libgcc/lib;/nix/store/09b5m303v4d52wjry30xsabj65vnhkni-libffi-3.4.7/lib;/nix/store/2fizwjisdrncv1d016qzzcmpvwsxyvql-isl-0.20/lib;/nix/store/rxp13pg5iidpmvlvy963n8nkkbc246iz-llvm-18.1.8-lib/lib;/nix/store/mpm9k64xr5vyc2kq3jyrinjwxsgq9g6z-ncurses-6.5/lib;/nix/store/jk27jlxfsljcmz4jgxkxkmrc1hjgmq1p-zlib-1.3.1/lib;/nix/store/cyfnv9cf24p0zn3hasvjamf14f75inv4-libxml2-2.13.6/lib;/nix/store/xbil0wbkn71zf55s0bfp9xi5pp7xg0wv-flex-2.6.4/lib;/nix/store/lgbc71zw66a1qvsy7fvj40cl5l3cv880-bison-3.8.2/lib;/nix/store/vbrdc5wgzn0w1zdp10xd2favkjn5fk7y-glibc-2.40-66/lib;/nix/store/qs54xir5n4vhhbi22aydbkvyyq4v8p0l-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1.20250322;/nix/store/7n3q3rgy5382di7ccrh3r6gk2xp51dh7-gcc-14.2.1.20250322-lib/lib;/nix/store/qs54xir5n4vhhbi22aydbkvyyq4v8p0l-gcc-14.2.1.20250322/lib;/nix/store/j1jg0mh9frrc1gwkh6ii1n2fs4jfn2hv-clang-19.1.7-lib/lib;/nix/store/qs54xir5n4vhhbi22aydbkvyyq4v8p0l-gcc-14.2.1.20250322/lib/gcc/x86_64-unknown-linux-gnu/14.2.1;/lib64;/lib;/nix/store/490d01snhw0whpsadmgcywy5lqf2il41-gcc-wrapper-14.2.1.20250322/lib;/nix/store/hrjlaxgh368ns8047iy3q90fcy8p3nlb-libxml2-2.13.6-bin/lib;/nix/store/nqb2ns2d1lahnd5ncwmn6k84qfd7vx2k-glibc-2.40-36/lib;/nix/store/yacrr6f8dmrj1v84vgk9irxvpdwhxxm8-gcc-wrapper-13.3.0/lib;/nix/store/ncgghw604sy4wygr6wk0gwfb2znvvkzh-llvm-18.1.8-lib/lib;/nix/store/cs6vqpprwbv2znld0qan8w20r1cl965i-libxml2-2.13.5-bin/lib;/nix/store/6pak77li0iw9x0b3yhmbjvp846w3p6bx-libffi-3.4.6/lib")
 set(CMAKE_CXX_IMPLICIT_LINK_FRAMEWORK_DIRECTORIES "")
-set(CMAKE_CXX_COMPILER_CLANG_RESOURCE_DIR "/nix/store/lzf0lgmmvjsgp2dik3vwslg7605k6bj4-clang-wrapper-18.1.8/resource-root")
+set(CMAKE_CXX_COMPILER_CLANG_RESOURCE_DIR "/nix/store/32jfd5s845ys74nkzlgsh7cnq83y4lri-clang-wrapper-19.1.7/resource-root")
 
 set(CMAKE_CXX_COMPILER_IMPORT_STD "")
 ### Imported target for C++23 standard library
