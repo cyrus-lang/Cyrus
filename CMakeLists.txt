@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.30)
 
 project(cyrus_language)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic") 
 
@@ -90,6 +90,8 @@ file(GLOB_RECURSE source_files
     ${SOURCE_DIR}/runtime/*.cpp
     ${SOURCE_DIR}/util/*.cpp
     ${SOURCE_DIR}/cli/*.cpp
+    ${SOURCE_DIR}/lexer/*.cpp
+    ${SOURCE_DIR}/parser/*.cpp
 )
 set(source_files ${source_files} ${set_source_files})
 

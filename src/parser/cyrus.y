@@ -1,5 +1,6 @@
 %{
 	#include<stdio.h>
+	char* yyerrormsg;
 	int yylex(void);
 	int yyerror(const char *s);
 	int success = 1;
@@ -277,8 +278,7 @@ consts						: int_const
 
 int yyerror(const char *msg)
 {
-	extern int yylineno;
-	printf("Parsing Failed\nLine Number: %d %s\n",yylineno,msg);
+	yyerrormsg = (char *) msg;
 	success = 0;
 	return 0;
 }

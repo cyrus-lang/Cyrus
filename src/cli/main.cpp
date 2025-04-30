@@ -8,37 +8,61 @@
 #include "lexer/lexer.hpp"
 #include "parser/cyrus.tab.hpp"
 #include "cli/cli.hpp"
+#include "util/util.hpp"
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     std::vector<std::string> args(argv + 1, argv + argc);
     std::map<std::string, std::vector<std::string>> parsedArgs = parseArguments(args);
 
-    if (parsedArgs.count("command") > 0) {
-        const std::string& command = parsedArgs["command"][0];
+    if (parsedArgs.count("command") > 0)
+    {
+        const std::string &command = parsedArgs["command"][0];
 
-        if (command == "run") {
+        if (command == "run")
+        {
             runCommand(args);
-        } else if (command == "compile") {
+        }
+        else if (command == "compile")
+        {
             compileCommand(args);
-        } else if (command == "compile-dylib") {
+        }
+        else if (command == "compile-dylib")
+        {
             compileDylibCommand(args);
-        } else if (command == "compile-obj") {
+        }
+        else if (command == "compile-obj")
+        {
             compileObjCommand(args);
-        } else if (command == "compile-asm") {
+        }
+        else if (command == "compile-asm")
+        {
             compileAsmCommand(args);
-        } else if (command == "parse-only") {
+        }
+        else if (command == "parse-only")
+        {
             parseOnlyCommand(args);
-        } else if (command == "lex-only") {
+        }
+        else if (command == "lex-only")
+        {
             lexOnlyCommand(args);
-        } else if (command == "help") {
+        }
+        else if (command == "help")
+        {
             helpCommand();
-        } else if (command == "version") {
+        }
+        else if (command == "version")
+        {
             versionCommand();
-        } else {
+        }
+        else
+        {
             std::cerr << "Error: Unknown command '" << command << "'." << std::endl;
             return 1;
         }
-    } else {
+    }
+    else
+    {
         helpCommand();
         return 1;
     }
@@ -46,60 +70,83 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-void runCommand(const std::vector<std::string>& args) {
-    
+void runCommand(const std::vector<std::string> &args)
+{
 }
 
-void compileCommand(const std::vector<std::string>& args) {
-    
+void compileCommand(const std::vector<std::string> &args)
+{
 }
 
-void compileDylibCommand(const std::vector<std::string>& args) {
-   
+void compileDylibCommand(const std::vector<std::string> &args)
+{
 }
 
-void compileObjCommand(const std::vector<std::string>& args) {
-   
+void compileObjCommand(const std::vector<std::string> &args)
+{
 }
 
-void compileAsmCommand(const std::vector<std::string>& args) {
-   
+void compileAsmCommand(const std::vector<std::string> &args)
+{
 }
 
-void parseOnlyCommand(const std::vector<std::string>& args) {
-    
-}
-
-void lexOnlyCommand(const std::vector<std::string>& args) {
-    if (args.size() != 2) {
+void parseOnlyCommand(const std::vector<std::string> &args)
+{
+    if (args.size() != 2)
+    {
         std::cerr << "Error: Incorrect number of arguments." << std::endl;
-        return;   
+        return;
     }
 
     std::string inputFile = args[1];
-
-    size_t dotPos = inputFile.rfind('.');
-    if (dotPos == std::string::npos || inputFile.substr(dotPos) != ".cyr") {
-        std::cerr << "Error: Input file '" << inputFile << "' does not have the required '.cyr' extension." << std::endl;
-        return;
-    }
+    util::checkInputFileExtension(inputFile);
 
     yyin = fopen(inputFile.c_str(), "r");
-    if (!yyin) {
+    if (!yyin)
+    {
         std::cerr << "Error: Could not open file '" << inputFile << "'." << std::endl;
-        return;
+        std::exit(1);
+    }
+
+    if (yyparse() == 0)
+    {
+        std::cout << "parsed." << std::endl;
+    }
+    else
+    {
+        util::displayErrorPanel(inputFile, util::readFileContent(inputFile), yylineno, yyerrormsg);
+        std::exit(1);
+    }
+
+    // fclose(yyin);
+}
+
+void lexOnlyCommand(const std::vector<std::string> &args)
+{
+    std::string inputFile = args[1];
+    util::checkInputFileExtension(inputFile);
+
+    yyin = fopen(inputFile.c_str(), "r");
+    if (!yyin)
+    {
+        std::cerr << "Error: Could not open file '" << inputFile << "'." << std::endl;
+        std::exit(1);
     }
 
     int token_kind;
-    while((token_kind = yylex()))
-    {   
-        yytokentype token = static_cast<yytokentype>(token_kind);
+    while ((token_kind = yylex()))
+    {
+        yytokentype tokenType = static_cast<yytokentype>(token_kind);
+        Token token(yytext, tokenType);
 
-        std::cout << "token: " << token << std::endl;
+        std::cout << "Token: " << token.visit() << std::endl;
     }
+
+    fclose(yyin);
 }
 
-void helpCommand() {
+void helpCommand()
+{
     std::cout << "Usage: program [command] [options]" << std::endl;
     std::cout << "Commands:" << std::endl;
     std::cout << "  run             Execute a program." << std::endl;
@@ -113,6 +160,7 @@ void helpCommand() {
     std::cout << "  version         Display the program version." << std::endl;
 }
 
-void versionCommand() {
+void versionCommand()
+{
     std::cout << "Cyrus v1.0.0" << std::endl;
 }
