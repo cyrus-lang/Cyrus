@@ -32,13 +32,15 @@ namespace util
             std::exit(1);
         }
 
-        std::string filecontent;
+        std::string fileContent;
         char buffer[1024];
         size_t bytes_read;
 
         while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0)
         {
-            filecontent.append(buffer, bytes_read);
+            fileContent.append(buffer, bytes_read);
         }
+
+        return fileContent;
     }
 } // namespace util

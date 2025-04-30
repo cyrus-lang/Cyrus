@@ -7,15 +7,14 @@
 
 namespace util
 {
-
     bool hasFileExtension(const std::string &filename, const std::string &expectedExtension);
     void checkInputFileExtension(const std::string &filename);
-    void displayErrorPanel(const std::string &fileName, const std::string &fileContent, const int errorLineNumber, const std::string &errorMsg);
     std::vector<std::string> split(const std::string &str, char delimiter);
     void printColoredText(const std::string &text,
                           const std::string &foregroundColor,
                           const std::string &backgroundColor);
     std::string readFileContent(const std::string &inputFile);
+    void displayErrorPanel(const std::string &fileName, const std::string &fileContent, const int errorLineNumber, const std::string &errorMsg);
 } // namespace util
 
 #endif // UTIL_HPP

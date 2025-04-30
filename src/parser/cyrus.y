@@ -3,7 +3,6 @@
 	char* yyerrormsg;
 	int yylex(void);
 	int yyerror(const char *s);
-	int success = 1;
 %}
 
 %token int_const char_const float_const id string enumeration_const storage_const type_const qual_const struct_const enum_const DEFINE
@@ -279,6 +278,5 @@ consts						: int_const
 int yyerror(const char *msg)
 {
 	yyerrormsg = (char *) msg;
-	success = 0;
-	return 0;
+	return 1;
 }

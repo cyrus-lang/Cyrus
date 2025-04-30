@@ -21,14 +21,15 @@ namespace util
 
         for (auto &&line : lines)
         {
-            if (lineNumber >= errorLineNumber - errorPanelScope && lineNumber <= errorLineNumber + errorPanelScope) {
-                if (lineNumber == errorLineNumber)
+            if (lineNumber >= errorLineNumber - errorPanelScope && lineNumber <= errorLineNumber + errorPanelScope)
+            {
+                if (lineNumber - errorPanelScope == errorLineNumber)
                 {
-                    util::printColoredText(std::format("{}| {}", lineNumber, line), "white", "red");
+                    util::printColoredText(std::format("{}| {}", lineNumber - errorPanelScope, line), "white", "red");
                 }
                 else
                 {
-                    std::cerr << lineNumber << "| " << line << std::endl;
+                    std::cerr << lineNumber - errorPanelScope << "| " << line << std::endl;
                 }
 
                 lineNumber++;
@@ -37,5 +38,7 @@ namespace util
 
         std::cout << "\n"
                   << "(Error) " << fileName << ":" << errorLineNumber << " :: " << errorMsg << std::endl;
+
+        std::exit(1);
     }
 }

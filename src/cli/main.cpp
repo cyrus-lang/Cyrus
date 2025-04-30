@@ -114,11 +114,12 @@ void parseOnlyCommand(const std::vector<std::string> &args)
     }
     else
     {
-        util::displayErrorPanel(inputFile, util::readFileContent(inputFile), yylineno, yyerrormsg);
+        std::string errorMsg = yyerrormsg;
+        util::displayErrorPanel(inputFile, util::readFileContent(inputFile), yylineno, errorMsg);
         std::exit(1);
     }
 
-    // fclose(yyin);
+    fclose(yyin);
 }
 
 void lexOnlyCommand(const std::vector<std::string> &args)
