@@ -1,1 +1,0 @@
-extern fn printf(fmt: string, ...string): void;
