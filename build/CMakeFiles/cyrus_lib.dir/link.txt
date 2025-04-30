@@ -1,2 +1,0 @@
-/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/ar qc libcyrus_lib.a CMakeFiles/cyrus_lib.dir/src/ast/ast.cpp.o CMakeFiles/cyrus_lib.dir/src/cli/main.cpp.o CMakeFiles/cyrus_lib.dir/src/lexer/cyrus.yy.cpp.o CMakeFiles/cyrus_lib.dir/src/parser/cyrus.tab.cpp.o
-/nix/store/f0m6caffiykyvsjim9376a3hx2yj2ghj-gcc-wrapper-14.2.1.20250322/bin/ranlib libcyrus_lib.a

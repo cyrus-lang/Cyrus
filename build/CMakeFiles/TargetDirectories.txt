@@ -1,8 +1,0 @@
-/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/intrinsics_gen.dir
-/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/omp_gen.dir
-/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/acc_gen.dir
-/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/RISCVTargetParserTableGen.dir
-/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/cyrus_lib.dir
-/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/cyrus.dir
-/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/edit_cache.dir
-/home/taha/Code/Cyrus/Cyrus-Lang/build/CMakeFiles/rebuild_cache.dir
