@@ -25,7 +25,6 @@
         nativeBuildInputs = with pkgs; [
           gcc
           libgcc
-          glibc
           gcc_multi
           clang
           clang-tools
@@ -41,7 +40,7 @@
         ];
 
         buildPhase = ''
-          export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:${pkgs.flex}/lib:${pkgs.bison}/lib:$LIBRARY_PATH"
+          export LIBRARY_PATH="${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:${pkgs.flex}/lib:${pkgs.bison}/lib:$LIBRARY_PATH"
           export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
           cargo build --release
         '';
@@ -78,8 +77,6 @@
         ];
 
         shellHook = ''
-          echo "${pkgs.clangStdenv}"
-          
           export LIBRARY_PATH="${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:${pkgs.flex}/lib:${pkgs.bison}/lib:$LIBRARY_PATH"
           export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
         '';

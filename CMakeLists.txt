@@ -70,7 +70,6 @@ FLEX_LEXER(
 )
 # Add the generated lexer source file to the source list
 set(set_source_files ${set_source_files} ${LEXER_OUTPUT})
-include_directories(${CMAKE_CURRENT_BINARY_DIR}/src/lexer)
 
 # Generate Parser Source
 BISON_PARSER(
@@ -79,7 +78,9 @@ BISON_PARSER(
     ${CMAKE_CURRENT_BINARY_DIR}/src/parser/cyrus.tab.hpp
 )
 set(set_source_files ${set_source_files} ${PARSER_OUTPUT_CPP} ${PARSER_OUTPUT_HPP})
-include_directories(${CMAKE_CURRENT_BINARY_DIR}/src/parser)
+
+# Include lex & yacc generated files 
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
 
 # Collect all source files.
 file(GLOB_RECURSE source_files
@@ -107,5 +108,9 @@ string(REPLACE " " ";" LLVM_LIBRARIES_LIST "${LLVM_LIBRARIES_STRING}")
 target_link_libraries(cyrus_lib ${LLVM_LIBRARIES_LIST})
 
 # Create an executable
-add_executable(cyrus ${SOURCE_DIR}/cli/main.cpp) 
+add_executable(cyrus
+    ${SOURCE_DIR}/cli/main.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/lexer/cyrus.yy.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/parser/cyrus.tab.cpp
+) 
 target_link_libraries(cyrus cyrus_lib)

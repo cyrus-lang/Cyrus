@@ -2,8 +2,8 @@
 
 %{
 	#include <stdio.h>
-	#include "cyrus.tab.hpp"
 	#include <math.h>
+	#include "parser/cyrus.tab.hpp"
 %}
 %%
 "#include"([ ]+)?((<(\\.|[^>])+>)|(\"(\\.|[^"])+\"))					                                    {return HEADER;}
@@ -48,6 +48,5 @@
 
 int yywrap(void)
 {
-	printf("hello world");
     return 1;
 }

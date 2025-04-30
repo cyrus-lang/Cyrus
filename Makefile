@@ -29,7 +29,7 @@ build: cmake
 # Run target
 run: build
 	@echo "===== Running executable ====="
-	@cd $(BUILD_DIR) && ./$(EXECUTABLE) 
+	@cd $(BUILD_DIR) && ./$(EXECUTABLE) $(ARGS)
 
 # Clean target
 clean:
