@@ -1,5 +1,5 @@
-#include <stdio.h>
+// #include <stdio>
 
-int main() 
-    return 0;
+int main() {
+    return 0
 }

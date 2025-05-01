@@ -5,45 +5,115 @@
 	#include <math.h>
 	#include "parser/cyrus.tab.hpp"
 %}
+
+D			[0-9]
+L			[a-zA-Z_]
+H			[a-fA-F0-9]
+E			[Ee][+-]?{D}+
+FS			(f|F|l|L)
+IS			(u|U|l|L)*
+
 %%
-"#include"([ ]+)?((<(\\.|[^>])+>)|(\"(\\.|[^"])+\"))					                                    {return HEADER;}
-"#define"[ ]+[a-zA-z_][a-zA-z_0-9]* 																	    {return DEFINE;}
-"auto"|"register"|"static"|"extern"|"typedef"																{return storage_const;}
-"void"|"char"|"short"|"int"|"long"|"float"|"double"|"signed"|"unsigned"										{return type_const;}	
-"const"|"volatile"																							{return qual_const;}
-"enum"																										{return enum_const;}
-"case"																										{return CASE;}	
-"default"																									{return DEFAULT;}
-"if"																										{return IF;}
-"switch"																									{return SWITCH;}
-"else"																										{return ELSE;}
-"for"																										{return FOR;}
-"do"																										{return DO;}
-"while"																										{return WHILE;}
-"goto"																										{return GOTO;}
-"continue"																									{return CONTINUE;}
-"break"																										{return BREAK;}
-"struct"|"union"																							{return struct_const;}
-"return"																									{return RETURN;}
-"sizeof"																									{return SIZEOF;}
-"||" 																										{return or_const;}
-"&&"																										{return and_const;}
-"..."																										{return param_const;}
-"=="|"!="																									{return eq_const;}
-"<="|">="																									{return rel_const;}
-">>"|"<<"																									{return shift_const;}
-"++"|"--"																									{return inc_const;}
-"->"																										{return point_const;}
-";"|"="|","|"{"|"}"|"("|")"|"["|"]"|"*"|"+"|"-"|"/"|"?"|":"|"&"|"|"|"^"|"!"|"~"|"%"|"<"|">"					{return yytext[0];}
-"*="|"/="|"+="|"%="|">>="|"-="|"<<="|"&="|"^="|"|="															{return PUNC;}
-[0-9]+																									    {return int_const;}
-[0-9]+"."[0-9]+																						        {return float_const;}	
-"'"."'"																										{return char_const;}
-[a-zA-z_][a-zA-z_0-9]*			 																			{return id;}
-\"(\\.|[^\"])*\"																							{return string;}
-"//"(\\.|[^\n])*[\n]																						;
-[/][*]([^*]|[*]*[^*/])*[*]+[/]                                                                              ;
-[ \t\n]																										;
+"//"(\\.|[^\n])*[\n]					;
+[/][*]([^*]|[*]*[^*/])*[*]+[/]          ;
+[ \t\n]									;
+
+"auto"									{ return(AUTO); }
+"break"									{ return(BREAK); }
+"case"									{ return(CASE); }
+"char"									{ return(CHAR); }
+"const"									{ return(CONST); }
+"continue"								{ return(CONTINUE); }
+"default"								{ return(DEFAULT); }
+"do"									{ return(DO); }
+"double"								{ return(DOUBLE); }
+"else"									{ return(ELSE); }
+"enum"									{ return(ENUM); }
+"extern"								{ return(EXTERN); }
+"float"									{ return(FLOAT); }
+"for"									{ return(FOR); }
+"goto"									{ return(GOTO); }
+"if"									{ return(IF); }
+"int"									{ return(INT); }
+"long"									{ return(LONG); }
+"register"								{ return(REGISTER); }
+"return"								{ return(RETURN); }
+"short"									{ return(SHORT); }
+"signed"								{ return(SIGNED); }
+"sizeof"								{ return(SIZEOF); }
+"static"								{ return(STATIC); }
+"struct"								{ return(STRUCT); }
+"switch"								{ return(SWITCH); }
+"typedef"								{ return(TYPEDEF); }
+"union"									{ return(UNION); }
+"unsigned"								{ return(UNSIGNED); }
+"void"									{ return(VOID); }
+"volatile"								{ return(VOLATILE); }
+"while"									{ return(WHILE); }
+
+{L}({L}|{D})*							{ return(IDENTIFIER); }
+
+0[xX]{H}+{IS}?							{ return(CONSTANT); }
+0{D}+{IS}?								{ return(CONSTANT); }
+{D}+{IS}?								{ return(CONSTANT); }
+L?'(\\.|[^\\'])+'						{ return(CONSTANT); }
+
+{D}+{E}{FS}?							{ return(CONSTANT); }
+{D}*"."{D}+({E})?{FS}?					{ return(CONSTANT); }
+{D}+"."{D}*({E})?{FS}?					{ return(CONSTANT); }
+
+L?\"(\\.|[^\\"])*\"						{ return(STRING_LITERAL); }
+
+"..."									{ return(ELLIPSIS); }
+">>="									{ return(RIGHT_ASSIGN); }
+"<<="									{ return(LEFT_ASSIGN); }
+"+="									{ return(ADD_ASSIGN); }
+"-="									{ return(SUB_ASSIGN); }
+"*="									{ return(MUL_ASSIGN); }
+"/="									{ return(DIV_ASSIGN); }
+"%="									{ return(MOD_ASSIGN); }
+"&="									{ return(AND_ASSIGN); }
+"^="									{ return(XOR_ASSIGN); }
+"|="									{ return(OR_ASSIGN); }
+">>"									{ return(RIGHT_OP); }
+"<<"									{ return(LEFT_OP); }
+"++"									{ return(INC_OP); }
+"--"									{ return(DEC_OP); }
+"->"									{ return(PTR_OP); }
+"&&"									{ return(AND_OP); }
+"||"									{ return(OR_OP); }
+"<="									{ return(LE_OP); }
+">="									{ return(GE_OP); }
+"=="									{ return(EQ_OP); }
+"!="									{ return(NE_OP); }
+";"										{ return(';'); }
+("{"|"<%")								{ return('{'); }
+("}"|"%>")								{ return('}'); }
+","										{ return(','); }
+":"										{ return(':'); }
+"="										{ return('='); }
+"("										{ return('('); }
+")"										{ return(')'); }
+("["|"<:")								{ return('['); }
+("]"|":>")								{ return(']'); }
+"."										{ return('.'); }
+"&"										{ return('&'); }
+"!"										{ return('!'); }
+"~"										{ return('~'); }
+"-"										{ return('-'); }
+"+"										{ return('+'); }
+"*"										{ return('*'); }
+"/"										{ return('/'); }
+"%"										{ return('%'); }
+"<"										{ return('<'); }
+">"										{ return('>'); }
+"^"										{ return('^'); }
+"|"										{ return('|'); }
+"?"										{ return('?'); }
+
+[ \t\v\n\f]								;
+.										{ /* ignore bad characters */ }
+
 %%
 
 int yywrap(void)
