@@ -1,5 +1,3 @@
-// #include <stdio>
+extern aaa* sample() {
 
-int main() {
-    return 0
 }

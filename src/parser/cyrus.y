@@ -9,10 +9,11 @@
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
 %token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN
-%token XOR_ASSIGN OR_ASSIGN TYPE_NAME
+%token XOR_ASSIGN OR_ASSIGN
+%token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
 
-%token TYPEDEF EXTERN STATIC AUTO REGISTER
-%token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOLATILE VOID
+%token TYPEDEF EXTERN STATIC VOLATILE REGISTER
+%token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOID
 %token STRUCT UNION ENUM ELLIPSIS
 
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
@@ -165,13 +166,35 @@ declaration
     ;
 
 declaration_specifiers
-    : storage_class_specifier
-    | storage_class_specifier declaration_specifiers
-    | type_specifier
-    | type_specifier declaration_specifiers
-    | type_qualifier
-    | type_qualifier declaration_specifiers
+    : type_specifier
+    | type_qualifier type_specifier
+    | storage_class_specifier type_specifier
+    | storage_class_specifier type_qualifier type_specifier
+    | access_specifier type_specifier
+    | access_specifier type_qualifier type_specifier
+    | access_specifier storage_class_specifier type_specifier
+    | access_specifier storage_class_specifier type_qualifier type_specifier
     ;
+
+storage_class_specifier
+    : EXTERN
+    | STATIC
+    | REGISTER
+    ;
+
+access_specifier_optional
+	:
+	| access_specifier
+	;
+
+access_specifier
+	: PUBLIC
+	| PRIVATE
+	| ABSTRACT
+	| VIRTUAL
+	| OVERRIDE
+	| PROTECTED
+	;
 
 init_declarator_list
     : init_declarator
@@ -181,14 +204,6 @@ init_declarator_list
 init_declarator
     : declarator
     | declarator '=' initializer
-    ;
-
-storage_class_specifier
-    : TYPEDEF
-    | EXTERN
-    | STATIC
-    | AUTO
-    | REGISTER
     ;
 
 type_specifier
@@ -203,7 +218,7 @@ type_specifier
     | UNSIGNED
     | struct_or_union_specifier
     | enum_specifier
-    | TYPE_NAME
+    | IDENTIFIER
     ;
 
 struct_or_union_specifier

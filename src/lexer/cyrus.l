@@ -18,7 +18,6 @@ IS			(u|U|l|L)*
 [/][*]([^*]|[*]*[^*/])*[*]+[/]          ;
 [ \t\n]									;
 
-"auto"									{ return(AUTO); }
 "break"									{ return(BREAK); }
 "case"									{ return(CASE); }
 "char"									{ return(CHAR); }
@@ -26,30 +25,43 @@ IS			(u|U|l|L)*
 "continue"								{ return(CONTINUE); }
 "default"								{ return(DEFAULT); }
 "do"									{ return(DO); }
-"double"								{ return(DOUBLE); }
 "else"									{ return(ELSE); }
 "enum"									{ return(ENUM); }
 "extern"								{ return(EXTERN); }
-"float"									{ return(FLOAT); }
 "for"									{ return(FOR); }
 "goto"									{ return(GOTO); }
 "if"									{ return(IF); }
+"return"								{ return(RETURN); }
+"sizeof"								{ return(SIZEOF); }
+"switch"								{ return(SWITCH); }
+"union"									{ return(UNION); }
+"while"									{ return(WHILE); }
+
+"static"								{ return(STATIC); }
+"register"								{ return(REGISTER); }
+"volatile"								{ return(VOLATILE); }
+
+"struct"								{ return(STRUCT); }
+
+"interface"								{ return(INTERFACE); }
+"class"									{ return(CLASS); }
+"public"								{ return(PUBLIC); }
+"private"								{ return(PRIVATE); }
+"abstract"								{ return(ABSTRACT); }
+"virtual"								{ return(VIRTUAL); }
+"override"								{ return(OVERRIDE); }
+"protected"								{ return(PROTECTED); }
+
+"type"									{ return(TYPEDEF); }
+
+"unsigned"								{ return(UNSIGNED); }
+"double"								{ return(DOUBLE); }
+"float"									{ return(FLOAT); }
 "int"									{ return(INT); }
 "long"									{ return(LONG); }
-"register"								{ return(REGISTER); }
-"return"								{ return(RETURN); }
 "short"									{ return(SHORT); }
 "signed"								{ return(SIGNED); }
-"sizeof"								{ return(SIZEOF); }
-"static"								{ return(STATIC); }
-"struct"								{ return(STRUCT); }
-"switch"								{ return(SWITCH); }
-"typedef"								{ return(TYPEDEF); }
-"union"									{ return(UNION); }
-"unsigned"								{ return(UNSIGNED); }
 "void"									{ return(VOID); }
-"volatile"								{ return(VOLATILE); }
-"while"									{ return(WHILE); }
 
 {L}({L}|{D})*							{ return(IDENTIFIER); }
 
