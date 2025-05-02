@@ -1,14 +1,9 @@
 import std::io;
 
-#PI: float = 3.14;
-
 fn main() float {
-    #a: float = 0;
+    #a: float32 = 3.2;
     #b: int = 0;
 
-    if (1 == func()) {
+    #c = a + b;
 
-    }
-
-    return 0;
 }

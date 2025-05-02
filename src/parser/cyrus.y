@@ -5,7 +5,7 @@
     int yyerror(const char *s);
 %}
 
-%token IDENTIFIER CONSTANT STRING_LITERAL SIZEOF
+%token IDENTIFIER CONSTANT STRING_LITERAL SIZEOF CONST
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
 %token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN
@@ -14,8 +14,10 @@
 
 %token IMPORT TYPEDEF FUNCTION
 %token EXTERN STATIC VOLATILE REGISTER
-%token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOID
 %token STRUCT UNION ENUM ELLIPSIS
+
+%token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
+%token UINT128 VOID CHAR BYTE STRING FLOAT FLOAT32 FLOAT64 FLOAT128
 
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
 %token HASH 
@@ -201,15 +203,26 @@ access_specifier
     ;
 
 type_specifier
-    : VOID
-    | CHAR
-    | SHORT
-    | INT
-    | LONG
-    | FLOAT
-    | DOUBLE
-    | SIGNED
-    | UNSIGNED
+    : INT 
+    | INT8 
+    | INT16 
+    | INT32 
+    | INT64 
+    | INT128 
+    | UINT 
+    | UINT8 
+    | UINT16 
+    | UINT32 
+    | UINT64
+    | UINT128 
+    | VOID 
+    | CHAR 
+    | BYTE 
+    | STRING 
+    | FLOAT 
+    | FLOAT32 
+    | FLOAT64 
+    | FLOAT128 
     | IDENTIFIER
     | struct_or_union_specifier
     | enum_specifier
@@ -474,6 +487,7 @@ parameter_list_optional
 var_declaration 
     : HASH IDENTIFIER ':' type_specifier ';'
     | HASH IDENTIFIER ':' type_specifier '=' assignment_expression ';'
+    | HASH IDENTIFIER '=' assignment_expression ';'
     ;
 
 %%

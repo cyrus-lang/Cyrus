@@ -21,6 +21,39 @@ IS			(u|U|l|L)*
 "#"										{ return(HASH); }
 "fn"									{ return(FUNCTION); }
 "import"								{ return(IMPORT); }
+"type"									{ return(TYPEDEF); }
+
+"struct"								{ return(STRUCT); }
+"class"									{ return(CLASS); }
+"interface"								{ return(INTERFACE); }
+"public"								{ return(PUBLIC); }
+"private"								{ return(PRIVATE); }
+"abstract"								{ return(ABSTRACT); }
+"virtual"								{ return(VIRTUAL); }
+"override"								{ return(OVERRIDE); }
+"protected"								{ return(PROTECTED); }
+
+"int"									{ return(INT); }
+"int8"									{ return(INT8); }
+"int16"									{ return(INT16); }
+"int32"									{ return(INT32); }
+"int64"									{ return(INT64); }
+"int128"								{ return(INT128); }
+"uint"									{ return(UINT); }
+"unt8"									{ return(UINT8); }
+"unt16"									{ return(UINT16); }
+"unt32"									{ return(UINT32); }
+"unt64"									{ return(UINT64); }
+"unt128"								{ return(UINT128); }
+"void"									{ return(VOID); }
+"char"									{ return(CHAR); }
+"byte"									{ return(BYTE); }
+"string"								{ return(STRING); }
+"float"									{ return(FLOAT); }
+"float32"								{ return(FLOAT32); }
+"float64"								{ return(FLOAT64); }
+"float128"								{ return(FLOAT128); }
+
 "break"									{ return(BREAK); }
 "case"									{ return(CASE); }
 "char"									{ return(CHAR); }
@@ -43,28 +76,6 @@ IS			(u|U|l|L)*
 "static"								{ return(STATIC); }
 "register"								{ return(REGISTER); }
 "volatile"								{ return(VOLATILE); }
-
-"struct"								{ return(STRUCT); }
-
-"interface"								{ return(INTERFACE); }
-"class"									{ return(CLASS); }
-"public"								{ return(PUBLIC); }
-"private"								{ return(PRIVATE); }
-"abstract"								{ return(ABSTRACT); }
-"virtual"								{ return(VIRTUAL); }
-"override"								{ return(OVERRIDE); }
-"protected"								{ return(PROTECTED); }
-
-"type"									{ return(TYPEDEF); }
-
-"unsigned"								{ return(UNSIGNED); }
-"double"								{ return(DOUBLE); }
-"float"									{ return(FLOAT); }
-"int"									{ return(INT); }
-"long"									{ return(LONG); }
-"short"									{ return(SHORT); }
-"signed"								{ return(SIGNED); }
-"void"									{ return(VOID); }
 
 {L}({L}|{D})*							{ return(IDENTIFIER); }
 
