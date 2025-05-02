@@ -1,9 +1,7 @@
 import std::io;
 
-fn main() float {
-    #a: float32 = 3.2;
-    #b: int = 0;
+type Triple = int[3];
 
-    #c = a + b;
-
+fn main() {
+    
 }

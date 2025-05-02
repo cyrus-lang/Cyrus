@@ -53,6 +53,8 @@ IS			(u|U|l|L)*
 "float32"								{ return(FLOAT32); }
 "float64"								{ return(FLOAT64); }
 "float128"								{ return(FLOAT128); }
+"bool"									{ return(BOOL); }
+"error"									{ return(ERROR); }
 
 "break"									{ return(BREAK); }
 "case"									{ return(CASE); }

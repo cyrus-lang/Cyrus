@@ -17,7 +17,7 @@
 %token STRUCT UNION ENUM ELLIPSIS
 
 %token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
-%token UINT128 VOID CHAR BYTE STRING FLOAT FLOAT32 FLOAT64 FLOAT128
+%token UINT128 VOID CHAR BYTE STRING FLOAT FLOAT32 FLOAT64 FLOAT128 BOOL ERROR
 
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
 %token HASH 
@@ -34,6 +34,12 @@ primary_expression
     | '(' expression ')'
     ;
 
+imported_symbol_access
+    : IDENTIFIER ':' ':' IDENTIFIER
+    | IDENTIFIER ':' ':' IDENTIFIER '(' ')'
+    | IDENTIFIER ':' ':' IDENTIFIER '(' argument_expression_list ')'
+    ;
+
 postfix_expression
     : primary_expression
     | postfix_expression '[' expression ']'
@@ -41,6 +47,7 @@ postfix_expression
     | postfix_expression '(' argument_expression_list ')'
     | postfix_expression '.' IDENTIFIER
     | postfix_expression PTR_OP IDENTIFIER
+    | imported_symbol_access
     | postfix_expression INC_OP
     | postfix_expression DEC_OP
     ;
@@ -223,6 +230,8 @@ type_specifier
     | FLOAT32 
     | FLOAT64 
     | FLOAT128 
+    | BOOL
+    | ERROR
     | IDENTIFIER
     | struct_or_union_specifier
     | enum_specifier
@@ -234,7 +243,7 @@ typedef_specifier
     ;
 
 typedef_declarator
-    : TYPEDEF IDENTIFIER '=' type_specifier ';'
+    : TYPEDEF IDENTIFIER '=' type_name ';' 
     ;
 
 import_specifier
@@ -318,6 +327,7 @@ type_qualifier
 
 declarator
     : pointer direct_declarator
+    | address direct_declarator
     | direct_declarator
     ;
 
@@ -336,6 +346,13 @@ pointer
     | '*' type_qualifier_list
     | '*' pointer
     | '*' type_qualifier_list pointer
+    ;
+
+address
+    : '&'
+    | '&' type_qualifier_list
+    | '&' pointer
+    | '&' type_qualifier_list pointer
     ;
 
 type_qualifier_list
