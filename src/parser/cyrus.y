@@ -63,7 +63,7 @@ unary_expression
     | DEC_OP unary_expression
     | unary_operator cast_expression
     | SIZEOF unary_expression
-    | SIZEOF '(' type_name ')'
+    | SIZEOF '(' type_specifier ')'
     ;
 
 unary_operator
@@ -77,7 +77,7 @@ unary_operator
 
 cast_expression
     : unary_expression
-    | '(' type_name ')' cast_expression
+    | '(' type_specifier ')' cast_expression
     ;
 
 multiplicative_expression
@@ -89,7 +89,7 @@ multiplicative_expression
 
 additive_expression
     : multiplicative_expression
-    | additive_expression '+' multiplicative_expression
+    | additive_expression '+' multiplicative_expression 
     | additive_expression '-' multiplicative_expression
     ;
 
@@ -209,7 +209,7 @@ access_specifier
     | PROTECTED
     ;
 
-type_specifier
+primitive_type_specifier
     : INT 
     | INT8 
     | INT16 
@@ -243,7 +243,7 @@ typedef_specifier
     ;
 
 typedef_declarator
-    : TYPEDEF IDENTIFIER '=' type_name ';' 
+    : TYPEDEF IDENTIFIER '=' type_specifier ';' 
     ;
 
 import_specifier
@@ -273,13 +273,24 @@ struct_declaration_list
     ;
 
 struct_declaration
-    : declaration_specifiers IDENTIFIER ';'
-    | declaration_specifiers IDENTIFIER '=' expression ';'
+    : access_specifier struct_field_declaration
+    | storage_class_specifier struct_field_declaration
+    | access_specifier storage_class_specifier struct_field_declaration
+    | struct_field_declaration
+    | access_specifier storage_class_specifier function_definition
+    | access_specifier function_definition
+    | function_definition
     ;
 
+struct_field_declaration
+    : IDENTIFIER declaration_specifiers ';'
+    | IDENTIFIER declaration_specifiers '=' expression ';'
+    ;
+
+// REVIEW
 specifier_qualifier_list
-    : type_specifier specifier_qualifier_list
-    | type_specifier
+    : primitive_type_specifier specifier_qualifier_list
+    | primitive_type_specifier
     | type_qualifier specifier_qualifier_list
     | type_qualifier
     ;
@@ -317,7 +328,7 @@ enumerator_list
 enumerator
     : IDENTIFIER
     | IDENTIFIER '=' constant_expression
-    | IDENTIFIER '(' type_list ')'
+    | IDENTIFIER '(' type_specifier_list ')'
     ;
 
 type_qualifier
@@ -381,12 +392,12 @@ identifier_list
     | identifier_list ',' IDENTIFIER
     ;
 
-type_list
-    : type_name
-    | type_list ',' type_name
+type_specifier_list
+    : type_specifier
+    | type_specifier_list ',' type_specifier
     ;
 
-type_name
+type_specifier
     : specifier_qualifier_list
     | specifier_qualifier_list abstract_declarator
     ;

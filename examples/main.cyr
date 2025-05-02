@@ -1,7 +1,5 @@
 import std::io;
 
-type Triple = int[3];
-
 fn main() {
-    
+    #a = 1 + 2;
 }
