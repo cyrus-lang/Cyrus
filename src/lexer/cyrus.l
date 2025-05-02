@@ -18,6 +18,9 @@ IS			(u|U|l|L)*
 [/][*]([^*]|[*]*[^*/])*[*]+[/]          ;
 [ \t\n]									;
 
+"#"										{ return(HASH); }
+"fn"									{ return(FUNCTION); }
+"import"								{ return(IMPORT); }
 "break"									{ return(BREAK); }
 "case"									{ return(CASE); }
 "char"									{ return(CHAR); }

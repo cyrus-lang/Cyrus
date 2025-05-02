@@ -1,15 +1,14 @@
-enum Color {
-    RED = 0,
-    BLUE = 1,
-    CUSTOM(int, int, int, float)
-}
+import std::io;
 
-int main() {
-    // Person person = Person {
+#PI: float = 3.14;
 
-    // };
+fn main() float {
+    #a: float = 0;
+    #b: int = 0;
 
-    int a, b = 0;
+    if (1 == func()) {
+
+    }
 
     return 0;
 }

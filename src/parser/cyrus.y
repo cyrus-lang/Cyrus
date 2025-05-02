@@ -12,11 +12,13 @@
 %token XOR_ASSIGN OR_ASSIGN
 %token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
 
-%token TYPEDEF EXTERN STATIC VOLATILE REGISTER
+%token IMPORT TYPEDEF FUNCTION
+%token EXTERN STATIC VOLATILE REGISTER
 %token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOID
 %token STRUCT UNION ENUM ELLIPSIS
 
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
+%token HASH 
 
 %define parse.error verbose
 
@@ -124,7 +126,7 @@ logical_and_expression
 
 logical_or_expression
     : logical_and_expression
-    | logical_or_expression OR_OP logical_and_expression
+    | logical_or_expression OR_OP logical_or_expression
     ;
 
 conditional_expression
@@ -161,8 +163,10 @@ constant_expression
     ;
 
 declaration
-    : declaration_specifiers 
-    | declaration_specifiers init_declarator_list 
+    :  var_declaration 
+    |  function_definition
+    |  typedef_specifier
+    |  declaration_specifiers 
     ;
 
 declaration_specifiers
@@ -196,16 +200,6 @@ access_specifier
     | PROTECTED
     ;
 
-init_declarator_list
-    : init_declarator
-    | init_declarator_list ',' init_declarator
-    ;
-
-init_declarator
-    : declarator
-    | declarator '=' initializer
-    ;
-
 type_specifier
     : VOID
     | CHAR
@@ -216,9 +210,27 @@ type_specifier
     | DOUBLE
     | SIGNED
     | UNSIGNED
+    | IDENTIFIER
     | struct_or_union_specifier
     | enum_specifier
-    | IDENTIFIER
+    ;
+
+typedef_specifier
+    : access_specifier typedef_declarator
+    | typedef_declarator
+    ;
+
+typedef_declarator
+    : TYPEDEF IDENTIFIER '=' type_specifier ';'
+    ;
+
+import_specifier
+    : IMPORT import_submodules_list ';'
+    ;
+
+import_submodules_list
+    : IDENTIFIER
+    | import_submodules_list ':' ':' IDENTIFIER
     ;
 
 struct_or_union_specifier
@@ -248,6 +260,24 @@ specifier_qualifier_list
     | type_specifier
     | type_qualifier specifier_qualifier_list
     | type_qualifier
+    ;
+
+struct_init_specifier
+    : IDENTIFIER '{' field_initializer_list_optional '}'
+    ;
+
+field_initializer_list_optional
+    :
+    | field_initializer_list    
+    ;
+
+field_initializer_list
+    : struct_init_field
+    | field_initializer_list ',' struct_init_field
+    ;
+
+struct_init_field
+    : IDENTIFIER ':' assignment_expression
     ;
 
 enum_specifier
@@ -299,7 +329,6 @@ type_qualifier_list
     : type_qualifier
     | type_qualifier_list type_qualifier
     ;
-
 
 parameter_type_list
     : parameter_list
@@ -354,11 +383,12 @@ initializer
     : assignment_expression
     | '{' initializer_list '}'
     | '{' initializer_list ',' '}'
+    | struct_init_specifier
     ;
 
 initializer_list
-    : init_declarator 
-    | initializer_list ',' init_declarator 
+    :  expression
+    | initializer_list ',' expression
     ;
 
 statement
@@ -379,7 +409,7 @@ labeled_statement
 compound_statement
     : '{' '}'
     | '{' statement_list '}'
-    | '{' declaration_list '}'
+    | '{' declaration_list '}'  
     | '{' declaration_list statement_list '}'
     ;
 
@@ -421,6 +451,7 @@ jump_statement
 
 translation_unit
     : /* empty */
+    | import_specifier
     | external_declaration
     | translation_unit external_declaration
     ;
@@ -431,10 +462,18 @@ external_declaration
     ;
 
 function_definition
-    : declaration_specifiers declarator declaration_list compound_statement
-    | declaration_specifiers declarator compound_statement
-    | declarator declaration_list compound_statement
-    | declarator compound_statement
+    : FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement
+    ;
+
+parameter_list_optional
+    : /* empty */
+    | parameter_list
+    ;
+
+var_declaration 
+    : HASH IDENTIFIER ':' type_specifier ';'
+    | HASH IDENTIFIER ':' type_specifier '=' assignment_expression ';'
     ;
 
 %%
