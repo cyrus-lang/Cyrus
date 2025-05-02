@@ -161,8 +161,8 @@ constant_expression
     ;
 
 declaration
-    : declaration_specifiers ';'
-    | declaration_specifiers init_declarator_list ';'
+    : declaration_specifiers 
+    | declaration_specifiers init_declarator_list 
     ;
 
 declaration_specifiers
@@ -183,18 +183,18 @@ storage_class_specifier
     ;
 
 access_specifier_optional
-	:
-	| access_specifier
-	;
+    :
+    | access_specifier
+    ;
 
 access_specifier
-	: PUBLIC
-	| PRIVATE
-	| ABSTRACT
-	| VIRTUAL
-	| OVERRIDE
-	| PROTECTED
-	;
+    : PUBLIC
+    | PRIVATE
+    | ABSTRACT
+    | VIRTUAL
+    | OVERRIDE
+    | PROTECTED
+    ;
 
 init_declarator_list
     : init_declarator
@@ -233,12 +233,14 @@ struct_or_union
     ;
 
 struct_declaration_list
-    : struct_declaration
+    : 
+    | struct_declaration
     | struct_declaration_list struct_declaration
     ;
 
 struct_declaration
-    : specifier_qualifier_list struct_declarator_list ';'
+    : declaration_specifiers IDENTIFIER ';'
+    | declaration_specifiers IDENTIFIER '=' expression ';'
     ;
 
 specifier_qualifier_list
@@ -248,17 +250,6 @@ specifier_qualifier_list
     | type_qualifier
     ;
 
-struct_declarator_list
-    : struct_declarator
-    | struct_declarator_list ',' struct_declarator
-    ;
-
-struct_declarator
-    : declarator
-    | ':' constant_expression
-    | declarator ':' constant_expression
-    ;
-
 enum_specifier
     : ENUM '{' enumerator_list '}'
     | ENUM IDENTIFIER '{' enumerator_list '}'
@@ -266,13 +257,15 @@ enum_specifier
     ;
 
 enumerator_list
-    : enumerator
+    : 
+    | enumerator
     | enumerator_list ',' enumerator
     ;
 
 enumerator
     : IDENTIFIER
     | IDENTIFIER '=' constant_expression
+    | IDENTIFIER '(' type_list ')'
     ;
 
 type_qualifier
@@ -329,6 +322,11 @@ identifier_list
     | identifier_list ',' IDENTIFIER
     ;
 
+type_list
+    : type_name
+    | type_list ',' type_name
+    ;
+
 type_name
     : specifier_qualifier_list
     | specifier_qualifier_list abstract_declarator
@@ -359,8 +357,8 @@ initializer
     ;
 
 initializer_list
-    : initializer
-    | initializer_list ',' initializer
+    : init_declarator 
+    | initializer_list ',' init_declarator 
     ;
 
 statement

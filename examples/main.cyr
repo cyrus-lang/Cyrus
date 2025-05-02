@@ -1,3 +1,15 @@
-extern aaa* sample() {
+enum Color {
+    RED = 0,
+    BLUE = 1,
+    CUSTOM(int, int, int, float)
+}
 
+int main() {
+    // Person person = Person {
+
+    // };
+
+    int a, b = 0;
+
+    return 0;
 }
