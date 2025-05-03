@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <vector>
+#include <memory>
 
 class ASTNode
 {
@@ -34,7 +35,7 @@ protected:
     }
 };
 
-using ASTNodePtr = std::unique_ptr<ASTNode>;
+using ASTNodePtr = ASTNode *;
 using ASTNodeList = std::vector<ASTNodePtr>;
 
 class Program : public ASTNode
@@ -43,7 +44,7 @@ private:
     ASTNodeList statements_;
 
 public:
-    Program(ASTNodeList statements) : statements_(std::move(statements)) {}
+    Program(ASTNodeList statements) : statements_(statements) {}
     NodeType getType() const override { return NodeType::Program; }
     const ASTNodeList &getStatements() const { return statements_; }
 
@@ -51,13 +52,13 @@ public:
     {
         printIndent(indent);
         std::cout << "Program:" << std::endl;
+        std::cout << "Program:" << std::endl;
         for (const auto &stmt : statements_)
         {
             stmt->print(indent + 1);
         }
     }
 };
-
 class IntegerLiteral : public ASTNode
 {
 private:
@@ -112,7 +113,7 @@ public:
 class Identifier : public ASTNode
 {
 public:
-    Identifier(std::string name) : name_(std::move(name)) {}
+    Identifier(std::string name) : name_(name) {}
     NodeType getType() const override { return NodeType::Identifier; }
     const std::string &getName() const { return name_; }
 
@@ -141,65 +142,82 @@ public:
         LessThan,
         LessEqual,
         GreaterThan,
-        GreaterEqual
+        GreaterEqual,
+        LeftShift,
+        RightShift,
+        BitwiseAnd,
+        BitwiseXor,
+        BitwiseOr,
+        LogicalAnd,
+        LogicalOr
     };
 
-    BinaryExpression(Operator op, ASTNodePtr left, ASTNodePtr right) : op_(op), left_(std::move(left)), right_(std::move(right)) {}
+    BinaryExpression(ASTNodePtr left, Operator op, ASTNodePtr right)
+        : left_(std::move(left)), op_(op), right_(std::move(right)) {}
+
     NodeType getType() const override { return NodeType::BinaryExpression; }
-    const ASTNodePtr &getLeft() const { return left_; };
-    const ASTNodePtr &getRight() const { return right_; };
-    Operator getOp() const { return op_; };
+
+    ASTNode *getLeft() const { return left_; }
+    Operator getOperator() const { return op_; }
+    ASTNode *getRight() const { return right_; }
 
     void print(int indent) const override
     {
         printIndent(indent);
-        std::cout << "BinaryExpression: " << std::endl;
-
-        switch (op_)
-        {
-        case Operator::Add:
-            std::cout << "+";
-            break;
-        case Operator::Subtract:
-            std::cout << "-";
-            break;
-        case Operator::Multiply:
-            std::cout << "*";
-            break;
-        case Operator::Divide:
-            std::cout << "/";
-            break;
-        case Operator::Equal:
-            std::cout << "==";
-            break;
-        case Operator::NotEqual:
-            std::cout << "!=";
-            break;
-        case Operator::LessThan:
-            std::cout << "<";
-            break;
-        case Operator::LessEqual:
-            std::cout << "<=";
-            break;
-        case Operator::GreaterThan:
-            std::cout << ">";
-            break;
-        case Operator::GreaterEqual:
-            std::cout << ">=";
-            break;
-        default:
-            std::cout << "Unknown";
-            break;
-        }
-
+        std::cout << "BinaryExpression: " << formatOperator(op_) << std::endl;
         left_->print(indent + 1);
         right_->print(indent + 1);
     }
 
 private:
-    Operator op_;
     ASTNodePtr left_;
+    Operator op_;
     ASTNodePtr right_;
+
+    std::string formatOperator(Operator op) const
+    {
+        switch (op)
+        {
+        case Operator::Add:
+            return "+";
+        case Operator::Subtract:
+            return "-";
+        case Operator::Multiply:
+            return "*";
+        case Operator::Divide:
+            return "/";
+        case Operator::Remainder:
+            return "%";
+        case Operator::Equal:
+            return "==";
+        case Operator::NotEqual:
+            return "!=";
+        case Operator::LessThan:
+            return "<";
+        case Operator::LessEqual:
+            return "<=";
+        case Operator::GreaterThan:
+            return ">";
+        case Operator::GreaterEqual:
+            return ">=";
+        case Operator::LeftShift:
+            return "<<";
+        case Operator::RightShift:
+            return ">>";
+        case Operator::BitwiseAnd:
+            return "&";
+        case Operator::BitwiseXor:
+            return "^";
+        case Operator::BitwiseOr:
+            return "|";
+        case Operator::LogicalAnd:
+            return "&&";
+        case Operator::LogicalOr:
+            return "||";
+        default:
+            return "Unknown Operator";
+        }
+    }
 };
 
 #endif // AST_H

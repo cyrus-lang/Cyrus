@@ -1,20 +1,15 @@
 %{
     #include <stdio.h>
+    #include <memory>
+
     char* yyerrormsg;
     int yylex(void);
     int yyerror(const char *s);
 %}
 
-%union {
-    int ival;
-    double dval;
-    char *sval;
+%code requires {
+    #include "ast/ast.hpp"
 }
-
-%token <ival> INTEGER_CONSTANT
-%token <dval> FLOAT_CONSTANT  
-%token <sval> STRING_CONSTANT 
-%token <sval> IDENTIFIER      
 
 %token UINT128 VOID CHAR BYTE STRING FLOAT FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
@@ -26,15 +21,40 @@
 %token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN SIZEOF 
 %token XOR_ASSIGN OR_ASSIGN STRUCT UNION ENUM ELLIPSIS CONST
 
+%union {
+    int ival;
+    double dval;
+    char* sval;
+    ASTNodePtr node;
+}
+
+%token <ival> INTEGER_CONSTANT
+%token <dval> FLOAT_CONSTANT  
+%token <sval> STRING_CONSTANT 
+%token <sval> IDENTIFIER      
+
+%type <node> primary_expression
+%type <node> additive_expression
+%type <node> multiplicative_expression
+%type <node> relational_expression
+%type <node> equality_expression
+%type <node> cast_expression
+%type <node> shift_expression
+%type <node> and_expression
+%type <node> exclusive_or_expression
+%type <node> inclusive_or_expression
+%type <node> logical_and_expression
+%type <node> logical_or_expression
+
 %define parse.error verbose
 %start translation_unit
 %%
 
 primary_expression
-    : IDENTIFIER                    
-    | INTEGER_CONSTANT              // { $$ = new IntegerLiteral(*$1); }
-    | FLOAT_CONSTANT                // { printf("%f\n", $1); }
-    | STRING_CONSTANT               // { printf("\"%s\"\n", $1); free($1); }
+    : IDENTIFIER                    { $$ = new Identifier($1); free($1); }
+    | STRING_CONSTANT               { $$ = new StringLiteral($1); free($1); }
+    | INTEGER_CONSTANT              { $$ = new IntegerLiteral($1); }
+    | FLOAT_CONSTANT                { $$ = new FloatLiteral($1); }
     | '(' expression ')'
     ;
 
@@ -85,61 +105,61 @@ cast_expression
     ;
 
 multiplicative_expression
-    : cast_expression
-    | multiplicative_expression '*' cast_expression
-    | multiplicative_expression '/' cast_expression
-    | multiplicative_expression '%' cast_expression
+    : cast_expression                                       { $$ = $1; }
+    | multiplicative_expression '*' cast_expression         { $$ = new BinaryExpression($1, BinaryExpression::Operator::Multiply, $3); }
+    | multiplicative_expression '/' cast_expression         { $$ = new BinaryExpression($1, BinaryExpression::Operator::Divide, $3); }
+    | multiplicative_expression '%' cast_expression         { $$ = new BinaryExpression($1, BinaryExpression::Operator::Remainder, $3); }
     ;
 
 additive_expression
-    : multiplicative_expression
-    | additive_expression '+' multiplicative_expression 
-    | additive_expression '-' multiplicative_expression
+    : multiplicative_expression                             { $$ = $1; }
+    | additive_expression '+' multiplicative_expression     { $$ = new BinaryExpression($1, BinaryExpression::Operator::Add, $3); }
+    | additive_expression '-' multiplicative_expression     { $$ = new BinaryExpression($1, BinaryExpression::Operator::Subtract, $3); }
     ;
 
 shift_expression
-    : additive_expression
-    | shift_expression LEFT_OP additive_expression
-    | shift_expression RIGHT_OP additive_expression
+    : additive_expression                                   { $$ = $1; }
+    | shift_expression LEFT_OP additive_expression          { $$ = new BinaryExpression($1, BinaryExpression::Operator::LeftShift, $3); }
+    | shift_expression RIGHT_OP additive_expression         { $$ = new BinaryExpression($1, BinaryExpression::Operator::RightShift, $3); }
     ;
 
 relational_expression
-    : shift_expression
-    | relational_expression '<' shift_expression
-    | relational_expression '>' shift_expression
-    | relational_expression LE_OP shift_expression
-    | relational_expression GE_OP shift_expression
+    : shift_expression                                      { $$ = $1; }
+    | relational_expression '<' shift_expression            { $$ = new BinaryExpression($1, BinaryExpression::Operator::LessThan, $3); }
+    | relational_expression '>' shift_expression            { $$ = new BinaryExpression($1, BinaryExpression::Operator::GreaterThan, $3); }
+    | relational_expression LE_OP shift_expression          { $$ = new BinaryExpression($1, BinaryExpression::Operator::LessEqual, $3); }
+    | relational_expression GE_OP shift_expression          { $$ = new BinaryExpression($1, BinaryExpression::Operator::GreaterEqual, $3); }
     ;
 
 equality_expression
-    : relational_expression
-    | equality_expression EQ_OP relational_expression
-    | equality_expression NE_OP relational_expression
+    : relational_expression                                 { $$ = $1; }
+    | equality_expression EQ_OP relational_expression       { $$ = new BinaryExpression($1, BinaryExpression::Operator::Equal, $3); }    
+    | equality_expression NE_OP relational_expression       { $$ = new BinaryExpression($1, BinaryExpression::Operator::NotEqual, $3); }
     ;
 
 and_expression
-    : equality_expression
-    | and_expression '&' equality_expression
+    : equality_expression                                   { $$ = $1; }
+    | and_expression '&' equality_expression                { $$ = new BinaryExpression($1, BinaryExpression::Operator::BitwiseAnd, $3); }
     ;
 
 exclusive_or_expression
-    : and_expression
-    | exclusive_or_expression '^' and_expression
+    : and_expression                                        { $$ = $1; }
+    | exclusive_or_expression '^' and_expression            { $$ = new BinaryExpression($1, BinaryExpression::Operator::BitwiseXor, $3); }
     ;
 
 inclusive_or_expression
-    : exclusive_or_expression
-    | inclusive_or_expression '|' exclusive_or_expression
+    : exclusive_or_expression                               { $$ = $1; }
+    | inclusive_or_expression '|' exclusive_or_expression   { $$ = new BinaryExpression($1, BinaryExpression::Operator::BitwiseOr, $3); }
     ;
 
 logical_and_expression
-    : inclusive_or_expression
-    | logical_and_expression AND_OP inclusive_or_expression
+    : inclusive_or_expression                               { $$ = $1; }
+    | logical_and_expression AND_OP inclusive_or_expression { $$ = new BinaryExpression($1, BinaryExpression::Operator::LogicalAnd, $3); }
     ;
 
 logical_or_expression
-    : logical_and_expression
-    | logical_or_expression OR_OP logical_or_expression
+    : logical_and_expression                                { $$ = $1; }
+    | logical_or_expression OR_OP logical_or_expression     { $$ = new BinaryExpression($1, BinaryExpression::Operator::LogicalOr, $3); }
     ;
 
 conditional_expression
