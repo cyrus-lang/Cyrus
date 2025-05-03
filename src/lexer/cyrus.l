@@ -4,6 +4,7 @@
 	#include <stdio.h>
 	#include <math.h>
 	#include "parser/cyrus.tab.hpp"
+    static char* process_string_literal(const char *text, int length);
 %}
 
 D			[0-9]
@@ -79,19 +80,6 @@ IS			(u|U|l|L)*
 "register"								{ return(REGISTER); }
 "volatile"								{ return(VOLATILE); }
 
-{L}({L}|{D})*							{ return(IDENTIFIER); }
-
-0[xX]{H}+{IS}?							{ return(CONSTANT); }
-0{D}+{IS}?								{ return(CONSTANT); }
-{D}+{IS}?								{ return(CONSTANT); }
-L?'(\\.|[^\\'])+'						{ return(CONSTANT); }
-
-{D}+{E}{FS}?							{ return(CONSTANT); }
-{D}*"."{D}+({E})?{FS}?					{ return(CONSTANT); }
-{D}+"."{D}*({E})?{FS}?					{ return(CONSTANT); }
-
-L?\"(\\.|[^\\"])*\"						{ return(STRING_LITERAL); }
-
 "..."									{ return(ELLIPSIS); }
 ">>="									{ return(RIGHT_ASSIGN); }
 "<<="									{ return(LEFT_ASSIGN); }
@@ -139,10 +127,73 @@ L?\"(\\.|[^\\"])*\"						{ return(STRING_LITERAL); }
 "|"										{ return('|'); }
 "?"										{ return('?'); }
 
+{L}({L}|{D})*							{
+                                            yylval.sval = strdup(yytext);
+                                            if (!yylval.sval) {
+                                                fprintf(stderr, "(Error) Failed to allocate memory for identifier.\n");
+                                                exit(1);
+                                            }
+                                            return IDENTIFIER;
+                                        }
+
+0[xX]{H}+{IS}?   						{ yylval.ival = strtol(yytext, NULL, 16); return INTEGER_CONSTANT; }
+0{D}+{IS}?       						{ yylval.ival = strtol(yytext, NULL, 8);  return INTEGER_CONSTANT; }
+{D}+{IS}?        						{ yylval.ival = strtol(yytext, NULL, 10); return INTEGER_CONSTANT; }
+{D}+{E}{FS}?     						{ yylval.dval = strtod(yytext, NULL);     return FLOAT_CONSTANT;   }
+
+L?\"(\\.|[^\\\"])*\"                    {
+                                            char *str = process_string_literal(yytext, yyleng);
+                                            if (str) {
+                                                yylval.sval = str;
+                                                return STRING_CONSTANT;
+                                            } else {
+                                                fprintf(stderr, "(Error) Failed to allocate memory for string literal.\n");
+                                                exit(1);
+                                            }
+                                        }
+
 [ \t\v\n\f]								;
 .										{ /* ignore bad characters */ }
 
 %%
+
+static char* process_string_literal(const char *text, int length) {
+    const char *start = text;
+    if (*start == 'L') {
+        start++;
+    }
+    start++; // Skip opening quote
+
+    const char *end = text + length - 1; // Before closing quote
+    size_t len = end - start;
+    char *str = (char *)malloc(len + 1);
+    if (!str) {
+        fprintf(stderr, "(Error) Failed to allocate memory for string literal\n");
+        exit(1);
+    }
+
+    char *out = str;
+    for (const char *in = start; in < end; ++in, ++out) {
+        if (*in == '\\') {
+            in++;
+            switch (*in) {
+                case 'n':  *out = '\n'; break;
+                case 't':  *out = '\t'; break;
+                case 'r':  *out = '\r'; break;
+                case '\\': *out = '\\'; break;
+                case '"':  *out = '"';  break;
+                default:
+                    *out = *in;
+                    fprintf(stderr, "(Error) Unknown escape sequence: \\%c\n", *in);
+                    break;
+            }
+        } else {
+            *out = *in;
+        }
+    }
+    *out = '\0';
+    return str;
+}
 
 int yywrap(void)
 {

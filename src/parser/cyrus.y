@@ -1,36 +1,40 @@
 %{
-    #include<stdio.h>
+    #include <stdio.h>
     char* yyerrormsg;
     int yylex(void);
     int yyerror(const char *s);
 %}
 
-%token IDENTIFIER CONSTANT STRING_LITERAL SIZEOF CONST
-%token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
-%token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
-%token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN
-%token XOR_ASSIGN OR_ASSIGN
-%token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
+%union {
+    int ival;
+    double dval;
+    char *sval;
+}
 
-%token IMPORT TYPEDEF FUNCTION
-%token EXTERN STATIC VOLATILE REGISTER
-%token STRUCT UNION ENUM ELLIPSIS
+%token <ival> INTEGER_CONSTANT
+%token <dval> FLOAT_CONSTANT  
+%token <sval> STRING_CONSTANT 
+%token <sval> IDENTIFIER      
 
-%token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
-%token UINT128 VOID CHAR BYTE STRING FLOAT FLOAT32 FLOAT64 FLOAT128 BOOL ERROR
-
+%token UINT128 VOID CHAR BYTE STRING FLOAT FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
-%token HASH 
+%token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
+%token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
+%token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
+%token IMPORT TYPEDEF FUNCTION EXTERN STATIC VOLATILE REGISTER HASH 
+%token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
+%token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN SIZEOF 
+%token XOR_ASSIGN OR_ASSIGN STRUCT UNION ENUM ELLIPSIS CONST
 
 %define parse.error verbose
-
 %start translation_unit
 %%
 
 primary_expression
-    : IDENTIFIER
-    | CONSTANT
-    | STRING_LITERAL
+    : IDENTIFIER                    
+    | INTEGER_CONSTANT              // { $$ = new IntegerLiteral(*$1); }
+    | FLOAT_CONSTANT                // { printf("%f\n", $1); }
+    | STRING_CONSTANT               // { printf("\"%s\"\n", $1); free($1); }
     | '(' expression ')'
     ;
 
@@ -418,18 +422,6 @@ direct_abstract_declarator
     | '(' parameter_type_list ')'
     | direct_abstract_declarator '(' ')'
     | direct_abstract_declarator '(' parameter_type_list ')'
-    ;
-
-initializer
-    : assignment_expression
-    | '{' initializer_list '}'
-    | '{' initializer_list ',' '}'
-    | struct_init_specifier
-    ;
-
-initializer_list
-    :  expression
-    | initializer_list ',' expression
     ;
 
 statement
