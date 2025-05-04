@@ -301,7 +301,7 @@ primitive_type_specifier
     ;
 
 typedef_specifier
-    : access_specifier TYPEDEF IDENTIFIER '=' type_specifier ';'            { $$ = new ASTTypeDefStatement($3, *$5, &$1); }
+    : access_specifier TYPEDEF IDENTIFIER '=' type_specifier ';'            { $$ = new ASTTypeDefStatement($3, *$5, $1); }
     | TYPEDEF IDENTIFIER '=' type_specifier ';'                             { $$ = new ASTTypeDefStatement($2, *$4); }
     ;
 

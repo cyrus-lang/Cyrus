@@ -1,6 +1,6 @@
 #include "ast/ast.hpp"
 
-void printASTAccessSpecifier(ASTAccessSpecifier accessSpecifier, int indent)
+void printASTAccessSpecifier(ASTAccessSpecifier accessSpecifier)
 {
     std::cout << "Access Specifier: ";
     switch (accessSpecifier)
@@ -22,6 +22,9 @@ void printASTAccessSpecifier(ASTAccessSpecifier accessSpecifier, int indent)
         break;
     case ASTAccessSpecifier::Protected:
         std::cout << "Protected";
+            break;
+    case ASTAccessSpecifier::Default:
+        std::cout << "Default";
         break;
     default:
         std::cout << "Unknown";

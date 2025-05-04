@@ -1,4 +1,7 @@
-public type String = char;
+import std::io;
+import std::threads;
+
+#a: int = 0;
 
 fn main() {
     

@@ -54,6 +54,7 @@ public:
 
 enum class ASTAccessSpecifier
 {
+    Default,
     Public,
     Private,
     Abstract,
@@ -69,7 +70,7 @@ enum class ASTStorageClassSpecifier
     Register
 };
 
-void printASTAccessSpecifier(ASTAccessSpecifier accessSpecifier, int indent);
+void printASTAccessSpecifier(ASTAccessSpecifier accessSpecifier);
 
 class ASTIntegerLiteral : public ASTNode
 {
@@ -352,16 +353,16 @@ class ASTTypeDefStatement : public ASTNode
 private:
     std::string name_;
     ASTTypeSpecifier type_;
-    ASTAccessSpecifier* accessSpecifier_;
+    ASTAccessSpecifier accessSpecifier_;
 
 public:
-    ASTTypeDefStatement(std::string name, ASTTypeSpecifier type, ASTAccessSpecifier* accessSpecifier = nullptr)
+    ASTTypeDefStatement(std::string name, ASTTypeSpecifier type, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
         : name_(name), type_(type), accessSpecifier_(accessSpecifier) {}
 
     NodeType getType() const override { return NodeType::TypeDefStatement; }
     const std::string &getName() const { return name_; }
     const ASTTypeSpecifier &getTypeSpecifier() const { return type_; }
-    ASTAccessSpecifier* getAccessSpecifier() const { return accessSpecifier_; }
+    ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
 
     void print(int indent) const override
     {
@@ -371,16 +372,13 @@ public:
         printIndent(indent + 1);
         std::cout << "Name: " << name_;
         std::cout << std::endl;
-            
+
         printIndent(indent + 1);
         std::cout << "Type: ";
         type_.print(indent);
-        std::cout << std::endl;
 
-        if (accessSpecifier_)
-        {
-            printASTAccessSpecifier(*accessSpecifier_, indent + 1);
-        }
+        printIndent(indent + 1);
+        printASTAccessSpecifier(accessSpecifier_);
     }
 };
 
@@ -482,14 +480,16 @@ public:
     void print(int indent) const override
     {
         printIndent(indent);
-        std::cout << "VariableDeclaration: " << name_ << std::endl;
+        std::cout << "VariableDeclaration: " << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Name: " << name_ << std::endl;
 
         if (type_)
         {
             printIndent(indent + 1);
             std::cout << "Type: ";
             type_->print(indent);
-            std::cout << std::endl;
         }
 
         if (initializer_)
@@ -497,6 +497,7 @@ public:
             printIndent(indent + 1);
             std::cout << "Initializer:" << std::endl;
             initializer_->print(indent + 2);
+            std::cout << std::endl;
         }
     }
 };
