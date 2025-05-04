@@ -1,6 +1,0 @@
-#ifndef AST_CAST_EXPRESSION_H
-#define AST_CAST_EXPRESSION_H
-
-
-
-#endif //AST_CAST_EXPRESSION_H

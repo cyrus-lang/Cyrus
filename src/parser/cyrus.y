@@ -1,10 +1,12 @@
 %{
     #include <stdio.h>
     #include <memory>
+    #include "ast/ast.hpp"
 
     char* yyerrormsg;
     int yylex(void);
     int yyerror(const char *s);
+    extern ASTNode* astProgram = nullptr;
 %}
 
 %code requires {
@@ -26,6 +28,9 @@
     double dval;
     char* sval;
     ASTNodePtr node;
+    std::vector<std::string>* stringListPtr;
+    std::vector<ASTFunctionParameter>* paramsListPtr;
+    ASTTypeSpecifier* type_specifier;
 }
 
 %token <ival> INTEGER_CONSTANT
@@ -45,16 +50,42 @@
 %type <node> inclusive_or_expression
 %type <node> logical_and_expression
 %type <node> logical_or_expression
+%type <node> translation_unit
+%type <node> unary_expression
+%type <node> expression
+%type <node> import_specifier
+%type <node> external_declaration
+%type <node> variable_declaration
+%type <node> function_definition
+%type <node> declaration
+%type <node> assignment_expression
+%type <node> postfix_expression
+
+%type <stringListPtr> import_submodules_list
+%type <paramsListPtr> parameter_list_optional
+%type <paramsListPtr> parameter_list
+%type <type_specifier> primitive_type_specifier
+%type <type_specifier> specifier_qualifier_list
+%type <type_specifier> type_specifier
 
 %define parse.error verbose
 %start translation_unit
 %%
 
+import_specifier
+    : IMPORT import_submodules_list ';'                                         { $$ = new ASTImportStatement(*$2); delete $2; }
+    ;
+
+import_submodules_list
+    : IDENTIFIER                                                                { $$ = new std::vector<std::string>(); $$->push_back($1); free($1); }
+    | import_submodules_list ':' ':' IDENTIFIER                                 { if ($$) $$->push_back($4); free($4); }
+    ;
+
 primary_expression
-    : IDENTIFIER                    { $$ = new Identifier($1); free($1); }
-    | STRING_CONSTANT               { $$ = new StringLiteral($1); free($1); }
-    | INTEGER_CONSTANT              { $$ = new IntegerLiteral($1); }
-    | FLOAT_CONSTANT                { $$ = new FloatLiteral($1); }
+    : IDENTIFIER                                                                { $$ = new ASTIdentifier($1); free($1); }
+    | STRING_CONSTANT                                                           { $$ = new ASTStringLiteral($1); free($1); }
+    | INTEGER_CONSTANT                                                          { $$ = new ASTIntegerLiteral($1); }
+    | FLOAT_CONSTANT                                                            { $$ = new ASTFloatLiteral($1); }
     | '(' expression ')'
     ;
 
@@ -65,7 +96,7 @@ imported_symbol_access
     ;
 
 postfix_expression
-    : primary_expression
+    : primary_expression                                                        { $$ = $1; }
     | postfix_expression '[' expression ']'
     | postfix_expression '(' ')'
     | postfix_expression '(' argument_expression_list ')'
@@ -105,61 +136,61 @@ cast_expression
     ;
 
 multiplicative_expression
-    : cast_expression                                       { $$ = $1; }
-    | multiplicative_expression '*' cast_expression         { $$ = new BinaryExpression($1, BinaryExpression::Operator::Multiply, $3); }
-    | multiplicative_expression '/' cast_expression         { $$ = new BinaryExpression($1, BinaryExpression::Operator::Divide, $3); }
-    | multiplicative_expression '%' cast_expression         { $$ = new BinaryExpression($1, BinaryExpression::Operator::Remainder, $3); }
+    : cast_expression                                                               { $$ = $1; }
+    | multiplicative_expression '*' cast_expression                                 { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::Multiply, $3); }
+    | multiplicative_expression '/' cast_expression                                 { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::Divide, $3); }
+    | multiplicative_expression '%' cast_expression                                 { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::Remainder, $3); }
     ;
 
 additive_expression
-    : multiplicative_expression                             { $$ = $1; }
-    | additive_expression '+' multiplicative_expression     { $$ = new BinaryExpression($1, BinaryExpression::Operator::Add, $3); }
-    | additive_expression '-' multiplicative_expression     { $$ = new BinaryExpression($1, BinaryExpression::Operator::Subtract, $3); }
+    : multiplicative_expression                                                     { $$ = $1; }
+    | additive_expression '+' multiplicative_expression                             { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::Add, $3); }
+    | additive_expression '-' multiplicative_expression                             { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::Subtract, $3); }
     ;
 
 shift_expression
-    : additive_expression                                   { $$ = $1; }
-    | shift_expression LEFT_OP additive_expression          { $$ = new BinaryExpression($1, BinaryExpression::Operator::LeftShift, $3); }
-    | shift_expression RIGHT_OP additive_expression         { $$ = new BinaryExpression($1, BinaryExpression::Operator::RightShift, $3); }
+    : additive_expression                                                           { $$ = $1; }
+    | shift_expression LEFT_OP additive_expression                                  { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::LeftShift, $3); }
+    | shift_expression RIGHT_OP additive_expression                                 { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::RightShift, $3); }
     ;
 
 relational_expression
-    : shift_expression                                      { $$ = $1; }
-    | relational_expression '<' shift_expression            { $$ = new BinaryExpression($1, BinaryExpression::Operator::LessThan, $3); }
-    | relational_expression '>' shift_expression            { $$ = new BinaryExpression($1, BinaryExpression::Operator::GreaterThan, $3); }
-    | relational_expression LE_OP shift_expression          { $$ = new BinaryExpression($1, BinaryExpression::Operator::LessEqual, $3); }
-    | relational_expression GE_OP shift_expression          { $$ = new BinaryExpression($1, BinaryExpression::Operator::GreaterEqual, $3); }
+    : shift_expression                                                              { $$ = $1; }
+    | relational_expression '<' shift_expression                                    { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::LessThan, $3); }
+    | relational_expression '>' shift_expression                                    { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::GreaterThan, $3); }
+    | relational_expression LE_OP shift_expression                                  { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::LessEqual, $3); }
+    | relational_expression GE_OP shift_expression                                  { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::GreaterEqual, $3); }
     ;
 
 equality_expression
-    : relational_expression                                 { $$ = $1; }
-    | equality_expression EQ_OP relational_expression       { $$ = new BinaryExpression($1, BinaryExpression::Operator::Equal, $3); }    
-    | equality_expression NE_OP relational_expression       { $$ = new BinaryExpression($1, BinaryExpression::Operator::NotEqual, $3); }
+    : relational_expression                                                         { $$ = $1; }
+    | equality_expression EQ_OP relational_expression                               { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::Equal, $3); }    
+    | equality_expression NE_OP relational_expression                               { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::NotEqual, $3); }
     ;
 
 and_expression
-    : equality_expression                                   { $$ = $1; }
-    | and_expression '&' equality_expression                { $$ = new BinaryExpression($1, BinaryExpression::Operator::BitwiseAnd, $3); }
+    : equality_expression                                                           { $$ = $1; }
+    | and_expression '&' equality_expression                                        { $$                         = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::BitwiseAnd, $3); }
     ;
 
 exclusive_or_expression
-    : and_expression                                        { $$ = $1; }
-    | exclusive_or_expression '^' and_expression            { $$ = new BinaryExpression($1, BinaryExpression::Operator::BitwiseXor, $3); }
+    : and_expression                                                                { $$ = $1; }
+    | exclusive_or_expression '^' and_expression                                    { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::BitwiseXor, $3); }
     ;
 
 inclusive_or_expression
-    : exclusive_or_expression                               { $$ = $1; }
-    | inclusive_or_expression '|' exclusive_or_expression   { $$ = new BinaryExpression($1, BinaryExpression::Operator::BitwiseOr, $3); }
+    : exclusive_or_expression                                                       { $$ = $1; }
+    | inclusive_or_expression '|' exclusive_or_expression                           { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::BitwiseOr, $3); }
     ;
 
 logical_and_expression
-    : inclusive_or_expression                               { $$ = $1; }
-    | logical_and_expression AND_OP inclusive_or_expression { $$ = new BinaryExpression($1, BinaryExpression::Operator::LogicalAnd, $3); }
+    : inclusive_or_expression                                                       { $$ = $1; }
+    | logical_and_expression AND_OP inclusive_or_expression                         { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::LogicalAnd, $3); }
     ;
 
 logical_or_expression
-    : logical_and_expression                                { $$ = $1; }
-    | logical_or_expression OR_OP logical_or_expression     { $$ = new BinaryExpression($1, BinaryExpression::Operator::LogicalOr, $3); }
+    : logical_and_expression                                                        { $$ = $1; }
+    | logical_or_expression OR_OP logical_or_expression                             { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::LogicalOr, $3); }
     ;
 
 conditional_expression
@@ -196,7 +227,7 @@ constant_expression
     ;
 
 declaration
-    :  var_declaration 
+    :  variable_declaration 
     |  function_definition
     |  typedef_specifier
     |  declaration_specifiers 
@@ -234,31 +265,31 @@ access_specifier
     ;
 
 primitive_type_specifier
-    : INT 
-    | INT8 
-    | INT16 
-    | INT32 
-    | INT64 
-    | INT128 
-    | UINT 
-    | UINT8 
-    | UINT16 
-    | UINT32 
-    | UINT64
-    | UINT128 
-    | VOID 
-    | CHAR 
-    | BYTE 
-    | STRING 
-    | FLOAT 
-    | FLOAT32 
-    | FLOAT64 
-    | FLOAT128 
-    | BOOL
-    | ERROR
-    | IDENTIFIER
-    | struct_or_union_specifier
-    | enum_specifier
+    : INT                           { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int); }
+    | INT8                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int8); }
+    | INT16                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int16); }
+    | INT32                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int32); }
+    | INT64                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int64); }
+    | INT128                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int128); }
+    | UINT                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt); }
+    | UINT8                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt8); }
+    | UINT16                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt16); }
+    | UINT32                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt32); }
+    | UINT64                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt64); }
+    | UINT128                       { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt128); }
+    | VOID                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Void); }
+    | CHAR                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Char); }
+    | BYTE                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Byte); }
+    | STRING                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::String); }
+    | FLOAT                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float); }
+    | FLOAT32                       { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float32); }
+    | FLOAT64                       { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float64); }
+    | FLOAT128                      { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float128); }
+    | BOOL                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Bool); }
+    | ERROR                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Error); }
+    // | IDENTIFIER                    { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Identifier); }
+    // | struct_or_union_specifier     { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::StructOrUnion); } // FIXME | Move to a higher level
+    // | enum_specifier                { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Enum); }
     ;
 
 typedef_specifier
@@ -268,15 +299,6 @@ typedef_specifier
 
 typedef_declarator
     : TYPEDEF IDENTIFIER '=' type_specifier ';' 
-    ;
-
-import_specifier
-    : IMPORT import_submodules_list ';'
-    ;
-
-import_submodules_list
-    : IDENTIFIER
-    | import_submodules_list ':' ':' IDENTIFIER
     ;
 
 struct_or_union_specifier
@@ -313,8 +335,8 @@ struct_field_declaration
 
 // REVIEW
 specifier_qualifier_list
-    : primitive_type_specifier specifier_qualifier_list
-    | primitive_type_specifier
+    : primitive_type_specifier specifier_qualifier_list                              {}
+    | primitive_type_specifier                                                       { $$ = $1; }
     | type_qualifier specifier_qualifier_list
     | type_qualifier
     ;
@@ -421,6 +443,8 @@ type_specifier_list
     | type_specifier_list ',' type_specifier
     ;
 
+// ANCHOR
+
 type_specifier
     : specifier_qualifier_list
     | specifier_qualifier_list abstract_declarator
@@ -503,15 +527,45 @@ jump_statement
     ;
 
 translation_unit
-    : /* empty */
-    | import_specifier
-    | external_declaration
-    | translation_unit external_declaration
+    : /* empty */                                   { astProgram = new ASTProgram(ASTNodeList {}); }
+    | import_specifier                              { 
+                                                        if (astProgram) 
+                                                        {
+                                                            ASTProgram* program = static_cast<ASTProgram*>(astProgram);
+                                                            program->addStatement($1);
+                                                        } 
+                                                        else 
+                                                        {
+                                                            astProgram = new ASTProgram(ASTNodeList { $1 });
+                                                        }
+                                                    }
+    | external_declaration                          { 
+                                                        if (astProgram) 
+                                                        {
+                                                            ASTProgram* program = static_cast<ASTProgram*>(astProgram);
+                                                            program->addStatement($1);
+                                                        } 
+                                                        else 
+                                                        {
+                                                            astProgram = new ASTProgram(ASTNodeList { $1 });
+                                                        }
+                                                    }
+    | translation_unit external_declaration         { 
+                                                        if (astProgram) 
+                                                        {
+                                                            ASTProgram* program = static_cast<ASTProgram*>(astProgram);
+                                                            program->addStatement($2);
+                                                        } 
+                                                        else 
+                                                        {
+                                                            astProgram = new ASTProgram(ASTNodeList { $2 });
+                                                        }
+                                                    }
     ;
 
-external_declaration
-    : function_definition
-    | declaration
+external_declaration                                
+    : function_definition                                                   { $$ = $1; }    
+    | declaration                                                           { $$ = $1; }
     ;
 
 function_definition
@@ -520,14 +574,14 @@ function_definition
     ;
 
 parameter_list_optional
-    : /* empty */
-    | parameter_list
+    : /* empty */                                                           { $$ = new std::vector<ASTFunctionParameter>(); }
+    | parameter_list                                                        { $$ = $1; }
     ;
 
-var_declaration 
-    : HASH IDENTIFIER ':' type_specifier ';'
-    | HASH IDENTIFIER ':' type_specifier '=' assignment_expression ';'
-    | HASH IDENTIFIER '=' assignment_expression ';'
+variable_declaration 
+    : HASH IDENTIFIER ':' type_specifier ';'                                { $$ = new ASTVariableDeclaration($2, $4); }
+    | HASH IDENTIFIER '=' assignment_expression ';'                         { $$ = new ASTVariableDeclaration($2, nullptr, $4); }
+    | HASH IDENTIFIER ':' type_specifier '=' assignment_expression ';'      { $$ = new ASTVariableDeclaration($2, $4, $6); }
     ;
 
 %%

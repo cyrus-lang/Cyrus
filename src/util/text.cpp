@@ -31,7 +31,7 @@ namespace util
         HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
         if (hConsole == INVALID_HANDLE_VALUE)
         {
-            std::cerr << "Error: Could not get console handle." << std::endl;
+            std::cerr << "(Error) Could not get console handle." << std::endl;
             std::cout << text << std::endl; // Print without color on error.
             return;
         }
@@ -73,7 +73,7 @@ namespace util
 
         if (!SetConsoleTextAttribute(hConsole, colorCode))
         {
-            std::cerr << "Error: Could not set console text attributes. Error Code: " << GetLastError() << std::endl;
+            std::cerr << "(Error) Could not set console text attributes. Error Code: " << GetLastError() << std::endl;
             std::cout << text << std::endl; // Print without color on error.
             return;
         }

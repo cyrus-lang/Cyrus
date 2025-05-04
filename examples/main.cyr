@@ -1,5 +1,1 @@
-import std::io;
-
-fn main() {
-    #a = 1 + "2";
-}
+#a: string = "Hello World";

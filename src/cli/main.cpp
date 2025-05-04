@@ -9,6 +9,7 @@
 #include "parser/cyrus.tab.hpp"
 #include "cli/cli.hpp"
 #include "util/util.hpp"
+#include "parser/parser.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -57,7 +58,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            std::cerr << "Error: Unknown command '" << command << "'." << std::endl;
+            std::cerr << "(Error) Unknown command '" << command << "'." << std::endl;
             return 1;
         }
     }
@@ -94,7 +95,7 @@ void parseOnlyCommand(const std::vector<std::string> &args)
 {
     if (args.size() != 2)
     {
-        std::cerr << "Error: Incorrect number of arguments." << std::endl;
+        std::cerr << "(Error) Incorrect number of arguments." << std::endl;
         return;
     }
 
@@ -104,13 +105,18 @@ void parseOnlyCommand(const std::vector<std::string> &args)
     yyin = fopen(inputFile.c_str(), "r");
     if (!yyin)
     {
-        std::cerr << "Error: Could not open file '" << inputFile << "'." << std::endl;
+        std::cerr << "(Error) Could not open file '" << inputFile << "'." << std::endl;
         std::exit(1);
     }
 
     if (yyparse() == 0)
-    {
-        std::cout << "parsed." << std::endl;
+    {   
+        if (astProgram) {
+            astProgram->print(0);
+        } else {
+            std::cerr << "(Error) ASTProgram is not initialized correctly.'" << std::endl;
+            std::exit(1);
+        }   
     }
     else
     {
@@ -130,7 +136,7 @@ void lexOnlyCommand(const std::vector<std::string> &args)
     yyin = fopen(inputFile.c_str(), "r");
     if (!yyin)
     {
-        std::cerr << "Error: Could not open file '" << inputFile << "'." << std::endl;
+        std::cerr << "(Error) Could not open file '" << inputFile << "'." << std::endl;
         std::exit(1);
     }
 

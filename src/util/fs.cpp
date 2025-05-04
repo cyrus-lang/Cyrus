@@ -18,7 +18,7 @@ namespace util
     {
         if (!hasFileExtension(filename, ".cyr"))
         {
-            std::cerr << "Error: Input file '" << filename << "' does not have the required '.cyr' extension." << std::endl;
+            std::cerr << "(Error) Input file '" << filename << "' does not have the required '.cyr' extension." << std::endl;
             std::exit(1);
         }
     }
@@ -28,7 +28,7 @@ namespace util
         FILE *file = fopen(inputFile.c_str(), "r");
         if (!file)
         {
-            std::cerr << "Error: Could not open file '" << inputFile << "'." << std::endl;
+            std::cerr << "(Error) Could not open file '" << inputFile << "'." << std::endl;
             std::exit(1);
         }
 
