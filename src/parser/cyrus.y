@@ -24,14 +24,15 @@
 %token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN 
 
 %union {
+    std::pair<std::vector<ASTStructField>, std::vector<ASTFunctionDefinition>>* structMembersAndMethods;
     std::vector<ASTFunctionParameter>* paramsListPtr;
     ASTTypeSpecifier::ASTInternalType internalType;
     ASTStorageClassSpecifier storageClassSpecifier;
     ASTUnaryExpression::Operator unaryOperator;
-    std::vector<ASTStructField>* structFieldList;
     std::vector<std::string>* stringListPtr;
     ASTAccessSpecifier accessSpecifier;
     ASTTypeSpecifier* typeSpecifier;
+    ASTFunctionDefinition* funcDef;
     ASTStructField* structField;
     ASTNodePtr node;
     double dval;
@@ -43,6 +44,22 @@
 %token <dval> FLOAT_CONSTANT  
 %token <sval> STRING_CONSTANT 
 %token <sval> IDENTIFIER      
+
+%type <structMembersAndMethods> struct_declaration_list
+%type <structField> struct_field_declaration
+%type <funcDef> struct_method_declaration
+%type <internalType> type_qualifier
+%type <internalType> pointer
+%type <internalType> address
+%type <storageClassSpecifier> storage_class_specifier
+%type <accessSpecifier> access_specifier
+%type <stringListPtr> import_submodules_list
+%type <paramsListPtr> parameter_list_optional
+%type <paramsListPtr> parameter_list
+%type <typeSpecifier> primitive_type_specifier
+%type <typeSpecifier> specifier_qualifier_list
+%type <typeSpecifier> type_specifier
+%type <unaryOperator> unary_operator
 
 %type <node> primary_expression
 %type <node> additive_expression
@@ -73,21 +90,8 @@
 %type <node> statement
 %type <node> typedef_specifier
 %type <node> struct_specifier
-%type <node> struct_declaration
 
-%type <structFieldList> struct_declaration_list
-%type <internalType> type_qualifier
-%type <internalType> pointer
-%type <internalType> address
-%type <storageClassSpecifier> storage_class_specifier
-%type <accessSpecifier> access_specifier
-%type <stringListPtr> import_submodules_list
-%type <paramsListPtr> parameter_list_optional
-%type <paramsListPtr> parameter_list
-%type <typeSpecifier> primitive_type_specifier
-%type <typeSpecifier> specifier_qualifier_list
-%type <typeSpecifier> type_specifier
-%type <unaryOperator> unary_operator
+
 
 %define parse.error verbose
 %start translation_unit
@@ -311,33 +315,35 @@ primitive_type_specifier
     ;
 
 typedef_specifier
-    : access_specifier TYPEDEF IDENTIFIER '=' type_specifier ';'            { $$ = new ASTTypeDefStatement($3, *$5, $1); }
-    | TYPEDEF IDENTIFIER '=' type_specifier ';'                             { $$ = new ASTTypeDefStatement($2, *$4); }
+    : access_specifier TYPEDEF IDENTIFIER '=' type_specifier ';'                { $$ = new ASTTypeDefStatement($3, *$5, $1); }
+    | TYPEDEF IDENTIFIER '=' type_specifier ';'                                 { $$ = new ASTTypeDefStatement($2, *$4); }
     ;
 
 struct_specifier
-    : STRUCT IDENTIFIER '{' struct_declaration_list '}'                         { $$ = new ASTStructDefinition($2, *$4); }
-    | STRUCT '{' struct_declaration_list '}'                                
-    | STRUCT IDENTIFIER ';'                                                     { $$ = new ASTStructDefinition($2, {}); }
+    : STRUCT IDENTIFIER '{' struct_declaration_list '}'                         { $$ = new ASTStructDefinition($2, $4->first, $4->second); }
+    | STRUCT '{' struct_declaration_list '}'                                    { $$ = new ASTStructDefinition(std::nullopt, $3->first, $3->second); }
+    | STRUCT IDENTIFIER '{'  '}'                                                { $$ = new ASTStructDefinition($2, {}, {}); }
+    | STRUCT IDENTIFIER ';'                                                     { $$ = new ASTStructDefinition($2, {}, {}); }
     ;
 
 struct_declaration_list
-    :                                                                           { $$ = new std::vector<ASTStructField>(); }
-    | struct_declaration_list struct_declaration                                { $$->push_back(*static_cast<ASTStructField*>($2)); delete $2; }
+    :                                                                           { $$ = new std::pair<std::vector<ASTStructField>, std::vector<ASTFunctionDefinition>>(); }
+    | struct_declaration_list struct_field_declaration                          {   
+                                                                                    $$->first.push_back(*$2);
+                                                                                }
+    | struct_declaration_list struct_method_declaration                         {
+                                                                                    $$->second.push_back(*$2);
+                                                                                }
     ;
 
-// ANCHOR
-struct_declaration         
-    // Struct fields          
+struct_field_declaration
     : access_specifier IDENTIFIER type_specifier ';'                            { $$ = new ASTStructField($2, *$3, $1); } 
-    | IDENTIFIER type_specifier ';'                                             { $$ = new ASTStructField($1, *$2); } 
-    // | storage_class_specifier struct_field_declaration                          { $$ = $2; }
-    // | access_specifier storage_class_specifier struct_field_declaration         { $$ = $3; }
-    // | struct_field_declaration                                                  { $$ = $1; }
-    // // Struct methods
-    // | access_specifier storage_class_specifier function_definition              { $$ = nullptr; }
-    // | access_specifier function_definition                                      { $$ = nullptr; }
-    // | function_definition                                                       { $$ = nullptr; }
+    | IDENTIFIER type_specifier ';'                                             { $$ = new ASTStructField($1, *$2); }
+    ;
+
+struct_method_declaration
+    : access_specifier function_definition                                      { $$ = static_cast<ASTFunctionDefinition *>($2); }
+    | function_definition                                                       { $$ = static_cast<ASTFunctionDefinition *>($1); }
     ;
 
 specifier_qualifier_list

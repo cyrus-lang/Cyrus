@@ -1,11 +1,3 @@
-import foo::bar;
-
 struct Person {
-    public name1 string;
-    private name2 string;
-    name3 string;
-}
-
-fn main() {
     
 }

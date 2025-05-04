@@ -539,26 +539,31 @@ public:
 class ASTStructDefinition : public ASTNode
 {
 private:
-    std::string name_;
+    std::optional<std::string> name_;
     std::vector<ASTStructField> members_;
+    std::vector<ASTFunctionDefinition> methods_;
     ASTAccessSpecifier accessSpecifier_;
 
 public:
-    ASTStructDefinition(std::string name, std::vector<ASTStructField> members, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
-        : name_(name), members_(members), accessSpecifier_(accessSpecifier) {}
+    ASTStructDefinition(std::optional<std::string> name, std::vector<ASTStructField> members, std::vector<ASTFunctionDefinition> methods, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
+        : name_(name), members_(members), methods_(methods), accessSpecifier_(accessSpecifier) {}
 
     NodeType getType() const override { return NodeType::StructDefinition; }
-    const std::string &getName() const { return name_; }
+    const std::optional<std::string> &getName() const { return name_; }
     const std::vector<ASTStructField> &getMembers() const { return members_; }
+    const std::vector<ASTFunctionDefinition> &getMethods() const { return methods_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
 
     void print(int indent) const override
     {
         printIndent(indent);
         std::cout << "StructDefinition: " << std::endl;
-        printIndent(indent + 1);
-        std::cout << name_ << std::endl;
-    
+
+        if (name_.has_value()) {
+            printIndent(indent + 1);
+            std::cout << "Name: " << name_.value() << std::endl;
+        }
+
         printIndent(indent + 1);
         printASTAccessSpecifier(accessSpecifier_);
 
@@ -568,8 +573,14 @@ public:
         {
             member.print(indent + 2);
         }
+
+        printIndent(indent + 1);
+        std::cout << "Methods:" << std::endl;
+        for (const auto &method : methods_)
+        {
+            method.print(indent + 2);
+        }
     }
 };
 
-
-#endif // AST_HPP
+#endif
