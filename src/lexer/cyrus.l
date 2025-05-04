@@ -68,10 +68,8 @@ IS			(u|U|l|L)*
 "enum"									{ return(ENUM); }
 "extern"								{ return(EXTERN); }
 "for"									{ return(FOR); }
-"goto"									{ return(GOTO); }
 "if"									{ return(IF); }
 "return"								{ return(RETURN); }
-"sizeof"								{ return(SIZEOF); }
 "switch"								{ return(SWITCH); }
 "union"									{ return(UNION); }
 "while"									{ return(WHILE); }

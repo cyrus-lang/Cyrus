@@ -1,5 +1,5 @@
-#ifndef AST_H
-#define AST_H
+#ifndef AST_HPP
+#define AST_HPP
 
 #include <iostream>
 #include <vector>
@@ -28,6 +28,48 @@ public:
         }
     }
 };
+
+class ASTStatementList : public ASTNode
+{
+private:
+    ASTNodeList statements_;
+
+public:
+    ASTStatementList() : statements_() {}
+    ASTStatementList(ASTNodePtr statement) : statements_({statement}) {}
+    NodeType getType() const override { return NodeType::StatementList; }
+    const ASTNodeList &getStatements() const { return statements_; }
+    void addStatement(ASTNodePtr statement) { statements_.push_back(statement); }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "StatementList:" << std::endl;
+        for (const auto &stmt : statements_)
+        {
+            stmt->print(indent + 1);
+        }
+    }
+};
+
+enum class ASTAccessSpecifier
+{
+    Public,
+    Private,
+    Abstract,
+    Virtual,
+    Override,
+    Protected
+};
+
+enum class ASTStorageClassSpecifier
+{
+    Extern,
+    Static,
+    Register
+};
+
+void printASTAccessSpecifier(ASTAccessSpecifier accessSpecifier, int indent);
 
 class ASTIntegerLiteral : public ASTNode
 {
@@ -136,6 +178,7 @@ public:
         printIndent(indent);
         std::cout << "BinaryExpression: " << formatOperator(op_) << std::endl;
         left_->print(indent + 1);
+        std::cout << std::endl;
         right_->print(indent + 1);
     }
 
@@ -190,6 +233,94 @@ private:
     }
 };
 
+class ASTUnaryExpression : public ASTNode
+{
+public:
+    enum class Operator
+    {
+        Negate,
+        LogicalNot,
+        BitwiseNot,
+        Plus,
+        AddressOf,
+        Dereference,
+        PreIncrement,
+        PreDecrement
+    };
+
+    ASTUnaryExpression(Operator op, ASTNodePtr operand)
+        : op_(op), operand_(operand) {}
+
+    NodeType getType() const override { return NodeType::UnaryExpression; }
+
+    Operator getOperator() const { return op_; }
+    ASTNode *getOperand() const { return operand_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "UnaryExpression: " << formatOperator(op_) << std::endl;
+        operand_->print(indent + 1);
+    }
+
+private:
+    Operator op_;
+    ASTNodePtr operand_;
+
+    std::string formatOperator(Operator op) const
+    {
+        switch (op)
+        {
+        case Operator::Negate:
+            return "-";
+        case Operator::LogicalNot:
+            return "!";
+        case Operator::BitwiseNot:
+            return "~";
+        case Operator::Plus:
+            return "+";
+        case Operator::AddressOf:
+            return "&";
+        case Operator::PreIncrement:
+            return "++";
+        case Operator::PreDecrement:
+            return "--";
+        default:
+            return "Unknown Operator";
+        }
+    }
+};
+
+class ASTCastExpression : public ASTNode
+{
+private:
+    ASTNodePtr expression_;
+    ASTTypeSpecifier targetType_;
+
+public:
+    ASTCastExpression(ASTTypeSpecifier targetType, ASTNodePtr expression)
+        : targetType_(targetType), expression_(expression) {}
+
+    NodeType getType() const override { return NodeType::CastExpression; }
+    ASTNode *getExpression() const { return expression_; }
+    const ASTTypeSpecifier &getTargetType() const { return targetType_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "CastExpression:" << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Target Type: ";
+        targetType_.print(indent + 1);
+        std::cout << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Expression:" << std::endl;
+        expression_->print(indent + 2);
+    }
+};
+
 class ASTImportStatement : public ASTNode
 {
 private:
@@ -213,6 +344,43 @@ public:
             }
         }
         std::cout << std::endl;
+    }
+};
+
+class ASTTypeDefStatement : public ASTNode
+{
+private:
+    std::string name_;
+    ASTTypeSpecifier type_;
+    ASTAccessSpecifier* accessSpecifier_;
+
+public:
+    ASTTypeDefStatement(std::string name, ASTTypeSpecifier type, ASTAccessSpecifier* accessSpecifier = nullptr)
+        : name_(name), type_(type), accessSpecifier_(accessSpecifier) {}
+
+    NodeType getType() const override { return NodeType::TypeDefStatement; }
+    const std::string &getName() const { return name_; }
+    const ASTTypeSpecifier &getTypeSpecifier() const { return type_; }
+    ASTAccessSpecifier* getAccessSpecifier() const { return accessSpecifier_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "TypeDefStatement: " << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Name: " << name_;
+        std::cout << std::endl;
+            
+        printIndent(indent + 1);
+        std::cout << "Type: ";
+        type_.print(indent);
+        std::cout << std::endl;
+
+        if (accessSpecifier_)
+        {
+            printASTAccessSpecifier(*accessSpecifier_, indent + 1);
+        }
     }
 };
 
@@ -256,17 +424,17 @@ class ASTFunctionDefinition : public ASTNode
 private:
     std::string name_;
     std::vector<ASTFunctionParameter> parameters_;
-    ASTTypeSpecifier returnType_;
+    ASTTypeSpecifier *returnType_;
     ASTNodePtr body_;
 
 public:
-    ASTFunctionDefinition(std::string name, std::vector<ASTFunctionParameter> parameters, ASTTypeSpecifier returnType, ASTNodePtr body)
+    ASTFunctionDefinition(std::string name, std::vector<ASTFunctionParameter> parameters, ASTTypeSpecifier *returnType, ASTNodePtr body)
         : name_(name), parameters_(parameters), returnType_(returnType), body_(body) {}
 
     NodeType getType() const override { return NodeType::FunctionDefinition; }
     const std::string &getName() const { return name_; }
     const std::vector<ASTFunctionParameter> &getParameters() const { return parameters_; }
-    ASTTypeSpecifier getReturnType() const { return returnType_; }
+    ASTTypeSpecifier *getReturnType() const { return returnType_; }
     ASTNode *getBody() const { return body_; }
 
     void print(int indent) const override
@@ -281,10 +449,13 @@ public:
             param.print(indent + 2);
         }
 
-        printIndent(indent + 1);
-        std::cout << "Return Type: ";
-        returnType_.print(indent);
-        std::cout << std::endl;
+        if (returnType_)
+        {
+            printIndent(indent + 1);
+            std::cout << "Return Type: ";
+            returnType_->print(indent);
+            std::cout << std::endl;
+        }
 
         printIndent(indent + 1);
         std::cout << "Body:" << std::endl;
@@ -296,16 +467,16 @@ class ASTVariableDeclaration : public ASTNode
 {
 private:
     std::string name_;
-    ASTTypeSpecifier* type_;
+    ASTTypeSpecifier *type_;
     ASTNodePtr initializer_;
 
 public:
-    ASTVariableDeclaration(std::string name, ASTTypeSpecifier* type, ASTNodePtr initializer = nullptr)
+    ASTVariableDeclaration(std::string name, ASTTypeSpecifier *type, ASTNodePtr initializer = nullptr)
         : name_(name), type_(type), initializer_(initializer) {}
 
     NodeType getType() const override { return NodeType::VariableDeclaration; }
     const std::string &getName() const { return name_; }
-    ASTTypeSpecifier* getTypeValue() const { return type_; }
+    ASTTypeSpecifier *getTypeValue() const { return type_; }
     ASTNodePtr getInitializer() const { return initializer_; }
 
     void print(int indent) const override
@@ -313,8 +484,10 @@ public:
         printIndent(indent);
         std::cout << "VariableDeclaration: " << name_ << std::endl;
 
-        if (type_) {
+        if (type_)
+        {
             printIndent(indent + 1);
+            std::cout << "Type: ";
             type_->print(indent);
             std::cout << std::endl;
         }
@@ -328,4 +501,4 @@ public:
     }
 };
 
-#endif // AST_H
+#endif // AST_HPP

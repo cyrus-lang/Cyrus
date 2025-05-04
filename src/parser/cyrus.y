@@ -14,23 +14,26 @@
 }
 
 %token UINT128 VOID CHAR BYTE STRING FLOAT FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
-%token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
 %token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
 %token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
+%token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR CONTINUE BREAK RETURN
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token IMPORT TYPEDEF FUNCTION EXTERN STATIC VOLATILE REGISTER HASH 
 %token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
-%token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN SIZEOF 
 %token XOR_ASSIGN OR_ASSIGN STRUCT UNION ENUM ELLIPSIS CONST
+%token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN 
 
 %union {
-    int ival;
+    std::vector<ASTFunctionParameter>* paramsListPtr;
+    ASTStorageClassSpecifier storageClassSpecifier;
+    ASTUnaryExpression::Operator unaryOperator;
+    std::vector<std::string>* stringListPtr;
+    ASTAccessSpecifier accessSpecifier;
+    ASTTypeSpecifier* typeSpecifier;
+    ASTNodePtr node;
     double dval;
     char* sval;
-    ASTNodePtr node;
-    std::vector<std::string>* stringListPtr;
-    std::vector<ASTFunctionParameter>* paramsListPtr;
-    ASTTypeSpecifier* type_specifier;
+    int ival;
 }
 
 %token <ival> INTEGER_CONSTANT
@@ -58,15 +61,23 @@
 %type <node> variable_declaration
 %type <node> function_definition
 %type <node> declaration
+%type <node> declaration_specifiers
 %type <node> assignment_expression
 %type <node> postfix_expression
+%type <node> compound_statement
+%type <node> statement_list
+%type <node> statement
+%type <node> typedef_specifier
 
+%type <storageClassSpecifier> storage_class_specifier
+%type <accessSpecifier> access_specifier
 %type <stringListPtr> import_submodules_list
 %type <paramsListPtr> parameter_list_optional
 %type <paramsListPtr> parameter_list
-%type <type_specifier> primitive_type_specifier
-%type <type_specifier> specifier_qualifier_list
-%type <type_specifier> type_specifier
+%type <typeSpecifier> primitive_type_specifier
+%type <typeSpecifier> specifier_qualifier_list
+%type <typeSpecifier> type_specifier
+%type <unaryOperator> unary_operator
 
 %define parse.error verbose
 %start translation_unit
@@ -86,7 +97,7 @@ primary_expression
     | STRING_CONSTANT                                                           { $$ = new ASTStringLiteral($1); free($1); }
     | INTEGER_CONSTANT                                                          { $$ = new ASTIntegerLiteral($1); }
     | FLOAT_CONSTANT                                                            { $$ = new ASTFloatLiteral($1); }
-    | '(' expression ')'
+    | '(' expression ')'                                                        { $$ = $2; }
     ;
 
 imported_symbol_access
@@ -113,26 +124,24 @@ argument_expression_list
     ;
 
 unary_expression
-    : postfix_expression
-    | INC_OP unary_expression
-    | DEC_OP unary_expression
-    | unary_operator cast_expression
-    | SIZEOF unary_expression
-    | SIZEOF '(' type_specifier ')'
+    : postfix_expression                                                            { $$ = $1; }
+    | INC_OP unary_expression                                                       { $$ = new ASTUnaryExpression(ASTUnaryExpression::Operator::PreIncrement, $2); }
+    | DEC_OP unary_expression                                                       { $$ = new ASTUnaryExpression(ASTUnaryExpression::Operator::PreDecrement, $2); }
+    | unary_operator cast_expression                                                { $$ = new ASTUnaryExpression($1, $2); }
     ;
 
 unary_operator
-    : '&'
-    | '*'
-    | '+'
-    | '-'
-    | '~'
-    | '!'
+    : '&'                                                                           { $$ = ASTUnaryExpression::Operator::AddressOf; }
+    | '*'                                                                           { $$ = ASTUnaryExpression::Operator::Dereference; }
+    | '+'                                                                           { $$ = ASTUnaryExpression::Operator::Plus; }
+    | '-'                                                                           { $$ = ASTUnaryExpression::Operator::Negate; }
+    | '~'                                                                           { $$ = ASTUnaryExpression::Operator::BitwiseNot; }
+    | '!'                                                                           { $$ = ASTUnaryExpression::Operator::LogicalNot; }
     ;
 
 cast_expression
-    : unary_expression
-    | '(' type_specifier ')' cast_expression
+    : unary_expression                                                              { $$ = $1; }
+    | '(' type_specifier ')' cast_expression                                        { $$ = new ASTCastExpression(*$2, $4); }
     ;
 
 multiplicative_expression
@@ -170,7 +179,7 @@ equality_expression
 
 and_expression
     : equality_expression                                                           { $$ = $1; }
-    | and_expression '&' equality_expression                                        { $$                         = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::BitwiseAnd, $3); }
+    | and_expression '&' equality_expression                                        { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::BitwiseAnd, $3); }
     ;
 
 exclusive_or_expression
@@ -193,16 +202,19 @@ logical_or_expression
     | logical_or_expression OR_OP logical_or_expression                             { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::LogicalOr, $3); }
     ;
 
+// TODO
 conditional_expression
     : logical_or_expression
     | logical_or_expression '?' expression ':' conditional_expression
     ;
 
+// TODO
 assignment_expression
     : conditional_expression
     | unary_expression assignment_operator assignment_expression
     ;
 
+// TODO
 assignment_operator
     : '='
     | MUL_ASSIGN
@@ -227,12 +239,13 @@ constant_expression
     ;
 
 declaration
-    :  variable_declaration 
-    |  function_definition
-    |  typedef_specifier
-    |  declaration_specifiers 
+    :  variable_declaration          { $$ = $1; }
+    |  function_definition           { $$ = $1; }
+    |  typedef_specifier             { $$ = $1; }
+    |  declaration_specifiers        // { $$ = $1; }
     ;
 
+// REVIEW
 declaration_specifiers
     : type_specifier
     | type_qualifier type_specifier
@@ -245,23 +258,18 @@ declaration_specifiers
     ;
 
 storage_class_specifier
-    : EXTERN
-    | STATIC
-    | REGISTER
-    ;
-
-access_specifier_optional
-    :
-    | access_specifier
+    : EXTERN                         { $$ = ASTStorageClassSpecifier::Extern; }
+    | STATIC                         { $$ = ASTStorageClassSpecifier::Static; }
+    | REGISTER                       { $$ = ASTStorageClassSpecifier::Register; }
     ;
 
 access_specifier
-    : PUBLIC
-    | PRIVATE
-    | ABSTRACT
-    | VIRTUAL
-    | OVERRIDE
-    | PROTECTED
+    : PUBLIC                         { $$ = ASTAccessSpecifier::Public; }
+    | PRIVATE                        { $$ = ASTAccessSpecifier::Private; }
+    | ABSTRACT                       { $$ = ASTAccessSpecifier::Abstract; }
+    | VIRTUAL                        { $$ = ASTAccessSpecifier::Virtual; }
+    | OVERRIDE                       { $$ = ASTAccessSpecifier::Override; }
+    | PROTECTED                      { $$ = ASTAccessSpecifier::Protected; }
     ;
 
 primitive_type_specifier
@@ -287,18 +295,14 @@ primitive_type_specifier
     | FLOAT128                      { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float128); }
     | BOOL                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Bool); }
     | ERROR                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Error); }
-    // | IDENTIFIER                    { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Identifier); }
+    | IDENTIFIER                    { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Identifier, (std::any) new ASTIdentifier($1)); }
     // | struct_or_union_specifier     { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::StructOrUnion); } // FIXME | Move to a higher level
     // | enum_specifier                { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Enum); }
     ;
 
 typedef_specifier
-    : access_specifier typedef_declarator
-    | typedef_declarator
-    ;
-
-typedef_declarator
-    : TYPEDEF IDENTIFIER '=' type_specifier ';' 
+    : access_specifier TYPEDEF IDENTIFIER '=' type_specifier ';'            { $$ = new ASTTypeDefStatement($3, *$5, &$1); }
+    | TYPEDEF IDENTIFIER '=' type_specifier ';'                             { $$ = new ASTTypeDefStatement($2, *$4); }
     ;
 
 struct_or_union_specifier
@@ -469,35 +473,39 @@ direct_abstract_declarator
     ;
 
 statement
-    : labeled_statement
-    | compound_statement
+    : compound_statement
     | expression_statement
     | selection_statement
     | iteration_statement
     | jump_statement
     ;
 
-labeled_statement
-    : IDENTIFIER ':' statement
-    | CASE constant_expression ':' statement
-    | DEFAULT ':' statement
+compound_statement                                              
+    : '{' '}'                                             { $$ = new ASTStatementList(); }
+    | '{' statement_list '}'                              { $$ = $2; }             
+    | '{' declaration_list '}'                            
+    | '{' declaration_list statement_list '}'               
     ;
 
-compound_statement
-    : '{' '}'
-    | '{' statement_list '}'
-    | '{' declaration_list '}'  
-    | '{' declaration_list statement_list '}'
-    ;
-
+// REVIEW
 declaration_list
-    : declaration
-    | declaration_list declaration
+    : declaration                                        
+    | declaration_list declaration                        
     ;
 
-statement_list
-    : statement
-    | statement_list statement
+statement_list  
+    : statement                                            { $$ = new ASTStatementList($1); }
+    | statement_list statement                             { 
+                                                                if ($$) 
+                                                                {
+                                                                    ASTStatementList* list = static_cast<ASTStatementList*>($$);
+                                                                    list->addStatement($2);
+                                                                } 
+                                                                else 
+                                                                {
+                                                                    $$ = new ASTStatementList($2);
+                                                                }
+                                                            }
     ;
 
 expression_statement
@@ -519,8 +527,7 @@ iteration_statement
     ;
 
 jump_statement
-    : GOTO IDENTIFIER ';'
-    | CONTINUE ';'
+    : CONTINUE ';'
     | BREAK ';'
     | RETURN ';'
     | RETURN expression ';'
@@ -569,8 +576,8 @@ external_declaration
     ;
 
 function_definition
-    : FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement
-    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement
+    : FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition($2, *$4, $6, $7); }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition($2, *$4, nullptr, $6); }
     ;
 
 parameter_list_optional

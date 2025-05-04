@@ -10,18 +10,22 @@ public:
     enum class NodeType
     {
         Program,
+        StatementList,
         ImportModule,
         VariableDeclaration,
         IntegerLiteral,
         FloatLiteral,
         StringLiteral,
         Identifier,
+        CastExpression,
         BinaryExpression,
+        UnaryExpression,
         TypeSpecifier,
         ImportStatement,
         FunctionDefinition,
         FunctionParameter,
-        ASTVariableDeclaration
+        ASTVariableDeclaration,
+        TypeDefStatement
     };
 
     virtual ~ASTNode() = default;
