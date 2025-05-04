@@ -502,4 +502,74 @@ public:
     }
 };
 
+
+class ASTStructField : public ASTNode
+{
+private:
+    std::string name_;
+    ASTTypeSpecifier type_;
+    ASTAccessSpecifier accessSpecifier_;
+
+public:
+    ASTStructField(std::string name, ASTTypeSpecifier type, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
+        : name_(name), type_(type), accessSpecifier_(accessSpecifier) {}
+
+    NodeType getType() const override { return NodeType::StructField; }
+    const std::string &getName() const { return name_; }
+    const ASTTypeSpecifier &getTypeSpecifier() const { return type_; }
+    ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "StructField: " << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Name: " << name_ << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Type: ";
+        type_.print(indent);
+
+        printIndent(indent + 1);
+        printASTAccessSpecifier(accessSpecifier_);
+    }
+};
+
+class ASTStructDefinition : public ASTNode
+{
+private:
+    std::string name_;
+    std::vector<ASTStructField> members_;
+    ASTAccessSpecifier accessSpecifier_;
+
+public:
+    ASTStructDefinition(std::string name, std::vector<ASTStructField> members, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
+        : name_(name), members_(members), accessSpecifier_(accessSpecifier) {}
+
+    NodeType getType() const override { return NodeType::StructDefinition; }
+    const std::string &getName() const { return name_; }
+    const std::vector<ASTStructField> &getMembers() const { return members_; }
+    ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "StructDefinition: " << std::endl;
+        printIndent(indent + 1);
+        std::cout << name_ << std::endl;
+    
+        printIndent(indent + 1);
+        printASTAccessSpecifier(accessSpecifier_);
+
+        printIndent(indent + 1);
+        std::cout << "Members:" << std::endl;
+        for (const auto &member : members_)
+        {
+            member.print(indent + 2);
+        }
+    }
+};
+
+
 #endif // AST_HPP

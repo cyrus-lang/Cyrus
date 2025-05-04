@@ -25,7 +25,9 @@ public:
         FunctionDefinition,
         FunctionParameter,
         ASTVariableDeclaration,
-        TypeDefStatement
+        TypeDefStatement,
+        StructDefinition,
+        StructField
     };
 
     virtual ~ASTNode() = default;

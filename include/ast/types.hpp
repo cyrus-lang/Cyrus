@@ -37,6 +37,8 @@ public:
         Identifier,
         AddressOf, // nested
         Pointer,   // nested
+        Const,     // nested
+        Volatile,  // nested
     };
 
     ASTTypeSpecifier(ASTInternalType type) : type_(type), nestedValue_(nullptr) {}
@@ -57,15 +59,28 @@ public:
 
     void print(int indent) const override
     {
-        std::cout << formatInternalType() << std::endl;
+        std::cout << formatInternalType() << " ";
+        if (nestedValue_.has_value())
+        {
+            if (auto nestedType = std::any_cast<ASTTypeSpecifier>(&nestedValue_))
+            {
+                nestedType->print(0);
+            }
+            else if (auto identifier = std::any_cast<std::string>(&nestedValue_))
+            {
+                std::cout << *identifier;
+            }
+        }
+        std::cout << std::endl;
     }
+
 private:
     ASTInternalType type_;
     std::any nestedValue_;
 
     bool allowedToHaveNestedValue() const
     {
-        return type_ == ASTInternalType::Pointer || type_ == ASTInternalType::AddressOf || type_ == ASTInternalType::Identifier;
+        return type_ == ASTInternalType::Pointer || type_ == ASTInternalType::AddressOf || type_ == ASTInternalType::Identifier || type_ == ASTInternalType::Const || type_ == ASTInternalType::Volatile;
     }
 };
 

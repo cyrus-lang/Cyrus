@@ -54,6 +54,10 @@ std::string ASTTypeSpecifier::formatInternalType() const
         return "AddressOf";
     case ASTInternalType::Identifier:
         return "Identifier";
+    case ASTInternalType::Const:
+        return "Const";
+    case ASTInternalType::Volatile:
+        return "Volatile";
     default:
         return "Unknown Type";
     }

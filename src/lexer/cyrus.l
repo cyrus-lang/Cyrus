@@ -71,7 +71,6 @@ IS			(u|U|l|L)*
 "if"									{ return(IF); }
 "return"								{ return(RETURN); }
 "switch"								{ return(SWITCH); }
-"union"									{ return(UNION); }
 "while"									{ return(WHILE); }
 
 "static"								{ return(STATIC); }

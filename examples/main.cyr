@@ -1,7 +1,10 @@
-import std::io;
-import std::threads;
+import foo::bar;
 
-#a: int = 0;
+struct Person {
+    public name1 string;
+    private name2 string;
+    name3 string;
+}
 
 fn main() {
     

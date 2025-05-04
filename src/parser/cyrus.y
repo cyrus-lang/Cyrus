@@ -20,16 +20,19 @@
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token IMPORT TYPEDEF FUNCTION EXTERN STATIC VOLATILE REGISTER HASH 
 %token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
-%token XOR_ASSIGN OR_ASSIGN STRUCT UNION ENUM ELLIPSIS CONST
+%token XOR_ASSIGN OR_ASSIGN STRUCT ENUM ELLIPSIS CONST
 %token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN 
 
 %union {
     std::vector<ASTFunctionParameter>* paramsListPtr;
+    ASTTypeSpecifier::ASTInternalType internalType;
     ASTStorageClassSpecifier storageClassSpecifier;
     ASTUnaryExpression::Operator unaryOperator;
+    std::vector<ASTStructField>* structFieldList;
     std::vector<std::string>* stringListPtr;
     ASTAccessSpecifier accessSpecifier;
     ASTTypeSpecifier* typeSpecifier;
+    ASTStructField* structField;
     ASTNodePtr node;
     double dval;
     char* sval;
@@ -61,6 +64,7 @@
 %type <node> variable_declaration
 %type <node> function_definition
 %type <node> declaration
+%type <node> declaration_list
 %type <node> declaration_specifiers
 %type <node> assignment_expression
 %type <node> postfix_expression
@@ -68,7 +72,13 @@
 %type <node> statement_list
 %type <node> statement
 %type <node> typedef_specifier
+%type <node> struct_specifier
+%type <node> struct_declaration
 
+%type <structFieldList> struct_declaration_list
+%type <internalType> type_qualifier
+%type <internalType> pointer
+%type <internalType> address
 %type <storageClassSpecifier> storage_class_specifier
 %type <accessSpecifier> access_specifier
 %type <stringListPtr> import_submodules_list
@@ -239,10 +249,12 @@ constant_expression
     ;
 
 declaration
-    :  variable_declaration          { $$ = $1; }
-    |  function_definition           { $$ = $1; }
-    |  typedef_specifier             { $$ = $1; }
-    |  declaration_specifiers        // { $$ = $1; }
+    : variable_declaration             { $$ = $1; }
+    | function_definition              { $$ = $1; }
+    | typedef_specifier                { $$ = $1; }
+    | struct_specifier        {}
+    | enum_specifier                   {}
+    | declaration_specifiers        // { $$ = $1; }
     ;
 
 // REVIEW
@@ -296,8 +308,6 @@ primitive_type_specifier
     | BOOL                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Bool); }
     | ERROR                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Error); }
     | IDENTIFIER                    { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Identifier, (std::any) new ASTIdentifier($1)); }
-    // | struct_or_union_specifier     { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::StructOrUnion); } // FIXME | Move to a higher level
-    // | enum_specifier                { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Enum); }
     ;
 
 typedef_specifier
@@ -305,44 +315,35 @@ typedef_specifier
     | TYPEDEF IDENTIFIER '=' type_specifier ';'                             { $$ = new ASTTypeDefStatement($2, *$4); }
     ;
 
-struct_or_union_specifier
-    : struct_or_union IDENTIFIER '{' struct_declaration_list '}'
-    | struct_or_union '{' struct_declaration_list '}'
-    | struct_or_union IDENTIFIER
-    ;
-
-struct_or_union
-    : STRUCT
-    | UNION
+struct_specifier
+    : STRUCT IDENTIFIER '{' struct_declaration_list '}'                         { $$ = new ASTStructDefinition($2, *$4); }
+    | STRUCT '{' struct_declaration_list '}'                                
+    | STRUCT IDENTIFIER ';'                                                     { $$ = new ASTStructDefinition($2, {}); }
     ;
 
 struct_declaration_list
-    : 
-    | struct_declaration
-    | struct_declaration_list struct_declaration
+    :                                                                           { $$ = new std::vector<ASTStructField>(); }
+    | struct_declaration_list struct_declaration                                { $$->push_back(*static_cast<ASTStructField*>($2)); delete $2; }
     ;
 
-struct_declaration
-    : access_specifier struct_field_declaration
-    | storage_class_specifier struct_field_declaration
-    | access_specifier storage_class_specifier struct_field_declaration
-    | struct_field_declaration
-    | access_specifier storage_class_specifier function_definition
-    | access_specifier function_definition
-    | function_definition
+// ANCHOR
+struct_declaration         
+    // Struct fields          
+    : access_specifier IDENTIFIER type_specifier ';'                            { $$ = new ASTStructField($2, *$3, $1); } 
+    | IDENTIFIER type_specifier ';'                                             { $$ = new ASTStructField($1, *$2); } 
+    // | storage_class_specifier struct_field_declaration                          { $$ = $2; }
+    // | access_specifier storage_class_specifier struct_field_declaration         { $$ = $3; }
+    // | struct_field_declaration                                                  { $$ = $1; }
+    // // Struct methods
+    // | access_specifier storage_class_specifier function_definition              { $$ = nullptr; }
+    // | access_specifier function_definition                                      { $$ = nullptr; }
+    // | function_definition                                                       { $$ = nullptr; }
     ;
 
-struct_field_declaration
-    : IDENTIFIER declaration_specifiers ';'
-    | IDENTIFIER declaration_specifiers '=' expression ';'
-    ;
-
-// REVIEW
 specifier_qualifier_list
-    : primitive_type_specifier specifier_qualifier_list                              {}
-    | primitive_type_specifier                                                       { $$ = $1; }
-    | type_qualifier specifier_qualifier_list
-    | type_qualifier
+    : primitive_type_specifier specifier_qualifier_list                         { $$ = new ASTTypeSpecifier($1->getTypeValue(), $2); }
+    | type_qualifier specifier_qualifier_list                                   { $$ = new ASTTypeSpecifier($1, *$2); }
+    | primitive_type_specifier                                                  { $$ = new ASTTypeSpecifier($1->getTypeValue()); }
     ;
 
 struct_init_specifier
@@ -382,8 +383,8 @@ enumerator
     ;
 
 type_qualifier
-    : CONST
-    | VOLATILE
+    : CONST                                                             { $$ = ASTTypeSpecifier::ASTInternalType::Const; }
+    | VOLATILE                                                          { $$ = ASTTypeSpecifier::ASTInternalType::Volatile; }
     ;
 
 declarator
@@ -402,13 +403,15 @@ direct_declarator
     | direct_declarator '(' ')'
     ;
 
+// FIXME
 pointer
-    : '*'
-    | '*' type_qualifier_list
+    : '*'                                                           
+    | '*' type_qualifier_list                                           { $$ = ASTTypeSpecifier::ASTInternalType::Pointer; }    
     | '*' pointer
     | '*' type_qualifier_list pointer
     ;
 
+// FIXME
 address
     : '&'
     | '&' type_qualifier_list
@@ -483,29 +486,28 @@ statement
 compound_statement                                              
     : '{' '}'                                             { $$ = new ASTStatementList(); }
     | '{' statement_list '}'                              { $$ = $2; }             
-    | '{' declaration_list '}'                            
+    | '{' declaration_list '}'                            { $$ = $2; }
     | '{' declaration_list statement_list '}'               
     ;
 
-// REVIEW
 declaration_list
-    : declaration                                        
-    | declaration_list declaration                        
+    : declaration                                       
+    | declaration_list declaration                          
     ;
 
 statement_list  
-    : statement                                            { $$ = new ASTStatementList($1); }
-    | statement_list statement                             { 
-                                                                if ($$) 
-                                                                {
-                                                                    ASTStatementList* list = static_cast<ASTStatementList*>($$);
-                                                                    list->addStatement($2);
-                                                                } 
-                                                                else 
-                                                                {
-                                                                    $$ = new ASTStatementList($2);
-                                                                }
+    : statement                                         { $$ = new ASTStatementList($1); }
+    | statement_list statement                          { 
+                                                            if ($$) 
+                                                            {
+                                                                ASTStatementList* list = static_cast<ASTStatementList*>($$);
+                                                                list->addStatement($2);
+                                                            } 
+                                                            else 
+                                                            {
+                                                                $$ = new ASTStatementList($2);
                                                             }
+                                                        }
     ;
 
 expression_statement
