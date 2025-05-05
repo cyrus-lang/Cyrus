@@ -306,7 +306,7 @@ private:
 
 public:
     ASTCastExpression(ASTTypeSpecifier targetType, ASTNodePtr expression)
-        : targetType_(targetType), expression_(expression) {}
+        : expression_(expression), targetType_(targetType) {}
 
     NodeType getType() const override { return NodeType::CastExpression; }
     ASTNode *getExpression() const { return expression_; }

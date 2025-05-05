@@ -1,4 +1,10 @@
 enum Color {
     RED = 1,
     GREEN = 2;
+
+    fn sample() {}
+}
+
+fn main() volatile const Color {
+
 }

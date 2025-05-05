@@ -3,7 +3,6 @@
 
 #include "node.hpp"
 #include <memory>
-#include <any>
 #include <stdexcept>
 #include <string>
 
@@ -41,42 +40,41 @@ public:
         Volatile,  // nested
     };
 
-    ASTTypeSpecifier(ASTInternalType type) : type_(type), nestedValue_(nullptr) {}
-    ASTTypeSpecifier(ASTInternalType type, std::any nestedValue)
-        : type_(type), nestedValue_(nestedValue)
+    ASTTypeSpecifier(ASTInternalType type) : type_(type), inner_(nullptr) {}
+    ASTTypeSpecifier(ASTInternalType type, ASTNodePtr inner)
+        : type_(type), inner_(inner)
     {
         if (!allowedToHaveNestedValue())
         {
-            throw std::runtime_error("Internal type " + formatInternalType() + " cannot have a nested type.");
+            throw std::runtime_error("Internal type " + formatInternalType() + " cannot have a inner value.");
         }
     }
 
     NodeType getType() const override { return NodeType::TypeSpecifier; }
     ASTInternalType getTypeValue() const { return type_; }
-    std::any getNestedValue() const { return nestedValue_; }
+    ASTNodePtr getInner() const { return inner_; }
 
     std::string formatInternalType() const;
 
     void print(int indent) const override
-    {
-        std::cout << formatInternalType() << " ";
-        if (nestedValue_.has_value())
+    {   
+        if (type_ == ASTInternalType::Identifier)
         {
-            if (auto nestedType = std::any_cast<ASTTypeSpecifier>(&nestedValue_))
-            {
-                nestedType->print(0);
-            }
-            else if (auto identifier = std::any_cast<std::string>(&nestedValue_))
-            {
-                std::cout << *identifier;
-            }
+            std::cout << "Identifier";
+            return;
+        }
+
+        std::cout << formatInternalType() << " ";
+        if (inner_)
+        {
+            inner_->print(indent);
         }
         std::cout << std::endl;
     }
 
 private:
     ASTInternalType type_;
-    std::any nestedValue_;
+    ASTNodePtr inner_;
 
     bool allowedToHaveNestedValue() const
     {

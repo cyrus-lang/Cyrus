@@ -33,7 +33,6 @@
     std::pair<std::string, ASTNodePtr>* structFieldInitPair;
     ASTAssignmentExpression::Operator assignmentOperator;
     std::vector<ASTFunctionParameter>* paramsListPtr;
-    ASTTypeSpecifier::ASTInternalType internalType;
     ASTStorageClassSpecifier storageClassSpecifier;
     ASTUnaryExpression::Operator unaryOperator;
     std::vector<std::string>* stringListPtr;
@@ -59,16 +58,16 @@
 %type <structMembersAndMethods> struct_declaration_list
 %type <structField> struct_field_declaration
 %type <funcDef> struct_method_declaration
-%type <internalType> type_qualifier
-%type <internalType> pointer
-%type <internalType> address
+%type <typeSpecifier> qualified_type_specifier
+%type <typeSpecifier> pointer_type
+%type <typeSpecifier> address_type
+%type <typeSpecifier> base_type
 %type <storageClassSpecifier> storage_class_specifier
 %type <accessSpecifier> access_specifier
 %type <stringListPtr> import_submodules_list
 %type <paramsListPtr> parameter_list_optional
 %type <paramsListPtr> parameter_list
 %type <typeSpecifier> primitive_type_specifier
-%type <typeSpecifier> specifier_qualifier_list
 %type <typeSpecifier> type_specifier
 %type <unaryOperator> unary_operator
 %type <nodeListPtr> argument_expression_list
@@ -294,32 +293,6 @@ access_specifier
     | PROTECTED                      { $$ = ASTAccessSpecifier::Protected; }
     ;
 
-primitive_type_specifier
-    : INT                           { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int); }
-    | INT8                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int8); }
-    | INT16                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int16); }
-    | INT32                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int32); }
-    | INT64                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int64); }
-    | INT128                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int128); }
-    | UINT                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt); }
-    | UINT8                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt8); }
-    | UINT16                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt16); }
-    | UINT32                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt32); }
-    | UINT64                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt64); }
-    | UINT128                       { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt128); }
-    | VOID                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Void); }
-    | CHAR                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Char); }
-    | BYTE                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Byte); }
-    | STRING                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::String); }
-    | FLOAT                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float); }
-    | FLOAT32                       { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float32); }
-    | FLOAT64                       { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float64); }
-    | FLOAT128                      { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float128); }
-    | BOOL                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Bool); }
-    | ERROR                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Error); }
-    | IDENTIFIER                    { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Identifier, (std::any) new ASTIdentifier($1)); }
-    ;
-
 typedef_specifier
     : access_specifier TYPEDEF IDENTIFIER '=' type_specifier ';'                { $$ = new ASTTypeDefStatement($3, *$5, $1); }
     | TYPEDEF IDENTIFIER '=' type_specifier ';'                                 { $$ = new ASTTypeDefStatement($2, *$4); }
@@ -350,12 +323,6 @@ struct_field_declaration
 struct_method_declaration
     : access_specifier function_definition                                      { $$ = static_cast<ASTFunctionDefinition *>($2); }
     | function_definition                                                       { $$ = static_cast<ASTFunctionDefinition *>($1); }
-    ;
-
-specifier_qualifier_list
-    : primitive_type_specifier specifier_qualifier_list                         { $$ = new ASTTypeSpecifier($1->getTypeValue(), $2); }
-    | type_qualifier specifier_qualifier_list                                   { $$ = new ASTTypeSpecifier($1, *$2); }
-    | primitive_type_specifier                                                  { $$ = new ASTTypeSpecifier($1->getTypeValue()); }
     ;
 
 struct_init_specifier
@@ -417,7 +384,11 @@ enum_specifier
 enumerator_list     
     : enumerator                                                                { $$ = new std::vector<EnumData>{ *$1 }; }
     | enumerator_list ',' enumerator                                            { $$->push_back(*$3); }
-    | enumerator_list ';'                                                       
+    | enumerator_list ';'   
+    | enumerator_list function_definition                                       {   
+                                                                                    auto method = static_cast<ASTFunctionDefinition *>($2);
+                                                                                    $$->push_back(*method);
+                                                                                }                                                    
     ;
 
 enumerator
@@ -429,51 +400,68 @@ enumerator
                                                                 auto field = std::pair<std::string, std::optional<ASTNodePtr>>{$1, $3};
                                                                 $$ = new EnumData(field);
                                                             }
-    // | IDENTIFIER '(' type_qualifier_list ')'                { }
+    // | IDENTIFIER '(' ')'                { }
     // FIXME Enum variant should use function params as variant values
     ;
 
-type_qualifier
-    : CONST                                                  { $$ = ASTTypeSpecifier::ASTInternalType::Const; }
-    | VOLATILE                                               { $$ = ASTTypeSpecifier::ASTInternalType::Volatile; }
+type_specifier
+    : qualified_type_specifier
+    | pointer_type
+    | address_type
     ;
 
-// FIXME
-declarator
-    : pointer direct_declarator
-    | address direct_declarator
-    | direct_declarator
+base_type
+    : primitive_type_specifier
+    | IDENTIFIER                                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Identifier, new ASTIdentifier($1)); }
     ;
 
-direct_declarator
-    : IDENTIFIER
-    | '(' declarator ')'
-    | direct_declarator '[' constant_expression ']'
-    | direct_declarator '[' ']'
-    | direct_declarator '(' parameter_type_list ')'
-    | direct_declarator '(' identifier_list ')'
-    | direct_declarator '(' ')'
+qualified_type_specifier
+    : CONST VOLATILE base_type                          { 
+                                                            ASTTypeSpecifier* inner = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Volatile, $3);
+                                                            $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Const, inner);
+                                                        }
+    | VOLATILE CONST base_type                          { 
+                                                            ASTTypeSpecifier* inner = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Const, $3);
+                                                            $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Volatile, inner);
+                                                        }
+    | CONST base_type                                   { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Const, $2); }
+    | VOLATILE base_type                                { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Volatile, $2); }
+    | base_type                                         { $$ = $1; }
     ;
 
-// FIXME
-pointer
-    : '*'                                                           
-    | '*' type_qualifier_list                                           { $$ = ASTTypeSpecifier::ASTInternalType::Pointer; }    
-    | '*' pointer
-    | '*' type_qualifier_list pointer
+pointer_type
+    : type_specifier '*'
+        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Pointer, $1); }
     ;
 
-// FIXME
-address
-    : '&'
-    | '&' type_qualifier_list
-    | '&' pointer
-    | '&' type_qualifier_list pointer
+address_type
+    : type_specifier '&'
+        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::AddressOf, $1); }
     ;
 
-type_qualifier_list
-    : type_qualifier
-    | type_qualifier_list type_qualifier
+primitive_type_specifier
+    : INT                           { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int); }
+    | INT8                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int8); }
+    | INT16                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int16); }
+    | INT32                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int32); }
+    | INT64                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int64); }
+    | INT128                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Int128); }
+    | UINT                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt); }
+    | UINT8                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt8); }
+    | UINT16                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt16); }
+    | UINT32                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt32); }
+    | UINT64                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt64); }
+    | UINT128                       { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::UInt128); }
+    | VOID                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Void); }
+    | CHAR                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Char); }
+    | BYTE                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Byte); }
+    | STRING                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::String); }
+    | FLOAT                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float); }
+    | FLOAT32                       { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float32); }
+    | FLOAT64                       { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float64); }
+    | FLOAT128                      { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Float128); }
+    | BOOL                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Bool); }
+    | ERROR                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Error); }
     ;
 
 parameter_type_list
@@ -487,41 +475,13 @@ parameter_list
     ;
 
 parameter_declaration
-    : declarator
-    | abstract_declarator
+    : CONST
+    // TODO
     ;
 
 identifier_list
     : IDENTIFIER
     | identifier_list ',' IDENTIFIER
-    ;
-
-type_specifier_list
-    : type_specifier
-    | type_specifier_list ',' type_specifier
-    ;
-
-type_specifier
-    : specifier_qualifier_list
-    | specifier_qualifier_list abstract_declarator
-    ;
-
-abstract_declarator
-    : pointer
-    | direct_abstract_declarator
-    | pointer direct_abstract_declarator
-    ;
-
-direct_abstract_declarator
-    : '(' abstract_declarator ')'
-    | '[' ']'
-    | '[' constant_expression ']'
-    | direct_abstract_declarator '[' ']'
-    | direct_abstract_declarator '[' constant_expression ']'
-    | '(' ')'
-    | '(' parameter_type_list ')'
-    | direct_abstract_declarator '(' ')'
-    | direct_abstract_declarator '(' parameter_type_list ')'
     ;
 
 statement
