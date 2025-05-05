@@ -918,10 +918,9 @@ public:
                 printIndent(indent + 2);
                 std::cout << field.first << ": ";
                 fieldValue.value()->print(0);
+                std::cout << std::endl;
             }
         }
-
-        std::cout << std::endl;
 
         printIndent(indent + 1);
         std::cout << "Methods:" << std::endl;

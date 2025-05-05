@@ -74,8 +74,7 @@
 %type <nodeListPtr> argument_expression_list
 %type <fieldInitializerList> field_initializer_list
 %type <structFieldInitPair> struct_init_field
-%type <enumDataList> enumerator_list_and_methods
-%type <enumData> enumerator_list
+%type <enumDataList> enumerator_list
 %type <enumData> enumerator
 
 %type <node> constant_expression
@@ -374,7 +373,7 @@ struct_init_field
     ;
 
 enum_specifier
-    : ENUM '{' enumerator_list_and_methods '}'                                  { 
+    : ENUM '{' enumerator_list '}'                                              { 
                                                                                     std::vector<ASTEnumVariant> variants;
                                                                                     std::vector<ASTFunctionDefinition> methods;
                                                                                     std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> fields;
@@ -393,7 +392,7 @@ enum_specifier
 
                                                                                     $$ = new ASTEnumDefinition(std::nullopt, variants, fields, methods); 
                                                                                 }
-    | ENUM IDENTIFIER '{' enumerator_list_and_methods '}'                       { 
+    | ENUM IDENTIFIER '{' enumerator_list '}'                                   {
                                                                                     std::vector<ASTEnumVariant> variants;
                                                                                     std::vector<ASTFunctionDefinition> methods;
                                                                                     std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> fields;
@@ -415,17 +414,9 @@ enum_specifier
     | ENUM IDENTIFIER ';'                                                       { $$ = new ASTEnumDefinition($2, {}, {}, {}); }
     ;
 
-enumerator_list_and_methods
-    : enumerator_list                                                           { $$ = new std::vector<EnumData>{ *$1 }; }
-    | enumerator_list_and_methods function_definition                           {   
-                                                                                    auto method = static_cast<ASTFunctionDefinition *>($2);
-                                                                                    $$->push_back(*method);
-                                                                                }
-    ;
-
 enumerator_list     
-    : enumerator                                                                { $$ = $1; }
-    | enumerator_list ',' enumerator                                            { $$ = $3; }
+    : enumerator                                                                { $$ = new std::vector<EnumData>{ *$1 }; }
+    | enumerator_list ',' enumerator                                            { $$->push_back(*$3); }
     | enumerator_list ';'                                                       
     ;
 
