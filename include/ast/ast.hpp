@@ -834,4 +834,102 @@ public:
     }
 };
 
+class ASTEnumVariant : public ASTNode
+{
+private:
+    std::string name_;
+    std::vector<ASTTypeSpecifier> types_;
+
+public:
+    ASTEnumVariant(std::string name, std::vector<ASTTypeSpecifier> types)
+        : name_(name), types_(types) {}
+
+    NodeType getType() const override { return NodeType::EnumVariant; }
+    const std::string &getName() const { return name_; }
+    const std::vector<ASTTypeSpecifier> &getTypes() const { return types_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "EnumVariant: " << name_ << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Types:" << std::endl;
+        for (const auto &type : types_)
+        {
+            type.print(indent + 2);
+        }
+    }
+};
+
+class ASTEnumDefinition : public ASTNode
+{
+private:
+    std::optional<std::string> name_;
+    std::vector<ASTEnumVariant> variants_;
+    std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> fields_;
+    std::vector<ASTFunctionDefinition> methods_;
+    ASTAccessSpecifier accessSpecifier_;
+
+public:
+    ASTEnumDefinition(std::optional<std::string> name, 
+                    std::vector<ASTEnumVariant> variants,
+                      std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> fields,
+                      std::vector<ASTFunctionDefinition> methods,
+                      ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
+
+        : name_(name), variants_(variants), fields_(fields), methods_(methods), accessSpecifier_(accessSpecifier) {}
+
+    NodeType getType() const override { return NodeType::EnumDefinition; }
+    const std::optional<std::string> &getName() const { return name_; }
+    const std::vector<ASTEnumVariant> &getVariants() const { return variants_; }
+    const std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> &getFields() const { return fields_; }
+    const std::vector<ASTFunctionDefinition> &getMethods() const { return methods_; }
+    ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "EnumDefinition: " << std::endl;
+
+         if (name_.has_value())
+        {
+            printIndent(indent + 1);
+            std::cout << "Name: " << name_.value() << std::endl;
+        }
+
+        printIndent(indent + 1);
+        printASTAccessSpecifier(accessSpecifier_);
+
+        printIndent(indent + 1);
+        std::cout << "Variants:" << std::endl;
+        for (const auto &variant : variants_)
+        {
+            variant.print(indent + 2);
+        }
+
+        printIndent(indent + 1);
+        std::cout << "Fields:" << std::endl;
+        for (const auto &field : fields_)
+        {       
+            std::optional<ASTNodePtr> fieldValue = field.second;
+            if (fieldValue.has_value())
+            {       
+                printIndent(indent + 2);
+                std::cout << field.first << ": ";
+                fieldValue.value()->print(0);
+            }
+        }
+
+        std::cout << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Methods:" << std::endl;
+        for (const auto &method : methods_)
+        {
+            method.print(indent + 2);
+        }
+    }
+};
+
 #endif

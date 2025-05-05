@@ -34,7 +34,9 @@ public:
         ImportedSymbolAccess,
         FunctionCall,
         FieldAccess,
-        PointerFieldAccess
+        PointerFieldAccess,
+        EnumVariant,
+        EnumDefinition
     };
 
     virtual ~ASTNode() = default;

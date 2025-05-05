@@ -2,6 +2,7 @@
     #include <stdio.h>
     #include <memory>
     #include <utility>
+    #include <variant>
     #include "ast/ast.hpp"
 
     char* yyerrormsg;
@@ -12,6 +13,8 @@
 
 %code requires {
     #include "ast/ast.hpp"
+
+    using EnumData = std::variant<ASTEnumVariant, std::pair<std::string, std::optional<ASTNodePtr>>, ASTFunctionDefinition>;
 }
 
 %token UINT128 VOID CHAR BYTE STRING FLOAT FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
@@ -35,9 +38,11 @@
     ASTUnaryExpression::Operator unaryOperator;
     std::vector<std::string>* stringListPtr;
     std::vector<ASTNodePtr>* nodeListPtr;
+    std::vector<EnumData>* enumDataList;
     ASTAccessSpecifier accessSpecifier;
     ASTTypeSpecifier* typeSpecifier;
     ASTFunctionDefinition* funcDef;
+    EnumData* enumData;
     ASTStructField* structField;
     ASTNodePtr node;
     double dval;
@@ -69,6 +74,9 @@
 %type <nodeListPtr> argument_expression_list
 %type <fieldInitializerList> field_initializer_list
 %type <structFieldInitPair> struct_init_field
+%type <enumDataList> enumerator_list_and_methods
+%type <enumData> enumerator_list
+%type <enumData> enumerator
 
 %type <node> constant_expression
 %type <node> primary_expression
@@ -358,38 +366,85 @@ struct_init_specifier
 
 field_initializer_list
     : struct_init_field                                                         { $$ = new std::vector<std::pair<std::string, ASTNodePtr>>{*$1};  }
-    | field_initializer_list ',' struct_init_field                              { $$->push_back(*$3); }
-    | field_initializer_list ','                                                { /* Allow trailing comma */ }
+    | field_initializer_list ';' struct_init_field                              { $$->push_back(*$3); }
     ;
 
 struct_init_field
     : IDENTIFIER ':' assignment_expression                                      { $$ = new std::pair<std::string, ASTNodePtr>($1, $3); }
     ;
 
-// TODO
 enum_specifier
-    : ENUM '{' enumerator_list '}'
-    | ENUM IDENTIFIER '{' enumerator_list '}'
-    | ENUM IDENTIFIER
+    : ENUM '{' enumerator_list_and_methods '}'                                  { 
+                                                                                    std::vector<ASTEnumVariant> variants;
+                                                                                    std::vector<ASTFunctionDefinition> methods;
+                                                                                    std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> fields;
+
+                                                                                    for (auto& data : *$3) {
+                                                                                        if (std::holds_alternative<ASTEnumVariant>(data)) {
+                                                                                            variants.push_back(std::get<ASTEnumVariant>(data));
+                                                                                        } else if (std::holds_alternative<ASTFunctionDefinition>(data)) {
+                                                                                            methods.push_back(std::get<ASTFunctionDefinition>(data));
+                                                                                        } 
+                                                                                        else if (std::holds_alternative<std::pair<std::string, std::optional<ASTNodePtr>>>(data)) {
+                                                                                            auto pair = std::get<std::pair<std::string, std::optional<ASTNodePtr>>>(data);
+                                                                                            fields.push_back(pair);
+                                                                                        }
+                                                                                    }
+
+                                                                                    $$ = new ASTEnumDefinition(std::nullopt, variants, fields, methods); 
+                                                                                }
+    | ENUM IDENTIFIER '{' enumerator_list_and_methods '}'                       { 
+                                                                                    std::vector<ASTEnumVariant> variants;
+                                                                                    std::vector<ASTFunctionDefinition> methods;
+                                                                                    std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> fields;
+
+                                                                                    for (auto& data : *$4) {
+                                                                                        if (std::holds_alternative<ASTEnumVariant>(data)) {
+                                                                                            variants.push_back(std::get<ASTEnumVariant>(data));
+                                                                                        } else if (std::holds_alternative<ASTFunctionDefinition>(data)) {
+                                                                                            methods.push_back(std::get<ASTFunctionDefinition>(data));
+                                                                                        }
+                                                                                        else if (std::holds_alternative<std::pair<std::string, std::optional<ASTNodePtr>>>(data)) {
+                                                                                            auto pair = std::get<std::pair<std::string, std::optional<ASTNodePtr>>>(data);
+                                                                                            fields.push_back(pair);
+                                                                                        }
+                                                                                    }
+
+                                                                                    $$ = new ASTEnumDefinition($2, variants, fields, methods); 
+                                                                                }
+    | ENUM IDENTIFIER ';'                                                       { $$ = new ASTEnumDefinition($2, {}, {}, {}); }
     ;
 
-// TODO
-enumerator_list
-    : 
-    | enumerator
-    | enumerator_list ',' enumerator
+enumerator_list_and_methods
+    : enumerator_list                                                           { $$ = new std::vector<EnumData>{ *$1 }; }
+    | enumerator_list_and_methods function_definition                           {   
+                                                                                    auto method = static_cast<ASTFunctionDefinition *>($2);
+                                                                                    $$->push_back(*method);
+                                                                                }
     ;
 
-// TODO
+enumerator_list     
+    : enumerator                                                                { $$ = $1; }
+    | enumerator_list ',' enumerator                                            { $$ = $3; }
+    | enumerator_list ';'                                                       
+    ;
+
 enumerator
-    : IDENTIFIER
-    | IDENTIFIER '=' constant_expression
-    | IDENTIFIER '(' type_specifier_list ')'
+    : IDENTIFIER                                            { 
+                                                                auto unnamedField = new std::pair<std::string, std::optional<ASTNodePtr>>($1, std::nullopt);
+                                                                $$ = new EnumData(*unnamedField); free($1);
+                                                            }
+    | IDENTIFIER '=' constant_expression                    { 
+                                                                auto field = std::pair<std::string, std::optional<ASTNodePtr>>{$1, $3};
+                                                                $$ = new EnumData(field);
+                                                            }
+    // | IDENTIFIER '(' type_qualifier_list ')'                { }
+    // FIXME Enum variant should use function params as variant values
     ;
 
 type_qualifier
-    : CONST                                                             { $$ = ASTTypeSpecifier::ASTInternalType::Const; }
-    | VOLATILE                                                          { $$ = ASTTypeSpecifier::ASTInternalType::Volatile; }
+    : CONST                                                  { $$ = ASTTypeSpecifier::ASTInternalType::Const; }
+    | VOLATILE                                               { $$ = ASTTypeSpecifier::ASTInternalType::Volatile; }
     ;
 
 // FIXME

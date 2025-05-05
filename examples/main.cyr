@@ -1,5 +1,4 @@
-fn main() {
-    #a = Person {
-        name: "Taha"
-    };
+enum Color {
+    RED = 1,
+    GREEN = 2;
 }
