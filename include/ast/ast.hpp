@@ -348,6 +348,32 @@ public:
     }
 };
 
+class ASTImportedSymbolAccess : public ASTNode
+{
+private:
+    std::vector<std::string> symbolPath_;
+
+public:
+    ASTImportedSymbolAccess(std::vector<std::string> symbolPath) : symbolPath_(symbolPath) {}
+    NodeType getType() const override { return NodeType::ImportedSymbolAccess; }
+    const std::vector<std::string> &getSymbolPath() const { return symbolPath_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "ImportedSymbolAccess: ";
+        for (size_t i = 0; i < symbolPath_.size(); ++i)
+        {
+            std::cout << symbolPath_[i];
+            if (i < symbolPath_.size() - 1)
+            {
+                std::cout << "::";
+            }
+        }
+        std::cout << std::endl;
+    }
+};
+
 class ASTTypeDefStatement : public ASTNode
 {
 private:
@@ -420,17 +446,17 @@ public:
 class ASTFunctionDefinition : public ASTNode
 {
 private:
-    std::string name_;
+    ASTNodePtr expr_;
     std::vector<ASTFunctionParameter> parameters_;
     ASTTypeSpecifier *returnType_;
     ASTNodePtr body_;
 
 public:
-    ASTFunctionDefinition(std::string name, std::vector<ASTFunctionParameter> parameters, ASTTypeSpecifier *returnType, ASTNodePtr body)
-        : name_(name), parameters_(parameters), returnType_(returnType), body_(body) {}
+    ASTFunctionDefinition(ASTNodePtr expr, std::vector<ASTFunctionParameter> parameters, ASTTypeSpecifier *returnType, ASTNodePtr body)
+        : expr_(expr), parameters_(parameters), returnType_(returnType), body_(body) {}
 
     NodeType getType() const override { return NodeType::FunctionDefinition; }
-    const std::string &getName() const { return name_; }
+    ASTNodePtr getExpr() const { return expr_; }
     const std::vector<ASTFunctionParameter> &getParameters() const { return parameters_; }
     ASTTypeSpecifier *getReturnType() const { return returnType_; }
     ASTNode *getBody() const { return body_; }
@@ -438,7 +464,8 @@ public:
     void print(int indent) const override
     {
         printIndent(indent);
-        std::cout << "FunctionDefinition: " << name_ << std::endl;
+        std::cout << "FunctionDefinition: " << std::endl;
+        expr_->print(indent + 1);
 
         printIndent(indent + 1);
         std::cout << "Parameters:" << std::endl;
@@ -691,6 +718,38 @@ private:
             return "|=";
         default:
             return "Unknown Operator";
+        }
+    }
+};
+
+class ASTFunctionCall : public ASTNode
+{
+private:
+    ASTNodePtr expr_;
+    std::vector<ASTNodePtr> arguments_;
+
+public:
+    ASTFunctionCall(ASTNodePtr expr, std::vector<ASTNodePtr> arguments)
+        : expr_(expr), arguments_(arguments) {}
+
+    NodeType getType() const override { return NodeType::FunctionCall; }
+    ASTNodePtr getExpr() const { return expr_; }
+    const std::vector<ASTNodePtr> &getArguments() const { return arguments_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "FunctionCall: " << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Function Expr:" << std::endl;
+        expr_->print(indent + 2);
+
+        printIndent(indent + 1);
+        std::cout << "Arguments:" << std::endl;
+        for (const auto &arg : arguments_)
+        {
+            arg->print(indent + 2);
         }
     }
 };

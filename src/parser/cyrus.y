@@ -31,6 +31,7 @@
     ASTStorageClassSpecifier storageClassSpecifier;
     ASTUnaryExpression::Operator unaryOperator;
     std::vector<std::string>* stringListPtr;
+    std::vector<ASTNodePtr>* nodeListPtr;
     ASTAccessSpecifier accessSpecifier;
     ASTTypeSpecifier* typeSpecifier;
     ASTFunctionDefinition* funcDef;
@@ -62,7 +63,9 @@
 %type <typeSpecifier> specifier_qualifier_list
 %type <typeSpecifier> type_specifier
 %type <unaryOperator> unary_operator
+%type <nodeListPtr> argument_expression_list
 
+%type <node> constant_expression
 %type <node> primary_expression
 %type <node> additive_expression
 %type <node> multiplicative_expression
@@ -95,6 +98,7 @@
 %type <node> conditional_expression
 %type <node> expression_statement
 %type <node> enum_specifier
+%type <node> imported_symbol_access
 
 %define parse.error verbose
 %start translation_unit
@@ -118,26 +122,26 @@ primary_expression
     ;
 
 imported_symbol_access
-    : IDENTIFIER ':' ':' IDENTIFIER
-    | IDENTIFIER ':' ':' IDENTIFIER '(' ')'
-    | IDENTIFIER ':' ':' IDENTIFIER '(' argument_expression_list ')'
+    : import_submodules_list                                                    { $$ = new ASTImportedSymbolAccess(*$1); delete $1; }
+    | import_submodules_list '(' ')'                                            { $$ = new ASTFunctionCall(new ASTImportedSymbolAccess(*$1), {}); }
+    | import_submodules_list '(' argument_expression_list ')'                   { $$ = new ASTFunctionCall(new ASTImportedSymbolAccess(*$1), *$3); }
     ;
 
 postfix_expression
     : primary_expression                                                        { $$ = $1; }
     | postfix_expression '[' expression ']'
-    | postfix_expression '(' ')'
-    | postfix_expression '(' argument_expression_list ')'
+    | postfix_expression '(' ')'                                                { $$ = new ASTFunctionCall($1, {}); }
+    | postfix_expression '(' argument_expression_list ')'                       { $$ = new ASTFunctionCall($1, *$3); }
     | postfix_expression '.' IDENTIFIER
     | postfix_expression PTR_OP IDENTIFIER
-    | imported_symbol_access
     | postfix_expression INC_OP
     | postfix_expression DEC_OP
+    | imported_symbol_access                                                    { $$ = $1; }
     ;
 
 argument_expression_list
-    : assignment_expression
-    | argument_expression_list ',' assignment_expression
+    : assignment_expression                                                     { $$ = new std::vector<ASTNodePtr>({$1}); }
+    | argument_expression_list ',' assignment_expression                        { $$->push_back($3); }
     ;
 
 unary_expression
@@ -248,7 +252,7 @@ expression
     ;
 
 constant_expression
-    : conditional_expression
+    : conditional_expression                                                        { $$ = $1; }
     ;
 
 declaration
@@ -260,7 +264,7 @@ declaration
     | declaration_specifiers           { $$ = $1; }
     ;
 
-// REVIEW
+// TODO
 declaration_specifiers
     : type_specifier
     | type_qualifier type_specifier
@@ -351,36 +355,43 @@ specifier_qualifier_list
     | primitive_type_specifier                                                  { $$ = new ASTTypeSpecifier($1->getTypeValue()); }
     ;
 
+// TODO
 struct_init_specifier
     : IDENTIFIER '{' field_initializer_list_optional '}'
     ;
 
+// TODO
 field_initializer_list_optional
     :
     | field_initializer_list    
     ;
 
+// TODO
 field_initializer_list
     : struct_init_field
     | field_initializer_list ',' struct_init_field
     ;
 
+// TODO
 struct_init_field
     : IDENTIFIER ':' assignment_expression
     ;
 
+// TODO
 enum_specifier
     : ENUM '{' enumerator_list '}'
     | ENUM IDENTIFIER '{' enumerator_list '}'
     | ENUM IDENTIFIER
     ;
 
+// TODO
 enumerator_list
     : 
     | enumerator
     | enumerator_list ',' enumerator
     ;
 
+// TODO
 enumerator
     : IDENTIFIER
     | IDENTIFIER '=' constant_expression
@@ -392,6 +403,7 @@ type_qualifier
     | VOLATILE                                                          { $$ = ASTTypeSpecifier::ASTInternalType::Volatile; }
     ;
 
+// FIXME
 declarator
     : pointer direct_declarator
     | address direct_declarator
@@ -600,8 +612,8 @@ external_declaration
     ;
 
 function_definition
-    : FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition($2, *$4, $6, $7); }
-    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition($2, *$4, nullptr, $6); }
+    : FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, $6, $7); }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, nullptr, $6); }
     ;
 
 parameter_list_optional

@@ -29,7 +29,9 @@ public:
         StructDefinition,
         StructField,
         ConditionalExpression,
-        AssignmentExpression
+        AssignmentExpression,
+        ImportedSymbolAccess,
+        FunctionCall
     };
 
     virtual ~ASTNode() = default;
