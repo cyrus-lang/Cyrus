@@ -246,7 +246,9 @@ public:
         AddressOf,
         Dereference,
         PreIncrement,
-        PreDecrement
+        PreDecrement,
+        PostIncrement,
+        PostDecrement
     };
 
     ASTUnaryExpression(Operator op, ASTNodePtr operand)
@@ -285,6 +287,10 @@ private:
         case Operator::PreIncrement:
             return "++";
         case Operator::PreDecrement:
+            return "--";
+        case Operator::PostIncrement:
+            return "++";
+        case Operator::PostDecrement:
             return "--";
         default:
             return "Unknown Operator";
@@ -529,7 +535,6 @@ public:
     }
 };
 
-
 class ASTStructField : public ASTNode
 {
 private:
@@ -586,7 +591,8 @@ public:
         printIndent(indent);
         std::cout << "StructDefinition: " << std::endl;
 
-        if (name_.has_value()) {
+        if (name_.has_value())
+        {
             printIndent(indent + 1);
             std::cout << "Name: " << name_.value() << std::endl;
         }
@@ -751,6 +757,47 @@ public:
         {
             arg->print(indent + 2);
         }
+    }
+};
+
+class ASTFieldAccess : public ASTNode
+{
+private:
+    ASTNodePtr operand_;
+    std::string field_name_;
+
+public:
+    ASTFieldAccess(ASTNodePtr operand, std::string field_name)
+        : operand_(operand), field_name_(field_name) {}
+
+    NodeType getType() const override { return NodeType::FieldAccess; }
+    ASTNodePtr getOperand() const { return operand_; }
+    const std::string &getFieldName() const { return field_name_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "FieldAccess: " << field_name_ << std::endl;
+        operand_->print(indent + 1);
+    }
+};
+
+class ASTPointerFieldAccess : public ASTNode
+{
+private:
+    ASTFieldAccess field_access_;
+
+public:
+    ASTPointerFieldAccess(ASTFieldAccess field_access) : field_access_(field_access) {}
+
+    NodeType getType() const override { return NodeType::PointerFieldAccess; }
+    ASTFieldAccess getFieldAccess() const { return field_access_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "PointerFieldAccess: " << std::endl;
+        field_access_.print(indent + 1);
     }
 };
 

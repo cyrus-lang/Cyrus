@@ -31,7 +31,9 @@ public:
         ConditionalExpression,
         AssignmentExpression,
         ImportedSymbolAccess,
-        FunctionCall
+        FunctionCall,
+        FieldAccess,
+        PointerFieldAccess
     };
 
     virtual ~ASTNode() = default;

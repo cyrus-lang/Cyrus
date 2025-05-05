@@ -87,7 +87,6 @@
 %type <node> function_definition
 %type <node> declaration
 %type <node> declaration_list
-%type <node> declaration_specifiers
 %type <node> assignment_expression
 %type <node> postfix_expression
 %type <node> compound_statement
@@ -129,13 +128,16 @@ imported_symbol_access
 
 postfix_expression
     : primary_expression                                                        { $$ = $1; }
-    | postfix_expression '[' expression ']'
+    | postfix_expression '[' expression ']'                                     // TODO Array Index Access
     | postfix_expression '(' ')'                                                { $$ = new ASTFunctionCall($1, {}); }
     | postfix_expression '(' argument_expression_list ')'                       { $$ = new ASTFunctionCall($1, *$3); }
-    | postfix_expression '.' IDENTIFIER
-    | postfix_expression PTR_OP IDENTIFIER
-    | postfix_expression INC_OP
-    | postfix_expression DEC_OP
+    | postfix_expression '.' IDENTIFIER                                         { $$ = new ASTFieldAccess($1, $3); }
+    | postfix_expression PTR_OP IDENTIFIER                                      {
+                                                                                    ASTFieldAccess* fieldAccess = new ASTFieldAccess($1, $3);
+                                                                                    $$ = new ASTPointerFieldAccess(*fieldAccess);
+                                                                                }
+    | postfix_expression INC_OP                                                 { $$ = new ASTUnaryExpression(ASTUnaryExpression::Operator::PostIncrement, $1); }
+    | postfix_expression DEC_OP                                                 { $$ = new ASTUnaryExpression(ASTUnaryExpression::Operator::PostDecrement, $1); }
     | imported_symbol_access                                                    { $$ = $1; }
     ;
 
@@ -261,19 +263,6 @@ declaration
     | typedef_specifier                { $$ = $1; }
     | struct_specifier                 { $$ = $1; }
     | enum_specifier                   { $$ = $1; }
-    | declaration_specifiers           { $$ = $1; }
-    ;
-
-// TODO
-declaration_specifiers
-    : type_specifier
-    | type_qualifier type_specifier
-    | storage_class_specifier type_specifier
-    | storage_class_specifier type_qualifier type_specifier
-    | access_specifier type_specifier
-    | access_specifier type_qualifier type_specifier
-    | access_specifier storage_class_specifier type_specifier
-    | access_specifier storage_class_specifier type_qualifier type_specifier
     ;
 
 storage_class_specifier
@@ -452,9 +441,8 @@ parameter_list
     ;
 
 parameter_declaration
-    : declaration_specifiers declarator
-    | declaration_specifiers abstract_declarator
-    | declaration_specifiers
+    : declarator
+    | abstract_declarator
     ;
 
 identifier_list
