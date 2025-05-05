@@ -583,4 +583,116 @@ public:
     }
 };
 
+class ASTConditionalExpression : public ASTNode
+{
+private:
+    ASTNodePtr condition_;
+    ASTNodePtr trueExpression_;
+    ASTNodePtr falseExpression_;
+
+public:
+    ASTConditionalExpression(ASTNodePtr condition, ASTNodePtr trueExpression, ASTNodePtr falseExpression)
+        : condition_(condition), trueExpression_(trueExpression), falseExpression_(falseExpression) {}
+
+    NodeType getType() const override { return NodeType::ConditionalExpression; }
+    ASTNode *getCondition() const { return condition_; }
+    ASTNode *getTrueExpression() const { return trueExpression_; }
+    ASTNode *getFalseExpression() const { return falseExpression_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "ConditionalExpression:" << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Condition:" << std::endl;
+        condition_->print(indent + 2);
+
+        printIndent(indent + 1);
+        std::cout << "True Expression:" << std::endl;
+        trueExpression_->print(indent + 2);
+        std::cout << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "False Expression:" << std::endl;
+        falseExpression_->print(indent + 2);
+    }
+};
+
+class ASTAssignmentExpression : public ASTNode
+{
+public:
+    enum class Operator
+    {
+        Assign,
+        AddAssign,
+        SubtractAssign,
+        MultiplyAssign,
+        DivideAssign,
+        RemainderAssign,
+        LeftShiftAssign,
+        RightShiftAssign,
+        BitwiseAndAssign,
+        BitwiseXorAssign,
+        BitwiseOrAssign
+    };
+
+    ASTAssignmentExpression(ASTNodePtr left, Operator op, ASTNodePtr right)
+        : left_(left), op_(op), right_(right) {}
+
+    NodeType getType() const override { return NodeType::AssignmentExpression; }
+
+    ASTNode *getLeft() const { return left_; }
+    Operator getOperator() const { return op_; }
+    ASTNode *getRight() const { return right_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "AssignmentExpression: " << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Operator: " << formatOperator(op_) << std::endl;
+
+        left_->print(indent + 1);
+        right_->print(indent + 1);
+    }
+
+private:
+    ASTNodePtr left_;
+    Operator op_;
+    ASTNodePtr right_;
+
+    std::string formatOperator(Operator op) const
+    {
+        switch (op)
+        {
+        case Operator::Assign:
+            return "=";
+        case Operator::AddAssign:
+            return "+=";
+        case Operator::SubtractAssign:
+            return "-=";
+        case Operator::MultiplyAssign:
+            return "*=";
+        case Operator::DivideAssign:
+            return "/=";
+        case Operator::RemainderAssign:
+            return "%=";
+        case Operator::LeftShiftAssign:
+            return "<<=";
+        case Operator::RightShiftAssign:
+            return ">>=";
+        case Operator::BitwiseAndAssign:
+            return "&=";
+        case Operator::BitwiseXorAssign:
+            return "^=";
+        case Operator::BitwiseOrAssign:
+            return "|=";
+        default:
+            return "Unknown Operator";
+        }
+    }
+};
+
 #endif

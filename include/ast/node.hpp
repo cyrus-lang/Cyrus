@@ -27,7 +27,9 @@ public:
         ASTVariableDeclaration,
         TypeDefStatement,
         StructDefinition,
-        StructField
+        StructField,
+        ConditionalExpression,
+        AssignmentExpression
     };
 
     virtual ~ASTNode() = default;

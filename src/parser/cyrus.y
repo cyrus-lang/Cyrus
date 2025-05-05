@@ -25,6 +25,7 @@
 
 %union {
     std::pair<std::vector<ASTStructField>, std::vector<ASTFunctionDefinition>>* structMembersAndMethods;
+    ASTAssignmentExpression::Operator assignmentOperator;
     std::vector<ASTFunctionParameter>* paramsListPtr;
     ASTTypeSpecifier::ASTInternalType internalType;
     ASTStorageClassSpecifier storageClassSpecifier;
@@ -45,6 +46,7 @@
 %token <sval> STRING_CONSTANT 
 %token <sval> IDENTIFIER      
 
+%type <assignmentOperator> assignment_operator
 %type <structMembersAndMethods> struct_declaration_list
 %type <structField> struct_field_declaration
 %type <funcDef> struct_method_declaration
@@ -90,8 +92,9 @@
 %type <node> statement
 %type <node> typedef_specifier
 %type <node> struct_specifier
-
-
+%type <node> conditional_expression
+%type <node> expression_statement
+%type <node> enum_specifier
 
 %define parse.error verbose
 %start translation_unit
@@ -216,36 +219,32 @@ logical_or_expression
     | logical_or_expression OR_OP logical_or_expression                             { $$ = new ASTBinaryExpression($1, ASTBinaryExpression::Operator::LogicalOr, $3); }
     ;
 
-// TODO
 conditional_expression
-    : logical_or_expression
-    | logical_or_expression '?' expression ':' conditional_expression
+    : logical_or_expression                                                         { $$ = $1; }
+    | logical_or_expression '?' expression ':' conditional_expression               { $$ = new ASTConditionalExpression($1, $3, $5); }
     ;
 
-// TODO
 assignment_expression
-    : conditional_expression
-    | unary_expression assignment_operator assignment_expression
+    : conditional_expression                                                        { $$ = $1; }
+    | unary_expression assignment_operator assignment_expression                    { $$ = new ASTAssignmentExpression($1, $2, $3); }
     ;
 
-// TODO
 assignment_operator
-    : '='
-    | MUL_ASSIGN
-    | DIV_ASSIGN
-    | MOD_ASSIGN
-    | ADD_ASSIGN
-    | SUB_ASSIGN
-    | LEFT_ASSIGN
-    | RIGHT_ASSIGN
-    | AND_ASSIGN
-    | XOR_ASSIGN
-    | OR_ASSIGN
+    : '='                                                                           { $$ = ASTAssignmentExpression::Operator::Assign; }
+    | MUL_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::MultiplyAssign; }
+    | DIV_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::DivideAssign; }
+    | MOD_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::RemainderAssign; }
+    | ADD_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::AddAssign; }
+    | SUB_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::SubtractAssign; }
+    | LEFT_ASSIGN                                                                   { $$ = ASTAssignmentExpression::Operator::LeftShiftAssign; }
+    | RIGHT_ASSIGN                                                                  { $$ = ASTAssignmentExpression::Operator::RightShiftAssign; }
+    | AND_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::BitwiseAndAssign; }
+    | XOR_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::BitwiseXorAssign; }
+    | OR_ASSIGN                                                                     { $$ = ASTAssignmentExpression::Operator::BitwiseOrAssign; }
     ;
 
 expression
-    : assignment_expression
-    | expression ',' assignment_expression
+    : assignment_expression                                                         { $$ = $1; }
     ;
 
 constant_expression
@@ -256,9 +255,9 @@ declaration
     : variable_declaration             { $$ = $1; }
     | function_definition              { $$ = $1; }
     | typedef_specifier                { $$ = $1; }
-    | struct_specifier        {}
-    | enum_specifier                   {}
-    | declaration_specifiers        // { $$ = $1; }
+    | struct_specifier                 { $$ = $1; }
+    | enum_specifier                   { $$ = $1; }
+    | declaration_specifiers           { $$ = $1; }
     ;
 
 // REVIEW
@@ -456,8 +455,6 @@ type_specifier_list
     | type_specifier_list ',' type_specifier
     ;
 
-// ANCHOR
-
 type_specifier
     : specifier_qualifier_list
     | specifier_qualifier_list abstract_declarator
@@ -482,23 +479,42 @@ direct_abstract_declarator
     ;
 
 statement
-    : compound_statement
-    | expression_statement
+    : compound_statement        
+    | expression_statement      
     | selection_statement
     | iteration_statement
     | jump_statement
     ;
 
 compound_statement                                              
-    : '{' '}'                                             { $$ = new ASTStatementList(); }
-    | '{' statement_list '}'                              { $$ = $2; }             
-    | '{' declaration_list '}'                            { $$ = $2; }
-    | '{' declaration_list statement_list '}'               
+    : '{' '}'                                               { $$ = new ASTStatementList(); }
+    | '{' statement_list '}'                                { $$ = $2; }
+    | '{' declaration_list '}'                              { $$ = $2; }
+    | '{' expression_statement '}'                          { $$ = new ASTStatementList($2); }
+    | '{' declaration_list statement_list '}'               { 
+                                                                ASTStatementList* list = static_cast<ASTStatementList*>($2);
+                                                                $$ = list;
+                                                            }
+    | '{' declaration_list expression_statement '}'         {
+                                                                ASTStatementList* list = static_cast<ASTStatementList*>($2);
+                                                                list->addStatement($3);
+                                                                $$ = list;
+                                                            }
     ;
 
 declaration_list
-    : declaration                                       
-    | declaration_list declaration                          
+    : declaration                                           { $$ = new ASTStatementList($1); }
+    | declaration_list declaration                          {
+                                                                if ($$) 
+                                                                {
+                                                                    ASTStatementList* list = static_cast<ASTStatementList*>($$);
+                                                                    list->addStatement($2);
+                                                                } 
+                                                                else 
+                                                                {
+                                                                    $$ = new ASTStatementList($2);
+                                                                }
+                                                            }
     ;
 
 statement_list  
@@ -518,7 +534,7 @@ statement_list
 
 expression_statement
     : ';'
-    | expression ';'
+    | expression ';'                                    { $$ = $1; }
     ;
 
 selection_statement
