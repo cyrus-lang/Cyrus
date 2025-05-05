@@ -1,6 +1,7 @@
 %{
     #include <stdio.h>
     #include <memory>
+    #include <utility>
     #include "ast/ast.hpp"
 
     char* yyerrormsg;
@@ -25,6 +26,8 @@
 
 %union {
     std::pair<std::vector<ASTStructField>, std::vector<ASTFunctionDefinition>>* structMembersAndMethods;
+    std::vector<std::pair<std::string, ASTNodePtr>>* fieldInitializerList;
+    std::pair<std::string, ASTNodePtr>* structFieldInitPair;
     ASTAssignmentExpression::Operator assignmentOperator;
     std::vector<ASTFunctionParameter>* paramsListPtr;
     ASTTypeSpecifier::ASTInternalType internalType;
@@ -64,6 +67,8 @@
 %type <typeSpecifier> type_specifier
 %type <unaryOperator> unary_operator
 %type <nodeListPtr> argument_expression_list
+%type <fieldInitializerList> field_initializer_list
+%type <structFieldInitPair> struct_init_field
 
 %type <node> constant_expression
 %type <node> primary_expression
@@ -94,6 +99,7 @@
 %type <node> statement
 %type <node> typedef_specifier
 %type <node> struct_specifier
+%type <node> struct_init_specifier
 %type <node> conditional_expression
 %type <node> expression_statement
 %type <node> enum_specifier
@@ -139,6 +145,7 @@ postfix_expression
     | postfix_expression INC_OP                                                 { $$ = new ASTUnaryExpression(ASTUnaryExpression::Operator::PostIncrement, $1); }
     | postfix_expression DEC_OP                                                 { $$ = new ASTUnaryExpression(ASTUnaryExpression::Operator::PostDecrement, $1); }
     | imported_symbol_access                                                    { $$ = $1; }
+    | struct_init_specifier                                                     { $$ = $1; }
     ;
 
 argument_expression_list
@@ -344,26 +351,19 @@ specifier_qualifier_list
     | primitive_type_specifier                                                  { $$ = new ASTTypeSpecifier($1->getTypeValue()); }
     ;
 
-// TODO
 struct_init_specifier
-    : IDENTIFIER '{' field_initializer_list_optional '}'
+    : IDENTIFIER '{' '}'                                                        { $$ = new ASTStructInitialization($1, {}); }
+    | IDENTIFIER '{' field_initializer_list '}'                                 { $$ = new ASTStructInitialization($1, *$3); }
     ;
 
-// TODO
-field_initializer_list_optional
-    :
-    | field_initializer_list    
-    ;
-
-// TODO
 field_initializer_list
-    : struct_init_field
-    | field_initializer_list ',' struct_init_field
+    : struct_init_field                                                         { $$ = new std::vector<std::pair<std::string, ASTNodePtr>>{*$1};  }
+    | field_initializer_list ',' struct_init_field                              { $$->push_back(*$3); }
+    | field_initializer_list ','                                                { /* Allow trailing comma */ }
     ;
 
-// TODO
 struct_init_field
-    : IDENTIFIER ':' assignment_expression
+    : IDENTIFIER ':' assignment_expression                                      { $$ = new std::pair<std::string, ASTNodePtr>($1, $3); }
     ;
 
 // TODO

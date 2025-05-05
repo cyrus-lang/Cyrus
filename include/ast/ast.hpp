@@ -616,6 +616,39 @@ public:
     }
 };
 
+class ASTStructInitialization : public ASTNode
+{
+private:
+    std::string structName_;
+    std::vector<std::pair<std::string, ASTNodePtr>> fieldInitializers_;
+
+public:
+    ASTStructInitialization(std::string structName, std::vector<std::pair<std::string, ASTNodePtr>> fieldInitializers)
+        : structName_(structName), fieldInitializers_(fieldInitializers) {}
+
+    NodeType getType() const override { return NodeType::StructInitialization; }
+    const std::string &getStructName() const { return structName_; }
+    const std::vector<std::pair<std::string, ASTNodePtr>> &getFieldInitializers() const { return fieldInitializers_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "StructInitialization: " << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Struct Name: " << structName_ << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Field Initializers:" << std::endl;
+        for (const auto &pair : fieldInitializers_)
+        {
+            printIndent(indent + 2);
+            std::cout << "Field Name: " << pair.first << std::endl;
+            pair.second->print(indent + 3);
+        }
+    }
+};
+
 class ASTConditionalExpression : public ASTNode
 {
 private:

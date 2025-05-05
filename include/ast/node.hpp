@@ -28,6 +28,7 @@ public:
         TypeDefStatement,
         StructDefinition,
         StructField,
+        StructInitialization,
         ConditionalExpression,
         AssignmentExpression,
         ImportedSymbolAccess,

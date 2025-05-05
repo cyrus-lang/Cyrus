@@ -1,6 +1,5 @@
 fn main() {
-    #a = 0;
-    #b = 0;
-
-    a->b++;
+    #a = Person {
+        name: "Taha"
+    };
 }
