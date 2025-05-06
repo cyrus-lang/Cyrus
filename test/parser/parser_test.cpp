@@ -5,10 +5,13 @@
 #include "ast/ast.hpp"
 #include <string>
 
-#include "program_test.cpp"
+#include "function_test.cpp"
 
 ASTNodePtr quickParse(std::string input)
-{
+{   
+    yyin = nullptr;
+    astProgram = nullptr;
+
     yyin = fmemopen((void *)input.c_str(), input.size(), "r");
     if (!yyin)
     {

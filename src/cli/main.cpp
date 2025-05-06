@@ -102,6 +102,9 @@ void parseOnlyCommand(const std::vector<std::string> &args)
     std::string inputFile = args[1];
     util::checkInputFileExtension(inputFile);
 
+    yyin = nullptr;
+    astProgram = nullptr;
+
     yyin = fopen(inputFile.c_str(), "r");
     if (!yyin)
     {
@@ -133,6 +136,8 @@ void lexOnlyCommand(const std::vector<std::string> &args)
     std::string inputFile = args[1];
     util::checkInputFileExtension(inputFile);
 
+    yyin = nullptr;
+    
     yyin = fopen(inputFile.c_str(), "r");
     if (!yyin)
     {
