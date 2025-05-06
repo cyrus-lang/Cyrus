@@ -3,6 +3,6 @@
 
 #include "ast/ast.hpp"
 
-extern ASTNode* astProgram;
+extern ASTNodePtr astProgram;
 
 #endif //PARSER_HPP

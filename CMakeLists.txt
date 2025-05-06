@@ -116,3 +116,5 @@ add_executable(cyrus
     ${CMAKE_CURRENT_BINARY_DIR}/src/parser/cyrus.tab.cpp
 ) 
 target_link_libraries(cyrus cyrus_lib)
+
+add_subdirectory(test/parser)
