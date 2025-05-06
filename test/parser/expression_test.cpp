@@ -324,3 +324,94 @@ TEST(ParserExpressionTest, UnaryExpressionPostDecrement)
     ASSERT_EQ(operand->getSymbolPath().size(), 1);
     ASSERT_EQ(operand->getSymbolPath()[0], "l");
 }
+
+TEST(ParserExpressionTest, NestedBinaryExpression) {
+    std::string input = "#my_var = (1 + 2) * 3;";
+    ASTProgram* program = static_cast<ASTProgram*>(quickParse(input));
+
+    ASTVariableDeclaration* varDecl = static_cast<ASTVariableDeclaration*>(program->getStatements()[0]);
+    ASTBinaryExpression* outerBinaryExpr = static_cast<ASTBinaryExpression*>(varDecl->getInitializer());
+    ASSERT_EQ(outerBinaryExpr->getOperator(), ASTBinaryExpression::Operator::Multiply);
+
+    ASTBinaryExpression* innerBinaryExpr = static_cast<ASTBinaryExpression*>(outerBinaryExpr->getLeft());
+    ASSERT_EQ(innerBinaryExpr->getOperator(), ASTBinaryExpression::Operator::Add);
+
+    ASTIntegerLiteral* left = static_cast<ASTIntegerLiteral*>(innerBinaryExpr->getLeft());
+    ASSERT_EQ(left->getValue(), 1);
+
+    ASTIntegerLiteral* right = static_cast<ASTIntegerLiteral*>(innerBinaryExpr->getRight());
+    ASSERT_EQ(right->getValue(), 2);
+
+    ASTIntegerLiteral* outerRight = static_cast<ASTIntegerLiteral*>(outerBinaryExpr->getRight());
+    ASSERT_EQ(outerRight->getValue(), 3);
+}
+
+TEST(ParserExpressionTest, ComplexExpression) {
+    std::string input = "#my_var = (1 + 2) * (3 - 4) / 5;";
+    ASTProgram* program = static_cast<ASTProgram*>(quickParse(input));
+
+    ASTVariableDeclaration* varDecl = static_cast<ASTVariableDeclaration*>(program->getStatements()[0]);
+    ASTBinaryExpression* divideExpr = static_cast<ASTBinaryExpression*>(varDecl->getInitializer());
+    ASSERT_EQ(divideExpr->getOperator(), ASTBinaryExpression::Operator::Divide);
+
+    ASTBinaryExpression* multiplyExpr = static_cast<ASTBinaryExpression*>(divideExpr->getLeft());
+    ASSERT_EQ(multiplyExpr->getOperator(), ASTBinaryExpression::Operator::Multiply);
+
+    ASTBinaryExpression* addExpr = static_cast<ASTBinaryExpression*>(multiplyExpr->getLeft());
+    ASSERT_EQ(addExpr->getOperator(), ASTBinaryExpression::Operator::Add);
+
+    ASTBinaryExpression* subExpr = static_cast<ASTBinaryExpression*>(multiplyExpr->getRight());
+    ASSERT_EQ(subExpr->getOperator(), ASTBinaryExpression::Operator::Subtract);
+
+    ASTIntegerLiteral* finalRight = static_cast<ASTIntegerLiteral*>(divideExpr->getRight());
+    ASSERT_EQ(finalRight->getValue(), 5);
+}
+
+TEST(ParserExpressionTest, CastExpressionToFloat)
+{
+    std::string input = "#my_var = (float)my_int;";
+    ASTProgram* program = static_cast<ASTProgram*>(quickParse(input));
+
+    ASTVariableDeclaration* varDecl = static_cast<ASTVariableDeclaration*>(program->getStatements()[0]);
+    ASTCastExpression* castExpr = static_cast<ASTCastExpression*>(varDecl->getInitializer());
+    ASSERT_EQ(castExpr->getType(), ASTNode::NodeType::CastExpression);
+    ASSERT_EQ(castExpr->getTargetType().getTypeValue(), ASTTypeSpecifier::ASTInternalType::Float);
+
+    ASTImportedSymbolAccess* operand = static_cast<ASTImportedSymbolAccess*>(castExpr->getExpression());
+    ASSERT_EQ(operand->getSymbolPath().size(), 1);
+    ASSERT_EQ(operand->getSymbolPath()[0], "my_int");
+}
+
+TEST(ParserExpressionTest, NestedCastExpression)
+{
+    std::string input = "#my_var = (int)(float)my_double;";
+    ASTProgram* program = static_cast<ASTProgram*>(quickParse(input));
+
+    ASTVariableDeclaration* varDecl = static_cast<ASTVariableDeclaration*>(program->getStatements()[0]);
+    ASTCastExpression* outerCastExpr = static_cast<ASTCastExpression*>(varDecl->getInitializer());
+    ASSERT_EQ(outerCastExpr->getType(), ASTNode::NodeType::CastExpression);
+    ASSERT_EQ(outerCastExpr->getTargetType().getTypeValue(), ASTTypeSpecifier::ASTInternalType::Int);
+
+    ASTCastExpression* innerCastExpr = static_cast<ASTCastExpression*>(outerCastExpr->getExpression());
+    ASSERT_EQ(innerCastExpr->getType(), ASTNode::NodeType::CastExpression);
+    ASSERT_EQ(innerCastExpr->getTargetType().getTypeValue(), ASTTypeSpecifier::ASTInternalType::Float);
+
+    ASTImportedSymbolAccess* operand = static_cast<ASTImportedSymbolAccess*>(innerCastExpr->getExpression());
+    ASSERT_EQ(operand->getSymbolPath().size(), 1);
+    ASSERT_EQ(operand->getSymbolPath()[0], "my_double");
+}
+
+TEST(ParserExpressionTest, CastExpressionWithBinaryExpression)
+{
+    std::string input = "#my_var = (int)(my_float + 5);";
+    ASTProgram* program = static_cast<ASTProgram*>(quickParse(input));
+
+    ASTVariableDeclaration* varDecl = static_cast<ASTVariableDeclaration*>(program->getStatements()[0]);
+    ASTCastExpression* castExpr = static_cast<ASTCastExpression*>(varDecl->getInitializer());
+    ASSERT_EQ(castExpr->getType(), ASTNode::NodeType::CastExpression);
+    ASSERT_EQ(castExpr->getTargetType().getTypeValue(), ASTTypeSpecifier::ASTInternalType::Int);
+
+    ASTBinaryExpression* binaryExpr = static_cast<ASTBinaryExpression*>(castExpr->getExpression());
+    ASSERT_EQ(binaryExpr->getType(), ASTNode::NodeType::BinaryExpression);
+    ASSERT_EQ(binaryExpr->getOperator(), ASTBinaryExpression::Operator::Add);
+}
