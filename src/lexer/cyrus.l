@@ -4,7 +4,12 @@
 	#include <stdio.h>
 	#include <math.h>
 	#include "parser/cyrus.tab.hpp"
+
     static char* process_string_literal(const char *text, int length);
+    float safe_strtof(const char *str);
+    double safe_strtod(const char *str);
+    void display_error(const char *msg);
+    char* yyfilename;
 %}
 
 D			[0-9]
@@ -127,8 +132,7 @@ IS			(u|U|l|L)*
 {L}({L}|{D})*							{
                                             yylval.sval = strdup(yytext);
                                             if (!yylval.sval) {
-                                                fprintf(stderr, "(Error) Failed to allocate memory for identifier.\n");
-                                                exit(1);
+                                                display_error("(Error) Failed to allocate memory for identifier.");
                                             }
                                             return IDENTIFIER;
                                         }
@@ -136,7 +140,48 @@ IS			(u|U|l|L)*
 0[xX]{H}+{IS}?   						{ yylval.ival = strtol(yytext, NULL, 16); return INTEGER_CONSTANT; }
 0{D}+{IS}?       						{ yylval.ival = strtol(yytext, NULL, 8);  return INTEGER_CONSTANT; }
 {D}+{IS}?        						{ yylval.ival = strtol(yytext, NULL, 10); return INTEGER_CONSTANT; }
-{D}+{E}{FS}?     						{ yylval.dval = strtod(yytext, NULL);     return FLOAT_CONSTANT;   }
+
+[0-9]+\.[0-9]*([eE][+-]?[0-9]+)?[fFlL]?     {
+                                               yylval.fval = safe_strtof(yytext);
+                                               return FLOAT_CONSTANT;
+                                            }
+
+[0-9]+[eE][+-]?[0-9]+[fFlL]?                {
+                                               yylval.fval = safe_strtof(yytext);
+                                               return FLOAT_CONSTANT;
+                                            }
+
+\.[0-9]+([eE][+-]?[0-9]+)?[fFlL]?           {
+                                               yylval.fval = safe_strtof(yytext);
+                                               return FLOAT_CONSTANT;
+                                            }
+
+0[xX][0-9a-fA-F]+\.[0-9a-fA-F]*[pP][+-]?[0-9]+[fFlL]?   {   
+                                                            yylval.fval = safe_strtof(yytext);
+                                                            return DOUBLE_CONSTANT;
+                                                        }
+0[xX][0-9a-fA-F]+[pP][+-]?[0-9]+[fFlL]?                 {
+                                                            yylval.dval = safe_strtod(yytext);
+                                                            return DOUBLE_CONSTANT;
+                                                        }
+
+[0-9]+\'[0-9]+\.[0-9\'\"]+              {
+                                            char *cleaned_text = strdup(yytext);
+                                            int j = 0;
+                                                for (int i = 0; cleaned_text[i] != '\0'; i++) {
+                                                if (cleaned_text[i] != '\'') {
+                                                    cleaned_text[j++] = cleaned_text[i];
+                                                }
+                                            }
+                                            cleaned_text[j] = '\0';
+                                            yylval.fval = safe_strtof(cleaned_text);
+                                            free(cleaned_text);
+                                            return FLOAT_CONSTANT;
+                                        }
+
+.|\n                                    {
+                                            display_error("Invalid character sequence.");
+                                        }
 
 L?\"(\\.|[^\\\"])*\"                    {
                                             char *str = process_string_literal(yytext, yyleng);
@@ -154,14 +199,69 @@ L?\"(\\.|[^\\\"])*\"                    {
 
 %%
 
+void display_error(const char *msg) {
+    fprintf(stderr, "(Error) %s:%d %s\n", yyfilename, yylineno, msg);
+    exit(1);
+}
+
+float safe_strtof(const char *str) {
+    char *endptr;
+    float value;
+
+    errno = 0; 
+    value = strtof(str, &endptr);
+
+    if ((errno == ERANGE && (value == HUGE_VALF || value == -HUGE_VALF)) || (errno != 0 && value == 0)) {
+        display_error("Strtof failed.");
+        return 0.0f; 
+    }
+
+    if (endptr == str) {
+        display_error("No digits were found.");
+        return 0.0f;
+    }
+
+    // check for invalid characters
+    if (*endptr != '\0' && !strchr("fFlL", *endptr)) { 
+        display_error("Invalid characters after float.");
+        return 0.0f;
+    }
+    return value;
+}
+
+double safe_strtod(const char *str) {
+    char *endptr;
+    double value;
+
+    errno = 0; 
+    value = strtod(str, &endptr);
+
+    if ((errno == ERANGE && (value == HUGE_VAL || value == -HUGE_VAL)) || (errno != 0 && value == 0)) {
+        display_error("Strtod failed.");
+        return 0.0; 
+    }
+
+    if (endptr == str) {
+        display_error("No digits were found.");
+        return 0.0;
+    }
+
+    // check for invalid characters.
+    if (*endptr != '\0' && !strchr("fFlL", *endptr)) { 
+        display_error("Invalid characters after double.");
+        return 0.0;
+    }
+    return value;
+}
+
 static char* process_string_literal(const char *text, int length) {
     const char *start = text;
     if (*start == 'L') {
         start++;
     }
-    start++; // Skip opening quote
+    start++; 
 
-    const char *end = text + length - 1; // Before closing quote
+    const char *end = text + length - 1; 
     size_t len = end - start;
     char *str = (char *)malloc(len + 1);
     if (!str) {

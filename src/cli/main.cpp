@@ -112,14 +112,19 @@ void parseOnlyCommand(const std::vector<std::string> &args)
         std::exit(1);
     }
 
+    yyfilename = (char *)inputFile.c_str();
+
     if (yyparse() == 0)
-    {   
-        if (astProgram) {
+    {
+        if (astProgram)
+        {
             astProgram->print(0);
-        } else {
+        }
+        else
+        {
             std::cerr << "(Error) ASTProgram is not initialized correctly.'" << std::endl;
             std::exit(1);
-        }   
+        }
     }
     else
     {
@@ -137,13 +142,15 @@ void lexOnlyCommand(const std::vector<std::string> &args)
     util::checkInputFileExtension(inputFile);
 
     yyin = nullptr;
-    
+
     yyin = fopen(inputFile.c_str(), "r");
     if (!yyin)
     {
         std::cerr << "(Error) Could not open file '" << inputFile << "'." << std::endl;
         std::exit(1);
     }
+
+    yyfilename = (char *)inputFile.c_str();
 
     int token_kind;
     while ((token_kind = yylex()))

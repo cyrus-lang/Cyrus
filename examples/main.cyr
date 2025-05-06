@@ -1,1 +1,1 @@
-#my_var: float = 0x1.4p3;
+#my_var: float = 3.14;

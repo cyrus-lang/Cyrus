@@ -8,8 +8,10 @@
 #include "function_test.cpp"
 #include "expression_test.cpp"
 
+const std::string unitTestFileName = "unit-test";
+
 ASTNodePtr quickParse(std::string input)
-{   
+{
     yyin = nullptr;
     astProgram = nullptr;
 
@@ -20,9 +22,12 @@ ASTNodePtr quickParse(std::string input)
         std::exit(1);
     }
 
+    yyfilename = (char *)unitTestFileName.c_str();
+
     if (yyparse() == 0)
     {
-        if (astProgram == nullptr) {
+        if (astProgram == nullptr)
+        {
             std::cerr << "(Error) ASTProgram is not initialized correctly.'" << std::endl;
             std::exit(1);
         }

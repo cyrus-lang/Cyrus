@@ -46,13 +46,15 @@
     ASTStructField* structField;
     EnumData* enumData;
     ASTNodePtr node;
+    float fval;
     double dval;
     char* sval;
     int ival;
 }
 
 %token <ival> INTEGER_CONSTANT
-%token <dval> FLOAT_CONSTANT  
+%token <fval> FLOAT_CONSTANT  
+%token <dval> DOUBLE_CONSTANT  
 %token <sval> STRING_CONSTANT 
 %token <sval> IDENTIFIER      
 
@@ -137,6 +139,7 @@ primary_expression
     | STRING_CONSTANT                                                           { $$ = new ASTStringLiteral($1); free($1); }
     | INTEGER_CONSTANT                                                          { $$ = new ASTIntegerLiteral($1); }
     | FLOAT_CONSTANT                                                            { $$ = new ASTFloatLiteral($1); }
+    | DOUBLE_CONSTANT                                                           { $$ = new ASTFloatLiteral($1); }
     | '(' expression ')'                                                        { $$ = $2; }
     ;
 

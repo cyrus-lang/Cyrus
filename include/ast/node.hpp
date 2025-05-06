@@ -48,7 +48,7 @@ public:
     virtual ~ASTNode() = default;
     virtual NodeType getType() const = 0;
 
-    virtual void print(int) const {}
+    virtual void print(int) const = 0;
     virtual nlohmann::json jsonify() const {}
 
 protected:

@@ -9,6 +9,7 @@ extern FILE *yyin;
 extern int yylineno;
 extern char *yytext;
 extern char *yyerrormsg;
+extern char *yyfilename;
 extern int yylex(void);
 
 class Token
