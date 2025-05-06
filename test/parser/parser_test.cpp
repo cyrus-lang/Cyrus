@@ -6,6 +6,7 @@
 #include <string>
 
 #include "function_test.cpp"
+#include "expression_test.cpp"
 
 ASTNodePtr quickParse(std::string input)
 {   
