@@ -1,10 +1,7 @@
 enum Color {
     RED = 1,
-    GREEN = 2;
+    GREEN = 2,
+    CUSTOM(red int, blue int, green int, alpha float);
 
     fn sample() {}
-}
-
-fn main() volatile const Color {
-
 }

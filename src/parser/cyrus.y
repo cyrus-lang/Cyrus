@@ -31,6 +31,7 @@
     std::pair<std::vector<ASTStructField>, std::vector<ASTFunctionDefinition>>* structMembersAndMethods;
     std::vector<std::pair<std::string, ASTNodePtr>>* fieldInitializerList;
     std::pair<std::string, ASTNodePtr>* structFieldInitPair;
+    std::vector<ASTEnumVariantItem>* enumVariantItemsList;
     ASTAssignmentExpression::Operator assignmentOperator;
     std::vector<ASTFunctionParameter>* paramsListPtr;
     ASTStorageClassSpecifier storageClassSpecifier;
@@ -38,11 +39,12 @@
     std::vector<std::string>* stringListPtr;
     std::vector<ASTNodePtr>* nodeListPtr;
     std::vector<EnumData>* enumDataList;
+    ASTEnumVariantItem* enumVariantItem;
     ASTAccessSpecifier accessSpecifier;
     ASTTypeSpecifier* typeSpecifier;
     ASTFunctionDefinition* funcDef;
-    EnumData* enumData;
     ASTStructField* structField;
+    EnumData* enumData;
     ASTNodePtr node;
     double dval;
     char* sval;
@@ -54,28 +56,32 @@
 %token <sval> STRING_CONSTANT 
 %token <sval> IDENTIFIER      
 
-%type <assignmentOperator> assignment_operator
+
 %type <structMembersAndMethods> struct_declaration_list
+%type <storageClassSpecifier> storage_class_specifier
+%type <enumVariantItemsList> enum_variant_items_list
+%type <fieldInitializerList> field_initializer_list
+%type <typeSpecifier> qualified_type_specifier
+%type <assignmentOperator> assignment_operator
+%type <typeSpecifier> primitive_type_specifier
+%type <paramsListPtr> parameter_list_optional
+%type <structFieldInitPair> struct_init_field
+%type <stringListPtr> import_submodules_list
+%type <nodeListPtr> argument_expression_list
 %type <structField> struct_field_declaration
 %type <funcDef> struct_method_declaration
-%type <typeSpecifier> qualified_type_specifier
+%type <enumVariantItem> enum_variant_item
+%type <accessSpecifier> access_specifier
 %type <typeSpecifier> pointer_type
 %type <typeSpecifier> address_type
 %type <typeSpecifier> base_type
-%type <storageClassSpecifier> storage_class_specifier
-%type <accessSpecifier> access_specifier
-%type <stringListPtr> import_submodules_list
-%type <paramsListPtr> parameter_list_optional
 %type <paramsListPtr> parameter_list
-%type <typeSpecifier> primitive_type_specifier
 %type <typeSpecifier> type_specifier
 %type <unaryOperator> unary_operator
-%type <nodeListPtr> argument_expression_list
-%type <fieldInitializerList> field_initializer_list
-%type <structFieldInitPair> struct_init_field
 %type <enumDataList> enumerator_list
 %type <enumData> enumerator
 
+%type <node> parameter_declaration
 %type <node> constant_expression
 %type <node> primary_expression
 %type <node> additive_expression
@@ -400,8 +406,24 @@ enumerator
                                                                 auto field = std::pair<std::string, std::optional<ASTNodePtr>>{$1, $3};
                                                                 $$ = new EnumData(field);
                                                             }
-    // | IDENTIFIER '(' ')'                { }
-    // FIXME Enum variant should use function params as variant values
+    | IDENTIFIER '(' enum_variant_items_list ')'            {
+                                                                auto enumVariant = new ASTEnumVariant($1, *$3);
+                                                                $$ = new EnumData(*enumVariant);
+                                                            }
+    ;
+
+enum_variant_item
+    : type_specifier                                        { $$ = new ASTEnumVariantItem(std::nullopt, *$1); }
+    | IDENTIFIER type_specifier                             { $$ = new ASTEnumVariantItem($1, *$2); }
+    ;   
+
+enum_variant_items_list
+    : enum_variant_item                                         {   
+                                                                    $$ = new std::vector<ASTEnumVariantItem>{ *$1 };
+                                                                }
+    | enum_variant_items_list ',' enum_variant_item             { 
+                                                                    $$->push_back(*$3);
+                                                                }
     ;
 
 type_specifier
@@ -470,18 +492,19 @@ parameter_type_list
     ;
 
 parameter_list
-    : parameter_declaration
-    | parameter_list ',' parameter_declaration
+    : parameter_declaration                                     {   
+                                                                    ASTFunctionParameter* param = static_cast<ASTFunctionParameter*>($1);
+                                                                    $$ = new std::vector<ASTFunctionParameter>{ *param };
+                                                                }
+    | parameter_list ',' parameter_declaration                  { 
+                                                                    ASTFunctionParameter* param = static_cast<ASTFunctionParameter*>($3);
+                                                                    $$->push_back(*param); 
+                                                                }
     ;
 
 parameter_declaration
-    : CONST
-    // TODO
-    ;
-
-identifier_list
-    : IDENTIFIER
-    | identifier_list ',' IDENTIFIER
+    : IDENTIFIER type_specifier                                  { $$ = new ASTFunctionParameter($1, *$2); }
+    | IDENTIFIER type_specifier '=' assignment_expression        { $$ = new ASTFunctionParameter($1, *$2, $4); }
     ;
 
 statement

@@ -834,30 +834,55 @@ public:
     }
 };
 
+class ASTEnumVariantItem 
+{
+private:
+    std::optional<std::string> name_;
+    ASTTypeSpecifier type_;
+public:
+    ASTEnumVariantItem(std::optional<std::string> name, ASTTypeSpecifier type) : name_(name), type_(type) {}
+
+    const std::optional<std::string> &getName() const { return name_; }
+    const ASTTypeSpecifier &getTypeSpecifier() const { return type_; }
+};
+
+
 class ASTEnumVariant : public ASTNode
 {
 private:
     std::string name_;
-    std::vector<ASTTypeSpecifier> types_;
+    std::vector<ASTEnumVariantItem> items_;
 
 public:
-    ASTEnumVariant(std::string name, std::vector<ASTTypeSpecifier> types)
-        : name_(name), types_(types) {}
+    ASTEnumVariant(std::string name, std::vector<ASTEnumVariantItem> items)
+        : name_(name), items_(items) {}
 
     NodeType getType() const override { return NodeType::EnumVariant; }
     const std::string &getName() const { return name_; }
-    const std::vector<ASTTypeSpecifier> &getTypes() const { return types_; }
+    const std::vector<ASTEnumVariantItem> &getItems() const { return items_; }
 
     void print(int indent) const override
     {
         printIndent(indent);
-        std::cout << "EnumVariant: " << name_ << std::endl;
+        std::cout << "EnumVariant: " << std::endl;
+        printIndent(indent + 1);
+
+        std::cout << "Name: " << name_ << std::endl;
 
         printIndent(indent + 1);
-        std::cout << "Types:" << std::endl;
-        for (const auto &type : types_)
+        std::cout << "Items:" << std::endl;
+        for (const auto &item : items_)
         {
-            type.print(indent + 2);
+            printIndent(indent + 2);
+            std::cout << "Item: " << std::endl;
+            if (item.getName().has_value())
+            {
+                printIndent(indent + 3);
+                std::cout << "Name: " << item.getName().value() << std::endl;
+            }
+            printIndent(indent + 3);
+            std::cout << "Type: ";
+            item.getTypeSpecifier().print(indent + 3);
         }
     }
 };
@@ -872,13 +897,15 @@ private:
     ASTAccessSpecifier accessSpecifier_;
 
 public:
-    ASTEnumDefinition(std::optional<std::string> name, 
-                    std::vector<ASTEnumVariant> variants,
+    ASTEnumDefinition(std::optional<std::string> name,
+                      std::vector<ASTEnumVariant> variants,
                       std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> fields,
                       std::vector<ASTFunctionDefinition> methods,
                       ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
 
-        : name_(name), variants_(variants), fields_(fields), methods_(methods), accessSpecifier_(accessSpecifier) {}
+        : name_(name), variants_(variants), fields_(fields), methods_(methods), accessSpecifier_(accessSpecifier)
+    {
+    }
 
     NodeType getType() const override { return NodeType::EnumDefinition; }
     const std::optional<std::string> &getName() const { return name_; }
@@ -892,7 +919,7 @@ public:
         printIndent(indent);
         std::cout << "EnumDefinition: " << std::endl;
 
-         if (name_.has_value())
+        if (name_.has_value())
         {
             printIndent(indent + 1);
             std::cout << "Name: " << name_.value() << std::endl;
@@ -911,10 +938,10 @@ public:
         printIndent(indent + 1);
         std::cout << "Fields:" << std::endl;
         for (const auto &field : fields_)
-        {       
+        {
             std::optional<ASTNodePtr> fieldValue = field.second;
             if (fieldValue.has_value())
-            {       
+            {
                 printIndent(indent + 2);
                 std::cout << field.first << ": ";
                 fieldValue.value()->print(0);
