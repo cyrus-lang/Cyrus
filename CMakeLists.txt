@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30) 
+cmake_minimum_required(VERSION 3.28) 
 
 project(cyrus_language)
 
@@ -108,6 +108,13 @@ execute_process(
 string(REPLACE " " ";" LLVM_LIBRARIES_LIST "${LLVM_LIBRARIES_STRING}")
 
 target_link_libraries(cyrus_lib ${LLVM_LIBRARIES_LIST})
+
+# Add third party libraries
+include(FetchContent)
+FetchContent_Declare(nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
+FetchContent_MakeAvailable(nlohmann_json)
+target_link_libraries(cyrus_lib nlohmann_json::nlohmann_json)
+include_directories(${nlohmann_json_SOURCE_DIR}/single_include/) 
 
 # Create an executable
 add_executable(cyrus

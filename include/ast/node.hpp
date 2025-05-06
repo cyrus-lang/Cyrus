@@ -1,6 +1,7 @@
 #ifndef AST_NODE_HPP
 #define AST_NODE_HPP
 
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <vector>
 
@@ -48,6 +49,7 @@ public:
     virtual NodeType getType() const = 0;
 
     virtual void print(int) const {}
+    virtual nlohmann::json jsonify() const {}
 
 protected:
     void printIndent(int indent) const

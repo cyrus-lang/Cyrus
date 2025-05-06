@@ -1,6 +1,7 @@
 #ifndef AST_HPP
 #define AST_HPP
 
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <vector>
 #include <memory>
@@ -17,6 +18,16 @@ public:
     NodeType getType() const override { return NodeType::Program; }
     const ASTNodeList &getStatements() const { return statements_; }
     void addStatement(ASTNodePtr statement) { statements_.push_back(statement); }
+
+    nlohmann::json jsonify() const override
+    {
+        nlohmann::json json;
+        for (const auto &stmt : statements_)
+        {
+            json.push_back(stmt->jsonify());
+        }
+        return json;
+    }
 
     void print(int indent) const override
     {
