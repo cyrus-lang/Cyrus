@@ -284,6 +284,8 @@ private:
             return "+";
         case Operator::AddressOf:
             return "&";
+        case Operator::Dereference:
+            return "*";
         case Operator::PreIncrement:
             return "++";
         case Operator::PreDecrement:
@@ -485,7 +487,6 @@ public:
             printIndent(indent + 1);
             std::cout << "Return Type: ";
             returnType_->print(indent);
-            std::cout << std::endl;
         }
 
         printIndent(indent + 1);
@@ -834,18 +835,18 @@ public:
     }
 };
 
-class ASTEnumVariantItem 
+class ASTEnumVariantItem
 {
 private:
     std::optional<std::string> name_;
     ASTTypeSpecifier type_;
+
 public:
     ASTEnumVariantItem(std::optional<std::string> name, ASTTypeSpecifier type) : name_(name), type_(type) {}
 
     const std::optional<std::string> &getName() const { return name_; }
     const ASTTypeSpecifier &getTypeSpecifier() const { return type_; }
 };
-
 
 class ASTEnumVariant : public ASTNode
 {
@@ -943,8 +944,8 @@ public:
             if (fieldValue.has_value())
             {
                 printIndent(indent + 2);
-                std::cout << field.first << ": ";
-                fieldValue.value()->print(0);
+                std::cout << field.first << ": " << std::endl;
+                fieldValue.value()->print(indent + 3);
                 std::cout << std::endl;
             }
         }
@@ -954,6 +955,150 @@ public:
         for (const auto &method : methods_)
         {
             method.print(indent + 2);
+        }
+    }
+};
+
+class ASTReturnStatement : public ASTNode
+{
+private:
+    std::optional<ASTNodePtr> expression_;
+
+public:
+    ASTReturnStatement(std::optional<ASTNodePtr> expression) : expression_(expression) {}
+
+    NodeType getType() const override { return NodeType::ReturnStatement; }
+    const std::optional<ASTNodePtr> &getExpression() const { return expression_; }
+
+    void print(int indent) const override
+    {
+        if (expression_.has_value())
+        {
+            printIndent(indent);
+            std::cout << "ReturnStatement: " << std::endl;
+            expression_.value()->print(indent + 1);
+        }
+        else
+        {
+            printIndent(indent);
+            std::cout << "ReturnStatement" << std::endl;
+        }
+    }
+};
+
+class ASTBreakStatement : public ASTNode
+{
+public:
+    ASTBreakStatement() {}
+
+    NodeType getType() const override { return NodeType::BreakStatement; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "BreakStatement" << std::endl;
+    }
+};
+
+class ASTContinueStatement : public ASTNode
+{
+public:
+    ASTContinueStatement() {}
+
+    NodeType getType() const override { return NodeType::ContinueStatement; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "ContinueStatement" << std::endl;
+    }
+};
+
+class ASTForStatement : public ASTNode
+{
+private:
+    std::optional<ASTNodePtr> initializer_;
+    std::optional<ASTNodePtr> condition_;
+    std::optional<ASTNodePtr> increment_;
+    ASTNodePtr body_;
+
+public:
+    ASTForStatement(std::optional<ASTNodePtr> initializer, std::optional<ASTNodePtr> condition, std::optional<ASTNodePtr> increment, ASTNodePtr body)
+        : initializer_(initializer), condition_(condition), increment_(increment), body_(body) {}
+
+    NodeType getType() const override { return NodeType::ForStatement; }
+    std::optional<ASTNodePtr> getInitializer() const { return initializer_; }
+    std::optional<ASTNodePtr> getCondition() const { return condition_; }
+    std::optional<ASTNodePtr> getIncrement() const { return increment_; }
+    ASTNodePtr getBody() const { return body_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "ForStatement: " << std::endl;
+
+        if (initializer_.has_value())
+        {
+            printIndent(indent + 1);
+            std::cout << "Initializer:" << std::endl;
+            initializer_.value()->print(indent + 2);
+        }
+
+        if (condition_.has_value())
+        {
+            printIndent(indent + 1);
+            std::cout << "Condition:" << std::endl;
+            condition_.value()->print(indent + 2);
+        }
+
+        if (increment_.has_value())
+        {
+            printIndent(indent + 1);
+            std::cout << "Increment:" << std::endl;
+            increment_.value()->print(indent + 2);
+        }
+
+        printIndent(indent + 1);
+        std::cout << "Body:" << std::endl;
+        body_->print(indent + 2);
+    }
+};
+
+class ASTIfStatement : public ASTNode
+{
+private:
+    ASTNodePtr condition_;
+    ASTNodePtr thenBranch_;
+    std::optional<ASTNodePtr> elseBranch_;
+
+public:
+    ASTIfStatement(ASTNodePtr condition, ASTNodePtr thenBranch, std::optional<ASTNodePtr> elseBranch = std::nullopt)
+        : condition_(condition), thenBranch_(thenBranch), elseBranch_(elseBranch) {}
+
+    NodeType getType() const override { return NodeType::IfStatement; }
+    ASTNode *getCondition() const { return condition_; }
+    ASTNode *getThenBranch() const { return thenBranch_; }
+    std::optional<ASTNodePtr> getElseBranch() const { return elseBranch_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "IfStatement:" << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Condition:" << std::endl;
+        condition_->print(indent + 2);
+        std::cout << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Then Branch:" << std::endl;
+        thenBranch_->print(indent + 2);
+
+        if (elseBranch_.has_value())
+        {
+            printIndent(indent + 1);
+            std::cout << "Else Branch:" << std::endl;
+            elseBranch_.value()->print(indent + 2);
         }
     }
 };

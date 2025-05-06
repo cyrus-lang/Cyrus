@@ -1,7 +1,14 @@
-enum Color {
-    RED = 1,
-    GREEN = 2,
-    CUSTOM(red int, blue int, green int, alpha float);
+fn main() {
+    if (1 < 2) {
+        
+    } 
+    else if (3 == 4) {
 
-    fn sample() {}
+    }
+    else if (5 == 6) {
+
+    }
+    else {
+
+    }
 }

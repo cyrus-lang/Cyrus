@@ -56,7 +56,6 @@
 %token <sval> STRING_CONSTANT 
 %token <sval> IDENTIFIER      
 
-
 %type <structMembersAndMethods> struct_declaration_list
 %type <storageClassSpecifier> storage_class_specifier
 %type <enumVariantItemsList> enum_variant_items_list
@@ -81,6 +80,7 @@
 %type <enumDataList> enumerator_list
 %type <enumData> enumerator
 
+%type <node> iteration_statement
 %type <node> parameter_declaration
 %type <node> constant_expression
 %type <node> primary_expression
@@ -116,6 +116,8 @@
 %type <node> expression_statement
 %type <node> enum_specifier
 %type <node> imported_symbol_access
+%type <node> jump_statement
+%type <node> selection_statement
 
 %define parse.error verbose
 %start translation_unit
@@ -567,23 +569,22 @@ expression_statement
     ;
 
 selection_statement
-    : IF '(' expression ')' statement
-    | IF '(' expression ')' statement ELSE statement
+    : IF '(' expression ')' statement                                               { $$ = new ASTIfStatement($3, $5); }
+    | IF '(' expression ')' statement ELSE statement                                { $$ = new ASTIfStatement($3, $5, $7); }
     | SWITCH '(' expression ')' statement
     ;
 
 iteration_statement
-    : WHILE '(' expression ')' statement
-    | DO statement WHILE '(' expression ')' ';'
-    | FOR '(' expression_statement expression_statement ')' statement
-    | FOR '(' expression_statement expression_statement expression ')' statement
+    : FOR '(' expression ')' statement                                              { $$ = new ASTForStatement(std::nullopt, $3, std::nullopt, $5); }
+    | FOR '(' variable_declaration expression_statement ')' statement               { $$ = new ASTForStatement($3, $4, std::nullopt, $6); }
+    | FOR '(' variable_declaration expression_statement expression ')' statement    { $$ = new ASTForStatement($3, $4, $5, $7); }
     ;
 
 jump_statement
-    : CONTINUE ';'
-    | BREAK ';'
-    | RETURN ';'
-    | RETURN expression ';'
+    : CONTINUE ';'                                  { $$ = new ASTContinueStatement(); }
+    | BREAK ';'                                     { $$ = new ASTBreakStatement(); }
+    | RETURN ';'                                    { $$ = new ASTReturnStatement(std::nullopt); }
+    | RETURN expression ';'                         { $$ = new ASTReturnStatement($2); }
     ;
 
 translation_unit

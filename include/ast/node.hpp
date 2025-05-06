@@ -36,7 +36,12 @@ public:
         FieldAccess,
         PointerFieldAccess,
         EnumVariant,
-        EnumDefinition
+        EnumDefinition,
+        ReturnStatement,
+        ContinueStatement,
+        BreakStatement,
+        ForStatement,
+        IfStatement
     };
 
     virtual ~ASTNode() = default;
