@@ -6,8 +6,8 @@ BUILD_DIR = build
 # Source directory
 SOURCE_DIR = src
 
-# Executable name 
-EXECUTABLE = cyrus 
+# Executable name
+EXECUTABLE = cyrus
 
 # Compiler
 CXX = clang++
@@ -19,17 +19,22 @@ all: build run
 cmake:
 	@echo "===== Configuring CMake ====="
 	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && cmake .. 
+	@cd $(BUILD_DIR) && cmake ..
 
 # Build target
 build: cmake
 	@echo "===== Building project with make ====="
-	@cd $(BUILD_DIR) && $(MAKE) 
+	@cd $(BUILD_DIR) && $(MAKE)
 
 # Run target
 run: build
 	@echo "===== Running executable ====="
 	@cd $(BUILD_DIR) && ./$(EXECUTABLE) $(ARGS)
+
+# Test target
+test: build
+	@echo "===== Running tests ====="
+	@cd $(BUILD_DIR) && ./test/parser/parser_test
 
 # Clean target
 clean:
@@ -46,8 +51,9 @@ help:
 	@echo "  cmake   - Configure the project with CMake"
 	@echo "  build   - Build the project"
 	@echo "  run     - Run the executable"
+	@echo "  test    - Run the tests"
 	@echo "  clean   - Clean the project (remove build files)"
 	@echo "  rebuild - Clean and rebuild the project"
 	@echo "  help    - Display this help message"
 
-.PHONY: all cmake build run clean rebuild help # Declare phony targets
+.PHONY: all cmake build run test clean rebuild help # Declare phony targets
