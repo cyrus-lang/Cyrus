@@ -1,34 +1,108 @@
+#include <algorithm>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <sstream>
-#include <map>
-#include <algorithm>
 #include <cstdio>
-#include "lexer/lexer.hpp"
-#include "parser/cyrus.tab.hpp"
-#include "util/util.hpp"
+#include <map>
 #include "util/argh.h"
+#include "lexer/lexer.hpp"
+#include "util/util.hpp"
 #include "parser/parser.hpp"
+#include "parser/cyrus.tab.hpp"
 #include "codegen_c/codegen_c.hpp"
 
-void compileCommand(argh::parser &cmdl)
+ASTProgram *parseProgram(const std::string &inputFile)
 {
+    astProgram = nullptr;
+    yyin = nullptr;
+    yyin = fopen(inputFile.c_str(), "r");
+    if (!yyin)
+    {
+        std::cerr << "(Error) Could not open file '" << inputFile << "'." << std::endl;
+        std::exit(1);
+    }
+
+    yyfilename = (char *)inputFile.c_str();
+
+    if (yyparse() == 0)
+    {
+        return (ASTProgram *)astProgram;
+    }
+    else
+    {
+        std::string errorMsg = yyerrormsg;
+        util::displayErrorPanel(inputFile, util::readFileContent(inputFile), yylineno, errorMsg);
+        std::exit(1);
+    }
+
+    fclose(yyin);
+}
+
+void compileCommandHelp()
+{
+    std::cout << "Usage: cyrus compile <input_file> [options]" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Compile a Cyrus source file." << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  -o, --output=<dirpath>  Specify the output directory for the compiled executable." << std::endl;
+    std::cout << "  -h, --help           Display this help message." << std::endl;
+}
+
+CodeGenCOptions collectCodeGenCOptions(argh::parser &cmdl)
+{   
+    auto opts = CodeGenCOptions();
+
     if (cmdl.size() < 3)
     {
         std::cerr << "(Error) Incorrect number of arguments." << std::endl;
         std::cerr << "        Checkout `cyrus compile --help` for more information." << std::endl;
-        return;
+        exit(1);
     }
 
+    if (cmdl[{"-h", "--help"}])
+    {
+        compileCommandHelp();
+        exit(1);
+    }
+
+    for (auto &param : cmdl.params())
+    {
+        if (param.first == "o" || param.first == "output")
+            opts.setOutputDirectory(param.second);
+    }
+
+    if (!opts.getOutputDirectory().has_value())
+    {
+        std::cerr << "(Error) Option -o, --output=<dirpath> is mandatory." << std::endl;
+        std::cerr << "        Checkout `cyrus compile --help` for more information." << std::endl;
+        exit(1);
+    }
+    
+    return opts;
+}
+
+void compileCommand(argh::parser &cmdl)
+{
     std::string inputFile = cmdl[2];
     util::checkInputFileExtension(inputFile);
+
+    ASTProgram *program = parseProgram(inputFile);
 
     std::string fileName = util::getFileNameWithStem(inputFile);
     util::isValidModuleName(fileName, inputFile);
 
     std::string headModuleName = fileName;
-    CodeGenCModule headModule = CodeGenCModule(headModuleName);
+    CodeGenCModule *headModule = new CodeGenCModule(headModuleName);
+
+    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program);
+    headModule->addSourceFile(sourceFile);
+
+    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+
+    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::Executable, opts);
+    codegen_c->generate();
+    codegen_c->compile();
 }
 
 void compileDylibCommand(argh::parser &cmdl)
@@ -59,37 +133,19 @@ void parseOnlyCommand(argh::parser &cmdl)
     std::string inputFile = cmdl[2];
     util::checkInputFileExtension(inputFile);
 
-    astProgram = nullptr;
-    yyin = nullptr;
-    yyin = fopen(inputFile.c_str(), "r");
-    if (!yyin)
-    {
-        std::cerr << "(Error) Could not open file '" << inputFile << "'." << std::endl;
-        std::exit(1);
-    }
+    ASTProgram *program = parseProgram(inputFile);
 
-    yyfilename = (char *)inputFile.c_str();
-
-    if (yyparse() == 0)
+    if (program)
     {
-        if (astProgram)
-        {
-            astProgram->print(0);
-        }
-        else
-        {
-            std::cerr << "(Error) ASTProgram is not initialized correctly.'" << std::endl;
-            std::exit(1);
-        }
+        program->print(0);
     }
     else
     {
-        std::string errorMsg = yyerrormsg;
-        util::displayErrorPanel(inputFile, util::readFileContent(inputFile), yylineno, errorMsg);
+        std::cerr << "(Error) ASTProgram is not initialized correctly.'" << std::endl;
         std::exit(1);
     }
 
-    fclose(yyin);
+    delete program;
 }
 
 void lexOnlyCommand(argh::parser &cmdl)

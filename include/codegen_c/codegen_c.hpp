@@ -5,10 +5,22 @@
 #include <sstream>
 #include <fstream>
 #include <vector>
-#include "codegen_c_program.hpp"
+#include <optional>
+#include "ast/ast.hpp"
 
 class CodeGenCModule;
 class CodeGenCSourceFile;
+
+class CodeGenCOptions
+{
+private:
+    std::optional<std::string> outputDirectory_;
+
+public:
+    CodeGenCOptions() : outputDirectory_(std::nullopt) {}
+    std::optional<std::string> getOutputDirectory() const { return outputDirectory_; }
+    void setOutputDirectory(const std::string &outputDirectory) { outputDirectory_ = outputDirectory; }
+};
 
 class CodeGenC
 {
@@ -23,34 +35,54 @@ public:
         Executable,
     };
 
-    CodeGenC(CodeGenCModule *headModule, OutputKind outputKind) : modules_{headModule}, outputKind_(outputKind) {};
+    CodeGenC(CodeGenCModule *headModule, OutputKind outputKind, CodeGenCOptions opts) : modules_{headModule}, outputKind_(outputKind), opts_(opts) {};
     ~CodeGenC()
     {
         for (auto &&module : modules_)
         {
+            // warning: deleting pointer to incomplete type 'CodeGenCModule' is incompatible with C++2c and may cause undefined behavior [-Wdelete-incomplete]
             delete module;
         }
     }
 
     void generate();
     void compile();
+
 private:
     std::vector<CodeGenCModule *> modules_;
     OutputKind outputKind_;
+    CodeGenCOptions opts_;
+};
+
+class CodeGenCSourceFile
+{
+private:
+    ASTProgram *program_;
+    std::stringstream sourceStream_;
+    std::stringstream headerStream_;
+
+public:
+    CodeGenCSourceFile(ASTProgram *program) : program_(program) {}
+    ~CodeGenCSourceFile()
+    {
+        delete program_;
+    }
+
+    std::pair<std::string, std::string> generate();
 };
 
 class CodeGenCModule
 {
-private:
-    std::string moduleName;
-    std::vector<CodeGenCSourceFile*> sourceFiles_;
 public:
     CodeGenCModule(std::string moduleName) : moduleName(moduleName) {};
-    ~CodeGenCModule() {};
+    ~CodeGenCModule() {}
 
-    void addSourceFile(const CodeGenCSourceFile *sourceFile)
+    void addSourceFile(CodeGenCSourceFile *sourceFile)
     {
-        // sourceFiles_.push_back(sourceFile);
+        std::pair<std::string, std::string> generatedCode = sourceFile->generate();
+        sourceStream_ << generatedCode.first;
+        headerStream_ << generatedCode.second;
+        delete sourceFile;
     }
 
     void saveModule(std::string outputPath)
@@ -60,7 +92,7 @@ public:
         {
             for (const auto &sourceFile : sourceFiles_)
             {
-                // outFile << sourceFile->generate() << std::endl;
+                outFile << sourceFile->generate() << std::endl;
             }
 
             outFile.close();
@@ -68,23 +100,14 @@ public:
         else
         {
             std::cerr << "(Error) Opening file for writing failed." << std::endl;
+            std::cerr << "        Given path: " << outputPath << std::endl;
         }
     }
-};
 
-class CodeGenCSourceFile
-{
 private:
-    ASTProgram *program_;
+    std::string moduleName;
     std::stringstream sourceStream_;
     std::stringstream headerStream_;
-public:
-    CodeGenCSourceFile(ASTProgram *program) : program_(program) {}
-    ~CodeGenCSourceFile() {}
-
-    std::string generate() {
-        return "";
-    }
 };
 
 #endif // CODEGEN_C_HPP

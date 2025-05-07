@@ -1,5 +1,1 @@
-#my_var: float = 3.14;
-
-fn main() {
-    #a: int = 1 + 2;
-}
+#a: int = 1;
