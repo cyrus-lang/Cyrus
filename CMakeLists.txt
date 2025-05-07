@@ -86,7 +86,8 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
 file(GLOB_RECURSE source_files
     ${SOURCE_DIR}/ast/*.cpp
     ${SOURCE_DIR}/semantic/*.cpp
-    ${SOURCE_DIR}/codegen/*.cpp
+    ${SOURCE_DIR}/codegen_c/*.cpp
+    ${SOURCE_DIR}/codegen_llvm/*.cpp
     ${SOURCE_DIR}/runtime/*.cpp
     ${SOURCE_DIR}/util/*.cpp
     ${SOURCE_DIR}/cli/*.cpp
