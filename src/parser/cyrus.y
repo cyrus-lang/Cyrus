@@ -1,7 +1,4 @@
 %{
-    #include <stdio.h>
-    #include <memory>
-    #include <utility>
     #include <variant>
     #include "ast/ast.hpp"
 
@@ -407,7 +404,7 @@ enumerator_list
 enumerator
     : IDENTIFIER                                            { 
                                                                 auto unnamedField = new std::pair<std::string, std::optional<ASTNodePtr>>($1, std::nullopt);
-                                                                $$ = new EnumData(*unnamedField); free($1);
+                                                                $$ = new EnumData(*unnamedField);
                                                             }
     | IDENTIFIER '=' constant_expression                    { 
                                                                 auto field = std::pair<std::string, std::optional<ASTNodePtr>>{$1, $3};
