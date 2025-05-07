@@ -4,7 +4,11 @@
 
 void CodeGenC::generate()
 {
-    // std::cout << opts_.getOutputDirectory().value() << std::endl;
+    for (auto &&module : modules_)
+    {
+        module->saveModule(opts_.getOutputDirectory());
+    }
+    
 }
 
 void CodeGenC::compile()

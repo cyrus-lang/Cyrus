@@ -7,6 +7,9 @@
 #include <vector>
 #include <optional>
 #include "ast/ast.hpp"
+#include "util/util.hpp"
+
+const std::string CIR_DIR = "cir";
 
 class CodeGenCModule;
 class CodeGenCSourceFile;
@@ -14,11 +17,10 @@ class CodeGenCSourceFile;
 class CodeGenCOptions
 {
 private:
-    std::optional<std::string> outputDirectory_;
+    std::string outputDirectory_;
 
 public:
-    CodeGenCOptions() : outputDirectory_(std::nullopt) {}
-    std::optional<std::string> getOutputDirectory() const { return outputDirectory_; }
+    std::string getOutputDirectory() const { return outputDirectory_; }
     void setOutputDirectory(const std::string &outputDirectory) { outputDirectory_ = outputDirectory; }
 };
 
@@ -87,20 +89,37 @@ public:
 
     void saveModule(std::string outputPath)
     {
-        std::ofstream outFile(outputPath + "/" + moduleName + ".c");
-        if (outFile.is_open())
-        {
-            for (const auto &sourceFile : sourceFiles_)
-            {
-                outFile << sourceFile->generate() << std::endl;
-            }
+        const std::string cirOutputDirectory = outputPath + "/" + CIR_DIR + "/" + moduleName;
 
-            outFile.close();
+        util::ensureDirectoryExists(outputPath);
+        util::ensureDirectoryExists(outputPath + "/" + CIR_DIR);
+        util::ensureDirectoryExists(outputPath + "/" + CIR_DIR + "/" + moduleName);
+
+        std::ofstream outSourceFile(cirOutputDirectory + "/" + moduleName + ".c");
+        std::ofstream outHeaderFile(cirOutputDirectory + "/" + moduleName + ".h");
+
+        if (outSourceFile.is_open() && outHeaderFile.is_open())
+        {
+            outSourceFile << sourceStream_.str() << std::endl;
+            outHeaderFile << headerStream_.str() << std::endl;
+
+            outSourceFile.close();
+            outHeaderFile.close();
         }
         else
         {
             std::cerr << "(Error) Opening file for writing failed." << std::endl;
             std::cerr << "        Given path: " << outputPath << std::endl;
+
+            if (!outSourceFile.is_open())
+            {
+                std::cerr << "          Failed to open source file: " << outputPath + "/" + moduleName + ".c" << std::endl;
+            }
+
+            if (!outHeaderFile.is_open())
+            {
+                std::cerr << "          Failed to open header file: " << outputPath + "/" + moduleName + ".h" << std::endl;
+            }
         }
     }
 

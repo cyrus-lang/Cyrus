@@ -50,8 +50,8 @@ void compileCommandHelp()
 }
 
 CodeGenCOptions collectCodeGenCOptions(argh::parser &cmdl)
-{   
-    auto opts = CodeGenCOptions();
+{
+    CodeGenCOptions opts;
 
     if (cmdl.size() < 3)
     {
@@ -66,19 +66,19 @@ CodeGenCOptions collectCodeGenCOptions(argh::parser &cmdl)
         exit(1);
     }
 
+    std::optional<std::string> outputDirectory;
+
     for (auto &param : cmdl.params())
     {
         if (param.first == "o" || param.first == "output")
-            opts.setOutputDirectory(param.second);
+            outputDirectory = param.second;
     }
 
-    if (!opts.getOutputDirectory().has_value())
-    {
-        std::cerr << "(Error) Option -o, --output=<dirpath> is mandatory." << std::endl;
-        std::cerr << "        Checkout `cyrus compile --help` for more information." << std::endl;
-        exit(1);
-    }
-    
+    if (!outputDirectory.has_value())
+        opts.setOutputDirectory("./build");
+    else
+        opts.setOutputDirectory(outputDirectory.value());
+
     return opts;
 }
 

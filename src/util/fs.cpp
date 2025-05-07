@@ -1,5 +1,7 @@
 #include <iostream>
 #include <cstdlib>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include "util/util.hpp"
 
 namespace util
@@ -53,5 +55,44 @@ namespace util
         std::string fileNameWithStem = (dotPos == std::string::npos) ? fileName : fileName.substr(0, dotPos);
 
         return fileNameWithStem;
+    }
+
+    bool isDirectory(const std::string &path)
+    {
+#ifdef _WIN32
+        DWORD fileAttributes = GetFileAttributesA(path.c_str());
+        if (fileAttributes == INVALID_FILE_ATTRIBUTES)
+        {
+            return false;
+        }
+        return (fileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+#else
+        struct stat statbuf;
+        if (stat(path.c_str(), &statbuf) != 0)
+        {
+            return false;
+        }
+        return S_ISDIR(statbuf.st_mode);
+#endif
+    }
+
+    void ensureDirectoryExists(const std::string &path)
+    {
+        if (!isDirectory(path))
+        {
+#ifdef _WIN32
+            if (CreateDirectoryA(path.c_str(), NULL) == 0)
+            {
+                std::cerr << "(Error) Could not create directory '" << path << "'." << std::endl;
+                std::exit(1);
+            }
+#else
+            if (mkdir(path.c_str(), 0777) != 0)
+            {
+                std::cerr << "(Error) Could not create directory '" << path << "'." << std::endl;
+                std::exit(1);
+            }
+#endif
+        }
     }
 } // namespace util
