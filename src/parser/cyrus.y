@@ -126,17 +126,17 @@
 %%
 
 import_specifier
-    : IMPORT import_submodules_list ';'                                         { $$ = new ASTImportStatement(*$2); delete $2; }
+    : IMPORT import_submodules_list ';'                                         { $$ = new ASTImportStatement(*$2); }
     ;
 
 import_submodules_list
-    : IDENTIFIER                                                                { $$ = new std::vector<std::string>(); $$->push_back($1); free($1); }
-    | import_submodules_list ':' ':' IDENTIFIER                                 { if ($$) $$->push_back($4); free($4); }
+    : IDENTIFIER                                                                { $$ = new std::vector<std::string>(); $$->push_back($1); }
+    | import_submodules_list ':' ':' IDENTIFIER                                 { if ($$) $$->push_back($4); }
     ;
 
 primary_expression
-    : IDENTIFIER                                                                { $$ = new ASTIdentifier($1); free($1); }
-    | STRING_CONSTANT                                                           { $$ = new ASTStringLiteral($1); free($1); }
+    : IDENTIFIER                                                                { $$ = new ASTIdentifier($1); }
+    | STRING_CONSTANT                                                           { $$ = new ASTStringLiteral($1); }
     | INTEGER_CONSTANT                                                          { $$ = new ASTIntegerLiteral($1); }
     | FLOAT_CONSTANT                                                            { $$ = new ASTFloatLiteral($1); }
     | DOUBLE_CONSTANT                                                           { $$ = new ASTFloatLiteral($1); }
@@ -144,9 +144,11 @@ primary_expression
     ;
 
 imported_symbol_access
-    : import_submodules_list                                                    { $$ = new ASTImportedSymbolAccess(*$1); delete $1; }
+    : import_submodules_list                                                    { $$ = new ASTImportedSymbolAccess(*$1); }
     | import_submodules_list '(' ')'                                            { $$ = new ASTFunctionCall(new ASTImportedSymbolAccess(*$1), {}); }
-    | import_submodules_list '(' argument_expression_list ')'                   { $$ = new ASTFunctionCall(new ASTImportedSymbolAccess(*$1), *$3); }
+    | import_submodules_list '(' argument_expression_list ')'                   { 
+                                                                                    $$ = new ASTFunctionCall(new ASTImportedSymbolAccess(*$1), *$3);
+                                                                                }
     ;
 
 postfix_expression

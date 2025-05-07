@@ -15,6 +15,13 @@ private:
 
 public:
     ASTProgram(ASTNodeList statements) : statements_(statements) {}
+    ~ASTProgram()
+    {
+        for (auto &statement : statements_)
+        {
+            delete statement;
+        }
+    }
     NodeType getType() const override { return NodeType::Program; }
     const ASTNodeList &getStatements() const { return statements_; }
     void addStatement(ASTNodePtr statement) { statements_.push_back(statement); }
@@ -48,6 +55,13 @@ private:
 public:
     ASTStatementList() : statements_() {}
     ASTStatementList(ASTNodePtr statement) : statements_({statement}) {}
+    ~ASTStatementList()
+    {
+        for (auto &statement : statements_)
+        {
+            delete statement;
+        }
+    }
     NodeType getType() const override { return NodeType::StatementList; }
     const ASTNodeList &getStatements() const { return statements_; }
     void addStatement(ASTNodePtr statement) { statements_.push_back(statement); }
@@ -178,12 +192,17 @@ public:
 
     ASTBinaryExpression(ASTNodePtr left, Operator op, ASTNodePtr right)
         : left_(left), op_(op), right_(right) {}
+    ~ASTBinaryExpression()
+    {
+        delete left_;
+        delete right_;
+    }
 
     NodeType getType() const override { return NodeType::BinaryExpression; }
 
-    ASTNode *getLeft() const { return left_; }
+    ASTNodePtr getLeft() const { return left_; }
     Operator getOperator() const { return op_; }
-    ASTNode *getRight() const { return right_; }
+    ASTNodePtr getRight() const { return right_; }
 
     void print(int indent) const override
     {
@@ -264,11 +283,15 @@ public:
 
     ASTUnaryExpression(Operator op, ASTNodePtr operand)
         : op_(op), operand_(operand) {}
+    ~ASTUnaryExpression()
+    {
+        delete operand_;
+    }
 
     NodeType getType() const override { return NodeType::UnaryExpression; }
 
     Operator getOperator() const { return op_; }
-    ASTNode *getOperand() const { return operand_; }
+    ASTNodePtr getOperand() const { return operand_; }
 
     void print(int indent) const override
     {
@@ -320,9 +343,13 @@ private:
 public:
     ASTCastExpression(ASTTypeSpecifier targetType, ASTNodePtr expression)
         : expression_(expression), targetType_(targetType) {}
+    ~ASTCastExpression()
+    {
+        delete expression_;
+    }
 
     NodeType getType() const override { return NodeType::CastExpression; }
-    ASTNode *getExpression() const { return expression_; }
+    ASTNodePtr getExpression() const { return expression_; }
     const ASTTypeSpecifier &getTargetType() const { return targetType_; }
 
     void print(int indent) const override
@@ -437,6 +464,10 @@ private:
 public:
     ASTFunctionParameter(std::string param_name, ASTTypeSpecifier param_type, ASTNodePtr default_value = nullptr)
         : param_name_(param_name), param_type_(param_type), default_value_(default_value) {}
+    ~ASTFunctionParameter()
+    {
+        delete default_value_;
+    }
 
     NodeType getType() const override { return NodeType::FunctionParameter; }
     const std::string &getParamName() const { return param_name_; }
@@ -473,12 +504,17 @@ private:
 public:
     ASTFunctionDefinition(ASTNodePtr expr, std::vector<ASTFunctionParameter> parameters, ASTTypeSpecifier *returnType, ASTNodePtr body)
         : expr_(expr), parameters_(parameters), returnType_(returnType), body_(body) {}
+    ~ASTFunctionDefinition()
+    {
+        delete expr_;
+        delete body_;
+    }
 
     NodeType getType() const override { return NodeType::FunctionDefinition; }
     ASTNodePtr getExpr() const { return expr_; }
     const std::vector<ASTFunctionParameter> &getParameters() const { return parameters_; }
     ASTTypeSpecifier *getReturnType() const { return returnType_; }
-    ASTNode *getBody() const { return body_; }
+    ASTNodePtr getBody() const { return body_; }
 
     void print(int indent) const override
     {
@@ -516,6 +552,10 @@ private:
 public:
     ASTVariableDeclaration(std::string name, ASTTypeSpecifier *type, ASTNodePtr initializer = nullptr)
         : name_(name), type_(type), initializer_(initializer) {}
+    ~ASTVariableDeclaration()
+    {
+        delete initializer_;
+    }
 
     NodeType getType() const override { return NodeType::VariableDeclaration; }
     const std::string &getName() const { return name_; }
@@ -637,6 +677,13 @@ private:
 public:
     ASTStructInitialization(std::string structName, std::vector<std::pair<std::string, ASTNodePtr>> fieldInitializers)
         : structName_(structName), fieldInitializers_(fieldInitializers) {}
+    ~ASTStructInitialization()
+    {
+        for (auto &&item : fieldInitializers_)
+        {
+            delete item.second;
+        }
+    }
 
     NodeType getType() const override { return NodeType::StructInitialization; }
     const std::string &getStructName() const { return structName_; }
@@ -671,11 +718,17 @@ private:
 public:
     ASTConditionalExpression(ASTNodePtr condition, ASTNodePtr trueExpression, ASTNodePtr falseExpression)
         : condition_(condition), trueExpression_(trueExpression), falseExpression_(falseExpression) {}
+    ~ASTConditionalExpression()
+    {
+        delete condition_;
+        delete trueExpression_;
+        delete falseExpression_;
+    }
 
     NodeType getType() const override { return NodeType::ConditionalExpression; }
-    ASTNode *getCondition() const { return condition_; }
-    ASTNode *getTrueExpression() const { return trueExpression_; }
-    ASTNode *getFalseExpression() const { return falseExpression_; }
+    ASTNodePtr getCondition() const { return condition_; }
+    ASTNodePtr getTrueExpression() const { return trueExpression_; }
+    ASTNodePtr getFalseExpression() const { return falseExpression_; }
 
     void print(int indent) const override
     {
@@ -717,12 +770,17 @@ public:
 
     ASTAssignmentExpression(ASTNodePtr left, Operator op, ASTNodePtr right)
         : left_(left), op_(op), right_(right) {}
+    ~ASTAssignmentExpression()
+    {
+        delete left_;
+        delete right_;
+    }
 
     NodeType getType() const override { return NodeType::AssignmentExpression; }
 
-    ASTNode *getLeft() const { return left_; }
+    ASTNodePtr getLeft() const { return left_; }
     Operator getOperator() const { return op_; }
-    ASTNode *getRight() const { return right_; }
+    ASTNodePtr getRight() const { return right_; }
 
     void print(int indent) const override
     {
@@ -782,6 +840,14 @@ private:
 public:
     ASTFunctionCall(ASTNodePtr expr, std::vector<ASTNodePtr> arguments)
         : expr_(expr), arguments_(arguments) {}
+    ~ASTFunctionCall()
+    {
+        for (auto &&argument : arguments_)
+        {
+            delete argument;
+        }
+        delete expr_;
+    }
 
     NodeType getType() const override { return NodeType::FunctionCall; }
     ASTNodePtr getExpr() const { return expr_; }
@@ -814,6 +880,10 @@ private:
 public:
     ASTFieldAccess(ASTNodePtr operand, std::string field_name)
         : operand_(operand), field_name_(field_name) {}
+    ~ASTFieldAccess()
+    {
+        delete operand_;
+    }
 
     NodeType getType() const override { return NodeType::FieldAccess; }
     ASTNodePtr getOperand() const { return operand_; }
@@ -834,7 +904,6 @@ private:
 
 public:
     ASTPointerFieldAccess(ASTFieldAccess field_access) : field_access_(field_access) {}
-
     NodeType getType() const override { return NodeType::PointerFieldAccess; }
     ASTFieldAccess getFieldAccess() const { return field_access_; }
 
@@ -977,6 +1046,11 @@ private:
 
 public:
     ASTReturnStatement(std::optional<ASTNodePtr> expression) : expression_(expression) {}
+    ~ASTReturnStatement() {
+        if (expression_.has_value()) {
+            delete expression_.value();
+        }
+    }
 
     NodeType getType() const override { return NodeType::ReturnStatement; }
     const std::optional<ASTNodePtr> &getExpression() const { return expression_; }
@@ -1036,6 +1110,18 @@ private:
 public:
     ASTForStatement(std::optional<ASTNodePtr> initializer, std::optional<ASTNodePtr> condition, std::optional<ASTNodePtr> increment, ASTNodePtr body)
         : initializer_(initializer), condition_(condition), increment_(increment), body_(body) {}
+    ~ASTForStatement() {
+        if (initializer_.has_value()) {
+            delete initializer_.value();
+        }
+        if (condition_.has_value()) {
+            delete condition_.value();
+        }
+        if (increment_.has_value()) {
+            delete increment_.value();
+        }
+        delete body_;
+    }
 
     NodeType getType() const override { return NodeType::ForStatement; }
     std::optional<ASTNodePtr> getInitializer() const { return initializer_; }
@@ -1085,10 +1171,17 @@ private:
 public:
     ASTIfStatement(ASTNodePtr condition, ASTNodePtr thenBranch, std::optional<ASTNodePtr> elseBranch = std::nullopt)
         : condition_(condition), thenBranch_(thenBranch), elseBranch_(elseBranch) {}
+    ~ASTIfStatement() {
+        delete condition_;
+        delete thenBranch_;
+        if (elseBranch_.has_value()) {
+            delete elseBranch_.value();
+        }
+    }
 
     NodeType getType() const override { return NodeType::IfStatement; }
-    ASTNode *getCondition() const { return condition_; }
-    ASTNode *getThenBranch() const { return thenBranch_; }
+    ASTNodePtr getCondition() const { return condition_; }
+    ASTNodePtr getThenBranch() const { return thenBranch_; }
     std::optional<ASTNodePtr> getElseBranch() const { return elseBranch_; }
 
     void print(int indent) const override
