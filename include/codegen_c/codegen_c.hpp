@@ -62,12 +62,18 @@ private:
     ASTProgram *program_;
     std::stringstream sourceStream_;
     std::stringstream headerStream_;
+    std::string moduleName_;
 
 public:
-    CodeGenCSourceFile(ASTProgram *program) : program_(program) {}
+    CodeGenCSourceFile(ASTProgram *program, const std::string &moduleName) : program_(program), moduleName_(moduleName) {}
     ~CodeGenCSourceFile()
     {
         delete program_;
+    }
+
+    const std::string &getModuleName()
+    {
+        return moduleName_;
     }
 
     std::pair<std::string, std::string> generate();
@@ -75,6 +81,13 @@ public:
 
 class CodeGenCModule
 {
+private:
+    std::string moduleName;
+    std::stringstream sourceStream_;
+    std::stringstream headerStream_;
+    // TODO Collect generated modules names
+    // This gonna be used later when compiling through clang/gcc.
+
 public:
     CodeGenCModule(std::string moduleName) : moduleName(moduleName) {};
     ~CodeGenCModule() {}
@@ -122,11 +135,10 @@ public:
             }
         }
     }
-
-private:
-    std::string moduleName;
-    std::stringstream sourceStream_;
-    std::stringstream headerStream_;
 };
+
+std::string codeGenCExpression(ASTNodePtr nodePtr);
+std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement);
+std::string codeGenC_TypeSpecifier(ASTNodePtr nodePtr);
 
 #endif // CODEGEN_C_HPP

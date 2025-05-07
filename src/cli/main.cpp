@@ -95,7 +95,7 @@ void compileCommand(argh::parser &cmdl)
     std::string headModuleName = fileName;
     CodeGenCModule *headModule = new CodeGenCModule(headModuleName);
 
-    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program);
+    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
     headModule->addSourceFile(sourceFile);
 
     CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
