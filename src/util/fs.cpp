@@ -43,4 +43,15 @@ namespace util
 
         return fileContent;
     }
+
+    std::string getFileNameWithStem(const std::string &filePath)
+    {
+        size_t lastSlashPos = filePath.rfind('/');
+        std::string fileName = (lastSlashPos == std::string::npos) ? filePath : filePath.substr(lastSlashPos + 1);
+
+        size_t dotPos = fileName.rfind('.');
+        std::string fileNameWithStem = (dotPos == std::string::npos) ? fileName : fileName.substr(0, dotPos);
+
+        return fileNameWithStem;
+    }
 } // namespace util

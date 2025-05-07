@@ -14,6 +14,8 @@ namespace util
                           const std::string &foregroundColor,
                           const std::string &backgroundColor);
     std::string readFileContent(const std::string &inputFile);
+    std::string getFileNameWithStem(const std::string &filePath);
+    void isValidModuleName(const std::string &moduleName, const std::string &fileName);
     void displayErrorPanel(const std::string &fileName, const std::string &fileContent, const int errorLineNumber, const std::string &errorMsg);
 } // namespace util
 

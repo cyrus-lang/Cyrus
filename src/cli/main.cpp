@@ -7,104 +7,60 @@
 #include <cstdio>
 #include "lexer/lexer.hpp"
 #include "parser/cyrus.tab.hpp"
-#include "cli/cli.hpp"
 #include "util/util.hpp"
+#include "util/argh.h"
 #include "parser/parser.hpp"
+#include "codegen_c/codegen_c.hpp"
 
-int main(int argc, char *argv[])
+void compileCommand(argh::parser &cmdl)
 {
-    std::vector<std::string> args(argv + 1, argv + argc);
-    std::map<std::string, std::vector<std::string>> parsedArgs = parseArguments(args);
-
-    if (parsedArgs.count("command") > 0)
-    {
-        const std::string &command = parsedArgs["command"][0];
-
-        if (command == "run")
-        {
-            runCommand(args);
-        }
-        else if (command == "compile")
-        {
-            compileCommand(args);
-        }
-        else if (command == "compile-dylib")
-        {
-            compileDylibCommand(args);
-        }
-        else if (command == "compile-obj")
-        {
-            compileObjCommand(args);
-        }
-        else if (command == "compile-asm")
-        {
-            compileAsmCommand(args);
-        }
-        else if (command == "parse-only")
-        {
-            parseOnlyCommand(args);
-        }
-        else if (command == "lex-only")
-        {
-            lexOnlyCommand(args);
-        }
-        else if (command == "help")
-        {
-            helpCommand();
-        }
-        else if (command == "version")
-        {
-            versionCommand();
-        }
-        else
-        {
-            std::cerr << "(Error) Unknown command '" << command << "'." << std::endl;
-            return 1;
-        }
-    }
-    else
-    {
-        helpCommand();
-        return 1;
-    }
-
-    return 0;
-}
-
-void runCommand(const std::vector<std::string> &args)
-{
-}
-
-void compileCommand(const std::vector<std::string> &args)
-{
-}
-
-void compileDylibCommand(const std::vector<std::string> &args)
-{
-}
-
-void compileObjCommand(const std::vector<std::string> &args)
-{
-}
-
-void compileAsmCommand(const std::vector<std::string> &args)
-{
-}
-
-void parseOnlyCommand(const std::vector<std::string> &args)
-{
-    if (args.size() != 2)
+    if (cmdl.size() < 3)
     {
         std::cerr << "(Error) Incorrect number of arguments." << std::endl;
+        std::cerr << "        Checkout `cyrus compile --help` for more information." << std::endl;
         return;
     }
 
-    std::string inputFile = args[1];
+    std::string inputFile = cmdl[2];
     util::checkInputFileExtension(inputFile);
 
-    yyin = nullptr;
-    astProgram = nullptr;
+    std::string fileName = util::getFileNameWithStem(inputFile);
+    util::isValidModuleName(fileName, inputFile);
 
+    std::string headModuleName = fileName;
+    CodeGenCModule headModule = CodeGenCModule(headModuleName);
+}
+
+void compileDylibCommand(argh::parser &cmdl)
+{
+}
+
+void compileObjCommand(argh::parser &cmdl)
+{
+}
+
+void compileAsmCommand(argh::parser &cmdl)
+{
+}
+
+void runCommand(argh::parser &cmdl)
+{
+}
+
+void parseOnlyCommand(argh::parser &cmdl)
+{
+    if (cmdl.size() != 3)
+    {
+        std::cerr << "(Error) Incorrect number of arguments." << std::endl;
+        std::cerr << "        Checkout `cyrus parse-only --help` for more information." << std::endl;
+        return;
+    }
+
+    std::string inputFile = cmdl[2];
+    util::checkInputFileExtension(inputFile);
+
+    astProgram = nullptr;
+    yyin = nullptr;
     yyin = fopen(inputFile.c_str(), "r");
     if (!yyin)
     {
@@ -136,13 +92,19 @@ void parseOnlyCommand(const std::vector<std::string> &args)
     fclose(yyin);
 }
 
-void lexOnlyCommand(const std::vector<std::string> &args)
+void lexOnlyCommand(argh::parser &cmdl)
 {
-    std::string inputFile = args[1];
+    if (cmdl.size() != 3)
+    {
+        std::cerr << "(Error) Incorrect number of arguments." << std::endl;
+        std::cerr << "        Checkout `cyrus lex-only --help` for more information." << std::endl;
+        return;
+    }
+
+    std::string inputFile = cmdl[2];
     util::checkInputFileExtension(inputFile);
 
     yyin = nullptr;
-
     yyin = fopen(inputFile.c_str(), "r");
     if (!yyin)
     {
@@ -182,4 +144,43 @@ void helpCommand()
 void versionCommand()
 {
     std::cout << "Cyrus v1.0.0" << std::endl;
+}
+
+int main(int argc, char *argv[])
+{
+    argh::parser cmdl(argc, argv);
+
+    if (argc > 1)
+    {
+        std::string command = argv[1];
+        if (command == "run")
+            runCommand(cmdl);
+        else if (command == "compile")
+            compileCommand(cmdl);
+        else if (command == "compile-dylib")
+            compileDylibCommand(cmdl);
+        else if (command == "compile-obj")
+            compileObjCommand(cmdl);
+        else if (command == "compile-asm")
+            compileAsmCommand(cmdl);
+        else if (command == "parse-only")
+            parseOnlyCommand(cmdl);
+        else if (command == "lex-only")
+            lexOnlyCommand(cmdl);
+        else if (command == "version")
+            versionCommand();
+        else if (command == "help")
+            helpCommand();
+        else
+        {
+            std::cerr << "(Error) Unknown command '" << command << "'." << std::endl;
+            return 1;
+        }
+    }
+    else
+    {
+        helpCommand();
+    }
+
+    return 0;
 }
