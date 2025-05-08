@@ -45,8 +45,8 @@ void compileCommandHelp()
     std::cout << std::endl;
     std::cout << "Compile a Cyrus source file." << std::endl;
     std::cout << "Options:" << std::endl;
-    std::cout << "  -o, --output=<dirpath>  Specify the output directory for the compiled executable." << std::endl;
-    std::cout << "  -h, --help           Display this help message." << std::endl;
+    std::cout << "  -o, --output=<dirpath>      Specify the output directory for the compiled executable." << std::endl;
+    std::cout << "  -h, --help                  Display this help message." << std::endl;
 }
 
 CodeGenCOptions collectCodeGenCOptions(argh::parser &cmdl)
@@ -107,14 +107,95 @@ void compileCommand(argh::parser &cmdl)
 
 void compileDylibCommand(argh::parser &cmdl)
 {
+    std::string inputFile = cmdl[2];
+    util::checkInputFileExtension(inputFile);
+
+    ASTProgram *program = parseProgram(inputFile);
+
+    std::string fileName = util::getFileNameWithStem(inputFile);
+    util::isValidModuleName(fileName, inputFile);
+
+    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+
+    std::string headModuleName = fileName;
+    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
+
+    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
+    headModule->addSourceFile(sourceFile);
+
+    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::DynamicLibrary, opts);
+    codegen_c->generate();
+    codegen_c->compile();
 }
+
+void compileStaticlibCommand(argh::parser &cmdl)
+{
+    std::string inputFile = cmdl[2];
+    util::checkInputFileExtension(inputFile);
+
+    ASTProgram *program = parseProgram(inputFile);
+
+    std::string fileName = util::getFileNameWithStem(inputFile);
+    util::isValidModuleName(fileName, inputFile);
+
+    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+
+    std::string headModuleName = fileName;
+    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
+
+    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
+    headModule->addSourceFile(sourceFile);
+
+    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::StaticLibrary, opts);
+    codegen_c->generate();
+    codegen_c->compile();
+}
+
 
 void compileObjCommand(argh::parser &cmdl)
 {
+    std::string inputFile = cmdl[2];
+    util::checkInputFileExtension(inputFile);
+
+    ASTProgram *program = parseProgram(inputFile);
+
+    std::string fileName = util::getFileNameWithStem(inputFile);
+    util::isValidModuleName(fileName, inputFile);
+
+    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+
+    std::string headModuleName = fileName;
+    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
+
+    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
+    headModule->addSourceFile(sourceFile);
+
+    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::ObjectFile, opts);
+    codegen_c->generate();
+    codegen_c->compile();
 }
 
 void compileAsmCommand(argh::parser &cmdl)
 {
+    std::string inputFile = cmdl[2];
+    util::checkInputFileExtension(inputFile);
+
+    ASTProgram *program = parseProgram(inputFile);
+
+    std::string fileName = util::getFileNameWithStem(inputFile);
+    util::isValidModuleName(fileName, inputFile);
+
+    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+
+    std::string headModuleName = fileName;
+    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
+
+    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
+    headModule->addSourceFile(sourceFile);
+
+    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::Assembly, opts);
+    codegen_c->generate();
+    codegen_c->compile();
 }
 
 void runCommand(argh::parser &cmdl)
@@ -186,15 +267,16 @@ void helpCommand()
 {
     std::cout << "Usage: program [command] [options]" << std::endl;
     std::cout << "Commands:" << std::endl;
-    std::cout << "  run             Execute a program." << std::endl;
-    std::cout << "  compile         Compile source code." << std::endl;
-    std::cout << "  compile-dylib   Compile source code into a dynamic library." << std::endl;
-    std::cout << "  compile-obj     Compile source code into an object file." << std::endl;
-    std::cout << "  compile-asm     Compile source code into assembly code." << std::endl;
-    std::cout << "  parse-only      Parse and visit source tree." << std::endl;
-    std::cout << "  lex-only        Lex and visit tokens." << std::endl;
-    std::cout << "  help            Display this help message." << std::endl;
-    std::cout << "  version         Display the program version." << std::endl;
+    std::cout << "  run                     Execute a program." << std::endl;
+    std::cout << "  compile                 Compile source code." << std::endl;
+    std::cout << "  compile-dylib           Compile source code into a dynamic library." << std::endl;
+    std::cout << "  compile-staticlib       Compile source code into a static library." << std::endl;
+    std::cout << "  compile-obj             Compile source code into an object file." << std::endl;
+    std::cout << "  compile-asm             Compile source code into assembly code." << std::endl;
+    std::cout << "  parse-only              Parse and visit source tree." << std::endl;
+    std::cout << "  lex-only                Lex and visit tokens." << std::endl;
+    std::cout << "  help                    Display this help message." << std::endl;
+    std::cout << "  version                 Display the program version." << std::endl;
 }
 
 void versionCommand()
@@ -215,6 +297,8 @@ int main(int argc, char *argv[])
             compileCommand(cmdl);
         else if (command == "compile-dylib")
             compileDylibCommand(cmdl);
+        else if (command == "compile-staticlib")
+            compileStaticlibCommand(cmdl);
         else if (command == "compile-obj")
             compileObjCommand(cmdl);
         else if (command == "compile-asm")

@@ -2,7 +2,9 @@
 #include <sstream>
 #include "codegen_c/codegen_c.hpp"
 
+void compileStaticLibrary(std::vector<std::string> modulePaths, std::string objectsOutputPath, std::string outputPath);
 void compileExecutable(std::vector<std::string> modulePaths, std::string objectsOutputPath, std::string outputPath);
+void compileDylib(std::vector<std::string> modulePaths, std::string objectsOutputPath, std::string outputPath);
 
 // Generation Step
 
@@ -134,10 +136,10 @@ void CodeGenC::compile()
         /* code */
         break;
     case CodeGenC::OutputKind::DynamicLibrary:
-        /* code */
+        compileDylib(modulePaths, getObjectsOutputPath(), getDylibOutputPath());
         break;
     case CodeGenC::OutputKind::StaticLibrary:
-        /* code */
+        compileStaticLibrary(modulePaths, getObjectsOutputPath(), getStaticLibraryOutputPath());
         break;
     case CodeGenC::OutputKind::Executable:
         compileExecutable(modulePaths, getObjectsOutputPath(), getExecutableOutputPath());
@@ -161,6 +163,40 @@ void compileExecutable(std::vector<std::string> modulePaths, std::string objects
     if (result != 0)
     {
         std::cerr << "(Error) Failed to link object files." << std::endl;
+        exit(1);
+    }
+}
+
+void compileDylib(std::vector<std::string> modulePaths, std::string objectsOutputPath, std::string outputPath)
+{
+    std::string objectFiles;
+    for (auto &&modulePath : modulePaths)
+    {
+        objectFiles += modulePath + " ";
+    }
+
+    std::string command = "gcc -shared -o " + outputPath + " " + objectFiles;
+    int result = system(command.c_str());
+    if (result != 0)
+    {
+        std::cerr << "(Error) Failed to create dynamic library." << std::endl;
+        exit(1);
+    }
+}
+
+void compileStaticLibrary(std::vector<std::string> modulePaths, std::string objectsOutputPath, std::string outputPath)
+{
+    std::string objectFiles;
+    for (auto &&modulePath : modulePaths)
+    {
+        objectFiles += modulePath + " ";
+    }
+
+    std::string command = "ar rcs " + outputPath + " " + objectFiles;
+    int result = system(command.c_str());
+    if (result != 0)
+    {
+        std::cerr << "(Error) Failed to create static library." << std::endl;
         exit(1);
     }
 }

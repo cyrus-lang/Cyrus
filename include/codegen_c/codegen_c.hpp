@@ -10,6 +10,8 @@
 #include "util/util.hpp"
 
 const std::string CIR_DIR = "cir";
+const std::string DYLIB_DIR = "dylib";
+const std::string STATICLIB_DIR = "staticlib";
 const std::string OBJ_DIR = "objects";
 
 class CodeGenCModule;
@@ -60,6 +62,8 @@ private:
 public:
     CodeGenCModule(CodeGenCOptions opts, std::string moduleName) : moduleName_(moduleName), opts_(opts)
     {
+        util::ensureDirectoryExists(opts_.getOutputDirectory() + "/" + DYLIB_DIR);
+        util::ensureDirectoryExists(opts_.getOutputDirectory() + "/" + STATICLIB_DIR);
         util::ensureDirectoryExists(opts_.getOutputDirectory() + "/" + CIR_DIR);
         util::ensureDirectoryExists(opts_.getOutputDirectory() + "/" + CIR_DIR + "/" + moduleName);
         moduleCIROutputPath_ = opts_.getOutputDirectory() + "/" + CIR_DIR + "/" + moduleName;
@@ -139,6 +143,26 @@ public:
         return opts_.getOutputDirectory() + "/" + modules_[0]->getModuleName() + ".exe";
 #else
         return opts_.getOutputDirectory() + "/" + modules_[0]->getModuleName();
+#endif
+    }
+
+    const std::string getDylibOutputPath()
+    {
+#ifdef _WIN32
+        return opts_.getOutputDirectory() + "/dylib/" + modules_[0]->getModuleName() + ".dll";
+#elif __APPLE__
+        return opts_.getOutputDirectory() + "/dylib/" + modules_[0]->getModuleName() + ".dylib";
+#else
+        return opts_.getOutputDirectory() + "/dylib/" + modules_[0]->getModuleName() + ".so";
+#endif
+    }
+
+    const std::string getStaticLibraryOutputPath()
+    {
+#ifdef _WIN32
+        return opts_.getOutputDirectory() + "/staticlib/" + modules_[0]->getModuleName() + ".lib";
+#else
+        return opts_.getOutputDirectory() + "/staticlib/" + modules_[0]->getModuleName() + ".a";
 #endif
     }
 
