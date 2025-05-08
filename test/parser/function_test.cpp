@@ -138,9 +138,9 @@ TEST(ParserFunctionTest, FunctionWithBody)
 
     ASTReturnStatement* returnStatement = static_cast<ASTReturnStatement*>(body->getStatements()[0]);
     ASSERT_EQ(returnStatement->getType(), ASTNode::NodeType::ReturnStatement);
-    ASSERT_TRUE(returnStatement->getExpression().has_value());
+    ASSERT_TRUE(returnStatement->getExpr().has_value());
 
-    ASTIntegerLiteral* literal = static_cast<ASTIntegerLiteral*>(returnStatement->getExpression().value());
+    ASTIntegerLiteral* literal = static_cast<ASTIntegerLiteral*>(returnStatement->getExpr().value());
     ASSERT_EQ(literal->getType(), ASTNode::NodeType::IntegerLiteral);
     ASSERT_EQ(literal->getValue(), 0);
 }

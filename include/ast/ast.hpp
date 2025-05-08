@@ -1104,7 +1104,7 @@ public:
     }
 
     NodeType getType() const override { return NodeType::ReturnStatement; }
-    const std::optional<ASTNodePtr> &getExpression() const { return expression_; }
+    const std::optional<ASTNodePtr> &getExpr() const { return expression_; }
 
     void print(int indent) const override
     {

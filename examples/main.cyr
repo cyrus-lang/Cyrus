@@ -4,6 +4,6 @@ fn printName(name string) {
     #a: int = 10;
 }
 
-fn hello() {
-
+fn main() int32 {
+    return 0;
 }
