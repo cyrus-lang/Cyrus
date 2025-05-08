@@ -137,8 +137,38 @@ public:
     }
 };
 
-std::string codeGenCExpression(ASTNodePtr nodePtr);
+class CodeGenCValue
+{
+public:
+    enum class ValueType
+    {
+        LValue,
+        RValue,
+        Type,
+        Instruction
+    };
+
+    CodeGenCValue(std::string source, std::string header, ValueType type) : source_(source), header_(header), type_(type) {};
+
+    std::string getSource() const { return source_; }
+    void setSource(std::string source) { source_ = source; }
+
+    std::string getHeader() const { return header_; }
+    void setHeader(std::string header) { header_ = header; }
+
+    ValueType getType() const { return type_; }
+    void setType(ValueType type) { type_ = type; }
+
+private:
+    std::string source_;
+    std::string header_;
+    ValueType type_;
+};
+
+using CodeGenCValuePtr = CodeGenCValue*;
+
 std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement);
-std::string codeGenC_TypeSpecifier(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_TypeSpecifier(ASTNodePtr nodePtr);
 
 #endif // CODEGEN_C_HPP

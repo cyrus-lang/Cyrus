@@ -226,6 +226,7 @@ float safe_strtof(const char *str) {
         display_error("Invalid characters after float.");
         return 0.0f;
     }
+
     return value;
 }
 
@@ -251,6 +252,7 @@ double safe_strtod(const char *str) {
         display_error("Invalid characters after double.");
         return 0.0;
     }
+    
     return value;
 }
 

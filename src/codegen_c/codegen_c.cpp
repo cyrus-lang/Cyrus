@@ -35,10 +35,14 @@ std::pair<std::string, std::string> CodeGenCSourceFile::generate()
     std::string finalHeader;
     finalHeader += "#include <stdio.h>\n";
     finalHeader += "#include <stdint.h>\n";
+    finalHeader += "#include <stdbool.h>\n";
+    finalHeader += "\n";
     finalHeader += header;
 
     std::string finalSource;
-    finalSource += "#include \"" + moduleName_ + ".h\"";
+    finalSource += "#include \"" + moduleName_ + ".h\"" + "\n";
+    finalSource += "\n";
+    finalSource += source;
 
     return std::make_pair(finalSource, finalHeader);
 }

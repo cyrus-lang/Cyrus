@@ -1,18 +1,23 @@
+#include <string>
 #include "ast/ast.hpp"
 #include "codegen_c/codegen_c.hpp"
 
-std::string codeGenCExpression(ASTNodePtr nodePtr)
+CodeGenCValuePtr codeGenC_IntegerLiteral(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_FloatLiteral(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_StringLiteral(ASTNodePtr nodePtr);
+
+CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr)
 {
     switch (nodePtr->getType())
     {
     case ASTNode::NodeType::IntegerLiteral:
-        std::cout << "it's IntegerLiteral" << std::endl;
+        return codeGenC_IntegerLiteral(nodePtr);
         break;
     case ASTNode::NodeType::FloatLiteral:
-        std::cout << "it's FloatLiteral" << std::endl;
+        return codeGenC_FloatLiteral(nodePtr);
         break;
     case ASTNode::NodeType::StringLiteral:
-        std::cout << "it's StringLiteral" << std::endl;
+        return codeGenC_StringLiteral(nodePtr);
         break;
     case ASTNode::NodeType::Identifier:
         std::cout << "it's Identifier" << std::endl;
@@ -52,6 +57,23 @@ std::string codeGenCExpression(ASTNodePtr nodePtr)
         exit(1);
         break;
     }
+}
 
-    return "// expression";
+CodeGenCValuePtr codeGenC_IntegerLiteral(ASTNodePtr nodePtr)
+{
+    ASTIntegerLiteral *node = static_cast<ASTIntegerLiteral *>(nodePtr);
+    return new CodeGenCValue(std::to_string(node->getValue()), std::string(), CodeGenCValue::ValueType::RValue);
+}
+
+CodeGenCValuePtr codeGenC_FloatLiteral(ASTNodePtr nodePtr)
+{
+    ASTFloatLiteral *node = static_cast<ASTFloatLiteral *>(nodePtr);
+    return new CodeGenCValue(std::to_string(node->getValue()), std::string(), CodeGenCValue::ValueType::RValue);
+}
+
+CodeGenCValuePtr codeGenC_StringLiteral(ASTNodePtr nodePtr)
+{
+    ASTStringLiteral *node = static_cast<ASTStringLiteral *>(nodePtr);
+    std::string stringValue = "\"" + node->getValue() + "\"";
+    return new CodeGenCValue(stringValue, std::string(), CodeGenCValue::ValueType::RValue);
 }

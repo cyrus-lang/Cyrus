@@ -369,13 +369,13 @@ TEST(ParserExpressionTest, ComplexExpression) {
 
 TEST(ParserExpressionTest, CastExpressionToFloat)
 {
-    std::string input = "#my_var = (float)my_int;";
+    std::string input = "#my_var = (float32)my_int;";
     ASTProgram* program = static_cast<ASTProgram*>(quickParse(input));
 
     ASTVariableDeclaration* varDecl = static_cast<ASTVariableDeclaration*>(program->getStatements()[0]);
     ASTCastExpression* castExpr = static_cast<ASTCastExpression*>(varDecl->getInitializer());
     ASSERT_EQ(castExpr->getType(), ASTNode::NodeType::CastExpression);
-    ASSERT_EQ(castExpr->getTargetType().getTypeValue(), ASTTypeSpecifier::ASTInternalType::Float);
+    ASSERT_EQ(castExpr->getTargetType().getTypeValue(), ASTTypeSpecifier::ASTInternalType::Float32);
 
     ASTImportedSymbolAccess* operand = static_cast<ASTImportedSymbolAccess*>(castExpr->getExpression());
     ASSERT_EQ(operand->getSymbolPath().size(), 1);
@@ -384,7 +384,7 @@ TEST(ParserExpressionTest, CastExpressionToFloat)
 
 TEST(ParserExpressionTest, NestedCastExpression)
 {
-    std::string input = "#my_var = (int)(float)my_double;";
+    std::string input = "#my_var = (int)(float32)my_double;";
     ASTProgram* program = static_cast<ASTProgram*>(quickParse(input));
 
     ASTVariableDeclaration* varDecl = static_cast<ASTVariableDeclaration*>(program->getStatements()[0]);
@@ -394,7 +394,7 @@ TEST(ParserExpressionTest, NestedCastExpression)
 
     ASTCastExpression* innerCastExpr = static_cast<ASTCastExpression*>(outerCastExpr->getExpression());
     ASSERT_EQ(innerCastExpr->getType(), ASTNode::NodeType::CastExpression);
-    ASSERT_EQ(innerCastExpr->getTargetType().getTypeValue(), ASTTypeSpecifier::ASTInternalType::Float);
+    ASSERT_EQ(innerCastExpr->getTargetType().getTypeValue(), ASTTypeSpecifier::ASTInternalType::Float32);
 
     ASTImportedSymbolAccess* operand = static_cast<ASTImportedSymbolAccess*>(innerCastExpr->getExpression());
     ASSERT_EQ(operand->getSymbolPath().size(), 1);

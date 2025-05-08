@@ -36,8 +36,6 @@ std::string ASTTypeSpecifier::formatInternalType() const
         return "byte";
     case ASTInternalType::String:
         return "string";
-    case ASTInternalType::Float:
-        return "float";
     case ASTInternalType::Float32:
         return "float32";
     case ASTInternalType::Float64:

@@ -27,13 +27,12 @@ public:
         Char,
         Byte,
         String,
-        Float,
         Float32,
         Float64,
         Float128,
         Bool,
         Error,
-        Identifier,
+        Identifier,// nested
         AddressOf, // nested
         Pointer,   // nested
         Const,     // nested

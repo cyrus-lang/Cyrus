@@ -1,13 +1,12 @@
+#include <sstream>
 #include "ast/ast.hpp"
 #include "codegen_c/codegen_c.hpp"
 
-std::string codeGenC_GlobalVariableDeclaration(ASTNodePtr nodePtr);
-std::string codeGenC_VariableDeclaration(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_GlobalVariableDeclaration(ASTNodePtr nodePtr);
 
 std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
 {
-    std::string source;
-    std::string header;
+    CodeGenCValuePtr value;
 
     switch (statement->getType())
     {
@@ -18,8 +17,7 @@ std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
         std::cout << "it's ImportModule" << std::endl;
         break;
     case ASTNode::NodeType::VariableDeclaration:
-        // Here `NodeType::VariableDeclaration` is considered as a global variable.
-        source = codeGenC_GlobalVariableDeclaration(statement) + "\n";
+        value = codeGenC_GlobalVariableDeclaration(statement);
         break;
     case ASTNode::NodeType::ImportStatement:
         std::cout << "it's ImportStatement" << std::endl;
@@ -64,7 +62,7 @@ std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
         std::cout << "it's IfStatement" << std::endl;
         break;
     case ASTNode::NodeType::TypeSpecifier:
-        source = codeGenC_TypeSpecifier(statement) + "\n";
+        value = codeGenC_TypeSpecifier(statement);
         break;
     case ASTNode::NodeType::Program:
         std::cerr << "Unable to generate C code for top level node ASTProgram." << std::endl;
@@ -76,19 +74,28 @@ std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
         break;
     }
 
-    return std::make_pair(source, header);
+    return std::make_pair(value->getSource(), value->getHeader());
 }
 
-std::string codeGenC_GlobalVariableDeclaration(ASTNodePtr nodePtr)
+CodeGenCValuePtr codeGenC_GlobalVariableDeclaration(ASTNodePtr nodePtr)
 {
     ASTVariableDeclaration *node = static_cast<ASTVariableDeclaration *>(nodePtr);
+    CodeGenCValuePtr typeValue = codeGenC_TypeSpecifier(node->getTypeValue());
 
-    return "extern int a = 10;";
+    std::ostringstream oss;
+    oss << "extern " << typeValue->getSource() << " " << node->getName();
+    if (node->getInitializer())
+    {   
+        CodeGenCValuePtr exprValue = codeGenCExpression(node->getInitializer());
+        oss << " = " << exprValue->getSource();
+        delete exprValue;
+    }
+
+    delete typeValue;
+    return new CodeGenCValue(std::string(), oss.str(), CodeGenCValue::ValueType::Instruction);
 }
 
 std::string codeGenC_VariableDeclaration(ASTNodePtr nodePtr)
 {
-    ASTVariableDeclaration *node = static_cast<ASTVariableDeclaration *>(nodePtr);
-
-    return "int a = 10;";
+    return "";
 }

@@ -1,1 +1,1 @@
-#a: int = 1;
+#my_var: bool = "Hello World";
