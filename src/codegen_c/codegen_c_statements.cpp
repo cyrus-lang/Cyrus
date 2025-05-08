@@ -18,6 +18,9 @@ std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
     case ASTNode::NodeType::FunctionDefinition:
         value = codeGenC_FunctionDefinition(statement);
         break;
+    case ASTNode::NodeType::FunctionDeclaration:
+        value = codeGenC_FunctionDeclaration(statement);
+        break;
     case ASTNode::NodeType::ReturnStatement:
         value = codeGenC_ReturnStatement(statement);
         break;
@@ -109,6 +112,12 @@ CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater
     CodeGenCValuePtr exprValue = codeGenCExpression(node->getExpr());
     std::ostringstream funcDeclOss;
 
+    if (node->getStorageClassSpecifier().has_value())
+    {
+        CodeGenCValuePtr storageClassSpecifier = codeGenC_StorageClassSpecifier(node->getStorageClassSpecifier().value());
+        funcDeclOss << storageClassSpecifier->getSource() << " ";
+    }
+
     ASTTypeSpecifier *returnType = node->getReturnType();
     if (returnType == nullptr)
     {
@@ -141,7 +150,7 @@ CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater
 
     if (!bodyLater)
     {
-        funcDeclOss << ";";
+        funcDeclOss << ";\n";
     }
 
     return new CodeGenCValue(std::string(), funcDeclOss.str(), CodeGenCValue::ValueType::Instruction);

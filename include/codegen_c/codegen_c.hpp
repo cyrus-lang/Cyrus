@@ -10,6 +10,7 @@
 #include "util/util.hpp"
 
 const std::string CIR_DIR = "cir";
+const std::string OBJ_DIR = "objects";
 
 class CodeGenCModule;
 class CodeGenCSourceFile;
@@ -22,38 +23,6 @@ private:
 public:
     std::string getOutputDirectory() const { return outputDirectory_; }
     void setOutputDirectory(const std::string &outputDirectory) { outputDirectory_ = outputDirectory; }
-};
-
-class CodeGenC
-{
-public:
-    enum class OutputKind
-    {
-        Assembly,
-        CIR,
-        ObjectFile,
-        DynamicLibrary,
-        StaticLibrary,
-        Executable,
-    };
-
-    CodeGenC(CodeGenCModule *headModule, OutputKind outputKind, CodeGenCOptions opts) : modules_{headModule}, outputKind_(outputKind), opts_(opts) {};
-    ~CodeGenC()
-    {
-        for (auto &&module : modules_)
-        {
-            // warning: deleting pointer to incomplete type 'CodeGenCModule' is incompatible with C++2c and may cause undefined behavior [-Wdelete-incomplete]
-            delete module;
-        }
-    }
-
-    void generate();
-    void compile();
-
-private:
-    std::vector<CodeGenCModule *> modules_;
-    OutputKind outputKind_;
-    CodeGenCOptions opts_;
 };
 
 class CodeGenCSourceFile
@@ -82,14 +51,19 @@ public:
 class CodeGenCModule
 {
 private:
-    std::string moduleName;
+    std::string moduleName_;
     std::stringstream sourceStream_;
     std::stringstream headerStream_;
-    // TODO Collect generated modules names
-    // This gonna be used later when compiling through clang/gcc.
+    std::string moduleCIROutputPath_;
+    CodeGenCOptions opts_;
 
 public:
-    CodeGenCModule(std::string moduleName) : moduleName(moduleName) {};
+    CodeGenCModule(CodeGenCOptions opts, std::string moduleName) : moduleName_(moduleName), opts_(opts)
+    {
+        util::ensureDirectoryExists(opts_.getOutputDirectory() + "/" + CIR_DIR);
+        util::ensureDirectoryExists(opts_.getOutputDirectory() + "/" + CIR_DIR + "/" + moduleName);
+        moduleCIROutputPath_ = opts_.getOutputDirectory() + "/" + CIR_DIR + "/" + moduleName;
+    };
     ~CodeGenCModule() {}
 
     void addSourceFile(CodeGenCSourceFile *sourceFile)
@@ -100,16 +74,15 @@ public:
         delete sourceFile;
     }
 
-    void saveModule(std::string outputPath)
+    const std::string &getModuleName() { return moduleName_; }
+    const std::string &getModuleCIROutputPath() { return moduleCIROutputPath_; }
+    const std::string generateObjectFile();
+    void saveModule()
     {
-        const std::string cirOutputDirectory = outputPath + "/" + CIR_DIR + "/" + moduleName;
+        const std::string cirOutputDirectory = getModuleCIROutputPath();
 
-        util::ensureDirectoryExists(outputPath);
-        util::ensureDirectoryExists(outputPath + "/" + CIR_DIR);
-        util::ensureDirectoryExists(outputPath + "/" + CIR_DIR + "/" + moduleName);
-
-        std::ofstream outSourceFile(cirOutputDirectory + "/" + moduleName + ".c");
-        std::ofstream outHeaderFile(cirOutputDirectory + "/" + moduleName + ".h");
+        std::ofstream outSourceFile(cirOutputDirectory + "/" + moduleName_ + ".c");
+        std::ofstream outHeaderFile(cirOutputDirectory + "/" + moduleName_ + ".h");
 
         if (outSourceFile.is_open() && outHeaderFile.is_open())
         {
@@ -122,19 +95,65 @@ public:
         else
         {
             std::cerr << "(Error) Opening file for writing failed." << std::endl;
-            std::cerr << "        Given path: " << outputPath << std::endl;
+            std::cerr << "        Given path: " << cirOutputDirectory << std::endl;
 
             if (!outSourceFile.is_open())
             {
-                std::cerr << "          Failed to open source file: " << outputPath + "/" + moduleName + ".c" << std::endl;
+                std::cerr << "          Failed to open source file: " << cirOutputDirectory + "/" + moduleName_ + ".c" << std::endl;
             }
 
             if (!outHeaderFile.is_open())
             {
-                std::cerr << "          Failed to open header file: " << outputPath + "/" + moduleName + ".h" << std::endl;
+                std::cerr << "          Failed to open header file: " << cirOutputDirectory + "/" + moduleName_ + ".h" << std::endl;
             }
         }
     }
+};
+
+class CodeGenC
+{
+public:
+    enum class OutputKind
+    {
+        Assembly,
+        CIR,
+        ObjectFile,
+        DynamicLibrary,
+        StaticLibrary,
+        Executable,
+    };
+
+    CodeGenC(CodeGenCModule *headModule, OutputKind outputKind, CodeGenCOptions opts) : modules_{headModule}, outputKind_(outputKind), opts_(opts) {};
+    ~CodeGenC()
+    {
+        for (auto &&module : modules_)
+        {
+            // warning: deleting pointer to incomplete type 'CodeGenCModule' is incompatible with C++2c and may cause undefined behavior [-Wdelete-incomplete]
+            delete module;
+        }
+    }
+
+    const std::string getExecutableOutputPath()
+    {
+#ifdef _WIN32
+        return opts_.getOutputDirectory() + "/" + modules_[0]->getModuleName() + ".exe";
+#else
+        return opts_.getOutputDirectory() + "/" + modules_[0]->getModuleName();
+#endif
+    }
+
+    const std::string getObjectsOutputPath()
+    {
+        return opts_.getOutputDirectory() + "/" + OBJ_DIR;
+    }
+
+    void generate();
+    void compile();
+
+private:
+    std::vector<CodeGenCModule *> modules_;
+    OutputKind outputKind_;
+    CodeGenCOptions opts_;
 };
 
 class CodeGenCValue
@@ -167,11 +186,12 @@ private:
 
 using CodeGenCValuePtr = CodeGenCValue *;
 
+CodeGenCValuePtr codeGenC_StorageClassSpecifier(ASTStorageClassSpecifier storageClassSpecifier);
+std::pair<std::string, std::string> codeGenCStatementList(ASTNodeList nodeList);
 std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement);
 CodeGenCValuePtr codeGenC_VariableDeclaration(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_TypeSpecifier(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr);
-std::pair<std::string, std::string> codeGenCStatementList(ASTNodeList nodeList);
 CodeGenCValuePtr codeGenCStatementList(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr);
 
 #endif // CODEGEN_C_HPP

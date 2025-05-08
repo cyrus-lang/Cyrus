@@ -92,13 +92,13 @@ void compileCommand(argh::parser &cmdl)
     std::string fileName = util::getFileNameWithStem(inputFile);
     util::isValidModuleName(fileName, inputFile);
 
+    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+
     std::string headModuleName = fileName;
-    CodeGenCModule *headModule = new CodeGenCModule(headModuleName);
+    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
 
     CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
     headModule->addSourceFile(sourceFile);
-
-    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
 
     CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::Executable, opts);
     codegen_c->generate();

@@ -130,3 +130,19 @@ CodeGenCValuePtr codeGenC_VolatileTypeSpecifier(ASTTypeSpecifier *typeSpecifier)
     CodeGenCValuePtr innerType = codeGenC_TypeSpecifier(inner);
     return new CodeGenCValue("volatile " + innerType->getSource(), std::string(), CodeGenCValue::ValueType::Type);
 }
+
+CodeGenCValuePtr codeGenC_StorageClassSpecifier(ASTStorageClassSpecifier storageClassSpecifier)
+{
+    switch (storageClassSpecifier)
+    {
+    case ASTStorageClassSpecifier::Extern:
+        return new CodeGenCValue("extern", std::string(), CodeGenCValue::ValueType::Type);
+    case ASTStorageClassSpecifier::Static:
+        return new CodeGenCValue("static", std::string(), CodeGenCValue::ValueType::Type);
+    case ASTStorageClassSpecifier::Register:
+        return new CodeGenCValue("register", std::string(), CodeGenCValue::ValueType::Type);
+    default:
+        std::cerr << "Unable to generate C code for unsupported ASTStorageClassSpecifier." << std::endl;
+        exit(1);
+    }
+}
