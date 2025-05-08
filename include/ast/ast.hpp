@@ -269,10 +269,10 @@ class ASTUnaryExpression : public ASTNode
 public:
     enum class Operator
     {
+        Plus,
         Negate,
         LogicalNot,
         BitwiseNot,
-        Plus,
         AddressOf,
         Dereference,
         PreIncrement,
