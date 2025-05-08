@@ -101,6 +101,7 @@
 %type <node> external_declaration
 %type <node> variable_declaration
 %type <node> function_definition
+%type <node> function_declaration
 %type <node> declaration
 %type <node> declaration_list
 %type <node> assignment_expression
@@ -633,6 +634,11 @@ external_declaration
 function_definition
     : FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, $6, $7); }
     | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, nullptr, $6); }
+    ;
+
+function_declaration
+    : FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, $6); }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                                   { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, nullptr); }
     ;
 
 parameter_list_optional

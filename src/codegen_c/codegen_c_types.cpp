@@ -1,7 +1,16 @@
+#include <iostream>
 #include "ast/ast.hpp"
 #include "codegen_c/codegen_c.hpp"
 
+CodeGenCValuePtr generateCType(const std::string &typeName)
+{
+    return new CodeGenCValue(typeName, std::string(), CodeGenCValue::ValueType::Type);
+}
+
 CodeGenCValuePtr codeGenC_IdentifierTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
+CodeGenCValuePtr codeGenC_PointerTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
+CodeGenCValuePtr codeGenC_ConstTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
+CodeGenCValuePtr codeGenC_VolatileTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
 
 CodeGenCValuePtr codeGenC_TypeSpecifier(ASTNodePtr nodePtr)
 {
@@ -9,88 +18,115 @@ CodeGenCValuePtr codeGenC_TypeSpecifier(ASTNodePtr nodePtr)
     switch (node->getTypeValue())
     {
     case ASTTypeSpecifier::ASTInternalType::Int:
-        return new CodeGenCValue("int", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("int");
     case ASTTypeSpecifier::ASTInternalType::Int8:
-        return new CodeGenCValue("int8_t", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("int8_t");
     case ASTTypeSpecifier::ASTInternalType::Int16:
-        return new CodeGenCValue("int16_t", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("int16_t");
     case ASTTypeSpecifier::ASTInternalType::Int32:
-        return new CodeGenCValue("int32_t", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("int32_t");
     case ASTTypeSpecifier::ASTInternalType::Int64:
-        return new CodeGenCValue("int64_t", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("int64_t");
     case ASTTypeSpecifier::ASTInternalType::UInt:
-        return new CodeGenCValue("unsigned int", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("unsigned int");
     case ASTTypeSpecifier::ASTInternalType::UInt8:
-        return new CodeGenCValue("uint8_t", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("uint8_t");
     case ASTTypeSpecifier::ASTInternalType::UInt16:
-        return new CodeGenCValue("uint16_t", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("uint16_t");
     case ASTTypeSpecifier::ASTInternalType::UInt32:
-        return new CodeGenCValue("uint32_t", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("uint32_t");
     case ASTTypeSpecifier::ASTInternalType::UInt64:
-        return new CodeGenCValue("uint64_t", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("uint64_t");
     case ASTTypeSpecifier::ASTInternalType::Char:
-        return new CodeGenCValue("char", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("char");
     case ASTTypeSpecifier::ASTInternalType::Float32:
-        return new CodeGenCValue("float", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("float");
     case ASTTypeSpecifier::ASTInternalType::Float64:
-        return new CodeGenCValue("double", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("double");
     case ASTTypeSpecifier::ASTInternalType::Float128:
-        return new CodeGenCValue("long double", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("long double");
     case ASTTypeSpecifier::ASTInternalType::Void:
-        return new CodeGenCValue("void", std::string(), CodeGenCValue::ValueType::Type);
-        break;
+        return generateCType("void");
+    case ASTTypeSpecifier::ASTInternalType::String:
+        return generateCType("const char*");
+    case ASTTypeSpecifier::ASTInternalType::Bool:
+        return generateCType("bool");
+    case ASTTypeSpecifier::ASTInternalType::Identifier:
+        return codeGenC_IdentifierTypeSpecifier(node);
+    case ASTTypeSpecifier::ASTInternalType::Pointer:
+        return codeGenC_PointerTypeSpecifier(node);
+    case ASTTypeSpecifier::ASTInternalType::Const:
+        return codeGenC_ConstTypeSpecifier(node);
+    case ASTTypeSpecifier::ASTInternalType::Volatile:
+        return codeGenC_VolatileTypeSpecifier(node);
+    case ASTTypeSpecifier::ASTInternalType::AddressOf:
+        return codeGenC_PointerTypeSpecifier(node);
     case ASTTypeSpecifier::ASTInternalType::Byte:
         std::cerr << "Byte type not implemented yet." << std::endl;
         exit(1);
-        break;
-    case ASTTypeSpecifier::ASTInternalType::String:
-        return new CodeGenCValue("const char*", std::string(), CodeGenCValue::ValueType::Type);
-        break;
-    case ASTTypeSpecifier::ASTInternalType::Bool:
-        return new CodeGenCValue("bool", std::string(), CodeGenCValue::ValueType::Type);
-        break;
     case ASTTypeSpecifier::ASTInternalType::Error:
         std::cerr << "Error type not implemented yet." << std::endl;
         exit(1);
-        break;
-    case ASTTypeSpecifier::ASTInternalType::Identifier:
-        return codeGenC_IdentifierTypeSpecifier(node);
-        break;
-    case ASTTypeSpecifier::ASTInternalType::Pointer:
-    {
-        return codeGenC_PointerTypeSpecifier(node);
-        exit(1);
-    }
-    break;
     default:
         std::cerr << "Unable to generate C code for unsupported ASTTypeSpecifier::ASTInternalType." << std::endl;
         exit(1);
-        break;
     };
 }
 
 CodeGenCValuePtr codeGenC_IdentifierTypeSpecifier(ASTTypeSpecifier *typeSpecifier)
 {
-    ASTIdentifier *identifier = static_cast<ASTIdentifier *>(typeSpecifier->getInner());
+    ASTNodePtr inner = typeSpecifier->getInner();
+    if (inner == nullptr)
+    {
+        std::cerr << "Identifier type specifier has no inner identifier." << std::endl;
+        exit(1);
+    }
+
+    if (inner->getType() != ASTTypeSpecifier::NodeType::Identifier)
+    {
+        std::cerr << "Inner node is not an identifier." << std::endl;
+        exit(1);
+    }
+
+    ASTIdentifier *identifier = static_cast<ASTIdentifier *>(inner);
     return new CodeGenCValue(identifier->getName(), std::string(), CodeGenCValue::ValueType::Type);
 }
 
 CodeGenCValuePtr codeGenC_PointerTypeSpecifier(ASTTypeSpecifier *typeSpecifier)
 {
-    ASTIdentifier *pointer = static_cast<ASTIdentifier *>(typeSpecifier->getInner());
-    return new CodeGenCValue(identifier->getName(), std::string(), CodeGenCValue::ValueType::Type);
+    ASTNodePtr inner = typeSpecifier->getInner();
+    if (inner == nullptr)
+    {
+        std::cerr << "Pointer type specifier has no inner type." << std::endl;
+        exit(1);
+    }
+
+    CodeGenCValuePtr innerType = codeGenC_TypeSpecifier(inner);
+    return new CodeGenCValue(innerType->getSource() + "*", std::string(), CodeGenCValue::ValueType::Type);
+}
+
+CodeGenCValuePtr codeGenC_ConstTypeSpecifier(ASTTypeSpecifier *typeSpecifier)
+{
+    ASTNodePtr inner = typeSpecifier->getInner();
+    if (inner == nullptr)
+    {
+        std::cerr << "Const type specifier has no inner type." << std::endl;
+        exit(1);
+    }
+
+    CodeGenCValuePtr innerType = codeGenC_TypeSpecifier(inner);
+    return new CodeGenCValue("const " + innerType->getSource(), std::string(), CodeGenCValue::ValueType::Type);
+}
+
+CodeGenCValuePtr codeGenC_VolatileTypeSpecifier(ASTTypeSpecifier *typeSpecifier)
+{
+    ASTNodePtr inner = typeSpecifier->getInner();
+    if (inner == nullptr)
+    {
+        std::cerr << "Volatile type specifier has no inner type." << std::endl;
+        exit(1);
+    }
+
+    CodeGenCValuePtr innerType = codeGenC_TypeSpecifier(inner);
+    return new CodeGenCValue("volatile " + innerType->getSource(), std::string(), CodeGenCValue::ValueType::Type);
 }

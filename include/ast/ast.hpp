@@ -508,6 +508,7 @@ public:
     {
         delete expr_;
         delete body_;
+        delete returnType_;
     }
 
     NodeType getType() const override { return NodeType::FunctionDefinition; }
@@ -539,6 +540,54 @@ public:
         printIndent(indent + 1);
         std::cout << "Body:" << std::endl;
         body_->print(indent + 2);
+    }
+};
+
+class ASTFunctionDeclaration : public ASTNode
+{
+private:
+    ASTNodePtr expr_;
+    std::vector<ASTFunctionParameter> parameters_;
+    ASTTypeSpecifier *returnType_;
+
+public:
+    ASTFunctionDeclaration(ASTNodePtr expr, std::vector<ASTFunctionParameter> parameters, ASTTypeSpecifier *returnType)
+        : expr_(expr), parameters_(parameters), returnType_(returnType) {}
+    ~ASTFunctionDeclaration()
+    {
+        delete expr_;
+        delete returnType_;
+    }
+
+    NodeType getType() const override { return NodeType::FunctionDeclaration; }
+    ASTNodePtr getExpr() const { return expr_; }
+    const std::vector<ASTFunctionParameter> &getParameters() const { return parameters_; }
+    ASTTypeSpecifier *getReturnType() const { return returnType_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "FunctionDeclaration: " << std::endl;
+        expr_->print(indent + 1);
+
+        printIndent(indent + 1);
+        std::cout << "Parameters:" << std::endl;
+        for (const auto &param : parameters_)
+        {
+            param.print(indent + 2);
+        }
+
+        if (returnType_)
+        {
+            printIndent(indent + 1);
+            std::cout << "Return Type: ";
+            returnType_->print(indent);
+        }
+    }
+
+    static ASTFunctionDeclaration *fromFunctionDefinition(const ASTFunctionDefinition &functionDefinition)
+    {
+        return new ASTFunctionDeclaration(functionDefinition.getExpr(), functionDefinition.getParameters(), functionDefinition.getReturnType());
     }
 };
 
@@ -1046,8 +1095,10 @@ private:
 
 public:
     ASTReturnStatement(std::optional<ASTNodePtr> expression) : expression_(expression) {}
-    ~ASTReturnStatement() {
-        if (expression_.has_value()) {
+    ~ASTReturnStatement()
+    {
+        if (expression_.has_value())
+        {
             delete expression_.value();
         }
     }
@@ -1110,14 +1161,18 @@ private:
 public:
     ASTForStatement(std::optional<ASTNodePtr> initializer, std::optional<ASTNodePtr> condition, std::optional<ASTNodePtr> increment, ASTNodePtr body)
         : initializer_(initializer), condition_(condition), increment_(increment), body_(body) {}
-    ~ASTForStatement() {
-        if (initializer_.has_value()) {
+    ~ASTForStatement()
+    {
+        if (initializer_.has_value())
+        {
             delete initializer_.value();
         }
-        if (condition_.has_value()) {
+        if (condition_.has_value())
+        {
             delete condition_.value();
         }
-        if (increment_.has_value()) {
+        if (increment_.has_value())
+        {
             delete increment_.value();
         }
         delete body_;
@@ -1171,10 +1226,12 @@ private:
 public:
     ASTIfStatement(ASTNodePtr condition, ASTNodePtr thenBranch, std::optional<ASTNodePtr> elseBranch = std::nullopt)
         : condition_(condition), thenBranch_(thenBranch), elseBranch_(elseBranch) {}
-    ~ASTIfStatement() {
+    ~ASTIfStatement()
+    {
         delete condition_;
         delete thenBranch_;
-        if (elseBranch_.has_value()) {
+        if (elseBranch_.has_value())
+        {
             delete elseBranch_.value();
         }
     }

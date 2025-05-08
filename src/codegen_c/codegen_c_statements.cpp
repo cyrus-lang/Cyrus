@@ -3,10 +3,12 @@
 #include "codegen_c/codegen_c.hpp"
 
 CodeGenCValuePtr codeGenC_GlobalVariableDeclaration(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater = false);
 
 std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
 {
-    CodeGenCValuePtr value;
+    CodeGenCValuePtr value = nullptr;
 
     switch (statement->getType())
     {
@@ -23,16 +25,13 @@ std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
         std::cout << "it's ImportStatement" << std::endl;
         break;
     case ASTNode::NodeType::FunctionDefinition:
-        std::cout << "it's FunctionDefinition" << std::endl;
+        value = codeGenC_FunctionDefinition(statement);
         break;
     case ASTNode::NodeType::FunctionParameter:
         std::cout << "it's FunctionParameter" << std::endl;
         break;
     case ASTNode::NodeType::ReturnStatement:
         std::cout << "it's ReturnStatement" << std::endl;
-        break;
-    case ASTNode::NodeType::ASTVariableDeclaration:
-        std::cout << "it's ASTVariableDeclaration" << std::endl;
         break;
     case ASTNode::NodeType::TypeDefStatement:
         std::cout << "it's TypeDefStatement" << std::endl;
@@ -85,7 +84,7 @@ CodeGenCValuePtr codeGenC_GlobalVariableDeclaration(ASTNodePtr nodePtr)
     std::ostringstream oss;
     oss << "extern " << typeValue->getSource() << " " << node->getName();
     if (node->getInitializer())
-    {   
+    {
         CodeGenCValuePtr exprValue = codeGenCExpression(node->getInitializer());
         oss << " = " << exprValue->getSource();
         delete exprValue;
@@ -98,4 +97,73 @@ CodeGenCValuePtr codeGenC_GlobalVariableDeclaration(ASTNodePtr nodePtr)
 std::string codeGenC_VariableDeclaration(ASTNodePtr nodePtr)
 {
     return "";
+}
+
+CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater)
+{
+    ASTFunctionDeclaration *node = static_cast<ASTFunctionDeclaration *>(nodePtr);
+
+    if (node->getExpr() == nullptr)
+    {
+        std::cerr << "Unable to generate C code for function definition without an expression." << std::endl;
+        exit(1);
+    }
+    else if (node->getExpr()->getType() != ASTNode::NodeType::Identifier)
+    {
+        std::cerr << "Unable to generate C code for function definition with an non-identifier expression." << std::endl;
+        exit(1);
+    }
+
+    CodeGenCValuePtr exprValue = codeGenCExpression(node->getExpr());
+    std::ostringstream funcDeclOss;
+
+    ASTTypeSpecifier *returnType = node->getReturnType();
+    if (returnType == nullptr)
+    {
+        returnType = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Void);
+    }
+
+    CodeGenCValuePtr returnTypeValue = codeGenC_TypeSpecifier(returnType);
+
+    funcDeclOss << returnTypeValue->getSource() << " " << exprValue->getSource() << "(";
+
+    std::vector<ASTFunctionParameter> parameters = node->getParameters();
+    for (size_t i = 0; i < parameters.size(); ++i)
+    {
+        ASTFunctionParameter param = parameters[i];
+
+        ASTTypeSpecifier paramType = param.getParamType();
+        CodeGenCValuePtr paramTypeValue = codeGenC_TypeSpecifier(&paramType);
+        funcDeclOss << paramTypeValue->getSource();
+
+        funcDeclOss << " " << param.getParamName();
+
+        if (i < parameters.size() - 1)
+        {
+            funcDeclOss << ", ";
+        }
+
+        delete paramTypeValue;
+    }
+    funcDeclOss << ")";
+
+    if (!bodyLater) {
+        funcDeclOss << ";";
+    }
+
+    return new CodeGenCValue(std::string(), funcDeclOss.str(), CodeGenCValue::ValueType::Instruction);
+}
+
+CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr)
+{
+    ASTFunctionDefinition *node = static_cast<ASTFunctionDefinition *>(nodePtr);
+    ASTFunctionDeclaration *funcDecl = ASTFunctionDeclaration::fromFunctionDefinition(*node);
+    CodeGenCValuePtr funcDeclValue = codeGenC_FunctionDeclaration(funcDecl, true);
+
+    std::ostringstream funcDefOss;
+    funcDefOss << funcDeclValue->getHeader() << " {\n";
+    funcDefOss << "    // Function body goes here\n";
+    funcDefOss << "}\n";
+
+    return new CodeGenCValue(std::string(), funcDefOss.str(), CodeGenCValue::ValueType::Instruction);
 }

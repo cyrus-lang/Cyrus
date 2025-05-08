@@ -1,1 +1,3 @@
-#my_var: bool = "Hello World";
+fn printName(name string) {
+
+}

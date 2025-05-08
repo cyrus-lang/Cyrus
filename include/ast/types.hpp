@@ -32,11 +32,11 @@ public:
         Float128,
         Bool,
         Error,
-        Identifier,// nested
-        AddressOf, // nested
-        Pointer,   // nested
-        Const,     // nested
-        Volatile,  // nested
+        Identifier, // nested
+        AddressOf,  // nested
+        Pointer,    // nested
+        Const,      // nested
+        Volatile,   // nested
     };
 
     ASTTypeSpecifier(ASTInternalType type) : type_(type), inner_(nullptr) {}
