@@ -1,3 +1,9 @@
+#global: int = 10;
+
 fn printName(name string) {
+    #a: int = 10;
+}
+
+fn hello() {
 
 }
