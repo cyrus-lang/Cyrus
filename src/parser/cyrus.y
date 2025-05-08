@@ -628,17 +628,30 @@ translation_unit
 
 external_declaration                                
     : function_definition                                                   { $$ = $1; }    
+    | function_declaration                                                  { $$ = $1; }    
     | declaration                                                           { $$ = $1; }
     ;
 
 function_definition
-    : FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, $6, $7); }
-    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, nullptr, $6); }
+    : storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, nullptr, $8, $2, $1); }
+    | storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $2, $1); }
+    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, nullptr, $8, $1, $2); }
+    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $1, $2); }
+    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, nullptr, $7, ASTAccessSpecifier::Default, $1); }
+    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, $7, $8, ASTAccessSpecifier::Default, $1); }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, nullptr, $6); }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement                             { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, $6, $7); }
     ;
 
 function_declaration
-    : FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, $6); }
-    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                                   { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, nullptr); }
+    : storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, nullptr, $2, $1); }
+    | storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, $8, $2, $1); }
+    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, nullptr, $1, $2); }
+    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, $8, $1, $2); }
+    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, nullptr, ASTAccessSpecifier::Default, $1); }
+    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, $7, ASTAccessSpecifier::Default, $1); }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                                            { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, nullptr); }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'                             { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, $6); }
     ;
 
 parameter_list_optional

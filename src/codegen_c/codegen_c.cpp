@@ -28,6 +28,18 @@ std::pair<std::string, std::string> codeGenCStatementList(ASTNodeList nodeList)
     return std::make_pair(sourceStream.str(), headerStream.str());
 }
 
+CodeGenCValuePtr codeGenCStatementList(ASTNodePtr nodePtr)
+{   
+    if (nodePtr->getType() != ASTNode::NodeType::StatementList)
+    {
+        std::cerr << "Unable to generate C code for non-statement list." << std::endl;
+        exit(1);
+    }
+
+    auto [source, header] = codeGenCStatementList(static_cast<ASTStatementList *>(nodePtr)->getStatements());
+    return new CodeGenCValue("{\n" + source + "\n}", header, CodeGenCValue::ValueType::Instruction);
+}
+
 std::pair<std::string, std::string> codeGenCStatementListTopLevel(ASTNodeList nodeList)
 {
     std::stringstream sourceStream;

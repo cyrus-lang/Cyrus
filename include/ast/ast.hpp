@@ -500,10 +500,18 @@ private:
     std::vector<ASTFunctionParameter> parameters_;
     ASTTypeSpecifier *returnType_;
     ASTNodePtr body_;
+    ASTAccessSpecifier accessSpecifier_;
+    std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
 
 public:
-    ASTFunctionDefinition(ASTNodePtr expr, std::vector<ASTFunctionParameter> parameters, ASTTypeSpecifier *returnType, ASTNodePtr body)
-        : expr_(expr), parameters_(parameters), returnType_(returnType), body_(body) {}
+    ASTFunctionDefinition(ASTNodePtr expr,
+                          std::vector<ASTFunctionParameter> parameters,
+                          ASTTypeSpecifier *returnType,
+                          ASTNodePtr body,
+                          ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
+                          std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
+        : expr_(expr), parameters_(parameters), returnType_(returnType), body_(body),
+          accessSpecifier_(accessSpecifier), storageClassSpecifier_(storageClassSpecifier) {}
     ~ASTFunctionDefinition()
     {
         delete expr_;
@@ -516,6 +524,8 @@ public:
     const std::vector<ASTFunctionParameter> &getParameters() const { return parameters_; }
     ASTTypeSpecifier *getReturnType() const { return returnType_; }
     ASTNodePtr getBody() const { return body_; }
+    ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+    std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
 
     void print(int indent) const override
     {
@@ -538,6 +548,31 @@ public:
         }
 
         printIndent(indent + 1);
+        printASTAccessSpecifier(accessSpecifier_);
+
+        if (storageClassSpecifier_.has_value())
+        {
+            printIndent(indent + 1);
+            std::cout << "Storage Class Specifier: ";
+            switch (storageClassSpecifier_.value())
+            {
+            case ASTStorageClassSpecifier::Extern:
+                std::cout << "Extern";
+                break;
+            case ASTStorageClassSpecifier::Static:
+                std::cout << "Static";
+                break;
+            case ASTStorageClassSpecifier::Register:
+                std::cout << "Register";
+                break;
+            default:
+                std::cout << "Unknown";
+                break;
+            }
+            std::cout << std::endl;
+        }
+
+        printIndent(indent + 1);
         std::cout << "Body:" << std::endl;
         body_->print(indent + 2);
     }
@@ -549,10 +584,17 @@ private:
     ASTNodePtr expr_;
     std::vector<ASTFunctionParameter> parameters_;
     ASTTypeSpecifier *returnType_;
+    ASTAccessSpecifier accessSpecifier_;
+    std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
 
 public:
-    ASTFunctionDeclaration(ASTNodePtr expr, std::vector<ASTFunctionParameter> parameters, ASTTypeSpecifier *returnType)
-        : expr_(expr), parameters_(parameters), returnType_(returnType) {}
+    ASTFunctionDeclaration(ASTNodePtr expr,
+                           std::vector<ASTFunctionParameter> parameters,
+                           ASTTypeSpecifier *returnType,
+                           ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
+                           std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
+        : expr_(expr), parameters_(parameters), returnType_(returnType),
+          accessSpecifier_(accessSpecifier), storageClassSpecifier_(storageClassSpecifier) {}
     ~ASTFunctionDeclaration()
     {
         delete expr_;
@@ -563,6 +605,8 @@ public:
     ASTNodePtr getExpr() const { return expr_; }
     const std::vector<ASTFunctionParameter> &getParameters() const { return parameters_; }
     ASTTypeSpecifier *getReturnType() const { return returnType_; }
+    ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+    std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
 
     void print(int indent) const override
     {
@@ -583,11 +627,36 @@ public:
             std::cout << "Return Type: ";
             returnType_->print(indent);
         }
+
+        printIndent(indent + 1);
+        printASTAccessSpecifier(accessSpecifier_);
+
+        if (storageClassSpecifier_.has_value())
+        {
+            printIndent(indent + 1);
+            std::cout << "Storage Class Specifier: ";
+            switch (storageClassSpecifier_.value())
+            {
+            case ASTStorageClassSpecifier::Extern:
+                std::cout << "Extern";
+                break;
+            case ASTStorageClassSpecifier::Static:
+                std::cout << "Static";
+                break;
+            case ASTStorageClassSpecifier::Register:
+                std::cout << "Register";
+                break;
+            default:
+                std::cout << "Unknown";
+                break;
+            }
+            std::cout << std::endl;
+        }
     }
 
     static ASTFunctionDeclaration *fromFunctionDefinition(const ASTFunctionDefinition &functionDefinition)
     {
-        return new ASTFunctionDeclaration(functionDefinition.getExpr(), functionDefinition.getParameters(), functionDefinition.getReturnType());
+        return new ASTFunctionDeclaration(functionDefinition.getExpr(), functionDefinition.getParameters(), functionDefinition.getReturnType(), functionDefinition.getAccessSpecifier(), functionDefinition.getStorageClassSpecifier());
     }
 };
 

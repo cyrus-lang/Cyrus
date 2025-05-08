@@ -52,8 +52,7 @@ std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
         value = codeGenC_TypeSpecifier(statement);
         break;
     case ASTNode::NodeType::StatementList:
-        //     auto [source, header] = codeGenCStatementList(static_cast<ASTStatementList *>(statement)->getStatements());
-        //     value = new CodeGenCValue(source, header, CodeGenCValue::ValueType::Instruction);
+        value = codeGenCStatementList(statement);
         break;
     case ASTNode::NodeType::ImportStatement:
         std::cerr << "Cannot build import inside an another statement. It must be defined at the top level of your program." << std::endl;
@@ -179,7 +178,7 @@ CodeGenCValuePtr codeGenC_ReturnStatement(ASTNodePtr nodePtr)
     std::ostringstream headerOss;
 
     if (expr.has_value())
-    {   
+    {
         CodeGenCValuePtr exprValue = codeGenCExpression(expr.value());
 
         headerOss << exprValue->getHeader();

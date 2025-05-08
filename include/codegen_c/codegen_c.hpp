@@ -168,9 +168,10 @@ private:
 using CodeGenCValuePtr = CodeGenCValue *;
 
 std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement);
-CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_TypeSpecifier(ASTNodePtr nodePtr);
-std::pair<std::string, std::string> codeGenCStatementList(ASTNodeList nodeList);
 CodeGenCValuePtr codeGenC_VariableDeclaration(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_TypeSpecifier(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr);
+std::pair<std::string, std::string> codeGenCStatementList(ASTNodeList nodeList);
+CodeGenCValuePtr codeGenCStatementList(ASTNodePtr nodePtr);
 
 #endif // CODEGEN_C_HPP
