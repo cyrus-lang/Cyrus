@@ -2,6 +2,4 @@ fn main() {
     #my_var: int = (int) 3.14;
     
     #result: int = my_var + 1;
-
-    #value: int;
 }

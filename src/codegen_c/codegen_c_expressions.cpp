@@ -256,7 +256,7 @@ CodeGenCValuePtr codeGenC_ImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePt
         }
         else
         {
-            std::cerr << "Symbol '" << recordName << "' not defined in this scoped." << std::endl;
+            std::cerr << "Symbol '" << recordName << "' is not defined in this scope." << std::endl;
             exit(1);
         }
     }
