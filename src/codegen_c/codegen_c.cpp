@@ -1,6 +1,7 @@
 #include <iostream>
 #include <sstream>
 #include "codegen_c/codegen_c.hpp"
+#include "codegen_c/codegen_c_scope.hpp"
 
 void compileStaticLibrary(std::vector<std::string> modulePaths, std::string objectsOutputPath, std::string outputPath);
 void compileExecutable(std::vector<std::string> modulePaths, std::string objectsOutputPath, std::string outputPath);
@@ -16,14 +17,14 @@ void CodeGenC::generate()
     }
 }
 
-std::pair<std::string, std::string> codeGenCStatementList(ASTNodeList nodeList)
+std::pair<std::string, std::string> codeGenCStatementList(ScopePtr scope, ASTNodeList nodeList)
 {
     std::stringstream sourceStream;
     std::stringstream headerStream;
 
     for (auto &&statement : nodeList)
     {
-        auto [source, header] = codeGenCStatement(statement);
+        auto [source, header] = codeGenCStatement(scope, statement);
         sourceStream << source;
         headerStream << header;
     }
@@ -32,7 +33,7 @@ std::pair<std::string, std::string> codeGenCStatementList(ASTNodeList nodeList)
     return std::make_pair(sourceStream.str(), headerStream.str());
 }
 
-CodeGenCValuePtr codeGenCStatementList(ASTNodePtr nodePtr)
+CodeGenCValuePtr codeGenCStatementList(ScopePtr scope, ASTNodePtr nodePtr)
 {
     if (nodePtr->getType() != ASTNode::NodeType::StatementList)
     {
@@ -40,7 +41,7 @@ CodeGenCValuePtr codeGenCStatementList(ASTNodePtr nodePtr)
         exit(1);
     }
 
-    auto [source, header] = codeGenCStatementList(static_cast<ASTStatementList *>(nodePtr)->getStatements());
+    auto [source, header] = codeGenCStatementList(scope, static_cast<ASTStatementList *>(nodePtr)->getStatements());
     return new CodeGenCValue("{\n" + source + "\n}", header, CodeGenCValue::ValueType::Instruction);
 }
 
@@ -49,6 +50,7 @@ std::pair<std::string, std::string> codeGenCStatementListTopLevel(ASTNodeList no
     std::stringstream sourceStream;
     std::stringstream headerStream;
 
+    CodeGenCValuePtr value;
     for (auto &&statement : nodeList)
     {
         switch (statement->getType())
@@ -58,10 +60,20 @@ std::pair<std::string, std::string> codeGenCStatementListTopLevel(ASTNodeList no
             exit(1);
             break;
         case ASTNode::NodeType::VariableDeclaration:
-            headerStream << codeGenC_VariableDeclaration(statement)->getSource();
+            headerStream << codeGenC_VariableDeclaration(nullptr, statement)->getSource();
+            break;
+        case ASTNode::NodeType::FunctionDefinition:
+            value = codeGenC_FunctionDefinition(statement);
+            sourceStream << value->getSource();
+            headerStream << value->getHeader();
+            break;
+        case ASTNode::NodeType::FunctionDeclaration:
+            value = codeGenC_FunctionDeclaration(statement, false);
+            sourceStream << value->getSource();
+            headerStream << value->getHeader();
             break;
         default:
-            auto [source, header] = codeGenCStatement(statement);
+            auto [source, header] = codeGenCStatement(nullptr, statement);
             sourceStream << source;
             headerStream << header;
             break;

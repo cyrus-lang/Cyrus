@@ -4,6 +4,7 @@
 
 CodeGenCValuePtr codeGenC_BinaryExpression(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_UnaryExpression(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_CastExpression(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_IntegerLiteral(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_StringLiteral(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_FloatLiteral(ASTNodePtr nodePtr);
@@ -22,7 +23,7 @@ CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr)
     case ASTNode::NodeType::Identifier:
         return codeGenC_Identifier(nodePtr);
     case ASTNode::NodeType::CastExpression:
-        std::cout << "it's CastExpression" << std::endl;
+        return codeGenC_CastExpression(nodePtr);
         break;
     case ASTNode::NodeType::BinaryExpression:
         return codeGenC_BinaryExpression(nodePtr);
@@ -215,6 +216,24 @@ CodeGenCValuePtr codeGenC_UnaryExpression(ASTNodePtr nodePtr)
         std::cerr << "Unable to generate C code for unknown ASTUnaryExpression::Operator." << std::endl;
         exit(1);
     }
+
+    return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
+}
+
+CodeGenCValuePtr codeGenC_CastExpression(ASTNodePtr nodePtr)
+{
+    ASTCastExpression *castexpr = static_cast<ASTCastExpression *>(nodePtr);
+    CodeGenCValuePtr exprValue = codeGenCExpression(castexpr->getExpression());
+    ASTTypeSpecifier targetType = castexpr->getTargetType();
+    CodeGenCValuePtr targetTypeValue = codeGenC_TypeSpecifier(&targetType);
+
+    std::ostringstream sourceOss;
+    std::ostringstream headerOss;
+
+    headerOss << exprValue->getHeader();
+    headerOss << targetTypeValue->getHeader();
+
+    sourceOss << "(" << targetTypeValue->getSource() << ")(" << exprValue->getSource() << ")";
 
     return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
 }

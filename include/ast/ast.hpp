@@ -350,7 +350,7 @@ public:
 
     NodeType getType() const override { return NodeType::CastExpression; }
     ASTNodePtr getExpression() const { return expression_; }
-    const ASTTypeSpecifier &getTargetType() const { return targetType_; }
+    ASTTypeSpecifier getTargetType() const { return targetType_; }
 
     void print(int indent) const override
     {

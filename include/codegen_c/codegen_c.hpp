@@ -8,6 +8,7 @@
 #include <optional>
 #include "ast/ast.hpp"
 #include "util/util.hpp"
+#include "codegen_c_scope.hpp"
 
 const std::string CIR_DIR = "cir";
 const std::string DYLIB_DIR = "dylib";
@@ -132,6 +133,7 @@ public:
     {
         for (auto &&module : modules_)
         {
+            // FIXME
             // warning: deleting pointer to incomplete type 'CodeGenCModule' is incompatible with C++2c and may cause undefined behavior [-Wdelete-incomplete]
             delete module;
         }
@@ -211,11 +213,13 @@ private:
 using CodeGenCValuePtr = CodeGenCValue *;
 
 CodeGenCValuePtr codeGenC_StorageClassSpecifier(ASTStorageClassSpecifier storageClassSpecifier);
-std::pair<std::string, std::string> codeGenCStatementList(ASTNodeList nodeList);
-std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement);
-CodeGenCValuePtr codeGenC_VariableDeclaration(ASTNodePtr nodePtr);
+std::pair<std::string, std::string> codeGenCStatementList(ScopePtr scope, ASTNodeList nodeList);
+std::pair<std::string, std::string> codeGenCStatement(ScopePtr scope, ASTNodePtr statement);
+CodeGenCValuePtr codeGenC_VariableDeclaration(ScopePtr scope, ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenCStatementList(ScopePtr scope, ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_TypeSpecifier(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenCStatementList(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater);
+CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr);
 
 #endif // CODEGEN_C_HPP

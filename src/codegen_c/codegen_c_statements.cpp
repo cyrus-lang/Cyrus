@@ -1,25 +1,20 @@
 #include <sstream>
 #include "ast/ast.hpp"
 #include "codegen_c/codegen_c.hpp"
+#include "codegen_c/codegen_c_scope.hpp"
 
 CodeGenCValuePtr codeGenC_ReturnStatement(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater = false);
 
-std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
+std::pair<std::string, std::string> codeGenCStatement(ScopePtr scope, ASTNodePtr statement)
 {
     CodeGenCValuePtr value = nullptr;
 
     switch (statement->getType())
     {
     case ASTNode::NodeType::VariableDeclaration:
-        value = codeGenC_VariableDeclaration(statement);
-        break;
-    case ASTNode::NodeType::FunctionDefinition:
-        value = codeGenC_FunctionDefinition(statement);
-        break;
-    case ASTNode::NodeType::FunctionDeclaration:
-        value = codeGenC_FunctionDeclaration(statement);
+        value = codeGenC_VariableDeclaration(scope, statement);
         break;
     case ASTNode::NodeType::ReturnStatement:
         value = codeGenC_ReturnStatement(statement);
@@ -55,7 +50,7 @@ std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
         value = codeGenC_TypeSpecifier(statement);
         break;
     case ASTNode::NodeType::StatementList:
-        value = codeGenCStatementList(statement);
+        value = codeGenCStatementList(scope, statement);
         break;
     case ASTNode::NodeType::ImportStatement:
         std::cerr << "Cannot build import inside an another statement. It must be defined at the top level of your program." << std::endl;
@@ -73,7 +68,7 @@ std::pair<std::string, std::string> codeGenCStatement(ASTNodePtr statement)
     return std::make_pair(value->getSource(), value->getHeader());
 }
 
-CodeGenCValuePtr codeGenC_VariableDeclaration(ASTNodePtr nodePtr)
+CodeGenCValuePtr codeGenC_VariableDeclaration(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTVariableDeclaration *node = static_cast<ASTVariableDeclaration *>(nodePtr);
     CodeGenCValuePtr typeValue = codeGenC_TypeSpecifier(node->getTypeValue());
@@ -89,6 +84,8 @@ CodeGenCValuePtr codeGenC_VariableDeclaration(ASTNodePtr nodePtr)
     }
 
     oss << ";" << "\n";
+
+    scope->set(node->getName(), ScopeRecord(*node->getTypeValue()));
 
     delete typeValue;
     return new CodeGenCValue(oss.str(), std::string(), CodeGenCValue::ValueType::Instruction);
@@ -158,6 +155,7 @@ CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater
 
 CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr)
 {
+    ScopePtr scope = new Scope();
     ASTFunctionDefinition *node = static_cast<ASTFunctionDefinition *>(nodePtr);
 
     std::ostringstream funcDeclOss;
@@ -169,7 +167,7 @@ CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr)
     funcDefOss << funcDeclValue->getHeader() << " {\n";
 
     ASTStatementList *funcBody = static_cast<ASTStatementList *>(node->getBody());
-    auto [bodySource, bodyHeaders] = codeGenCStatementList(funcBody->getStatements());
+    auto [bodySource, bodyHeaders] = codeGenCStatementList(scope, funcBody->getStatements());
     funcDefOss << bodySource;
 
     funcDefOss << "}\n";

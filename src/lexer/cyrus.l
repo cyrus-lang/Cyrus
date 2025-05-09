@@ -55,7 +55,6 @@ IS			(u|U|l|L)*
 "char"									{ return(CHAR); }
 "byte"									{ return(BYTE); }
 "string"								{ return(STRING); }
-"float"									{ return(FLOAT); }
 "float32"								{ return(FLOAT32); }
 "float64"								{ return(FLOAT64); }
 "float128"								{ return(FLOAT128); }
