@@ -1,11 +1,10 @@
 #include <sstream>
 #include "ast/ast.hpp"
 #include "codegen_c/codegen_c.hpp"
-#include "codegen_c/codegen_c_scope.hpp"
 
-CodeGenCValuePtr codeGenC_ReturnStatement(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_ReturnStatement(ScopePtr scope, ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater = false);
+CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr);
 
 std::pair<std::string, std::string> codeGenCStatement(ScopePtr scope, ASTNodePtr statement)
 {
@@ -17,7 +16,7 @@ std::pair<std::string, std::string> codeGenCStatement(ScopePtr scope, ASTNodePtr
         value = codeGenC_VariableDeclaration(scope, statement);
         break;
     case ASTNode::NodeType::ReturnStatement:
-        value = codeGenC_ReturnStatement(statement);
+        value = codeGenC_ReturnStatement(scope, statement);
         break;
     case ASTNode::NodeType::TypeDefStatement:
         std::cout << "it's TypeDefStatement" << std::endl;
@@ -59,10 +58,12 @@ std::pair<std::string, std::string> codeGenCStatement(ScopePtr scope, ASTNodePtr
         std::cerr << "Unable to generate C code for top level node ASTProgram." << std::endl;
         exit(1);
         break;
-    default:
-        std::cerr << "Unable to generate C code for unknown ASTNode." << std::endl;
-        exit(1);
-        break;
+    case ASTNode::NodeType::ImportedSymbolAccess:
+        // ignore unused loadings
+        return std::make_pair("", "");
+    default:    
+        auto temp = codeGenCExpression(scope, statement);
+        return std::make_pair(temp->getSource() + ";", temp->getHeader());
     }
 
     return std::make_pair(value->getSource(), value->getHeader());
@@ -78,7 +79,7 @@ CodeGenCValuePtr codeGenC_VariableDeclaration(ScopePtr scope, ASTNodePtr nodePtr
     oss << typeValue->getSource() << " " << node->getName();
     if (node->getInitializer())
     {
-        CodeGenCValuePtr exprValue = codeGenCExpression(node->getInitializer());
+        CodeGenCValuePtr exprValue = codeGenCExpression(scope, node->getInitializer());
         oss << " = " << exprValue->getSource();
         delete exprValue;
     }
@@ -106,7 +107,7 @@ CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater
         exit(1);
     }
 
-    CodeGenCValuePtr exprValue = codeGenCExpression(node->getExpr());
+    CodeGenCValuePtr exprValue = codeGenCExpression(nullptr, node->getExpr());
     std::ostringstream funcDeclOss;
 
     if (node->getStorageClassSpecifier().has_value())
@@ -176,7 +177,7 @@ CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr)
     return new CodeGenCValue(funcDefOss.str(), funcDeclOss.str(), CodeGenCValue::ValueType::Instruction);
 }
 
-CodeGenCValuePtr codeGenC_ReturnStatement(ASTNodePtr nodePtr)
+CodeGenCValuePtr codeGenC_ReturnStatement(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTReturnStatement *node = static_cast<ASTReturnStatement *>(nodePtr);
     std::optional<ASTNodePtr> expr = node->getExpr();
@@ -186,7 +187,7 @@ CodeGenCValuePtr codeGenC_ReturnStatement(ASTNodePtr nodePtr)
 
     if (expr.has_value())
     {
-        CodeGenCValuePtr exprValue = codeGenCExpression(expr.value());
+        CodeGenCValuePtr exprValue = codeGenCExpression(scope, expr.value());
 
         headerOss << exprValue->getHeader();
 
@@ -200,5 +201,6 @@ CodeGenCValuePtr codeGenC_ReturnStatement(ASTNodePtr nodePtr)
     {
         sourceOss << "return;";
     }
+
     return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::Instruction);
 }

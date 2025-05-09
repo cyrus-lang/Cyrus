@@ -2,15 +2,16 @@
 #include "ast/ast.hpp"
 #include "codegen_c/codegen_c.hpp"
 
-CodeGenCValuePtr codeGenC_BinaryExpression(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_UnaryExpression(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_CastExpression(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_ImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_BinaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_UnaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_CastExpression(ScopePtr scope, ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenC_Identifier(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_IntegerLiteral(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_StringLiteral(ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_FloatLiteral(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_Identifier(ASTNodePtr nodePtr);
 
-CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr)
+CodeGenCValuePtr codeGenCExpression(ScopePtr scope, ASTNodePtr nodePtr)
 {
     switch (nodePtr->getType())
     {
@@ -23,17 +24,17 @@ CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr)
     case ASTNode::NodeType::Identifier:
         return codeGenC_Identifier(nodePtr);
     case ASTNode::NodeType::CastExpression:
-        return codeGenC_CastExpression(nodePtr);
+        return codeGenC_CastExpression(scope, nodePtr);
         break;
     case ASTNode::NodeType::BinaryExpression:
-        return codeGenC_BinaryExpression(nodePtr);
+        return codeGenC_BinaryExpression(scope, nodePtr);
     case ASTNode::NodeType::UnaryExpression:
-        return codeGenC_UnaryExpression(nodePtr);
+        return codeGenC_UnaryExpression(scope, nodePtr);
     case ASTNode::NodeType::StructInitialization:
         std::cout << "it's StructInitialization" << std::endl;
         break;
     case ASTNode::NodeType::ImportedSymbolAccess:
-        std::cout << "it's ImportedSymbolAccess" << std::endl;
+        return codeGenC_ImportedSymbolAccess(scope, nodePtr);
         break;
     case ASTNode::NodeType::FunctionCall:
         std::cout << "it's FunctionCall" << std::endl;
@@ -82,11 +83,11 @@ CodeGenCValuePtr codeGenC_Identifier(ASTNodePtr nodePtr)
     return new CodeGenCValue(identifier->getName(), std::string(), CodeGenCValue::ValueType::LValue);
 }
 
-CodeGenCValuePtr codeGenC_BinaryExpression(ASTNodePtr nodePtr)
+CodeGenCValuePtr codeGenC_BinaryExpression(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTBinaryExpression *binexpr = static_cast<ASTBinaryExpression *>(nodePtr);
-    CodeGenCValuePtr leftValue = codeGenCExpression(binexpr->getLeft());
-    CodeGenCValuePtr rightValue = codeGenCExpression(binexpr->getRight());
+    CodeGenCValuePtr leftValue = codeGenCExpression(scope, binexpr->getLeft());
+    CodeGenCValuePtr rightValue = codeGenCExpression(scope, binexpr->getRight());
 
     std::ostringstream sourceOss;
     std::ostringstream headerOss;
@@ -160,10 +161,10 @@ CodeGenCValuePtr codeGenC_BinaryExpression(ASTNodePtr nodePtr)
     return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
 }
 
-CodeGenCValuePtr codeGenC_UnaryExpression(ASTNodePtr nodePtr)
+CodeGenCValuePtr codeGenC_UnaryExpression(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTUnaryExpression *unexpr = static_cast<ASTUnaryExpression *>(nodePtr);
-    CodeGenCValuePtr operandValue = codeGenCExpression(unexpr->getOperand());
+    CodeGenCValuePtr operandValue = codeGenCExpression(scope, unexpr->getOperand());
 
     std::ostringstream sourceOss;
     std::ostringstream headerOss;
@@ -220,10 +221,10 @@ CodeGenCValuePtr codeGenC_UnaryExpression(ASTNodePtr nodePtr)
     return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
 }
 
-CodeGenCValuePtr codeGenC_CastExpression(ASTNodePtr nodePtr)
+CodeGenCValuePtr codeGenC_CastExpression(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTCastExpression *castexpr = static_cast<ASTCastExpression *>(nodePtr);
-    CodeGenCValuePtr exprValue = codeGenCExpression(castexpr->getExpression());
+    CodeGenCValuePtr exprValue = codeGenCExpression(scope, castexpr->getExpression());
     ASTTypeSpecifier targetType = castexpr->getTargetType();
     CodeGenCValuePtr targetTypeValue = codeGenC_TypeSpecifier(&targetType);
 
@@ -234,6 +235,35 @@ CodeGenCValuePtr codeGenC_CastExpression(ASTNodePtr nodePtr)
     headerOss << targetTypeValue->getHeader();
 
     sourceOss << "(" << targetTypeValue->getSource() << ")(" << exprValue->getSource() << ")";
+
+    return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
+}
+
+CodeGenCValuePtr codeGenC_ImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr)
+{
+    ASTImportedSymbolAccess *symbaccess = static_cast<ASTImportedSymbolAccess *>(nodePtr);
+
+    std::ostringstream sourceOss;
+    std::ostringstream headerOss;
+
+    if (symbaccess->getSymbolPath().size() == 1)
+    {
+        std::string recordName = symbaccess->getSymbolPath()[0];
+        std::optional<ScopeRecord *> scopeRecord = scope->get(recordName);
+        if (scopeRecord.has_value())
+        {
+            sourceOss << recordName;
+        }
+        else
+        {
+            std::cerr << "Symbol '" << recordName << "' not defined in this scoped." << std::endl;
+            exit(1);
+        }
+    }
+    else
+    {
+        // TODO Implement import module
+    }
 
     return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
 }

@@ -218,7 +218,7 @@ std::pair<std::string, std::string> codeGenCStatement(ScopePtr scope, ASTNodePtr
 CodeGenCValuePtr codeGenC_VariableDeclaration(ScopePtr scope, ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenCStatementList(ScopePtr scope, ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_TypeSpecifier(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenCExpression(ASTNodePtr nodePtr);
+CodeGenCValuePtr codeGenCExpression(ScopePtr scope, ASTNodePtr nodePtr);
 CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater);
 CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr);
 
