@@ -2,7 +2,6 @@
 #define CODEGEN_C_SCOPE_HPP
 
 #include <map>
-#include <any>
 #include "ast/ast.hpp"
 
 class ScopeRecord

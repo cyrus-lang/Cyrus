@@ -14,7 +14,7 @@
     using EnumData = std::variant<ASTEnumVariant, std::pair<std::string, std::optional<ASTNodePtr>>, ASTFunctionDefinition>;
 }
 
-%token UINT128 VOID CHAR BYTE STRING FLOAT FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
+%token UINT128 VOID CHAR BYTE STRING FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
 %token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
 %token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR CONTINUE BREAK RETURN
@@ -637,6 +637,8 @@ function_definition
     | storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $2, $1); }
     | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, nullptr, $8, $1, $2); }
     | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $1, $2); }
+    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                           { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, nullptr, $7, $1); }
+    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, $7,      $8, $1); }
     | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, nullptr, $7, ASTAccessSpecifier::Default, $1); }
     | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, $7, $8, ASTAccessSpecifier::Default, $1); }
     | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, nullptr, $6); }
@@ -648,6 +650,8 @@ function_declaration
     | storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, $8, $2, $1); }
     | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, nullptr, $1, $2); }
     | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, $8, $1, $2); }
+    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                                            { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, nullptr, $1); }
+    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'                             { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, $7,      $1); }
     | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, nullptr, ASTAccessSpecifier::Default, $1); }
     | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, $7, ASTAccessSpecifier::Default, $1); }
     | FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                                            { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, nullptr); }

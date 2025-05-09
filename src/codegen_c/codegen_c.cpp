@@ -2,6 +2,7 @@
 #include <sstream>
 #include "codegen_c/codegen_c.hpp"
 #include "codegen_c/codegen_c_scope.hpp"
+#include "codegen_c/codegen_c_module.hpp"
 
 void compileStaticLibrary(std::vector<std::string> modulePaths, std::string objectsOutputPath, std::string outputPath);
 void compileExecutable(std::vector<std::string> modulePaths, std::string objectsOutputPath, std::string outputPath);
@@ -15,92 +16,6 @@ void CodeGenC::generate()
     {
         module->saveModule();
     }
-}
-
-std::pair<std::string, std::string> codeGenCStatementList(ScopePtr scope, ASTNodeList nodeList)
-{
-    std::stringstream sourceStream;
-    std::stringstream headerStream;
-
-    for (auto &&statement : nodeList)
-    {
-        auto [source, header] = codeGenCStatement(scope, statement);
-        sourceStream << source;
-        headerStream << header;
-    }
-
-    sourceStream << std::endl;
-    return std::make_pair(sourceStream.str(), headerStream.str());
-}
-
-CodeGenCValuePtr codeGenCStatementList(ScopePtr scope, ASTNodePtr nodePtr)
-{
-    if (nodePtr->getType() != ASTNode::NodeType::StatementList)
-    {
-        std::cerr << "Unable to generate C code for non-statement list." << std::endl;
-        exit(1);
-    }
-
-    auto [source, header] = codeGenCStatementList(scope, static_cast<ASTStatementList *>(nodePtr)->getStatements());
-    return new CodeGenCValue("{\n" + source + "\n}", header, CodeGenCValue::ValueType::Instruction);
-}
-
-std::pair<std::string, std::string> codeGenCStatementListTopLevel(ASTNodeList nodeList)
-{
-    std::stringstream sourceStream;
-    std::stringstream headerStream;
-
-    CodeGenCValuePtr value;
-    for (auto &&statement : nodeList)
-    {
-        switch (statement->getType())
-        {
-        case ASTNode::NodeType::ImportStatement:
-            std::cerr << "Import statement not implemented yet." << std::endl;
-            exit(1);
-            break;
-        case ASTNode::NodeType::VariableDeclaration:
-            headerStream << codeGenC_VariableDeclaration(nullptr, statement)->getSource();
-            break;
-        case ASTNode::NodeType::FunctionDefinition:
-            value = codeGenC_FunctionDefinition(statement);
-            sourceStream << value->getSource();
-            headerStream << value->getHeader();
-            break;
-        case ASTNode::NodeType::FunctionDeclaration:
-            value = codeGenC_FunctionDeclaration(statement, false);
-            sourceStream << value->getSource();
-            headerStream << value->getHeader();
-            break;
-        default:
-            auto [source, header] = codeGenCStatement(nullptr, statement);
-            sourceStream << source;
-            headerStream << header;
-            break;
-        }
-    }
-
-    sourceStream << std::endl;
-    return std::make_pair(sourceStream.str(), headerStream.str());
-}
-
-std::pair<std::string, std::string> CodeGenCSourceFile::generate()
-{
-    auto [source, header] = codeGenCStatementListTopLevel(program_->getStatements());
-
-    std::string finalHeader;
-    finalHeader += "#include <stdio.h>\n";
-    finalHeader += "#include <stdint.h>\n";
-    finalHeader += "#include <stdbool.h>\n";
-    finalHeader += "\n";
-    finalHeader += header;
-
-    std::string finalSource;
-    finalSource += "#include \"" + moduleName_ + ".h\"" + "\n";
-    finalSource += "\n";
-    finalSource += source;
-
-    return std::make_pair(finalSource, finalHeader);
 }
 
 // Compilation Step

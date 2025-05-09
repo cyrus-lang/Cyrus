@@ -2,55 +2,40 @@
 #include "ast/ast.hpp"
 #include "codegen_c/codegen_c.hpp"
 
-CodeGenCValuePtr codeGenC_ImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_BinaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_UnaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_CastExpression(ScopePtr scope, ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_Identifier(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_IntegerLiteral(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_StringLiteral(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_FloatLiteral(ASTNodePtr nodePtr);
+#include <sstream>
 
-CodeGenCValuePtr codeGenCExpression(ScopePtr scope, ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateExpression(ScopePtr scope, ASTNodePtr nodePtr)
 {
     switch (nodePtr->getType())
     {
     case ASTNode::NodeType::IntegerLiteral:
-        return codeGenC_IntegerLiteral(nodePtr);
+        return generateIntegerLiteral(nodePtr);
     case ASTNode::NodeType::FloatLiteral:
-        return codeGenC_FloatLiteral(nodePtr);
+        return generateFloatLiteral(nodePtr);
     case ASTNode::NodeType::StringLiteral:
-        return codeGenC_StringLiteral(nodePtr);
+        return generateStringLiteral(nodePtr);
     case ASTNode::NodeType::Identifier:
-        return codeGenC_Identifier(nodePtr);
+        return generateIdentifier(nodePtr);
     case ASTNode::NodeType::CastExpression:
-        return codeGenC_CastExpression(scope, nodePtr);
-        break;
+        return generateCastExpression(scope, nodePtr);
     case ASTNode::NodeType::BinaryExpression:
-        return codeGenC_BinaryExpression(scope, nodePtr);
+        return generateBinaryExpression(scope, nodePtr);
     case ASTNode::NodeType::UnaryExpression:
-        return codeGenC_UnaryExpression(scope, nodePtr);
-    case ASTNode::NodeType::StructInitialization:
-        std::cout << "it's StructInitialization" << std::endl;
-        break;
+        return generateUnaryExpression(scope, nodePtr);
     case ASTNode::NodeType::ImportedSymbolAccess:
-        return codeGenC_ImportedSymbolAccess(scope, nodePtr);
-        break;
+        return generatedImportedSymbolAccess(scope, nodePtr);
     case ASTNode::NodeType::FunctionCall:
-        std::cout << "it's FunctionCall" << std::endl;
-        break;
+        return "/* FunctionCall */";
+    case ASTNode::NodeType::StructInitialization:
+        return "/* StructInitialization */";
     case ASTNode::NodeType::FieldAccess:
-        std::cout << "it's FieldAccess" << std::endl;
-        break;
+        return "/* FieldAccess */";
     case ASTNode::NodeType::PointerFieldAccess:
-        std::cout << "it's PointerFieldAccess" << std::endl;
-        break;
+        return "/* PointerFieldAccess */";
     case ASTNode::NodeType::ConditionalExpression:
-        std::cout << "it's ConditionalExpression" << std::endl;
-        break;
+        return "/* ConditionalExpression */";
     case ASTNode::NodeType::AssignmentExpression:
-        std::cout << "it's AssignmentExpression" << std::endl;
-        break;
+        return "/* AssignmentExpression */";
     default:
         std::cerr << "Unable to generate C code for unknown expression." << std::endl;
         exit(1);
@@ -58,193 +43,179 @@ CodeGenCValuePtr codeGenCExpression(ScopePtr scope, ASTNodePtr nodePtr)
     }
 }
 
-CodeGenCValuePtr codeGenC_IntegerLiteral(ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateIntegerLiteral(ASTNodePtr nodePtr)
 {
     ASTIntegerLiteral *node = static_cast<ASTIntegerLiteral *>(nodePtr);
-    return new CodeGenCValue(std::to_string(node->getValue()), std::string(), CodeGenCValue::ValueType::RValue);
+    return std::to_string(node->getValue());
 }
 
-CodeGenCValuePtr codeGenC_FloatLiteral(ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateFloatLiteral(ASTNodePtr nodePtr)
 {
     ASTFloatLiteral *node = static_cast<ASTFloatLiteral *>(nodePtr);
-    return new CodeGenCValue(std::to_string(node->getValue()), std::string(), CodeGenCValue::ValueType::RValue);
+    return std::to_string(node->getValue());
 }
 
-CodeGenCValuePtr codeGenC_StringLiteral(ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateStringLiteral(ASTNodePtr nodePtr)
 {
     ASTStringLiteral *node = static_cast<ASTStringLiteral *>(nodePtr);
     std::string stringValue = "\"" + node->getValue() + "\"";
-    return new CodeGenCValue(stringValue, std::string(), CodeGenCValue::ValueType::RValue);
+    return stringValue;
 }
 
-CodeGenCValuePtr codeGenC_Identifier(ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateIdentifier(ASTNodePtr nodePtr)
 {
     ASTIdentifier *identifier = static_cast<ASTIdentifier *>(nodePtr);
-    return new CodeGenCValue(identifier->getName(), std::string(), CodeGenCValue::ValueType::LValue);
+    return identifier->getName();
 }
 
-CodeGenCValuePtr codeGenC_BinaryExpression(ScopePtr scope, ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateCastExpression(ScopePtr scope, ASTNodePtr nodePtr)
+{
+    ASTCastExpression *castexpr = static_cast<ASTCastExpression *>(nodePtr);
+    std::string exprValue = generateExpression(scope, castexpr->getExpression());
+    ASTTypeSpecifier targetType = castexpr->getTargetType();
+    std::string targetTypeValue = generateTypeSpecifier(&targetType);
+
+    std::ostringstream nodeOss;
+    nodeOss << "(" << targetTypeValue << ")(" << exprValue << ")";
+    return nodeOss.str();
+}
+
+std::string CodeGenCGenerator::generateBinaryExpression(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTBinaryExpression *binexpr = static_cast<ASTBinaryExpression *>(nodePtr);
-    CodeGenCValuePtr leftValue = codeGenCExpression(scope, binexpr->getLeft());
-    CodeGenCValuePtr rightValue = codeGenCExpression(scope, binexpr->getRight());
+    std::string leftValue = generateExpression(scope, binexpr->getLeft());
+    std::string rightValue = generateExpression(scope, binexpr->getRight());
 
-    std::ostringstream sourceOss;
-    std::ostringstream headerOss;
-    headerOss << leftValue->getHeader();
-    headerOss << rightValue->getHeader();
+    std::ostringstream nodeOss;
 
-    sourceOss << leftValue->getSource() << " ";
+    nodeOss << leftValue << " ";
 
     switch (binexpr->getOperator())
     {
     case ASTBinaryExpression::Operator::Add:
-        sourceOss << "+";
+        nodeOss << "+";
         break;
     case ASTBinaryExpression::Operator::Subtract:
-        sourceOss << "-";
+        nodeOss << "-";
         break;
     case ASTBinaryExpression::Operator::Multiply:
-        sourceOss << "*";
+        nodeOss << "*";
         break;
     case ASTBinaryExpression::Operator::Divide:
-        sourceOss << "/";
+        nodeOss << "/";
         break;
     case ASTBinaryExpression::Operator::Remainder:
-        sourceOss << "%";
+        nodeOss << "%";
         break;
     case ASTBinaryExpression::Operator::Equal:
-        sourceOss << "==";
+        nodeOss << "==";
         break;
     case ASTBinaryExpression::Operator::NotEqual:
-        sourceOss << "!=";
+        nodeOss << "!=";
         break;
     case ASTBinaryExpression::Operator::LessThan:
-        sourceOss << "<";
+        nodeOss << "<";
         break;
     case ASTBinaryExpression::Operator::LessEqual:
-        sourceOss << "<=";
+        nodeOss << "<=";
         break;
     case ASTBinaryExpression::Operator::GreaterThan:
-        sourceOss << ">";
+        nodeOss << ">";
         break;
     case ASTBinaryExpression::Operator::GreaterEqual:
-        sourceOss << ">=";
+        nodeOss << ">=";
         break;
     case ASTBinaryExpression::Operator::LeftShift:
-        sourceOss << "<<";
+        nodeOss << "<<";
         break;
     case ASTBinaryExpression::Operator::RightShift:
-        sourceOss << ">>";
+        nodeOss << ">>";
         break;
     case ASTBinaryExpression::Operator::BitwiseAnd:
-        sourceOss << "&";
+        nodeOss << "&";
         break;
     case ASTBinaryExpression::Operator::BitwiseXor:
-        sourceOss << "^";
+        nodeOss << "^";
         break;
     case ASTBinaryExpression::Operator::BitwiseOr:
-        sourceOss << "|";
+        nodeOss << "|";
         break;
     case ASTBinaryExpression::Operator::LogicalAnd:
-        sourceOss << "&&";
+        nodeOss << "&&";
         break;
     case ASTBinaryExpression::Operator::LogicalOr:
-        sourceOss << "||";
+        nodeOss << "||";
         break;
     default:
         std::cerr << "Unable to generate C code for unknown ASTBinaryExpression::Operator." << std::endl;
         exit(1);
     }
 
-    sourceOss << " " << rightValue->getSource();
-    return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
+    nodeOss << " " << rightValue;
+    return nodeOss.str();
 }
 
-CodeGenCValuePtr codeGenC_UnaryExpression(ScopePtr scope, ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateUnaryExpression(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTUnaryExpression *unexpr = static_cast<ASTUnaryExpression *>(nodePtr);
-    CodeGenCValuePtr operandValue = codeGenCExpression(scope, unexpr->getOperand());
+    std::string operandValue = generateExpression(scope, unexpr->getOperand());
 
-    std::ostringstream sourceOss;
-    std::ostringstream headerOss;
-
-    headerOss << operandValue->getHeader();
+    std::ostringstream nodeOss;
 
     switch (unexpr->getOperator())
     {
     case ASTUnaryExpression::Operator::Plus:
-        sourceOss << "+";
-        sourceOss << operandValue->getSource();
+        nodeOss << "+";
+        nodeOss << operandValue;
         break;
     case ASTUnaryExpression::Operator::Negate:
-        sourceOss << "-";
-        sourceOss << operandValue->getSource();
+        nodeOss << "-";
+        nodeOss << operandValue;
         break;
     case ASTUnaryExpression::Operator::BitwiseNot:
-        sourceOss << "~";
-        sourceOss << operandValue->getSource();
+        nodeOss << "~";
+        nodeOss << operandValue;
         break;
     case ASTUnaryExpression::Operator::LogicalNot:
-        sourceOss << "!";
-        sourceOss << operandValue->getSource();
+        nodeOss << "!";
+        nodeOss << operandValue;
         break;
     case ASTUnaryExpression::Operator::PostIncrement:
-        sourceOss << operandValue->getSource();
-        sourceOss << "++";
+        nodeOss << operandValue;
+        nodeOss << "++";
         break;
     case ASTUnaryExpression::Operator::PostDecrement:
-        sourceOss << operandValue->getSource();
-        sourceOss << "--";
+        nodeOss << operandValue;
+        nodeOss << "--";
         break;
     case ASTUnaryExpression::Operator::PreIncrement:
-        sourceOss << "++";
-        sourceOss << operandValue->getSource();
+        nodeOss << "++";
+        nodeOss << operandValue;
         break;
     case ASTUnaryExpression::Operator::PreDecrement:
-        sourceOss << "--";
-        sourceOss << operandValue->getSource();
+        nodeOss << "--";
+        nodeOss << operandValue;
         break;
     case ASTUnaryExpression::Operator::AddressOf:
-        sourceOss << "&";
-        sourceOss << operandValue->getSource();
+        nodeOss << "&";
+        nodeOss << operandValue;
         break;
     case ASTUnaryExpression::Operator::Dereference:
-        sourceOss << "*";
-        sourceOss << operandValue->getSource();
+        nodeOss << "*";
+        nodeOss << operandValue;
         break;
     default:
         std::cerr << "Unable to generate C code for unknown ASTUnaryExpression::Operator." << std::endl;
         exit(1);
     }
 
-    return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
+    return nodeOss.str();
 }
 
-CodeGenCValuePtr codeGenC_CastExpression(ScopePtr scope, ASTNodePtr nodePtr)
-{
-    ASTCastExpression *castexpr = static_cast<ASTCastExpression *>(nodePtr);
-    CodeGenCValuePtr exprValue = codeGenCExpression(scope, castexpr->getExpression());
-    ASTTypeSpecifier targetType = castexpr->getTargetType();
-    CodeGenCValuePtr targetTypeValue = codeGenC_TypeSpecifier(&targetType);
-
-    std::ostringstream sourceOss;
-    std::ostringstream headerOss;
-
-    headerOss << exprValue->getHeader();
-    headerOss << targetTypeValue->getHeader();
-
-    sourceOss << "(" << targetTypeValue->getSource() << ")(" << exprValue->getSource() << ")";
-
-    return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
-}
-
-CodeGenCValuePtr codeGenC_ImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generatedImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTImportedSymbolAccess *symbaccess = static_cast<ASTImportedSymbolAccess *>(nodePtr);
-
-    std::ostringstream sourceOss;
-    std::ostringstream headerOss;
+    std::ostringstream nodeOss;
 
     if (symbaccess->getSymbolPath().size() == 1)
     {
@@ -252,7 +223,7 @@ CodeGenCValuePtr codeGenC_ImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePt
         std::optional<ScopeRecord *> scopeRecord = scope->get(recordName);
         if (scopeRecord.has_value())
         {
-            sourceOss << recordName;
+            nodeOss << recordName;
         }
         else
         {
@@ -265,5 +236,5 @@ CodeGenCValuePtr codeGenC_ImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePt
         // TODO Implement import module
     }
 
-    return new CodeGenCValue(sourceOss.str(), headerOss.str(), CodeGenCValue::ValueType::LValue);
+    return nodeOss.str();
 }
