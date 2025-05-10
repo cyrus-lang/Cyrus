@@ -33,7 +33,7 @@ std::string CodeGenCGenerator::generateExpression(ScopePtr scope, ASTNodePtr nod
     case ASTNode::NodeType::PointerFieldAccess:
         return "/* PointerFieldAccess */";
     case ASTNode::NodeType::ConditionalExpression:
-        return "/* ConditionalExpression */";
+        return generateConditionalExpression(scope, nodePtr);
     case ASTNode::NodeType::AssignmentExpression:
         return generateAssignment(scope, nodePtr);
     default:
@@ -41,6 +41,20 @@ std::string CodeGenCGenerator::generateExpression(ScopePtr scope, ASTNodePtr nod
         exit(1);
         break;
     }
+}
+
+std::string CodeGenCGenerator::generateConditionalExpression(ScopePtr scope, ASTNodePtr nodePtr)
+{
+    ASTConditionalExpression *node = static_cast<ASTConditionalExpression *>(nodePtr);
+    std::ostringstream nodeOss;
+
+    std::string condition = generateExpression(scope, node->getCondition());
+    std::string trueExpr = generateExpression(scope, node->getTrueExpression());
+    std::string falseExpr = generateExpression(scope, node->getFalseExpression());
+
+    nodeOss << "(" << condition << ") ? " << trueExpr << " : " << falseExpr;
+
+    return nodeOss.str();
 }
 
 std::string CodeGenCGenerator::generateIntegerLiteral(ASTNodePtr nodePtr)

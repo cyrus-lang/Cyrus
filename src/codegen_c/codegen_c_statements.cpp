@@ -2,20 +2,43 @@
 #include "ast/ast.hpp"
 #include "codegen_c/codegen_c.hpp"
 
-void CodeGenCGenerator::generateVariable(ScopePtr scope, ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateIfStatement(ScopePtr scope, ASTNodePtr nodePtr)
+{
+    ASTIfStatement *node = static_cast<ASTIfStatement *>(nodePtr);
+    std::ostringstream nodeOss;
+
+    nodeOss << "if (" << generateExpression(scope, node->getCondition()) << ") {\n";
+    nodeOss <<  generateStatement(scope, node->getThenBranch());
+    nodeOss << "}\n";
+
+    if (node->getElseBranch().has_value())
+    {
+        nodeOss << "else {\n";
+        nodeOss <<  generateStatement(scope, node->getElseBranch().value());
+        nodeOss << "}";
+    }
+
+    return nodeOss.str();
+}
+
+std::string CodeGenCGenerator::generateVariable(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTVariableDeclaration *node = static_cast<ASTVariableDeclaration *>(nodePtr);
     std::string type = generateTypeSpecifier(node->getTypeValue());
 
-    sourceStream_ << type << " " << node->getName();
+    std::ostringstream nodeOss;
+
+    nodeOss << type << " " << node->getName();
     if (node->getInitializer())
     {
-        sourceStream_ << " = ";
-        sourceStream_ << generateExpression(scope, node->getInitializer());
+        nodeOss << " = ";
+        nodeOss << generateExpression(scope, node->getInitializer());
     }
 
-    sourceStream_ << ";" << "\n";
+    nodeOss << ";" << "\n";
     scope->set(node->getName(), ScopeRecord(*node->getTypeValue()));
+
+    return nodeOss.str();
 }
 
 std::string CodeGenCGenerator::internal_generateFunctionDeclaration(ASTNodePtr nodePtr)
@@ -75,7 +98,7 @@ std::string CodeGenCGenerator::internal_generateFunctionDeclaration(ASTNodePtr n
 }
 
 void CodeGenCGenerator::generateFunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater)
-{   
+{
     ASTFunctionDeclaration *funcDecl = static_cast<ASTFunctionDeclaration *>(nodePtr);
     headerStream_ << internal_generateFunctionDeclaration(nodePtr);
     if (!bodyLater)
@@ -86,14 +109,15 @@ void CodeGenCGenerator::generateFunctionDeclaration(ASTNodePtr nodePtr, bool bod
     addFunction(funcDecl);
 }
 
-void CodeGenCGenerator::generateFunctionDefinition(ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateFunctionDefinition(ASTNodePtr nodePtr)
 {
     ScopePtr scope = new Scope();
     ASTFunctionDefinition *node = static_cast<ASTFunctionDefinition *>(nodePtr);
+    std::ostringstream nodeOss;
 
     ASTFunctionDeclaration *funcDecl = ASTFunctionDeclaration::fromFunctionDefinition(*node);
     std::string funcDeclValue = internal_generateFunctionDeclaration(funcDecl);
-    sourceStream_ << funcDeclValue;
+    nodeOss << funcDeclValue;
 
     switch (funcDecl->getAccessSpecifier())
     {
@@ -110,29 +134,32 @@ void CodeGenCGenerator::generateFunctionDefinition(ASTNodePtr nodePtr)
         break;
     }
 
-    sourceStream_ << " {\n";
+    nodeOss << " {\n";
     ASTStatementList *funcBody = static_cast<ASTStatementList *>(node->getBody());
-    generateStatementList(scope, funcBody->getStatements());
-    sourceStream_ << "}\n";
+    nodeOss << generateStatementList(scope, funcBody->getStatements());
+    nodeOss << "}\n";
 
     addFunction(funcDecl);
+    return nodeOss.str();
 }
 
-void CodeGenCGenerator::generateReturn(ScopePtr scope, ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateReturn(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTReturnStatement *node = static_cast<ASTReturnStatement *>(nodePtr);
     std::optional<ASTNodePtr> expr = node->getExpr();
+    std::ostringstream nodeOss;
 
     if (expr.has_value())
     {
-        sourceStream_ << "return (";
-        sourceStream_ << generateExpression(scope, expr.value());
-        sourceStream_ << ");";
+        nodeOss << "return (";
+        nodeOss << generateExpression(scope, expr.value());
+        nodeOss << ");";
     }
     else
     {
-        sourceStream_ << "return;";
+        nodeOss << "return;";
     }
 
-    sourceStream_ << "\n";
+    nodeOss << "\n";
+    return nodeOss.str();
 }

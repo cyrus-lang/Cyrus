@@ -1,7 +1,16 @@
 fn printf(v string, ...) int;
 
 fn main() {
-    #a: int = 0;
-    
-    a = 10;
+    if (1 == 1)
+    {
+        printf("yes");
+    } 
+    else if (2 == 3)
+    {
+        printf("aaaaa");
+    }
+    else
+    {
+        printf("no");
+    }
 }

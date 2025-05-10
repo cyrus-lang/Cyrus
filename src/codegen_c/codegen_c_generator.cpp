@@ -20,16 +20,16 @@ void CodeGenCGenerator::generateTopLevel(ASTNodeList nodeList)
             exit(1);
             break;
         case ASTNode::NodeType::VariableDeclaration:
-            generateVariable(nullptr, statement);
+            sourceStream_ << generateVariable(nullptr, statement);
             break;
         case ASTNode::NodeType::FunctionDefinition:
-            generateFunctionDefinition(statement);
+            sourceStream_ << generateFunctionDefinition(statement);
             break;
         case ASTNode::NodeType::FunctionDeclaration:
             generateFunctionDeclaration(statement, false);
             break;
         default:
-            generateStatement(nullptr, statement);
+            sourceStream_ << generateStatement(nullptr, statement);
             break;
         }
     }
@@ -37,33 +37,43 @@ void CodeGenCGenerator::generateTopLevel(ASTNodeList nodeList)
     sourceStream_ << "\n";
 }
 
-void CodeGenCGenerator::generateStatementList(ScopePtr scope, ASTNodeList nodeList)
+std::string CodeGenCGenerator::generateStatementList(ScopePtr scope, ASTNodeList nodeList)
 {
+    std::ostringstream nodeOss;
+
     for (auto &&statement : nodeList)
     {
-        generateStatement(scope, statement);
+        nodeOss << generateStatement(scope, statement);
     }
+
+    return nodeOss.str();
 }
 
-void CodeGenCGenerator::generateStatementList(ScopePtr scope, ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateStatementList(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTStatementList *statementList = static_cast<ASTStatementList *>(nodePtr);
     const ASTNodeList &nodeList = statementList->getStatements();
+    std::ostringstream nodeOss;
+
     for (auto &&statement : nodeList)
     {
-        generateStatement(scope, statement);
+        nodeOss << generateStatement(scope, statement);
     }
+
+    return nodeOss.str();
 }
 
-void CodeGenCGenerator::generateStatement(ScopePtr scope, ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateStatement(ScopePtr scope, ASTNodePtr nodePtr)
 {
     switch (nodePtr->getType())
     {
+    case ASTNode::NodeType::IfStatement:
+        return generateIfStatement(scope, nodePtr);
     case ASTNode::NodeType::VariableDeclaration:
-        generateVariable(scope, nodePtr);
+        return generateVariable(scope, nodePtr);
         break;
     case ASTNode::NodeType::ReturnStatement:
-        generateReturn(scope, nodePtr);
+        return generateReturn(scope, nodePtr);
         break;
     case ASTNode::NodeType::TypeDefStatement:
         std::cout << "it's TypeDefStatement" << std::endl;
@@ -89,14 +99,11 @@ void CodeGenCGenerator::generateStatement(ScopePtr scope, ASTNodePtr nodePtr)
     case ASTNode::NodeType::BreakStatement:
         std::cout << "it's BreakStatement" << std::endl;
         break;
-    case ASTNode::NodeType::IfStatement:
-        std::cout << "it's IfStatement" << std::endl;
-        break;
     case ASTNode::NodeType::TypeSpecifier:
-        generateTypeSpecifier(nodePtr);
+        return generateTypeSpecifier(nodePtr);
         break;
     case ASTNode::NodeType::StatementList:
-        generateStatementList(scope, nodePtr);
+        return generateStatementList(scope, nodePtr);
         break;
     case ASTNode::NodeType::ImportStatement:
         std::cerr << "Cannot build import inside an another statement. It must be defined at the top level of your program." << std::endl;
@@ -109,7 +116,6 @@ void CodeGenCGenerator::generateStatement(ScopePtr scope, ASTNodePtr nodePtr)
         // ignore unused loadings
         break;
     default:
-        sourceStream_ << generateExpression(scope, nodePtr) + ";";
-        sourceStream_ << "\n";
+        return generateExpression(scope, nodePtr) + ";" + "\n";
     }
 }

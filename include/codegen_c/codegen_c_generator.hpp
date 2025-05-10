@@ -101,13 +101,13 @@ public:
     }
 
     void generateTopLevel(ASTNodeList nodeList);
-    void generateStatementList(ScopePtr scope, ASTNodePtr nodePtr);
-    void generateStatementList(ScopePtr scope, ASTNodeList nodeList);
-    void generateStatement(ScopePtr scope, ASTNodePtr nodePtr);
-    void generateVariable(ScopePtr scope, ASTNodePtr nodePtr);
-    void generateReturn(ScopePtr scope, ASTNodePtr nodePtr);
     void generateFunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater);
-    void generateFunctionDefinition(ASTNodePtr nodePtr);
+    std::string generateStatementList(ScopePtr scope, ASTNodePtr nodePtr);
+    std::string generateStatementList(ScopePtr scope, ASTNodeList nodeList);
+    std::string generateStatement(ScopePtr scope, ASTNodePtr nodePtr);
+    std::string generateVariable(ScopePtr scope, ASTNodePtr nodePtr);
+    std::string generateReturn(ScopePtr scope, ASTNodePtr nodePtr);
+    std::string generateFunctionDefinition(ASTNodePtr nodePtr);
 
     std::string generateExpression(ScopePtr scope, ASTNodePtr nodePtr);
     std::string generateIntegerLiteral(ASTNodePtr nodePtr);
@@ -120,6 +120,8 @@ public:
     std::string generateImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr);
     std::string generateFunctionCall(ScopePtr scope, ASTNodePtr nodePtr);
     std::string generateAssignment(ScopePtr scope, ASTNodePtr nodePtr);
+    std::string generateConditionalExpression(ScopePtr scope, ASTNodePtr nodePtr);
+    std::string generateIfStatement(ScopePtr scope, ASTNodePtr nodePtr);
 
     std::string generateTypeSpecifier(ASTNodePtr nodePtr);
     std::string generateIdentifierTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
