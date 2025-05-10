@@ -46,13 +46,13 @@ void CodeGenCGenerator::generateStatementList(ScopePtr scope, ASTNodeList nodeLi
 }
 
 void CodeGenCGenerator::generateStatementList(ScopePtr scope, ASTNodePtr nodePtr)
-{   
-    // FIXME
-    // ASTNodeList nodeList = static_cast<ASTNodeList>(*nodePtr);
-    // for (auto &&statement : nodeList)
-    // {
-    //     generateStatement(scope, statement);
-    // }
+{
+    ASTStatementList *statementList = static_cast<ASTStatementList *>(nodePtr);
+    const ASTNodeList &nodeList = statementList->getStatements();
+    for (auto &&statement : nodeList)
+    {
+        generateStatement(scope, statement);
+    }
 }
 
 void CodeGenCGenerator::generateStatement(ScopePtr scope, ASTNodePtr nodePtr)
@@ -112,6 +112,3 @@ void CodeGenCGenerator::generateStatement(ScopePtr scope, ASTNodePtr nodePtr)
         generateExpression(scope, nodePtr);
     }
 }
-
-
-

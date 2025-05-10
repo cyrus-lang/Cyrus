@@ -55,7 +55,6 @@ private:
 public:
     CodeGenCGenerator(CodeGenCSourceFile &sourceFile) : sourceFile_(sourceFile)
     {
-        headerStream_ << "#include <stdio.h>\n";
         headerStream_ << "#include <stdint.h>\n";
         headerStream_ << "#include <stdbool.h>\n";
         headerStream_ << "\n";

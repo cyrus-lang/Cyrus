@@ -493,11 +493,63 @@ public:
     }
 };
 
+class ASTFunctionParameters : public ASTNode
+{
+private:
+    std::vector<ASTFunctionParameter> parameters_;
+    std::optional<ASTTypeSpecifier *> typed_variadic_;
+    bool is_variadic_;
+
+public:
+    ASTFunctionParameters(std::vector<ASTFunctionParameter> parameters, std::optional<ASTTypeSpecifier *> typed_variadic = std::nullopt, bool is_variadic = false)
+        : parameters_(parameters), typed_variadic_(typed_variadic), is_variadic_(is_variadic) {}
+
+    NodeType getType() const override { return NodeType::FunctionParameter; }
+    const std::vector<ASTFunctionParameter> &getList() const { return parameters_; }
+    std::optional<ASTTypeSpecifier *> getTypedVariadic() const { return typed_variadic_; }
+    bool getIsVariadic() const { return is_variadic_; }
+
+    void addParameter(ASTFunctionParameter param)
+    {
+        parameters_.push_back(param);
+    }
+
+    void setVariadic(std::optional<ASTTypeSpecifier *> typed_variadic)
+    {
+        typed_variadic_ = typed_variadic;
+        is_variadic_ = true;
+    }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "FunctionParameters: " << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Parameters:" << std::endl;
+        for (const auto &param : parameters_)
+        {
+            param.print(indent + 2);
+        }
+
+        if (typed_variadic_.has_value())
+        {
+            printIndent(indent + 1);
+            std::cout << "Typed Variadic: ";
+            typed_variadic_.value()->print(indent);
+            std::cout << std::endl;
+        }
+
+        printIndent(indent + 1);
+        std::cout << "Is Variadic: " << is_variadic_ << std::endl;
+    }
+};
+
 class ASTFunctionDefinition : public ASTNode
 {
 private:
     ASTNodePtr expr_;
-    std::vector<ASTFunctionParameter> parameters_;
+    ASTFunctionParameters parameters_;
     ASTTypeSpecifier *returnType_;
     ASTNodePtr body_;
     ASTAccessSpecifier accessSpecifier_;
@@ -505,7 +557,7 @@ private:
 
 public:
     ASTFunctionDefinition(ASTNodePtr expr,
-                          std::vector<ASTFunctionParameter> parameters,
+                          ASTFunctionParameters parameters,
                           ASTTypeSpecifier *returnType,
                           ASTNodePtr body,
                           ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
@@ -521,7 +573,7 @@ public:
 
     NodeType getType() const override { return NodeType::FunctionDefinition; }
     ASTNodePtr getExpr() const { return expr_; }
-    const std::vector<ASTFunctionParameter> &getParameters() const { return parameters_; }
+    ASTFunctionParameters getParameters() const { return parameters_; }
     ASTTypeSpecifier *getReturnType() const { return returnType_; }
     ASTNodePtr getBody() const { return body_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
@@ -535,7 +587,7 @@ public:
 
         printIndent(indent + 1);
         std::cout << "Parameters:" << std::endl;
-        for (const auto &param : parameters_)
+        for (const auto &param : parameters_.getList())
         {
             param.print(indent + 2);
         }
@@ -582,14 +634,14 @@ class ASTFunctionDeclaration : public ASTNode
 {
 private:
     ASTNodePtr expr_;
-    std::vector<ASTFunctionParameter> parameters_;
+    ASTFunctionParameters parameters_;
     ASTTypeSpecifier *returnType_;
     ASTAccessSpecifier accessSpecifier_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
 
 public:
     ASTFunctionDeclaration(ASTNodePtr expr,
-                           std::vector<ASTFunctionParameter> parameters,
+                           ASTFunctionParameters parameters,
                            ASTTypeSpecifier *returnType,
                            ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
                            std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
@@ -603,7 +655,7 @@ public:
 
     NodeType getType() const override { return NodeType::FunctionDeclaration; }
     ASTNodePtr getExpr() const { return expr_; }
-    const std::vector<ASTFunctionParameter> &getParameters() const { return parameters_; }
+    ASTFunctionParameters getParameters() const { return parameters_; }
     ASTTypeSpecifier *getReturnType() const { return returnType_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
@@ -616,7 +668,7 @@ public:
 
         printIndent(indent + 1);
         std::cout << "Parameters:" << std::endl;
-        for (const auto &param : parameters_)
+        for (const auto &param : parameters_.getList())
         {
             param.print(indent + 2);
         }

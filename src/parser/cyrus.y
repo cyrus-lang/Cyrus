@@ -30,7 +30,7 @@
     std::pair<std::string, ASTNodePtr>* structFieldInitPair;
     std::vector<ASTEnumVariantItem>* enumVariantItemsList;
     ASTAssignmentExpression::Operator assignmentOperator;
-    std::vector<ASTFunctionParameter>* paramsListPtr;
+    ASTFunctionParameters* paramsListPtr;
     ASTStorageClassSpecifier storageClassSpecifier;
     ASTUnaryExpression::Operator unaryOperator;
     std::vector<std::string>* stringListPtr;
@@ -489,20 +489,21 @@ primitive_type_specifier
     | BOOL                          { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Bool); }
     | ERROR                         { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Error); }
     ;
-
-parameter_type_list
-    : parameter_list
-    | parameter_list ',' ELLIPSIS
-    ;
-
+    
 parameter_list
     : parameter_declaration                                     {   
                                                                     ASTFunctionParameter* param = static_cast<ASTFunctionParameter*>($1);
-                                                                    $$ = new std::vector<ASTFunctionParameter>{ *param };
+                                                                    $$ = new ASTFunctionParameters({ *param });
                                                                 }
     | parameter_list ',' parameter_declaration                  { 
                                                                     ASTFunctionParameter* param = static_cast<ASTFunctionParameter*>($3);
-                                                                    $$->push_back(*param); 
+                                                                    $$->addParameter(*param); 
+                                                                }
+    | parameter_list ',' type_specifier ELLIPSIS                {
+                                                                    $$->setVariadic($3);
+                                                                }
+    | parameter_list ',' ELLIPSIS                               {
+                                                                    $$->setVariadic(std::nullopt);
                                                                 }
     ;
 
@@ -659,7 +660,7 @@ function_declaration
     ;
 
 parameter_list_optional
-    : /* empty */                                                           { $$ = new std::vector<ASTFunctionParameter>(); }
+    : /* empty */                                                           { $$ = new ASTFunctionParameters({}); }
     | parameter_list                                                        { $$ = $1; }
     ;
 

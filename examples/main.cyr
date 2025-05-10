@@ -1,3 +1,5 @@
+fn printf(v string, void*...) int;
+
 fn main() {
-    
+
 }

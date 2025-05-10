@@ -51,7 +51,7 @@ std::string CodeGenCGenerator::internal_generateFunctionDeclaration(ASTNodePtr n
     nodeOss << generateExpression(nullptr, node->getExpr());
     nodeOss << "(";
 
-    std::vector<ASTFunctionParameter> parameters = node->getParameters();
+    std::vector<ASTFunctionParameter> parameters = node->getParameters().getList();
     for (size_t i = 0; i < parameters.size(); ++i)
     {
         ASTFunctionParameter param = parameters[i];
@@ -63,6 +63,10 @@ std::string CodeGenCGenerator::internal_generateFunctionDeclaration(ASTNodePtr n
         if (i < parameters.size() - 1)
         {
             nodeOss << ", ";
+        }
+        else if (i == parameters.size() - 1 && node->getParameters().getIsVariadic())
+        {
+            nodeOss << ", ...";
         }
     }
 
