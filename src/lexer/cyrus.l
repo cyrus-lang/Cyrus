@@ -258,38 +258,22 @@ double safe_strtod(const char *str) {
 static char* process_string_literal(const char *text, int length) {
     const char *start = text;
     if (*start == 'L') {
-        start++;
+        start++; 
     }
     start++; 
 
     const char *end = text + length - 1; 
     size_t len = end - start;
+
     char *str = (char *)malloc(len + 1);
     if (!str) {
-        fprintf(stderr, "(Error) Failed to allocate memory for string literal\n");
+        fprintf(stderr, "(Error) Failed to allocate memory for string literal.\n");
         exit(1);
     }
 
-    char *out = str;
-    for (const char *in = start; in < end; ++in, ++out) {
-        if (*in == '\\') {
-            in++;
-            switch (*in) {
-                case 'n':  *out = '\n'; break;
-                case 't':  *out = '\t'; break;
-                case 'r':  *out = '\r'; break;
-                case '\\': *out = '\\'; break;
-                case '"':  *out = '"';  break;
-                default:
-                    *out = *in;
-                    fprintf(stderr, "(Error) Unknown escape sequence: \\%c\n", *in);
-                    break;
-            }
-        } else {
-            *out = *in;
-        }
-    }
-    *out = '\0';
+    memcpy(str, start, len);
+    str[len] = '\0';
+
     return str;
 }
 
