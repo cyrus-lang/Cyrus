@@ -109,6 +109,7 @@ void CodeGenCGenerator::generateStatement(ScopePtr scope, ASTNodePtr nodePtr)
         // ignore unused loadings
         break;
     default:
-        generateExpression(scope, nodePtr);
+        sourceStream_ << generateExpression(scope, nodePtr) + ";";
+        sourceStream_ << "\n";
     }
 }

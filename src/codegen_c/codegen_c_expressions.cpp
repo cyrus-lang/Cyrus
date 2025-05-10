@@ -23,9 +23,9 @@ std::string CodeGenCGenerator::generateExpression(ScopePtr scope, ASTNodePtr nod
     case ASTNode::NodeType::UnaryExpression:
         return generateUnaryExpression(scope, nodePtr);
     case ASTNode::NodeType::ImportedSymbolAccess:
-        return generatedImportedSymbolAccess(scope, nodePtr);
+        return generateImportedSymbolAccess(scope, nodePtr);
     case ASTNode::NodeType::FunctionCall:
-        return "/* FunctionCall */";
+        return generateFunctionCall(scope, nodePtr);
     case ASTNode::NodeType::StructInitialization:
         return "/* StructInitialization */";
     case ASTNode::NodeType::FieldAccess:
@@ -212,7 +212,7 @@ std::string CodeGenCGenerator::generateUnaryExpression(ScopePtr scope, ASTNodePt
     return nodeOss.str();
 }
 
-std::string CodeGenCGenerator::generatedImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr)
+std::string CodeGenCGenerator::generateImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTImportedSymbolAccess *symbaccess = static_cast<ASTImportedSymbolAccess *>(nodePtr);
     std::ostringstream nodeOss;
@@ -222,6 +222,14 @@ std::string CodeGenCGenerator::generatedImportedSymbolAccess(ScopePtr scope, AST
         std::string recordName = symbaccess->getSymbolPath()[0];
         std::optional<ScopeRecord *> scopeRecord = scope->get(recordName);
         if (scopeRecord.has_value())
+        {
+            nodeOss << recordName;
+        }
+        else if (func_table_.find(recordName) != func_table_.end())
+        {
+            nodeOss << recordName;
+        }
+        else if (global_var_table_.find(recordName) != global_var_table_.end())
         {
             nodeOss << recordName;
         }
@@ -235,6 +243,30 @@ std::string CodeGenCGenerator::generatedImportedSymbolAccess(ScopePtr scope, AST
     {
         // TODO Implement import module
     }
+
+    return nodeOss.str();
+}
+
+std::string CodeGenCGenerator::generateFunctionCall(ScopePtr scope, ASTNodePtr nodePtr)
+{
+    ASTFunctionCall *funcCall = static_cast<ASTFunctionCall *>(nodePtr);
+    std::ostringstream nodeOss;
+
+    nodeOss << generateExpression(scope, funcCall->getExpr());
+    nodeOss << "(";
+
+    bool first = true;
+    for (auto &&expr : funcCall->getArguments())
+    {
+        if (!first)
+        {
+            nodeOss << ", ";
+        }
+        nodeOss << generateExpression(scope, expr);
+        first = false;
+    }
+
+    nodeOss << ")";
 
     return nodeOss.str();
 }

@@ -1,5 +1,6 @@
-fn printf(v string, void*...) int;
+fn printf(v string, ...) int;
 
 fn main() {
-
+    #a: int = 0;
+    printf("Hello\n");
 }

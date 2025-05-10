@@ -11,7 +11,7 @@ void CodeGenCGenerator::generateVariable(ScopePtr scope, ASTNodePtr nodePtr)
     if (node->getInitializer())
     {
         sourceStream_ << " = ";
-        generateExpression(scope, node->getInitializer());
+        sourceStream_ << generateExpression(scope, node->getInitializer());
     }
 
     sourceStream_ << ";" << "\n";
@@ -75,12 +75,15 @@ std::string CodeGenCGenerator::internal_generateFunctionDeclaration(ASTNodePtr n
 }
 
 void CodeGenCGenerator::generateFunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater)
-{
+{   
+    ASTFunctionDeclaration *funcDecl = static_cast<ASTFunctionDeclaration *>(nodePtr);
     headerStream_ << internal_generateFunctionDeclaration(nodePtr);
     if (!bodyLater)
     {
         headerStream_ << ";\n";
     }
+
+    addFunction(funcDecl);
 }
 
 void CodeGenCGenerator::generateFunctionDefinition(ASTNodePtr nodePtr)
@@ -111,6 +114,8 @@ void CodeGenCGenerator::generateFunctionDefinition(ASTNodePtr nodePtr)
     ASTStatementList *funcBody = static_cast<ASTStatementList *>(node->getBody());
     generateStatementList(scope, funcBody->getStatements());
     sourceStream_ << "}\n";
+
+    addFunction(funcDecl);
 }
 
 void CodeGenCGenerator::generateReturn(ScopePtr scope, ASTNodePtr nodePtr)

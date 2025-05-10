@@ -41,6 +41,16 @@ public:
     std::pair<std::string, std::string> generate();
 };
 
+class CodeGenCFuncTableRecord
+{
+private:
+    ASTFunctionDeclaration *ast_;
+
+public:
+    CodeGenCFuncTableRecord(ASTFunctionDeclaration *ast) : ast_(ast) {}
+    ASTFunctionDeclaration *getAst() { return ast_; }
+};
+
 class CodeGenCGenerator
 {
 private:
@@ -48,7 +58,7 @@ private:
     std::stringstream sourceStream_;
     std::stringstream headerStream_;
     std::map<std::string, std::any> global_var_table_;
-    std::map<std::string, std::any> func_table_;
+    std::map<std::string, CodeGenCFuncTableRecord *> func_table_;
 
     std::string internal_generateFunctionDeclaration(ASTNodePtr nodePtr);
 
@@ -75,6 +85,21 @@ public:
         return headerStream_;
     }
 
+    void addFunction(ASTFunctionDeclaration *funcDecl)
+    {
+        std::string funcName = generateExpression(nullptr, funcDecl->getExpr());
+
+        if (func_table_.count(funcName) == 0)
+        {
+            func_table_[funcName] = new CodeGenCFuncTableRecord(funcDecl);
+        }
+        else
+        {
+            std::cerr << "Function '" << funcName << "' already declared." << std::endl;
+            exit(1);
+        }
+    }
+
     void generateTopLevel(ASTNodeList nodeList);
     void generateStatementList(ScopePtr scope, ASTNodePtr nodePtr);
     void generateStatementList(ScopePtr scope, ASTNodeList nodeList);
@@ -92,7 +117,8 @@ public:
     std::string generateCastExpression(ScopePtr scope, ASTNodePtr nodePtr);
     std::string generateBinaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
     std::string generateUnaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generatedImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr);
+    std::string generateImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr);
+    std::string generateFunctionCall(ScopePtr scope, ASTNodePtr nodePtr);
 
     std::string generateTypeSpecifier(ASTNodePtr nodePtr);
     std::string generateIdentifierTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
