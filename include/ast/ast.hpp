@@ -920,7 +920,7 @@ public:
     }
 };
 
-class ASTAssignmentExpression : public ASTNode
+class ASTAssignment : public ASTNode
 {
 public:
     enum class Operator
@@ -938,9 +938,9 @@ public:
         BitwiseOrAssign
     };
 
-    ASTAssignmentExpression(ASTNodePtr left, Operator op, ASTNodePtr right)
+    ASTAssignment(ASTNodePtr left, Operator op, ASTNodePtr right)
         : left_(left), op_(op), right_(right) {}
-    ~ASTAssignmentExpression()
+    ~ASTAssignment()
     {
         delete left_;
         delete right_;
@@ -949,8 +949,9 @@ public:
     NodeType getType() const override { return NodeType::AssignmentExpression; }
 
     ASTNodePtr getLeft() const { return left_; }
-    Operator getOperator() const { return op_; }
     ASTNodePtr getRight() const { return right_; }
+    Operator getOperator() const { return op_; }
+    std::string getOperatorString() const { return formatOperator(op_); }
 
     void print(int indent) const override
     {

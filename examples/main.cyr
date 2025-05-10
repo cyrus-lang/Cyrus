@@ -2,5 +2,6 @@ fn printf(v string, ...) int;
 
 fn main() {
     #a: int = 0;
-    printf("Hello\n");
+    
+    a = 10;
 }

@@ -29,7 +29,7 @@
     std::vector<std::pair<std::string, ASTNodePtr>>* fieldInitializerList;
     std::pair<std::string, ASTNodePtr>* structFieldInitPair;
     std::vector<ASTEnumVariantItem>* enumVariantItemsList;
-    ASTAssignmentExpression::Operator assignmentOperator;
+    ASTAssignment::Operator assignmentOperator;
     ASTFunctionParameters* paramsListPtr;
     ASTStorageClassSpecifier storageClassSpecifier;
     ASTUnaryExpression::Operator unaryOperator;
@@ -256,21 +256,21 @@ conditional_expression
 
 assignment_expression
     : conditional_expression                                                        { $$ = $1; }
-    | unary_expression assignment_operator assignment_expression                    { $$ = new ASTAssignmentExpression($1, $2, $3); }
+    | unary_expression assignment_operator assignment_expression                    { $$ = new ASTAssignment($1, $2, $3); }
     ;
 
 assignment_operator
-    : '='                                                                           { $$ = ASTAssignmentExpression::Operator::Assign; }
-    | MUL_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::MultiplyAssign; }
-    | DIV_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::DivideAssign; }
-    | MOD_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::RemainderAssign; }
-    | ADD_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::AddAssign; }
-    | SUB_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::SubtractAssign; }
-    | LEFT_ASSIGN                                                                   { $$ = ASTAssignmentExpression::Operator::LeftShiftAssign; }
-    | RIGHT_ASSIGN                                                                  { $$ = ASTAssignmentExpression::Operator::RightShiftAssign; }
-    | AND_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::BitwiseAndAssign; }
-    | XOR_ASSIGN                                                                    { $$ = ASTAssignmentExpression::Operator::BitwiseXorAssign; }
-    | OR_ASSIGN                                                                     { $$ = ASTAssignmentExpression::Operator::BitwiseOrAssign; }
+    : '='                                                                           { $$ = ASTAssignment::Operator::Assign; }
+    | MUL_ASSIGN                                                                    { $$ = ASTAssignment::Operator::MultiplyAssign; }
+    | DIV_ASSIGN                                                                    { $$ = ASTAssignment::Operator::DivideAssign; }
+    | MOD_ASSIGN                                                                    { $$ = ASTAssignment::Operator::RemainderAssign; }
+    | ADD_ASSIGN                                                                    { $$ = ASTAssignment::Operator::AddAssign; }
+    | SUB_ASSIGN                                                                    { $$ = ASTAssignment::Operator::SubtractAssign; }
+    | LEFT_ASSIGN                                                                   { $$ = ASTAssignment::Operator::LeftShiftAssign; }
+    | RIGHT_ASSIGN                                                                  { $$ = ASTAssignment::Operator::RightShiftAssign; }
+    | AND_ASSIGN                                                                    { $$ = ASTAssignment::Operator::BitwiseAndAssign; }
+    | XOR_ASSIGN                                                                    { $$ = ASTAssignment::Operator::BitwiseXorAssign; }
+    | OR_ASSIGN                                                                     { $$ = ASTAssignment::Operator::BitwiseOrAssign; }
     ;
 
 expression

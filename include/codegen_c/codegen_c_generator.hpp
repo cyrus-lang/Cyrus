@@ -119,6 +119,7 @@ public:
     std::string generateUnaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
     std::string generateImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr);
     std::string generateFunctionCall(ScopePtr scope, ASTNodePtr nodePtr);
+    std::string generateAssignment(ScopePtr scope, ASTNodePtr nodePtr);
 
     std::string generateTypeSpecifier(ASTNodePtr nodePtr);
     std::string generateIdentifierTypeSpecifier(ASTTypeSpecifier *typeSpecifier);

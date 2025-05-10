@@ -35,7 +35,7 @@ std::string CodeGenCGenerator::generateExpression(ScopePtr scope, ASTNodePtr nod
     case ASTNode::NodeType::ConditionalExpression:
         return "/* ConditionalExpression */";
     case ASTNode::NodeType::AssignmentExpression:
-        return "/* AssignmentExpression */";
+        return generateAssignment(scope, nodePtr);
     default:
         std::cerr << "Unable to generate C code for unknown expression." << std::endl;
         exit(1);
@@ -267,6 +267,20 @@ std::string CodeGenCGenerator::generateFunctionCall(ScopePtr scope, ASTNodePtr n
     }
 
     nodeOss << ")";
+
+    return nodeOss.str();
+}
+
+std::string CodeGenCGenerator::generateAssignment(ScopePtr scope, ASTNodePtr nodePtr)
+{
+    ASTAssignment *assignment = static_cast<ASTAssignment *>(nodePtr);
+    std::ostringstream nodeOss;
+
+    nodeOss << generateExpression(scope, assignment->getLeft());
+    nodeOss << " ";
+    nodeOss << assignment->getOperatorString();
+    nodeOss << " ";
+    nodeOss << generateExpression(scope, assignment->getRight());
 
     return nodeOss.str();
 }
