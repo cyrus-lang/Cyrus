@@ -157,13 +157,13 @@ public:
     CodeGenCValuePtr generateStringLiteral(ASTNodePtr nodePtr);
     CodeGenCValuePtr generateIdentifier(ASTNodePtr nodePtr);
     CodeGenCValuePtr generateCastExpression(ScopePtr scope, ASTNodePtr nodePtr);
-    // CodeGenCValuePtr generateBinaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
-    // CodeGenCValuePtr generateUnaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateBinaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateUnaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateAssignment(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateIfStatement(ScopePtr scope, ASTNodePtr nodePtr);
     // CodeGenCValuePtr generateImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr);
     // CodeGenCValuePtr generateFunctionCall(ScopePtr scope, ASTNodePtr nodePtr);
-    // CodeGenCValuePtr generateAssignment(ScopePtr scope, ASTNodePtr nodePtr);
     // CodeGenCValuePtr generateConditionalExpression(ScopePtr scope, ASTNodePtr nodePtr);
-    CodeGenCValuePtr generateIfStatement(ScopePtr scope, ASTNodePtr nodePtr);
 
     CodeGenCValuePtr generateTypeSpecifier(ASTNodePtr nodePtr);
     CodeGenCValuePtr generateIdentifierTypeSpecifier(ASTTypeSpecifier *typeSpecifier);

@@ -16,13 +16,13 @@ CodeGenCValuePtr CodeGenCGenerator::generateExpression(ScopePtr scope, ASTNodePt
     case ASTNode::NodeType::Identifier:
         return generateIdentifier(nodePtr);
     case ASTNode::NodeType::CastExpression:
-        // return generateCastExpression(scope, nodePtr);
+        return generateCastExpression(scope, nodePtr);
         break;
     case ASTNode::NodeType::BinaryExpression:
-        // return generateBinaryExpression(scope, nodePtr);
+        return generateBinaryExpression(scope, nodePtr);
         break;
     case ASTNode::NodeType::UnaryExpression:
-        // return generateUnaryExpression(scope, nodePtr);
+        return generateUnaryExpression(scope, nodePtr);
         break;
     case ASTNode::NodeType::ImportedSymbolAccess:
         // return generateImportedSymbolAccess(scope, nodePtr);
@@ -31,13 +31,13 @@ CodeGenCValuePtr CodeGenCGenerator::generateExpression(ScopePtr scope, ASTNodePt
         // return generateFunctionCall(scope, nodePtr);
         break;
     case ASTNode::NodeType::StructInitialization:
-        // return akdasldada
+        // TODO
         break;
     case ASTNode::NodeType::FieldAccess:
-        // return akdasldada
+        // TODO
         break;
     case ASTNode::NodeType::PointerFieldAccess:
-        // return akdasldada
+        // TODO
         break;
     case ASTNode::NodeType::ConditionalExpression:
         // return generateConditionalExpression(scope, nodePtr);
@@ -102,12 +102,48 @@ CodeGenCValuePtr CodeGenCGenerator::generateCastExpression(ScopePtr scope, ASTNo
 CodeGenCValuePtr CodeGenCGenerator::generateBinaryExpression(ScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTBinaryExpression *binexpr = static_cast<ASTBinaryExpression *>(nodePtr);
-    std::string leftValue = generateExpression(scope, binexpr->getLeft());
-    std::string rightValue = generateExpression(scope, binexpr->getRight());
+    CodeGenCValuePtr leftValue = generateExpression(scope, binexpr->getLeft());
+    CodeGenCValuePtr rightValue = generateExpression(scope, binexpr->getRight());
+
+    CodeGenCValue::ValueKind resultValueKind = leftValue->getValueKind();
+    ASTTypeSpecifier *resultValueType = leftValue->getType();
 
     std::ostringstream nodeOss;
 
-    nodeOss << leftValue << " ";
+    if (leftValue->getValueKind() == CodeGenCValue::ValueKind::String || rightValue->getValueKind() == CodeGenCValue::ValueKind::String)
+    {
+        if (binexpr->getOperator() == ASTBinaryExpression::Operator::Add)
+        {
+            // 1. Determine the lengths of the strings
+            std::string leftStr = leftValue->getValue();
+            std::string rightStr = rightValue->getValue();
+            size_t totalLength = leftStr.length() + rightStr.length();
+
+            std::ostringstream memoryAllocOss;
+
+            std::string resultVarName = "concatenated_string";
+            nodeOss << "char* " << resultVarName << " = (char*)malloc(" << totalLength + 1 << ");\n";   
+            nodeOss << memoryAllocOss.str();
+            std::cout << nodeOss.str() << "\n";
+
+            std::ostringstream strcpyOss;
+            strcpyOss << "strcpy(" << resultVarName << ", " << leftValue->getValue() << ");\n";
+            nodeOss << strcpyOss.str();
+
+            std::ostringstream strcatOss;
+            strcatOss << "strcat(" << resultVarName << ", " << rightValue->getValue() << ");\n";
+            nodeOss << strcatOss.str();
+
+            return new CodeGenCValue(new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::String), nodeOss.str(), CodeGenCValue::ValueKind::String);
+        }
+        else
+        {
+            std::cerr << "Cannot build binary expression with string operands." << std::endl;
+            exit(1);
+        }
+    }
+
+    nodeOss << leftValue->getValue() << " ";
 
     switch (binexpr->getOperator())
     {
@@ -170,66 +206,82 @@ CodeGenCValuePtr CodeGenCGenerator::generateBinaryExpression(ScopePtr scope, AST
         exit(1);
     }
 
-    nodeOss << " " << rightValue;
-    return nodeOss.str();
+    nodeOss << " " << rightValue->getValue();
+    return new CodeGenCValue(resultValueType, nodeOss.str(), resultValueKind);
 }
 
-// CodeGenCValuePtr CodeGenCGenerator::generateUnaryExpression(ScopePtr scope, ASTNodePtr nodePtr)
-// {
-//     ASTUnaryExpression *unexpr = static_cast<ASTUnaryExpression *>(nodePtr);
-//     std::string operandValue = generateExpression(scope, unexpr->getOperand());
+CodeGenCValuePtr CodeGenCGenerator::generateUnaryExpression(ScopePtr scope, ASTNodePtr nodePtr)
+{
+    ASTUnaryExpression *unexpr = static_cast<ASTUnaryExpression *>(nodePtr);
+    CodeGenCValuePtr operandValue = generateExpression(scope, unexpr->getOperand());
+    CodeGenCValue::ValueKind resultValueKind = operandValue->getValueKind();
+    ASTTypeSpecifier *resultValueType = operandValue->getType();
 
-//     std::ostringstream nodeOss;
+    std::ostringstream nodeOss;
 
-//     switch (unexpr->getOperator())
-//     {
-//     case ASTUnaryExpression::Operator::Plus:
-//         nodeOss << "+";
-//         nodeOss << operandValue;
-//         break;
-//     case ASTUnaryExpression::Operator::Negate:
-//         nodeOss << "-";
-//         nodeOss << operandValue;
-//         break;
-//     case ASTUnaryExpression::Operator::BitwiseNot:
-//         nodeOss << "~";
-//         nodeOss << operandValue;
-//         break;
-//     case ASTUnaryExpression::Operator::LogicalNot:
-//         nodeOss << "!";
-//         nodeOss << operandValue;
-//         break;
-//     case ASTUnaryExpression::Operator::PostIncrement:
-//         nodeOss << operandValue;
-//         nodeOss << "++";
-//         break;
-//     case ASTUnaryExpression::Operator::PostDecrement:
-//         nodeOss << operandValue;
-//         nodeOss << "--";
-//         break;
-//     case ASTUnaryExpression::Operator::PreIncrement:
-//         nodeOss << "++";
-//         nodeOss << operandValue;
-//         break;
-//     case ASTUnaryExpression::Operator::PreDecrement:
-//         nodeOss << "--";
-//         nodeOss << operandValue;
-//         break;
-//     case ASTUnaryExpression::Operator::AddressOf:
-//         nodeOss << "&";
-//         nodeOss << operandValue;
-//         break;
-//     case ASTUnaryExpression::Operator::Dereference:
-//         nodeOss << "*";
-//         nodeOss << operandValue;
-//         break;
-//     default:
-//         std::cerr << "Unable to generate C code for unknown ASTUnaryExpression::Operator." << std::endl;
-//         exit(1);
-//     }
+    switch (unexpr->getOperator())
+    {
+    case ASTUnaryExpression::Operator::Plus:
+        nodeOss << "+";
+        nodeOss << operandValue->getValue();
+        break;
+    case ASTUnaryExpression::Operator::Negate:
+        nodeOss << "-";
+        nodeOss << operandValue->getValue();
+        break;
+    case ASTUnaryExpression::Operator::BitwiseNot:
+        nodeOss << "~";
+        nodeOss << operandValue->getValue();
+        break;
+    case ASTUnaryExpression::Operator::LogicalNot:
+        nodeOss << "!";
+        nodeOss << operandValue->getValue();
+        break;
+    case ASTUnaryExpression::Operator::PostIncrement:
+        nodeOss << operandValue->getValue();
+        nodeOss << "++";
+        break;
+    case ASTUnaryExpression::Operator::PostDecrement:
+        nodeOss << operandValue->getValue();
+        nodeOss << "--";
+        break;
+    case ASTUnaryExpression::Operator::PreIncrement:
+        nodeOss << "++";
+        nodeOss << operandValue->getValue();
+        break;
+    case ASTUnaryExpression::Operator::PreDecrement:
+        nodeOss << "--";
+        nodeOss << operandValue->getValue();
+        break;
+    case ASTUnaryExpression::Operator::AddressOf:
+        nodeOss << "&";
+        nodeOss << operandValue->getValue();
+        break;
+    case ASTUnaryExpression::Operator::Dereference:
+        nodeOss << "*";
+        nodeOss << operandValue->getValue();
+        break;
+    default:
+        std::cerr << "Unable to generate C code for unknown ASTUnaryExpression::Operator." << std::endl;
+        exit(1);
+    }
 
-//     return nodeOss.str();
-// }
+    return new CodeGenCValue(resultValueType, nodeOss.str(), resultValueKind);
+}
+
+CodeGenCValuePtr CodeGenCGenerator::generateAssignment(ScopePtr scope, ASTNodePtr nodePtr)
+{
+    ASTAssignment *assignment = static_cast<ASTAssignment *>(nodePtr);
+    std::ostringstream nodeOss;
+
+    nodeOss << generateExpression(scope, assignment->getLeft());
+    nodeOss << " ";
+    nodeOss << assignment->getOperatorString();
+    nodeOss << " ";
+    nodeOss << generateExpression(scope, assignment->getRight());
+
+    return new CodeGenCValue(nullptr, nodeOss.str(), CodeGenCValue::ValueKind::Instruction);
+}
 
 // CodeGenCValuePtr CodeGenCGenerator::generateImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr)
 // {
@@ -286,20 +338,6 @@ CodeGenCValuePtr CodeGenCGenerator::generateBinaryExpression(ScopePtr scope, AST
 //     }
 
 //     nodeOss << ")";
-
-//     return nodeOss.str();
-// }
-
-// CodeGenCValuePtr CodeGenCGenerator::generateAssignment(ScopePtr scope, ASTNodePtr nodePtr)
-// {
-//     ASTAssignment *assignment = static_cast<ASTAssignment *>(nodePtr);
-//     std::ostringstream nodeOss;
-
-//     nodeOss << generateExpression(scope, assignment->getLeft());
-//     nodeOss << " ";
-//     nodeOss << assignment->getOperatorString();
-//     nodeOss << " ";
-//     nodeOss << generateExpression(scope, assignment->getRight());
 
 //     return nodeOss.str();
 // }

@@ -1,7 +1,3 @@
-// fn printf(v string, ...) int;
-
 fn main() {
-    #fmt: string = "Hello: %s\n";
-//     #name: string = "Taha";
-//     printf(fmt, name);
+    #fmt: string = "A" + "b";
 }
