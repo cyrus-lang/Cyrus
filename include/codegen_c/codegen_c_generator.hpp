@@ -51,6 +51,48 @@ public:
     ASTFunctionDeclaration *getAst() { return ast_; }
 };
 
+class CodeGenCValue
+{
+public:
+    enum class ValueKind
+    {
+        Function,
+        Struct,
+        Enum,
+        Array,
+        Int,
+        String,
+        Float,
+        Void,
+        Pointer,
+        Instruction,
+        Identifier,
+    };
+
+    CodeGenCValue(ASTTypeSpecifier *type, const std::string &value, ValueKind kind) : type_(type), value_(value), kind_(kind) {}
+    ~CodeGenCValue()
+    {
+        delete type_;
+    }
+
+    std::string &getValue() { return value_; }
+    ASTTypeSpecifier *getType() const { return type_; }
+    ValueKind getValueKind() const { return kind_; }
+
+    CodeGenCValue &operator<<(const std::string &str)
+    {
+        value_ += str;
+        return *this;
+    }
+
+private:
+    ASTTypeSpecifier *type_;
+    std::string value_;
+    ValueKind kind_;
+};
+
+using CodeGenCValuePtr = CodeGenCValue *;
+
 class CodeGenCGenerator
 {
 private:
@@ -87,7 +129,7 @@ public:
 
     void addFunction(ASTFunctionDeclaration *funcDecl)
     {
-        std::string funcName = generateExpression(nullptr, funcDecl->getExpr());
+        std::string funcName = generateExpression(nullptr, funcDecl->getExpr())->getValue();
 
         if (func_table_.count(funcName) == 0)
         {
@@ -102,32 +144,32 @@ public:
 
     void generateTopLevel(ASTNodeList nodeList);
     void generateFunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater);
-    std::string generateStatementList(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateStatementList(ScopePtr scope, ASTNodeList nodeList);
-    std::string generateStatement(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateVariable(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateReturn(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateFunctionDefinition(ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateStatementList(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateStatementList(ScopePtr scope, ASTNodeList nodeList);
+    CodeGenCValuePtr generateStatement(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateVariable(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateReturn(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateFunctionDefinition(ASTNodePtr nodePtr);
 
-    std::string generateExpression(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateIntegerLiteral(ASTNodePtr nodePtr);
-    std::string generateFloatLiteral(ASTNodePtr nodePtr);
-    std::string generateStringLiteral(ASTNodePtr nodePtr);
-    std::string generateIdentifier(ASTNodePtr nodePtr);
-    std::string generateCastExpression(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateBinaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateUnaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateFunctionCall(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateAssignment(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateConditionalExpression(ScopePtr scope, ASTNodePtr nodePtr);
-    std::string generateIfStatement(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateExpression(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateIntegerLiteral(ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateFloatLiteral(ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateStringLiteral(ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateIdentifier(ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateCastExpression(ScopePtr scope, ASTNodePtr nodePtr);
+    // CodeGenCValuePtr generateBinaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
+    // CodeGenCValuePtr generateUnaryExpression(ScopePtr scope, ASTNodePtr nodePtr);
+    // CodeGenCValuePtr generateImportedSymbolAccess(ScopePtr scope, ASTNodePtr nodePtr);
+    // CodeGenCValuePtr generateFunctionCall(ScopePtr scope, ASTNodePtr nodePtr);
+    // CodeGenCValuePtr generateAssignment(ScopePtr scope, ASTNodePtr nodePtr);
+    // CodeGenCValuePtr generateConditionalExpression(ScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateIfStatement(ScopePtr scope, ASTNodePtr nodePtr);
 
-    std::string generateTypeSpecifier(ASTNodePtr nodePtr);
-    std::string generateIdentifierTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
-    std::string generatePointerTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
-    std::string generateConstTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
-    std::string generateVolatileTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
+    CodeGenCValuePtr generateTypeSpecifier(ASTNodePtr nodePtr);
+    CodeGenCValuePtr generateIdentifierTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
+    CodeGenCValuePtr generatePointerTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
+    CodeGenCValuePtr generateConstTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
+    CodeGenCValuePtr generateVolatileTypeSpecifier(ASTTypeSpecifier *typeSpecifier);
     std::string generateStorageClassSpecifier(ASTStorageClassSpecifier storageClassSpecifier);
 };
 

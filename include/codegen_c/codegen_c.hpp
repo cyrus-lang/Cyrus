@@ -80,44 +80,4 @@ private:
     CodeGenCOptions opts_;
 };
 
-class CodeGenCValue
-{
-public:
-    enum class ValueType
-    {
-        LValue,
-        RValue,
-        Type,
-        Instruction
-    };
-
-    CodeGenCValue(std::string source, std::string header, ValueType type) : source_(source), header_(header), type_(type) {};
-
-    std::string getSource() const { return source_; }
-    void setSource(std::string source) { source_ = source; }
-
-    std::string getHeader() const { return header_; }
-    void setHeader(std::string header) { header_ = header; }
-
-    ValueType getType() const { return type_; }
-    void setType(ValueType type) { type_ = type; }
-
-private:
-    std::string source_;
-    std::string header_;
-    ValueType type_;
-};
-
-using CodeGenCValuePtr = CodeGenCValue *;
-
-CodeGenCValuePtr codeGenC_StorageClassSpecifier(ASTStorageClassSpecifier storageClassSpecifier);
-std::pair<std::string, std::string> codeGenCStatementList(ScopePtr scope, ASTNodeList nodeList);
-std::pair<std::string, std::string> codeGenCStatement(ScopePtr scope, ASTNodePtr statement);
-CodeGenCValuePtr codeGenC_VariableDeclaration(ScopePtr scope, ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenCStatementList(ScopePtr scope, ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_TypeSpecifier(ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenCExpression(ScopePtr scope, ASTNodePtr nodePtr);
-CodeGenCValuePtr codeGenC_FunctionDeclaration(ASTNodePtr nodePtr, bool bodyLater);
-CodeGenCValuePtr codeGenC_FunctionDefinition(ASTNodePtr nodePtr);
-
 #endif // CODEGEN_C_HPP

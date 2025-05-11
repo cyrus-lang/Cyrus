@@ -1,16 +1,7 @@
-fn printf(v string, ...) int;
+// fn printf(v string, ...) int;
 
 fn main() {
-    if (1 == 1)
-    {
-        printf("yes");
-    } 
-    else if (2 == 3)
-    {
-        printf("aaaaa");
-    }
-    else
-    {
-        printf("no");
-    }
+    #fmt: string = "Hello: %s\n";
+//     #name: string = "Taha";
+//     printf(fmt, name);
 }
