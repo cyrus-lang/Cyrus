@@ -233,7 +233,7 @@ void lexOnlyCommand(argh::parser &cmdl)
         std::cout << "Token: " << token.visit() << std::endl;
     }
 
-    fclose(yyin);
+    yylex_destroy();
 }
 
 void helpCommand()

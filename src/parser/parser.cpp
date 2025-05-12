@@ -2,7 +2,7 @@
 #include "lexer/lexer.hpp"
 #include "util/util.hpp"
 
-ASTProgram *parseProgram(const std::string& inputFile)
+ASTProgram *parseProgram(const std::string &inputFile)
 {
     astProgram = nullptr;
     yyin = nullptr;
@@ -16,11 +16,7 @@ ASTProgram *parseProgram(const std::string& inputFile)
     set_lex_only_option(0);
     yyfilename = (char *)inputFile.c_str();
 
-    if (yyparse() == 0)
-    {
-        return (ASTProgram *)astProgram;
-    }
-    else
+    if (yyparse() != 0)
     {
         std::string errorMsg = yyerrormsg;
         util::displayErrorPanel(inputFile, util::readFileContent(inputFile), yylineno, errorMsg);
@@ -28,4 +24,6 @@ ASTProgram *parseProgram(const std::string& inputFile)
     }
 
     fclose(yyin);
+    yylex_destroy();
+    return (ASTProgram *)astProgram;
 }

@@ -12,6 +12,7 @@ extern char *yyerrormsg;
 extern char *yyfilename;
 extern int yylex(void);
 extern void set_lex_only_option(int);
+extern int yylex_destroy(void);
 
 class Token
 {

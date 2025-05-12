@@ -1,7 +1,9 @@
-fn sample(name string) {
+// Comment
 
-}
+// Hello
+//aaa
 
+/* hello world */
 fn main() {
-    
+
 }

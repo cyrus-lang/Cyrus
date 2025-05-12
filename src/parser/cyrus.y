@@ -124,12 +124,12 @@
 %%
 
 import_specifier
-    : IMPORT import_submodules_list ';'                                         { $$ = new ASTImportStatement(*$2); }
+    : IMPORT import_submodules_list ';'                                         { $$ = new ASTImportStatement(*$2); delete $2; }
     ;
 
 import_submodules_list
-    : IDENTIFIER                                                                { $$ = new std::vector<std::string>(); $$->push_back($1); }
-    | import_submodules_list ':' ':' IDENTIFIER                                 { if ($$) $$->push_back($4); }
+    : IDENTIFIER                                                                { $$ = new std::vector<std::string>(); $$->push_back($1); free($1);  }
+    | import_submodules_list ':' ':' IDENTIFIER                                 { if ($$) $$->push_back($4); free($4); }
     ;
 
 primary_expression
@@ -142,10 +142,18 @@ primary_expression
     ;
 
 imported_symbol_access
-    : import_submodules_list                                                    { $$ = new ASTImportedSymbolAccess(*$1); }
-    | import_submodules_list '(' ')'                                            { $$ = new ASTFunctionCall(new ASTImportedSymbolAccess(*$1), {}); }
+    : import_submodules_list                                                    {
+                                                                                    $$ = new ASTImportedSymbolAccess(*$1);
+                                                                                    delete $1;
+                                                                                }
+    | import_submodules_list '(' ')'                                            { 
+                                                                                    $$ = new ASTFunctionCall(new ASTImportedSymbolAccess(*$1), {});
+                                                                                    delete $1;
+                                                                                }
     | import_submodules_list '(' argument_expression_list ')'                   { 
                                                                                     $$ = new ASTFunctionCall(new ASTImportedSymbolAccess(*$1), *$3);
+                                                                                    delete $1;
+                                                                                    delete $3;
                                                                                 }
     ;
 
@@ -153,11 +161,15 @@ postfix_expression
     : primary_expression                                                        { $$ = $1; }
     | postfix_expression '[' expression ']'                                     // TODO Array Index Access
     | postfix_expression '(' ')'                                                { $$ = new ASTFunctionCall($1, {}); }
-    | postfix_expression '(' argument_expression_list ')'                       { $$ = new ASTFunctionCall($1, *$3); }
-    | postfix_expression '.' IDENTIFIER                                         { $$ = new ASTFieldAccess($1, $3); }
+    | postfix_expression '(' argument_expression_list ')'                       {
+                                                                                    $$ = new ASTFunctionCall($1, *$3);
+                                                                                    delete $3;
+                                                                                }
+    | postfix_expression '.' IDENTIFIER                                         { $$ = new ASTFieldAccess($1, $3); free($3); }
     | postfix_expression PTR_OP IDENTIFIER                                      {
-                                                                                    ASTFieldAccess* fieldAccess = new ASTFieldAccess($1, $3);
-                                                                                    $$ = new ASTPointerFieldAccess(*fieldAccess);
+                                                                                    ASTFieldAccess fieldAccess($1, $3);
+                                                                                    $$ = new ASTPointerFieldAccess(fieldAccess);
+                                                                                    free($3);
                                                                                 }
     | postfix_expression INC_OP                                                 { $$ = new ASTUnaryExpression(ASTUnaryExpression::Operator::PostIncrement, $1); }
     | postfix_expression DEC_OP                                                 { $$ = new ASTUnaryExpression(ASTUnaryExpression::Operator::PostDecrement, $1); }
@@ -188,7 +200,10 @@ unary_operator
 
 cast_expression
     : unary_expression                                                              { $$ = $1; }
-    | '(' type_specifier ')' cast_expression                                        { $$ = new ASTCastExpression(*$2, $4); }
+    | '(' type_specifier ')' cast_expression                                        { 
+                                                                                        $$ = new ASTCastExpression(*$2, $4);
+                                                                                        delete $2;
+                                                                                    }
     ;
 
 multiplicative_expression
@@ -305,30 +320,32 @@ access_specifier
     ;
 
 typedef_specifier
-    : access_specifier TYPEDEF IDENTIFIER '=' type_specifier ';'                { $$ = new ASTTypeDefStatement($3, *$5, $1); }
-    | TYPEDEF IDENTIFIER '=' type_specifier ';'                                 { $$ = new ASTTypeDefStatement($2, *$4); }
+    : access_specifier TYPEDEF IDENTIFIER '=' type_specifier ';'                { $$ = new ASTTypeDefStatement($3, *$5, $1); free($3); delete $5; }
+    | TYPEDEF IDENTIFIER '=' type_specifier ';'                                 { $$ = new ASTTypeDefStatement($2, *$4); free($2); delete $4; }
     ;
 
 struct_specifier
-    : STRUCT IDENTIFIER '{' struct_declaration_list '}'                         { $$ = new ASTStructDefinition($2, $4->first, $4->second); }
+    : STRUCT IDENTIFIER '{' struct_declaration_list '}'                         { $$ = new ASTStructDefinition($2, $4->first, $4->second); free($2); }
     | STRUCT '{' struct_declaration_list '}'                                    { $$ = new ASTStructDefinition(std::nullopt, $3->first, $3->second); }
-    | STRUCT IDENTIFIER '{'  '}'                                                { $$ = new ASTStructDefinition($2, {}, {}); }
-    | STRUCT IDENTIFIER ';'                                                     { $$ = new ASTStructDefinition($2, {}, {}); }
+    | STRUCT IDENTIFIER '{'  '}'                                                { $$ = new ASTStructDefinition($2, {}, {}); free($2); }
+    | STRUCT IDENTIFIER ';'                                                     { $$ = new ASTStructDefinition($2, {}, {}); free($2); }
     ;
 
 struct_declaration_list
     :                                                                           { $$ = new std::pair<std::vector<ASTStructField>, std::vector<ASTFunctionDefinition>>(); }
     | struct_declaration_list struct_field_declaration                          {   
                                                                                     $$->first.push_back(*$2);
+                                                                                    delete $2;
                                                                                 }
     | struct_declaration_list struct_method_declaration                         {
                                                                                     $$->second.push_back(*$2);
+                                                                                    delete $2;
                                                                                 }
     ;
 
 struct_field_declaration
-    : access_specifier IDENTIFIER type_specifier ';'                            { $$ = new ASTStructField($2, *$3, $1); } 
-    | IDENTIFIER type_specifier ';'                                             { $$ = new ASTStructField($1, *$2); }
+    : access_specifier IDENTIFIER type_specifier ';'                            { $$ = new ASTStructField($2, *$3, $1); free($2); delete $3; } 
+    | IDENTIFIER type_specifier ';'                                             { $$ = new ASTStructField($1, *$2); free($1); delete $2; }
     ;
 
 struct_method_declaration
@@ -337,17 +354,17 @@ struct_method_declaration
     ;
 
 struct_init_specifier
-    : IDENTIFIER '{' '}'                                                        { $$ = new ASTStructInitialization($1, {}); }
-    | IDENTIFIER '{' field_initializer_list '}'                                 { $$ = new ASTStructInitialization($1, *$3); }
+    : IDENTIFIER '{' '}'                                                        { $$ = new ASTStructInitialization($1, {}); free($1); }
+    | IDENTIFIER '{' field_initializer_list '}'                                 { $$ = new ASTStructInitialization($1, *$3); free($1); delete $3; }
     ;
 
 field_initializer_list
-    : struct_init_field                                                         { $$ = new std::vector<std::pair<std::string, ASTNodePtr>>{*$1};  }
-    | field_initializer_list ';' struct_init_field                              { $$->push_back(*$3); }
+    : struct_init_field                                                         { $$ = new std::vector<std::pair<std::string, ASTNodePtr>>{*$1}; delete $1;  }
+    | field_initializer_list ';' struct_init_field                              { $$->push_back(*$3); delete $3; }
     ;
 
 struct_init_field
-    : IDENTIFIER ':' assignment_expression                                      { $$ = new std::pair<std::string, ASTNodePtr>($1, $3); }
+    : IDENTIFIER ':' assignment_expression                                      { $$ = new std::pair<std::string, ASTNodePtr>($1, $3); free($1); }
     ;
 
 enum_specifier
@@ -369,6 +386,7 @@ enum_specifier
                                                                                     }
 
                                                                                     $$ = new ASTEnumDefinition(std::nullopt, variants, fields, methods); 
+                                                                                    delete $3;
                                                                                 }
     | ENUM IDENTIFIER '{' enumerator_list '}'                                   {
                                                                                     std::vector<ASTEnumVariant> variants;
@@ -388,17 +406,20 @@ enum_specifier
                                                                                     }
 
                                                                                     $$ = new ASTEnumDefinition($2, variants, fields, methods); 
+                                                                                    free($2);
+                                                                                    delete $4;
                                                                                 }
-    | ENUM IDENTIFIER ';'                                                       { $$ = new ASTEnumDefinition($2, {}, {}, {}); }
+    | ENUM IDENTIFIER ';'                                                       { $$ = new ASTEnumDefinition($2, {}, {}, {}); free($2); }
     ;
 
 enumerator_list     
-    : enumerator                                                                { $$ = new std::vector<EnumData>{ *$1 }; }
-    | enumerator_list ',' enumerator                                            { $$->push_back(*$3); }
+    : enumerator                                                                { $$ = new std::vector<EnumData>{ *$1 }; delete $1; }
+    | enumerator_list ',' enumerator                                            { $$->push_back(*$3); delete $3; }
     | enumerator_list ';'   
     | enumerator_list function_definition                                       {   
                                                                                     auto method = static_cast<ASTFunctionDefinition *>($2);
                                                                                     $$->push_back(*method);
+                                                                                    delete $2;
                                                                                 }                                                    
     ;
 
@@ -406,28 +427,34 @@ enumerator
     : IDENTIFIER                                            { 
                                                                 auto unnamedField = new std::pair<std::string, std::optional<ASTNodePtr>>($1, std::nullopt);
                                                                 $$ = new EnumData(*unnamedField);
+                                                                free($1);
                                                             }
     | IDENTIFIER '=' constant_expression                    { 
                                                                 auto field = std::pair<std::string, std::optional<ASTNodePtr>>{$1, $3};
                                                                 $$ = new EnumData(field);
+                                                                free($1);
                                                             }
     | IDENTIFIER '(' enum_variant_items_list ')'            {
-                                                                auto enumVariant = new ASTEnumVariant($1, *$3);
-                                                                $$ = new EnumData(*enumVariant);
+                                                                ASTEnumVariant enumVariant($1, *$3);
+                                                                $$ = new EnumData(enumVariant);
+                                                                free($1);
+                                                                delete $3;
                                                             }
     ;
 
 enum_variant_item
-    : type_specifier                                        { $$ = new ASTEnumVariantItem(std::nullopt, *$1); }
-    | IDENTIFIER type_specifier                             { $$ = new ASTEnumVariantItem($1, *$2); }
+    : type_specifier                                        { $$ = new ASTEnumVariantItem(std::nullopt, *$1); delete $1; }
+    | IDENTIFIER type_specifier                             { $$ = new ASTEnumVariantItem($1, *$2); free($1); delete $2; }
     ;   
 
 enum_variant_items_list
     : enum_variant_item                                         {   
                                                                     $$ = new std::vector<ASTEnumVariantItem>{ *$1 };
+                                                                    delete $1;
                                                                 }
     | enum_variant_items_list ',' enum_variant_item             { 
                                                                     $$->push_back(*$3);
+                                                                    delete $3;
                                                                 }
     ;
 
@@ -439,7 +466,10 @@ type_specifier
 
 base_type
     : primitive_type_specifier
-    | IDENTIFIER                                        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Identifier, new ASTIdentifier($1)); }
+    | IDENTIFIER                                        {   
+                                                            $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Identifier, new ASTIdentifier($1)); 
+                                                            free($1);
+                                                        }
     ;
 
 qualified_type_specifier
@@ -494,10 +524,12 @@ parameter_list
     : parameter_declaration                                     {   
                                                                     ASTFunctionParameter* param = static_cast<ASTFunctionParameter*>($1);
                                                                     $$ = new ASTFunctionParameters({ *param });
+                                                                    delete $1;
                                                                 }
     | parameter_list ',' parameter_declaration                  { 
                                                                     ASTFunctionParameter* param = static_cast<ASTFunctionParameter*>($3);
                                                                     $$->addParameter(*param); 
+                                                                    delete $3;
                                                                 }
     | parameter_list ',' type_specifier ELLIPSIS                {
                                                                     $$->setVariadic($3);
@@ -508,8 +540,8 @@ parameter_list
     ;
 
 parameter_declaration
-    : IDENTIFIER type_specifier                                  { $$ = new ASTFunctionParameter($1, *$2); }
-    | IDENTIFIER type_specifier '=' assignment_expression        { $$ = new ASTFunctionParameter($1, *$2, $4); }
+    : IDENTIFIER type_specifier                                  { $$ = new ASTFunctionParameter($1, *$2); free($1); delete $2; }
+    | IDENTIFIER type_specifier '=' assignment_expression        { $$ = new ASTFunctionParameter($1, *$2, $4); free($1); delete $2; }
     ;
 
 statement
@@ -634,29 +666,29 @@ external_declaration
     ;
 
 function_definition
-    : storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, nullptr, $8, $2, $1); }
-    | storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $2, $1); }
-    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, nullptr, $8, $1, $2); }
-    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $1, $2); }
-    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                           { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, nullptr, $7, $1); }
-    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, $7,      $8, $1); }
-    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, nullptr, $7, ASTAccessSpecifier::Default, $1); }
-    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, $7, $8, ASTAccessSpecifier::Default, $1); }
-    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, nullptr, $6); }
-    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement                             { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, $6, $7); }
+    : storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, nullptr, $8, $2, $1); free($4); delete $6; }
+    | storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $2, $1); free($4); delete $6; }
+    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, nullptr, $8, $1, $2); free($4); delete $6; }
+    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $1, $2); free($4); delete $6; }
+    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                           { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, nullptr, $7, $1); free($3); delete $5; }
+    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, $7, $8, $1); free($3); delete $5; }
+    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, nullptr, $7, ASTAccessSpecifier::Default, $1); free($3); delete $5; }
+    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, $7, $8, ASTAccessSpecifier::Default, $1); free($3); delete $5; }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, nullptr, $6); free($2); delete $4; }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement                             { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, $6, $7); free($2); delete $4; }
     ;
 
 function_declaration
-    : storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, nullptr, $2, $1); }
-    | storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, $8, $2, $1); }
-    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, nullptr, $1, $2); }
-    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, $8, $1, $2); }
-    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                                            { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, nullptr, $1); }
-    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'                             { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, $7,      $1); }
-    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, nullptr, ASTAccessSpecifier::Default, $1); }
-    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, $7, ASTAccessSpecifier::Default, $1); }
-    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                                            { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, nullptr); }
-    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'                             { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, $6); }
+    : storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, nullptr, $2, $1); free($4); delete $6; }
+    | storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, $8, $2, $1); free($4); delete $6; }
+    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, nullptr, $1, $2); free($4); delete $6; }
+    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($4), *$6, $8, $1, $2); free($4); delete $6; }
+    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                                            { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, nullptr, $1); free($3); delete $5; }
+    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'                             { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, $7,      $1); free($3); delete $5; }
+    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                    { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, nullptr, ASTAccessSpecifier::Default, $1); free($3); delete $5; }
+    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'     { $$ = new ASTFunctionDeclaration(new ASTIdentifier($3), *$5, $7, ASTAccessSpecifier::Default, $1); free($3); delete $5; }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' ';'                                            { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, nullptr); free($2); delete $4; }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier ';'                             { $$ = new ASTFunctionDeclaration(new ASTIdentifier($2), *$4, $6); free($2); delete $4; }
     ;
 
 parameter_list_optional
@@ -665,9 +697,9 @@ parameter_list_optional
     ;
 
 variable_declaration 
-    : HASH IDENTIFIER ':' type_specifier ';'                                { $$ = new ASTVariableDeclaration($2, $4); }
-    | HASH IDENTIFIER '=' assignment_expression ';'                         { $$ = new ASTVariableDeclaration($2, nullptr, $4); }
-    | HASH IDENTIFIER ':' type_specifier '=' assignment_expression ';'      { $$ = new ASTVariableDeclaration($2, $4, $6); }
+    : HASH IDENTIFIER ':' type_specifier ';'                                { $$ = new ASTVariableDeclaration($2, $4); free($2); }
+    | HASH IDENTIFIER '=' assignment_expression ';'                         { $$ = new ASTVariableDeclaration($2, nullptr, $4); free($2); }
+    | HASH IDENTIFIER ':' type_specifier '=' assignment_expression ';'      { $$ = new ASTVariableDeclaration($2, $4, $6); free($2); }
     ;
 
 %%
