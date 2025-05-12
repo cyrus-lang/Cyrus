@@ -503,6 +503,13 @@ private:
 public:
     ASTFunctionParameters(std::vector<ASTFunctionParameter> parameters, std::optional<ASTTypeSpecifier *> typed_variadic = std::nullopt, bool is_variadic = false)
         : parameters_(parameters), typed_variadic_(typed_variadic), is_variadic_(is_variadic) {}
+    ~ASTFunctionParameters()
+    {
+        if (typed_variadic_.has_value())
+        {
+            delete typed_variadic_.value();
+        }
+    }
 
     NodeType getType() const override { return NodeType::FunctionParameter; }
     const std::vector<ASTFunctionParameter> &getList() const { return parameters_; }
@@ -725,6 +732,7 @@ public:
     ~ASTVariableDeclaration()
     {
         delete initializer_;
+        delete type_;
     }
 
     NodeType getType() const override { return NodeType::VariableDeclaration; }
@@ -1157,6 +1165,15 @@ public:
 
         : name_(name), variants_(variants), fields_(fields), methods_(methods), accessSpecifier_(accessSpecifier)
     {
+    }
+    ~ASTEnumDefinition() {
+        for (auto &&item : fields_)
+        {
+            if (item.second.has_value())
+            {
+                delete item.second.value();
+            }
+        }
     }
 
     NodeType getType() const override { return NodeType::EnumDefinition; }

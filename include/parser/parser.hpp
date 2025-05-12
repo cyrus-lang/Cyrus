@@ -5,4 +5,6 @@
 
 extern ASTNodePtr astProgram;
 
-#endif //PARSER_HPP
+ASTProgram *parseProgram(const std::string& inputFile);
+
+#endif // PARSER_HPP

@@ -1,3 +1,7 @@
+fn sample(name string) {
+
+}
+
 fn main() {
-    #fmt: string = "A" + "b";
+    
 }

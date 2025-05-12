@@ -133,8 +133,8 @@ import_submodules_list
     ;
 
 primary_expression
-    : IDENTIFIER                                                                { $$ = new ASTIdentifier($1); }
-    | STRING_CONSTANT                                                           { $$ = new ASTStringLiteral($1); }
+    : IDENTIFIER                                                                { $$ = new ASTIdentifier($1); free($1); }
+    | STRING_CONSTANT                                                           { $$ = new ASTStringLiteral($1); free($1); }
     | INTEGER_CONSTANT                                                          { $$ = new ASTIntegerLiteral($1); }
     | FLOAT_CONSTANT                                                            { $$ = new ASTFloatLiteral($1); }
     | DOUBLE_CONSTANT                                                           { $$ = new ASTFloatLiteral($1); }

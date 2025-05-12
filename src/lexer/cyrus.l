@@ -6,9 +6,11 @@
 	#include "parser/cyrus.tab.hpp"
 
     static char* process_string_literal(const char *text, int length);
-    float safe_strtof(const char *str);
-    double safe_strtod(const char *str);
+    float strtof(const char *str);
+    double strtod(const char *str);
     void display_error(const char *msg);
+
+    int lex_only_option = 1;
     char* yyfilename;
 %}
 
@@ -129,10 +131,13 @@ IS			(u|U|l|L)*
 "?"										{ return('?'); }
 
 {L}({L}|{D})*							{
-                                            yylval.sval = strdup(yytext);
-                                            if (!yylval.sval) {
-                                                display_error("(Error) Failed to allocate memory for identifier.");
+                                            if (lex_only_option != 1) {
+                                                yylval.sval = strdup(yytext);
+                                                if (!yylval.sval) {
+                                                    display_error("(Error) Failed to allocate memory for identifier.");
+                                                }
                                             }
+
                                             return IDENTIFIER;
                                         }
 
@@ -141,26 +146,26 @@ IS			(u|U|l|L)*
 {D}+{IS}?        						{ yylval.ival = strtol(yytext, NULL, 10); return INTEGER_CONSTANT; }
 
 [0-9]+\.[0-9]*([eE][+-]?[0-9]+)?[fFlL]?     {
-                                               yylval.fval = safe_strtof(yytext);
+                                               yylval.fval = strtof(yytext);
                                                return FLOAT_CONSTANT;
                                             }
 
 [0-9]+[eE][+-]?[0-9]+[fFlL]?                {
-                                               yylval.fval = safe_strtof(yytext);
+                                               yylval.fval = strtof(yytext);
                                                return FLOAT_CONSTANT;
                                             }
 
 \.[0-9]+([eE][+-]?[0-9]+)?[fFlL]?           {
-                                               yylval.fval = safe_strtof(yytext);
+                                               yylval.fval = strtof(yytext);
                                                return FLOAT_CONSTANT;
                                             }
 
 0[xX][0-9a-fA-F]+\.[0-9a-fA-F]*[pP][+-]?[0-9]+[fFlL]?   {   
-                                                            yylval.fval = safe_strtof(yytext);
+                                                            yylval.fval = strtof(yytext);
                                                             return DOUBLE_CONSTANT;
                                                         }
 0[xX][0-9a-fA-F]+[pP][+-]?[0-9]+[fFlL]?                 {
-                                                            yylval.dval = safe_strtod(yytext);
+                                                            yylval.dval = strtod(yytext);
                                                             return DOUBLE_CONSTANT;
                                                         }
 
@@ -173,7 +178,7 @@ IS			(u|U|l|L)*
                                                 }
                                             }
                                             cleaned_text[j] = '\0';
-                                            yylval.fval = safe_strtof(cleaned_text);
+                                            yylval.fval = strtof(cleaned_text);
                                             free(cleaned_text);
                                             return FLOAT_CONSTANT;
                                         }
@@ -203,7 +208,7 @@ void display_error(const char *msg) {
     exit(1);
 }
 
-float safe_strtof(const char *str) {
+float strtof(const char *str) {
     char *endptr;
     float value;
 
@@ -229,7 +234,7 @@ float safe_strtof(const char *str) {
     return value;
 }
 
-double safe_strtod(const char *str) {
+double strtod(const char *str) {
     char *endptr;
     double value;
 
@@ -275,6 +280,10 @@ static char* process_string_literal(const char *text, int length) {
     str[len] = '\0';
 
     return str;
+}
+
+void set_lex_only_option(int value) {
+    lex_only_option = value;
 }
 
 int yywrap(void)
