@@ -9,11 +9,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic")
 # Find LLVM
 find_package(LLVM REQUIRED CONFIG)
 if(LLVM_FOUND)
-    message(STATUS "Found LLVM: ${LLVM_PACKAGE_NAME} - version ${LLVM_VERSION}")
-    include_directories(${LLVM_INCLUDE_DIRS})
-    set(LLVM_LIBRARIES "")
+    message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+    message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 else()
     message(FATAL_ERROR "LLVM is required to build this project.")
+endif()
+
+# Find ZLIB
+find_package(ZLIB REQUIRED) 
+if(ZLIB)
+  message(STATUS "Found ZLIB: ${ZLIB_EXECUTABLE}")
 endif()
 
 # Find Flex (Lex)
@@ -100,15 +105,10 @@ set(source_files ${source_files} ${set_source_files})
 add_library(cyrus_lib ${source_files})
 
 # Link LLVM Libraries
-execute_process(
-    COMMAND ${LLVM_CONFIG_PATH} --libs
-    OUTPUT_VARIABLE LLVM_LIBRARIES_STRING
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-string(REPLACE " " ";" LLVM_LIBRARIES_LIST "${LLVM_LIBRARIES_STRING}")
-
-target_link_libraries(cyrus_lib ${LLVM_LIBRARIES_LIST})
+include_directories(${LLVM_INCLUDE_DIRS})
+separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
+add_definitions(${LLVM_DEFINITIONS_LIST})
+llvm_map_components_to_libnames(llvm_libs support core irreader)
 
 # Add third party libraries
 include(FetchContent)
@@ -123,6 +123,6 @@ add_executable(cyrus
     ${CMAKE_CURRENT_BINARY_DIR}/src/lexer/cyrus.yy.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/src/parser/cyrus.tab.cpp
 ) 
-target_link_libraries(cyrus cyrus_lib)
+target_link_libraries(cyrus cyrus_lib ${llvm_libs})
 
 add_subdirectory(test/parser)
