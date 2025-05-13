@@ -26,6 +26,8 @@ public:
     const ASTNodeList &getStatements() const { return statements_; }
     void addStatement(ASTNodePtr statement) { statements_.push_back(statement); }
 
+    const std::optional<std::string> getModuleName();
+
     nlohmann::json jsonify() const override
     {
         nlohmann::json json;
@@ -378,21 +380,26 @@ public:
     NodeType getType() const override { return NodeType::ModuleDeclaration; }
     const std::vector<std::string> &getModulePath() const { return modulePath_; }
 
+    std::string formatModulePath() const
+    {
+        std::string formattedPath;
+        for (size_t i = 0; i < modulePath_.size(); ++i)
+        {
+            formattedPath += modulePath_[i];
+            if (i < modulePath_.size() - 1)
+            {
+                formattedPath += "::";
+            }
+        }
+        return formattedPath;
+    }
+
     void print(int indent) const override
     {
         printIndent(indent);
         std::cout << "ModuleDeclaration: " << std::endl;
         printIndent(indent + 1);
-        std::cout << "Module Name: ";
-        for (size_t i = 0; i < modulePath_.size(); ++i)
-        {
-            std::cout << modulePath_[i];
-            if (i < modulePath_.size() - 1)
-            {
-                std::cout << "::";
-            }
-        }
-        std::cout << std::endl;
+        std::cout << "Module Name: " << formatModulePath() << std::endl;
     }
 };
 

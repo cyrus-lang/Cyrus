@@ -95,4 +95,17 @@ namespace util
 #endif
         }
     }
+
+    void isValidModuleName(const std::string &moduleName, const std::string &fileName)
+    {
+        for (char c : moduleName)
+        {
+            if (!std::isalnum(c) && c != '_' && c != ':')
+            {
+                std::cerr << "(Error) Module name '" << moduleName << "' in file '" << fileName << "' contains invalid characters. "
+                          << "Only alphanumeric characters, underscores, and double colons are allowed." << std::endl;
+                std::exit(1);
+            }
+        }
+    }
 } // namespace util

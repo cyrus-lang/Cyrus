@@ -23,7 +23,7 @@ class CodeGenLLVM_Options
 private:
     std::string outputPath_;
     std::optional<std::string> buildDirectory_;
-    std::optional<std::vector<std::string>> inputFiles_;
+    std::optional<std::string> inputFile_;
     CodeGenLLVM_OutputKind outputKind_;
 
 public:
@@ -33,8 +33,8 @@ public:
     std::optional<std::string> getBuildDirectory() const { return buildDirectory_; }
     void setBuildDirectory(const std::string &buildDirectory) { buildDirectory_ = buildDirectory; }
 
-    std::optional<std::vector<std::string>> getInputFiles() const { return inputFiles_; }
-    void setInputFiles(const std::vector<std::string> &inputFiles) { inputFiles_ = inputFiles; }
+    const std::optional<std::string> getInputFile() const { return inputFile_; }
+    void setInputFile(const std::string &inputFile) { inputFile_ = inputFile; }
 
     CodeGenLLVM_OutputKind getOutputKind() const { return outputKind_; }
     void setOutputKind(const CodeGenLLVM_OutputKind &outputKind) { outputKind_ = outputKind; }

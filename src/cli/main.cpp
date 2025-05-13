@@ -55,15 +55,8 @@ CodeGenLLVM_Options collectCompilerOptions(argh::parser &cmdl, CodeGenLLVM_Outpu
     if (outputPath.has_value())
         opts.setOutputPath(outputPath.value());
 
-    std::vector<std::string> inputFiles;
-    for (auto it = cmdl.begin() + 2; it != cmdl.end(); ++it)
-    {
-        util::checkInputFileExtension(*it);
-        inputFiles.push_back(*it);
-    }
-
-    if (inputFiles.size() > 0)
-        opts.setInputFiles(inputFiles);
+    util::checkInputFileExtension(cmdl[2]);
+    opts.setInputFile(cmdl[2]);
 
     opts.setOutputKind(outputKind);
 

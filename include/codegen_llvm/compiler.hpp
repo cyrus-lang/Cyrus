@@ -1,18 +1,20 @@
 #ifndef CODEGEN_LLVM_HPP
 #define CODEGEN_LLVM_HPP
 
+#include <map>
 #include <llvm/IR/LLVMContext.h>
 #include "llvm/IR/Module.h"
 #include "ast/ast.hpp"
 #include "options.hpp"
 
 void new_codegen_llvm(CodeGenLLVM_Options);
+void validateModuleName(const std::string &moduleName, const std::string &fileName);
 
 class CodeGenLLVM_Context
 {
 private:
     llvm::LLVMContext context_;
-    std::vector<std::unique_ptr<llvm::Module>> modules_;
+    std::map<std::string, std::unique_ptr<llvm::Module>> modules_;
 
 public:
     CodeGenLLVM_Context() {}
@@ -22,7 +24,7 @@ public:
         return context_;
     }
 
-    const std::vector<std::unique_ptr<llvm::Module>> &getModules() const
+    const std::map<std::string, std::unique_ptr<llvm::Module>> &getModules() const
     {
         return modules_;
     }
@@ -31,16 +33,11 @@ public:
     {
         auto module = std::make_unique<llvm::Module>(moduleName, context_);
         llvm::Module *modulePtr = module.get();
-        modules_.push_back(std::move(module));
+        modules_[moduleName] = std::move(module);
         return modulePtr;
     }
 
-    void compileProgram(ASTProgram *program)
-    {
-        // TODO Get explicit module name declaration from the program.
-
-        delete program;
-    }
+    void compileProgram(ASTProgram *program, const std::string &filePath);
 };
 
 #endif // CODEGEN_LLVM_HPP
