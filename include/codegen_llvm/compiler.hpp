@@ -8,7 +8,6 @@
 #include "options.hpp"
 
 void new_codegen_llvm(CodeGenLLVM_Options);
-void validateModuleName(const std::string &moduleName, const std::string &fileName);
 
 class CodeGenLLVM_Context
 {

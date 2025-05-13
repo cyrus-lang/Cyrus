@@ -29,7 +29,6 @@ IS			(u|U|l|L)*
 "#"										{ return(HASH); }
 "fn"									{ return(FUNCTION); }
 "import"								{ return(IMPORT); }
-"module"								{ return(MODULE); }
 "type"									{ return(TYPEDEF); }
 
 "struct"								{ return(STRUCT); }

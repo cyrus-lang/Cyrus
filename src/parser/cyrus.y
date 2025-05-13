@@ -14,7 +14,7 @@
     using EnumData = std::variant<ASTEnumVariant, std::pair<std::string, std::optional<ASTNodePtr>>, ASTFunctionDefinition>;
 }
 
-%token IMPORT MODULE TYPEDEF FUNCTION EXTERN STATIC VOLATILE REGISTER HASH 
+%token IMPORT TYPEDEF FUNCTION EXTERN STATIC VOLATILE REGISTER HASH 
 %token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
 %token UINT128 VOID CHAR BYTE STRING FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
 %token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
@@ -79,7 +79,6 @@
 %type <enumDataList> enumerator_list
 %type <enumData> enumerator
 
-%type <node> module_specifier
 %type <node> iteration_statement
 %type <node> parameter_declaration
 %type <node> constant_expression
@@ -123,10 +122,6 @@
 %define parse.error verbose
 %start translation_unit
 %%
-
-module_specifier
-    : MODULE import_submodules_list ';'                                         {  $$ = new ASTModuleDeclaration(*$2); delete $2; }
-    ;
 
 import_specifier
     : IMPORT import_submodules_list ';'                                         { $$ = new ASTImportStatement(*$2); delete $2; }
@@ -631,17 +626,6 @@ jump_statement
 
 translation_unit
     : /* empty */                                   { astProgram = new ASTProgram(ASTNodeList {}); }
-    | module_specifier                              { 
-                                                        if (astProgram) 
-                                                        {
-                                                            ASTProgram* program = static_cast<ASTProgram*>(astProgram);
-                                                            program->addStatement($1);
-                                                        } 
-                                                        else 
-                                                        {
-                                                            astProgram = new ASTProgram(ASTNodeList { $1 });
-                                                        }
-                                                    }
     | import_specifier                              { 
                                                         if (astProgram) 
                                                         {

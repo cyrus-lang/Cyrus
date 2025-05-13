@@ -32,14 +32,3 @@ void printASTAccessSpecifier(ASTAccessSpecifier accessSpecifier)
     }
     std::cout << std::endl;
 }
-
-const std::optional<std::string> ASTProgram::getModuleName()
-{
-    if (statements_[0]->getType() == ASTNode::NodeType::ModuleDeclaration)
-    {
-        ASTModuleDeclaration *moduleDeclaration = dynamic_cast<ASTModuleDeclaration *>(statements_[0]);
-        return moduleDeclaration->formatModulePath();
-    }
-
-    return std::nullopt;
-}

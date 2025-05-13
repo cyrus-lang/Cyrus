@@ -25,11 +25,6 @@ void new_codegen_llvm(CodeGenLLVM_Options opts)
 void CodeGenLLVM_Context::compileProgram(ASTProgram *program, const std::string &filePath)
 {
     std::string moduleName = util::getFileNameWithStem(filePath);
-    if (program->getModuleName().has_value())
-    {
-        moduleName = program->getModuleName().value();
-    }
-
     util::isValidModuleName(moduleName, filePath);
     llvm::Module *module = createModule(moduleName);
 
