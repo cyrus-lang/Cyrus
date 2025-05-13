@@ -107,7 +107,17 @@ add_library(cyrus_lib ${source_files})
 include_directories(${LLVM_INCLUDE_DIRS})
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS_LIST})
-llvm_map_components_to_libnames(llvm_libs support core irreader)
+llvm_map_components_to_libnames(llvm_libs
+    core
+    support 
+    irreader
+    nativecodegen
+    mc
+    X86
+    target
+    asmparser
+    asmprinter
+)
 
 # Add third party libraries
 include(FetchContent)

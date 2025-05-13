@@ -1,11 +1,20 @@
 #ifndef CODEGEN_LLVM_HPP
 #define CODEGEN_LLVM_HPP
 
-#include <map>
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/TargetParser/Host.h"
 #include <llvm/IR/LLVMContext.h>
 #include "llvm/IR/Module.h"
 #include "ast/ast.hpp"
 #include "options.hpp"
+#include <map>
 
 void new_codegen_llvm(CodeGenLLVM_Options);
 
@@ -30,16 +39,49 @@ class CodeGenLLVM_Context
 {
 private:
     llvm::LLVMContext context_;
-    std::map<std::string, CodeGenLLVM_Module*> modules_;
+    std::map<std::string, CodeGenLLVM_Module *> modules_;
+    llvm::TargetMachine *targetMachine_;
+    std::string triple_;
 
 public:
-    explicit CodeGenLLVM_Context() {}
+    CodeGenLLVM_Context()
+    {
+        llvm::InitializeNativeTarget();
+        llvm::InitializeNativeTargetAsmPrinter();
+        llvm::InitializeNativeTargetAsmParser();
+
+        triple_ = llvm::sys::getDefaultTargetTriple();
+
+        std::string error;
+        const llvm::Target *target = llvm::TargetRegistry::lookupTarget(triple_, error);
+        if (!target)
+        {
+            llvm::errs() << "(Error) LLVM Failed to find target: " << error << "\n";
+            exit(1);
+        }
+
+        llvm::TargetOptions options;
+        auto RM = std::optional<llvm::Reloc::Model>();
+        llvm::TargetMachine *targetMachine = target->createTargetMachine(
+            triple_,
+            "generic",
+            "",
+            options,
+            RM
+        );
+
+        targetMachine_ = targetMachine;
+    }
     llvm::LLVMContext &getContext() { return context_; }
-    const std::map<std::string, CodeGenLLVM_Module*> &getModules() const { return modules_; }
+    const std::map<std::string, CodeGenLLVM_Module *> &getModules() const { return modules_; }
 
     CodeGenLLVM_Module *createModule(const std::string &moduleName)
     {
-        modules_.emplace(moduleName, new CodeGenLLVM_Module(context_, moduleName));
+        CodeGenLLVM_Module *module = new CodeGenLLVM_Module(context_, moduleName);
+        module->getModule()->setTargetTriple(triple_);
+        module->getModule()->setDataLayout(targetMachine_->createDataLayout());
+
+        modules_.emplace(moduleName, module);
         return modules_.at(moduleName);
     }
 };
