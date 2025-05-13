@@ -5,14 +5,19 @@
 
 void new_codegen_llvm(CodeGenLLVM_Options opts)
 {
-    CodeGenLLVM_Context ctx;
+    CodeGenLLVM_Context context;
 
     if (opts.getInputFile().has_value())
     {
         // compiler triggered to compile single files
         std::string filePath = opts.getInputFile().value();
         ASTProgram *program = parseProgram(filePath);
-        ctx.compileProgram(program, filePath);
+
+        std::string moduleName = util::getFileNameWithStem(filePath);
+        util::isValidModuleName(moduleName, filePath);
+        CodeGenLLVM_Module *module = context.createModule(moduleName);
+
+        module->compileProgram(program);
     }
     else
     {
@@ -22,14 +27,12 @@ void new_codegen_llvm(CodeGenLLVM_Options opts)
     }
 }
 
-void CodeGenLLVM_Context::compileProgram(ASTProgram *program, const std::string &filePath)
+void CodeGenLLVM_Module::compileProgram(ASTProgram *program)
 {
-    std::string moduleName = util::getFileNameWithStem(filePath);
-    util::isValidModuleName(moduleName, filePath);
-    llvm::Module *module = createModule(moduleName);
-
-    std::cout << moduleName << "\n";
-    // Start compiling statements
+    for (auto &&statement : program->getStatements())
+    {
+        statement->print(0);
+    }
 
     delete program;
 }

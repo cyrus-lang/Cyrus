@@ -9,34 +9,39 @@
 
 void new_codegen_llvm(CodeGenLLVM_Options);
 
+class CodeGenLLVM_Module
+{
+private:
+    std::unique_ptr<llvm::Module> module_;
+    llvm::LLVMContext &context_;
+    std::string filePath_;
+
+public:
+    CodeGenLLVM_Module(llvm::LLVMContext &context, const std::string &moduleName)
+        : module_(std::make_unique<llvm::Module>(moduleName, context)), context_(context), filePath_("") {}
+
+    llvm::Module *getModule() { return module_.get(); }
+    llvm::LLVMContext &getContext() { return context_; }
+    void compileProgram(ASTProgram *program);
+    const std::string &getFilePath() const { return filePath_; }
+};
+
 class CodeGenLLVM_Context
 {
 private:
     llvm::LLVMContext context_;
-    std::map<std::string, std::unique_ptr<llvm::Module>> modules_;
+    std::map<std::string, CodeGenLLVM_Module*> modules_;
 
 public:
-    CodeGenLLVM_Context() {}
+    explicit CodeGenLLVM_Context() {}
+    llvm::LLVMContext &getContext() { return context_; }
+    const std::map<std::string, CodeGenLLVM_Module*> &getModules() const { return modules_; }
 
-    llvm::LLVMContext &getContext()
+    CodeGenLLVM_Module *createModule(const std::string &moduleName)
     {
-        return context_;
+        modules_.emplace(moduleName, new CodeGenLLVM_Module(context_, moduleName));
+        return modules_.at(moduleName);
     }
-
-    const std::map<std::string, std::unique_ptr<llvm::Module>> &getModules() const
-    {
-        return modules_;
-    }
-
-    llvm::Module *createModule(const std::string &moduleName)
-    {
-        auto module = std::make_unique<llvm::Module>(moduleName, context_);
-        llvm::Module *modulePtr = module.get();
-        modules_[moduleName] = std::move(module);
-        return modulePtr;
-    }
-
-    void compileProgram(ASTProgram *program, const std::string &filePath);
 };
 
 #endif // CODEGEN_LLVM_HPP
