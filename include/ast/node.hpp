@@ -41,7 +41,8 @@ public:
         ContinueStatement,
         BreakStatement,
         ForStatement,
-        IfStatement
+        IfStatement,
+        ModuleDeclaration
     };
 
     virtual ~ASTNode() = default;

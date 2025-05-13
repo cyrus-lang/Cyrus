@@ -368,6 +368,34 @@ public:
     }
 };
 
+class ASTModuleDeclaration : public ASTNode
+{
+private:
+    std::vector<std::string> modulePath_;
+
+public:
+    ASTModuleDeclaration(std::vector<std::string> modulePath) : modulePath_(modulePath) {}
+    NodeType getType() const override { return NodeType::ModuleDeclaration; }
+    const std::vector<std::string> &getModulePath() const { return modulePath_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "ModuleDeclaration: " << std::endl;
+        printIndent(indent + 1);
+        std::cout << "Module Name: ";
+        for (size_t i = 0; i < modulePath_.size(); ++i)
+        {
+            std::cout << modulePath_[i];
+            if (i < modulePath_.size() - 1)
+            {
+                std::cout << "::";
+            }
+        }
+        std::cout << std::endl;
+    }
+};
+
 class ASTImportStatement : public ASTNode
 {
 private:
@@ -1166,7 +1194,8 @@ public:
         : name_(name), variants_(variants), fields_(fields), methods_(methods), accessSpecifier_(accessSpecifier)
     {
     }
-    ~ASTEnumDefinition() {
+    ~ASTEnumDefinition()
+    {
         for (auto &&item : fields_)
         {
             if (item.second.has_value())

@@ -14,12 +14,12 @@
     using EnumData = std::variant<ASTEnumVariant, std::pair<std::string, std::optional<ASTNodePtr>>, ASTFunctionDefinition>;
 }
 
-%token UINT128 VOID CHAR BYTE STRING FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
+%token IMPORT MODULE TYPEDEF FUNCTION EXTERN STATIC VOLATILE REGISTER HASH 
 %token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
+%token UINT128 VOID CHAR BYTE STRING FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
 %token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR CONTINUE BREAK RETURN
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
-%token IMPORT TYPEDEF FUNCTION EXTERN STATIC VOLATILE REGISTER HASH 
 %token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
 %token XOR_ASSIGN OR_ASSIGN STRUCT ENUM ELLIPSIS CONST
 %token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN 
@@ -79,6 +79,7 @@
 %type <enumDataList> enumerator_list
 %type <enumData> enumerator
 
+%type <node> module_specifier
 %type <node> iteration_statement
 %type <node> parameter_declaration
 %type <node> constant_expression
@@ -122,6 +123,10 @@
 %define parse.error verbose
 %start translation_unit
 %%
+
+module_specifier
+    : MODULE import_submodules_list ';'                                         {  $$ = new ASTModuleDeclaration(*$2); delete $2; }
+    ;
 
 import_specifier
     : IMPORT import_submodules_list ';'                                         { $$ = new ASTImportStatement(*$2); delete $2; }
@@ -622,8 +627,21 @@ jump_statement
     | RETURN expression ';'                         { $$ = new ASTReturnStatement($2); }
     ;
 
+
+
 translation_unit
     : /* empty */                                   { astProgram = new ASTProgram(ASTNodeList {}); }
+    | module_specifier                              { 
+                                                        if (astProgram) 
+                                                        {
+                                                            ASTProgram* program = static_cast<ASTProgram*>(astProgram);
+                                                            program->addStatement($1);
+                                                        } 
+                                                        else 
+                                                        {
+                                                            astProgram = new ASTProgram(ASTNodeList { $1 });
+                                                        }
+                                                    }
     | import_specifier                              { 
                                                         if (astProgram) 
                                                         {

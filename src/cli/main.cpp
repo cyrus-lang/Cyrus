@@ -10,7 +10,8 @@
 #include "util/util.hpp"
 #include "parser/parser.hpp"
 #include "parser/cyrus.tab.hpp"
-#include "codegen_c/codegen_c.hpp"
+#include "codegen_llvm/options.hpp"
+#include "codegen_llvm/compiler.hpp"
 
 void compileCommandHelp()
 {
@@ -18,13 +19,15 @@ void compileCommandHelp()
     std::cout << std::endl;
     std::cout << "Compile a Cyrus source file." << std::endl;
     std::cout << "Options:" << std::endl;
-    std::cout << "  -o, --output=<dirpath>      Specify the output directory for the compiled executable." << std::endl;
-    std::cout << "  -h, --help                  Display this help message." << std::endl;
+    std::cout << "  -o, --output=<dirpath>       Specify the output directory for the final executable." << std::endl;
+    std::cout << "      --build-dir=<dirpath>    Specify the directory to store intermediate build files" << std::endl;
+    std::cout << "                               such as object files and LLVM IR." << std::endl;
+    std::cout << "  -h, --help                   Display this help message." << std::endl;
 }
 
-CodeGenCOptions collectCodeGenCOptions(argh::parser &cmdl)
+CodeGenLLVM_Options collectCompilerOptions(argh::parser &cmdl, CodeGenLLVM_OutputKind outputKind)
 {
-    CodeGenCOptions opts;
+    CodeGenLLVM_Options opts;
 
     if (cmdl.size() < 3)
     {
@@ -39,136 +42,136 @@ CodeGenCOptions collectCodeGenCOptions(argh::parser &cmdl)
         exit(1);
     }
 
-    std::optional<std::string> outputDirectory;
+    std::optional<std::string> outputPath;
 
     for (auto &param : cmdl.params())
     {
         if (param.first == "o" || param.first == "output")
-            outputDirectory = param.second;
+            outputPath = param.second;
+        if (param.first == "build-dir")
+            outputPath = param.second;
     }
 
-    if (!outputDirectory.has_value())
-        opts.setOutputDirectory("./build");
-    else
-        opts.setOutputDirectory(outputDirectory.value());
+    if (outputPath.has_value())
+        opts.setOutputPath(outputPath.value());
+
+    std::vector<std::string> inputFiles;
+    for (auto it = cmdl.begin() + 2; it != cmdl.end(); ++it)
+    {
+        util::checkInputFileExtension(*it);
+        inputFiles.push_back(*it);
+    }
+
+    if (inputFiles.size() > 0)
+        opts.setInputFiles(inputFiles);
+
+    opts.setOutputKind(outputKind);
 
     return opts;
 }
 
 void compileCommand(argh::parser &cmdl)
 {
-    std::string inputFile = cmdl[2];
-    util::checkInputFileExtension(inputFile);
+    if (cmdl[{"-h", "--help"}])
+    {
+        compileCommandHelp();
+        exit(1);
+    }
 
-    ASTProgram *program = parseProgram(inputFile);
-
-    std::string fileName = util::getFileNameWithStem(inputFile);
-    util::isValidModuleName(fileName, inputFile);
-
-    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
-
-    std::string headModuleName = fileName;
-    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
-
-    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
-    headModule->addSourceFile(sourceFile);
-
-    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::Executable, opts);
-    codegen_c->generate();
-    codegen_c->compile();
+    CodeGenLLVM_Options opts = collectCompilerOptions(cmdl, CodeGenLLVM_OutputKind::Executable);
+    new_codegen_llvm(opts);
 }
 
 void compileDylibCommand(argh::parser &cmdl)
 {
-    std::string inputFile = cmdl[2];
-    util::checkInputFileExtension(inputFile);
+    // std::string inputFile = cmdl[2];
+    // util::checkInputFileExtension(inputFile);
 
-    ASTProgram *program = parseProgram(inputFile);
+    // ASTProgram *program = parseProgram(inputFile);
 
-    std::string fileName = util::getFileNameWithStem(inputFile);
-    util::isValidModuleName(fileName, inputFile);
+    // std::string fileName = util::getFileNameWithStem(inputFile);
+    // util::isValidModuleName(fileName, inputFile);
 
-    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+    // CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
 
-    std::string headModuleName = fileName;
-    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
+    // std::string headModuleName = fileName;
+    // CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
 
-    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
-    headModule->addSourceFile(sourceFile);
+    // CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
+    // headModule->addSourceFile(sourceFile);
 
-    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::DynamicLibrary, opts);
-    codegen_c->generate();
-    codegen_c->compile();
+    // CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::DynamicLibrary, opts);
+    // codegen_c->generate();
+    // codegen_c->compile();
 }
 
 void compileStaticlibCommand(argh::parser &cmdl)
 {
-    std::string inputFile = cmdl[2];
-    util::checkInputFileExtension(inputFile);
+    // std::string inputFile = cmdl[2];
+    // util::checkInputFileExtension(inputFile);
 
-    ASTProgram *program = parseProgram(inputFile);
+    // ASTProgram *program = parseProgram(inputFile);
 
-    std::string fileName = util::getFileNameWithStem(inputFile);
-    util::isValidModuleName(fileName, inputFile);
+    // std::string fileName = util::getFileNameWithStem(inputFile);
+    // util::isValidModuleName(fileName, inputFile);
 
-    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+    // CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
 
-    std::string headModuleName = fileName;
-    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
+    // std::string headModuleName = fileName;
+    // CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
 
-    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
-    headModule->addSourceFile(sourceFile);
+    // CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
+    // headModule->addSourceFile(sourceFile);
 
-    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::StaticLibrary, opts);
-    codegen_c->generate();
-    codegen_c->compile();
+    // CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::StaticLibrary, opts);
+    // codegen_c->generate();
+    // codegen_c->compile();
 }
-
 
 void compileObjCommand(argh::parser &cmdl)
 {
-    std::string inputFile = cmdl[2];
-    util::checkInputFileExtension(inputFile);
+    // std::string inputFile = cmdl[2];
+    // util::checkInputFileExtension(inputFile);
 
-    ASTProgram *program = parseProgram(inputFile);
+    // ASTProgram *program = parseProgram(inputFile);
 
-    std::string fileName = util::getFileNameWithStem(inputFile);
-    util::isValidModuleName(fileName, inputFile);
+    // std::string fileName = util::getFileNameWithStem(inputFile);
+    // util::isValidModuleName(fileName, inputFile);
 
-    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+    // CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
 
-    std::string headModuleName = fileName;
-    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
+    // std::string headModuleName = fileName;
+    // CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
 
-    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
-    headModule->addSourceFile(sourceFile);
+    // CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
+    // headModule->addSourceFile(sourceFile);
 
-    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::ObjectFile, opts);
-    codegen_c->generate();
-    codegen_c->compile();
+    // CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::ObjectFile, opts);
+    // codegen_c->generate();
+    // codegen_c->compile();
 }
 
 void compileAsmCommand(argh::parser &cmdl)
 {
-    std::string inputFile = cmdl[2];
-    util::checkInputFileExtension(inputFile);
+    // std::string inputFile = cmdl[2];
+    // util::checkInputFileExtension(inputFile);
 
-    ASTProgram *program = parseProgram(inputFile);
+    // ASTProgram *program = parseProgram(inputFile);
 
-    std::string fileName = util::getFileNameWithStem(inputFile);
-    util::isValidModuleName(fileName, inputFile);
+    // std::string fileName = util::getFileNameWithStem(inputFile);
+    // util::isValidModuleName(fileName, inputFile);
 
-    CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
+    // CodeGenCOptions opts = collectCodeGenCOptions(cmdl);
 
-    std::string headModuleName = fileName;
-    CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
+    // std::string headModuleName = fileName;
+    // CodeGenCModule *headModule = new CodeGenCModule(opts, headModuleName);
 
-    CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
-    headModule->addSourceFile(sourceFile);
+    // CodeGenCSourceFile *sourceFile = new CodeGenCSourceFile(program, headModuleName);
+    // headModule->addSourceFile(sourceFile);
 
-    CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::Assembly, opts);
-    codegen_c->generate();
-    codegen_c->compile();
+    // CodeGenC *codegen_c = new CodeGenC(headModule, CodeGenC::OutputKind::Assembly, opts);
+    // codegen_c->generate();
+    // codegen_c->compile();
 }
 
 void runCommand(argh::parser &cmdl)

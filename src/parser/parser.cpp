@@ -25,5 +25,13 @@ ASTProgram *parseProgram(const std::string &inputFile)
 
     fclose(yyin);
     yylex_destroy();
+
+    if (!astProgram)
+    {
+        std::cerr << "(Error) ASTProgram is not initialized correctly." << std::endl;
+        std::cerr << "        File: " << inputFile << std::endl;
+        std::exit(1);
+    }
+
     return (ASTProgram *)astProgram;
 }

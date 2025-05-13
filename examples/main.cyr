@@ -1,9 +1,5 @@
-// Comment
+module foo::bar;
 
-// Hello
-//aaa
-
-/* hello world */
 fn main() {
 
 }
