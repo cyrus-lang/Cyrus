@@ -21,13 +21,13 @@ enum class CodeGenLLVM_OutputKind
 class CodeGenLLVM_Options
 {
 private:
-    std::string outputPath_;
+    std::optional<std::string> outputPath_;
     std::optional<std::string> buildDirectory_;
     std::optional<std::string> inputFile_;
     CodeGenLLVM_OutputKind outputKind_;
 
 public:
-    std::string getOutputPath() const { return outputPath_; }
+    std::optional<std::string> getOutputPath() const { return outputPath_; }
     void setOutputPath(const std::string &outputPath) { outputPath_ = outputPath; }
 
     std::optional<std::string> getBuildDirectory() const { return buildDirectory_; }

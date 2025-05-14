@@ -36,11 +36,18 @@ public:
 
     llvm::Module *getModule() { return module_.get(); }
     llvm::LLVMContext &getContext() { return context_; }
-    void compileProgram(ASTProgram *program);
+    void buildProgramIR(ASTProgram *program);
     const std::string &getFilePath() const { return filePath_; }
 
     CodeGenLLVM_Type *compileType(ASTNodePtr node);
     void compileFunctionDefinition(ASTNodePtr node);
+    void compileGlobalVariableDeclaration(ASTNodePtr node);
+    llvm::Value *compileIntegerLiteral(ASTNodePtr node);
+    llvm::Value *compileFloatLiteral(ASTNodePtr node);
+    llvm::Value *compileStringLiteral(ASTNodePtr node);
+    llvm::Value *compileBoolLiteral(ASTNodePtr node);
+    llvm::Value *compileLiteral(ASTNodePtr node);
+    llvm::Value *compileExpr(ASTNodePtr node);
 };
 
 class CodeGenLLVM_Context
@@ -100,6 +107,8 @@ public:
         modules_.emplace(moduleName, module);
         return modules_.at(moduleName);
     }
+
+    void saveIR(const std::string &outputPath);
 };
 
 #endif // CODEGEN_LLVM_HPP

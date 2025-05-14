@@ -61,7 +61,7 @@ CodeGenLLVM_Type *CodeGenLLVM_Module::compileType(ASTNodePtr node)
     case ASTTypeSpecifier::ASTInternalType::Const:
     {
         CodeGenLLVM_Type *innerType = compileType(typeSpecifier->getInner());
-        innerType->setConstant();
+        innerType->setConst();
         return innerType;
     }
     case ASTTypeSpecifier::ASTInternalType::String:

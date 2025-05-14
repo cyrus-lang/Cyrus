@@ -91,11 +91,11 @@ enum class ASTAccessSpecifier
 enum class ASTStorageClassSpecifier
 {
     Extern,
-    Static,
-    Register
+    Inline,
 };
 
-void printASTAccessSpecifier(ASTAccessSpecifier accessSpecifier);
+const std::string formatAccessSpecifier(ASTAccessSpecifier accessSpecifier);
+void printAccessSpecifier(ASTAccessSpecifier accessSpecifier);
 
 class ASTIntegerLiteral : public ASTNode
 {
@@ -450,7 +450,7 @@ public:
         type_.print(indent);
 
         printIndent(indent + 1);
-        printASTAccessSpecifier(accessSpecifier_);
+        printAccessSpecifier(accessSpecifier_);
     }
 };
 
@@ -607,7 +607,7 @@ public:
         }
 
         printIndent(indent + 1);
-        printASTAccessSpecifier(accessSpecifier_);
+        printAccessSpecifier(accessSpecifier_);
 
         if (storageClassSpecifier_.has_value())
         {
@@ -618,11 +618,8 @@ public:
             case ASTStorageClassSpecifier::Extern:
                 std::cout << "Extern";
                 break;
-            case ASTStorageClassSpecifier::Static:
-                std::cout << "Static";
-                break;
-            case ASTStorageClassSpecifier::Register:
-                std::cout << "Register";
+            case ASTStorageClassSpecifier::Inline:
+                std::cout << "Inline";
                 break;
             default:
                 std::cout << "Unknown";
@@ -688,7 +685,7 @@ public:
         }
 
         printIndent(indent + 1);
-        printASTAccessSpecifier(accessSpecifier_);
+        printAccessSpecifier(accessSpecifier_);
 
         if (storageClassSpecifier_.has_value())
         {
@@ -699,11 +696,8 @@ public:
             case ASTStorageClassSpecifier::Extern:
                 std::cout << "Extern";
                 break;
-            case ASTStorageClassSpecifier::Static:
-                std::cout << "Static";
-                break;
-            case ASTStorageClassSpecifier::Register:
-                std::cout << "Register";
+            case ASTStorageClassSpecifier::Inline:
+                std::cout << "Inline";
                 break;
             default:
                 std::cout << "Unknown";
@@ -765,6 +759,78 @@ public:
     }
 };
 
+class ASTGlobalVariableDeclaration : public ASTNode
+{
+private:
+    std::string name_;
+    ASTTypeSpecifier *type_;
+    ASTNodePtr initializer_;
+    ASTAccessSpecifier accessSpecifier_;
+    std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
+
+public:
+    ASTGlobalVariableDeclaration(std::string name, ASTTypeSpecifier *type, ASTNodePtr initializer = nullptr, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default, std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
+        : name_(name), type_(type), initializer_(initializer), accessSpecifier_(accessSpecifier), storageClassSpecifier_(storageClassSpecifier) {}
+    ~ASTGlobalVariableDeclaration()
+    {
+        delete initializer_;
+        delete type_;
+    }
+
+    NodeType getType() const override { return NodeType::VariableDeclaration; }
+    const std::string &getName() const { return name_; }
+    ASTTypeSpecifier *getTypeValue() const { return type_; }
+    ASTNodePtr getInitializer() const { return initializer_; }
+    ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+    std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "GlobalVariableDeclaration: " << std::endl;
+
+        printIndent(indent + 1);
+        std::cout << "Name: " << name_ << std::endl;
+
+        if (type_)
+        {
+            printIndent(indent + 1);
+            std::cout << "Type: ";
+            type_->print(indent);
+        }
+
+        printIndent(indent + 1);
+        printAccessSpecifier(accessSpecifier_);
+
+        if (storageClassSpecifier_.has_value())
+        {
+            printIndent(indent + 1);
+            std::cout << "Storage Class Specifier: ";
+            switch (storageClassSpecifier_.value())
+            {
+            case ASTStorageClassSpecifier::Extern:
+                std::cout << "Extern";
+                break;
+            case ASTStorageClassSpecifier::Inline:
+                std::cout << "Inline";
+                break;
+            default:
+                std::cout << "Unknown";
+                break;
+            }
+            std::cout << std::endl;
+        }
+
+        if (initializer_)
+        {
+            printIndent(indent + 1);
+            std::cout << "Initializer:" << std::endl;
+            initializer_->print(indent + 2);
+            std::cout << std::endl;
+        }
+    }
+};
+
 class ASTStructField : public ASTNode
 {
 private:
@@ -794,7 +860,7 @@ public:
         type_.print(indent);
 
         printIndent(indent + 1);
-        printASTAccessSpecifier(accessSpecifier_);
+        printAccessSpecifier(accessSpecifier_);
     }
 };
 
@@ -828,7 +894,7 @@ public:
         }
 
         printIndent(indent + 1);
-        printASTAccessSpecifier(accessSpecifier_);
+        printAccessSpecifier(accessSpecifier_);
 
         printIndent(indent + 1);
         std::cout << "Members:" << std::endl;
@@ -1196,7 +1262,7 @@ public:
         }
 
         printIndent(indent + 1);
-        printASTAccessSpecifier(accessSpecifier_);
+        printAccessSpecifier(accessSpecifier_);
 
         printIndent(indent + 1);
         std::cout << "Variants:" << std::endl;

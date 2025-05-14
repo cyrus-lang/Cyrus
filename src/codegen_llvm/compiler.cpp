@@ -1,7 +1,8 @@
 #include <iostream>
-#include <util/util.hpp>
-#include <parser/parser.hpp>
+#include "util/util.hpp"
+#include "parser/parser.hpp"
 #include "codegen_llvm/compiler.hpp"
+#include <llvm/Support/FileSystem.h>
 
 void new_codegen_llvm(CodeGenLLVM_Options opts)
 {
@@ -17,7 +18,39 @@ void new_codegen_llvm(CodeGenLLVM_Options opts)
         util::isValidModuleName(moduleName, filePath);
         CodeGenLLVM_Module *module = context.createModule(moduleName, filePath);
 
-        module->compileProgram(program);
+        module->buildProgramIR(program);
+
+        std::string outputPath;
+        if (opts.getOutputPath().has_value())
+        {
+            outputPath = opts.getOutputPath().value();
+        }
+        else if (opts.getBuildDirectory().has_value())
+        {
+            outputPath = opts.getBuildDirectory().value() + "/" + LLVMIR_DIR;
+        }
+        else
+        {
+            std::cerr << "(Error) Output path is not specified." << std::endl;
+            std::cerr << "        Build directory is not specified too. Consider to specify one these options to continue compilation." << std::endl;
+            exit(1);
+        }
+
+        switch (opts.getOutputKind())
+        {
+        case CodeGenLLVM_OutputKind::LLVMIR:
+        {
+            context.saveIR(outputPath);
+            std::cout << "(Success) LLVM IR files are saved to " << outputPath << std::endl;
+        }
+        break;
+        default:
+        {
+            std::cerr << "(Error) Unsupported output kind." << std::endl;
+            exit(1);
+        }
+        break;
+        }
     }
     else
     {
@@ -27,12 +60,36 @@ void new_codegen_llvm(CodeGenLLVM_Options opts)
     }
 }
 
-void CodeGenLLVM_Module::compileProgram(ASTProgram *program)
+void CodeGenLLVM_Context::saveIR(const std::string &outputPath)
+{
+    util::ensureDirectoryExists(outputPath);
+
+    for (auto &&module : modules_)
+    {
+        std::string moduleName = module.first;
+        std::string filePath = outputPath + "/" + moduleName + ".ll";
+        std::error_code ec;
+        llvm::raw_fd_ostream dest(filePath, ec, llvm::sys::fs::OF_None);
+
+        if (ec)
+        {
+            llvm::errs() << "(Error) Could not open file: " << ec.message();
+            exit(1);
+        }
+
+        module.second->getModule()->print(dest, nullptr);
+    }
+}
+
+void CodeGenLLVM_Module::buildProgramIR(ASTProgram *program)
 {
     for (auto &&statement : program->getStatements())
     {
         switch (statement->getType())
         {
+        case ASTNode::NodeType::VariableDeclaration:
+            compileGlobalVariableDeclaration(statement);
+            break;
         case ASTNode::NodeType::FunctionDefinition:
             compileFunctionDefinition(statement);
             break;

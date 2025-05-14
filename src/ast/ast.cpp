@@ -1,34 +1,39 @@
 #include "ast/ast.hpp"
 
-void printASTAccessSpecifier(ASTAccessSpecifier accessSpecifier)
+const std::string formatAccessSpecifier(ASTAccessSpecifier accessSpecifier)
 {
-    std::cout << "Access Specifier: ";
     switch (accessSpecifier)
     {
     case ASTAccessSpecifier::Public:
-        std::cout << "Public";
+        return "public";
         break;
     case ASTAccessSpecifier::Private:
-        std::cout << "Private";
+        return "private";
         break;
     case ASTAccessSpecifier::Abstract:
-        std::cout << "Abstract";
+        return "abstract";
         break;
     case ASTAccessSpecifier::Virtual:
-        std::cout << "Virtual";
+        return "virtual";
         break;
     case ASTAccessSpecifier::Override:
-        std::cout << "Override";
+        return "override";
         break;
     case ASTAccessSpecifier::Protected:
-        std::cout << "Protected";
+        return "protected";
         break;
     case ASTAccessSpecifier::Default:
-        std::cout << "Default";
+        return "default";
         break;
     default:
-        std::cout << "Unknown";
+        return "unknown";
         break;
     }
+}
+
+void printAccessSpecifier(ASTAccessSpecifier accessSpecifier)
+{
+    std::cout << "Access Specifier: ";
+    std::cout << formatAccessSpecifier(accessSpecifier);
     std::cout << std::endl;
 }

@@ -72,15 +72,14 @@ IS			(u|U|l|L)*
 "do"									{ return(DO); }
 "else"									{ return(ELSE); }
 "enum"									{ return(ENUM); }
-"extern"								{ return(EXTERN); }
 "for"									{ return(FOR); }
 "if"									{ return(IF); }
 "return"								{ return(RETURN); }
 "switch"								{ return(SWITCH); }
 "while"									{ return(WHILE); }
 
-"static"								{ return(STATIC); }
-"register"								{ return(REGISTER); }
+"extern"								{ return(EXTERN); }
+"inline"								{ return(INLINE); }
 
 "..."									{ return(ELLIPSIS); }
 ">>="									{ return(RIGHT_ASSIGN); }

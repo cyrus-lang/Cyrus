@@ -13,17 +13,8 @@
 #include "codegen_llvm/options.hpp"
 #include "codegen_llvm/compiler.hpp"
 
-void compileCommandHelp()
-{
-    std::cout << "Usage: cyrus compile <input_file> [options]" << std::endl;
-    std::cout << std::endl;
-    std::cout << "Compile a Cyrus source file." << std::endl;
-    std::cout << "Options:" << std::endl;
-    std::cout << "  -o, --output=<dirpath>       Specify the output directory for the final executable." << std::endl;
-    std::cout << "      --build-dir=<dirpath>    Specify the directory to store intermediate build files" << std::endl;
-    std::cout << "                               such as object files and LLVM IR." << std::endl;
-    std::cout << "  -h, --help                   Display this help message." << std::endl;
-}
+void compileCommandHelp();
+void llvmIRCommandHelp();
 
 CodeGenLLVM_Options collectCompilerOptions(argh::parser &cmdl, CodeGenLLVM_OutputKind outputKind)
 {
@@ -42,18 +33,13 @@ CodeGenLLVM_Options collectCompilerOptions(argh::parser &cmdl, CodeGenLLVM_Outpu
         exit(1);
     }
 
-    std::optional<std::string> outputPath;
-
     for (auto &param : cmdl.params())
     {
         if (param.first == "o" || param.first == "output")
-            outputPath = param.second;
+            opts.setOutputPath(param.second);
         if (param.first == "build-dir")
-            outputPath = param.second;
+            opts.setBuildDirectory(param.second);
     }
-
-    if (outputPath.has_value())
-        opts.setOutputPath(outputPath.value());
 
     util::checkInputFileExtension(cmdl[2]);
     opts.setInputFile(cmdl[2]);
@@ -72,6 +58,18 @@ void compileCommand(argh::parser &cmdl)
     }
 
     CodeGenLLVM_Options opts = collectCompilerOptions(cmdl, CodeGenLLVM_OutputKind::Executable);
+    new_codegen_llvm(opts);
+}
+
+void llvmIRCommand(argh::parser &cmdl)
+{
+    if (cmdl[{"-h", "--help"}])
+    {
+        llvmIRCommandHelp();
+        exit(1);
+    }
+
+    CodeGenLLVM_Options opts = collectCompilerOptions(cmdl, CodeGenLLVM_OutputKind::LLVMIR);
     new_codegen_llvm(opts);
 }
 
@@ -242,6 +240,7 @@ void helpCommand()
     std::cout << "  compile-staticlib       Compile source code into a static library." << std::endl;
     std::cout << "  compile-obj             Compile source code into an object file." << std::endl;
     std::cout << "  compile-asm             Compile source code into assembly code." << std::endl;
+    std::cout << "  llvmir                  Compile source code into llvm-ir." << std::endl;
     std::cout << "  parse-only              Parse and visit source tree." << std::endl;
     std::cout << "  lex-only                Lex and visit tokens." << std::endl;
     std::cout << "  help                    Display this help message." << std::endl;
@@ -272,6 +271,8 @@ int main(int argc, char *argv[])
             compileObjCommand(cmdl);
         else if (command == "compile-asm")
             compileAsmCommand(cmdl);
+        else if (command == "llvmir")
+            llvmIRCommand(cmdl);
         else if (command == "parse-only")
             parseOnlyCommand(cmdl);
         else if (command == "lex-only")
@@ -292,4 +293,28 @@ int main(int argc, char *argv[])
     }
 
     return 0;
+}
+
+void compileCommandHelp()
+{
+    std::cout << "Usage: cyrus compile <input_file> [options]" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Compile a Cyrus source file." << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  -o, --output=<dirpath>       Specify the output directory for the final executable." << std::endl;
+    std::cout << "      --build-dir=<dirpath>    Specify the directory to store intermediate build files" << std::endl;
+    std::cout << "                               such as object files and LLVM IR." << std::endl;
+    std::cout << "  -h, --help                   Display this help message." << std::endl;
+}
+
+void llvmIRCommandHelp()
+{
+    std::cout << "Usage: cyrus llvmir <input_file> [options]" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Compile Cyrus source files into llvm-ir." << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  -o, --output=<dirpath>       Specify the output directory for the llvm-ir files." << std::endl;
+    std::cout << "      --build-dir=<dirpath>    Specify the directory to store intermediate build files" << std::endl;
+    std::cout << "                               such as object files and LLVM IR." << std::endl;
+    std::cout << "  -h, --help                   Display this help message." << std::endl;
 }

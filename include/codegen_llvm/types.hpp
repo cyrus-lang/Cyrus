@@ -49,6 +49,15 @@ public:
     CodeGenLLVM_Type(CodeGenLLVM_Type *nested, TypeKind kind)
         : typeKind_(kind), payload_(nested) {}
 
+    ~CodeGenLLVM_Type()
+    {
+        if ((typeKind_ == TypeKind::Pointer || typeKind_ == TypeKind::Reference) &&
+            std::holds_alternative<CodeGenLLVM_Type *>(payload_))
+        {
+            delete std::get<CodeGenLLVM_Type *>(payload_);
+        }
+    }
+
     static CodeGenLLVM_Type *createPointerType(CodeGenLLVM_Type *pointee)
     {
         return new CodeGenLLVM_Type(pointee, TypeKind::Pointer);
@@ -61,7 +70,7 @@ public:
 
     TypeKind getKind() const { return typeKind_; }
     bool isConst() const { return isConst_; }
-    void setConstant() { isConst_ = true; }
+    void setConst() { isConst_ = true; }
 
     llvm::Type *getLLVMType() const
     {

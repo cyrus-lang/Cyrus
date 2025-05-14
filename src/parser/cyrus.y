@@ -14,7 +14,7 @@
     using EnumData = std::variant<ASTEnumVariant, std::pair<std::string, std::optional<ASTNodePtr>>, ASTFunctionDefinition>;
 }
 
-%token IMPORT TYPEDEF FUNCTION EXTERN STATIC REGISTER HASH 
+%token IMPORT TYPEDEF FUNCTION EXTERN INLINE HASH 
 %token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
 %token UINT128 VOID CHAR BYTE STRING FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
 %token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
@@ -79,6 +79,7 @@
 %type <enumDataList> enumerator_list
 %type <enumData> enumerator
 
+%type <node> global_variable_declaration
 %type <node> iteration_statement
 %type <node> parameter_declaration
 %type <node> constant_expression
@@ -306,8 +307,7 @@ declaration
 
 storage_class_specifier
     : EXTERN                         { $$ = ASTStorageClassSpecifier::Extern; }
-    | STATIC                         { $$ = ASTStorageClassSpecifier::Static; }
-    | REGISTER                       { $$ = ASTStorageClassSpecifier::Register; }
+    | INLINE                         { $$ = ASTStorageClassSpecifier::Inline; }
     ;
 
 access_specifier
@@ -655,7 +655,7 @@ translation_unit
 external_declaration                                
     : function_definition                                                   { $$ = $1; }    
     | function_declaration                                                  { $$ = $1; }    
-    | declaration                                                           { $$ = $1; }
+    | global_variable_declaration                                           { $$ = $1; }
     ;
 
 function_definition
@@ -694,6 +694,21 @@ variable_declaration
     | HASH IDENTIFIER '=' assignment_expression ';'                         { $$ = new ASTVariableDeclaration($2, nullptr, $4); free($2); }
     | HASH IDENTIFIER ':' type_specifier '=' assignment_expression ';'      { $$ = new ASTVariableDeclaration($2, $4, $6); free($2); }
     ;
+
+global_variable_declaration 
+    : IDENTIFIER ':' type_specifier ';'                                                                         { $$ = new ASTGlobalVariableDeclaration($1, $3); free($1); }
+    | IDENTIFIER '=' assignment_expression ';'                                                                  { $$ = new ASTGlobalVariableDeclaration($1, nullptr, $3); free($1); }
+    | IDENTIFIER ':' type_specifier '=' assignment_expression ';'                                               { $$ = new ASTGlobalVariableDeclaration($1, $3, $5); free($1); }
+    | access_specifier IDENTIFIER ':' type_specifier ';'                                                        { $$ = new ASTGlobalVariableDeclaration($2, $4); free($2); }
+    | access_specifier IDENTIFIER '=' assignment_expression ';'                                                 { $$ = new ASTGlobalVariableDeclaration($2, nullptr, $4); free($2); }
+    | access_specifier IDENTIFIER ':' type_specifier '=' assignment_expression ';'                              { $$ = new ASTGlobalVariableDeclaration($2, $4, $6); free($2); }
+    | access_specifier storage_class_specifier IDENTIFIER ':' type_specifier ';'                                { $$ = new ASTGlobalVariableDeclaration($3, $5, nullptr, $1, $2); free($3); }
+    | access_specifier storage_class_specifier IDENTIFIER '=' assignment_expression ';'                         { $$ = new ASTGlobalVariableDeclaration($3, nullptr, $5, $1, $2); free($3); }
+    | access_specifier storage_class_specifier IDENTIFIER ':' type_specifier '=' assignment_expression ';'      { $$ = new ASTGlobalVariableDeclaration($3, $5, $7, $1, $2); free($3); }
+    | storage_class_specifier IDENTIFIER ':' type_specifier ';'                                                 { $$ = new ASTGlobalVariableDeclaration($2, $4, nullptr, ASTAccessSpecifier::Default, $1); free($2); }
+    | storage_class_specifier IDENTIFIER '=' assignment_expression ';'                                          { $$ = new ASTGlobalVariableDeclaration($2, nullptr, $4, ASTAccessSpecifier::Default, $1); free($2); }
+    | storage_class_specifier IDENTIFIER ':' type_specifier '=' assignment_expression ';'                       { $$ = new ASTGlobalVariableDeclaration($2, $4, $6, ASTAccessSpecifier::Default, $1); free($2); }
+    ;                   
 
 %%
 
