@@ -81,7 +81,6 @@ IS			(u|U|l|L)*
 
 "static"								{ return(STATIC); }
 "register"								{ return(REGISTER); }
-"volatile"								{ return(VOLATILE); }
 
 "..."									{ return(ELLIPSIS); }
 ">>="									{ return(RIGHT_ASSIGN); }

@@ -14,7 +14,7 @@
     using EnumData = std::variant<ASTEnumVariant, std::pair<std::string, std::optional<ASTNodePtr>>, ASTFunctionDefinition>;
 }
 
-%token IMPORT TYPEDEF FUNCTION EXTERN STATIC VOLATILE REGISTER HASH 
+%token IMPORT TYPEDEF FUNCTION EXTERN STATIC REGISTER HASH 
 %token CLASS PUBLIC PRIVATE INTERFACE ABSTRACT VIRTUAL OVERRIDE PROTECTED
 %token UINT128 VOID CHAR BYTE STRING FLOAT32 FLOAT64 FLOAT128 BOOL ERROR 
 %token INT INT8 INT16 INT32 INT64 INT128 UINT UINT8 UINT16 UINT32 UINT64
@@ -473,16 +473,7 @@ base_type
     ;
 
 qualified_type_specifier
-    : CONST VOLATILE base_type                          { 
-                                                            ASTTypeSpecifier* inner = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Volatile, $3);
-                                                            $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Const, inner);
-                                                        }
-    | VOLATILE CONST base_type                          { 
-                                                            ASTTypeSpecifier* inner = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Const, $3);
-                                                            $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Volatile, inner);
-                                                        }
-    | CONST base_type                                   { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Const, $2); }
-    | VOLATILE base_type                                { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Volatile, $2); }
+    : CONST base_type                                   { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Const, $2); }
     | base_type                                         { $$ = $1; }
     ;
 
@@ -493,7 +484,7 @@ pointer_type
 
 address_type
     : type_specifier '&'
-        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::AddressOf, $1); }
+        { $$ = new ASTTypeSpecifier(ASTTypeSpecifier::ASTInternalType::Reference, $1); }
     ;
 
 primitive_type_specifier

@@ -15,7 +15,7 @@ void new_codegen_llvm(CodeGenLLVM_Options opts)
 
         std::string moduleName = util::getFileNameWithStem(filePath);
         util::isValidModuleName(moduleName, filePath);
-        CodeGenLLVM_Module *module = context.createModule(moduleName);
+        CodeGenLLVM_Module *module = context.createModule(moduleName, filePath);
 
         module->compileProgram(program);
     }
@@ -31,7 +31,17 @@ void CodeGenLLVM_Module::compileProgram(ASTProgram *program)
 {
     for (auto &&statement : program->getStatements())
     {
-        statement->print(0);
+        switch (statement->getType())
+        {
+        case ASTNode::NodeType::FunctionDefinition:
+            compileFunctionDefinition(statement);
+            break;
+
+        default:
+            std::cerr << "Feature not implemented yet." << std::endl;
+            exit(1);
+            break;
+        }
     }
 
     delete program;

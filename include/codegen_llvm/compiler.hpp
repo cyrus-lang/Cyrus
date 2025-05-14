@@ -12,8 +12,10 @@
 #include "llvm/TargetParser/Host.h"
 #include <llvm/IR/LLVMContext.h>
 #include "llvm/IR/Module.h"
+#include "llvm/IR/IRBuilder.h"
 #include "ast/ast.hpp"
 #include "options.hpp"
+#include "types.hpp"
 #include <map>
 
 void new_codegen_llvm(CodeGenLLVM_Options);
@@ -23,16 +25,22 @@ class CodeGenLLVM_Module
 private:
     std::unique_ptr<llvm::Module> module_;
     llvm::LLVMContext &context_;
+    llvm::IRBuilder<> builder_;
     std::string filePath_;
 
 public:
-    CodeGenLLVM_Module(llvm::LLVMContext &context, const std::string &moduleName)
-        : module_(std::make_unique<llvm::Module>(moduleName, context)), context_(context), filePath_("") {}
+    CodeGenLLVM_Module(llvm::LLVMContext &context, const std::string &moduleName, const std::string &filePath)
+        : module_(std::make_unique<llvm::Module>(moduleName, context)), context_(context), builder_(context), filePath_(filePath)
+    {
+    }
 
     llvm::Module *getModule() { return module_.get(); }
     llvm::LLVMContext &getContext() { return context_; }
     void compileProgram(ASTProgram *program);
     const std::string &getFilePath() const { return filePath_; }
+
+    CodeGenLLVM_Type *compileType(ASTNodePtr node);
+    void compileFunctionDefinition(ASTNodePtr node);
 };
 
 class CodeGenLLVM_Context
@@ -67,17 +75,25 @@ public:
             "generic",
             "",
             options,
-            RM
-        );
+            RM);
 
         targetMachine_ = targetMachine;
     }
+    ~CodeGenLLVM_Context()
+    {
+        for (auto &pair : modules_)
+        {
+            delete pair.second;
+        }
+        delete targetMachine_;
+    }
+
     llvm::LLVMContext &getContext() { return context_; }
     const std::map<std::string, CodeGenLLVM_Module *> &getModules() const { return modules_; }
 
-    CodeGenLLVM_Module *createModule(const std::string &moduleName)
+    CodeGenLLVM_Module *createModule(const std::string &moduleName, const std::string &filePath)
     {
-        CodeGenLLVM_Module *module = new CodeGenLLVM_Module(context_, moduleName);
+        CodeGenLLVM_Module *module = new CodeGenLLVM_Module(context_, moduleName, filePath);
         module->getModule()->setTargetTriple(triple_);
         module->getModule()->setDataLayout(targetMachine_->createDataLayout());
 

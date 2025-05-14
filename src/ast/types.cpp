@@ -48,14 +48,12 @@ std::string ASTTypeSpecifier::formatInternalType() const
         return "error";
     case ASTInternalType::Pointer:
         return "PointerOf";
-    case ASTInternalType::AddressOf:
-        return "AddressOf";
+    case ASTInternalType::Reference:
+        return "Reference";
     case ASTInternalType::Identifier:
         return "Identifier";
     case ASTInternalType::Const:
         return "Const";
-    case ASTInternalType::Volatile:
-        return "Volatile";
     default:
         return "Unknown Type";
     }

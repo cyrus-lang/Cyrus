@@ -18,6 +18,7 @@
         name = "cyrus-dev-shell";
 
         buildInputs = with pkgs; [
+          valgrind
           gcc
           libgcc
           gcc_multi

@@ -33,10 +33,9 @@ public:
         Bool,
         Error,
         Identifier, // nested
-        AddressOf,  // nested
+        Reference,  // nested
         Pointer,    // nested
         Const,      // nested
-        Volatile,   // nested
     };
 
     ASTTypeSpecifier(ASTInternalType type) : type_(type), inner_(nullptr) {}
@@ -48,7 +47,8 @@ public:
             throw std::runtime_error("Internal type " + formatInternalType() + " cannot have a inner value.");
         }
     }
-    ~ASTTypeSpecifier() {
+    ~ASTTypeSpecifier()
+    {
         delete inner_;
     }
 
@@ -59,7 +59,7 @@ public:
     std::string formatInternalType() const;
 
     void print(int indent) const override
-    {   
+    {
         if (type_ == ASTInternalType::Identifier)
         {
             std::cout << "Identifier";
@@ -80,7 +80,7 @@ private:
 
     bool allowedToHaveNestedValue() const
     {
-        return type_ == ASTInternalType::Pointer || type_ == ASTInternalType::AddressOf || type_ == ASTInternalType::Identifier || type_ == ASTInternalType::Const || type_ == ASTInternalType::Volatile;
+        return type_ == ASTInternalType::Pointer || type_ == ASTInternalType::Reference || type_ == ASTInternalType::Identifier || type_ == ASTInternalType::Const;
     }
 };
 
