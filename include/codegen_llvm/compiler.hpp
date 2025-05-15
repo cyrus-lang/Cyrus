@@ -39,15 +39,16 @@ public:
     void buildProgramIR(ASTProgram *program);
     const std::string &getFilePath() const { return filePath_; }
 
-    CodeGenLLVM_Type *compileType(ASTNodePtr node);
-    void compileFunctionDefinition(ASTNodePtr node);
-    void compileGlobalVariableDeclaration(ASTNodePtr node);
-    llvm::Value *compileIntegerLiteral(ASTNodePtr node);
-    llvm::Value *compileFloatLiteral(ASTNodePtr node);
-    llvm::Value *compileStringLiteral(ASTNodePtr node);
-    llvm::Value *compileBoolLiteral(ASTNodePtr node);
-    llvm::Value *compileLiteral(ASTNodePtr node);
-    llvm::Value *compileExpr(ASTNodePtr node);
+    CodeGenLLVM_Type *compileType(ASTNodePtr nodePtr);
+    void compileFunctionDefinition(ASTNodePtr nodePtr);
+    void compileGlobalVariableDeclaration(ASTNodePtr nodePtr);
+    llvm::Value *compileIntegerLiteral(ASTNodePtr nodePtr);
+    llvm::Value *compileFloatLiteral(ASTNodePtr nodePtr);
+    llvm::Value *compileStringLiteral(ASTNodePtr nodePtr);
+    llvm::Value *compileBoolLiteral(ASTNodePtr nodePtr);
+    llvm::Value *compileLiteral(ASTNodePtr nodePtr);
+    llvm::Value *compileExpr(ASTNodePtr nodePtr);
+    llvm::Value *compileStmt(ASTNodePtr nodePtr);
 };
 
 class CodeGenLLVM_Context

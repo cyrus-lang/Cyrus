@@ -1,5 +1,8 @@
-CONFIG: void* = 0;
+CONFIG: string = 0;
+
+#bb: int = 0;
 
 fn main() {
+
     #a: int = 0;
 }

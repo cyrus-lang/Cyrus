@@ -2,65 +2,59 @@
 #include "codegen_llvm/compiler.hpp"
 #include <llvm/IR/IRBuilder.h>
 
-llvm::Value *CodeGenLLVM_Module::compileIntegerLiteral(ASTNodePtr node)
+llvm::Value *CodeGenLLVM_Module::compileIntegerLiteral(ASTNodePtr nodePtr)
 {
-    ASTIntegerLiteral *intLiteral = static_cast<ASTIntegerLiteral *>(node);
+    ASTIntegerLiteral *intLiteral = static_cast<ASTIntegerLiteral *>(nodePtr);
     return llvm::ConstantInt::get(
         llvm::Type::getInt32Ty(context_),
         intLiteral->getValue());
 }
 
-llvm::Value *compileFloatLiteral(ASTNodePtr node)
+llvm::Value *compileFloatLiteral(ASTNodePtr nodePtr)
 {
     std::cerr << "not impl yet.";
     exit(1);
 }
 
-llvm::Value *CodeGenLLVM_Module::compileStringLiteral(ASTNodePtr node)
+llvm::Value *CodeGenLLVM_Module::compileStringLiteral(ASTNodePtr nodePtr)
 {
-    ASTStringLiteral *stringLiteral = static_cast<ASTStringLiteral *>(node);
+    ASTStringLiteral *stringLiteral = static_cast<ASTStringLiteral *>(nodePtr);
     llvm::Value *str = builder_.CreateGlobalStringPtr(stringLiteral->getValue());
 }
 
-llvm::Value *CodeGenLLVM_Module::compileBoolLiteral(ASTNodePtr node)
+llvm::Value *CodeGenLLVM_Module::compileBoolLiteral(ASTNodePtr nodePtr)
 {
     std::cerr << "not impl yet.";
     exit(1);
 }
 
-llvm::Value *CodeGenLLVM_Module::compileFloatLiteral(ASTNodePtr node)
+llvm::Value *CodeGenLLVM_Module::compileFloatLiteral(ASTNodePtr nodePtr)
 {
     std::cerr << "not impl yet.";
     exit(1);
 }
 
-llvm::Value *CodeGenLLVM_Module::compileLiteral(ASTNodePtr node)
+llvm::Value *CodeGenLLVM_Module::compileExpr(ASTNodePtr nodePtr)
 {
-    if (node->getType() == ASTNode::NodeType::IntegerLiteral)
+    switch (nodePtr->getType())
     {
-        return compileIntegerLiteral(node);
-    }
-    else if (node->getType() == ASTNode::NodeType::FloatLiteral)
+    case ASTNode::NodeType::IntegerLiteral:
+        return compileIntegerLiteral(nodePtr);
+        break;
+    case ASTNode::NodeType::FloatLiteral:
+        return compileFloatLiteral(nodePtr);
+        break;
+    case ASTNode::NodeType::StringLiteral:
+        return compileStringLiteral(nodePtr);
+        break;
+    // case ASTNode::NodeType::BoolLiteral:
+    //     return compileBoolLiteral(nodePtr);
+    //     break;
+    default:
     {
-        return compileFloatLiteral(node);
-    }
-    else if (node->getType() == ASTNode::NodeType::StringLiteral)
-    {
-        return compileStringLiteral(node);
-    }
-    // else if (node->getType() == ASTNode::NodeType::BooleanLiteral)
-    // {
-    //     return compileBoolLiteral(node);
-    // }
-    else
-    {
-        std::cerr << "(Error) Unknown literal." << std::endl;
+        std::cerr << "(Error) Unknown expression type." << std::endl;
         exit(1);
     }
-}
-
-llvm::Value *CodeGenLLVM_Module::compileExpr(ASTNodePtr node)
-{
-    std::cerr << "not impl yet.";
-    exit(1);
+    break;
+    }
 }

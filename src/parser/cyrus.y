@@ -104,7 +104,9 @@
 %type <node> function_definition
 %type <node> function_declaration
 %type <node> declaration
+%type <node> declaration_local
 %type <node> declaration_list
+%type <node> declaration_list_local
 %type <node> assignment_expression
 %type <node> postfix_expression
 %type <node> compound_statement
@@ -298,11 +300,18 @@ constant_expression
     ;
 
 declaration
-    : variable_declaration             { $$ = $1; }
-    | function_definition              { $$ = $1; }
+    : function_definition              { $$ = $1; }
     | typedef_specifier                { $$ = $1; }
     | struct_specifier                 { $$ = $1; }
     | enum_specifier                   { $$ = $1; }
+    ;
+
+declaration_local
+    : function_definition              { $$ = $1; }
+    | typedef_specifier                { $$ = $1; }
+    | struct_specifier                 { $$ = $1; }
+    | enum_specifier                   { $$ = $1; }
+    | variable_declaration             { $$ = $1; }
     ;
 
 storage_class_specifier
@@ -546,18 +555,33 @@ statement
 compound_statement                                              
     : '{' '}'                                               { $$ = new ASTStatementList(); }
     | '{' statement_list '}'                                { $$ = $2; }
-    | '{' declaration_list '}'                              { $$ = $2; }
+    | '{' declaration_list_local '}'                        { $$ = $2; }
     | '{' expression_statement '}'                          { $$ = new ASTStatementList($2); }
-    | '{' declaration_list statement_list '}'               { 
+    | '{' declaration_list_local statement_list '}'         { 
                                                                 ASTStatementList* list = static_cast<ASTStatementList*>($2);
                                                                 $$ = list;
                                                             }
-    | '{' declaration_list expression_statement '}'         {
+    | '{' declaration_list_local expression_statement '}'   {
                                                                 ASTStatementList* list = static_cast<ASTStatementList*>($2);
                                                                 list->addStatement($3);
-                                                                $$ = list;
                                                             }
     ;
+
+declaration_list_local
+    : declaration_local                                     { $$ = new ASTStatementList($1); }
+    | declaration_list declaration_local                    {
+                                                                if ($$) 
+                                                                {
+                                                                    ASTStatementList* list = static_cast<ASTStatementList*>($$);
+                                                                    list->addStatement($2);
+                                                                } 
+                                                                else 
+                                                                {
+                                                                    $$ = new ASTStatementList($2);
+                                                                }
+                                                            }
+    ;
+
 
 declaration_list
     : declaration                                           { $$ = new ASTStatementList($1); }
@@ -656,6 +680,7 @@ external_declaration
     : function_definition                                                   { $$ = $1; }    
     | function_declaration                                                  { $$ = $1; }    
     | global_variable_declaration                                           { $$ = $1; }
+    | declaration_list                                                      { $$ = $1; }
     ;
 
 function_definition

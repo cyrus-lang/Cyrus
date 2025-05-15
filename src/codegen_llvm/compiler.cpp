@@ -93,10 +93,8 @@ void CodeGenLLVM_Module::buildProgramIR(ASTProgram *program)
         case ASTNode::NodeType::FunctionDefinition:
             compileFunctionDefinition(statement);
             break;
-
         default:
-            std::cerr << "Feature not implemented yet." << std::endl;
-            exit(1);
+            compileStmt(statement);
             break;
         }
     }
