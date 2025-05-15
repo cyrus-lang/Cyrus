@@ -114,6 +114,31 @@ public:
     }
 };
 
+class ASTBoolLiteral : public ASTNode
+{
+private:
+    bool value_;
+
+public:
+    ASTBoolLiteral(bool value) : value_(value) {}
+    NodeType getType() const override { return NodeType::BoolLiteral; }
+    bool getValue() const { return value_; }
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "BoolLiteral: ";
+        if (value_)
+        {
+            std::cout << "true";
+        }
+        else
+        {
+            std::cout << "false";
+        }
+    }
+};
+
 class ASTFloatLiteral : public ASTNode
 {
 private:

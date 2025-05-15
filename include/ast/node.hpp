@@ -14,6 +14,7 @@ public:
         StatementList,
         VariableDeclaration,
         IntegerLiteral,
+        BoolLiteral,
         FloatLiteral,
         StringLiteral,
         Identifier,

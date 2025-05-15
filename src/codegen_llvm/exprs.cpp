@@ -34,8 +34,12 @@ CodeGenLLVM_Value CodeGenLLVM_Module::compileStringLiteral(ASTNodePtr nodePtr)
 
 CodeGenLLVM_Value CodeGenLLVM_Module::compileBoolLiteral(ASTNodePtr nodePtr)
 {
-    std::cerr << "not impl yet.";
-    exit(1);
+    ASTBoolLiteral *boolLiteral = static_cast<ASTBoolLiteral *>(nodePtr);
+    std::unique_ptr<ASTTypeSpecifier> astType = std::make_unique<ASTTypeSpecifier>(ASTTypeSpecifier::ASTInternalType::Bool);
+    std::unique_ptr<CodeGenLLVM_Type> type = std::unique_ptr<CodeGenLLVM_Type>(compileType(astType.get()));
+    int boolValue = boolLiteral->getValue() ? 1 : 0;
+    auto value = llvm::ConstantInt::get(type->getLLVMType(), boolValue);
+    return CodeGenLLVM_Value(value, *type);
 }
 
 CodeGenLLVM_Value CodeGenLLVM_Module::compileExpr(ASTNodePtr nodePtr)
@@ -48,9 +52,8 @@ CodeGenLLVM_Value CodeGenLLVM_Module::compileExpr(ASTNodePtr nodePtr)
         return compileFloatLiteral(nodePtr);
     case ASTNode::NodeType::StringLiteral:
         return compileStringLiteral(nodePtr);
-        // case ASTNode::NodeType::BoolLiteral:
-        //     return compileBoolLiteral(nodePtr);
-        //     break;
+    case ASTNode::NodeType::BoolLiteral:
+        return compileBoolLiteral(nodePtr);
     default:
     {
         std::cerr << "(Error) Unknown expression type." << std::endl;

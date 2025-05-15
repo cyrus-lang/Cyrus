@@ -63,6 +63,9 @@ IS			(u|U|l|L)*
 "bool"									{ return(BOOL); }
 "error"									{ return(ERROR); }
 
+"true"									{ return(TRUE_VAL); }
+"false"									{ return(FALSE_VAL); }
+
 "break"									{ return(BREAK); }
 "case"									{ return(CASE); }
 "char"									{ return(CHAR); }

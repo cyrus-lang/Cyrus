@@ -1,2 +1,2 @@
-CONFIG = "Taha";
+CONFIG: bool = false;
 

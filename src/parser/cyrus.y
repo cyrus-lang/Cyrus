@@ -23,6 +23,7 @@
 %token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
 %token XOR_ASSIGN OR_ASSIGN STRUCT ENUM ELLIPSIS CONST
 %token SUB_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN AND_ASSIGN 
+%token TRUE_VAL FALSE_VAL
 
 %union {
     std::pair<std::vector<ASTStructField>, std::vector<ASTFunctionDefinition>>* structMembersAndMethods;
@@ -141,6 +142,8 @@ primary_expression
     | INTEGER_CONSTANT                                                          { $$ = new ASTIntegerLiteral($1); }
     | FLOAT_CONSTANT                                                            { $$ = new ASTFloatLiteral($1); }
     | DOUBLE_CONSTANT                                                           { $$ = new ASTFloatLiteral($1); }
+    | TRUE_VAL                                                                  { $$ = new ASTBoolLiteral(true); }
+    | FALSE_VAL                                                                 { $$ = new ASTBoolLiteral(false); }
     | '(' expression ')'                                                        { $$ = $2; }
     ;
 
