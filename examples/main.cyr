@@ -1,2 +1,2 @@
-CONFIG: int = "Taha";
+CONFIG = "Taha";
 

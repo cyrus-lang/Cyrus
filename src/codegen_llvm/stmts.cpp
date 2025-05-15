@@ -2,7 +2,7 @@
 #include "codegen_llvm/compiler.hpp"
 #include <llvm/IR/IRBuilder.h>
 
-llvm::Value *CodeGenLLVM_Module::compileStmt(ASTNodePtr nodePtr)
+void CodeGenLLVM_Module::compileStmt(ASTNodePtr nodePtr)
 {
     switch (nodePtr->getType())
     {
@@ -11,9 +11,6 @@ llvm::Value *CodeGenLLVM_Module::compileStmt(ASTNodePtr nodePtr)
         exit(1);
         break;
     default:
-        return compileExpr(nodePtr);
         break;
     }
-
-    return nullptr;
 }

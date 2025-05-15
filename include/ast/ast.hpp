@@ -763,24 +763,31 @@ class ASTGlobalVariableDeclaration : public ASTNode
 {
 private:
     std::string name_;
-    ASTTypeSpecifier *type_;
-    ASTNodePtr initializer_;
+    std::optional<ASTTypeSpecifier *> type_;
+    std::optional<ASTNodePtr> initializer_;
     ASTAccessSpecifier accessSpecifier_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
 
 public:
-    ASTGlobalVariableDeclaration(std::string name, ASTTypeSpecifier *type, ASTNodePtr initializer = nullptr, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default, std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
+    ASTGlobalVariableDeclaration(std::string name, std::optional<ASTTypeSpecifier *> type, std::optional<ASTNodePtr> initializer, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default, std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
         : name_(name), type_(type), initializer_(initializer), accessSpecifier_(accessSpecifier), storageClassSpecifier_(storageClassSpecifier) {}
     ~ASTGlobalVariableDeclaration()
     {
-        delete initializer_;
-        delete type_;
+        if (initializer_.has_value())
+        {
+            delete initializer_.value();
+        }
+
+        if (type_.has_value())
+        {
+            delete type_.value();
+        }
     }
 
     NodeType getType() const override { return NodeType::VariableDeclaration; }
     const std::string &getName() const { return name_; }
-    ASTTypeSpecifier *getTypeValue() const { return type_; }
-    ASTNodePtr getInitializer() const { return initializer_; }
+    std::optional<ASTTypeSpecifier *> getTypeValue() const { return type_; }
+    std::optional<ASTNodePtr> getInitializer() const { return initializer_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
 
@@ -792,11 +799,11 @@ public:
         printIndent(indent + 1);
         std::cout << "Name: " << name_ << std::endl;
 
-        if (type_)
+        if (type_.has_value())
         {
             printIndent(indent + 1);
             std::cout << "Type: ";
-            type_->print(indent);
+            type_.value()->print(indent);
         }
 
         printIndent(indent + 1);
@@ -821,11 +828,11 @@ public:
             std::cout << std::endl;
         }
 
-        if (initializer_)
+        if (initializer_.has_value())
         {
             printIndent(indent + 1);
             std::cout << "Initializer:" << std::endl;
-            initializer_->print(indent + 2);
+            initializer_.value()->print(indent + 2);
             std::cout << std::endl;
         }
     }

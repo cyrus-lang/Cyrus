@@ -721,17 +721,17 @@ variable_declaration
     ;
 
 global_variable_declaration 
-    : IDENTIFIER ':' type_specifier ';'                                                                         { $$ = new ASTGlobalVariableDeclaration($1, $3); free($1); }
-    | IDENTIFIER '=' assignment_expression ';'                                                                  { $$ = new ASTGlobalVariableDeclaration($1, nullptr, $3); free($1); }
+    : IDENTIFIER ':' type_specifier ';'                                                                         { $$ = new ASTGlobalVariableDeclaration($1, $3, std::nullopt); free($1); }
+    | IDENTIFIER '=' assignment_expression ';'                                                                  { $$ = new ASTGlobalVariableDeclaration($1, std::nullopt, $3); free($1); }
     | IDENTIFIER ':' type_specifier '=' assignment_expression ';'                                               { $$ = new ASTGlobalVariableDeclaration($1, $3, $5); free($1); }
-    | access_specifier IDENTIFIER ':' type_specifier ';'                                                        { $$ = new ASTGlobalVariableDeclaration($2, $4); free($2); }
-    | access_specifier IDENTIFIER '=' assignment_expression ';'                                                 { $$ = new ASTGlobalVariableDeclaration($2, nullptr, $4); free($2); }
+    | access_specifier IDENTIFIER ':' type_specifier ';'                                                        { $$ = new ASTGlobalVariableDeclaration($2, $4, std::nullopt); free($2); }
+    | access_specifier IDENTIFIER '=' assignment_expression ';'                                                 { $$ = new ASTGlobalVariableDeclaration($2, std::nullopt, $4); free($2); }
     | access_specifier IDENTIFIER ':' type_specifier '=' assignment_expression ';'                              { $$ = new ASTGlobalVariableDeclaration($2, $4, $6); free($2); }
-    | access_specifier storage_class_specifier IDENTIFIER ':' type_specifier ';'                                { $$ = new ASTGlobalVariableDeclaration($3, $5, nullptr, $1, $2); free($3); }
-    | access_specifier storage_class_specifier IDENTIFIER '=' assignment_expression ';'                         { $$ = new ASTGlobalVariableDeclaration($3, nullptr, $5, $1, $2); free($3); }
+    | access_specifier storage_class_specifier IDENTIFIER ':' type_specifier ';'                                { $$ = new ASTGlobalVariableDeclaration($3, $5, std::nullopt, $1, $2); free($3); }
+    | access_specifier storage_class_specifier IDENTIFIER '=' assignment_expression ';'                         { $$ = new ASTGlobalVariableDeclaration($3, std::nullopt, $5, $1, $2); free($3); }
     | access_specifier storage_class_specifier IDENTIFIER ':' type_specifier '=' assignment_expression ';'      { $$ = new ASTGlobalVariableDeclaration($3, $5, $7, $1, $2); free($3); }
-    | storage_class_specifier IDENTIFIER ':' type_specifier ';'                                                 { $$ = new ASTGlobalVariableDeclaration($2, $4, nullptr, ASTAccessSpecifier::Default, $1); free($2); }
-    | storage_class_specifier IDENTIFIER '=' assignment_expression ';'                                          { $$ = new ASTGlobalVariableDeclaration($2, nullptr, $4, ASTAccessSpecifier::Default, $1); free($2); }
+    | storage_class_specifier IDENTIFIER ':' type_specifier ';'                                                 { $$ = new ASTGlobalVariableDeclaration($2, $4, std::nullopt, ASTAccessSpecifier::Default, $1); free($2); }
+    | storage_class_specifier IDENTIFIER '=' assignment_expression ';'                                          { $$ = new ASTGlobalVariableDeclaration($2, std::nullopt, $4, ASTAccessSpecifier::Default, $1); free($2); }
     | storage_class_specifier IDENTIFIER ':' type_specifier '=' assignment_expression ';'                       { $$ = new ASTGlobalVariableDeclaration($2, $4, $6, ASTAccessSpecifier::Default, $1); free($2); }
     ;                   
 

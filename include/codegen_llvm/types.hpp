@@ -3,6 +3,7 @@
 
 #include <variant>
 #include "llvm/IR/Type.h"
+#include "llvm/IR/IRBuilder.h"
 
 class CodeGenLLVM_Type
 {

@@ -15,6 +15,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "ast/ast.hpp"
 #include "options.hpp"
+#include "values.hpp"
 #include "types.hpp"
 #include <map>
 
@@ -39,16 +40,21 @@ public:
     void buildProgramIR(ASTProgram *program);
     const std::string &getFilePath() const { return filePath_; }
 
+    // Types
     CodeGenLLVM_Type *compileType(ASTNodePtr nodePtr);
+
+    // Statements
+    void compileStmt(ASTNodePtr nodePtr);
     void compileFunctionDefinition(ASTNodePtr nodePtr);
     void compileGlobalVariableDeclaration(ASTNodePtr nodePtr);
-    llvm::Value *compileIntegerLiteral(ASTNodePtr nodePtr);
-    llvm::Value *compileFloatLiteral(ASTNodePtr nodePtr);
-    llvm::Value *compileStringLiteral(ASTNodePtr nodePtr);
-    llvm::Value *compileBoolLiteral(ASTNodePtr nodePtr);
-    llvm::Value *compileLiteral(ASTNodePtr nodePtr);
-    llvm::Value *compileExpr(ASTNodePtr nodePtr);
-    llvm::Value *compileStmt(ASTNodePtr nodePtr);
+
+    // Expressions
+    CodeGenLLVM_Value compileExpr(ASTNodePtr nodePtr);
+    CodeGenLLVM_Value compileIntegerLiteral(ASTNodePtr nodePtr);
+    CodeGenLLVM_Value compileFloatLiteral(ASTNodePtr nodePtr);
+    CodeGenLLVM_Value compileStringLiteral(ASTNodePtr nodePtr);
+    CodeGenLLVM_Value compileBoolLiteral(ASTNodePtr nodePtr);
+    CodeGenLLVM_Value compileLiteral(ASTNodePtr nodePtr);
 };
 
 class CodeGenLLVM_Context

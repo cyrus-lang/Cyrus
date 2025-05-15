@@ -1,28 +1,65 @@
 #include <iostream>
 #include "ast/ast.hpp"
 #include "codegen_llvm/compiler.hpp"
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/GlobalVariable.h>
+
+llvm::GlobalVariable *createStringForGlobalVariable(
+    ASTNodePtr initializer,
+    llvm::LLVMContext &context_,
+    std::unique_ptr<llvm::Module> &module_);
 
 void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
 {
     ASTGlobalVariableDeclaration *varDecl = static_cast<ASTGlobalVariableDeclaration *>(node);
-    ASTTypeSpecifier *varType = static_cast<ASTTypeSpecifier *>(varDecl->getTypeValue());
     ASTAccessSpecifier accessSpecifier = varDecl->getAccessSpecifier();
     std::string varName = varDecl->getName();
 
-    CodeGenLLVM_Type *codegenType = compileType(varType);
-    llvm::Type *llvmType = codegenType->getLLVMType();
+    llvm::Type *llvmType = nullptr;
     llvm::GlobalValue::LinkageTypes linkage = llvm::GlobalValue::InternalLinkage;
 
-    llvm::Value *init = compileExpr(varDecl->getInitializer());
-    llvm::Constant *constInit;
-    if (init != nullptr)
+    llvm::Constant *constInit = nullptr;
+    bool isConstType = false;
+
+    if (varDecl->getTypeValue().has_value())
     {
-        constInit = llvm::dyn_cast<llvm::Constant>(init);
-        if (init && !constInit)
+        ASTTypeSpecifier *varType = static_cast<ASTTypeSpecifier *>(varDecl->getTypeValue().value());
+        CodeGenLLVM_Type *codegenType = compileType(varType);
+        llvmType = codegenType->getLLVMType();
+        isConstType = codegenType->isConst();
+    }
+
+    if (varDecl->getInitializer().has_value())
+    {
+        // cannot use `CreateGlobalStringPtr` to create a string literal
+        // because it will be a global variable, not a string literal
+        // that is why we override string construction here.
+        if (varDecl->getInitializer().value()->getType() == ASTNode::NodeType::StringLiteral)
         {
-            std::cerr << "(Error) Global variable initializer must be a constant." << std::endl;
-            exit(1);
+            constInit = createStringForGlobalVariable(varDecl->getInitializer().value(), context_, module_);
+            llvmType = llvm::PointerType::get(context_, 0);
         }
+        else
+        {
+            CodeGenLLVM_Value init = compileExpr(varDecl->getInitializer().value());
+            constInit = llvm::dyn_cast<llvm::Constant>(init.getLLVMValue());
+            if (!constInit)
+            {
+                std::cerr << "(Error) Global variable initializer must be a constant." << std::endl;
+                exit(1);
+            }
+        }
+    }
+
+    if (!varDecl->getTypeValue().has_value() && constInit == nullptr)
+    {
+        std::cerr << "(Error) Global variable type is not specified and initializer is not a constant." << std::endl;
+        exit(1);
+    }
+    else
+    {
+        // determine variable type from initializer
+        llvmType = constInit->getType();
     }
 
     bool publicSymbol = false;
@@ -64,21 +101,18 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     }
 
     // REVIEW Consider to make it smarter when adding multi-threading features.
-    //
     auto threadLocalMode = llvm::GlobalVariable::ThreadLocalMode::NotThreadLocal;
 
     llvm::GlobalVariable *globalVar = new llvm::GlobalVariable(
         *module_,
         llvmType,
-        codegenType->isConst(),
+        isConstType,
         linkage,
         constInit,
         varName,
         nullptr,
         threadLocalMode,
         0);
-
-    // globalVar->setAlignment(llvm::Align(varDecl->getAlignment()));
 
     if (publicSymbol)
     {
@@ -88,4 +122,24 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     {
         // TODO Add to local symbols
     }
+}
+
+llvm::GlobalVariable *createStringForGlobalVariable(
+    ASTNodePtr initializer,
+    llvm::LLVMContext &context_,
+    std::unique_ptr<llvm::Module> &module_)
+{
+    ASTStringLiteral *stringLiteral = static_cast<ASTStringLiteral *>(initializer);
+    llvm::Constant *strConstant = llvm::ConstantDataArray::getString(context_, stringLiteral->getValue(), true);
+    llvm::GlobalVariable *strVar = new llvm::GlobalVariable(
+        *module_.get(),
+        strConstant->getType(),
+        true,
+        llvm::GlobalValue::PrivateLinkage,
+        strConstant,
+        ".str");
+
+    strVar->setAlignment(llvm::MaybeAlign(1));
+    strVar->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+    return strVar;
 }
