@@ -1,8 +1,2 @@
-CONFIG: string = 0;
+CONFIG: int = "Taha";
 
-#bb: int = 0;
-
-fn main() {
-
-    #a: int = 0;
-}

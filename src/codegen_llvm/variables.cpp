@@ -12,7 +12,18 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     CodeGenLLVM_Type *codegenType = compileType(varType);
     llvm::Type *llvmType = codegenType->getLLVMType();
     llvm::GlobalValue::LinkageTypes linkage = llvm::GlobalValue::InternalLinkage;
-    llvm::Constant *initializer = nullptr;
+
+    llvm::Value *init = compileExpr(varDecl->getInitializer());
+    llvm::Constant *constInit;
+    if (init != nullptr)
+    {
+        constInit = llvm::dyn_cast<llvm::Constant>(init);
+        if (init && !constInit)
+        {
+            std::cerr << "(Error) Global variable initializer must be a constant." << std::endl;
+            exit(1);
+        }
+    }
 
     bool publicSymbol = false;
 
@@ -37,7 +48,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
 
         if (storageClassSpecifier == ASTStorageClassSpecifier::Extern)
         {
-            if (initializer != nullptr)
+            if (constInit != nullptr)
             {
                 std::cerr << "(Error) Extern storage class specifier cannot have an initializer." << std::endl;
                 exit(1);
@@ -61,7 +72,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         llvmType,
         codegenType->isConst(),
         linkage,
-        initializer,
+        constInit,
         varName,
         nullptr,
         threadLocalMode,

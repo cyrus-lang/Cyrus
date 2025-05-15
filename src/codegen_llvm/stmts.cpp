@@ -4,8 +4,16 @@
 
 llvm::Value *CodeGenLLVM_Module::compileStmt(ASTNodePtr nodePtr)
 {
-    std::cerr << "Feature not implemented yet." << std::endl;
-    exit(1);
+    switch (nodePtr->getType())
+    {
+    case ASTNode::NodeType::VariableDeclaration:
+        std::cerr << "variable declaration feature not implemented yet." << std::endl;
+        exit(1);
+        break;
+    default:
+        return compileExpr(nodePtr);
+        break;
+    }
 
     return nullptr;
 }
