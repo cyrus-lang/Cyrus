@@ -47,6 +47,7 @@ public:
     void compileStmt(ASTNodePtr nodePtr);
     void compileFunctionDefinition(ASTNodePtr nodePtr);
     void compileGlobalVariableDeclaration(ASTNodePtr nodePtr);
+    void compileVariableDeclaration(ASTNodePtr nodePtr);
 
     // Expressions
     CodeGenLLVM_Value compileExpr(ASTNodePtr nodePtr);
@@ -54,7 +55,6 @@ public:
     CodeGenLLVM_Value compileFloatLiteral(ASTNodePtr nodePtr);
     CodeGenLLVM_Value compileStringLiteral(ASTNodePtr nodePtr);
     CodeGenLLVM_Value compileBoolLiteral(ASTNodePtr nodePtr);
-    CodeGenLLVM_Value compileLiteral(ASTNodePtr nodePtr);
 };
 
 class CodeGenLLVM_Context

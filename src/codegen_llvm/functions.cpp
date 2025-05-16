@@ -3,13 +3,14 @@
 
 void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
 {
-    // ASTFunctionDefinition *funcDef = static_cast<ASTFunctionDefinition *>(node);
+    ASTFunctionDefinition *funcDef = static_cast<ASTFunctionDefinition *>(node);
+    std::string functionName = static_cast<ASTIdentifier *>(funcDef->getExpr())->getName();
+    ASTFunctionParameters params = funcDef->getParameters();
+    ASTNodePtr body = funcDef->getBody();
+    ASTTypeSpecifier *returnTypeNode = funcDef->getReturnType();
 
-    // std::string functionName = static_cast<ASTIdentifier *>(funcDef->getExpr())->getName();
-    // ASTFunctionParameters params = funcDef->getParameters();
-    // ASTNodePtr body = funcDef->getBody();
-    // ASTTypeSpecifier *returnTypeNode = funcDef->getReturnType();
-
+    funcDef->print(0);
+    
     // llvm::Type *returnType = nullptr;
     // if (returnTypeNode)
     // {

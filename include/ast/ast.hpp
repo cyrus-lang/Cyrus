@@ -8,45 +8,6 @@
 #include "node.hpp"
 #include "types.hpp"
 
-class ASTProgram : public ASTNode
-{
-private:
-    ASTNodeList statements_;
-
-public:
-    ASTProgram(ASTNodeList statements) : statements_(statements) {}
-    ~ASTProgram()
-    {
-        for (auto &statement : statements_)
-        {
-            delete statement;
-        }
-    }
-    NodeType getType() const override { return NodeType::Program; }
-    const ASTNodeList &getStatements() const { return statements_; }
-    void addStatement(ASTNodePtr statement) { statements_.push_back(statement); }
-
-    nlohmann::json jsonify() const override
-    {
-        nlohmann::json json;
-        for (const auto &stmt : statements_)
-        {
-            json.push_back(stmt->jsonify());
-        }
-        return json;
-    }
-
-    void print(int indent) const override
-    {
-        printIndent(indent);
-        std::cout << "Program:" << std::endl;
-        for (const auto &stmt : statements_)
-        {
-            stmt->print(indent + 1);
-        }
-    }
-};
-
 class ASTStatementList : public ASTNode
 {
 private:
@@ -74,6 +35,37 @@ public:
         {
             stmt->print(indent + 1);
         }
+    }
+};
+
+class ASTProgram : public ASTNode
+{
+private:
+    ASTNodePtr statementList_;
+
+public:
+    ASTProgram(ASTNodePtr statementList) : statementList_(statementList) {}
+    ~ASTProgram()
+    {
+        delete statementList_;
+    }
+
+    NodeType getType() const override { return NodeType::Program; }
+
+    ASTStatementList *getStatementList() const
+    {
+        ASTStatementList *statementsList = static_cast<ASTStatementList *>(statementList_);
+        return statementsList;
+    }
+
+    // TODO
+    nlohmann::json jsonify() const override {}
+
+    void print(int indent) const override
+    {
+        printIndent(indent);
+        std::cout << "Program:" << std::endl;
+        statementList_->print(indent + 1);
     }
 };
 

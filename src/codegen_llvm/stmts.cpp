@@ -7,10 +7,16 @@ void CodeGenLLVM_Module::compileStmt(ASTNodePtr nodePtr)
     switch (nodePtr->getType())
     {
     case ASTNode::NodeType::VariableDeclaration:
-        std::cerr << "variable declaration feature not implemented yet." << std::endl;
-        exit(1);
+        compileVariableDeclaration(nodePtr);
         break;
     default:
         break;
     }
+}
+
+void CodeGenLLVM_Module::compileVariableDeclaration(ASTNodePtr nodePtr)
+{
+    ASTVariableDeclaration *varDecl = static_cast<ASTVariableDeclaration *>(nodePtr);
+
+    varDecl->print(0);
 }

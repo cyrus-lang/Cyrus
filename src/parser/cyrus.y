@@ -125,6 +125,13 @@
 
 %define parse.error verbose
 %start translation_unit
+
+%initial-action
+{
+    ASTStatementList *statementList = new ASTStatementList();
+    astProgram = new ASTProgram(statementList);
+}
+
 %%
 
 import_specifier
@@ -643,39 +650,18 @@ jump_statement
 
 
 translation_unit
-    : /* empty */                                   { astProgram = new ASTProgram(ASTNodeList {}); }
-    | import_specifier                              { 
-                                                        if (astProgram) 
-                                                        {
-                                                            ASTProgram* program = static_cast<ASTProgram*>(astProgram);
-                                                            program->addStatement($1);
-                                                        } 
-                                                        else 
-                                                        {
-                                                            astProgram = new ASTProgram(ASTNodeList { $1 });
-                                                        }
+    : /* empty */                                   
+    | import_specifier                              {   
+                                                        ASTProgram* program = static_cast<ASTProgram*>(astProgram);
+                                                        program->getStatementList()->addStatement($1);
                                                     }
     | external_declaration                          { 
-                                                        if (astProgram) 
-                                                        {
-                                                            ASTProgram* program = static_cast<ASTProgram*>(astProgram);
-                                                            program->addStatement($1);
-                                                        } 
-                                                        else 
-                                                        {
-                                                            astProgram = new ASTProgram(ASTNodeList { $1 });
-                                                        }
+                                                        ASTProgram* program = static_cast<ASTProgram*>(astProgram);
+                                                        program->getStatementList()->addStatement($1);
                                                     }
     | translation_unit external_declaration         { 
-                                                        if (astProgram) 
-                                                        {
-                                                            ASTProgram* program = static_cast<ASTProgram*>(astProgram);
-                                                            program->addStatement($2);
-                                                        } 
-                                                        else 
-                                                        {
-                                                            astProgram = new ASTProgram(ASTNodeList { $2 });
-                                                        }
+                                                        ASTProgram* program = static_cast<ASTProgram*>(astProgram);
+                                                        program->getStatementList()->addStatement($2);
                                                     }
     ;
 
