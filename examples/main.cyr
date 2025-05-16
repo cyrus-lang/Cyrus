@@ -1,3 +1,11 @@
+import foo::bar;
+
 fn main() {
     
 }
+
+fn main() {
+    
+}
+
+

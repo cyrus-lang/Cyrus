@@ -7,17 +7,17 @@ void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
     std::string functionName = static_cast<ASTIdentifier *>(funcDef->getExpr())->getName();
     ASTFunctionParameters params = funcDef->getParameters();
     ASTNodePtr body = funcDef->getBody();
-    ASTTypeSpecifier *returnTypeNode = funcDef->getReturnType();
-
-    funcDef->print(0);
     
-    // llvm::Type *returnType = nullptr;
-    // if (returnTypeNode)
-    // {
-    //     returnType = compileType(returnTypeNode);
-    // }
-    // else
-    // {
-    //     returnType = llvm::Type::getVoidTy(*context_);
-    // }
+    llvm::Type *returnType;
+    if (funcDef->getReturnType().has_value())
+    {   
+        returnType = compileType(funcDef->getReturnType().value())->getLLVMType();
+    }
+    else
+    {
+        // returnType = llvm::Type::getVoidTy(context_);
+    }
+
+    std::cout << "Here\n";
+
 }

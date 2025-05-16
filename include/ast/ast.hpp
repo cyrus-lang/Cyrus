@@ -41,10 +41,13 @@ public:
 class ASTProgram : public ASTNode
 {
 private:
-    ASTNodePtr statementList_;
+    ASTStatementList *statementList_;
 
 public:
-    ASTProgram(ASTNodePtr statementList) : statementList_(statementList) {}
+    ASTProgram()
+    {
+        statementList_ = new ASTStatementList();
+    }
     ~ASTProgram()
     {
         delete statementList_;
@@ -52,10 +55,9 @@ public:
 
     NodeType getType() const override { return NodeType::Program; }
 
-    ASTStatementList *getStatementList() const
+    ASTStatementList *getStatementList()
     {
-        ASTStatementList *statementsList = static_cast<ASTStatementList *>(statementList_);
-        return statementsList;
+        return statementList_;
     }
 
     // TODO
@@ -574,31 +576,34 @@ class ASTFunctionDefinition : public ASTNode
 private:
     ASTNodePtr expr_;
     ASTFunctionParameters parameters_;
-    ASTTypeSpecifier *returnType_;
     ASTNodePtr body_;
     ASTAccessSpecifier accessSpecifier_;
+    std::optional<ASTTypeSpecifier *> returnType_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
 
 public:
     ASTFunctionDefinition(ASTNodePtr expr,
                           ASTFunctionParameters parameters,
-                          ASTTypeSpecifier *returnType,
+                          std::optional<ASTTypeSpecifier *> returnType,
                           ASTNodePtr body,
                           ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
                           std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
-        : expr_(expr), parameters_(parameters), returnType_(returnType), body_(body),
-          accessSpecifier_(accessSpecifier), storageClassSpecifier_(storageClassSpecifier) {}
+        : expr_(expr), parameters_(parameters), body_(body),
+          accessSpecifier_(accessSpecifier), returnType_(returnType), storageClassSpecifier_(storageClassSpecifier) {}
     ~ASTFunctionDefinition()
     {
         delete expr_;
         delete body_;
-        delete returnType_;
+        if (returnType_.has_value())
+        {
+            delete returnType_.value();
+        }
     }
 
     NodeType getType() const override { return NodeType::FunctionDefinition; }
     ASTNodePtr getExpr() const { return expr_; }
     ASTFunctionParameters getParameters() const { return parameters_; }
-    ASTTypeSpecifier *getReturnType() const { return returnType_; }
+    std::optional<ASTTypeSpecifier *> getReturnType() const { return returnType_; }
     ASTNodePtr getBody() const { return body_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
@@ -616,11 +621,11 @@ public:
             param.print(indent + 2);
         }
 
-        if (returnType_)
+        if (returnType_.has_value())
         {
             printIndent(indent + 1);
             std::cout << "Return Type: ";
-            returnType_->print(indent);
+            returnType_.value()->print(indent);
         }
 
         printIndent(indent + 1);
@@ -656,28 +661,31 @@ class ASTFunctionDeclaration : public ASTNode
 private:
     ASTNodePtr expr_;
     ASTFunctionParameters parameters_;
-    ASTTypeSpecifier *returnType_;
     ASTAccessSpecifier accessSpecifier_;
+    std::optional<ASTTypeSpecifier *> returnType_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
 
 public:
     ASTFunctionDeclaration(ASTNodePtr expr,
                            ASTFunctionParameters parameters,
-                           ASTTypeSpecifier *returnType,
+                           std::optional<ASTTypeSpecifier *> returnType,
                            ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
                            std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
-        : expr_(expr), parameters_(parameters), returnType_(returnType),
-          accessSpecifier_(accessSpecifier), storageClassSpecifier_(storageClassSpecifier) {}
+        : expr_(expr), parameters_(parameters),
+          accessSpecifier_(accessSpecifier), returnType_(returnType), storageClassSpecifier_(storageClassSpecifier) {}
     ~ASTFunctionDeclaration()
     {
         delete expr_;
-        delete returnType_;
+        if (returnType_.has_value())
+        {
+            delete returnType_.value();
+        }
     }
 
     NodeType getType() const override { return NodeType::FunctionDeclaration; }
     ASTNodePtr getExpr() const { return expr_; }
     ASTFunctionParameters getParameters() const { return parameters_; }
-    ASTTypeSpecifier *getReturnType() const { return returnType_; }
+    std::optional<ASTTypeSpecifier *> getReturnType() const { return returnType_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
 
@@ -694,11 +702,11 @@ public:
             param.print(indent + 2);
         }
 
-        if (returnType_)
+        if (returnType_.has_value())
         {
             printIndent(indent + 1);
             std::cout << "Return Type: ";
-            returnType_->print(indent);
+            returnType_.value()->print(indent);
         }
 
         printIndent(indent + 1);

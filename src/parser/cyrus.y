@@ -107,7 +107,6 @@
 %type <node> declaration
 %type <node> declaration_local
 %type <node> declaration_list
-%type <node> declaration_list_local
 %type <node> assignment_expression
 %type <node> postfix_expression
 %type <node> compound_statement
@@ -128,8 +127,7 @@
 
 %initial-action
 {
-    ASTStatementList *statementList = new ASTStatementList();
-    astProgram = new ASTProgram(statementList);
+    astProgram = new ASTProgram();
 }
 
 %%
@@ -307,13 +305,6 @@ expression
 
 constant_expression
     : conditional_expression                                                        { $$ = $1; }
-    ;
-
-declaration
-    : function_definition              { $$ = $1; }
-    | typedef_specifier                { $$ = $1; }
-    | struct_specifier                 { $$ = $1; }
-    | enum_specifier                   { $$ = $1; }
     ;
 
 declaration_local
@@ -565,40 +556,30 @@ statement
 compound_statement                                              
     : '{' '}'                                               { $$ = new ASTStatementList(); }
     | '{' statement_list '}'                                { $$ = $2; }
-    | '{' declaration_list_local '}'                        { $$ = $2; }
+    | '{' declaration_list '}'                              { $$ = $2; }
     | '{' expression_statement '}'                          { $$ = new ASTStatementList($2); }
-    | '{' declaration_list_local statement_list '}'         { 
+    | '{' declaration_list statement_list '}'               { 
                                                                 ASTStatementList* list = static_cast<ASTStatementList*>($2);
                                                                 $$ = list;
                                                             }
-    | '{' declaration_list_local expression_statement '}'   {
+    | '{' declaration_list expression_statement '}'         {
                                                                 ASTStatementList* list = static_cast<ASTStatementList*>($2);
                                                                 list->addStatement($3);
                                                             }
     ;
 
-declaration_list_local
-    : declaration_local                                     { $$ = new ASTStatementList($1); }
-    | declaration_list declaration_local                    {
-                                                                if ($$) 
-                                                                {
-                                                                    ASTStatementList* list = static_cast<ASTStatementList*>($$);
-                                                                    list->addStatement($2);
-                                                                } 
-                                                                else 
-                                                                {
-                                                                    $$ = new ASTStatementList($2);
-                                                                }
-                                                            }
+declaration
+    : typedef_specifier                { $$ = $1; }
+    | struct_specifier                 { $$ = $1; }
+    | enum_specifier                   { $$ = $1; }
     ;
-
 
 declaration_list
     : declaration                                           { $$ = new ASTStatementList($1); }
     | declaration_list declaration                          {
                                                                 if ($$) 
                                                                 {
-                                                                    ASTStatementList* list = static_cast<ASTStatementList*>($$);
+                                                                    ASTStatementList* list = static_cast<ASTStatementList *>($$);
                                                                     list->addStatement($2);
                                                                 } 
                                                                 else 
@@ -655,6 +636,10 @@ translation_unit
                                                         ASTProgram* program = static_cast<ASTProgram*>(astProgram);
                                                         program->getStatementList()->addStatement($1);
                                                     }
+    | translation_unit import_specifier             {   
+                                                        ASTProgram* program = static_cast<ASTProgram*>(astProgram);
+                                                        program->getStatementList()->addStatement($2);
+                                                    }
     | external_declaration                          { 
                                                         ASTProgram* program = static_cast<ASTProgram*>(astProgram);
                                                         program->getStatementList()->addStatement($1);
@@ -669,19 +654,19 @@ external_declaration
     : function_definition                                                   { $$ = $1; }    
     | function_declaration                                                  { $$ = $1; }    
     | global_variable_declaration                                           { $$ = $1; }
-    | declaration_list                                                      { $$ = $1; }
+    | declaration                                                           { $$ = $1; }
     ;
 
 function_definition
     : storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, nullptr, $8, $2, $1); free($4); delete $6; }
     | storage_class_specifier access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $2, $1); free($4); delete $6; }
-    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, nullptr, $8, $1, $2); free($4); delete $6; }
+    | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, std::nullopt, $8, $1, $2); free($4); delete $6; }
     | access_specifier storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($4), *$6, $8, $9, $1, $2); free($4); delete $6; }
-    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                           { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, nullptr, $7, $1); free($3); delete $5; }
+    | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                           { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, std::nullopt, $7, $1); free($3); delete $5; }
     | access_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, $7, $8, $1); free($3); delete $5; }
-    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, nullptr, $7, ASTAccessSpecifier::Default, $1); free($3); delete $5; }
+    | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                    { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, std::nullopt, $7, ASTAccessSpecifier::Default, $1); free($3); delete $5; }
     | storage_class_specifier FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement     { $$ = new ASTFunctionDefinition(new ASTIdentifier($3), *$5, $7, $8, ASTAccessSpecifier::Default, $1); free($3); delete $5; }
-    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, nullptr, $6); free($2); delete $4; }
+    | FUNCTION IDENTIFIER '(' parameter_list_optional ')' compound_statement                                            { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, std::nullopt, $6); free($2); delete $4; }
     | FUNCTION IDENTIFIER '(' parameter_list_optional ')' type_specifier compound_statement                             { $$ = new ASTFunctionDefinition(new ASTIdentifier($2), *$4, $6, $7); free($2); delete $4; }
     ;
 
