@@ -45,6 +45,7 @@ public:
 
     // Statements
     void compileStmt(ASTNodePtr nodePtr);
+    void compileStmts(ASTNodeList nodeList);
     void compileFunctionDefinition(ASTNodePtr nodePtr);
     void compileGlobalVariableDeclaration(ASTNodePtr nodePtr);
     void compileVariableDeclaration(ASTNodePtr nodePtr);

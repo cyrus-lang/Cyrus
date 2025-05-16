@@ -572,6 +572,7 @@ declaration
     : typedef_specifier                { $$ = $1; }
     | struct_specifier                 { $$ = $1; }
     | enum_specifier                   { $$ = $1; }
+    | variable_declaration             { $$ = $1; }
     ;
 
 declaration_list
@@ -690,7 +691,7 @@ parameter_list_optional
 
 variable_declaration 
     : HASH IDENTIFIER ':' type_specifier ';'                                { $$ = new ASTVariableDeclaration($2, $4); free($2); }
-    | HASH IDENTIFIER '=' assignment_expression ';'                         { $$ = new ASTVariableDeclaration($2, nullptr, $4); free($2); }
+    | HASH IDENTIFIER '=' assignment_expression ';'                         { $$ = new ASTVariableDeclaration($2, std::nullopt, $4); free($2); }
     | HASH IDENTIFIER ':' type_specifier '=' assignment_expression ';'      { $$ = new ASTVariableDeclaration($2, $4, $6); free($2); }
     ;
 

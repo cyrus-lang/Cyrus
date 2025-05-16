@@ -14,9 +14,10 @@ void CodeGenLLVM_Module::compileStmt(ASTNodePtr nodePtr)
     }
 }
 
-void CodeGenLLVM_Module::compileVariableDeclaration(ASTNodePtr nodePtr)
+void CodeGenLLVM_Module::compileStmts(ASTNodeList nodeList)
 {
-    ASTVariableDeclaration *varDecl = static_cast<ASTVariableDeclaration *>(nodePtr);
-
-    varDecl->print(0);
+    for (auto &&statement : nodeList)
+    {
+        compileStmt(statement);
+    }
 }

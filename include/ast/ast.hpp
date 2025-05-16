@@ -742,22 +742,29 @@ class ASTVariableDeclaration : public ASTNode
 {
 private:
     std::string name_;
-    ASTTypeSpecifier *type_;
-    ASTNodePtr initializer_;
+    std::optional<ASTTypeSpecifier *> type_;
+    std::optional<ASTNodePtr> initializer_;
 
 public:
-    ASTVariableDeclaration(std::string name, ASTTypeSpecifier *type, ASTNodePtr initializer = nullptr)
+    ASTVariableDeclaration(std::string name, std::optional<ASTTypeSpecifier *> type, std::optional<ASTNodePtr> initializer = std::nullopt)
         : name_(name), type_(type), initializer_(initializer) {}
     ~ASTVariableDeclaration()
     {
-        delete initializer_;
-        delete type_;
+        if (initializer_.has_value())
+        {
+            delete initializer_.value();
+        }
+
+        if (type_.has_value())
+        {
+            delete type_.value();
+        }
     }
 
     NodeType getType() const override { return NodeType::VariableDeclaration; }
     const std::string &getName() const { return name_; }
-    ASTTypeSpecifier *getTypeValue() const { return type_; }
-    ASTNodePtr getInitializer() const { return initializer_; }
+    std::optional<ASTTypeSpecifier *> getTypeValue() const { return type_; }
+    std::optional<ASTNodePtr> getInitializer() const { return initializer_; }
 
     void print(int indent) const override
     {
@@ -767,18 +774,18 @@ public:
         printIndent(indent + 1);
         std::cout << "Name: " << name_ << std::endl;
 
-        if (type_)
+        if (type_.has_value())
         {
             printIndent(indent + 1);
             std::cout << "Type: ";
-            type_->print(indent);
+            type_.value()->print(indent);
         }
 
-        if (initializer_)
+        if (initializer_.has_value())
         {
             printIndent(indent + 1);
             std::cout << "Initializer:" << std::endl;
-            initializer_->print(indent + 2);
+            initializer_.value()->print(indent + 2);
             std::cout << std::endl;
         }
     }

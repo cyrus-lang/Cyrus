@@ -3,6 +3,7 @@
 #include "codegen_llvm/compiler.hpp"
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/GlobalVariable.h>
+#include <llvm/IR/Instructions.h>
 
 llvm::GlobalVariable *createStringForGlobalVariable(
     ASTNodePtr initializer,
@@ -142,4 +143,44 @@ llvm::GlobalVariable *createStringForGlobalVariable(
     strVar->setAlignment(llvm::MaybeAlign(1));
     strVar->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     return strVar;
+}
+
+void CodeGenLLVM_Module::compileVariableDeclaration(ASTNodePtr nodePtr)
+{
+    ASTVariableDeclaration *varDecl = static_cast<ASTVariableDeclaration *>(nodePtr);
+
+    llvm::Type *llvmType = nullptr;
+    llvm::Constant *initValue = nullptr;
+
+    if (varDecl->getTypeValue().has_value())
+    {
+        ASTTypeSpecifier *varType = static_cast<ASTTypeSpecifier *>(varDecl->getTypeValue().value());
+        CodeGenLLVM_Type *codegenType = compileType(varType);
+        llvmType = codegenType->getLLVMType();
+    }
+
+    if (varDecl->getInitializer().has_value())
+    {
+        CodeGenLLVM_Value init = compileExpr(varDecl->getInitializer().value());
+        initValue = llvm::dyn_cast<llvm::Constant>(init.getLLVMValue());
+        if (!initValue)
+        {
+            std::cerr << "(Error) Variable initializer must be a constant." << std::endl;
+            exit(1);
+        }
+
+        if (!llvmType)
+        {
+            llvmType = initValue->getType();
+        }
+    }
+
+    // builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
+
+    llvm::AllocaInst *alloca = builder_.CreateAlloca(llvmType, nullptr, varDecl->getName());
+
+    if (initValue)
+    {
+        builder_.CreateStore(initValue, alloca);
+    }
 }

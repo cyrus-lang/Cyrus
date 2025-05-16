@@ -1,11 +1,3 @@
-import foo::bar;
-
 fn main() {
-    
+    #a: int;
 }
-
-fn main() {
-    
-}
-
-

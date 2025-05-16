@@ -83,8 +83,7 @@ void CodeGenLLVM_Context::saveIR(const std::string &outputPath)
 
 void CodeGenLLVM_Module::buildProgramIR(ASTProgram *program)
 {
-    ASTNodePtr statementsListNode = program->getStatementList()->getStatements()[0];
-    ASTNodeList statementsList = static_cast<ASTStatementList *>(statementsListNode)->getStatements();
+    ASTNodeList statementsList = program->getStatementList()->getStatements();
 
     for (auto &&statement : statementsList)
     {
@@ -99,6 +98,7 @@ void CodeGenLLVM_Module::buildProgramIR(ASTProgram *program)
         case ASTNode::NodeType::StatementList:
         {
             std::cerr << "(Error) Invalid program." << std::endl;
+            exit(1);
         }
         default:
             statement->print(0);

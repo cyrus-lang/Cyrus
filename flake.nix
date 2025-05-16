@@ -39,6 +39,8 @@
         ];
 
         shellHook = ''
+          export LLVM_INCLUDE_DIRECTORY="${pkgs.llvmPackages.llvm.dev}/include"
+
           export LIBRARY_PATH="${pkgs.gcc_multi}/lib:${pkgs.libxml2}/lib:${pkgs.flex}/lib:${pkgs.bison}/lib:${pkgs.zlib}/lib:$LIBRARY_PATH"
           export LD_LIBRARY_PATH="${pkgs.gcc_multi}/lib:${pkgs.libxml2}/lib:${pkgs.flex}/lib:${pkgs.bison}/lib:${pkgs.zlib}/lib:$LIBRARY_PATH"
           export ZLIB_LIBRARY="${pkgs.zlib}/lib"
