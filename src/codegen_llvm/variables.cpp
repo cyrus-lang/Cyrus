@@ -28,6 +28,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         CodeGenLLVM_Type *codegenType = compileType(varType);
         llvmType = codegenType->getLLVMType();
         isConstType = codegenType->isConst();
+        delete codegenType;
     }
 
     if (varDecl->getInitializer().has_value())
@@ -157,6 +158,7 @@ void CodeGenLLVM_Module::compileVariableDeclaration(ASTNodePtr nodePtr)
         ASTTypeSpecifier *varType = static_cast<ASTTypeSpecifier *>(varDecl->getTypeValue().value());
         CodeGenLLVM_Type *codegenType = compileType(varType);
         llvmType = codegenType->getLLVMType();
+        delete codegenType;
     }
 
     if (varDecl->getInitializer().has_value())

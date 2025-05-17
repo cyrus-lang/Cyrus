@@ -19,7 +19,7 @@ all: build run
 cmake:
 	@echo "===== Configuring CMake ====="
 	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && cmake ..
+	@cd $(BUILD_DIR) && cmake -DCMAKE_BUILD_TYPE=Debug ..
 
 # Build target
 build: cmake

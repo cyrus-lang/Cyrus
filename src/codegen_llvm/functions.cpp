@@ -1,5 +1,6 @@
 #include "ast/ast.hpp"
 #include "codegen_llvm/compiler.hpp"
+#include "codegen_llvm/types.hpp"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Type.h"
@@ -17,7 +18,9 @@ void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
     llvm::Type *returnType;
     if (funcDef->getReturnType().has_value())
     {
-        returnType = compileType(funcDef->getReturnType().value())->getLLVMType();
+        CodeGenLLVM_Type *codegenType = compileType(funcDef->getReturnType().value());
+        returnType = codegenType->getLLVMType();
+        delete codegenType;
     }
     else
     {
