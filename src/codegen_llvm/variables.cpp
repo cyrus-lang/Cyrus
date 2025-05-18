@@ -1,7 +1,10 @@
 #include <iostream>
+#include <memory>
 #include "ast/ast.hpp"
 #include "codegen_llvm/compiler.hpp"
 #include "codegen_llvm/scope.hpp"
+#include "codegen_llvm/types.hpp"
+#include "codegen_llvm/values.hpp"
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instructions.h>
@@ -17,6 +20,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     ASTAccessSpecifier accessSpecifier = varDecl->getAccessSpecifier();
     std::string varName = varDecl->getName();
 
+    std::shared_ptr<CodeGenLLVM_Type> codegenType = nullptr;
     llvm::Type *llvmType = nullptr;
     llvm::GlobalValue::LinkageTypes linkage = llvm::GlobalValue::InternalLinkage;
 
@@ -26,10 +30,9 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     if (varDecl->getTypeValue().has_value())
     {
         ASTTypeSpecifier *varType = static_cast<ASTTypeSpecifier *>(varDecl->getTypeValue().value());
-        CodeGenLLVM_Type *codegenType = compileType(varType);
+        codegenType = compileType(varType);
         llvmType = codegenType->getLLVMType();
         isConstType = codegenType->isConst();
-        delete codegenType;
     }
 
     if (varDecl->getInitializer().has_value())
@@ -44,8 +47,8 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         }
         else
         {
-            CodeGenLLVM_EValue init = compileExpr(std::nullopt, varDecl->getInitializer().value());
-            constInit = llvm::dyn_cast<llvm::Constant>(init.asValue()->getLLVMValue());
+            auto init = compileExpr(std::nullopt, varDecl->getInitializer().value());
+            constInit = llvm::dyn_cast<llvm::Constant>(init->asValue()->getLLVMValue());
             if (!constInit)
             {
                 std::cerr << "(Error) Global variable initializer must be a constant." << std::endl;
@@ -148,57 +151,55 @@ llvm::GlobalVariable *createStringForGlobalVariable(
 }
 
 void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scopeOpt, ASTNodePtr nodePtr)
-{   
+{
     SCOPE_REQUIRED
-    
+
     ASTVariableDeclaration *varDecl = static_cast<ASTVariableDeclaration *>(nodePtr);
 
-    llvm::Type *llvmType = nullptr;
-    llvm::Constant *initValue = nullptr;
+    std::shared_ptr<CodeGenLLVM_Type> codegenType = nullptr;
+    llvm::AllocaInst *alloca = nullptr;
+    std::shared_ptr<CodeGenLLVM_EValue> initializer = nullptr;
 
     if (varDecl->getTypeValue().has_value())
     {
         ASTTypeSpecifier *varType = static_cast<ASTTypeSpecifier *>(varDecl->getTypeValue().value());
-        CodeGenLLVM_Type *codegenType = compileType(varType);
-        llvmType = codegenType->getLLVMType();
-        delete codegenType;
-    }
+        codegenType = compileType(varType);
 
-    if (varDecl->getInitializer().has_value())
-    {
-        CodeGenLLVM_EValue init = compileExpr(scopeOpt, varDecl->getInitializer().value());
-        initValue = llvm::dyn_cast<llvm::Constant>(init.asValue()->getLLVMValue());
-        if (!initValue)
+        if (varDecl->getInitializer().has_value())
         {
-            std::cerr << "(Error) Variable initializer must be a constant." << std::endl;
+            initializer = compileExpr(scopeOpt, varDecl->getInitializer().value());
+        }
+    }
+    else
+    {
+        if (varDecl->getInitializer().has_value())
+        {
+            initializer = compileExpr(scopeOpt, varDecl->getInitializer().value());
+            codegenType = initializer->asValue()->getValueType();
+        }
+        else
+        {
+            std::cerr << "(Error) Variable type is not specified and initializer is not a constant." << std::endl;
+            std::cerr << "        Compiler confused how to build alloca instruction for the variable declaration." << std::endl;
             exit(1);
         }
-
-        if (!llvmType)
-        {
-            llvmType = initValue->getType();
-        }
     }
+
+    std::optional<llvm::Value *> initializerValue = std::nullopt;
+    if (initializer)
+    {
+        initializerValue = initializer->asValue()->getLLVMValue();
+    }
+    alloca = createZeroInitializedAlloca(varDecl->getName(), codegenType, initializerValue);
 
     // TODO Jump into appropriate block of the function to declare the variable correctly.
     // builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
 
-    llvm::AllocaInst *alloca = builder_.CreateAlloca(llvmType, nullptr, varDecl->getName());
-
-    if (initValue)
-    {
-        builder_.CreateStore(initValue, alloca);
-    }
-    else
-    {
-        // store zero-initialized value for alloca
-        // TODO
-        std::cout << "zero init not impl yet" << std::endl;
-    }
+    // TODO Check if the variable is already declared in the current scope
 
     // add variable to local scope
-    CodeGenLLVM_Type *allocaInnerType = CodeGenLLVM_Type::createPointerType(new CodeGenLLVM_Type(llvmType, CodeGenLLVM_Type::TypeKind::Int));
-    CodeGenLLVM_Value *value = new CodeGenLLVM_Value(alloca, allocaInnerType);
-    CodeGenLLVM_EValue *evalue = new CodeGenLLVM_EValue(value, CodeGenLLVM_EValue::ValueCategory::LValue);
+    auto allocaInnerType = CodeGenLLVM_Type::createPointerType(codegenType);
+    auto value = std::make_shared<CodeGenLLVM_Value>(alloca, allocaInnerType);
+    auto evalue = std::make_shared<CodeGenLLVM_EValue>(value, CodeGenLLVM_EValue::ValueCategory::LValue);
     SCOPE->setRecord(varDecl->getName(), evalue);
 }

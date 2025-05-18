@@ -1,3 +1,4 @@
+#include <memory>
 #include <iostream>
 #include "util/util.hpp"
 #include "parser/parser.hpp"
@@ -108,4 +109,25 @@ void CodeGenLLVM_Module::buildProgramIR(ASTProgram *program)
     }
 
     delete program;
+}
+
+
+llvm::AllocaInst* CodeGenLLVM_Module::createZeroInitializedAlloca(
+    const std::string &name,
+    std::shared_ptr<CodeGenLLVM_Type> type,
+    std::optional<llvm::Value*> init)
+{
+    llvm::AllocaInst *alloca = builder_.CreateAlloca(type->getLLVMType(), nullptr, name);
+
+    if (init.has_value())
+    {
+        builder_.CreateStore(init.value(), alloca);
+    }
+    else
+    {
+        llvm::Value *zero = createZeroInitializedValue(type);
+        builder_.CreateStore(zero, alloca);
+    }
+
+    return alloca;
 }

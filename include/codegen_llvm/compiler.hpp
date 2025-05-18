@@ -42,7 +42,7 @@ public:
     const std::string &getFilePath() const { return filePath_; }
 
     // Types
-    CodeGenLLVM_Type *compileType(ASTNodePtr nodePtr);
+    std::shared_ptr<CodeGenLLVM_Type> compileType(ASTNodePtr nodePtr);
 
     // Statements
     void compileStmt(OptionalScopePtr scope, ASTNodePtr nodePtr);
@@ -50,13 +50,18 @@ public:
     void compileGlobalVariableDeclaration(ASTNodePtr nodePtr);
     void compileVariableDeclaration(OptionalScopePtr scope, ASTNodePtr nodePtr);
     void compileFunctionDefinition(ASTNodePtr nodePtr);
+    llvm::AllocaInst* createZeroInitializedAlloca(
+        const std::string &name,
+        std::shared_ptr<CodeGenLLVM_Type> type,
+        std::optional<llvm::Value*> init);
+    llvm::Value *createZeroInitializedValue(std::shared_ptr<CodeGenLLVM_Type> type);
 
     // Expressions
-    CodeGenLLVM_EValue compileExpr(OptionalScopePtr scope, ASTNodePtr nodePtr);
-    CodeGenLLVM_EValue compileIntegerLiteral(ASTNodePtr nodePtr);
-    CodeGenLLVM_EValue compileFloatLiteral(ASTNodePtr nodePtr);
-    CodeGenLLVM_EValue compileStringLiteral(ASTNodePtr nodePtr);
-    CodeGenLLVM_EValue compileBoolLiteral(ASTNodePtr nodePtr);
+    std::shared_ptr<CodeGenLLVM_EValue> compileExpr(OptionalScopePtr scope, ASTNodePtr nodePtr);
+    std::shared_ptr<CodeGenLLVM_EValue> compileIntegerLiteral(ASTNodePtr nodePtr);
+    std::shared_ptr<CodeGenLLVM_EValue> compileFloatLiteral(ASTNodePtr nodePtr);
+    std::shared_ptr<CodeGenLLVM_EValue> compileStringLiteral(ASTNodePtr nodePtr);
+    std::shared_ptr<CodeGenLLVM_EValue> compileBoolLiteral(ASTNodePtr nodePtr);
 };
 
 class CodeGenLLVM_Context

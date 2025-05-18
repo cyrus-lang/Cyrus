@@ -1,3 +1,4 @@
+#include <memory>
 #include "ast/ast.hpp"
 #include "codegen_llvm/compiler.hpp"
 #include "codegen_llvm/types.hpp"
@@ -20,9 +21,8 @@ void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
     llvm::Type *returnType;
     if (funcDef->getReturnType().has_value())
     {
-        CodeGenLLVM_Type *codegenType = compileType(funcDef->getReturnType().value());
+        std::shared_ptr<CodeGenLLVM_Type> codegenType = compileType(funcDef->getReturnType().value());
         returnType = codegenType->getLLVMType();
-        delete codegenType;
     }
     else
     {

@@ -1,3 +1,7 @@
 fn main() {
-    #a: int = 0;
+    #a = 0;
+    #b: int;
+    #c: int = 10;
+
+    #d: const void*;
 }

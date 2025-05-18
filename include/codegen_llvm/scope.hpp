@@ -25,19 +25,12 @@ class Scope
 {
 private:
     std::optional<ScopePtr> parent_;
-    std::map<std::string, CodeGenLLVM_EValue *> records_;
+    std::map<std::string, std::shared_ptr<CodeGenLLVM_EValue>> records_;
 
 public:
     Scope(std::optional<ScopePtr> parent = std::nullopt) : parent_(parent) {}
-    ~Scope()
-    {
-        for (auto const &[_, evalue] : records_)
-        {
-            delete evalue;
-        }
-    }
 
-    std::optional<CodeGenLLVM_EValue *> getRecord(const std::string &name) const
+    std::optional<std::shared_ptr<CodeGenLLVM_EValue>> getRecord(const std::string &name) const
     {
         if (records_.count(name))
         {
@@ -50,7 +43,7 @@ public:
         return std::nullopt;
     }
 
-    void setRecord(const std::string &name, CodeGenLLVM_EValue *evalue)
+    void setRecord(const std::string &name, std::shared_ptr<CodeGenLLVM_EValue>evalue)
     {
         records_[name] = evalue;
     }

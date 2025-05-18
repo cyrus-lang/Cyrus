@@ -3,22 +3,21 @@
 
 #include "types.hpp"
 #include <llvm/IR/Value.h>
+#include <memory>
 
 class CodeGenLLVM_Value
 {
 private:
     llvm::Value *llvmValue_;
-    CodeGenLLVM_Type *valueType_;
+    std::shared_ptr<CodeGenLLVM_Type> valueType_;
 
 public:
-    CodeGenLLVM_Value(llvm::Value *llvmValue, CodeGenLLVM_Type *valueType) : llvmValue_(llvmValue), valueType_(valueType) {}
-    ~CodeGenLLVM_Value()
-    {
-        delete valueType_;
-    }
+    CodeGenLLVM_Value(llvm::Value *llvmValue, std::shared_ptr<CodeGenLLVM_Type> valueType)
+        : llvmValue_(llvmValue), valueType_(std::move(valueType)) {}
+    ~CodeGenLLVM_Value() = default;
 
     llvm::Value *getLLVMValue() const { return llvmValue_; }
-    CodeGenLLVM_Type *getValueType() const { return valueType_; }
+    std::shared_ptr<CodeGenLLVM_Type> getValueType() const { return valueType_; }
 };
 
 class CodeGenLLVM_EValue
@@ -30,19 +29,17 @@ public:
         RValue
     };
 
-    CodeGenLLVM_EValue(CodeGenLLVM_Value *value, ValueCategory category) : value_(value), category_(category) {}
-    ~CodeGenLLVM_EValue()
-    {
-        delete value_;
-    }
+    CodeGenLLVM_EValue(std::shared_ptr<CodeGenLLVM_Value> value, ValueCategory category)
+        : value_(std::move(value)), category_(category) {}
+    ~CodeGenLLVM_EValue() = default;
 
     bool isLValue() const { return category_ == ValueCategory::LValue; }
     bool isRValue() const { return category_ == ValueCategory::RValue; }
 
-    CodeGenLLVM_Value *asValue() const { return value_; }
+    std::shared_ptr<CodeGenLLVM_Value> asValue() const { return value_; }
 
 private:
-    CodeGenLLVM_Value *value_;
+    std::shared_ptr<CodeGenLLVM_Value> value_;
     ValueCategory category_;
 };
 

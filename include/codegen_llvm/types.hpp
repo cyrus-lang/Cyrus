@@ -1,6 +1,7 @@
 #ifndef CODEGEN_LLVM_TYPES_HPP
 #define CODEGEN_LLVM_TYPES_HPP
 
+#include <memory>
 #include <variant>
 #include "llvm/IR/Type.h"
 #include "llvm/IR/IRBuilder.h"
@@ -41,32 +42,23 @@ private:
     TypeKind typeKind_;
     bool isConst_ = false;
 
-    std::variant<llvm::Type *, CodeGenLLVM_Type *> payload_;
+    std::variant<llvm::Type *, std::shared_ptr<CodeGenLLVM_Type>> payload_;
 
 public:
     CodeGenLLVM_Type(llvm::Type *llvmType, TypeKind kind)
         : typeKind_(kind), payload_(llvmType) {}
 
-    CodeGenLLVM_Type(CodeGenLLVM_Type *nested, TypeKind kind)
-        : typeKind_(kind), payload_(nested) {}
+    CodeGenLLVM_Type(std::shared_ptr<CodeGenLLVM_Type> nested, TypeKind kind)
+        : typeKind_(kind), payload_(std::move(nested)) {}
 
-    ~CodeGenLLVM_Type()
+    static std::shared_ptr<CodeGenLLVM_Type> createPointerType(std::shared_ptr<CodeGenLLVM_Type> pointee)
     {
-        if ((typeKind_ == TypeKind::Pointer || typeKind_ == TypeKind::Reference) &&
-            std::holds_alternative<CodeGenLLVM_Type *>(payload_))
-        {
-            delete std::get<CodeGenLLVM_Type *>(payload_);
-        }
+        return std::make_shared<CodeGenLLVM_Type>(std::move(pointee), TypeKind::Pointer);
     }
 
-    static CodeGenLLVM_Type *createPointerType(CodeGenLLVM_Type *pointee)
+    static std::shared_ptr<CodeGenLLVM_Type> createReferenceType(std::shared_ptr<CodeGenLLVM_Type> pointee)
     {
-        return new CodeGenLLVM_Type(pointee, TypeKind::Pointer);
-    }
-
-    static CodeGenLLVM_Type *createReferenceType(CodeGenLLVM_Type *pointee)
-    {
-        return new CodeGenLLVM_Type(pointee, TypeKind::Reference);
+        return std::make_shared<CodeGenLLVM_Type>(std::move(pointee), TypeKind::Reference);
     }
 
     TypeKind getKind() const { return typeKind_; }
@@ -81,16 +73,38 @@ public:
         }
         else if (typeKind_ == TypeKind::Pointer || typeKind_ == TypeKind::Reference)
         {
-            auto nested = std::get<CodeGenLLVM_Type *>(payload_);
+            auto nested = std::get<std::shared_ptr<CodeGenLLVM_Type>>(payload_);
             auto pointeeLLVM = nested->getLLVMType();
             return llvm::PointerType::getUnqual(pointeeLLVM);
         }
+        return nullptr;
     }
 
-    CodeGenLLVM_Type *getNestedType() const
+    std::shared_ptr<CodeGenLLVM_Type> getNestedType() const
     {
-        if (std::holds_alternative<CodeGenLLVM_Type *>(payload_))
-            return std::get<CodeGenLLVM_Type *>(payload_);
+        if (std::holds_alternative<std::shared_ptr<CodeGenLLVM_Type>>(payload_))
+            return std::get<std::shared_ptr<CodeGenLLVM_Type>>(payload_);
+        return nullptr;
+    }
+
+    // Clone method
+    std::shared_ptr<CodeGenLLVM_Type> clone() const
+    {
+        if (std::holds_alternative<llvm::Type *>(payload_))
+        {
+            auto copy = std::make_shared<CodeGenLLVM_Type>(std::get<llvm::Type *>(payload_), typeKind_);
+            if (isConst_)
+                copy->setConst();
+            return copy;
+        }
+        else if (std::holds_alternative<std::shared_ptr<CodeGenLLVM_Type>>(payload_))
+        {
+            auto nestedClone = std::get<std::shared_ptr<CodeGenLLVM_Type>>(payload_)->clone();
+            auto copy = std::make_shared<CodeGenLLVM_Type>(nestedClone, typeKind_);
+            if (isConst_)
+                copy->setConst();
+            return copy;
+        }
         return nullptr;
     }
 };
