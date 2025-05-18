@@ -17,6 +17,7 @@
 #include "options.hpp"
 #include "values.hpp"
 #include "types.hpp"
+#include "scope.hpp"
 #include <map>
 
 void new_codegen_llvm(CodeGenLLVM_Options);
@@ -44,18 +45,18 @@ public:
     CodeGenLLVM_Type *compileType(ASTNodePtr nodePtr);
 
     // Statements
-    void compileStmt(ASTNodePtr nodePtr);
-    void compileStmts(ASTNodeList nodeList);
-    void compileFunctionDefinition(ASTNodePtr nodePtr);
+    void compileStmt(OptionalScopePtr scope, ASTNodePtr nodePtr);
+    void compileStmts(OptionalScopePtr scope, ASTNodeList nodeList);
     void compileGlobalVariableDeclaration(ASTNodePtr nodePtr);
-    void compileVariableDeclaration(ASTNodePtr nodePtr);
+    void compileVariableDeclaration(OptionalScopePtr scope, ASTNodePtr nodePtr);
+    void compileFunctionDefinition(ASTNodePtr nodePtr);
 
     // Expressions
-    CodeGenLLVM_Value compileExpr(ASTNodePtr nodePtr);
-    CodeGenLLVM_Value compileIntegerLiteral(ASTNodePtr nodePtr);
-    CodeGenLLVM_Value compileFloatLiteral(ASTNodePtr nodePtr);
-    CodeGenLLVM_Value compileStringLiteral(ASTNodePtr nodePtr);
-    CodeGenLLVM_Value compileBoolLiteral(ASTNodePtr nodePtr);
+    CodeGenLLVM_EValue compileExpr(OptionalScopePtr scope, ASTNodePtr nodePtr);
+    CodeGenLLVM_EValue compileIntegerLiteral(ASTNodePtr nodePtr);
+    CodeGenLLVM_EValue compileFloatLiteral(ASTNodePtr nodePtr);
+    CodeGenLLVM_EValue compileStringLiteral(ASTNodePtr nodePtr);
+    CodeGenLLVM_EValue compileBoolLiteral(ASTNodePtr nodePtr);
 };
 
 class CodeGenLLVM_Context

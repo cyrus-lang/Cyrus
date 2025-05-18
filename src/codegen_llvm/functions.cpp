@@ -9,6 +9,8 @@
 
 void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
 {
+    Scope* scope = new Scope();
+
     ASTFunctionDefinition *funcDef = static_cast<ASTFunctionDefinition *>(node);
     std::string functionName = static_cast<ASTIdentifier *>(funcDef->getExpr())->getName();
     ASTFunctionParameters params = funcDef->getParameters();
@@ -67,9 +69,11 @@ void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
     llvm::BasicBlock *entryBlock = llvm::BasicBlock::Create(context_, "entry", func);
     builder_.SetInsertPoint(entryBlock);
 
-    compileStmts(body->getStatements());
+    compileStmts(scope, body->getStatements());
 
     // TODO
     // Track block termination for function.
     // But before achieve this functionality, add function to func_table.
+
+    delete scope;
 }

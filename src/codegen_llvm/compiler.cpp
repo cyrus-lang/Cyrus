@@ -102,7 +102,7 @@ void CodeGenLLVM_Module::buildProgramIR(ASTProgram *program)
         }
         default:
             statement->print(0);
-            compileStmt(statement);
+            compileStmt(std::nullopt, statement);
             break;
         }
     }

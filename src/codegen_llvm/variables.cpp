@@ -1,6 +1,7 @@
 #include <iostream>
 #include "ast/ast.hpp"
 #include "codegen_llvm/compiler.hpp"
+#include "codegen_llvm/scope.hpp"
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instructions.h>
@@ -43,8 +44,8 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         }
         else
         {
-            CodeGenLLVM_Value init = compileExpr(varDecl->getInitializer().value());
-            constInit = llvm::dyn_cast<llvm::Constant>(init.getLLVMValue());
+            CodeGenLLVM_EValue init = compileExpr(std::nullopt, varDecl->getInitializer().value());
+            constInit = llvm::dyn_cast<llvm::Constant>(init.asValue()->getLLVMValue());
             if (!constInit)
             {
                 std::cerr << "(Error) Global variable initializer must be a constant." << std::endl;
@@ -146,7 +147,7 @@ llvm::GlobalVariable *createStringForGlobalVariable(
     return strVar;
 }
 
-void CodeGenLLVM_Module::compileVariableDeclaration(ASTNodePtr nodePtr)
+void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scope, ASTNodePtr nodePtr)
 {
     ASTVariableDeclaration *varDecl = static_cast<ASTVariableDeclaration *>(nodePtr);
 
@@ -163,8 +164,8 @@ void CodeGenLLVM_Module::compileVariableDeclaration(ASTNodePtr nodePtr)
 
     if (varDecl->getInitializer().has_value())
     {
-        CodeGenLLVM_Value init = compileExpr(varDecl->getInitializer().value());
-        initValue = llvm::dyn_cast<llvm::Constant>(init.getLLVMValue());
+        CodeGenLLVM_EValue init = compileExpr(scope, varDecl->getInitializer().value());
+        initValue = llvm::dyn_cast<llvm::Constant>(init.asValue()->getLLVMValue());
         if (!initValue)
         {
             std::cerr << "(Error) Variable initializer must be a constant." << std::endl;
@@ -177,6 +178,7 @@ void CodeGenLLVM_Module::compileVariableDeclaration(ASTNodePtr nodePtr)
         }
     }
 
+    // TODO Jump into appropriate block of the function to declare the variable correctly.
     // builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
 
     llvm::AllocaInst *alloca = builder_.CreateAlloca(llvmType, nullptr, varDecl->getName());
@@ -185,4 +187,15 @@ void CodeGenLLVM_Module::compileVariableDeclaration(ASTNodePtr nodePtr)
     {
         builder_.CreateStore(initValue, alloca);
     }
+    else
+    {
+        // store zero-initialized value for alloca
+        // TODO
+        std::cout << "zero init not impl yet" << std::endl;
+    }
+
+    CodeGenLLVM_Type *allocaInnerType = CodeGenLLVM_Type::createPointerType(new CodeGenLLVM_Type(llvmType, CodeGenLLVM_Type::TypeKind::Int));
+    CodeGenLLVM_Value *value = new CodeGenLLVM_Value(alloca, allocaInnerType);
+    CodeGenLLVM_EValue evalue(value, CodeGenLLVM_EValue::ValueCategory::LValue);
+    scope->setRecord(varDecl->getName(), evalue);
 }
