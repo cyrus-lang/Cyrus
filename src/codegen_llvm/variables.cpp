@@ -147,8 +147,10 @@ llvm::GlobalVariable *createStringForGlobalVariable(
     return strVar;
 }
 
-void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scope, ASTNodePtr nodePtr)
-{
+void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scopeOpt, ASTNodePtr nodePtr)
+{   
+    SCOPE_REQUIRED
+    
     ASTVariableDeclaration *varDecl = static_cast<ASTVariableDeclaration *>(nodePtr);
 
     llvm::Type *llvmType = nullptr;
@@ -164,7 +166,7 @@ void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scope, ASTN
 
     if (varDecl->getInitializer().has_value())
     {
-        CodeGenLLVM_EValue init = compileExpr(scope, varDecl->getInitializer().value());
+        CodeGenLLVM_EValue init = compileExpr(scopeOpt, varDecl->getInitializer().value());
         initValue = llvm::dyn_cast<llvm::Constant>(init.asValue()->getLLVMValue());
         if (!initValue)
         {
@@ -194,8 +196,9 @@ void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scope, ASTN
         std::cout << "zero init not impl yet" << std::endl;
     }
 
+    // add variable to local scope
     CodeGenLLVM_Type *allocaInnerType = CodeGenLLVM_Type::createPointerType(new CodeGenLLVM_Type(llvmType, CodeGenLLVM_Type::TypeKind::Int));
     CodeGenLLVM_Value *value = new CodeGenLLVM_Value(alloca, allocaInnerType);
-    CodeGenLLVM_EValue evalue(value, CodeGenLLVM_EValue::ValueCategory::LValue);
-    scope->setRecord(varDecl->getName(), evalue);
+    CodeGenLLVM_EValue *evalue = new CodeGenLLVM_EValue(value, CodeGenLLVM_EValue::ValueCategory::LValue);
+    SCOPE->setRecord(varDecl->getName(), evalue);
 }

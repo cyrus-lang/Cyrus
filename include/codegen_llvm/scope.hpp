@@ -12,12 +12,14 @@ class Scope;
 using ScopePtr = Scope *;
 using OptionalScopePtr = std::optional<Scope *>;
 
-#define SCOPE_REQUIRED()                                                                    \
-    if (!scope)                                                                             \
+#define SCOPE_REQUIRED                                                                    \
+    if (!scopeOpt)                                                                             \
     {                                                                                       \
         std::cerr << "(Error) Scope is required to compile this instruction." << std::endl; \
         exit(1);                                                                            \
     }
+
+#define SCOPE scopeOpt.value()
 
 class Scope
 {
