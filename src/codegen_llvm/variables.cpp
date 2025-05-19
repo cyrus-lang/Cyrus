@@ -25,6 +25,12 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     llvm::GlobalValue::LinkageTypes linkage = llvm::GlobalValue::InternalLinkage;
     bool isConstType = false;
 
+    if (globalVarTable_.find(varName) != globalVarTable_.end())
+    {
+        std::cerr << "(Error) Global variable '" << varName << "' is already declared in this module." << std::endl;
+        exit(1);
+    }
+
     if (varDecl->getTypeValue().has_value())
     {
         ASTTypeSpecifier *varType = static_cast<ASTTypeSpecifier *>(varDecl->getTypeValue().value());
@@ -49,19 +55,22 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         }
     }
 
-    if (!varDecl->getTypeValue().has_value() && initializer == nullptr)
+    if (!varDecl->getTypeValue().has_value())
     {
-        std::cerr << "(Error) Global variable type is not specified and initializer is not a constant." << std::endl;
-        exit(1);
-    }
-    else
-    {
-        // determine variable type from initializer
-        codegenType = initializer->asValue()->getValueType();
-        isConstType = codegenType->isConst();
+        if (initializer)
+        {
+            // determine variable type from initializer
+            codegenType = initializer->asValue()->getValueType();
+            isConstType = codegenType->isConst();
+        }
+        else
+        {
+            std::cerr << "(Error) Global variable type is not specified and initializer is not a constant." << std::endl;
+            exit(1);
+        }
     }
 
-    bool publicSymbol = false;
+    bool exported = false;
 
     if (accessSpecifier == ASTAccessSpecifier::Default || accessSpecifier == ASTAccessSpecifier::Private)
     {
@@ -69,7 +78,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     }
     else if (accessSpecifier == ASTAccessSpecifier::Public)
     {
-        publicSymbol = true;
+        exported = true;
         linkage = llvm::GlobalValue::ExternalLinkage;
     }
     else
@@ -99,7 +108,16 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         }
     }
 
-    llvm::Value *valueInitializer = initializer->asValue()->getLLVMValue();
+    llvm::Value *valueInitializer = nullptr;
+    if (initializer)
+    {
+        valueInitializer = initializer->asValue()->getLLVMValue();
+    }
+    else
+    {
+        valueInitializer = createZeroInitializedValue(codegenType);
+    }
+
     llvm::Constant *constantInitializer = llvm::dyn_cast<llvm::Constant>(valueInitializer);
     if (!constantInitializer)
     {
@@ -121,14 +139,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         threadLocalMode,
         0);
 
-    if (publicSymbol)
-    {
-        // TODO Add to exported symbols
-    }
-    else
-    {
-        // TODO Add to local symbols
-    }
+    globalVarTable_[varName] = GlobalVarTableItem(globalVar, codegenType, exported);
 }
 
 llvm::GlobalVariable *createStringForGlobalVariable(

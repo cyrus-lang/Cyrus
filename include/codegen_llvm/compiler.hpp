@@ -22,6 +22,11 @@
 
 void new_codegen_llvm(CodeGenLLVM_Options);
 
+struct FuncTableItem;
+struct GlobalVarTableItem;
+using FuncTable = std::map<std::string, FuncTableItem>;
+using GlobalVarTable = std::map<std::string, GlobalVarTableItem>;
+
 class CodeGenLLVM_Module
 {
 private:
@@ -29,6 +34,9 @@ private:
     llvm::LLVMContext &context_;
     llvm::IRBuilder<> builder_;
     std::string filePath_;
+
+    FuncTable funcTable_;
+    GlobalVarTable globalVarTable_;
 
 public:
     CodeGenLLVM_Module(llvm::LLVMContext &context, const std::string &moduleName, const std::string &filePath)
@@ -50,10 +58,10 @@ public:
     void compileGlobalVariableDeclaration(ASTNodePtr nodePtr);
     void compileVariableDeclaration(OptionalScopePtr scope, ASTNodePtr nodePtr);
     void compileFunctionDefinition(ASTNodePtr nodePtr);
-    llvm::AllocaInst* createZeroInitializedAlloca(
+    llvm::AllocaInst *createZeroInitializedAlloca(
         const std::string &name,
         std::shared_ptr<CodeGenLLVM_Type> type,
-        std::optional<llvm::Value*> init);
+        std::optional<llvm::Value *> init);
     llvm::Value *createZeroInitializedValue(std::shared_ptr<CodeGenLLVM_Type> type);
 
     // Expressions
@@ -62,6 +70,27 @@ public:
     std::shared_ptr<CodeGenLLVM_EValue> compileFloatLiteral(ASTNodePtr nodePtr);
     std::shared_ptr<CodeGenLLVM_EValue> compileStringLiteral(ASTNodePtr nodePtr);
     std::shared_ptr<CodeGenLLVM_EValue> compileBoolLiteral(ASTNodePtr nodePtr);
+};
+
+struct FuncTableItem
+{
+    llvm::Function *llvmFunc;
+    ASTFunctionParameters params;
+    bool exported;
+
+    FuncTableItem() : llvmFunc(nullptr), params(ASTFunctionParameters({})), exported(false) {}
+    FuncTableItem(llvm::Function *func, const ASTFunctionParameters &p, bool exp) : llvmFunc(func), params(p), exported(exp) {}
+};
+
+struct GlobalVarTableItem
+{
+    llvm::GlobalVariable *globalVar;
+    std::shared_ptr<CodeGenLLVM_Type> codegenType;
+    bool exported;
+
+    GlobalVarTableItem() : globalVar(nullptr), codegenType(nullptr), exported(false) {}
+    GlobalVarTableItem(llvm::GlobalVariable *var, std::shared_ptr<CodeGenLLVM_Type> type, bool exp)
+        : globalVar(var), codegenType(type), exported(exp) {}
 };
 
 class CodeGenLLVM_Context
