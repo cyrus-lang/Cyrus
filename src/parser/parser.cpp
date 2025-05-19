@@ -1,8 +1,9 @@
+#include <memory>
 #include "parser/parser.hpp"
 #include "lexer/lexer.hpp"
 #include "util/util.hpp"
 
-ASTProgram *parseProgram(const std::string &inputFile)
+std::pair<std::shared_ptr<std::string>, ASTProgram *> parseProgram(const std::string &inputFile)
 {
     astProgram = nullptr;
     yyin = nullptr;
@@ -16,10 +17,12 @@ ASTProgram *parseProgram(const std::string &inputFile)
     set_lex_only_option(0);
     yyfilename = (char *)inputFile.c_str();
 
+    const std::string fileContent = util::readFileContent(inputFile);
+
     if (yyparse() != 0)
     {
         std::string errorMsg = yyerrormsg;
-        util::displayErrorPanel(inputFile, util::readFileContent(inputFile), yylineno, errorMsg);
+        util::displayErrorPanel(inputFile, fileContent, yylineno, errorMsg);
         std::exit(1);
     }
 
@@ -33,5 +36,5 @@ ASTProgram *parseProgram(const std::string &inputFile)
         std::exit(1);
     }
 
-    return (ASTProgram *)astProgram;
+    return std::make_pair(std::make_shared<std::string>(fileContent), (ASTProgram *)astProgram);
 }

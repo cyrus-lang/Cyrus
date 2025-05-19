@@ -34,13 +34,14 @@ private:
     llvm::LLVMContext &context_;
     llvm::IRBuilder<> builder_;
     std::string filePath_;
+    std::shared_ptr<std::string> fileContent_;
 
     FuncTable funcTable_;
     GlobalVarTable globalVarTable_;
 
 public:
-    CodeGenLLVM_Module(llvm::LLVMContext &context, const std::string &moduleName, const std::string &filePath)
-        : module_(std::make_unique<llvm::Module>(moduleName, context)), context_(context), builder_(context), filePath_(filePath)
+    CodeGenLLVM_Module(llvm::LLVMContext &context, const std::string &moduleName, const std::string &filePath, std::shared_ptr<std::string> fileContent)
+        : module_(std::make_unique<llvm::Module>(moduleName, context)), context_(context), builder_(context), filePath_(filePath), fileContent_(fileContent)
     {
     }
 
@@ -48,6 +49,7 @@ public:
     llvm::LLVMContext &getContext() { return context_; }
     void buildProgramIR(ASTProgram *program);
     const std::string &getFilePath() const { return filePath_; }
+    std::shared_ptr<std::string> getFileContent() const { return fileContent_; }
 
     // Types
     std::shared_ptr<CodeGenLLVM_Type> compileType(ASTNodePtr nodePtr);
@@ -141,9 +143,9 @@ public:
     llvm::LLVMContext &getContext() { return context_; }
     const std::map<std::string, CodeGenLLVM_Module *> &getModules() const { return modules_; }
 
-    CodeGenLLVM_Module *createModule(const std::string &moduleName, const std::string &filePath)
+    CodeGenLLVM_Module *createModule(const std::string &moduleName, const std::string &filePath, std::shared_ptr<std::string> fileContent)
     {
-        CodeGenLLVM_Module *module = new CodeGenLLVM_Module(context_, moduleName, filePath);
+        CodeGenLLVM_Module *module = new CodeGenLLVM_Module(context_, moduleName, filePath, fileContent);
         module->getModule()->setTargetTriple(triple_);
         module->getModule()->setDataLayout(targetMachine_->createDataLayout());
 

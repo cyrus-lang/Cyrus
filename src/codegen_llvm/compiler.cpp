@@ -13,11 +13,11 @@ void new_codegen_llvm(CodeGenLLVM_Options opts)
     {
         // compiler triggered to compile single files
         std::string filePath = opts.getInputFile().value();
-        ASTProgram *program = parseProgram(filePath);
+        auto [fileContent, program] = parseProgram(filePath);
 
         std::string moduleName = util::getFileNameWithStem(filePath);
         util::isValidModuleName(moduleName, filePath);
-        CodeGenLLVM_Module *module = context.createModule(moduleName, filePath);
+        CodeGenLLVM_Module *module = context.createModule(moduleName, filePath, fileContent);
 
         module->buildProgramIR(program);
 

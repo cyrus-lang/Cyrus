@@ -181,7 +181,7 @@ void parseOnlyCommand(argh::parser &cmdl)
     std::string inputFile = cmdl[2];
     util::checkInputFileExtension(inputFile);
 
-    ASTProgram *program = parseProgram(inputFile);
+    auto [_, program] = parseProgram(inputFile);
 
     if (program)
     {

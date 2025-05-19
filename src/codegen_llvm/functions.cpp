@@ -2,6 +2,7 @@
 #include "ast/ast.hpp"
 #include "codegen_llvm/compiler.hpp"
 #include "codegen_llvm/types.hpp"
+#include "codegen_llvm/diag.hpp"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Type.h"
@@ -20,8 +21,8 @@ void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
     bool exported = false;
 
     if (funcTable_.find(funcName) != funcTable_.end()) {
-        std::cerr << "(Error) Function '" << funcName << "' is already defined in this module." << std::endl;
-        exit(1);
+        // funcDef->getLineNumber()
+        DISPLAY_DIAG(1, "Function '" + funcName + "' is already defined in this module.");
     }
 
     llvm::Type *returnType;
