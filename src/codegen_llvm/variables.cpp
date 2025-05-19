@@ -27,8 +27,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
 
     if (globalVarTable_.find(varName) != globalVarTable_.end())
     {
-        std::cerr << "(Error) Global variable '" << varName << "' is already declared in this module." << std::endl;
-        exit(1);
+        DISPLAY_DIAG(varDecl->getLineNumber(), "Global variable '" + varName + "' is already defined in this module.");
     }
 
     if (varDecl->getTypeValue().has_value())
@@ -65,8 +64,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         }
         else
         {
-            std::cerr << "(Error) Global variable type is not specified and initializer is not a constant." << std::endl;
-            exit(1);
+            DISPLAY_DIAG(varDecl->getLineNumber(), "Global variable type is not specified and initializer is not a constant.");
         }
     }
 
@@ -83,8 +81,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     }
     else
     {
-        std::cerr << "(Error) Unsupported access specifier for global variable: " << formatAccessSpecifier(accessSpecifier) << std::endl;
-        exit(1);
+        DISPLAY_DIAG(varDecl->getLineNumber(), "Unsupported access specifier for global variable: " + formatAccessSpecifier(accessSpecifier));
     }
 
     if (varDecl->getStorageClassSpecifier().has_value())
@@ -95,16 +92,14 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         {
             if (initializer != nullptr)
             {
-                std::cerr << "(Error) Extern storage class specifier cannot have an initializer." << std::endl;
-                exit(1);
+                DISPLAY_DIAG(varDecl->getLineNumber(), "Extern storage class specifier cannot have an initializer.");
             }
 
             linkage = llvm::GlobalValue::ExternalLinkage;
         }
         else if (storageClassSpecifier == ASTStorageClassSpecifier::Inline)
-        {
-            std::cerr << "(Error) Inline storage class specifier is not supported for global variables." << std::endl;
-            exit(1);
+        {   
+            DISPLAY_DIAG(varDecl->getLineNumber(), "Inline storage class specifier is not supported for global variables.");
         }
     }
 
@@ -115,14 +110,13 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     }
     else
     {
-        valueInitializer = createZeroInitializedValue(codegenType);
+        valueInitializer = createZeroInitializedValue(codegenType, varDecl->getLineNumber());
     }
 
     llvm::Constant *constantInitializer = llvm::dyn_cast<llvm::Constant>(valueInitializer);
     if (!constantInitializer)
     {
-        std::cerr << "(Error) Global variable initializer is not a constant." << std::endl;
-        exit(1);
+        DISPLAY_DIAG(varDecl->getLineNumber(), "Global variable initializer is not a constant.");
     }
 
     // REVIEW Consider to make it smarter when adding multi-threading features.
@@ -164,9 +158,8 @@ llvm::GlobalVariable *createStringForGlobalVariable(
 
 void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scopeOpt, ASTNodePtr nodePtr)
 {
-    SCOPE_REQUIRED
-
     ASTVariableDeclaration *varDecl = static_cast<ASTVariableDeclaration *>(nodePtr);
+    SCOPE_REQUIRED(varDecl->getLineNumber());
 
     std::shared_ptr<CodeGenLLVM_Type> codegenType = nullptr;
     llvm::AllocaInst *alloca = nullptr;
@@ -190,10 +183,8 @@ void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scopeOpt, A
             codegenType = initializer->asValue()->getValueType();
         }
         else
-        {
-            std::cerr << "(Error) Variable type is not specified and initializer is not a constant." << std::endl;
-            std::cerr << "        Compiler confused how to build alloca instruction for the variable declaration." << std::endl;
-            exit(1);
+        {   
+            DISPLAY_DIAG(varDecl->getLineNumber(), "Variable type is not specified and initializer is not a constant.");
         }
     }
 
@@ -202,15 +193,15 @@ void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scopeOpt, A
     {
         initializerValue = initializer->asValue()->getLLVMValue();
     }
-    alloca = createZeroInitializedAlloca(varDecl->getName(), codegenType, initializerValue);
+
+    alloca = createZeroInitializedAlloca(varDecl->getName(), codegenType, initializerValue, varDecl->getLineNumber());
 
     // TODO Jump into appropriate block of the function to declare the variable correctly.
     // builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
 
     if (SCOPE->getRecord(varDecl->getName()).has_value())
-    {
-        std::cerr << "(Error) Variable '" << varDecl->getName() << "' is already declared in the current scope." << std::endl;
-        exit(1);
+    {   
+        DISPLAY_DIAG(varDecl->getLineNumber(), "Variable '" + varDecl->getName() + "' is already declared in the current scope.");
     }
 
     // add variable to local scope

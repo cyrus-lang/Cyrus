@@ -63,8 +63,9 @@ public:
     llvm::AllocaInst *createZeroInitializedAlloca(
         const std::string &name,
         std::shared_ptr<CodeGenLLVM_Type> type,
-        std::optional<llvm::Value *> init);
-    llvm::Value *createZeroInitializedValue(std::shared_ptr<CodeGenLLVM_Type> type);
+        std::optional<llvm::Value *> init,
+        std::size_t lineNumber);
+    llvm::Value *createZeroInitializedValue(std::shared_ptr<CodeGenLLVM_Type> type, std::size_t lineNumber);
 
     // Expressions
     std::shared_ptr<CodeGenLLVM_EValue> compileExpr(OptionalScopePtr scope, ASTNodePtr nodePtr);

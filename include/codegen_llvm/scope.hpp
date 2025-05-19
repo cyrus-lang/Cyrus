@@ -6,17 +6,17 @@
 #include <optional>
 #include <memory>
 #include "values.hpp"
+#include "diag.hpp"
 
 class Scope;
 
 using ScopePtr = Scope *;
 using OptionalScopePtr = std::optional<Scope *>;
 
-#define SCOPE_REQUIRED                                                                    \
-    if (!scopeOpt)                                                                             \
-    {                                                                                       \
-        std::cerr << "(Error) Scope is required to compile this instruction." << std::endl; \
-        exit(1);                                                                            \
+#define SCOPE_REQUIRED(line)                                                          \
+    if (!scopeOpt)                                                                    \
+    {                                                                                 \
+        DISPLAY_DIAG(line, "(Error) Scope is required to compile this instruction."); \
     }
 
 #define SCOPE scopeOpt.value()
@@ -43,7 +43,7 @@ public:
         return std::nullopt;
     }
 
-    void setRecord(const std::string &name, std::shared_ptr<CodeGenLLVM_EValue>evalue)
+    void setRecord(const std::string &name, std::shared_ptr<CodeGenLLVM_EValue> evalue)
     {
         records_[name] = evalue;
     }

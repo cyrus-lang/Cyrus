@@ -115,7 +115,8 @@ void CodeGenLLVM_Module::buildProgramIR(ASTProgram *program)
 llvm::AllocaInst* CodeGenLLVM_Module::createZeroInitializedAlloca(
     const std::string &name,
     std::shared_ptr<CodeGenLLVM_Type> type,
-    std::optional<llvm::Value*> init)
+    std::optional<llvm::Value*> init, 
+    std::size_t lineNumber)
 {
     llvm::AllocaInst *alloca = builder_.CreateAlloca(type->getLLVMType(), nullptr, name);
 
@@ -125,7 +126,7 @@ llvm::AllocaInst* CodeGenLLVM_Module::createZeroInitializedAlloca(
     }
     else
     {
-        llvm::Value *zero = createZeroInitializedValue(type);
+        llvm::Value *zero = createZeroInitializedValue(type, lineNumber);
         builder_.CreateStore(zero, alloca);
     }
 

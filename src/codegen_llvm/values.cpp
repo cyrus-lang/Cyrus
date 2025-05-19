@@ -2,7 +2,7 @@
 #include "codegen_llvm/values.hpp"
 #include "codegen_llvm/compiler.hpp"
 
-llvm::Value *CodeGenLLVM_Module::createZeroInitializedValue(std::shared_ptr<CodeGenLLVM_Type> type)
+llvm::Value *CodeGenLLVM_Module::createZeroInitializedValue(std::shared_ptr<CodeGenLLVM_Type> type, std::size_t lineNumber)
 {
     using TypeKind = CodeGenLLVM_Type::TypeKind;
 
@@ -43,11 +43,11 @@ llvm::Value *CodeGenLLVM_Module::createZeroInitializedValue(std::shared_ptr<Code
         return nullptr;
 
     case TypeKind::Reference:
-        std::cerr << "(Error) Reference cannot be zero-initialized." << std::endl;
+        DISPLAY_DIAG(lineNumber, "Reference cannot be zero-initialized.");
         return nullptr;
 
     case TypeKind::Error:
-        std::cerr << "Error type cannot be zero-initialized" << std::endl;
+        DISPLAY_DIAG(lineNumber, "Error type cannot be zero-initialized.");
         return nullptr;
 
     default:

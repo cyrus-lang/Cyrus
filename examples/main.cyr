@@ -1,6 +1,4 @@
 fn main() {
-    
-}
-fn main() {
+    #a = 10;
     
 }

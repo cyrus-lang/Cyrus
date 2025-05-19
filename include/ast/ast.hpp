@@ -12,10 +12,11 @@ class ASTStatementList : public ASTNode
 {
 private:
     ASTNodeList statements_;
+    std::size_t lineNumber_;
 
 public:
-    ASTStatementList() : statements_() {}
-    ASTStatementList(ASTNodePtr statement) : statements_({statement}) {}
+    ASTStatementList(std::size_t lineNumber) : statements_(), lineNumber_(lineNumber) {}
+    ASTStatementList(ASTNodePtr statement, std::size_t lineNumber) : statements_({statement}), lineNumber_(lineNumber) {}
     ~ASTStatementList()
     {
         for (auto &statement : statements_)
@@ -26,6 +27,7 @@ public:
     NodeType getType() const override { return NodeType::StatementList; }
     const ASTNodeList &getStatements() const { return statements_; }
     void addStatement(ASTNodePtr statement) { statements_.push_back(statement); }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -46,7 +48,7 @@ private:
 public:
     ASTProgram()
     {
-        statementList_ = new ASTStatementList();
+        statementList_ = new ASTStatementList(0);
     }
     ~ASTProgram()
     {
@@ -169,19 +171,21 @@ public:
 
 class ASTIdentifier : public ASTNode
 {
+private:
+    std::string name_;
+    std::size_t lineNumber_;
+
 public:
-    ASTIdentifier(std::string name) : name_(name) {}
+    ASTIdentifier(std::string name, std::size_t lineNumber) : name_(name), lineNumber_(lineNumber) {}
     NodeType getType() const override { return NodeType::Identifier; }
     const std::string &getName() const { return name_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
         printIndent(indent);
         std::cout << "Identifier: " << name_ << std::endl;
     }
-
-private:
-    std::string name_;
 };
 
 class ASTBinaryExpression : public ASTNode
@@ -209,8 +213,8 @@ public:
         LogicalOr
     };
 
-    ASTBinaryExpression(ASTNodePtr left, Operator op, ASTNodePtr right)
-        : left_(left), op_(op), right_(right) {}
+    ASTBinaryExpression(ASTNodePtr left, Operator op, ASTNodePtr right, std::size_t lineNumber)
+        : left_(left), op_(op), right_(right), lineNumber_(lineNumber) {}
     ~ASTBinaryExpression()
     {
         delete left_;
@@ -222,6 +226,7 @@ public:
     ASTNodePtr getLeft() const { return left_; }
     Operator getOperator() const { return op_; }
     ASTNodePtr getRight() const { return right_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -236,6 +241,7 @@ private:
     ASTNodePtr left_;
     Operator op_;
     ASTNodePtr right_;
+    std::size_t lineNumber_;
 
     std::string formatOperator(Operator op) const
     {
@@ -300,8 +306,8 @@ public:
         PostDecrement
     };
 
-    ASTUnaryExpression(Operator op, ASTNodePtr operand)
-        : op_(op), operand_(operand) {}
+    ASTUnaryExpression(Operator op, ASTNodePtr operand, std::size_t lineNumber)
+        : op_(op), operand_(operand), lineNumber_(lineNumber) {}
     ~ASTUnaryExpression()
     {
         delete operand_;
@@ -311,6 +317,7 @@ public:
 
     Operator getOperator() const { return op_; }
     ASTNodePtr getOperand() const { return operand_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -322,6 +329,7 @@ public:
 private:
     Operator op_;
     ASTNodePtr operand_;
+    std::size_t lineNumber_;
 
     std::string formatOperator(Operator op) const
     {
@@ -358,10 +366,11 @@ class ASTCastExpression : public ASTNode
 private:
     ASTNodePtr expression_;
     ASTTypeSpecifier targetType_;
+    std::size_t lineNumber_;
 
 public:
-    ASTCastExpression(ASTTypeSpecifier targetType, ASTNodePtr expression)
-        : expression_(expression), targetType_(targetType) {}
+    ASTCastExpression(ASTTypeSpecifier targetType, ASTNodePtr expression, std::size_t lineNumber)
+        : expression_(expression), targetType_(targetType), lineNumber_(lineNumber) {}
     ~ASTCastExpression()
     {
         delete expression_;
@@ -370,6 +379,7 @@ public:
     NodeType getType() const override { return NodeType::CastExpression; }
     ASTNodePtr getExpression() const { return expression_; }
     ASTTypeSpecifier getTargetType() const { return targetType_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -391,11 +401,13 @@ class ASTImportStatement : public ASTNode
 {
 private:
     std::vector<std::string> modulePath_;
+    std::size_t lineNumber_;
 
 public:
-    ASTImportStatement(std::vector<std::string> modulePath) : modulePath_(modulePath) {}
+    ASTImportStatement(std::vector<std::string> modulePath, std::size_t lineNumber) : modulePath_(modulePath), lineNumber_(lineNumber) {}
     NodeType getType() const override { return NodeType::ImportStatement; }
     const std::vector<std::string> &getModulePath() const { return modulePath_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -417,11 +429,13 @@ class ASTImportedSymbolAccess : public ASTNode
 {
 private:
     std::vector<std::string> symbolPath_;
+    std::size_t lineNumber_;
 
 public:
-    ASTImportedSymbolAccess(std::vector<std::string> symbolPath) : symbolPath_(symbolPath) {}
+    ASTImportedSymbolAccess(std::vector<std::string> symbolPath, std::size_t lineNumber) : symbolPath_(symbolPath), lineNumber_(lineNumber) {}
     NodeType getType() const override { return NodeType::ImportedSymbolAccess; }
     const std::vector<std::string> &getSymbolPath() const { return symbolPath_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -445,15 +459,17 @@ private:
     std::string name_;
     ASTTypeSpecifier type_;
     ASTAccessSpecifier accessSpecifier_;
+    std::size_t lineNumber_;
 
 public:
-    ASTTypeDefStatement(std::string name, ASTTypeSpecifier type, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
-        : name_(name), type_(type), accessSpecifier_(accessSpecifier) {}
+    ASTTypeDefStatement(std::string name, ASTTypeSpecifier type, std::size_t lineNumber, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
+        : name_(name), type_(type), accessSpecifier_(accessSpecifier), lineNumber_(lineNumber) {}
 
     NodeType getType() const override { return NodeType::TypeDefStatement; }
     const std::string &getName() const { return name_; }
     const ASTTypeSpecifier &getTypeSpecifier() const { return type_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -580,16 +596,18 @@ private:
     ASTAccessSpecifier accessSpecifier_;
     std::optional<ASTTypeSpecifier *> returnType_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
+    std::size_t lineNumber_;
 
 public:
     ASTFunctionDefinition(ASTNodePtr expr,
                           ASTFunctionParameters parameters,
                           std::optional<ASTTypeSpecifier *> returnType,
                           ASTNodePtr body,
+                          std::size_t lineNumber,
                           ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
                           std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
         : expr_(expr), parameters_(parameters), body_(body),
-          accessSpecifier_(accessSpecifier), returnType_(returnType), storageClassSpecifier_(storageClassSpecifier) {}
+          accessSpecifier_(accessSpecifier), returnType_(returnType), storageClassSpecifier_(storageClassSpecifier), lineNumber_(lineNumber) {}
     ~ASTFunctionDefinition()
     {
         delete expr_;
@@ -607,6 +625,7 @@ public:
     ASTNodePtr getBody() const { return body_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -664,15 +683,17 @@ private:
     ASTAccessSpecifier accessSpecifier_;
     std::optional<ASTTypeSpecifier *> returnType_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
+    std::size_t lineNumber_;
 
 public:
     ASTFunctionDeclaration(ASTNodePtr expr,
                            ASTFunctionParameters parameters,
                            std::optional<ASTTypeSpecifier *> returnType,
+                           std::size_t lineNumber,
                            ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
                            std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
         : expr_(expr), parameters_(parameters),
-          accessSpecifier_(accessSpecifier), returnType_(returnType), storageClassSpecifier_(storageClassSpecifier) {}
+          accessSpecifier_(accessSpecifier), returnType_(returnType), storageClassSpecifier_(storageClassSpecifier), lineNumber_(lineNumber) {}
     ~ASTFunctionDeclaration()
     {
         delete expr_;
@@ -688,6 +709,7 @@ public:
     std::optional<ASTTypeSpecifier *> getReturnType() const { return returnType_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -732,9 +754,9 @@ public:
         }
     }
 
-    static ASTFunctionDeclaration *fromFunctionDefinition(const ASTFunctionDefinition &functionDefinition)
+    static ASTFunctionDeclaration *fromFunctionDefinition(const ASTFunctionDefinition &functionDefinition, std::size_t lineNumber)
     {
-        return new ASTFunctionDeclaration(functionDefinition.getExpr(), functionDefinition.getParameters(), functionDefinition.getReturnType(), functionDefinition.getAccessSpecifier(), functionDefinition.getStorageClassSpecifier());
+        return new ASTFunctionDeclaration(functionDefinition.getExpr(), functionDefinition.getParameters(), functionDefinition.getReturnType(), lineNumber, functionDefinition.getAccessSpecifier(), functionDefinition.getStorageClassSpecifier());
     }
 };
 
@@ -744,10 +766,11 @@ private:
     std::string name_;
     std::optional<ASTTypeSpecifier *> type_;
     std::optional<ASTNodePtr> initializer_;
+    std::size_t lineNumber_;
 
 public:
-    ASTVariableDeclaration(std::string name, std::optional<ASTTypeSpecifier *> type, std::optional<ASTNodePtr> initializer = std::nullopt)
-        : name_(name), type_(type), initializer_(initializer) {}
+    ASTVariableDeclaration(std::string name, std::optional<ASTTypeSpecifier *> type, std::size_t lineNumber, std::optional<ASTNodePtr> initializer = std::nullopt)
+        : name_(name), type_(type), initializer_(initializer), lineNumber_(lineNumber) {}
     ~ASTVariableDeclaration()
     {
         if (initializer_.has_value())
@@ -765,6 +788,7 @@ public:
     const std::string &getName() const { return name_; }
     std::optional<ASTTypeSpecifier *> getTypeValue() const { return type_; }
     std::optional<ASTNodePtr> getInitializer() const { return initializer_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -799,10 +823,11 @@ private:
     std::optional<ASTNodePtr> initializer_;
     ASTAccessSpecifier accessSpecifier_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
+    std::size_t lineNumber_;
 
 public:
-    ASTGlobalVariableDeclaration(std::string name, std::optional<ASTTypeSpecifier *> type, std::optional<ASTNodePtr> initializer, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default, std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
-        : name_(name), type_(type), initializer_(initializer), accessSpecifier_(accessSpecifier), storageClassSpecifier_(storageClassSpecifier) {}
+    ASTGlobalVariableDeclaration(std::string name, std::optional<ASTTypeSpecifier *> type, std::optional<ASTNodePtr> initializer, std::size_t lineNumber, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default, std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
+        : name_(name), type_(type), initializer_(initializer), accessSpecifier_(accessSpecifier), storageClassSpecifier_(storageClassSpecifier), lineNumber_(lineNumber) {}
     ~ASTGlobalVariableDeclaration()
     {
         if (initializer_.has_value())
@@ -822,6 +847,7 @@ public:
     std::optional<ASTNodePtr> getInitializer() const { return initializer_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -876,15 +902,17 @@ private:
     std::string name_;
     ASTTypeSpecifier type_;
     ASTAccessSpecifier accessSpecifier_;
+    std::size_t lineNumber_;
 
 public:
-    ASTStructField(std::string name, ASTTypeSpecifier type, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
-        : name_(name), type_(type), accessSpecifier_(accessSpecifier) {}
+    ASTStructField(std::string name, ASTTypeSpecifier type, std::size_t lineNumber, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
+        : name_(name), type_(type), accessSpecifier_(accessSpecifier), lineNumber_(lineNumber) {}
 
     NodeType getType() const override { return NodeType::StructField; }
     const std::string &getName() const { return name_; }
     const ASTTypeSpecifier &getTypeSpecifier() const { return type_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -910,16 +938,18 @@ private:
     std::vector<ASTStructField> members_;
     std::vector<ASTFunctionDefinition> methods_;
     ASTAccessSpecifier accessSpecifier_;
+    std::size_t lineNumber_;
 
 public:
-    ASTStructDefinition(std::optional<std::string> name, std::vector<ASTStructField> members, std::vector<ASTFunctionDefinition> methods, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
-        : name_(name), members_(members), methods_(methods), accessSpecifier_(accessSpecifier) {}
+    ASTStructDefinition(std::optional<std::string> name, std::vector<ASTStructField> members, std::vector<ASTFunctionDefinition> methods, std::size_t lineNumber, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
+        : name_(name), members_(members), methods_(methods), accessSpecifier_(accessSpecifier), lineNumber_(lineNumber) {}
 
     NodeType getType() const override { return NodeType::StructDefinition; }
     const std::optional<std::string> &getName() const { return name_; }
     const std::vector<ASTStructField> &getMembers() const { return members_; }
     const std::vector<ASTFunctionDefinition> &getMethods() const { return methods_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -956,10 +986,11 @@ class ASTStructInitialization : public ASTNode
 private:
     std::string structName_;
     std::vector<std::pair<std::string, ASTNodePtr>> fieldInitializers_;
+    std::size_t lineNumber_;
 
 public:
-    ASTStructInitialization(std::string structName, std::vector<std::pair<std::string, ASTNodePtr>> fieldInitializers)
-        : structName_(structName), fieldInitializers_(fieldInitializers) {}
+    ASTStructInitialization(std::string structName, std::vector<std::pair<std::string, ASTNodePtr>> fieldInitializers, std::size_t lineNumber)
+        : structName_(structName), fieldInitializers_(fieldInitializers), lineNumber_(lineNumber) {}
     ~ASTStructInitialization()
     {
         for (auto &&item : fieldInitializers_)
@@ -971,6 +1002,7 @@ public:
     NodeType getType() const override { return NodeType::StructInitialization; }
     const std::string &getStructName() const { return structName_; }
     const std::vector<std::pair<std::string, ASTNodePtr>> &getFieldInitializers() const { return fieldInitializers_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -997,10 +1029,11 @@ private:
     ASTNodePtr condition_;
     ASTNodePtr trueExpression_;
     ASTNodePtr falseExpression_;
+    std::size_t lineNumber_;
 
 public:
-    ASTConditionalExpression(ASTNodePtr condition, ASTNodePtr trueExpression, ASTNodePtr falseExpression)
-        : condition_(condition), trueExpression_(trueExpression), falseExpression_(falseExpression) {}
+    ASTConditionalExpression(ASTNodePtr condition, ASTNodePtr trueExpression, ASTNodePtr falseExpression, std::size_t lineNumber)
+        : condition_(condition), trueExpression_(trueExpression), falseExpression_(falseExpression), lineNumber_(lineNumber) {}
     ~ASTConditionalExpression()
     {
         delete condition_;
@@ -1012,6 +1045,7 @@ public:
     ASTNodePtr getCondition() const { return condition_; }
     ASTNodePtr getTrueExpression() const { return trueExpression_; }
     ASTNodePtr getFalseExpression() const { return falseExpression_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1051,8 +1085,8 @@ public:
         BitwiseOrAssign
     };
 
-    ASTAssignment(ASTNodePtr left, Operator op, ASTNodePtr right)
-        : left_(left), op_(op), right_(right) {}
+    ASTAssignment(ASTNodePtr left, Operator op, ASTNodePtr right, std::size_t lineNumber)
+        : left_(left), op_(op), right_(right), lineNumber_(lineNumber) {}
     ~ASTAssignment()
     {
         delete left_;
@@ -1065,6 +1099,7 @@ public:
     ASTNodePtr getRight() const { return right_; }
     Operator getOperator() const { return op_; }
     std::string getOperatorString() const { return formatOperator(op_); }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1082,6 +1117,7 @@ private:
     ASTNodePtr left_;
     Operator op_;
     ASTNodePtr right_;
+    std::size_t lineNumber_;
 
     std::string formatOperator(Operator op) const
     {
@@ -1120,10 +1156,11 @@ class ASTFunctionCall : public ASTNode
 private:
     ASTNodePtr expr_;
     std::vector<ASTNodePtr> arguments_;
+    std::size_t lineNumber_;
 
 public:
-    ASTFunctionCall(ASTNodePtr expr, std::vector<ASTNodePtr> arguments)
-        : expr_(expr), arguments_(arguments) {}
+    ASTFunctionCall(ASTNodePtr expr, std::vector<ASTNodePtr> arguments, std::size_t lineNumber)
+        : expr_(expr), arguments_(arguments), lineNumber_(lineNumber) {}
     ~ASTFunctionCall()
     {
         for (auto &&argument : arguments_)
@@ -1136,6 +1173,7 @@ public:
     NodeType getType() const override { return NodeType::FunctionCall; }
     ASTNodePtr getExpr() const { return expr_; }
     const std::vector<ASTNodePtr> &getArguments() const { return arguments_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1160,10 +1198,11 @@ class ASTFieldAccess : public ASTNode
 private:
     ASTNodePtr operand_;
     std::string field_name_;
+    std::size_t lineNumber_;
 
 public:
-    ASTFieldAccess(ASTNodePtr operand, std::string field_name)
-        : operand_(operand), field_name_(field_name) {}
+    ASTFieldAccess(ASTNodePtr operand, std::string field_name, std::size_t lineNumber)
+        : operand_(operand), field_name_(field_name), lineNumber_(lineNumber) {}
     ~ASTFieldAccess()
     {
         delete operand_;
@@ -1172,6 +1211,7 @@ public:
     NodeType getType() const override { return NodeType::FieldAccess; }
     ASTNodePtr getOperand() const { return operand_; }
     const std::string &getFieldName() const { return field_name_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1185,11 +1225,13 @@ class ASTPointerFieldAccess : public ASTNode
 {
 private:
     ASTFieldAccess field_access_;
+    std::size_t lineNumber_;
 
 public:
-    ASTPointerFieldAccess(ASTFieldAccess field_access) : field_access_(field_access) {}
+    ASTPointerFieldAccess(ASTFieldAccess field_access, std::size_t lineNumber) : field_access_(field_access), lineNumber_(lineNumber) {}
     NodeType getType() const override { return NodeType::PointerFieldAccess; }
     ASTFieldAccess getFieldAccess() const { return field_access_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1204,12 +1246,14 @@ class ASTEnumVariantItem
 private:
     std::optional<std::string> name_;
     ASTTypeSpecifier type_;
+    std::size_t lineNumber_;
 
 public:
-    ASTEnumVariantItem(std::optional<std::string> name, ASTTypeSpecifier type) : name_(name), type_(type) {}
+    ASTEnumVariantItem(std::optional<std::string> name, ASTTypeSpecifier type, std::size_t lineNumber) : name_(name), type_(type), lineNumber_(lineNumber) {}
 
     const std::optional<std::string> &getName() const { return name_; }
     const ASTTypeSpecifier &getTypeSpecifier() const { return type_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 };
 
 class ASTEnumVariant : public ASTNode
@@ -1217,14 +1261,16 @@ class ASTEnumVariant : public ASTNode
 private:
     std::string name_;
     std::vector<ASTEnumVariantItem> items_;
+    std::size_t lineNumber_;
 
 public:
-    ASTEnumVariant(std::string name, std::vector<ASTEnumVariantItem> items)
-        : name_(name), items_(items) {}
+    ASTEnumVariant(std::string name, std::vector<ASTEnumVariantItem> items, std::size_t lineNumber)
+        : name_(name), items_(items), lineNumber_(lineNumber) {}
 
     NodeType getType() const override { return NodeType::EnumVariant; }
     const std::string &getName() const { return name_; }
     const std::vector<ASTEnumVariantItem> &getItems() const { return items_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1260,15 +1306,17 @@ private:
     std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> fields_;
     std::vector<ASTFunctionDefinition> methods_;
     ASTAccessSpecifier accessSpecifier_;
+    std::size_t lineNumber_;
 
 public:
     ASTEnumDefinition(std::optional<std::string> name,
                       std::vector<ASTEnumVariant> variants,
                       std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> fields,
                       std::vector<ASTFunctionDefinition> methods,
+                      std::size_t lineNumber,
                       ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default)
 
-        : name_(name), variants_(variants), fields_(fields), methods_(methods), accessSpecifier_(accessSpecifier)
+        : name_(name), variants_(variants), fields_(fields), methods_(methods), accessSpecifier_(accessSpecifier), lineNumber_(lineNumber)
     {
     }
     ~ASTEnumDefinition()
@@ -1288,6 +1336,7 @@ public:
     const std::vector<std::pair<std::string, std::optional<ASTNodePtr>>> &getFields() const { return fields_; }
     const std::vector<ASTFunctionDefinition> &getMethods() const { return methods_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1337,9 +1386,10 @@ class ASTReturnStatement : public ASTNode
 {
 private:
     std::optional<ASTNodePtr> expression_;
+    std::size_t lineNumber_;
 
 public:
-    ASTReturnStatement(std::optional<ASTNodePtr> expression) : expression_(expression) {}
+    ASTReturnStatement(std::optional<ASTNodePtr> expression, std::size_t lineNumber) : expression_(expression), lineNumber_(lineNumber) {}
     ~ASTReturnStatement()
     {
         if (expression_.has_value())
@@ -1350,6 +1400,7 @@ public:
 
     NodeType getType() const override { return NodeType::ReturnStatement; }
     const std::optional<ASTNodePtr> &getExpr() const { return expression_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1369,10 +1420,14 @@ public:
 
 class ASTBreakStatement : public ASTNode
 {
+private:
+    std::size_t lineNumber_;
+
 public:
-    ASTBreakStatement() {}
+    ASTBreakStatement(std::size_t lineNumber) : lineNumber_(lineNumber) {}
 
     NodeType getType() const override { return NodeType::BreakStatement; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1383,10 +1438,14 @@ public:
 
 class ASTContinueStatement : public ASTNode
 {
+private:
+    std::size_t lineNumber_;
+
 public:
-    ASTContinueStatement() {}
+    ASTContinueStatement(std::size_t lineNumber) : lineNumber_(lineNumber) {}
 
     NodeType getType() const override { return NodeType::ContinueStatement; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1402,10 +1461,11 @@ private:
     std::optional<ASTNodePtr> condition_;
     std::optional<ASTNodePtr> increment_;
     ASTNodePtr body_;
+    std::size_t lineNumber_;
 
 public:
-    ASTForStatement(std::optional<ASTNodePtr> initializer, std::optional<ASTNodePtr> condition, std::optional<ASTNodePtr> increment, ASTNodePtr body)
-        : initializer_(initializer), condition_(condition), increment_(increment), body_(body) {}
+    ASTForStatement(std::optional<ASTNodePtr> initializer, std::optional<ASTNodePtr> condition, std::optional<ASTNodePtr> increment, ASTNodePtr body, std::size_t lineNumber)
+        : initializer_(initializer), condition_(condition), increment_(increment), body_(body), lineNumber_(lineNumber) {}
     ~ASTForStatement()
     {
         if (initializer_.has_value())
@@ -1428,6 +1488,7 @@ public:
     std::optional<ASTNodePtr> getCondition() const { return condition_; }
     std::optional<ASTNodePtr> getIncrement() const { return increment_; }
     ASTNodePtr getBody() const { return body_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {
@@ -1467,10 +1528,11 @@ private:
     ASTNodePtr condition_;
     ASTNodePtr thenBranch_;
     std::optional<ASTNodePtr> elseBranch_;
+    std::size_t lineNumber_;
 
 public:
-    ASTIfStatement(ASTNodePtr condition, ASTNodePtr thenBranch, std::optional<ASTNodePtr> elseBranch = std::nullopt)
-        : condition_(condition), thenBranch_(thenBranch), elseBranch_(elseBranch) {}
+    ASTIfStatement(ASTNodePtr condition, ASTNodePtr thenBranch, std::size_t lineNumber, std::optional<ASTNodePtr> elseBranch = std::nullopt)
+        : condition_(condition), thenBranch_(thenBranch), elseBranch_(elseBranch), lineNumber_(lineNumber) {}
     ~ASTIfStatement()
     {
         delete condition_;
@@ -1485,6 +1547,7 @@ public:
     ASTNodePtr getCondition() const { return condition_; }
     ASTNodePtr getThenBranch() const { return thenBranch_; }
     std::optional<ASTNodePtr> getElseBranch() const { return elseBranch_; }
+    std::size_t getLineNumber() const { return lineNumber_; }
 
     void print(int indent) const override
     {

@@ -11,7 +11,7 @@
 
 void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
 {
-    Scope* scope = new Scope();
+    Scope *scope = new Scope();
 
     ASTFunctionDefinition *funcDef = static_cast<ASTFunctionDefinition *>(node);
     std::string funcName = static_cast<ASTIdentifier *>(funcDef->getExpr())->getName();
@@ -20,7 +20,8 @@ void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
     ASTStatementList *body = static_cast<ASTStatementList *>(funcDef->getBody());
     bool exported = false;
 
-    if (funcTable_.find(funcName) != funcTable_.end()) {
+    if (funcTable_.find(funcName) != funcTable_.end())
+    {
         // funcDef->getLineNumber()
         DISPLAY_DIAG(1, "Function '" + funcName + "' is already defined in this module.");
     }
@@ -44,8 +45,7 @@ void CodeGenLLVM_Module::compileFunctionDefinition(ASTNodePtr node)
 
     if (storageClass.has_value() && storageClass.value() == ASTStorageClassSpecifier::Extern)
     {
-        std::cerr << "Function definition cannot get an extern storage class." << std::endl;
-        exit(1);
+        DISPLAY_DIAG(funcDef->getLineNumber(), "Function definition cannot get an extern storage class.");
     }
 
     llvm::FunctionType *funcType = llvm::FunctionType::get(returnType, paramTypes, isVariadic);
