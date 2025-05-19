@@ -1,7 +1,5 @@
-fn main() {
-    #a = 0;
-    #b: int;
-    #c: int = 10;
+PI = 3.14;
 
-    #d: const void*;
+fn main() {
+    
 }

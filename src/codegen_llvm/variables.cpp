@@ -20,18 +20,15 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     ASTAccessSpecifier accessSpecifier = varDecl->getAccessSpecifier();
     std::string varName = varDecl->getName();
 
+    std::shared_ptr<CodeGenLLVM_EValue> initializer = nullptr;
     std::shared_ptr<CodeGenLLVM_Type> codegenType = nullptr;
-    llvm::Type *llvmType = nullptr;
     llvm::GlobalValue::LinkageTypes linkage = llvm::GlobalValue::InternalLinkage;
-
-    llvm::Constant *constInit = nullptr;
     bool isConstType = false;
 
     if (varDecl->getTypeValue().has_value())
     {
         ASTTypeSpecifier *varType = static_cast<ASTTypeSpecifier *>(varDecl->getTypeValue().value());
         codegenType = compileType(varType);
-        llvmType = codegenType->getLLVMType();
         isConstType = codegenType->isConst();
     }
 
@@ -42,22 +39,17 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         // that is why we override string construction here.
         if (varDecl->getInitializer().value()->getType() == ASTNode::NodeType::StringLiteral)
         {
-            constInit = createStringForGlobalVariable(varDecl->getInitializer().value(), context_, module_);
-            llvmType = llvm::PointerType::get(context_, 0);
+            // constInit = createStringForGlobalVariable(varDecl->getInitializer().value(), context_, module_);
+            // codegenType = compileType(varDecl->getInitializer().value());
+            // FIXME
         }
         else
         {
-            auto init = compileExpr(std::nullopt, varDecl->getInitializer().value());
-            constInit = llvm::dyn_cast<llvm::Constant>(init->asValue()->getLLVMValue());
-            if (!constInit)
-            {
-                std::cerr << "(Error) Global variable initializer must be a constant." << std::endl;
-                exit(1);
-            }
+            initializer = compileExpr(std::nullopt, varDecl->getInitializer().value());
         }
     }
 
-    if (!varDecl->getTypeValue().has_value() && constInit == nullptr)
+    if (!varDecl->getTypeValue().has_value() && initializer == nullptr)
     {
         std::cerr << "(Error) Global variable type is not specified and initializer is not a constant." << std::endl;
         exit(1);
@@ -65,7 +57,8 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
     else
     {
         // determine variable type from initializer
-        llvmType = constInit->getType();
+        codegenType = initializer->asValue()->getValueType();
+        isConstType = codegenType->isConst();
     }
 
     bool publicSymbol = false;
@@ -91,7 +84,7 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
 
         if (storageClassSpecifier == ASTStorageClassSpecifier::Extern)
         {
-            if (constInit != nullptr)
+            if (initializer != nullptr)
             {
                 std::cerr << "(Error) Extern storage class specifier cannot have an initializer." << std::endl;
                 exit(1);
@@ -106,15 +99,23 @@ void CodeGenLLVM_Module::compileGlobalVariableDeclaration(ASTNodePtr node)
         }
     }
 
+    llvm::Value *valueInitializer = initializer->asValue()->getLLVMValue();
+    llvm::Constant *constantInitializer = llvm::dyn_cast<llvm::Constant>(valueInitializer);
+    if (!constantInitializer)
+    {
+        std::cerr << "(Error) Global variable initializer is not a constant." << std::endl;
+        exit(1);
+    }
+
     // REVIEW Consider to make it smarter when adding multi-threading features.
     auto threadLocalMode = llvm::GlobalVariable::ThreadLocalMode::NotThreadLocal;
 
     llvm::GlobalVariable *globalVar = new llvm::GlobalVariable(
         *module_,
-        llvmType,
+        codegenType->getLLVMType(),
         isConstType,
         linkage,
-        constInit,
+        constantInitializer,
         varName,
         nullptr,
         threadLocalMode,
@@ -195,7 +196,11 @@ void CodeGenLLVM_Module::compileVariableDeclaration(OptionalScopePtr scopeOpt, A
     // TODO Jump into appropriate block of the function to declare the variable correctly.
     // builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
 
-    // TODO Check if the variable is already declared in the current scope
+    if (SCOPE->getRecord(varDecl->getName()).has_value())
+    {
+        std::cerr << "(Error) Variable '" << varDecl->getName() << "' is already declared in the current scope." << std::endl;
+        exit(1);
+    }
 
     // add variable to local scope
     auto allocaInnerType = CodeGenLLVM_Type::createPointerType(codegenType);
