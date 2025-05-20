@@ -22,6 +22,7 @@ ASTNodePtr quickParse(std::string input)
         std::exit(1);
     }
 
+    set_lex_only_option(0);
     yyfilename = (char *)unitTestFileName.c_str();
 
     if (yyparse() == 0)
@@ -32,6 +33,7 @@ ASTNodePtr quickParse(std::string input)
             std::exit(1);
         }
         fclose(yyin);
+        yylex_destroy();
 
         return astProgram;
     }
@@ -43,6 +45,7 @@ ASTNodePtr quickParse(std::string input)
     }
 
     fclose(yyin);
+    yylex_destroy();
     return nullptr;
 }
 
