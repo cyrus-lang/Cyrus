@@ -47,11 +47,7 @@ public:
             throw std::runtime_error("Internal type " + formatInternalType() + " cannot have a inner value.");
         }
     }
-    ~ASTTypeSpecifier()
-    {
-        delete inner_;
-    }
-
+    
     NodeType getType() const override { return NodeType::TypeSpecifier; }
     ASTInternalType getTypeValue() const { return type_; }
     ASTNodePtr getInner() const { return inner_; }

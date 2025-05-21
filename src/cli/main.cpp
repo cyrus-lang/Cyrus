@@ -10,44 +10,44 @@
 #include "util/util.hpp"
 #include "parser/parser.hpp"
 #include "parser/cyrus.tab.hpp"
-#include "codegen_llvm/options.hpp"
-#include "codegen_llvm/compiler.hpp"
+// #include "codegen_llvm/options.hpp"
+// #include "codegen_llvm/compiler.hpp"
 
 void compileCommandHelp();
 void llvmIRCommandHelp();
 
-CodeGenLLVM_Options collectCompilerOptions(argh::parser &cmdl, CodeGenLLVM_OutputKind outputKind)
-{
-    CodeGenLLVM_Options opts;
+// CodeGenLLVM_Options collectCompilerOptions(argh::parser &cmdl, CodeGenLLVM_OutputKind outputKind)
+// {
+//     CodeGenLLVM_Options opts;
 
-    if (cmdl.size() < 3)
-    {
-        std::cerr << "(Error) Incorrect number of arguments." << std::endl;
-        std::cerr << "        Checkout `cyrus compile --help` for more information." << std::endl;
-        exit(1);
-    }
+//     if (cmdl.size() < 3)
+//     {
+//         std::cerr << "(Error) Incorrect number of arguments." << std::endl;
+//         std::cerr << "        Checkout `cyrus compile --help` for more information." << std::endl;
+//         exit(1);
+//     }
 
-    if (cmdl[{"-h", "--help"}])
-    {
-        compileCommandHelp();
-        exit(1);
-    }
+//     if (cmdl[{"-h", "--help"}])
+//     {
+//         compileCommandHelp();
+//         exit(1);
+//     }
 
-    for (auto &param : cmdl.params())
-    {
-        if (param.first == "o" || param.first == "output")
-            opts.setOutputPath(param.second);
-        if (param.first == "build-dir")
-            opts.setBuildDirectory(param.second);
-    }
+//     for (auto &param : cmdl.params())
+//     {
+//         if (param.first == "o" || param.first == "output")
+//             opts.setOutputPath(param.second);
+//         if (param.first == "build-dir")
+//             opts.setBuildDirectory(param.second);
+//     }
 
-    util::checkInputFileExtension(cmdl[2]);
-    opts.setInputFile(cmdl[2]);
+//     util::checkInputFileExtension(cmdl[2]);
+//     opts.setInputFile(cmdl[2]);
 
-    opts.setOutputKind(outputKind);
+//     opts.setOutputKind(outputKind);
 
-    return opts;
-}
+//     return opts;
+// }
 
 void compileCommand(argh::parser &cmdl)
 {
@@ -57,8 +57,8 @@ void compileCommand(argh::parser &cmdl)
         exit(1);
     }
 
-    CodeGenLLVM_Options opts = collectCompilerOptions(cmdl, CodeGenLLVM_OutputKind::Executable);
-    new_codegen_llvm(opts);
+    // CodeGenLLVM_Options opts = collectCompilerOptions(cmdl, CodeGenLLVM_OutputKind::Executable);
+    // new_codegen_llvm(opts);
 }
 
 void llvmIRCommand(argh::parser &cmdl)
@@ -69,8 +69,8 @@ void llvmIRCommand(argh::parser &cmdl)
         exit(1);
     }
 
-    CodeGenLLVM_Options opts = collectCompilerOptions(cmdl, CodeGenLLVM_OutputKind::LLVMIR);
-    new_codegen_llvm(opts);
+    // CodeGenLLVM_Options opts = collectCompilerOptions(cmdl, CodeGenLLVM_OutputKind::LLVMIR);
+    // new_codegen_llvm(opts);
 }
 
 void compileDylibCommand(argh::parser &cmdl)
@@ -192,8 +192,6 @@ void parseOnlyCommand(argh::parser &cmdl)
         std::cerr << "(Error) ASTProgram is not initialized correctly.'" << std::endl;
         std::exit(1);
     }
-
-    delete program;
 }
 
 void lexOnlyCommand(argh::parser &cmdl)
@@ -221,7 +219,7 @@ void lexOnlyCommand(argh::parser &cmdl)
     int token_kind;
     while ((token_kind = yylex()))
     {
-        yytokentype tokenType = static_cast<yytokentype>(token_kind);
+        yy::parser::token::yytokentype tokenType = static_cast<yy::parser::token::yytokentype>(token_kind);
         Token token(yytext, tokenType);
 
         std::cout << "Token: " << token.visit() << std::endl;

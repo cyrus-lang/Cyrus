@@ -17,13 +17,7 @@ private:
 public:
     ASTStatementList(std::size_t lineNumber) : statements_(), lineNumber_(lineNumber) {}
     ASTStatementList(ASTNodePtr statement, std::size_t lineNumber) : statements_({statement}), lineNumber_(lineNumber) {}
-    ~ASTStatementList()
-    {
-        for (auto &statement : statements_)
-        {
-            delete statement;
-        }
-    }
+
     NodeType getType() const override { return NodeType::StatementList; }
     const ASTNodeList &getStatements() const { return statements_; }
     void addStatement(ASTNodePtr statement) { statements_.push_back(statement); }
@@ -43,21 +37,17 @@ public:
 class ASTProgram : public ASTNode
 {
 private:
-    ASTStatementList *statementList_;
+    std::shared_ptr<ASTStatementList> statementList_;
 
 public:
     ASTProgram()
     {
-        statementList_ = new ASTStatementList(0);
-    }
-    ~ASTProgram()
-    {
-        delete statementList_;
+        statementList_ = std::make_shared<ASTStatementList>(0);
     }
 
     NodeType getType() const override { return NodeType::Program; }
 
-    ASTStatementList *getStatementList()
+    std::shared_ptr<ASTStatementList> getStatementList()
     {
         return statementList_;
     }
@@ -215,11 +205,6 @@ public:
 
     ASTBinaryExpression(ASTNodePtr left, Operator op, ASTNodePtr right, std::size_t lineNumber)
         : left_(left), op_(op), right_(right), lineNumber_(lineNumber) {}
-    ~ASTBinaryExpression()
-    {
-        delete left_;
-        delete right_;
-    }
 
     NodeType getType() const override { return NodeType::BinaryExpression; }
 
@@ -252,7 +237,7 @@ private:
         case Operator::Subtract:
             return "-";
         case Operator::Multiply:
-            return "*";
+            return "";
         case Operator::Divide:
             return "/";
         case Operator::Remainder:
@@ -308,10 +293,6 @@ public:
 
     ASTUnaryExpression(Operator op, ASTNodePtr operand, std::size_t lineNumber)
         : op_(op), operand_(operand), lineNumber_(lineNumber) {}
-    ~ASTUnaryExpression()
-    {
-        delete operand_;
-    }
 
     NodeType getType() const override { return NodeType::UnaryExpression; }
 
@@ -346,7 +327,7 @@ private:
         case Operator::AddressOf:
             return "&";
         case Operator::Dereference:
-            return "*";
+            return "";
         case Operator::PreIncrement:
             return "++";
         case Operator::PreDecrement:
@@ -371,10 +352,6 @@ private:
 public:
     ASTCastExpression(ASTTypeSpecifier targetType, ASTNodePtr expression, std::size_t lineNumber)
         : expression_(expression), targetType_(targetType), lineNumber_(lineNumber) {}
-    ~ASTCastExpression()
-    {
-        delete expression_;
-    }
 
     NodeType getType() const override { return NodeType::CastExpression; }
     ASTNodePtr getExpression() const { return expression_; }
@@ -499,10 +476,6 @@ private:
 public:
     ASTFunctionParameter(std::string param_name, ASTTypeSpecifier param_type, ASTNodePtr default_value = nullptr)
         : param_name_(param_name), param_type_(param_type), default_value_(default_value) {}
-    ~ASTFunctionParameter()
-    {
-        delete default_value_;
-    }
 
     NodeType getType() const override { return NodeType::FunctionParameter; }
     const std::string &getParamName() const { return param_name_; }
@@ -532,23 +505,16 @@ class ASTFunctionParameters : public ASTNode
 {
 private:
     std::vector<ASTFunctionParameter> parameters_;
-    std::optional<ASTTypeSpecifier *> typed_variadic_;
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> typed_variadic_;
     bool is_variadic_;
 
 public:
-    ASTFunctionParameters(std::vector<ASTFunctionParameter> parameters, std::optional<ASTTypeSpecifier *> typed_variadic = std::nullopt, bool is_variadic = false)
+    ASTFunctionParameters(std::vector<ASTFunctionParameter> parameters, std::optional<std::shared_ptr<ASTTypeSpecifier>> typed_variadic = std::nullopt, bool is_variadic = false)
         : parameters_(parameters), typed_variadic_(typed_variadic), is_variadic_(is_variadic) {}
-    ~ASTFunctionParameters()
-    {
-        if (typed_variadic_.has_value())
-        {
-            delete typed_variadic_.value();
-        }
-    }
 
     NodeType getType() const override { return NodeType::FunctionParameter; }
     const std::vector<ASTFunctionParameter> &getList() const { return parameters_; }
-    std::optional<ASTTypeSpecifier *> getTypedVariadic() const { return typed_variadic_; }
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> getTypedVariadic() const { return typed_variadic_; }
     bool getIsVariadic() const { return is_variadic_; }
 
     void addParameter(ASTFunctionParameter param)
@@ -556,7 +522,7 @@ public:
         parameters_.push_back(param);
     }
 
-    void setVariadic(std::optional<ASTTypeSpecifier *> typed_variadic)
+    void setVariadic(std::optional<std::shared_ptr<ASTTypeSpecifier>> typed_variadic)
     {
         typed_variadic_ = typed_variadic;
         is_variadic_ = true;
@@ -594,34 +560,25 @@ private:
     ASTFunctionParameters parameters_;
     ASTNodePtr body_;
     ASTAccessSpecifier accessSpecifier_;
-    std::optional<ASTTypeSpecifier *> returnType_;
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> returnType_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
     std::size_t lineNumber_;
 
 public:
     ASTFunctionDefinition(ASTNodePtr expr,
                           ASTFunctionParameters parameters,
-                          std::optional<ASTTypeSpecifier *> returnType,
+                          std::optional<std::shared_ptr<ASTTypeSpecifier>> returnType,
                           ASTNodePtr body,
                           std::size_t lineNumber,
                           ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
                           std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
         : expr_(expr), parameters_(parameters), body_(body),
           accessSpecifier_(accessSpecifier), returnType_(returnType), storageClassSpecifier_(storageClassSpecifier), lineNumber_(lineNumber) {}
-    ~ASTFunctionDefinition()
-    {
-        delete expr_;
-        delete body_;
-        if (returnType_.has_value())
-        {
-            delete returnType_.value();
-        }
-    }
 
     NodeType getType() const override { return NodeType::FunctionDefinition; }
     ASTNodePtr getExpr() const { return expr_; }
     ASTFunctionParameters getParameters() const { return parameters_; }
-    std::optional<ASTTypeSpecifier *> getReturnType() const { return returnType_; }
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> getReturnType() const { return returnType_; }
     ASTNodePtr getBody() const { return body_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
@@ -681,32 +638,24 @@ private:
     ASTNodePtr expr_;
     ASTFunctionParameters parameters_;
     ASTAccessSpecifier accessSpecifier_;
-    std::optional<ASTTypeSpecifier *> returnType_;
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> returnType_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
     std::size_t lineNumber_;
 
 public:
     ASTFunctionDeclaration(ASTNodePtr expr,
                            ASTFunctionParameters parameters,
-                           std::optional<ASTTypeSpecifier *> returnType,
+                           std::optional<std::shared_ptr<ASTTypeSpecifier>> returnType,
                            std::size_t lineNumber,
                            ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default,
                            std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
         : expr_(expr), parameters_(parameters),
           accessSpecifier_(accessSpecifier), returnType_(returnType), storageClassSpecifier_(storageClassSpecifier), lineNumber_(lineNumber) {}
-    ~ASTFunctionDeclaration()
-    {
-        delete expr_;
-        if (returnType_.has_value())
-        {
-            delete returnType_.value();
-        }
-    }
 
     NodeType getType() const override { return NodeType::FunctionDeclaration; }
     ASTNodePtr getExpr() const { return expr_; }
     ASTFunctionParameters getParameters() const { return parameters_; }
-    std::optional<ASTTypeSpecifier *> getReturnType() const { return returnType_; }
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> getReturnType() const { return returnType_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
     std::size_t getLineNumber() const { return lineNumber_; }
@@ -754,9 +703,9 @@ public:
         }
     }
 
-    static ASTFunctionDeclaration *fromFunctionDefinition(const ASTFunctionDefinition &functionDefinition, std::size_t lineNumber)
+    static std::shared_ptr<ASTFunctionDeclaration> fromFunctionDefinition(const ASTFunctionDefinition &functionDefinition, std::size_t lineNumber)
     {
-        return new ASTFunctionDeclaration(functionDefinition.getExpr(), functionDefinition.getParameters(), functionDefinition.getReturnType(), lineNumber, functionDefinition.getAccessSpecifier(), functionDefinition.getStorageClassSpecifier());
+        return std::make_shared<ASTFunctionDeclaration>(functionDefinition.getExpr(), functionDefinition.getParameters(), functionDefinition.getReturnType(), lineNumber, functionDefinition.getAccessSpecifier(), functionDefinition.getStorageClassSpecifier());
     }
 };
 
@@ -764,29 +713,17 @@ class ASTVariableDeclaration : public ASTNode
 {
 private:
     std::string name_;
-    std::optional<ASTTypeSpecifier *> type_;
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> type_;
     std::optional<ASTNodePtr> initializer_;
     std::size_t lineNumber_;
 
 public:
-    ASTVariableDeclaration(std::string name, std::optional<ASTTypeSpecifier *> type, std::size_t lineNumber, std::optional<ASTNodePtr> initializer = std::nullopt)
+    ASTVariableDeclaration(std::string name, std::optional<std::shared_ptr<ASTTypeSpecifier>> type, std::size_t lineNumber, std::optional<ASTNodePtr> initializer = std::nullopt)
         : name_(name), type_(type), initializer_(initializer), lineNumber_(lineNumber) {}
-    ~ASTVariableDeclaration()
-    {
-        if (initializer_.has_value())
-        {
-            delete initializer_.value();
-        }
-
-        if (type_.has_value())
-        {
-            delete type_.value();
-        }
-    }
 
     NodeType getType() const override { return NodeType::VariableDeclaration; }
     const std::string &getName() const { return name_; }
-    std::optional<ASTTypeSpecifier *> getTypeValue() const { return type_; }
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> getTypeValue() const { return type_; }
     std::optional<ASTNodePtr> getInitializer() const { return initializer_; }
     std::size_t getLineNumber() const { return lineNumber_; }
 
@@ -819,31 +756,19 @@ class ASTGlobalVariableDeclaration : public ASTNode
 {
 private:
     std::string name_;
-    std::optional<ASTTypeSpecifier *> type_;
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> type_;
     std::optional<ASTNodePtr> initializer_;
     ASTAccessSpecifier accessSpecifier_;
     std::optional<ASTStorageClassSpecifier> storageClassSpecifier_;
     std::size_t lineNumber_;
 
 public:
-    ASTGlobalVariableDeclaration(std::string name, std::optional<ASTTypeSpecifier *> type, std::optional<ASTNodePtr> initializer, std::size_t lineNumber, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default, std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
+    ASTGlobalVariableDeclaration(std::string name, std::optional<std::shared_ptr<ASTTypeSpecifier>> type, std::optional<ASTNodePtr> initializer, std::size_t lineNumber, ASTAccessSpecifier accessSpecifier = ASTAccessSpecifier::Default, std::optional<ASTStorageClassSpecifier> storageClassSpecifier = std::nullopt)
         : name_(name), type_(type), initializer_(initializer), accessSpecifier_(accessSpecifier), storageClassSpecifier_(storageClassSpecifier), lineNumber_(lineNumber) {}
-    ~ASTGlobalVariableDeclaration()
-    {
-        if (initializer_.has_value())
-        {
-            delete initializer_.value();
-        }
-
-        if (type_.has_value())
-        {
-            delete type_.value();
-        }
-    }
 
     NodeType getType() const override { return NodeType::VariableDeclaration; }
     const std::string &getName() const { return name_; }
-    std::optional<ASTTypeSpecifier *> getTypeValue() const { return type_; }
+    std::optional<std::shared_ptr<ASTTypeSpecifier>> getTypeValue() const { return type_; }
     std::optional<ASTNodePtr> getInitializer() const { return initializer_; }
     ASTAccessSpecifier getAccessSpecifier() const { return accessSpecifier_; }
     std::optional<ASTStorageClassSpecifier> getStorageClassSpecifier() const { return storageClassSpecifier_; }
@@ -991,13 +916,6 @@ private:
 public:
     ASTStructInitialization(std::string structName, std::vector<std::pair<std::string, ASTNodePtr>> fieldInitializers, std::size_t lineNumber)
         : structName_(structName), fieldInitializers_(fieldInitializers), lineNumber_(lineNumber) {}
-    ~ASTStructInitialization()
-    {
-        for (auto &&item : fieldInitializers_)
-        {
-            delete item.second;
-        }
-    }
 
     NodeType getType() const override { return NodeType::StructInitialization; }
     const std::string &getStructName() const { return structName_; }
@@ -1034,12 +952,6 @@ private:
 public:
     ASTConditionalExpression(ASTNodePtr condition, ASTNodePtr trueExpression, ASTNodePtr falseExpression, std::size_t lineNumber)
         : condition_(condition), trueExpression_(trueExpression), falseExpression_(falseExpression), lineNumber_(lineNumber) {}
-    ~ASTConditionalExpression()
-    {
-        delete condition_;
-        delete trueExpression_;
-        delete falseExpression_;
-    }
 
     NodeType getType() const override { return NodeType::ConditionalExpression; }
     ASTNodePtr getCondition() const { return condition_; }
@@ -1087,11 +999,6 @@ public:
 
     ASTAssignment(ASTNodePtr left, Operator op, ASTNodePtr right, std::size_t lineNumber)
         : left_(left), op_(op), right_(right), lineNumber_(lineNumber) {}
-    ~ASTAssignment()
-    {
-        delete left_;
-        delete right_;
-    }
 
     NodeType getType() const override { return NodeType::AssignmentExpression; }
 
@@ -1130,7 +1037,7 @@ private:
         case Operator::SubtractAssign:
             return "-=";
         case Operator::MultiplyAssign:
-            return "*=";
+            return "=";
         case Operator::DivideAssign:
             return "/=";
         case Operator::RemainderAssign:
@@ -1161,14 +1068,6 @@ private:
 public:
     ASTFunctionCall(ASTNodePtr expr, std::vector<ASTNodePtr> arguments, std::size_t lineNumber)
         : expr_(expr), arguments_(arguments), lineNumber_(lineNumber) {}
-    ~ASTFunctionCall()
-    {
-        for (auto &&argument : arguments_)
-        {
-            delete argument;
-        }
-        delete expr_;
-    }
 
     NodeType getType() const override { return NodeType::FunctionCall; }
     ASTNodePtr getExpr() const { return expr_; }
@@ -1203,10 +1102,6 @@ private:
 public:
     ASTFieldAccess(ASTNodePtr operand, std::string field_name, std::size_t lineNumber)
         : operand_(operand), field_name_(field_name), lineNumber_(lineNumber) {}
-    ~ASTFieldAccess()
-    {
-        delete operand_;
-    }
 
     NodeType getType() const override { return NodeType::FieldAccess; }
     ASTNodePtr getOperand() const { return operand_; }
@@ -1319,16 +1214,6 @@ public:
         : name_(name), variants_(variants), fields_(fields), methods_(methods), accessSpecifier_(accessSpecifier), lineNumber_(lineNumber)
     {
     }
-    ~ASTEnumDefinition()
-    {
-        for (auto &&item : fields_)
-        {
-            if (item.second.has_value())
-            {
-                delete item.second.value();
-            }
-        }
-    }
 
     NodeType getType() const override { return NodeType::EnumDefinition; }
     const std::optional<std::string> &getName() const { return name_; }
@@ -1390,13 +1275,6 @@ private:
 
 public:
     ASTReturnStatement(std::optional<ASTNodePtr> expression, std::size_t lineNumber) : expression_(expression), lineNumber_(lineNumber) {}
-    ~ASTReturnStatement()
-    {
-        if (expression_.has_value())
-        {
-            delete expression_.value();
-        }
-    }
 
     NodeType getType() const override { return NodeType::ReturnStatement; }
     const std::optional<ASTNodePtr> &getExpr() const { return expression_; }
@@ -1466,22 +1344,6 @@ private:
 public:
     ASTForStatement(std::optional<ASTNodePtr> initializer, std::optional<ASTNodePtr> condition, std::optional<ASTNodePtr> increment, ASTNodePtr body, std::size_t lineNumber)
         : initializer_(initializer), condition_(condition), increment_(increment), body_(body), lineNumber_(lineNumber) {}
-    ~ASTForStatement()
-    {
-        if (initializer_.has_value())
-        {
-            delete initializer_.value();
-        }
-        if (condition_.has_value())
-        {
-            delete condition_.value();
-        }
-        if (increment_.has_value())
-        {
-            delete increment_.value();
-        }
-        delete body_;
-    }
 
     NodeType getType() const override { return NodeType::ForStatement; }
     std::optional<ASTNodePtr> getInitializer() const { return initializer_; }
@@ -1533,16 +1395,7 @@ private:
 public:
     ASTIfStatement(ASTNodePtr condition, ASTNodePtr thenBranch, std::size_t lineNumber, std::optional<ASTNodePtr> elseBranch = std::nullopt)
         : condition_(condition), thenBranch_(thenBranch), elseBranch_(elseBranch), lineNumber_(lineNumber) {}
-    ~ASTIfStatement()
-    {
-        delete condition_;
-        delete thenBranch_;
-        if (elseBranch_.has_value())
-        {
-            delete elseBranch_.value();
-        }
-    }
-
+        
     NodeType getType() const override { return NodeType::IfStatement; }
     ASTNodePtr getCondition() const { return condition_; }
     ASTNodePtr getThenBranch() const { return thenBranch_; }

@@ -3,9 +3,8 @@
 #include "lexer/lexer.hpp"
 #include "util/util.hpp"
 
-std::pair<std::shared_ptr<std::string>, ASTProgram *> parseProgram(const std::string &inputFile)
+std::pair<std::shared_ptr<std::string>, std::shared_ptr<ASTProgram>> parseProgram(const std::string &inputFile)
 {
-    astProgram = nullptr;
     yyin = nullptr;
     yyin = fopen(inputFile.c_str(), "r");
     if (!yyin)
@@ -19,11 +18,12 @@ std::pair<std::shared_ptr<std::string>, ASTProgram *> parseProgram(const std::st
 
     const std::string fileContent = util::readFileContent(inputFile);
 
-    if (yyparse() != 0)
-    {
-        std::string errorMsg = yyerrormsg;
-        util::displayErrorPanel(inputFile, fileContent, yylineno, errorMsg);
-        std::exit(1);
+    yy::parser parser;
+    if (parser.parse() != 0)
+    {   
+        // FIXME
+        // util::displayErrorPanel(inputFile, fileContent, yylineno, yyerrormsg);
+        // std::exit(1);
     }
 
     fclose(yyin);
@@ -36,5 +36,5 @@ std::pair<std::shared_ptr<std::string>, ASTProgram *> parseProgram(const std::st
         std::exit(1);
     }
 
-    return std::make_pair(std::make_shared<std::string>(fileContent), (ASTProgram *)astProgram);
+    return std::make_pair(std::make_shared<std::string>(fileContent), astProgram);
 }

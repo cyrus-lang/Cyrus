@@ -18,9 +18,9 @@ class Token
 {
 public:
     std::string text;
-    yytokentype type;
+    yy::parser::token::yytokentype type;
 
-    Token(std::string text, yytokentype type) : text(text), type(type) {};
+    Token(std::string text, yy::parser::token::yytokentype type) : text(text), type(type) {};
     ~Token() {};
 
     std::string visit()

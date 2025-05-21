@@ -1,11 +1,7 @@
-MY_GLOBAL_VAR = 1;
-
-// fn main() {
-//     #a = 10;
-
-//     // TODO 
-//     // Implement loadings
-
-//     // TODO 
-//     // Implicit Cast
-// }
+fn main() {
+    // break;
+    // 1 + 2;
+    // break;
+    #a: int = 10;
+    #a: int = 10;
+}

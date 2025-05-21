@@ -1,4 +1,5 @@
 %option yylineno
+%option c++ 
 
 %{
 	#include <stdio.h>
@@ -26,86 +27,86 @@ IS			(u|U|l|L)*
 "//"(\\.|[^\n])*                        ;
 [ \t\n]									;
 
-"#"										{ return(HASH); }
-"fn"									{ return(FUNCTION); }
-"import"								{ return(IMPORT); }
-"type"									{ return(TYPEDEF); }
+"#"										{ return(yy::parser::token::TOK_HASH); }
+"fn"									{ return(yy::parser::token::TOK_FUNCTION); }
+"import"								{ return(yy::parser::token::TOK_IMPORT); }
+"type"									{ return(yy::parser::token::TOK_TYPEDEF); }
 
-"struct"								{ return(STRUCT); }
-"class"									{ return(CLASS); }
-"interface"								{ return(INTERFACE); }
-"public"								{ return(PUBLIC); }
-"private"								{ return(PRIVATE); }
-"abstract"								{ return(ABSTRACT); }
-"virtual"								{ return(VIRTUAL); }
-"override"								{ return(OVERRIDE); }
-"protected"								{ return(PROTECTED); }
+"struct"								{ return(yy::parser::token::TOK_STRUCT); }
+"class"									{ return(yy::parser::token::TOK_CLASS); }
+"interface"								{ return(yy::parser::token::TOK_INTERFACE); }
+"public"								{ return(yy::parser::token::TOK_PUBLIC); }
+"private"								{ return(yy::parser::token::TOK_PRIVATE); }
+"abstract"								{ return(yy::parser::token::TOK_ABSTRACT); }
+"virtual"								{ return(yy::parser::token::TOK_VIRTUAL); }
+"override"								{ return(yy::parser::token::TOK_OVERRIDE); }
+"protected"								{ return(yy::parser::token::TOK_PROTECTED); }
 
-"int"									{ return(INT); }
-"int8"									{ return(INT8); }
-"int16"									{ return(INT16); }
-"int32"									{ return(INT32); }
-"int64"									{ return(INT64); }
-"int128"								{ return(INT128); }
-"uint"									{ return(UINT); }
-"unt8"									{ return(UINT8); }
-"unt16"									{ return(UINT16); }
-"unt32"									{ return(UINT32); }
-"unt64"									{ return(UINT64); }
-"unt128"								{ return(UINT128); }
-"void"									{ return(VOID); }
-"char"									{ return(CHAR); }
-"byte"									{ return(BYTE); }
-"string"								{ return(STRING); }
-"float32"								{ return(FLOAT32); }
-"float64"								{ return(FLOAT64); }
-"float128"								{ return(FLOAT128); }
-"bool"									{ return(BOOL); }
-"error"									{ return(ERROR); }
+"int"									{ return(yy::parser::token::TOK_INT); }
+"int8"									{ return(yy::parser::token::TOK_INT8); }
+"int16"									{ return(yy::parser::token::TOK_INT16); }
+"int32"									{ return(yy::parser::token::TOK_INT32); }
+"int64"									{ return(yy::parser::token::TOK_INT64); }
+"int128"								{ return(yy::parser::token::TOK_INT128); }
+"uint"									{ return(yy::parser::token::TOK_UINT); }
+"unt8"									{ return(yy::parser::token::TOK_UINT8); }
+"unt16"									{ return(yy::parser::token::TOK_UINT16); }
+"unt32"									{ return(yy::parser::token::TOK_UINT32); }
+"unt64"									{ return(yy::parser::token::TOK_UINT64); }
+"unt128"								{ return(yy::parser::token::TOK_UINT128); }
+"void"									{ return(yy::parser::token::TOK_VOID); }
+"char"									{ return(yy::parser::token::TOK_CHAR); }
+"byte"									{ return(yy::parser::token::TOK_BYTE); }
+"string"								{ return(yy::parser::token::TOK_STRING); }
+"float32"								{ return(yy::parser::token::TOK_FLOAT32); }
+"float64"								{ return(yy::parser::token::TOK_FLOAT64); }
+"float128"								{ return(yy::parser::token::TOK_FLOAT128); }
+"bool"									{ return(yy::parser::token::TOK_BOOL); }
+"error"									{ return(yy::parser::token::TOK_ERROR); }
 
-"true"									{ return(TRUE_VAL); }
-"false"									{ return(FALSE_VAL); }
+"true"									{ return(yy::parser::token::TOK_TRUE); }
+"false"									{ return(yy::parser::token::TOK_FALSE); }
 
-"break"									{ return(BREAK); }
-"case"									{ return(CASE); }
-"char"									{ return(CHAR); }
-"const"									{ return(CONST); }
-"continue"								{ return(CONTINUE); }
-"default"								{ return(DEFAULT); }
-"do"									{ return(DO); }
-"else"									{ return(ELSE); }
-"enum"									{ return(ENUM); }
-"for"									{ return(FOR); }
-"if"									{ return(IF); }
-"return"								{ return(RETURN); }
-"switch"								{ return(SWITCH); }
-"while"									{ return(WHILE); }
+"break"									{ return(yy::parser::token::TOK_BREAK); }
+"case"									{ return(yy::parser::token::TOK_CASE); }
+"char"									{ return(yy::parser::token::TOK_CHAR); }
+"const"									{ return(yy::parser::token::TOK_CONST); }
+"continue"								{ return(yy::parser::token::TOK_CONTINUE); }
+"default"								{ return(yy::parser::token::TOK_DEFAULT); }
+"do"									{ return(yy::parser::token::TOK_DO); }
+"else"									{ return(yy::parser::token::TOK_ELSE); }
+"enum"									{ return(yy::parser::token::TOK_ENUM); }
+"for"									{ return(yy::parser::token::TOK_FOR); }
+"if"									{ return(yy::parser::token::TOK_IF); }
+"return"								{ return(yy::parser::token::TOK_RETURN); }
+"switch"								{ return(yy::parser::token::TOK_SWITCH); }
+"while"									{ return(yy::parser::token::TOK_WHILE); }
 
-"extern"								{ return(EXTERN); }
-"inline"								{ return(INLINE); }
+"extern"								{ return(yy::parser::token::TOK_EXTERN); }
+"inline"								{ return(yy::parser::token::TOK_INLINE); }
 
-"..."									{ return(ELLIPSIS); }
-">>="									{ return(RIGHT_ASSIGN); }
-"<<="									{ return(LEFT_ASSIGN); }
-"+="									{ return(ADD_ASSIGN); }
-"-="									{ return(SUB_ASSIGN); }
-"*="									{ return(MUL_ASSIGN); }
-"/="									{ return(DIV_ASSIGN); }
-"%="									{ return(MOD_ASSIGN); }
-"&="									{ return(AND_ASSIGN); }
-"^="									{ return(XOR_ASSIGN); }
-"|="									{ return(OR_ASSIGN); }
-">>"									{ return(RIGHT_OP); }
-"<<"									{ return(LEFT_OP); }
-"++"									{ return(INC_OP); }
-"--"									{ return(DEC_OP); }
-"->"									{ return(PTR_OP); }
-"&&"									{ return(AND_OP); }
-"||"									{ return(OR_OP); }
-"<="									{ return(LE_OP); }
-">="									{ return(GE_OP); }
-"=="									{ return(EQ_OP); }
-"!="									{ return(NE_OP); }
+"..."									{ return(yy::parser::token::TOK_ELLIPSIS); }
+">>="									{ return(yy::parser::token::TOK_RIGHT_ASSIGN); }
+"<<="									{ return(yy::parser::token::TOK_LEFT_ASSIGN); }
+"+="									{ return(yy::parser::token::TOK_ADD_ASSIGN); }
+"-="									{ return(yy::parser::token::TOK_SUB_ASSIGN); }
+"*="									{ return(yy::parser::token::TOK_MUL_ASSIGN); }
+"/="									{ return(yy::parser::token::TOK_DIV_ASSIGN); }
+"%="									{ return(yy::parser::token::TOK_MOD_ASSIGN); }
+"&="									{ return(yy::parser::token::TOK_AND_ASSIGN); }
+"^="									{ return(yy::parser::token::TOK_XOR_ASSIGN); }
+"|="									{ return(yy::parser::token::TOK_OR_ASSIGN); }
+">>"									{ return(yy::parser::token::TOK_RIGHT_OP); }
+"<<"									{ return(yy::parser::token::TOK_LEFT_OP); }
+"++"									{ return(yy::parser::token::TOK_INC_OP); }
+"--"									{ return(yy::parser::token::TOK_DEC_OP); }
+"->"									{ return(yy::parser::token::TOK_PTR_OP); }
+"&&"									{ return(yy::parser::token::TOK_AND_OP); }
+"||"									{ return(yy::parser::token::TOK_OR_OP); }
+"<="									{ return(yy::parser::token::TOK_LE_OP); }
+">="									{ return(yy::parser::token::TOK_GE_OP); }
+"=="									{ return(yy::parser::token::TOK_EQ_OP); }
+"!="									{ return(yy::parser::token::TOK_NE_OP); }
 ";"										{ return(';'); }
 ("{"|"<%")								{ return('{'); }
 ("}"|"%>")								{ return('}'); }
@@ -131,83 +132,11 @@ IS			(u|U|l|L)*
 "|"										{ return('|'); }
 "?"										{ return('?'); }
 
-{L}({L}|{D})*							{
-                                            if (lex_only_option != 1) {
-                                                yylval.sval = strdup(yytext);
-                                                if (!yylval.sval) {
-                                                    display_error("(Error) Failed to allocate memory for identifier.");
-                                                }
-                                            }
-
-                                            return IDENTIFIER;
-                                        }
-
-0[xX]{H}+{IS}?   						{ yylval.ival = strtol(yytext, NULL, 16); return INTEGER_CONSTANT; }
-0{D}+{IS}?       						{ yylval.ival = strtol(yytext, NULL, 8);  return INTEGER_CONSTANT; }
-{D}+{IS}?        						{ yylval.ival = strtol(yytext, NULL, 10); return INTEGER_CONSTANT; }
-
-[0-9]+\.[0-9]*([eE][+-]?[0-9]+)?[fFlL]?     {
-                                               yylval.fval = strtof(yytext);
-                                               return FLOAT_CONSTANT;
-                                            }
-
-[0-9]+[eE][+-]?[0-9]+[fFlL]?                {
-                                               yylval.fval = strtof(yytext);
-                                               return FLOAT_CONSTANT;
-                                            }
-
-\.[0-9]+([eE][+-]?[0-9]+)?[fFlL]?           {
-                                               yylval.fval = strtof(yytext);
-                                               return FLOAT_CONSTANT;
-                                            }
-
-0[xX][0-9a-fA-F]+\.[0-9a-fA-F]*[pP][+-]?[0-9]+[fFlL]?   {   
-                                                            yylval.fval = strtof(yytext);
-                                                            return DOUBLE_CONSTANT;
-                                                        }
-0[xX][0-9a-fA-F]+[pP][+-]?[0-9]+[fFlL]?                 {
-                                                            yylval.dval = strtod(yytext);
-                                                            return DOUBLE_CONSTANT;
-                                                        }
-
-[0-9]+\'[0-9]+\.[0-9\'\"]+              {
-                                            char *cleaned_text = strdup(yytext);
-                                            int j = 0;
-                                                for (int i = 0; cleaned_text[i] != '\0'; i++) {
-                                                if (cleaned_text[i] != '\'') {
-                                                    cleaned_text[j++] = cleaned_text[i];
-                                                }
-                                            }
-                                            cleaned_text[j] = '\0';
-                                            yylval.fval = strtof(cleaned_text);
-                                            free(cleaned_text);
-                                            return FLOAT_CONSTANT;
-                                        }
-
-.|\n                                    {
-                                            display_error("Invalid character sequence.");
-                                        }
-
-L?\"(\\.|[^\\\"])*\"                    {
-                                            char *str = process_string_literal(yytext, yyleng);
-                                            if (str) {
-                                                yylval.sval = str;
-                                                return STRING_CONSTANT;
-                                            } else {
-                                                fprintf(stderr, "(Error) Failed to allocate memory for string literal.\n");
-                                                exit(1);
-                                            }
-                                        }
 
 [ \t\v\n\f ]								;
 .										{ /* ignore bad characters */ }
 
 %%
-
-void display_error(const char *msg) {
-    fprintf(stderr, "(Error) %s:%d %s\n", yyfilename, yylineno, msg);
-    exit(1);
-}
 
 float strtof(const char *str) {
     char *endptr;

@@ -1,8 +1,8 @@
-#ifndef PARSER_TEST_HPP
-#define PARSER_TEST_HPP
+// #ifndef PARSER_TEST_HPP
+// #define PARSER_TEST_HPP
 
-#include "ast/ast.hpp"
+// #include "ast/ast.hpp"
 
-ASTNodePtr quickParse(std::string input);
+// ASTNodePtr quickParse(std::string input);
 
-#endif //PARSER_TEST_HPP
+// #endif //PARSER_TEST_HPP

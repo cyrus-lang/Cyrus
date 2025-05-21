@@ -107,8 +107,6 @@ void CodeGenLLVM_Module::buildProgramIR(ASTProgram *program)
             break;
         }
     }
-
-    delete program;
 }
 
 

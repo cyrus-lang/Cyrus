@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <vector>
+#include <memory>
 
 class ASTNode
 {
@@ -61,7 +62,7 @@ protected:
     }
 };
 
-using ASTNodePtr = ASTNode *;
+using ASTNodePtr = std::shared_ptr<ASTNode>;
 using ASTNodeList = std::vector<ASTNodePtr>;
 
 #endif //AST_NODE_HPP

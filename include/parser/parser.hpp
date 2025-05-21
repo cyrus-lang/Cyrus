@@ -3,8 +3,8 @@
 
 #include "ast/ast.hpp"
 
-extern ASTNodePtr astProgram;
+extern std::shared_ptr<ASTProgram> astProgram;
 
-std::pair<std::shared_ptr<std::string>, ASTProgram *> parseProgram(const std::string &inputFile);
+std::pair<std::shared_ptr<std::string>, std::shared_ptr<ASTProgram>> parseProgram(const std::string &inputFile);
 
 #endif // PARSER_HPP
