@@ -1,12 +1,9 @@
 extern fn printf(v: *char, ...*void);
 
 fn main() {
-    #name = "Taha";
-
-    #temp: [5]i8 = name;
-
-    #ch: char = temp[2];
-
-    printf("%c", ch);
+    if (1 == func()) {
+        
+    }
+    
     // println("value: %c", ch);
 }

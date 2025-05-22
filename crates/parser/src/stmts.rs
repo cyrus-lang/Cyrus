@@ -1116,6 +1116,8 @@ impl<'a> Parser<'a> {
             }
         }
 
+        self.expect_current(TokenKind::RightBrace)?;
+
         let end = self.current_token.span.end;
 
         Ok(Statement::If(If {

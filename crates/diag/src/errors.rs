@@ -36,10 +36,10 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
                 if starting_line + 1 == self.location.line && user_attended() {
                     print!(
                         "{}",
-                        format!("{}| {}", starting_line + 1, line_str).color(Colors::RedFg)
+                        format!("{} | {}", starting_line + 1, line_str).color(Colors::RedFg)
                     );
                 } else {
-                    print!("{}| {}", starting_line + 1, line_str);
+                    print!("{} | {}", starting_line + 1, line_str);
                 }
             } else {
                 break;

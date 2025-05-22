@@ -31,3 +31,6 @@ utils = { path = "./crates/utils", version = "*" }
 ast = { path = "./crates/ast", version = "*" }
 colorized = "1.0.0"
 toml = "0.8.20"
+
+[profile.dev]
+codegen-units = 256
