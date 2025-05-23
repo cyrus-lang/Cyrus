@@ -1,10 +1,10 @@
 default: run
 
 emit-llvm:
-	cargo run -- emit-llvm ./examples/main.cyr -o ./tmp/main.ll
+	cargo run --jobs 16 -- emit-llvm ./examples/main.cyr -o ./tmp/main.ll
 
 run:
-	cargo run -- run ./examples/main.cyr
+	cargo run --jobs 16 -- run ./examples/main.cyr
 
 build: 
 	cargo run -- build ./examples/main.cyr ./tmp/program;

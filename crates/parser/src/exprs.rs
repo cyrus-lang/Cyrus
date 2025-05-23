@@ -5,7 +5,6 @@ use crate::prec::*;
 use ast::ast::*;
 use ast::token::*;
 use diag::errors::CompileTimeError;
-use either::Either;
 
 impl<'a> Parser<'a> {
     pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParseError> {
@@ -52,11 +51,6 @@ impl<'a> Parser<'a> {
 
         let expr = match &self.current_token.clone().kind {
             TokenKind::Identifier { .. } => {
-                if self.peek_token_is(TokenKind::LeftParen) {
-                    let func_call = self.parse_func_call()?;
-                    return Ok(self.parse_field_access_or_method_call(Box::new(func_call))?);
-                }
-
                 let module_import = self.parse_module_import()?;
 
                 if self.current_token_is(TokenKind::LeftBrace) {
@@ -135,16 +129,13 @@ impl<'a> Parser<'a> {
                 }
             }
             bool_token @ TokenKind::True | bool_token @ TokenKind::False => {
-                let raw = match bool_token {
+                let value = match bool_token {
                     TokenKind::True => true,
                     TokenKind::False => false,
                     _ => panic!(),
                 };
 
-                Expression::Literal(Literal::Bool(BoolLiteral {
-                    raw,
-                    span: Span::new(start, self.current_token.span.end),
-                }))
+                Expression::Literal(Literal::Bool(value))
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
             TokenKind::Minus | TokenKind::Bang => {
@@ -190,7 +181,7 @@ impl<'a> Parser<'a> {
         };
 
         if self.current_token_is(TokenKind::Dot) {
-            return Ok(self.parse_field_access_or_method_call(Box::new(expr))?);
+            todo!();
         } else if self.peek_token_is(TokenKind::LeftBrace) {
             if let Expression::ModuleImport(module_import) = expr.clone() {
                 self.next_token(); // consume struct name
@@ -254,9 +245,6 @@ impl<'a> Parser<'a> {
                     loc: self.current_location(),
                 })))
             }
-            TokenKind::LeftParen => {
-                return Some(Ok(self.parse_field_access_or_method_call(Box::new(left)).ok()?));
-            }
             _ => None,
         }
     }
@@ -315,7 +303,7 @@ impl<'a> Parser<'a> {
         match self.parse_type_token() {
             Ok(type_token) => {
                 return Ok((
-                    Expression::CastAs(CastAs {
+                    Expression::Cast(Cast {
                         expr: Box::new(left),
                         type_token,
                         span: Span {
@@ -358,50 +346,6 @@ impl<'a> Parser<'a> {
             span: Span::new(start, self.current_token.span.end),
             loc: self.current_location(),
         }))
-    }
-
-    pub fn parse_field_access_or_method_call(&mut self, expr: Box<Expression>) -> Result<Expression, ParseError> {
-        let mut chains: Vec<Either<FuncCall, FieldAccess>> = Vec::new();
-
-        if !self.peek_token_is(TokenKind::Semicolon) {
-            loop {
-                if self.current_token_is(TokenKind::Dot) {
-                    self.next_token();
-                } else if self.peek_token_is(TokenKind::LeftParen) {
-                } else {
-                    break;
-                }
-
-                let member_start = self.current_token.span.start.clone();
-                let identifier = self.parse_identifier()?;
-                self.next_token(); // consume identifier
-
-                if self.current_token_is(TokenKind::LeftParen) {
-                    let arguments = self.parse_expression_series(TokenKind::RightParen).unwrap().0;
-                    self.expect_current(TokenKind::RightParen)?;
-
-                    let method_call = FuncCall {
-                        identifier,
-                        arguments,
-                        span: Span::new(member_start, self.current_token.span.end),
-                        loc: self.current_location(),
-                    };
-
-                    chains.push(Either::Left(method_call));
-                } else {
-                    chains.push(Either::Right(FieldAccess {
-                        identifier,
-                        span: Span::new(member_start, self.current_token.span.end),
-                        loc: self.current_location(),
-                    }));
-                }
-            }
-        }
-
-        return Ok(Expression::FieldAccessOrMethodCall(FieldAccessOrMethodCall {
-            expr,
-            chains,
-        }));
     }
 
     pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<Expression, ParseError> {

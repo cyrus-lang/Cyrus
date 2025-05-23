@@ -1,5 +1,4 @@
 use crate::token::*;
-use either::Either;
 
 #[derive(Debug)]
 pub enum Node {
@@ -31,7 +30,7 @@ impl ProgramTree {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
-    CastAs(CastAs),
+    Cast(Cast),
     Identifier(Identifier),
     TypeToken(Token),
     ModuleImport(ModuleImport),
@@ -46,7 +45,8 @@ pub enum Expression {
     Dereference(Box<Expression>),
     StructInit(StructInit),
     FuncCall(FuncCall),
-    FieldAccessOrMethodCall(FieldAccessOrMethodCall),
+    FieldAccess(FieldAccess),
+    MethodCall(MethodCall)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,7 +70,7 @@ pub struct EnumField {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CastAs {
+pub struct Cast {
     pub expr: Box<Expression>,
     pub type_token: TokenKind,
     pub span: Span,
@@ -102,14 +102,18 @@ pub struct FuncCall {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FieldAccessOrMethodCall {
-    pub expr: Box<Expression>,
-    pub chains: Vec<Either<FuncCall, FieldAccess>>,
+pub struct FieldAccess {
+    pub operand: Box<Expression>,
+    pub field_name: Identifier,
+    pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FieldAccess {
-    pub identifier: Identifier,
+pub struct MethodCall {
+    pub operand: Box<Expression>,
+    pub method_name: Identifier,
+    pub arguments: Vec<Expression>,
     pub span: Span,
     pub loc: Location,
 }
@@ -130,39 +134,12 @@ pub struct ModuleImport {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
-    Integer(IntegerLiteral),
-    Float(FloatLiteral),
-    Bool(BoolLiteral),
-    String(StringLiteral),
-    Char(CharLiteral),
+    Integer(i64),
+    Float(f64),
+    Bool(bool),
+    String(String),
+    Char(char),
     Null,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct CharLiteral {
-    pub raw: char,
-    pub span: Span,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum IntegerLiteral {
-    I8(i8),
-    I16(i16),
-    I32(i32),
-    I64(i64),
-    I128(i128),
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-    U128(u128),
-    SizeT(usize),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum FloatLiteral {
-    Float(f32),
-    Double(f64),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -180,18 +157,6 @@ pub struct BinaryExpression {
     pub right: Box<Expression>,
     pub span: Span,
     pub loc: Location,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct BoolLiteral {
-    pub raw: bool,
-    pub span: Span,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct StringLiteral {
-    pub raw: String,
-    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -406,20 +371,4 @@ pub struct If {
     pub alternate: Option<Box<BlockStatement>>,
     pub span: Span,
     pub loc: Location,
-}
-
-pub fn integer_literal_as_value(integer_literal: IntegerLiteral) -> i64 {
-    match integer_literal {
-        IntegerLiteral::I8(value) => value.into(),
-        IntegerLiteral::I16(value) => value.into(),
-        IntegerLiteral::I32(value) => value.into(),
-        IntegerLiteral::I64(value) => value,
-        IntegerLiteral::I128(value) => value.try_into().unwrap(),
-        IntegerLiteral::U8(value) => value.into(),
-        IntegerLiteral::U16(value) => value.into(),
-        IntegerLiteral::U32(value) => value.into(),
-        IntegerLiteral::U64(value) => value.try_into().unwrap(),
-        IntegerLiteral::U128(value) => value.try_into().unwrap(),
-        IntegerLiteral::SizeT(value) => value.try_into().unwrap(),
-    }
 }

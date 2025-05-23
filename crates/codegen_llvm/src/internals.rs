@@ -1,6 +1,6 @@
 use crate::{AnyType, AnyValue, CodeGenLLVM, diag::*, funcs::FuncMetadata, scope::ScopeRef};
 use ast::{
-    ast::{Expression, FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, IntegerLiteral, StringLiteral, VisType},
+    ast::{Expression, FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, VisType},
     token::{Location, Span, Token, TokenKind},
 };
 use inkwell::values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, IntValue};
@@ -270,31 +270,33 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_metadata: FuncMetadata<'ctx>,
         mut arguments: Vec<BasicMetadataValueEnum<'ctx>>,
     ) -> CallSiteValue<'ctx> {
-        let argc = self.build_integer_literal(IntegerLiteral::I32(arguments.len().try_into().unwrap()));
-        let func_name = func_metadata
-            .func_decl
-            .renamed_as
-            .clone()
-            .unwrap_or(func_metadata.func_decl.name.clone());
+        todo!();
 
-        match func_name.as_str() {
-            "panic" => {
-                let file_name = self.build_string_literal(StringLiteral {
-                    raw: self.file_path.clone(),
-                    span: Span::default(),
-                });
-                let line = self.build_integer_literal(IntegerLiteral::I32(func_call.loc.line.try_into().unwrap()));
-                arguments.insert(0, TryInto::<BasicValueEnum>::try_into(file_name).unwrap().into());
-                arguments.insert(1, TryInto::<BasicValueEnum>::try_into(line).unwrap().into());
-                arguments.insert(2, BasicMetadataValueEnum::IntValue(argc));
-            }
-            _ => {
-                self.check_func_args_count_mismatch(func_name, func_metadata.func_decl.clone(), func_call.clone());
-                return self.builder.build_call(func_metadata.ptr, &arguments, "call").unwrap();
-            }
-        };
+        // let argc = self.build_integer_literal(IntegerLiteral::I32(arguments.len().try_into().unwrap()));
+        // let func_name = func_metadata
+        //     .func_decl
+        //     .renamed_as
+        //     .clone()
+        //     .unwrap_or(func_metadata.func_decl.name.clone());
 
-        self.builder.build_call(func_metadata.ptr, &arguments, "call").unwrap()
+        // match func_name.as_str() {
+        //     "panic" => {
+        //         let file_name = self.build_string_literal(StringLiteral {
+        //             raw: self.file_path.clone(),
+        //             span: Span::default(),
+        //         });
+        //         let line = self.build_integer_literal(IntegerLiteral::I32(func_call.loc.line.try_into().unwrap()));
+        //         arguments.insert(0, TryInto::<BasicValueEnum>::try_into(file_name).unwrap().into());
+        //         arguments.insert(1, TryInto::<BasicValueEnum>::try_into(line).unwrap().into());
+        //         arguments.insert(2, BasicMetadataValueEnum::IntValue(argc));
+        //     }
+        //     _ => {
+        //         self.check_func_args_count_mismatch(func_name, func_metadata.func_decl.clone(), func_call.clone());
+        //         return self.builder.build_call(func_metadata.ptr, &arguments, "call").unwrap();
+        //     }
+        // };
+
+        // self.builder.build_call(func_metadata.ptr, &arguments, "call").unwrap()
     }
 
     pub(crate) fn build_call_internal_len(
@@ -302,62 +304,64 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_call: FuncCall,
         arguments: Vec<BasicMetadataValueEnum<'ctx>>,
     ) -> CallSiteValue<'ctx> {
-        if arguments.len() != 1 {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncCallArgumentCountMismatch(
-                    "len".to_string(),
-                    arguments.len().try_into().unwrap(),
-                    1,
-                ),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: func_call.loc.line,
-                    column: func_call.loc.column,
-                    length: func_call.span.end,
-                }),
-            });
-            exit(1);
-        }
-        match arguments.first().unwrap() {
-            BasicMetadataValueEnum::ArrayValue(array_value) => unsafe {
-                let inner = self.builder.build_extract_value(*array_value, 0, "extract").unwrap();
-                let len = self.build_integer_literal(IntegerLiteral::U32(inner.into_array_value().get_type().len()));
-                CallSiteValue::new(len.as_value_ref())
-            },
-            BasicMetadataValueEnum::StructValue(struct_value) => {
-                let string_type = self.string_type.struct_type;
-                if string_type != struct_value.get_type() {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::LenCalledWithInvalidInput,
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: func_call.loc.line,
-                            column: func_call.loc.column,
-                            length: func_call.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
+        todo!();
 
-                let len_func = self.func_table.get("internal_len_string").unwrap();
-                return self.builder.build_call(len_func.ptr, &arguments, "call").unwrap();
-            }
-            _ => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::LenCalledWithInvalidInput,
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: func_call.loc.line,
-                        column: func_call.loc.column,
-                        length: func_call.span.end,
-                    }),
-                });
-                exit(1);
-            }
-        }
+        // if arguments.len() != 1 {
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::FuncCallArgumentCountMismatch(
+        //             "len".to_string(),
+        //             arguments.len().try_into().unwrap(),
+        //             1,
+        //         ),
+        //         location: Some(DiagLoc {
+        //             file: self.file_path.clone(),
+        //             line: func_call.loc.line,
+        //             column: func_call.loc.column,
+        //             length: func_call.span.end,
+        //         }),
+        //     });
+        //     exit(1);
+        // }
+        // match arguments.first().unwrap() {
+        //     BasicMetadataValueEnum::ArrayValue(array_value) => unsafe {
+        //         let inner = self.builder.build_extract_value(*array_value, 0, "extract").unwrap();
+        //         let len = self.build_integer_literal(IntegerLiteral::U32(inner.into_array_value().get_type().len()));
+        //         CallSiteValue::new(len.as_value_ref())
+        //     },
+        //     BasicMetadataValueEnum::StructValue(struct_value) => {
+        //         let string_type = self.string_type.struct_type;
+        //         if string_type != struct_value.get_type() {
+        //             display_single_diag(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: DiagKind::LenCalledWithInvalidInput,
+        //                 location: Some(DiagLoc {
+        //                     file: self.file_path.clone(),
+        //                     line: func_call.loc.line,
+        //                     column: func_call.loc.column,
+        //                     length: func_call.span.end,
+        //                 }),
+        //             });
+        //             exit(1);
+        //         }
+
+        //         let len_func = self.func_table.get("internal_len_string").unwrap();
+        //         return self.builder.build_call(len_func.ptr, &arguments, "call").unwrap();
+        //     }
+        //     _ => {
+        //         display_single_diag(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: DiagKind::LenCalledWithInvalidInput,
+        //             location: Some(DiagLoc {
+        //                 file: self.file_path.clone(),
+        //                 line: func_call.loc.line,
+        //                 column: func_call.loc.column,
+        //                 length: func_call.span.end,
+        //             }),
+        //         });
+        //         exit(1);
+        //     }
+        // }
     }
 
     pub(crate) fn builder_sizeof_internal(
@@ -373,7 +377,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             crate::AnyType::StructType(struct_type) => struct_type.size_of().unwrap(),
             crate::AnyType::VectorType(vector_type) => vector_type.size_of().unwrap(),
             crate::AnyType::StringType(string_type) => string_type.struct_type.size_of().unwrap(),
-            crate::AnyType::VoidType(_) => self.build_integer_literal(IntegerLiteral::U64(0)),
+            crate::AnyType::VoidType(_) => self.build_integer_literal(0),
             crate::AnyType::OpaquePointer(pointer_type) => pointer_type.size_of(),
             crate::AnyType::PointerType(typed_pointer_type) => {
                 self.builder_sizeof_internal(typed_pointer_type.pointee_ty, loc, span_end)
@@ -442,103 +446,105 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_call_internal_malloc(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
-        if func_call.arguments.len() != 1 {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncCallArgumentCountMismatch(
-                    "malloc".to_string(),
-                    func_call.arguments.len().try_into().unwrap(),
-                    1,
-                ),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: func_call.loc.line,
-                    column: func_call.loc.column,
-                    length: func_call.span.end,
-                }),
-            });
-            exit(1);
-        }
+        todo!();
+        
+        // if func_call.arguments.len() != 1 {
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::FuncCallArgumentCountMismatch(
+        //             "malloc".to_string(),
+        //             func_call.arguments.len().try_into().unwrap(),
+        //             1,
+        //         ),
+        //         location: Some(DiagLoc {
+        //             file: self.file_path.clone(),
+        //             line: func_call.loc.line,
+        //             column: func_call.loc.column,
+        //             length: func_call.span.end,
+        //         }),
+        //     });
+        //     exit(1);
+        // }
 
-        let argument = func_call.arguments.first().unwrap();
+        // let argument = func_call.arguments.first().unwrap();
 
-        let alloc_size: BasicValueEnum<'ctx> = {
-            match argument {
-                Expression::Literal(literal) => match literal {
-                    ast::ast::Literal::Integer(integer_literal) => {
-                        let integer_value: u64 = match *integer_literal {
-                            IntegerLiteral::I8(val) => val.try_into().unwrap(),
-                            IntegerLiteral::I16(val) => val.try_into().unwrap(),
-                            IntegerLiteral::I32(val) => val.try_into().unwrap(),
-                            IntegerLiteral::I64(val) => val.try_into().unwrap(),
-                            IntegerLiteral::I128(val) => val.try_into().unwrap(),
-                            IntegerLiteral::U8(val) => val.try_into().unwrap(),
-                            IntegerLiteral::U16(val) => val.try_into().unwrap(),
-                            IntegerLiteral::U32(val) => val.try_into().unwrap(),
-                            IntegerLiteral::U64(val) => val.try_into().unwrap(),
-                            IntegerLiteral::U128(val) => val.try_into().unwrap(),
-                            IntegerLiteral::SizeT(val) => val.try_into().unwrap(),
-                        };
+        // let alloc_size: BasicValueEnum<'ctx> = {
+        //     match argument {
+        //         Expression::Literal(literal) => match literal {
+        //             ast::ast::Literal::Integer(integer_literal) => {
+        //                 let integer_value: u64 = match *integer_literal {
+        //                     IntegerLiteral::I8(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::I16(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::I32(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::I64(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::I128(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::U8(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::U16(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::U32(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::U64(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::U128(val) => val.try_into().unwrap(),
+        //                     IntegerLiteral::SizeT(val) => val.try_into().unwrap(),
+        //                 };
 
-                        AnyValue::IntValue(
-                            self.build_integer_literal(IntegerLiteral::SizeT(integer_value.try_into().unwrap())),
-                        )
-                        .into()
-                    }
-                    _ => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(
-                                "Cannot allocate memory with a non-integer value as input.".to_string(),
-                            ),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: func_call.loc.line,
-                                column: func_call.loc.column,
-                                length: func_call.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                },
-                Expression::TypeToken(type_token) => {
-                    let data_type = self.build_type(type_token.kind.clone(), func_call.loc.clone(), func_call.span.end);
-                    let size_value = self.builder_sizeof_internal(data_type, func_call.loc.clone(), func_call.span.end);
-                    AnyValue::IntValue(size_value).into()
-                }
-                Expression::Dereference(expr) => {
-                    if let Expression::TypeToken(type_token) = *expr.clone() {
-                        let data_type = self.build_type(
-                            TokenKind::Dereference(Box::new(type_token.kind.clone())),
-                            func_call.loc.clone(),
-                            func_call.span.end,
-                        );
-                        let size_value =
-                            self.builder_sizeof_internal(data_type, func_call.loc.clone(), func_call.span.end);
-                        AnyValue::IntValue(size_value).into()
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(
-                                "Cannot allocate memory with a non-integer value as input.".to_string(),
-                            ),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: func_call.loc.line,
-                                column: func_call.loc.column,
-                                length: func_call.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                }
-                _ => self.build_expr(Rc::clone(&scope), argument.clone()).into(),
-            }
-        };
+        //                 AnyValue::IntValue(
+        //                     self.build_integer_literal(IntegerLiteral::SizeT(integer_value.try_into().unwrap())),
+        //                 )
+        //                 .into()
+        //             }
+        //             _ => {
+        //                 display_single_diag(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: DiagKind::Custom(
+        //                         "Cannot allocate memory with a non-integer value as input.".to_string(),
+        //                     ),
+        //                     location: Some(DiagLoc {
+        //                         file: self.file_path.clone(),
+        //                         line: func_call.loc.line,
+        //                         column: func_call.loc.column,
+        //                         length: func_call.span.end,
+        //                     }),
+        //                 });
+        //                 exit(1);
+        //             }
+        //         },
+        //         Expression::TypeToken(type_token) => {
+        //             let data_type = self.build_type(type_token.kind.clone(), func_call.loc.clone(), func_call.span.end);
+        //             let size_value = self.builder_sizeof_internal(data_type, func_call.loc.clone(), func_call.span.end);
+        //             AnyValue::IntValue(size_value).into()
+        //         }
+        //         Expression::Dereference(expr) => {
+        //             if let Expression::TypeToken(type_token) = *expr.clone() {
+        //                 let data_type = self.build_type(
+        //                     TokenKind::Dereference(Box::new(type_token.kind.clone())),
+        //                     func_call.loc.clone(),
+        //                     func_call.span.end,
+        //                 );
+        //                 let size_value =
+        //                     self.builder_sizeof_internal(data_type, func_call.loc.clone(), func_call.span.end);
+        //                 AnyValue::IntValue(size_value).into()
+        //             } else {
+        //                 display_single_diag(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: DiagKind::Custom(
+        //                         "Cannot allocate memory with a non-integer value as input.".to_string(),
+        //                     ),
+        //                     location: Some(DiagLoc {
+        //                         file: self.file_path.clone(),
+        //                         line: func_call.loc.line,
+        //                         column: func_call.loc.column,
+        //                         length: func_call.span.end,
+        //                     }),
+        //                 });
+        //                 exit(1);
+        //             }
+        //         }
+        //         _ => self.build_expr(Rc::clone(&scope), argument.clone()).into(),
+        //     }
+        // };
 
-        let malloc_func = self.func_table.get("malloc").unwrap().ptr;
-        self.builder
-            .build_call(malloc_func, &[alloc_size.into()], "call")
-            .unwrap()
+        // let malloc_func = self.func_table.get("malloc").unwrap().ptr;
+        // self.builder
+        //     .build_call(malloc_func, &[alloc_size.into()], "call")
+        //     .unwrap()
     }
 }

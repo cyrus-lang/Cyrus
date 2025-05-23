@@ -1,8 +1,6 @@
 use ::diag::errors::CompileTimeError;
-use ast::{
-    ast::{CharLiteral, FloatLiteral, IntegerLiteral, Literal, StringLiteral},
-    token::*,
-};
+use ast::token::*;
+use ast::ast::Literal;
 use core::panic;
 use diag::{LexicalErrorType, lexer_invalid_char_error, lexer_unknown_char_error};
 use std::{fmt::Debug, ops::Range, process::exit};
@@ -334,7 +332,7 @@ impl Lexer {
                 if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_identifier();
                 } else if self.is_numeric(self.ch) {
-                    return self.read_integer();
+                    return self.read_number();
                 } else {
                     lexer_invalid_char_error(
                         self.file_name.clone(),
@@ -399,12 +397,9 @@ impl Lexer {
 
         let span = Span { start: start - 1, end };
 
-        if let Some(raw) = final_char {
+        if let Some(value) = final_char {
             Token {
-                kind: TokenKind::Literal(Literal::Char(CharLiteral {
-                    raw,
-                    span: span.clone(),
-                })),
+                kind: TokenKind::Literal(Literal::Char(value)),
                 span,
             }
         } else {
@@ -465,10 +460,7 @@ impl Lexer {
         let span = Span { start: start - 1, end };
 
         Token {
-            kind: TokenKind::Literal(Literal::String(StringLiteral {
-                raw: final_string,
-                span: span.clone(),
-            })),
+            kind: TokenKind::Literal(Literal::String(final_string)),
             span,
         }
     }
@@ -493,34 +485,93 @@ impl Lexer {
         }
     }
 
-    fn read_integer(&mut self) -> Token {
+    fn read_number(&mut self) -> Token {
         let start = self.pos;
-
+        let mut number = String::new();
         let mut is_float = false;
+        let mut base = 10;
 
-        let mut number_str = vec![];
+        // hexadecimal literals
+        let token_kind = if self.ch == '0' && (self.peek_char() == 'x' || self.peek_char() == 'X') {
+            number.push(self.ch);
+            self.read_char(); // consume '0'
+            number.push(self.ch);
+            self.read_char(); // consume 'x' or 'X'
+            base = 16;
 
-        while self.is_numeric(self.ch) || self.ch == '.' || self.ch == '_' {
-            number_str.push(self.ch);
-            self.read_char();
+            while self.ch.is_ascii_hexdigit() || self.ch == '_' {
+                if self.ch != '_' {
+                    number.push(self.ch);
+                }
+                self.read_char();
+            }
 
-            if self.ch == '.' {
+            match i64::from_str_radix(&number[2..], 16) {
+                Ok(value) => TokenKind::Literal(Literal::Integer(value)),
+                Err(_) => {
+                    CompileTimeError {
+                        location: Location {
+                            line: self.line,
+                            column: self.column,
+                        },
+                        source_content: Box::new(self.input.clone()),
+                        etype: LexicalErrorType::InvalidIntegerLiteral,
+                        verbose: None,
+                        caret: true,
+                        file_name: Some(self.file_name.clone()),
+                    }
+                    .print();
+                    exit(1);
+                }
+            }
+        } else {
+            // Match leading digits (optional)
+            while self.ch.is_ascii_digit() || self.ch == '_' {
+                if self.ch != '_' {
+                    number.push(self.ch);
+                }
+                self.read_char();
+            }
+
+            // Decimal point and fractional part
+            if self.ch == '.' && self.peek_char().is_ascii_digit() {
                 is_float = true;
+                number.push(self.ch);
+                self.read_char();
+
+                while self.ch.is_ascii_digit() || self.ch == '_' {
+                    if self.ch != '_' {
+                        number.push(self.ch);
+                    }
+                    self.read_char();
+                }
             }
 
-            if self.ch == '_' {
-                continue;
+            // Exponent part (e.g., e+10, E-5)
+            if self.ch == 'e' || self.ch == 'E' {
+                is_float = true;
+                number.push(self.ch);
+                self.read_char();
+
+                if self.ch == '+' || self.ch == '-' {
+                    number.push(self.ch);
+                    self.read_char();
+                }
+
+                while self.ch.is_ascii_digit() {
+                    number.push(self.ch);
+                    self.read_char();
+                }
             }
-        }
 
-        let end = self.pos;
+            if matches!(self.ch, 'f' | 'F' | 'l' | 'L') {
+                number.push(self.ch);
+                self.read_char();
+            }
 
-        let token_kind: TokenKind = {
             if is_float {
-                let literal: Result<f32, _> = String::from_iter(number_str).parse();
-
-                match literal {
-                    Ok(value) => TokenKind::Literal(Literal::Float(FloatLiteral::Float(value))),
+                match number.parse::<f64>() {
+                    Ok(value) => TokenKind::Literal(Literal::Float(value)),
                     Err(_) => {
                         CompileTimeError {
                             location: Location {
@@ -538,10 +589,8 @@ impl Lexer {
                     }
                 }
             } else {
-                let literal: Result<i32, _> = String::from_iter(number_str).parse();
-
-                match literal {
-                    Ok(value) => TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(value))),
+                match number.parse::<i64>() {
+                    Ok(value) => TokenKind::Literal(Literal::Integer(value)),
                     Err(_) => {
                         CompileTimeError {
                             location: Location {
@@ -563,7 +612,7 @@ impl Lexer {
 
         Token {
             kind: token_kind,
-            span: Span { start, end },
+            span: Span { start, end: self.pos },
         }
     }
 

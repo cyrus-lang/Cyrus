@@ -8,11 +8,11 @@ use ast::{
     ast::*,
     token::{Location, TokenKind},
 };
-use either::Either;
 use inkwell::{
-    llvm_sys::{
-        core::{LLVMBuildGEP2, LLVMGetIntrinsicDeclaration, LLVMGetIntrinsicID}, prelude::LLVMValueRef, LLVMType
-    }, types::{AsTypeRef, BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue}, AddressSpace
+    AddressSpace,
+    llvm_sys::{core::LLVMBuildGEP2, prelude::LLVMValueRef},
+    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum},
+    values::{ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{
     ffi::CString,
@@ -25,6 +25,8 @@ use utils::purify_string::unescape_string;
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
         match expr {
+            Expression::FieldAccess(field_access) => todo!(),
+            Expression::MethodCall(method_call) => todo!(),
             Expression::Identifier(identifier) => {
                 self.build_load_lvalue(
                     Rc::clone(&scope),
@@ -44,10 +46,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
             Expression::Infix(binary_expression) => self.build_infix_expr(Rc::clone(&scope), binary_expression),
             Expression::UnaryOperator(unary_operator) => self.build_unary_operator(Rc::clone(&scope), unary_operator),
-            Expression::CastAs(cast_as) => self.build_cast_as(Rc::clone(&scope), cast_as),
-            Expression::FieldAccessOrMethodCall(field_access_or_method_call) => {
-                self.build_field_access_or_method_call(Rc::clone(&scope), field_access_or_method_call)
-            }
+            Expression::Cast(cast_as) => self.build_cast_as(Rc::clone(&scope), cast_as),
             Expression::AddressOf(expr) => self.build_address_of(Rc::clone(&scope), *expr),
             Expression::Dereference(expression) => self.build_deref(Rc::clone(&scope), *expression),
             Expression::StructInit(struct_init) => self.build_struct_init(Rc::clone(&scope), struct_init),
@@ -135,31 +134,33 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match scope.borrow().get(first_segment.name.clone()) {
                 Some(record) => {
                     if module_import.segments.len() >= 2 {
-                        let chains: Vec<Either<FuncCall, FieldAccess>> = module_import.segments
-                            [1..module_import.segments.len()]
-                            .iter()
-                            .map(|s| match s {
-                                ModuleSegment::SubModule(identifier) => Either::Right(FieldAccess {
-                                    identifier: identifier.clone(),
-                                    span: identifier.span.clone(),
-                                    loc: identifier.loc.clone(),
-                                }),
-                            })
-                            .collect();
+                        // let chains: Vec<Either<FuncCall, FieldAccess>> = module_import.segments
+                        //     [1..module_import.segments.len()]
+                        //     .iter()
+                        //     .map(|s| match s {
+                        //         ModuleSegment::SubModule(identifier) => Either::Right(FieldAccess {
+                        //             identifier: identifier.clone(),
+                        //             span: identifier.span.clone(),
+                        //             loc: identifier.loc.clone(),
+                        //         }),
+                        //     })
+                        //     .collect();
 
-                        let result = self.build_field_access_or_method_call(
-                            Rc::clone(&scope),
-                            FieldAccessOrMethodCall {
-                                expr: Box::new(Expression::ModuleImport(ModuleImport {
-                                    segments: vec![ModuleSegment::SubModule(first_segment.clone())],
-                                    span: module_import.span.clone(),
-                                    loc: module_import.loc.clone(),
-                                })),
-                                chains,
-                            },
-                        );
+                        // let result = self.build_field_access_or_method_call(
+                        //     Rc::clone(&scope),
+                        //     FieldAccessOrMethodCall {
+                        //         expr: Box::new(Expression::ModuleImport(ModuleImport {
+                        //             segments: vec![ModuleSegment::SubModule(first_segment.clone())],
+                        //             span: module_import.span.clone(),
+                        //             loc: module_import.loc.clone(),
+                        //         })),
+                        //         chains,
+                        //     },
+                        // );
 
-                        return (result.clone(), result.get_type(self.string_type.clone()));
+                        // return (result.clone(), result.get_type(self.string_type.clone()));
+
+                        todo!();
                     } else {
                         record
                     }
@@ -384,36 +385,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_integer_literal(&self, integer_literal: IntegerLiteral) -> IntValue<'ctx> {
-        match integer_literal {
-            IntegerLiteral::I8(val) => self.context.i8_type().const_int(val.try_into().unwrap(), true),
-            IntegerLiteral::I16(val) => self.context.i16_type().const_int(val.try_into().unwrap(), true),
-            IntegerLiteral::I32(val) => self.context.i32_type().const_int(val.try_into().unwrap(), true),
-            IntegerLiteral::I64(val) => self.context.i64_type().const_int(val.try_into().unwrap(), true),
-            IntegerLiteral::I128(val) => self.context.i128_type().const_int(val.try_into().unwrap(), true),
-            IntegerLiteral::U8(val) => self.context.i8_type().const_int(val.try_into().unwrap(), false),
-            IntegerLiteral::U16(val) => self.context.i16_type().const_int(val.try_into().unwrap(), false),
-            IntegerLiteral::U32(val) => self.context.i32_type().const_int(val.try_into().unwrap(), false),
-            IntegerLiteral::U64(val) => self.context.i64_type().const_int(val.try_into().unwrap(), false),
-            IntegerLiteral::U128(val) => self.context.i128_type().const_int(val.try_into().unwrap(), false),
-            IntegerLiteral::SizeT(val) => {
-                let data_layout = self.target_machine.get_target_data();
-                self.context
-                    .ptr_sized_int_type(&data_layout, None)
-                    .const_int(val.try_into().unwrap(), false)
-            }
-        }
+    pub(crate) fn build_integer_literal(&self, value: i64) -> IntValue<'ctx> {
+        let data_layout = self.target_machine.get_target_data();
+        self.context
+            .ptr_sized_int_type(&data_layout, None)
+            .const_int(value.try_into().unwrap(), false)
     }
 
-    pub(crate) fn build_float_literal(&self, float_literal: FloatLiteral) -> FloatValue<'ctx> {
-        match float_literal {
-            FloatLiteral::Float(val) => self.context.f32_type().const_float(val.into()),
-            FloatLiteral::Double(val) => self.context.f64_type().const_float(val),
-        }
+    pub(crate) fn build_float_literal(&self, value: f64) -> FloatValue<'ctx> {
+        self.context.f64_type().const_float(value)
     }
 
-    pub(crate) fn build_string_literal(&self, string_literal: StringLiteral) -> AnyValue<'ctx> {
-        let mut bytes = unescape_string(string_literal.raw).into_bytes();
+    pub(crate) fn build_string_literal(&self, value: String) -> AnyValue<'ctx> {
+        let mut bytes = unescape_string(value).into_bytes();
         bytes.push(0); // null terminator
 
         let i8_array_type = self.context.i8_type().array_type(bytes.len() as u32);
@@ -441,8 +425,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         })
     }
 
-    pub(crate) fn build_char_literal(&self, char_literal: CharLiteral) -> IntValue<'ctx> {
-        self.context.i8_type().const_int(char_literal.raw as u8 as u64, false)
+    pub(crate) fn build_char_literal(&self, value: char) -> IntValue<'ctx> {
+        self.context.i8_type().const_int(value as u64, false)
     }
 
     pub(crate) fn build_null(&self) -> TypedPointerValue<'ctx> {
@@ -456,10 +440,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_bool_literal(&self, bool_literal: BoolLiteral) -> IntValue<'ctx> {
-        self.context
-            .bool_type()
-            .const_int(if bool_literal.raw { 1 } else { 0 }, false)
+    pub(crate) fn build_bool_literal(&self, value: bool) -> IntValue<'ctx> {
+        self.context.bool_type().const_int(if value { 1 } else { 0 }, false)
     }
 
     pub(crate) fn build_cast_as_internal(
@@ -566,7 +548,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                     .unwrap();
 
                                 let data_str = self.build_load_string(string_value.clone());
-                                let data_str_size = self.builder.build_extract_value(string_value.struct_value, 1, "extractvalue").unwrap();
+                                let data_str_size = self
+                                    .builder
+                                    .build_extract_value(string_value.struct_value, 1, "extractvalue")
+                                    .unwrap();
 
                                 if let Some(func_ptr) = self.current_func_ref {
                                     // REVIEW Refactor memcpy: move to another function.
@@ -592,12 +577,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                                     let is_volatile = self.context.bool_type().const_int(0, false);
 
-                                    self.builder.build_call(memcpy_func, &[
-                                        BasicMetadataValueEnum::PointerValue(alloca),
-                                        BasicMetadataValueEnum::PointerValue(data_str.to_basic_metadata().into_pointer_value()),
-                                        BasicMetadataValueEnum::IntValue(data_str_size.into_int_value()),
-                                        BasicMetadataValueEnum::IntValue(is_volatile)
-                                    ], "call").unwrap();
+                                    self.builder
+                                        .build_call(
+                                            memcpy_func,
+                                            &[
+                                                BasicMetadataValueEnum::PointerValue(alloca),
+                                                BasicMetadataValueEnum::PointerValue(
+                                                    data_str.to_basic_metadata().into_pointer_value(),
+                                                ),
+                                                BasicMetadataValueEnum::IntValue(data_str_size.into_int_value()),
+                                                BasicMetadataValueEnum::IntValue(is_volatile),
+                                            ],
+                                            "call",
+                                        )
+                                        .unwrap();
 
                                     return AnyValue::PointerValue(TypedPointerValue {
                                         ptr: alloca,
@@ -671,7 +664,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_cast_as(&self, scope: ScopeRef<'ctx>, cast_as: CastAs) -> AnyValue<'ctx> {
+    pub(crate) fn build_cast_as(&self, scope: ScopeRef<'ctx>, cast_as: Cast) -> AnyValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), *cast_as.expr.clone());
         let target_type = self.build_type(cast_as.type_token, cast_as.loc.clone(), cast_as.span.end);
 

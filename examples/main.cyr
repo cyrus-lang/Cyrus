@@ -1,9 +1,3 @@
-extern fn printf(v: *char, ...*void);
-
 fn main() {
-    if (1 == func()) {
-        
-    }
-    
-    // println("value: %c", ch);
+    aa.bb;   
 }

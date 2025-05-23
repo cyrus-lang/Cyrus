@@ -13,51 +13,6 @@ impl fmt::Display for Identifier {
     }
 }
 
-impl fmt::Display for IntegerLiteral {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IntegerLiteral::I8(value) => write!(f, "{}", value),
-            IntegerLiteral::I16(value) => write!(f, "{}", value),
-            IntegerLiteral::I32(value) => write!(f, "{}", value),
-            IntegerLiteral::I64(value) => write!(f, "{}", value),
-            IntegerLiteral::I128(value) => write!(f, "{}", value),
-            IntegerLiteral::U8(value) => write!(f, "{}", value),
-            IntegerLiteral::U16(value) => write!(f, "{}", value),
-            IntegerLiteral::U32(value) => write!(f, "{}", value),
-            IntegerLiteral::U64(value) => write!(f, "{}", value),
-            IntegerLiteral::U128(value) => write!(f, "{}", value),
-            IntegerLiteral::SizeT(value) => write!(f, "{}", value),
-        }
-    }
-}
-
-impl fmt::Display for FloatLiteral {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FloatLiteral::Float(value) => write!(f, "{}", value),
-            FloatLiteral::Double(value) => write!(f, "{}", value),
-        }
-    }
-}
-
-impl fmt::Display for BoolLiteral {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.raw)
-    }
-}
-
-impl fmt::Display for StringLiteral {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.raw)
-    }
-}
-
-impl fmt::Display for CharLiteral {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.raw)
-    }
-}
-
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -82,7 +37,7 @@ impl fmt::Display for UnaryOperatorType {
     }
 }
 
-impl fmt::Display for CastAs {
+impl fmt::Display for Cast {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} as {}", self.expr, self.type_token)
     }
@@ -99,12 +54,6 @@ impl fmt::Display for FuncCall {
             acc
         });
         write!(f, ")")
-    }
-}
-
-impl fmt::Display for FieldAccess {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, ".{}", self.identifier.name)
     }
 }
 
@@ -143,38 +92,31 @@ impl fmt::Display for Expression {
                     expression_series_to_string(func_call.arguments.clone())
                 )
             }
-            Expression::FieldAccessOrMethodCall(field_access_or_method_call) => {
-                write!(f, "{}", field_access_or_method_call.expr.to_string())?;
-
-                for item in field_access_or_method_call.chains.clone() {
-                    match item {
-                        either::Either::Left(expr) => expr.to_string(),
-                        either::Either::Right(expr) => expr.to_string(),
-                    };
-                }
-
-                Ok(())
+            Expression::FieldAccess(field_access) => {
+                write!(f, "{}.{}", field_access.operand, field_access.field_name)
+            }
+            Expression::MethodCall(method_call) => {
+                write!(
+                    f,
+                    "{}.{}({})",
+                    method_call.operand,
+                    method_call.method_name,
+                    expression_series_to_string(method_call.arguments.clone())
+                )
             }
             Expression::Array(array) => {
                 write!(f, "[{}]", expression_series_to_string(array.elements.clone()))
             }
             Expression::ArrayIndex(array_index) => {
-                write!(
-                    f,
-                    "{}",
-                    array_index.expr.to_string()
-                )?;
+                write!(f, "{}", array_index.expr.to_string())?;
                 for item in &array_index.dimensions {
                     write!(f, "[{}]", item)?;
                 }
                 write!(f, "")
             }
-            Expression::Assignment(assignment) => write!(
-                f,
-                "{} = {}",
-                assignment.assign_to.to_string(),
-                assignment.expr
-            ),
+            Expression::Assignment(assignment) => {
+                write!(f, "{} = {}", assignment.assign_to.to_string(), assignment.expr)
+            }
             Expression::AddressOf(expression) => write!(f, "&({})", expression),
             Expression::Dereference(expression) => write!(f, "(*{})", expression),
             Expression::StructInit(struct_init) => {
@@ -188,7 +130,7 @@ impl fmt::Display for Expression {
                 }
                 write!(f, "}}")
             }
-            Expression::CastAs(cast_as) => {
+            Expression::Cast(cast_as) => {
                 write!(f, "{}", cast_as)
             }
             Expression::ModuleImport(module_import) => {

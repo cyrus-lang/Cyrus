@@ -16,9 +16,9 @@ mod tests {
         let arrays = TokenKind::Array(
             Box::new(TokenKind::I32),
             vec![
-                ArrayCapacity::Static(TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(3)))),
-                ArrayCapacity::Static(TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(4)))),
-                ArrayCapacity::Static(TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(5)))),
+                ArrayCapacity::Static(TokenKind::Literal(Literal::Integer(3))),
+                ArrayCapacity::Static(TokenKind::Literal(Literal::Integer(4))),
+                ArrayCapacity::Static(TokenKind::Literal(Literal::Integer(5))),
             ],
         );
         assert_eq!(arrays.to_string(), "i32[3][4][5]");
@@ -32,8 +32,8 @@ mod tests {
                 kind: TokenKind::Plus,
                 span: Span::default(),
             },
-            left: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(5)))),
-            right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(3)))),
+            left: Box::new(Expression::Literal(Literal::Integer(5))),
+            right: Box::new(Expression::Literal(Literal::Integer(3))),
             span: Span::default(),
             loc,
         };
@@ -48,7 +48,7 @@ mod tests {
                 kind: TokenKind::Percent,
                 span: Span::default(),
             },
-            operand: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(7)))),
+            operand: Box::new(Expression::Literal(Literal::Integer(7))),
             span: Span::default(),
             loc,
         };
@@ -60,7 +60,7 @@ mod tests {
         let initializer = Some(Variable {
             name: "i".to_string(),
             ty: Some(TokenKind::I32),
-            expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(0)))),
+            expr: Some(Expression::Literal(Literal::Integer(0))),
             span: Span::default(),
             loc: Location::default(),
         });
@@ -74,7 +74,7 @@ mod tests {
                 span: Span::default(),
                 loc: Location::default(),
             })),
-            right: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
+            right: Box::new(Expression::Literal(Literal::Integer(10))),
             span: Span::default(),
             loc: Location::default(),
         }));
@@ -114,7 +114,7 @@ mod tests {
         let variable = Variable {
             name: "x".to_string(),
             ty: Some(TokenKind::I32),
-            expr: Some(Expression::Literal(Literal::Integer(IntegerLiteral::I32(42)))),
+            expr: Some(Expression::Literal(Literal::Integer(42))),
             span: Span::default(),
             loc: Location::default(),
         };
@@ -134,7 +134,7 @@ mod tests {
                 span: Span::default(),
                 loc: Location::default(),
             }),
-            expr: Expression::Literal(Literal::Integer(IntegerLiteral::I32(10))),
+            expr: Expression::Literal(Literal::Integer(10)),
             span: Span::default(),
             loc: Location::default(),
         };
@@ -194,10 +194,7 @@ mod tests {
     #[test]
     fn test_if_statement() {
         let if_statement = If {
-            condition: Expression::Literal(Literal::Bool(BoolLiteral {
-                raw: true,
-                span: Span::default(),
-            })),
+            condition: Expression::Literal(Literal::Bool(true)),
             consequent: Box::new(BlockStatement {
                 exprs: vec![],
                 span: Span::default(),
@@ -214,8 +211,8 @@ mod tests {
 
     #[test]
     fn test_cast_as() {
-        let cast_as_expression = CastAs {
-            expr: Box::new(Expression::Literal(Literal::Integer(IntegerLiteral::I32(10)))),
+        let cast_as_expression = Cast {
+            expr: Box::new(Expression::Literal(Literal::Integer(10))),
             type_token: TokenKind::F64,
             span: Span::default(),
             loc: Location::default(),

@@ -1,9 +1,8 @@
+use crate::CodeGenLLVM;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
-use crate::types::TypedPointerType;
 use crate::values::AnyValue;
-use crate::{AnyType, CodeGenLLVM};
-use ast::ast::{Expression, FieldAccessOrMethodCall, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams};
+use ast::ast::{Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
@@ -308,95 +307,95 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_field_access_or_method_call(
-        &self,
-        scope: ScopeRef<'ctx>,
-        field_access_or_method_call: FieldAccessOrMethodCall,
-    ) -> AnyValue<'ctx> {
-        let mut final_result = self.build_expr(Rc::clone(&scope), *field_access_or_method_call.expr);
+    // pub(crate) fn build_field_access_or_method_call(
+    //     &self,
+    //     scope: ScopeRef<'ctx>,
+    //     field_access_or_method_call: FieldAccessOrMethodCall,
+    // ) -> AnyValue<'ctx> {
+    //     let mut final_result = self.build_expr(Rc::clone(&scope), *field_access_or_method_call.expr);
 
-        for item in field_access_or_method_call.chains {
-            match item {
-                either::Either::Left(method_call) => {
-                    // here we get the function from "imported module value"
-                    // we call it, and assign the result into final_result and continue the process as you can see.
-                    if let AnyValue::ImportedModuleValue(ref imported_module_value) = final_result {
-                        if let Some(func_metadata) = imported_module_value
-                            .metadata
-                            .imported_funcs
-                            .get(&method_call.identifier.name.clone())
-                        {
-                            let mut new_method_call = method_call.clone();
-                            new_method_call.identifier.name = func_metadata.func_decl.name.clone();
-                            let call_site_value = self.build_func_call(Rc::clone(&scope), new_method_call);
-                            if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-                                final_result = AnyValue::try_from(basic_value).unwrap();
-                            }
-                        } else {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom(format!(
-                                    "Function '{}' not defined in module '{}'.",
-                                    method_call.identifier.name, imported_module_value.metadata.identifier
-                                )),
-                                location: None,
-                            });
-                            exit(1);
-                        }
-                    } else {
-                        // ordinary value
-                        let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
-                        if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-                            final_result = AnyValue::try_from(basic_value).unwrap();
-                        }
-                    }
-                }
-                either::Either::Right(field_access) => {
-                    if let AnyValue::StructValue(struct_value) = final_result {
-                        let (struct_name, struct_metadata) = self.find_struct_by_type(
-                            struct_value.get_type(),
-                            field_access.loc.clone(),
-                            field_access.span.end,
-                        );
+    //     for item in field_access_or_method_call.chains {
+    //         match item {
+    //             either::Either::Left(method_call) => {
+    //                 // here we get the function from "imported module value"
+    //                 // we call it, and assign the result into final_result and continue the process as you can see.
+    //                 if let AnyValue::ImportedModuleValue(ref imported_module_value) = final_result {
+    //                     if let Some(func_metadata) = imported_module_value
+    //                         .metadata
+    //                         .imported_funcs
+    //                         .get(&method_call.identifier.name.clone())
+    //                     {
+    //                         let mut new_method_call = method_call.clone();
+    //                         new_method_call.identifier.name = func_metadata.func_decl.name.clone();
+    //                         let call_site_value = self.build_func_call(Rc::clone(&scope), new_method_call);
+    //                         if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
+    //                             final_result = AnyValue::try_from(basic_value).unwrap();
+    //                         }
+    //                     } else {
+    //                         display_single_diag(Diag {
+    //                             level: DiagLevel::Error,
+    //                             kind: DiagKind::Custom(format!(
+    //                                 "Function '{}' not defined in module '{}'.",
+    //                                 method_call.identifier.name, imported_module_value.metadata.identifier
+    //                             )),
+    //                             location: None,
+    //                         });
+    //                         exit(1);
+    //                     }
+    //                 } else {
+    //                     // ordinary value
+    //                     let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
+    //                     if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
+    //                         final_result = AnyValue::try_from(basic_value).unwrap();
+    //                     }
+    //                 }
+    //             }
+    //             either::Either::Right(field_access) => {
+    //                 if let AnyValue::StructValue(struct_value) = final_result {
+    //                     let (struct_name, struct_metadata) = self.find_struct_by_type(
+    //                         struct_value.get_type(),
+    //                         field_access.loc.clone(),
+    //                         field_access.span.end,
+    //                     );
 
-                        match struct_metadata
-                            .fields
-                            .iter()
-                            .position(|f| f.name == field_access.identifier.name)
-                        {
-                            Some(field_idx) => {
-                                let basic_value = self
-                                    .builder
-                                    .build_extract_value(struct_value, field_idx.try_into().unwrap(), "extract")
-                                    .unwrap();
-                                final_result = basic_value.try_into().unwrap();
-                            }
-                            None => {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::Custom(format!(
-                                        "Undefined field '{}' for struct '{}'.",
-                                        field_access.identifier.name, struct_name,
-                                    )),
-                                    location: None,
-                                });
-                                exit(1);
-                            }
-                        }
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom("Cannot build field access for non-struct values.".to_string()),
-                            location: None,
-                        });
-                        exit(1);
-                    }
-                }
-            }
-        }
+    //                     match struct_metadata
+    //                         .fields
+    //                         .iter()
+    //                         .position(|f| f.name == field_access.identifier.name)
+    //                     {
+    //                         Some(field_idx) => {
+    //                             let basic_value = self
+    //                                 .builder
+    //                                 .build_extract_value(struct_value, field_idx.try_into().unwrap(), "extract")
+    //                                 .unwrap();
+    //                             final_result = basic_value.try_into().unwrap();
+    //                         }
+    //                         None => {
+    //                             display_single_diag(Diag {
+    //                                 level: DiagLevel::Error,
+    //                                 kind: DiagKind::Custom(format!(
+    //                                     "Undefined field '{}' for struct '{}'.",
+    //                                     field_access.identifier.name, struct_name,
+    //                                 )),
+    //                                 location: None,
+    //                             });
+    //                             exit(1);
+    //                         }
+    //                     }
+    //                 } else {
+    //                     display_single_diag(Diag {
+    //                         level: DiagLevel::Error,
+    //                         kind: DiagKind::Custom("Cannot build field access for non-struct values.".to_string()),
+    //                         location: None,
+    //                     });
+    //                     exit(1);
+    //                 }
+    //             }
+    //         }
+    //     }
 
-        final_result
-    }
+    //     final_result
+    // }
 
     pub(crate) fn build_arguments(
         &self,

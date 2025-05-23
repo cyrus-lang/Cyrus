@@ -1,10 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::Lexer;
-    use ast::{
-        ast::{FloatLiteral, IntegerLiteral, Literal, StringLiteral},
-        token::{Span, TokenKind},
-    };
+    use ast::token::{Span, TokenKind};
+    use ast::ast::Literal;
 
     #[test]
     fn test_select() {
@@ -15,9 +13,14 @@ mod tests {
 
     #[test]
     fn test_skip_whitespace() {
-        let mut lexer = Lexer::new(String::from("
+        let mut lexer = Lexer::new(
+            String::from(
+                "
             Hello World
-        "), String::from("test.cyr"));
+        ",
+            ),
+            String::from("test.cyr"),
+        );
 
         lexer.skip_whitespace();
     }
@@ -76,7 +79,7 @@ mod tests {
         for #i = 0; i < 10; i++; {
             puts(\"i -> {i}\");
         }";
-        
+
         assert_tokens(code, None, None);
     }
 
@@ -99,11 +102,7 @@ mod tests {
             Some(&vec![TokenKind::True, TokenKind::Equal, TokenKind::False]),
             None,
         );
-        assert_tokens(
-            "#my_var: bool = true;",
-            None,
-            None,
-        );
+        assert_tokens("#my_var: bool = true;", None, None);
     }
 
     #[test]
@@ -253,7 +252,7 @@ mod tests {
                     name: "my_var".to_string(),
                 },
                 TokenKind::Assign,
-                TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(10))),
+                TokenKind::Literal(Literal::Integer(10)),
                 TokenKind::Semicolon,
             ]),
             None,
@@ -307,9 +306,9 @@ mod tests {
                     name: "foo_bar".to_string(),
                 },
                 TokenKind::LeftParen,
-                TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(1))),
+                TokenKind::Literal(Literal::Integer(1)),
                 TokenKind::Comma,
-                TokenKind::Literal(Literal::Integer(IntegerLiteral::I32(2))),
+                TokenKind::Literal(Literal::Integer(2)),
                 TokenKind::RightParen,
             ]),
             None,
@@ -320,10 +319,7 @@ mod tests {
     fn test_str() {
         assert_tokens(
             "\"Cyrus-Lang\"",
-            Some(&vec![TokenKind::Literal(Literal::String(StringLiteral {
-                raw: "Cyrus-Lang".to_string(),
-                span: Span { start: 0, end: 12 },
-            }))]),
+            Some(&vec![TokenKind::Literal(Literal::String("Cyrus-Lang".to_string()))]),
             None,
         );
     }
@@ -332,7 +328,7 @@ mod tests {
     fn test_floating_numbers() {
         assert_tokens(
             "2.56",
-            Some(&vec![TokenKind::Literal(Literal::Float(FloatLiteral::Float(2.56)))]),
+            Some(&vec![TokenKind::Literal(Literal::Float(2.56))]),
             None,
         );
     }
