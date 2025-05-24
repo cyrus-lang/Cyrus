@@ -45,20 +45,22 @@ impl<'a> Parser<'a> {
         Ok(Statement::Expression(expr))
     }
 
-    pub fn parse_enum_variant(&mut self) -> Result<EnumVariant, ParseError> {
+    pub fn parse_enum_field(&mut self) -> Result<EnumField, ParseError> {
         let variant_name = self.parse_identifier()?;
         self.next_token();
-        let mut variant_fields: Option<Vec<EnumField>> = None;
+
+        let mut variant_fields: Vec<EnumValuedField> = Vec::new();
 
         if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
-            return Ok(EnumVariant {
-                name: variant_name,
-                fields: variant_fields,
-                loc: self.current_location(),
-            });
+            return Ok(EnumField::OnlyIdentifier(variant_name));
+        } else if self.current_token_is(TokenKind::Assign) {
+            self.next_token(); // consume assign 
+            let value = self.parse_expression(Precedence::Lowest)?.0;
+            self.next_token(); // consume last token of the expression 
+            return Ok(EnumField::Valued(variant_name, Box::new(value)));
         } else if self.current_token_is(TokenKind::LeftParen) {
             self.next_token(); // consume left paren
-            let mut fields: Vec<EnumField> = Vec::new();
+
             loop {
                 if self.current_token_is(TokenKind::RightParen) {
                     return Err(CompileTimeError {
@@ -76,12 +78,10 @@ impl<'a> Parser<'a> {
                 let field_name = self.parse_identifier()?;
                 self.next_token(); // consume field name
 
-                self.expect_current(TokenKind::Colon)?;
-
                 let field_type = self.parse_type_token()?;
                 self.next_token();
 
-                fields.push(EnumField {
+                variant_fields.push(EnumValuedField {
                     name: field_name,
                     field_type: field_type,
                 });
@@ -93,37 +93,39 @@ impl<'a> Parser<'a> {
                     self.expect_current(TokenKind::Comma)?;
                 }
             }
-            variant_fields = Some(fields);
         }
 
-        Ok(EnumVariant {
-            name: variant_name,
-            fields: variant_fields,
-            loc: self.current_location(),
-        })
+        return Ok(EnumField::Variant(variant_name, variant_fields));
     }
 
     pub fn parse_enum(&mut self) -> Result<Statement, ParseError> {
         self.next_token(); // parse enum keyword
+
         let enum_name = self.parse_identifier()?;
         self.next_token(); // consume enum name
+
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let mut enum_variants: Vec<EnumVariant> = Vec::new();
+        let mut enum_fields: Vec<EnumField> = Vec::new();
 
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Statement::Enum(Enum {
                 name: enum_name,
-                variants: enum_variants,
+                variants: enum_fields,
                 loc: self.current_location(),
             }));
         }
 
-        enum_variants.push(self.parse_enum_variant()?);
+        enum_fields.push(self.parse_enum_field()?);
 
         while self.current_token_is(TokenKind::Comma) {
             self.next_token(); // consume comma
-            enum_variants.push(self.parse_enum_variant()?);
+
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
+            }
+
+            enum_fields.push(self.parse_enum_field()?);
             if !self.current_token_is(TokenKind::RightBrace) {
                 self.expect_current(TokenKind::Comma)?;
             }
@@ -140,7 +142,7 @@ impl<'a> Parser<'a> {
 
         Ok(Statement::Enum(Enum {
             name: enum_name,
-            variants: enum_variants,
+            variants: enum_fields,
             loc,
         }))
     }
@@ -149,7 +151,7 @@ impl<'a> Parser<'a> {
         let loc = self.current_location();
         let struct_start = self.current_token.span.start.clone();
 
-        let storage_class = storage_class.unwrap_or(StorageClass::Internal);    
+        let storage_class = storage_class.unwrap_or(StorageClass::Internal);
         self.next_token(); // consume struct token
 
         let struct_name = self.parse_identifier()?.name;
@@ -231,8 +233,6 @@ impl<'a> Parser<'a> {
                     }
                 }
                 TokenKind::Function => {
-                    dbg!(self.current_token.clone());
-
                     if let Statement::FuncDef(method) = self.parse_func(None)? {
                         methods.push(method);
                     } else {
@@ -244,12 +244,8 @@ impl<'a> Parser<'a> {
 
                     self.next_token(); // consume identifier
 
-                    self.expect_current(TokenKind::Colon)?;
-
                     let type_token = self.parse_type_token()?;
                     self.next_token();
-
-                    self.expect_current(TokenKind::Semicolon)?;
 
                     let field = Field {
                         name: field_name,

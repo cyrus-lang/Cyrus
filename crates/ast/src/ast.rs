@@ -46,25 +46,25 @@ pub enum Expression {
     StructInit(StructInit),
     FuncCall(FuncCall),
     FieldAccess(FieldAccess),
-    MethodCall(MethodCall)
+    MethodCall(MethodCall),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Enum {
     pub name: Identifier,
-    pub variants: Vec<EnumVariant>,
-    pub loc: Location
+    pub variants: Vec<EnumField>,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnumVariant {
-    pub name: Identifier,
-    pub fields: Option<Vec<EnumField>>,
-    pub loc: Location
+pub enum EnumField {
+    OnlyIdentifier(Identifier),
+    Variant(Identifier, Vec<EnumValuedField>),
+    Valued(Identifier, Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnumField {
+pub struct EnumValuedField {
     pub name: Identifier,
     pub field_type: TokenKind,
 }
@@ -322,8 +322,8 @@ pub enum StorageClass {
     Public,
     Internal,
     Inline,
-    PublicInline, 
-    PublicExtern
+    PublicInline,
+    PublicExtern,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,3 +1,4 @@
-public struct Person {
-    
+enum Color {
+    Red,
+    BLUE = 0
 }
