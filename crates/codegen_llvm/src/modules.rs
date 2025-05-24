@@ -1,6 +1,6 @@
 use crate::{CodeGenLLVM, build::BuildManifest, diag::*, funcs::FuncTable, structs::StructTable};
 use ast::{
-    ast::{Field, FuncDecl, Identifier, Import, ModulePath, ModuleSegment, Struct, VisType},
+    ast::{Field, FuncDecl, Identifier, Import, ModulePath, ModuleSegment, StorageClass, Struct},
     format::module_segments_as_string,
     token::{Location, Span},
 };
@@ -16,7 +16,7 @@ pub struct ExportedFuncMetadata {
 #[derive(Debug, Clone)]
 pub struct ExportedStructMetadata<'ctx> {
     pub name: String,
-    pub vis_type: VisType,
+    pub storage_class: StorageClass,
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub methods: Vec<FuncDecl>,
@@ -230,7 +230,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         for (_, (_, metadata)) in func_table.iter().enumerate() {
             // only pub funcs are exported imported from sub_module
-            if metadata.func_decl.vis_type == VisType::Pub {
+            if metadata.func_decl.storage_class == StorageClass::Public {
                 imported_funcs.insert(
                     metadata.func_decl.renamed_as.clone().unwrap(),
                     ExportedFuncMetadata {
@@ -254,7 +254,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             // only pub structs are exported imported from sub_module
             let struct_statement = Struct {
                 name: struct_name.clone(),
-                vis_type: metadata.vis_type.clone(),
+                storage_class: metadata..clone(),
                 inherits: metadata.inherits.clone(),
                 fields: metadata.fields.clone(),
                 methods: Vec::new(), // FIXME
@@ -267,7 +267,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 struct_name.clone(),
                 ExportedStructMetadata {
                     name: struct_name.clone(),
-                    vis_type: metadata.vis_type.clone(),
+                    storage_class: metadata.storage_class.clone(),
                     inherits: metadata.inherits.clone(),
                     fields: metadata.fields.clone(),
                     methods: Vec::new(), // FIXME

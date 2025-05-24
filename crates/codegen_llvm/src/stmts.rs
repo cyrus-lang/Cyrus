@@ -58,8 +58,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     StructMetadata {
                         struct_type,
                         fields: struct_statement.fields,
-                        vis_type: struct_statement.vis_type,
                         inherits: struct_statement.inherits,
+                        storage_class: struct_statement.storage_class,
                     },
                 );
             }

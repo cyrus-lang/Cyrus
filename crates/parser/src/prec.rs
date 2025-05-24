@@ -16,7 +16,6 @@ pub enum Precedence {
 
 pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
     match token_kind {
-        TokenKind::As => Precedence::Cast,
         TokenKind::Equal => Precedence::Equals,
         TokenKind::NotEqual => Precedence::Equals,
         TokenKind::And => Precedence::Equals,

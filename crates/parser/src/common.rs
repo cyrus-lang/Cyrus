@@ -53,7 +53,6 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
-        let start = self.current_token.span.start;
         let location = self.current_location();
 
         match self.current_token.kind.clone() {
@@ -66,49 +65,50 @@ impl<'a> Parser<'a> {
                 self.next_token();
                 Ok(TokenKind::AddressOf(Box::new(self.parse_type_token()?)))
             }
-            TokenKind::Identifier { name: type_name } => Ok(TokenKind::UserDefinedType(Identifier {
-                name: type_name.clone(),
-                span: self.current_token.span.clone(),
-                loc: self.current_location(),
-            })),
+            identifier @ TokenKind::Identifier { .. } => Ok(identifier),
             TokenKind::LeftBracket => self.parse_array_type(),
-            token_kind => {
-                Err(CompileTimeError {
-                    location,
-                    etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
+            token_kind => Err(CompileTimeError {
+                location,
+                etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: true,
+            }),
+        }
+    }
+
+    pub fn parse_storage_class(&mut self, token: Token) -> Result<StorageClass, ParseError> {
+        let storage_class = {
+            if self.current_token_is(TokenKind::Inline) {
+                self.next_token();
+                StorageClass::Inline
+            } else if self.current_token_is(TokenKind::Extern) {
+                self.next_token();
+                StorageClass::Extern
+            } else if self.current_token_is(TokenKind::Public) {
+                self.next_token();
+                if self.current_token_is(TokenKind::Inline) {
+                    self.next_token();
+                    StorageClass::PublicInline
+                } else if self.current_token_is(TokenKind::Extern) {
+                    self.next_token();
+                    StorageClass::PublicExtern
+                } else {
+                    StorageClass::Public
+                }
+            } else {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::InvalidToken(token.kind),
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
                     caret: true,
-                })
-            }
-        }
-    }
-
-    /// Parses a visibility or type modifier token and returns its corresponding `VisType`.
-    ///
-    /// This function checks if the given token represents a valid function visibility or type modifier
-    /// (e.g., `Inline`, `Extern`, or `Pub`) and converts it to the appropriate `VisType`.
-    /// If the token is invalid, it returns a parsing error.
-    pub fn parse_vis_type(&mut self, token: Token) -> Result<VisType, ParseError> {
-        let vis_type = match token.kind {
-            TokenKind::Inline => VisType::Inline,
-            TokenKind::Extern => VisType::Extern,
-            TokenKind::Pub => VisType::Pub,
-            _ => {
-                return Err(CompileTimeError {
-                    location: self.current_location(),
-                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: Some(String::from(
-                        "Expected one of: 'inline', 'extern', 'pub' as function visibility.",
-                    )),
-                    caret: true,
                 });
             }
         };
-        self.next_token(); // consume vis_type token
-        Ok(vis_type)
+
+        Ok(storage_class)
     }
 }

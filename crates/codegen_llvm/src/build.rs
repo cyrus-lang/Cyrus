@@ -1,6 +1,6 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
-use ast::ast::VisType;
+use ast::ast::StorageClass;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
@@ -300,7 +300,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_entry_point(&mut self) {
         if let Some(mut main_func) = self.entry_point.clone() {
             main_func.name = format!("main_{}", generate_random_hex());
-            if main_func.vis_type != VisType::Internal {
+            if main_func.storage_class != StorageClass::Internal {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::NonInternalEntryPoint,

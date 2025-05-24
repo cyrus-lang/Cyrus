@@ -89,7 +89,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let func_linkage = self.build_linkage(func_decl.vis_type.clone());
+        let func_linkage = self.build_linkage(func_decl.storage_class.clone());
         let func_ptr = self
             .module
             .borrow_mut()
@@ -119,7 +119,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             name: func_def.name.clone(),
             params: func_def.params.clone(),
             return_type: func_def.return_type.clone(),
-            vis_type: func_def.vis_type.clone(),
+            storage_class: func_def.storage_class.clone(),
             renamed_as: Some(func_def.name.clone()),
             span: func_def.span.clone(),
             loc: func_def.loc.clone(),
@@ -155,7 +155,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let actual_func_name = format!("{}.{}", self.module_name, func_def.name.clone());
         func_decl.name = actual_func_name.clone();
 
-        let func_linkage = self.build_linkage(func_def.vis_type.clone());
+        let func_linkage = self.build_linkage(func_def.storage_class.clone());
         let func = self
             .module
             .borrow_mut()

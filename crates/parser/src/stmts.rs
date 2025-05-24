@@ -8,25 +8,26 @@ use diag::errors::CompileTimeError;
 
 impl<'a> Parser<'a> {
     pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
+        if self.current_token_is(TokenKind::Extern)
+            || self.current_token_is(TokenKind::Inline)
+            || self.current_token_is(TokenKind::Public)
+        {
+            let storage_class = self.parse_storage_class(self.current_token.clone())?;
+
+            if self.current_token_is(TokenKind::Function) {
+                return self.parse_func(Some(storage_class));
+            } else if self.current_token_is(TokenKind::Struct) {
+                return self.parse_struct(Some(storage_class));
+            }
+        } else if self.current_token_is(TokenKind::Function) {
+            return self.parse_func(None);
+        } else if self.current_token_is(TokenKind::Struct) {
+            return self.parse_struct(None);
+        }
+
         match self.current_token.kind {
             TokenKind::Enum => self.parse_enum(),
             TokenKind::If => self.parse_if(),
-            TokenKind::Function | TokenKind::Decl | TokenKind::Extern | TokenKind::Pub | TokenKind::Inline => {
-                if self.current_token_is(TokenKind::Function) || self.peek_token_is(TokenKind::Function) {
-                    self.parse_func()
-                } else if self.current_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Struct) {
-                    self.parse_struct()
-                } else {
-                    return Err(CompileTimeError {
-                        location: self.current_location(),
-                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: Some(String::from("Expected 'struct' or 'fn' after visibility token!")),
-                        caret: false,
-                    });
-                }
-            }
             TokenKind::Return => self.parse_return(),
             TokenKind::Hashtag => self.parse_variable(),
             TokenKind::For => self.parse_for_loop(),
@@ -34,18 +35,13 @@ impl<'a> Parser<'a> {
             TokenKind::Continue => self.parse_continue(),
             TokenKind::LeftBrace => Ok(Statement::BlockStatement(self.parse_block_statement()?)),
             TokenKind::Import => self.parse_import(),
-            TokenKind::Struct => self.parse_struct(),
             _ => self.parse_expression_statement(),
         }
     }
 
     pub fn parse_expression_statement(&mut self) -> Result<Statement, ParseError> {
         let expr = self.parse_expression(Precedence::Lowest)?.0;
-
-        if self.peek_token_is(TokenKind::Semicolon) {
-            self.next_token();
-        }
-
+        self.expect_peek(TokenKind::Semicolon)?;
         Ok(Statement::Expression(expr))
     }
 
@@ -149,34 +145,19 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_struct(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_struct(&mut self, storage_class: Option<StorageClass>) -> Result<Statement, ParseError> {
         let loc = self.current_location();
         let struct_start = self.current_token.span.start.clone();
 
-        let vis_type = self
-            .parse_vis_type(self.current_token.clone())
-            .unwrap_or(VisType::Internal);
-        if vis_type == VisType::Inline {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::ExpectedIdentifier,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: Some(String::from(
-                    "Token 'inline' is not a valid 'vis_type' for struct definition.",
-                )),
-                caret: true,
-            });
-        }
-
-        self.next_token();
+        let storage_class = storage_class.unwrap_or(StorageClass::Internal);    
+        self.next_token(); // consume struct token
 
         let struct_name = self.parse_identifier()?.name;
         self.next_token(); // consume struct name
 
         let mut inherits: Vec<Identifier> = Vec::new();
 
-        if self.current_token_is(TokenKind::Extends) {
+        if self.current_token_is(TokenKind::Colon) {
             self.next_token();
 
             loop {
@@ -241,22 +222,21 @@ impl<'a> Parser<'a> {
                         caret: true,
                     });
                 }
-                TokenKind::Function | TokenKind::Decl | TokenKind::Extern | TokenKind::Pub | TokenKind::Inline => {
-                    if let Statement::FuncDef(method) = self.parse_func()? {
+                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                    let storage_class = self.parse_storage_class(self.current_token.clone())?;
+                    if let Statement::FuncDef(method) = self.parse_func(Some(storage_class))? {
                         methods.push(method);
-                        self.next_token(); // consume the right brace
                     } else {
-                        return Err(CompileTimeError {
-                            location: self.current_location(),
-                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                            file_name: Some(self.lexer.file_name.clone()),
-                            source_content: Box::new(self.lexer.input.clone()),
-                            verbose: Some(format!(
-                                "Expected method definition inside struct '{}'",
-                                struct_name.clone()
-                            )),
-                            caret: true,
-                        });
+                        unreachable!();
+                    }
+                }
+                TokenKind::Function => {
+                    dbg!(self.current_token.clone());
+
+                    if let Statement::FuncDef(method) = self.parse_func(None)? {
+                        methods.push(method);
+                    } else {
+                        unreachable!();
                     }
                 }
                 TokenKind::Identifier { name: field_name } => {
@@ -296,8 +276,10 @@ impl<'a> Parser<'a> {
             }
         }
 
+        self.next_token(); // consume right brace
+
         Ok(Statement::Struct(Struct {
-            vis_type,
+            storage_class,
             name: struct_name,
             inherits,
             fields,
@@ -818,16 +800,11 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_func(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_func(&mut self, storage_class: Option<StorageClass>) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
         let loc = self.current_location();
 
-        let mut vis_type = VisType::Internal; // internal by default
-
-        if !self.current_token_is(TokenKind::Function) {
-            // Parse visibility type
-            vis_type = self.parse_vis_type(self.current_token.clone())?;
-        }
+        let storage_class = storage_class.unwrap_or(StorageClass::Internal);
 
         self.next_token(); // consume the fn token
 
@@ -883,7 +860,7 @@ impl<'a> Parser<'a> {
                 name: func_name,
                 params,
                 return_type,
-                vis_type,
+                storage_class,
                 renamed_as: None,
                 span: Span {
                     start,
@@ -928,7 +905,7 @@ impl<'a> Parser<'a> {
                 name: func_name,
                 params,
                 return_type,
-                vis_type,
+                storage_class,
                 renamed_as: Some(renamed_as),
                 span: Span {
                     start,
@@ -965,7 +942,7 @@ impl<'a> Parser<'a> {
                 params,
                 body,
                 return_type,
-                vis_type,
+                storage_class,
                 span: Span { start, end },
                 loc,
             }));
@@ -1055,7 +1032,7 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::LeftParen)?;
         let condition = self.parse_expression(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::RightParen)?;
-        
+
         let consequent = Box::new(self.parse_block_statement()?);
 
         if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {

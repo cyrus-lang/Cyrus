@@ -132,7 +132,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyType<'ctx> {
         match token_kind {
-            TokenKind::UserDefinedType(_) => todo!(),
             TokenKind::SizeT => {
                 let data_layout = self.target_machine.get_target_data();
                 AnyType::IntType(self.context.ptr_sized_int_type(&data_layout, None))

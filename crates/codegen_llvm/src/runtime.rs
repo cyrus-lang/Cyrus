@@ -1,6 +1,6 @@
 use crate::CodeGenLLVM;
 use ast::{
-    ast::{FuncDecl, FuncParams, VisType},
+    ast::{FuncDecl, FuncParams, StorageClass, StorageClass},
     token::{Location, Span},
 };
 use inkwell::{
@@ -21,7 +21,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 variadic: None,
             },
             return_type: None,
-            vis_type: VisType::Inline,
+            storage_class: StorageClass::Inline,
             renamed_as: None,
             span: Span::default(),
             loc: Location::default(),

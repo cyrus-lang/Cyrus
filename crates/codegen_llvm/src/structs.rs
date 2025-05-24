@@ -4,7 +4,7 @@ use crate::{
     scope::ScopeRef,
 };
 use ast::{
-    ast::{Field, Identifier, ModuleImport, Struct, StructInit, VisType},
+    ast::{Field, Identifier, ModuleImport, StorageClass, Struct, StructInit, StorageClass},
     token::Location,
 };
 use inkwell::{
@@ -18,7 +18,7 @@ pub struct StructMetadata<'a> {
     pub struct_type: StructType<'a>,
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
-    pub vis_type: VisType,
+    pub storage_class: StorageClass,
 }
 
 pub type StructTable<'a> = HashMap<String, StructMetadata<'a>>;
@@ -37,7 +37,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_struct(&self, struct_statement: Struct) -> StructType<'ctx> {
         let field_types = self.build_struct_fields(struct_statement.fields.clone());
         let struct_type = self.context.struct_type(&field_types, false);
-        if !matches!(struct_statement.vis_type, VisType::Pub | VisType::Internal) {
+        if !matches!(struct_statement.storage_class, StorageClass::Public | StorageClass::Internal) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom("Structs can only be defined public or internal.".to_string()),
@@ -78,7 +78,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 struct_type,
                                 inherits: metadata.inherits.clone(),
                                 fields: metadata.fields.clone(),
-                                vis_type: metadata.vis_type.clone(),
+                                storage_class: metadata.storage_class.clone(),
                             },
                         ));
                         break;
@@ -129,7 +129,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                         struct_type: struct_metadata.struct_type.clone(),
                                         inherits: struct_metadata.inherits.clone(),
                                         fields: struct_metadata.fields.clone(),
-                                        vis_type: struct_metadata.vis_type.clone(),
+                                        storage_class: struct_metadata.storage_class.clone(),
                                     },
                                     None => {
                                         display_single_diag(Diag {

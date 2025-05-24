@@ -17,13 +17,15 @@ impl<'a> Parser<'a> {
             left = self.parse_field_access(left)?;
         }
 
-        if self.current_token_is(TokenKind::As) || self.peek_token_is(TokenKind::As) {
-            return self.parse_cast_as_expression(left, left_start);
-        } else if self.peek_token_is(TokenKind::Assign) {
-            self.next_token();
-            let expr = self.parse_assignment(left, left_start)?;
-            return Ok((expr, Span::new(left_start, self.current_token.span.end)));
-        }
+        // FIXME
+        // if self.current_token_is(TokenKind::As) || self.peek_token_is(TokenKind::As) {
+        //     return self.parse_cast_as_expression(left, left_start);
+        // } 
+        // else if self.peek_token_is(TokenKind::Assign) {
+        //     self.next_token();
+        //     let expr = self.parse_assignment(left, left_start)?;
+        //     return Ok((expr, Span::new(left_start, self.current_token.span.end)));
+        // }
 
         while self.current_token.kind != TokenKind::EOF
             && precedence < token_precedence_of(self.peek_token.kind.clone())

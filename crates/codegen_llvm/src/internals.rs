@@ -1,9 +1,9 @@
-use crate::{AnyType, AnyValue, CodeGenLLVM, diag::*, funcs::FuncMetadata, scope::ScopeRef};
+use crate::{AnyType, CodeGenLLVM, diag::*, funcs::FuncMetadata, scope::ScopeRef};
 use ast::{
-    ast::{Expression, FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, VisType},
+    ast::{Expression, FuncCall, FuncDecl, FuncParam, FuncParams, Identifier, StorageClass},
     token::{Location, Span, Token, TokenKind},
 };
-use inkwell::values::{AsValueRef, BasicMetadataValueEnum, BasicValueEnum, CallSiteValue, IntValue};
+use inkwell::values::{AsValueRef, BasicMetadataValueEnum, CallSiteValue, IntValue};
 use rust_embed::Embed;
 use std::{env, fs::File, io::Write, process::exit, rc::Rc};
 use utils::generate_random_hex::generate_random_hex;
@@ -54,7 +54,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
                 },
                 return_type: None,
-                vis_type: VisType::Inline,
+                storage_class: StorageClass::Inline,
                 renamed_as: Some("println".to_string()),
                 span: Span::default(),
                 loc: Location::default(),
@@ -80,7 +80,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
                 },
                 return_type: None,
-                vis_type: VisType::Inline,
+                storage_class: StorageClass::Inline,
                 renamed_as: Some("printf".to_string()),
                 span: Span::default(),
                 loc: Location::default(),
@@ -106,7 +106,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
                 },
                 return_type: None,
-                vis_type: VisType::Inline,
+                storage_class: StorageClass::Inline,
                 renamed_as: Some("eprintln".to_string()),
                 span: Span::default(),
                 loc: Location::default(),
@@ -132,7 +132,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
                 },
                 return_type: None,
-                vis_type: VisType::Inline,
+                storage_class: StorageClass::Inline,
                 renamed_as: Some("eprintf".to_string()),
                 span: Span::default(),
                 loc: Location::default(),
@@ -158,7 +158,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     variadic: None,
                 },
                 return_type: None,
-                vis_type: VisType::Inline,
+                storage_class: StorageClass::Inline,
                 renamed_as: Some("exit".to_string()),
                 span: Span::default(),
                 loc: Location::default(),
@@ -197,7 +197,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     variadic: Some(TokenKind::Dereference(Box::new(TokenKind::Void))),
                 },
                 return_type: None,
-                vis_type: VisType::Inline,
+                storage_class: StorageClass::Inline,
                 renamed_as: Some("panic".to_string()),
                 span: Span::default(),
                 loc: Location::default(),
@@ -226,7 +226,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     kind: TokenKind::SizeT,
                     span: Span::default(),
                 }),
-                vis_type: VisType::Inline,
+                storage_class: StorageClass::Inline,
                 renamed_as: None,
                 span: Span::default(),
                 loc: Location::default(),
@@ -255,7 +255,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     kind: TokenKind::Dereference(Box::new(TokenKind::Void)),
                     span: Span::default(),
                 }),
-                vis_type: VisType::Inline,
+                storage_class: StorageClass::Inline,
                 renamed_as: Some("malloc".to_string()),
                 span: Span::default(),
                 loc: Location::default(),
@@ -447,7 +447,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_call_internal_malloc(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
         todo!();
-        
+
         // if func_call.arguments.len() != 1 {
         //     display_single_diag(Diag {
         //         level: DiagLevel::Error,

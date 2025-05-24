@@ -182,7 +182,7 @@ mod tests {
                 kind: TokenKind::I32,
                 span: Span::default(),
             }),
-            vis_type: VisType::Pub,
+            storage_class: StorageClass::Public,
             span: Span::default(),
             loc: Location::default(),
         };

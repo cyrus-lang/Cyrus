@@ -1,4 +1,4 @@
-use crate::ast::{Identifier, Literal};
+use crate::ast::Literal;
 use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -62,9 +62,7 @@ pub enum TokenKind {
     Continue,
     Struct,
     Import,
-    Decl,
     // Types
-    UserDefinedType(Identifier),
     I8,
     I16,
     I32,
@@ -87,12 +85,10 @@ pub enum TokenKind {
     Macro,
     In,
     Enum,
-    Dyn,
     True,
     False,
     Null,
     As,
-    Extends,
 
     AddressOf(Box<TokenKind>),
     Dereference(Box<TokenKind>),
@@ -102,7 +98,7 @@ pub enum TokenKind {
 
     // Object Visibility Keywords
     Extern,
-    Pub,
+    Public,
     Inline,
 }
 
@@ -194,9 +190,10 @@ impl fmt::Display for TokenKind {
             Self::Enum => write!(f, "enum"),
             Self::Macro => write!(f, "macro"),
             Self::In => write!(f, "in"),
-            Self::Dyn => write!(f, "dyn"),
             Self::As => write!(f, "as"),
-            Self::Extends => write!(f, "extends"),
+            Self::Extern => write!(f, "extern"),
+            Self::Inline => write!(f, "inline"),
+            Self::Public => write!(f, "public"),
             Self::Literal(literal) => match literal {
                 Literal::Integer(v) => write!(f, "{}", v),
                 Literal::Float(v) => write!(f, "{}", v),
