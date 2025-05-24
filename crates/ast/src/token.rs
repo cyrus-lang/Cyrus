@@ -44,6 +44,7 @@ pub enum TokenKind {
     Ampersand,
     Semicolon,
     Colon,
+    DoubleColon,
     LessThan,
     GreaterThan,
     LessEqual,

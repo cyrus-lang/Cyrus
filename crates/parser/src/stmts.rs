@@ -369,11 +369,11 @@ impl<'a> Parser<'a> {
 
         // this is because if there is only one sub_module, it should not be consume
         // due to mechanism of our parser that latest expression should not be consumed
-        if self.peek_token_is(TokenKind::Dot) {
+        if self.peek_token_is(TokenKind::DoubleColon) {
             self.next_token();
         }
 
-        while self.current_token_is(TokenKind::Dot) {
+        while self.current_token_is(TokenKind::DoubleColon) {
             let start = self.current_token.span.end + 1;
             self.next_token();
 

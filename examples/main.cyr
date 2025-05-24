@@ -1,3 +1,4 @@
 fn main() {
-    aa.bb;   
+    call();
+    // aa.bb;   
 }

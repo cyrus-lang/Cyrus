@@ -1,6 +1,6 @@
 use ::diag::errors::CompileTimeError;
-use ast::token::*;
 use ast::ast::Literal;
+use ast::token::*;
 use core::panic;
 use diag::{LexicalErrorType, lexer_invalid_char_error, lexer_unknown_char_error};
 use std::{fmt::Debug, ops::Range, process::exit};
@@ -168,7 +168,27 @@ impl Lexer {
             '}' => TokenKind::RightBrace,
             '[' => TokenKind::LeftBracket,
             ']' => TokenKind::RightBracket,
-            ':' => TokenKind::Colon,
+            ':' => {
+                self.read_char();
+                if self.ch == ':' {
+                    self.read_char();
+                    return Token {
+                        kind: TokenKind::DoubleColon,
+                        span: Span {
+                            start: self.pos - 2,
+                            end: self.pos - 1,
+                        },
+                    };
+                } else {
+                    return Token {
+                        kind: TokenKind::Colon,
+                        span: Span {
+                            start: self.pos - 1,
+                            end: self.pos - 1,
+                        },
+                    };
+                }
+            }
             ',' => TokenKind::Comma,
             '.' => {
                 self.read_char();
@@ -489,7 +509,6 @@ impl Lexer {
         let start = self.pos;
         let mut number = String::new();
         let mut is_float = false;
-        let mut base = 10;
 
         // hexadecimal literals
         let token_kind = if self.ch == '0' && (self.peek_char() == 'x' || self.peek_char() == 'X') {
@@ -497,7 +516,6 @@ impl Lexer {
             self.read_char(); // consume '0'
             number.push(self.ch);
             self.read_char(); // consume 'x' or 'X'
-            base = 16;
 
             while self.ch.is_ascii_hexdigit() || self.ch == '_' {
                 if self.ch != '_' {
@@ -656,8 +674,6 @@ impl Lexer {
     }
 
     fn skip_comments(&mut self) {
-        let start = self.pos;
-
         if self.ch == '/' && self.peek_char() == '/' {
             self.read_char();
             self.read_char();

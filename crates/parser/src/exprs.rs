@@ -11,6 +11,12 @@ impl<'a> Parser<'a> {
         let mut left_start = self.current_token.span.start;
         let mut left = self.parse_prefix_expression()?;
 
+        while self.peek_token_is(TokenKind::Dot) {
+            self.next_token(); // consume the left expression
+            self.expect_current(TokenKind::Dot)?;
+            left = self.parse_field_access(left)?;
+        }
+
         if self.current_token_is(TokenKind::As) || self.peek_token_is(TokenKind::As) {
             return self.parse_cast_as_expression(left, left_start);
         } else if self.peek_token_is(TokenKind::Assign) {
@@ -180,9 +186,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        if self.current_token_is(TokenKind::Dot) {
-            todo!();
-        } else if self.peek_token_is(TokenKind::LeftBrace) {
+        if self.peek_token_is(TokenKind::LeftBrace) {
             if let Expression::ModuleImport(module_import) = expr.clone() {
                 self.next_token(); // consume struct name
                 let struct_init = self.parse_struct_init(module_import)?;
@@ -320,6 +324,54 @@ impl<'a> Parser<'a> {
             }
             Err(err) => return Err(err),
         }
+    }
+
+    pub fn parse_method_call(
+        &mut self,
+        operand: Expression,
+        method_name: Identifier,
+        start: usize,
+        loc: Location,
+    ) -> Result<Expression, ParseError> {
+        // self.expect_current(TokenKind::LeftParen);
+        let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
+        if !self.current_token_is(TokenKind::RightParen) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingClosingParen,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: true,
+            });
+        }
+
+        Ok(Expression::MethodCall(MethodCall {
+            operand: Box::new(operand),
+            method_name,
+            arguments,
+            span: Span::new(start, self.current_token.span.end),
+            loc,
+        }))
+    }
+
+    pub fn parse_field_access(&mut self, operand: Expression) -> Result<Expression, ParseError> {
+        let start = self.current_token.span.start;
+        let loc = self.current_location();
+
+        let identifier = self.parse_identifier()?;
+
+        if self.peek_token_is(TokenKind::LeftParen) {
+            self.next_token(); // consume identifier
+            return self.parse_method_call(operand, identifier, start, loc);
+        }
+
+        Ok(Expression::FieldAccess(FieldAccess {
+            operand: Box::new(operand),
+            field_name: identifier,
+            span: Span::new(start, self.current_token.span.end),
+            loc,
+        }))
     }
 
     pub fn parse_func_call(&mut self) -> Result<Expression, ParseError> {
