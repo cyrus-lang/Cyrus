@@ -157,10 +157,9 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::LeftParen => {
-                self.next_token();
+                self.next_token(); // consume left paren
                 let expr = self.parse_expression(Precedence::Lowest)?.0;
-                self.next_token();
-                self.expect_current(TokenKind::RightParen)?;
+                self.expect_peek(TokenKind::RightParen)?;
                 expr
             }
             TokenKind::LeftBracket => self.parse_array()?,
@@ -206,6 +205,8 @@ impl<'a> Parser<'a> {
             return Ok(Expression::ArrayIndex(self.parse_array_index(expr)?));
         } else if self.current_token_is(TokenKind::LeftBracket) {
             return Ok(Expression::ArrayIndex(self.parse_array_index(expr)?));
+        } else if self.peek_token_is(TokenKind::LeftParen) {
+            return self.parse_func_call();
         }
 
         Ok(expr)
@@ -381,16 +382,7 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume identifier
 
         let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
-        if !self.current_token_is(TokenKind::RightParen) {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::MissingClosingParen,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: true,
-            });
-        }
+        self.expect_current(TokenKind::RightParen)?;
 
         Ok(Expression::FuncCall(FuncCall {
             identifier,
