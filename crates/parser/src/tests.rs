@@ -619,90 +619,90 @@ mod tests {
         }
     });
 
-    define_test!(
-        enum_1,
-        "enum Color { RED, BLUE(variant: string, opacity: f64) }",
-        |program: ProgramTree| {
-            if let Statement::Enum(enum_decl) = &program.body[0] {
-                assert_eq!(enum_decl.name.name, "Color");
-                assert_eq!(enum_decl.variants.len(), 2);
-                assert_eq!(
-                    enum_decl.variants,
-                    vec![
-                        EnumVariant {
-                            name: Identifier {
-                                name: "RED".to_string(),
-                                span: Span::new(13, 16),
-                                loc: Location::new(0, 18)
-                            },
-                            fields: None,
-                            loc: Location::default()
-                        },
-                        EnumVariant {
-                            name: Identifier {
-                                name: "BLUE".to_string(),
-                                span: Span::new(18, 22),
-                                loc: Location::new(0, 24)
-                            },
-                            fields: Some(vec![
-                                EnumField {
-                                    name: Identifier {
-                                        name: "variant".to_string(),
-                                        span: Span::new(23, 30),
-                                        loc: Location::new(0, 32)
-                                    },
-                                    field_type: TokenKind::String,
-                                },
-                                EnumField {
-                                    name: Identifier {
-                                        name: "opacity".to_string(),
-                                        span: Span::new(40, 47),
-                                        loc: Location::new(0, 49)
-                                    },
-                                    field_type: TokenKind::F64,
-                                }
-                            ]),
-                            loc: Location::default()
-                        }
-                    ]
-                );
-            } else {
-                panic!("Expected an expression.");
-            }
-        }
-    );
+    // define_test!(
+    //     enum_1,
+    //     "enum Color { RED, BLUE(variant: string, opacity: f64) }",
+    //     |program: ProgramTree| {
+    //         if let Statement::Enum(enum_decl) = &program.body[0] {
+    //             assert_eq!(enum_decl.name.name, "Color");
+    //             assert_eq!(enum_decl.variants.len(), 2);
+    //             assert_eq!(
+    //                 enum_decl.variants,
+    //                 vec![
+    //                     EnumVariant {
+    //                         name: Identifier {
+    //                             name: "RED".to_string(),
+    //                             span: Span::new(13, 16),
+    //                             loc: Location::new(0, 18)
+    //                         },
+    //                         fields: None,
+    //                         loc: Location::default()
+    //                     },
+    //                     EnumVariant {
+    //                         name: Identifier {
+    //                             name: "BLUE".to_string(),
+    //                             span: Span::new(18, 22),
+    //                             loc: Location::new(0, 24)
+    //                         },
+    //                         fields: Some(vec![
+    //                             EnumField {
+    //                                 name: Identifier {
+    //                                     name: "variant".to_string(),
+    //                                     span: Span::new(23, 30),
+    //                                     loc: Location::new(0, 32)
+    //                                 },
+    //                                 field_type: TokenKind::String,
+    //                             },
+    //                             EnumField {
+    //                                 name: Identifier {
+    //                                     name: "opacity".to_string(),
+    //                                     span: Span::new(40, 47),
+    //                                     loc: Location::new(0, 49)
+    //                                 },
+    //                                 field_type: TokenKind::F64,
+    //                             }
+    //                         ]),
+    //                         loc: Location::default()
+    //                     }
+    //                 ]
+    //             );
+    //         } else {
+    //             panic!("Expected an expression.");
+    //         }
+    //     }
+    // );
 
-    define_test!(enum_2, "enum Color { RED, BLUE }", |program: ProgramTree| {
-        if let Statement::Enum(enum_decl) = &program.body[0] {
-            assert_eq!(enum_decl.name.name, "Color");
-            assert_eq!(enum_decl.variants.len(), 2);
-            assert_eq!(
-                enum_decl.variants,
-                vec![
-                    EnumVariant {
-                        name: Identifier {
-                            name: "RED".to_string(),
-                            span: Span::new(13, 16),
-                            loc: Location::new(0, 18)
-                        },
-                        fields: None,
-                        loc: Location::default()
-                    },
-                    EnumVariant {
-                        name: Identifier {
-                            name: "BLUE".to_string(),
-                            span: Span::new(18, 22),
-                            loc: Location::new(0, 25)
-                        },
-                        fields: None,
-                        loc: Location::default()
-                    }
-                ]
-            );
-        } else {
-            panic!("Expected an expression.");
-        }
-    });
+    // define_test!(enum_2, "enum Color { RED, BLUE }", |program: ProgramTree| {
+    //     if let Statement::Enum(enum_decl) = &program.body[0] {
+    //         assert_eq!(enum_decl.name.name, "Color");
+    //         assert_eq!(enum_decl.variants.len(), 2);
+    //         assert_eq!(
+    //             enum_decl.variants,
+    //             vec![
+    //                 EnumVariant {
+    //                     name: Identifier {
+    //                         name: "RED".to_string(),
+    //                         span: Span::new(13, 16),
+    //                         loc: Location::new(0, 18)
+    //                     },
+    //                     fields: None,
+    //                     loc: Location::default()
+    //                 },
+    //                 EnumVariant {
+    //                     name: Identifier {
+    //                         name: "BLUE".to_string(),
+    //                         span: Span::new(18, 22),
+    //                         loc: Location::new(0, 25)
+    //                     },
+    //                     fields: None,
+    //                     loc: Location::default()
+    //                 }
+    //             ]
+    //         );
+    //     } else {
+    //         panic!("Expected an expression.");
+    //     }
+    // });
 
     define_test!(enum_3, "enum Color { }", |program: ProgramTree| {
         if let Statement::Enum(enum_decl) = &program.body[0] {

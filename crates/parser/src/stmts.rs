@@ -18,15 +18,18 @@ impl<'a> Parser<'a> {
                 return self.parse_func(Some(storage_class));
             } else if self.current_token_is(TokenKind::Struct) {
                 return self.parse_struct(Some(storage_class));
+            } else if self.current_token_is(TokenKind::Enum) {
+                return self.parse_enum(Some(storage_class));
             }
         } else if self.current_token_is(TokenKind::Function) {
             return self.parse_func(None);
         } else if self.current_token_is(TokenKind::Struct) {
             return self.parse_struct(None);
+        } else if self.current_token_is(TokenKind::Enum) {
+            return self.parse_enum(None);
         }
 
         match self.current_token.kind {
-            TokenKind::Enum => self.parse_enum(),
             TokenKind::If => self.parse_if(),
             TokenKind::Return => self.parse_return(),
             TokenKind::Hashtag => self.parse_variable(),
@@ -98,7 +101,9 @@ impl<'a> Parser<'a> {
         return Ok(EnumField::Variant(variant_name, variant_fields));
     }
 
-    pub fn parse_enum(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_enum(&mut self, storage_class: Option<StorageClass>) -> Result<Statement, ParseError> {
+        let storage_class = storage_class.unwrap_or(StorageClass::Inline);
+
         self.next_token(); // parse enum keyword
 
         let enum_name = self.parse_identifier()?;
@@ -112,6 +117,7 @@ impl<'a> Parser<'a> {
             return Ok(Statement::Enum(Enum {
                 name: enum_name,
                 variants: enum_fields,
+                storage_class,
                 loc: self.current_location(),
             }));
         }
@@ -143,6 +149,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::Enum(Enum {
             name: enum_name,
             variants: enum_fields,
+            storage_class,
             loc,
         }))
     }

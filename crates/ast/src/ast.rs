@@ -53,6 +53,7 @@ pub enum Expression {
 pub struct Enum {
     pub name: Identifier,
     pub variants: Vec<EnumField>,
+    pub storage_class: StorageClass,
     pub loc: Location,
 }
 
