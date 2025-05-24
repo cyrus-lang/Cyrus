@@ -1052,7 +1052,10 @@ impl<'a> Parser<'a> {
             });
         }
 
+        self.expect_current(TokenKind::LeftParen)?;
         let condition = self.parse_expression(Precedence::Lowest)?.0;
+        self.expect_peek(TokenKind::RightParen)?;
+        
         let consequent = Box::new(self.parse_block_statement()?);
 
         if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {

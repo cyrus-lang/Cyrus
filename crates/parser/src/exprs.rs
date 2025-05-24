@@ -382,7 +382,16 @@ impl<'a> Parser<'a> {
         self.next_token(); // consume identifier
 
         let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
-        self.expect_current(TokenKind::RightParen)?;
+        if !(self.current_token_is(TokenKind::RightParen)) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingClosingParen,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: true,
+            });
+        }
 
         Ok(Expression::FuncCall(FuncCall {
             identifier,
