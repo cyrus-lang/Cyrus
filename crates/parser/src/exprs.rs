@@ -515,7 +515,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_array(&mut self) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
-        let array_type = self.parse_array_type()?;
+        let array_type = self.parse_type_token()?;
 
         if self.peek_token_is(TokenKind::LeftBrace) {
             self.next_token();
@@ -536,47 +536,5 @@ impl<'a> Parser<'a> {
                 },
             }))
         }
-    }
-
-    pub fn parse_array_type(&mut self) -> Result<TokenKind, ParseError> {
-        let mut dimensions: Vec<ArrayCapacity> = Vec::new();
-
-        while self.current_token_is(TokenKind::LeftBracket) {
-            let array_capacity = self.parse_single_array_capacity()?;
-            self.next_token(); // consume right bracket
-            dimensions.push(array_capacity);
-        }
-
-        let data_type = self.parse_primitive_type_token()?;
-
-        Ok(TokenKind::Array(Box::new(data_type), dimensions))
-    }
-
-    pub fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParseError> {
-        self.expect_current(TokenKind::LeftBracket)?;
-        if self.current_token_is(TokenKind::RightBracket) {
-            return Ok(ArrayCapacity::Dynamic);
-        }
-        let capacity = self.current_token.kind.clone();
-        self.expect_peek(TokenKind::RightBracket)?;
-        Ok(ArrayCapacity::Static(capacity))
-    }
-
-    pub fn parse_single_array_index(&mut self) -> Result<Expression, ParseError> {
-        let start = self.current_token.span.start;
-        self.expect_current(TokenKind::LeftBracket)?;
-        if self.current_token_is(TokenKind::RightBracket) {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: true,
-            });
-        }
-        let index = self.parse_expression(Precedence::Lowest)?.0;
-        self.expect_peek(TokenKind::RightBracket)?;
-        Ok(index)
     }
 }

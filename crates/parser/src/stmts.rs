@@ -395,7 +395,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn parse_module_path(&mut self, parse_start: usize) -> Result<ModulePath, ParseError> {
+    pub fn parse_module_path(&mut self) -> Result<ModulePath, ParseError> {
         let mut module_path = ModulePath {
             alias: None,
             segments: Vec::new(),
@@ -416,7 +416,7 @@ impl<'a> Parser<'a> {
                             return Err(CompileTimeError {
                                 location: self.current_location(),
                                 etype: ParserErrorType::UnexpectedToken(
-                                    TokenKind::Dot,
+                                    TokenKind::DoubleColon,
                                     self.current_token.kind.clone(),
                                 ),
                                 file_name: Some(self.lexer.file_name.clone()),
@@ -433,7 +433,7 @@ impl<'a> Parser<'a> {
                         loc: self.current_location(),
                     }));
 
-                    if self.current_token_is(TokenKind::Dot) {
+                    if self.current_token_is(TokenKind::DoubleColon) {
                         continue;
                     } else if self.current_token_is(TokenKind::Semicolon) {
                         return Ok(module_path);
@@ -448,7 +448,7 @@ impl<'a> Parser<'a> {
                         });
                     }
                 }
-                TokenKind::Dot => {
+                TokenKind::DoubleColon => {
                     self.next_token();
                     continue;
                 }
@@ -478,7 +478,7 @@ impl<'a> Parser<'a> {
             self.expect_current(TokenKind::LeftParen)?;
 
             while !self.current_token_is(TokenKind::RightParen) {
-                paths.push(self.parse_module_path(start)?);
+                paths.push(self.parse_module_path()?);
                 self.next_token();
             }
 
@@ -493,7 +493,7 @@ impl<'a> Parser<'a> {
                 });
             }
         } else {
-            paths = vec![self.parse_module_path(start)?];
+            paths = vec![self.parse_module_path()?];
         }
 
         return Ok(Statement::Import(Import {

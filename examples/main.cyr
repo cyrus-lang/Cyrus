@@ -1,4 +1,3 @@
-public enum Color {
-    Red,
-    BLUE = 0
+fn main() {
+    #a = [1, 2];
 }

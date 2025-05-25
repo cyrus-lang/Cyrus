@@ -1,6 +1,7 @@
 use crate::ParseError;
 use crate::Parser;
 use crate::diag::ParserErrorType;
+use crate::prec::Precedence;
 use ast::ast::*;
 use ast::token::*;
 use diag::errors::CompileTimeError;
@@ -36,46 +37,93 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_primitive_type_token(&mut self) -> Result<TokenKind, ParseError> {
-        let token_kind = self.current_token.kind.clone();
-        if PRIMITIVE_TYPES.contains(&token_kind) {
-            Ok(token_kind)
-        } else {
-            Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: true,
-            })
+    pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
+        let mut base_type = self.parse_base_type_token()?;
+
+        loop {
+            if self.peek_token_is(TokenKind::Asterisk) {
+                self.next_token();
+                base_type = TokenKind::Dereference(Box::new(base_type));
+            } else if self.peek_token_is(TokenKind::Ampersand) {
+                self.next_token();
+                base_type = TokenKind::AddressOf(Box::new(base_type));
+            } else if self.peek_token_is(TokenKind::LeftBracket) {
+                self.next_token(); // consume base_type
+                base_type = self.parse_array_type(base_type)?;
+            } else {
+                break;
+            }
         }
+
+        Ok(base_type)
     }
 
-    pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
-        let location = self.current_location();
+    fn parse_base_type_token(&mut self) -> Result<TokenKind, ParseError> {
+        let current_kind = self.current_token.kind.clone();
 
-        match self.current_token.kind.clone() {
+        let parsed_kind = match current_kind {
             token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(token_kind),
-            TokenKind::Asterisk => {
-                self.next_token();
-                Ok(TokenKind::Dereference(Box::new(self.parse_type_token()?)))
+            TokenKind::Const => {
+                self.next_token(); // consume const
+                let inner_type = self.parse_base_type_token()?;
+                Ok(TokenKind::ConstOf(Box::new(inner_type)))
             }
-            TokenKind::Ampersand => {
-                self.next_token();
-                Ok(TokenKind::AddressOf(Box::new(self.parse_type_token()?)))
-            }
-            identifier @ TokenKind::Identifier { .. } => Ok(identifier),
-            TokenKind::LeftBracket => self.parse_array_type(),
-            token_kind => Err(CompileTimeError {
-                location,
-                etype: ParserErrorType::InvalidTypeToken(token_kind.clone()),
+            TokenKind::Identifier { .. } => Ok(current_kind),
+            _ => Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::InvalidTypeToken(current_kind.clone()),
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
                 caret: true,
             }),
+        };
+
+        parsed_kind
+    }
+
+    pub fn parse_array_type(&mut self, data_type: TokenKind) -> Result<TokenKind, ParseError> {
+        let mut dimensions: Vec<ArrayCapacity> = Vec::new();
+
+        while self.current_token_is(TokenKind::LeftBracket) {
+            let array_capacity = self.parse_single_array_capacity()?;
+            // prevent consuming the latest token_kind here
+            if self.peek_token_is(TokenKind::LeftBracket) {
+                self.next_token(); // consume right bracket
+            }
+            dimensions.push(array_capacity);
         }
+
+        dbg!(self.current_token.kind.clone());
+
+        Ok(TokenKind::Array(Box::new(data_type), dimensions))
+    }
+
+    pub fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParseError> {
+        self.expect_current(TokenKind::LeftBracket)?;
+        if self.current_token_is(TokenKind::RightBracket) {
+            return Ok(ArrayCapacity::Dynamic);
+        }
+        let capacity = self.current_token.kind.clone();
+        self.expect_peek(TokenKind::RightBracket)?;
+        Ok(ArrayCapacity::Static(capacity))
+    }
+
+    pub fn parse_single_array_index(&mut self) -> Result<Expression, ParseError> {
+        self.expect_current(TokenKind::LeftBracket)?;
+        if self.current_token_is(TokenKind::RightBracket) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: true,
+            });
+        }
+        let index = self.parse_expression(Precedence::Lowest)?.0;
+        self.expect_peek(TokenKind::RightBracket)?;
+        Ok(index)
     }
 
     pub fn parse_storage_class(&mut self, token: Token) -> Result<StorageClass, ParseError> {
