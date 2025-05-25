@@ -27,13 +27,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn match_type_token(&mut self, token_kind: TokenKind) -> bool {
+    pub fn matches_type_token(&mut self, token_kind: TokenKind) -> bool {
         if PRIMITIVE_TYPES.contains(&token_kind.clone()) {
             return true;
         } else if let TokenKind::Identifier { .. } = token_kind.clone() {
             return true;
         } else {
-            matches!(token_kind.clone(), TokenKind::Asterisk | TokenKind::Ampersand)
+            matches!(
+                token_kind.clone(),
+                TokenKind::Asterisk | TokenKind::Ampersand | TokenKind::Const
+            )
         }
     }
 
@@ -93,8 +96,6 @@ impl<'a> Parser<'a> {
             }
             dimensions.push(array_capacity);
         }
-
-        dbg!(self.current_token.kind.clone());
 
         Ok(TokenKind::Array(Box::new(data_type), dimensions))
     }

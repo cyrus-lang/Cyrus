@@ -20,7 +20,7 @@ impl<'a> Parser<'a> {
         // FIXME
         // if self.current_token_is(TokenKind::As) || self.peek_token_is(TokenKind::As) {
         //     return self.parse_cast_as_expression(left, left_start);
-        // } 
+        // }
         // else if self.peek_token_is(TokenKind::Assign) {
         //     self.next_token();
         //     let expr = self.parse_assignment(left, left_start)?;
@@ -164,14 +164,21 @@ impl<'a> Parser<'a> {
                 self.expect_peek(TokenKind::RightParen)?;
                 expr
             }
-            TokenKind::LeftBracket => self.parse_array()?,
             _ => {
-                if self.match_type_token(self.current_token.kind.clone()) {
+                if self.matches_type_token(self.current_token.kind.clone()) {
                     let start = self.current_token.span.start;
-                    let token_kind = self.parse_type_token()?;
-                    self.next_token();
+                    let type_token = self.parse_type_token()?;
+
+                    if self.peek_token_is(TokenKind::LeftBrace) {
+                        self.next_token();
+                        return Ok(self.parse_array(type_token)?);
+                    }
+                    else if self.current_token_is(TokenKind::LeftBrace) {
+                        todo!();
+                    }
+
                     Expression::TypeToken(Token {
-                        kind: token_kind,
+                        kind: type_token,
                         span: Span::new(start, self.current_token.span.end),
                     })
                 } else {
@@ -277,9 +284,7 @@ impl<'a> Parser<'a> {
             series.push(self.parse_expression(Precedence::Lowest)?.0);
         }
 
-        if !self.current_token_is(end.clone()) {
-            self.expect_peek(end)?;
-        }
+        self.next_token(); // consume latest token of the expression
 
         Ok((
             series,
@@ -336,7 +341,17 @@ impl<'a> Parser<'a> {
         start: usize,
         loc: Location,
     ) -> Result<Expression, ParseError> {
-        // self.expect_current(TokenKind::LeftParen);
+        if !self.current_token_is(TokenKind::LeftParen) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingOpeningParen,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: true,
+            });
+        }
+
         let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
         if !self.current_token_is(TokenKind::RightParen) {
             return Err(CompileTimeError {
@@ -513,28 +528,37 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn parse_array(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_array(&mut self, data_type: TokenKind) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
-        let array_type = self.parse_type_token()?;
 
-        if self.peek_token_is(TokenKind::LeftBrace) {
-            self.next_token();
-            let elements = self.parse_expression_series(TokenKind::RightBrace)?.0;
-
-            Ok(Expression::Array(Array {
-                elements,
-                data_type: array_type,
-                span: Span::new(start, self.current_token.span.end),
-                loc: self.current_location(),
-            }))
-        } else {
-            Ok(Expression::TypeToken(Token {
-                kind: array_type,
-                span: Span {
-                    start,
-                    end: self.current_token.span.end,
-                },
-            }))
+        if !self.current_token_is(TokenKind::LeftBrace) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingOpeningBrace,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: true,
+            });
         }
+
+        let elements = self.parse_expression_series(TokenKind::RightBrace)?.0;
+        if !self.current_token_is(TokenKind::RightBrace) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingClosingBrace,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: true,
+            });
+        }
+
+        Ok(Expression::Array(Array {
+            elements,
+            data_type,
+            span: Span::new(start, self.current_token.span.end),
+            loc: self.current_location(),
+        }))
     }
 }
