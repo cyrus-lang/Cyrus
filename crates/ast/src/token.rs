@@ -205,6 +205,7 @@ impl fmt::Display for TokenKind {
             Self::Extern => write!(f, "extern"),
             Self::Inline => write!(f, "inline"),
             Self::Public => write!(f, "public"),
+            Self::Const => write!(f, "const"),
             Self::Literal(literal) => match literal {
                 Literal::Integer(v) => write!(f, "{}", v),
                 Literal::Float(v) => write!(f, "{}", v),

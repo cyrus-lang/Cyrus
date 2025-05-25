@@ -17,15 +17,11 @@ impl<'a> Parser<'a> {
             left = self.parse_field_access(left)?;
         }
 
-        // FIXME
-        // if self.current_token_is(TokenKind::As) || self.peek_token_is(TokenKind::As) {
-        //     return self.parse_cast_as_expression(left, left_start);
-        // }
-        // else if self.peek_token_is(TokenKind::Assign) {
-        //     self.next_token();
-        //     let expr = self.parse_assignment(left, left_start)?;
-        //     return Ok((expr, Span::new(left_start, self.current_token.span.end)));
-        // }
+        if self.peek_token_is(TokenKind::Assign) {
+            self.next_token();
+            let expr = self.parse_assignment(left, left_start)?;
+            return Ok((expr, Span::new(left_start, self.current_token.span.end)));
+        }
 
         while self.current_token.kind != TokenKind::EOF
             && precedence < token_precedence_of(self.peek_token.kind.clone())
@@ -159,10 +155,16 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::LeftParen => {
-                self.next_token(); // consume left paren
-                let expr = self.parse_expression(Precedence::Lowest)?.0;
-                self.expect_peek(TokenKind::RightParen)?;
-                expr
+                // c-style casting
+                if self.matches_type_token(self.peek_token.kind.clone()) {
+                    self.parse_cast_expression(start)?
+                } else {
+                    // grouped expression
+                    self.next_token(); // consume left paren
+                    let expr = self.parse_expression(Precedence::Lowest)?.0;
+                    self.expect_peek(TokenKind::RightParen)?;
+                    expr
+                }
             }
             _ => {
                 if self.matches_type_token(self.current_token.kind.clone()) {
@@ -172,8 +174,7 @@ impl<'a> Parser<'a> {
                     if self.peek_token_is(TokenKind::LeftBrace) {
                         self.next_token();
                         return Ok(self.parse_array(type_token)?);
-                    }
-                    else if self.current_token_is(TokenKind::LeftBrace) {
+                    } else if self.current_token_is(TokenKind::LeftBrace) {
                         todo!();
                     }
 
@@ -295,43 +296,20 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    // FIXME
-    // Need to change totally change syntax style to
-    // what C did. Current style isn't desired so much.
-    pub fn parse_cast_as_expression(
-        &mut self,
-        left: Expression,
-        left_start: usize,
-    ) -> Result<(Expression, Span), ParseError> {
-        if self.peek_token_is(TokenKind::As) {
-            self.next_token(); // consume left expression
-            self.next_token(); // consume as expression
-        } else if self.current_token_is(TokenKind::As) {
-            self.next_token(); // consume as expression
-        } else {
-            panic!("Unexpected behavior when trying to parse cast_as_expression.");
-        }
+    pub fn parse_cast_expression(&mut self, start: usize) -> Result<Expression, ParseError> {
+        self.expect_current(TokenKind::LeftParen)?;
+        let type_token = self.parse_type_token()?;
+        self.next_token(); // consume type_token
+        self.expect_current(TokenKind::RightParen)?;
 
-        match self.parse_type_token() {
-            Ok(type_token) => {
-                return Ok((
-                    Expression::Cast(Cast {
-                        expr: Box::new(left),
-                        type_token,
-                        span: Span {
-                            start: left_start,
-                            end: self.current_token.span.end.clone(),
-                        },
-                        loc: self.current_location(),
-                    }),
-                    Span {
-                        start: left_start,
-                        end: self.current_token.span.end.clone(),
-                    },
-                ));
-            }
-            Err(err) => return Err(err),
-        }
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
+
+        Ok(Expression::Cast(Cast {
+            expr: Box::new(expr),
+            type_token,
+            span: Span::new(start, self.current_token.span.end),
+            loc: self.current_location(),
+        }))
     }
 
     pub fn parse_method_call(
