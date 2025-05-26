@@ -2,10 +2,9 @@ use crate::{AnyType, CodeGenLLVM, StringType, diag::*, modules::ModuleMetadata, 
 use ast::token::Location;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    builder::Builder,
     values::{
-        ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntMathValue, IntValue,
-        PointerValue, StructValue, VectorValue,
+        ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue,
+        StructValue, VectorValue,
     },
 };
 use std::process::exit;
@@ -162,7 +161,8 @@ impl<'a> TryFrom<BasicValueEnum<'a>> for AnyValue<'a> {
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn implicitly_casted(&self, rvalue: AnyValue<'ctx>, target_type: AnyType<'ctx>) -> BasicValueEnum<'ctx> {
-        self.build_cast_as_internal(rvalue, target_type, Location::default(), 0).into()
+        self.build_cast_as_internal(rvalue, target_type, Location::default(), 0)
+            .into()
     }
 
     pub(crate) fn any_value_as_rvalue(&self, any_value: AnyValue<'ctx>) -> AnyValue<'ctx> {

@@ -1,6 +1,6 @@
 use crate::CodeGenLLVM;
 use ast::{
-    ast::{FuncDecl, FuncParams, StorageClass, StorageClass},
+    ast::{FuncDecl, FuncParams, StorageClass},
     token::{Location, Span},
 };
 use inkwell::{

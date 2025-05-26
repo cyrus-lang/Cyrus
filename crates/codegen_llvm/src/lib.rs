@@ -29,7 +29,6 @@ pub mod diag;
 mod enums;
 mod exprs;
 mod funcs;
-mod internals;
 mod linkage;
 mod modules;
 pub mod opts;
@@ -86,7 +85,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let builder = context.create_builder();
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&module));
 
-        let mut codegen_llvm = CodeGenLLVM {
+        let codegen_llvm = CodeGenLLVM {
             opts,
             context,
             builder,
@@ -113,7 +112,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             output_kind,
         };
 
-        codegen_llvm.build_internals();
         Ok(codegen_llvm)
     }
 
@@ -144,8 +142,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn compile(&mut self) {
-        self.load_internal_funcs();
-
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         self.build_statements(Rc::clone(&scope), self.program.body.clone());
 

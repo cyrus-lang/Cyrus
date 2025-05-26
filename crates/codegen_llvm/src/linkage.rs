@@ -1,4 +1,4 @@
-use ast::ast::{StorageClass, StorageClass};
+use ast::ast::StorageClass;
 use inkwell::module::Linkage;
 
 use crate::CodeGenLLVM;

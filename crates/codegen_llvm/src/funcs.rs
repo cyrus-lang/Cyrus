@@ -19,7 +19,6 @@ use std::rc::Rc;
 pub struct FuncMetadata<'a> {
     pub ptr: FunctionValue<'a>,
     pub func_decl: FuncDecl,
-    pub is_internal: bool,
 }
 
 pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
@@ -105,7 +104,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             FuncMetadata {
                 func_decl: func_decl.clone(),
                 ptr: func_ptr,
-                is_internal,
             },
         );
 
@@ -260,7 +258,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             FuncMetadata {
                 func_decl,
                 ptr: func,
-                is_internal: false,
             },
         );
 
@@ -307,6 +304,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    // FIXME
     // pub(crate) fn build_field_access_or_method_call(
     //     &self,
     //     scope: ScopeRef<'ctx>,
@@ -480,12 +478,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
         let func_name = func_call.identifier.name.clone();
 
-        if func_name == "sizeof" {
-            return self.build_call_internal_sizeof(Rc::clone(&scope), func_call.clone());
-        } else if func_name == "malloc" {
-            return self.build_call_internal_malloc(Rc::clone(&scope), func_call.clone());
-        }
-
         if let Some(func_metadata) = self.func_table.get(&func_name.clone()) {
             let arguments = &self.build_arguments(
                 Rc::clone(&scope),
@@ -493,20 +485,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 Some(func_metadata.func_decl.params.clone()),
             );
 
-            if func_metadata.is_internal {
-                self.build_internal_func_call(func_call.clone(), func_metadata.clone(), arguments.clone())
-            } else {
-                self.check_func_args_count_mismatch(
-                    func_metadata.func_decl.name.clone(),
-                    func_metadata.func_decl.clone(),
-                    func_call.clone(),
-                );
+            self.check_func_args_count_mismatch(
+                func_metadata.func_decl.name.clone(),
+                func_metadata.func_decl.clone(),
+                func_call.clone(),
+            );
 
-                self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
-            }
-        } else if func_name == "len" {
-            let arguments = &self.build_arguments(Rc::clone(&scope), func_call.arguments.clone(), None);
-            self.build_call_internal_len(func_call.clone(), arguments.clone())
+            self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

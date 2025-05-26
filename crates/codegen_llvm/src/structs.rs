@@ -4,7 +4,7 @@ use crate::{
     scope::ScopeRef,
 };
 use ast::{
-    ast::{Field, Identifier, ModuleImport, StorageClass, Struct, StructInit, StorageClass},
+    ast::{Field, Identifier, ModuleImport, StorageClass, Struct, StructInit},
     token::Location,
 };
 use inkwell::{

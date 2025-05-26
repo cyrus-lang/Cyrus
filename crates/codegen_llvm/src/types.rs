@@ -132,19 +132,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> AnyType<'ctx> {
         match token_kind {
-            TokenKind::SizeT => {
+            TokenKind::Int => {
                 let data_layout = self.target_machine.get_target_data();
                 AnyType::IntType(self.context.ptr_sized_int_type(&data_layout, None))
             }
-            TokenKind::I8 | TokenKind::U8 | TokenKind::Char => AnyType::IntType(self.context.i8_type()),
-            TokenKind::I16 | TokenKind::U16 => AnyType::IntType(self.context.i16_type()),
-            TokenKind::I32 | TokenKind::U32 => AnyType::IntType(self.context.i32_type()),
-            TokenKind::I64 | TokenKind::U64 => AnyType::IntType(self.context.i64_type()),
-            TokenKind::I128 | TokenKind::U128 => AnyType::IntType(self.context.i128_type()),
-            TokenKind::F16 => AnyType::FloatType(self.context.f16_type()),
-            TokenKind::F32 => AnyType::FloatType(self.context.f32_type()),
-            TokenKind::F64 => AnyType::FloatType(self.context.f64_type()),
-            TokenKind::F128 => AnyType::FloatType(self.context.f128_type()),
+            TokenKind::Int8 | TokenKind::UInt8 | TokenKind::Char => AnyType::IntType(self.context.i8_type()),
+            TokenKind::Int16 | TokenKind::UInt16 => AnyType::IntType(self.context.i16_type()),
+            TokenKind::Int32 | TokenKind::UInt32 => AnyType::IntType(self.context.i32_type()),
+            TokenKind::Int64 | TokenKind::UInt64 => AnyType::IntType(self.context.i64_type()),
+            TokenKind::Int128 | TokenKind::UInt128 => AnyType::IntType(self.context.i128_type()),
+            TokenKind::Float16 => AnyType::FloatType(self.context.f16_type()),
+            TokenKind::Float32 => AnyType::FloatType(self.context.f32_type()),
+            TokenKind::Float64 => AnyType::FloatType(self.context.f64_type()),
+            TokenKind::Float128 => AnyType::FloatType(self.context.f128_type()),
             TokenKind::Void => AnyType::VoidType(self.context.void_type()),
             TokenKind::Bool => AnyType::IntType(self.context.bool_type()),
             TokenKind::String => AnyType::StringType(self.string_type.clone()),

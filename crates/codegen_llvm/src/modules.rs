@@ -254,7 +254,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             // only pub structs are exported imported from sub_module
             let struct_statement = Struct {
                 name: struct_name.clone(),
-                storage_class: metadata..clone(),
+                storage_class: metadata.storage_class.clone(),
                 inherits: metadata.inherits.clone(),
                 fields: metadata.fields.clone(),
                 methods: Vec::new(), // FIXME
