@@ -674,62 +674,42 @@ impl Lexer {
     }
 
     fn skip_comments(&mut self) {
-        if self.ch == '/' && self.peek_char() == '/' {
-            self.read_char();
-            self.read_char();
-
-            loop {
-                if self.is_eof() || self.ch == '\n' {
-                    break;
-                }
-
-                self.read_char(); // consume
-            }
-
-            loop {
-                if self.ch == '\n' {
-                    // consume the new line char
+        while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
+            if self.peek_char() == '/' {
+                // Handle single-line comment
+                self.read_char();
+                self.read_char();
+    
+                while !self.is_eof() && self.ch != '\n' {
                     self.read_char();
-                } else {
-                    break;
                 }
-            }
-        } else if self.ch == '/' && self.peek_char() == '*' {
-            self.read_char();
-            self.read_char();
-
-            loop {
-                if self.is_eof() || self.ch == '*' {
-                    if self.peek_char() != '/' {
-                        CompileTimeError {
-                            location: Location {
-                                line: self.line,
-                                column: self.column,
-                            },
-                            source_content: Box::new(self.input.clone()),
-                            etype: LexicalErrorType::UnterminatedMultiLineComment,
-                            verbose: None,
-                            caret: true,
-                            file_name: Some(self.file_name.clone()),
-                        }
-                        .print();
-                        exit(1);
+                
+                // Consume the newline character, if present
+                if !self.is_eof() && self.ch == '\n' {
+                    self.read_char();
+                }
+            } else if self.peek_char() == '*' {
+                // Handle multi-line comment
+                self.read_char();
+                self.read_char();
+    
+                while !self.is_eof() {
+                    if self.ch == '*' && self.peek_char() == '/' {
+                        self.read_char();
+                        self.read_char();
+                        break;
                     }
-
                     self.read_char();
-                    self.read_char();
-
-                    break;
                 }
-
-                self.read_char();
+                
+                // Skip any trailing newlines after the comment
+                while !self.is_eof() && self.ch == '\n' {
+                    self.read_char();
+                }
             }
-
-            // Skip extra new lines
-
-            while self.ch == '\n' {
-                self.read_char();
-            }
+            
+            // Skip whitespace to advance to the next valid character
+            self.skip_whitespace();
         }
     }
 
