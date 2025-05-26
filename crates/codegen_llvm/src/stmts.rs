@@ -25,7 +25,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
             Statement::Return(statement) => {
-                self.build_return(self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), statement.argument)));
+                self.build_return(self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), statement.argument)));
             }
             Statement::FuncDef(func_def) => {
                 if func_def.name == "main" {
@@ -44,7 +44,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
             Statement::FuncDecl(func_decl) => {
-                self.build_func_decl(func_decl, false);
+                self.build_func_decl(func_decl);
             }
             Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),
             Statement::For(_) => todo!(),
@@ -191,7 +191,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 );
 
                 if let Some(expr) = variable.expr {
-                    let value = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
+                    let value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
                     self.build_store(ptr, value);
                 }
 
@@ -201,7 +201,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             None => {
                 if let Some(expr) = variable.expr {
-                    let value = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
+                    let value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
                     let var_type = value.get_type(self.string_type.clone());
                     let ptr = self
                         .builder

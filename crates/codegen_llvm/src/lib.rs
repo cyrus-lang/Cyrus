@@ -19,10 +19,10 @@ use std::collections::HashMap;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
-use types::{AnyType, StringType};
+use types::{InternalType, StringType};
 use utils::fs::file_stem;
 use utils::tui::tui_compiled;
-use values::{AnyValue, StringValue};
+use values::{InternalValue, StringValue};
 
 pub mod build;
 pub mod diag;
@@ -172,33 +172,33 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         var_name: String,
         loc: Location,
         span_end: usize,
-    ) -> (PointerValue<'ctx>, AnyType<'ctx>) {
+    ) -> (PointerValue<'ctx>, InternalType<'ctx>) {
         let any_type = self.build_type(var_type_token, loc.clone(), span_end);
         match any_type {
-            AnyType::VectorType(_) => todo!(),
-            AnyType::StructType(struct_type) => (
+            InternalType::VectorType(_) => todo!(),
+            InternalType::StructType(struct_type) => (
                 self.builder.build_alloca(struct_type, &var_name).unwrap(),
-                AnyType::StructType(struct_type),
+                InternalType::StructType(struct_type),
             ),
-            AnyType::IntType(int_type) => (
+            InternalType::IntType(int_type) => (
                 self.builder.build_alloca(int_type, &var_name).unwrap(),
-                AnyType::IntType(int_type),
+                InternalType::IntType(int_type),
             ),
-            AnyType::FloatType(float_type) => (
+            InternalType::FloatType(float_type) => (
                 self.builder.build_alloca(float_type, &var_name).unwrap(),
-                AnyType::FloatType(float_type),
+                InternalType::FloatType(float_type),
             ),
-            AnyType::PointerType(typed_pointer) => (
+            InternalType::PointerType(typed_pointer) => (
                 self.builder.build_alloca(typed_pointer.ptr_type, &var_name).unwrap(),
                 typed_pointer.pointee_ty,
             ),
-            AnyType::ArrayType(array_type) => (
+            InternalType::ArrayType(array_type) => (
                 self.builder.build_alloca(array_type, &var_name).unwrap(),
-                AnyType::ArrayType(array_type),
+                InternalType::ArrayType(array_type),
             ),
-            AnyType::StringType(string_type) => (
+            InternalType::StringType(string_type) => (
                 self.builder.build_alloca(string_type.struct_type, &var_name).unwrap(),
-                AnyType::StringType(StringType {
+                InternalType::StringType(StringType {
                     struct_type: string_type.struct_type,
                 }),
             ),
@@ -218,16 +218,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_store(&self, ptr: PointerValue, value: AnyValue<'ctx>) {
+    pub(crate) fn build_store(&self, ptr: PointerValue, value: InternalValue<'ctx>) {
         let result = match value {
-            AnyValue::IntValue(int_value) => self.builder.build_store(ptr, int_value),
-            AnyValue::FloatValue(float_value) => self.builder.build_store(ptr, float_value),
-            AnyValue::ArrayValue(array_value) => self.builder.build_store(ptr, array_value),
-            AnyValue::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value.ptr),
-            AnyValue::VectorValue(vector_value) => self.builder.build_store(ptr, vector_value),
-            AnyValue::StructValue(struct_value) => self.builder.build_store(ptr, struct_value),
-            AnyValue::StringValue(string_value) => self.builder.build_store(ptr, string_value.struct_value),
-            AnyValue::OpaquePointer(pointer_value) => self.builder.build_store(ptr, pointer_value),
+            InternalValue::IntValue(int_value, _) => self.builder.build_store(ptr, int_value),
+            InternalValue::FloatValue(float_value, _) => self.builder.build_store(ptr, float_value),
+            InternalValue::ArrayValue(array_value, _) => self.builder.build_store(ptr, array_value),
+            InternalValue::VectorValue(vector_value, _) => self.builder.build_store(ptr, vector_value),
+            InternalValue::StructValue(struct_value, _) => self.builder.build_store(ptr, struct_value),
+            InternalValue::StringValue(string_value) => self.builder.build_store(ptr, string_value.struct_value),
+            InternalValue::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value.ptr),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,

@@ -238,7 +238,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     },
                 );
 
-                self.build_func_decl(metadata.func_decl.clone(), false);
+                self.build_func_decl(metadata.func_decl.clone());
             }
         }
 

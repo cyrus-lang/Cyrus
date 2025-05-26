@@ -1,7 +1,7 @@
-use crate::CodeGenLLVM;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
-use crate::values::AnyValue;
+use crate::values::InternalValue;
+use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
@@ -19,6 +19,7 @@ use std::rc::Rc;
 pub struct FuncMetadata<'a> {
     pub ptr: FunctionValue<'a>,
     pub func_decl: FuncDecl,
+    pub return_type: InternalType<'a>,
 }
 
 pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
@@ -57,7 +58,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl, is_internal: bool) -> FunctionValue<'ctx> {
+    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl) -> FunctionValue<'ctx> {
         let is_var_args = func_decl.params.variadic.is_some();
         let mut param_types = self.build_func_params(
             func_decl.name.clone(),
@@ -104,6 +105,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             FuncMetadata {
                 func_decl: func_decl.clone(),
                 ptr: func_ptr,
+                return_type,
             },
         );
 
@@ -204,7 +206,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match expr {
                 ast::ast::Statement::Return(return_statement) => {
                     build_return = true;
-                    let expr = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), return_statement.argument));
+                    let expr =
+                        self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), return_statement.argument));
                     self.build_return(expr);
                 }
                 _ => self.build_statement(Rc::clone(&scope), expr),
@@ -258,21 +261,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             FuncMetadata {
                 func_decl,
                 ptr: func,
+                return_type,
             },
         );
 
         return func;
     }
 
-    pub(crate) fn build_return(&mut self, value: AnyValue) {
+    pub(crate) fn build_return(&mut self, value: InternalValue) {
         let result: Result<InstructionValue, BuilderError> = match value {
-            AnyValue::IntValue(int_value) => self.builder.build_return(Some(&int_value)),
-            AnyValue::FloatValue(float_value) => self.builder.build_return(Some(&float_value)),
-            AnyValue::PointerValue(pointer_value) => self.builder.build_return(Some(&pointer_value.ptr)),
-            AnyValue::VectorValue(vector_value) => self.builder.build_return(Some(&vector_value)),
-            AnyValue::ArrayValue(array_value) => self.builder.build_return(Some(&array_value)),
-            AnyValue::StructValue(struct_value) => self.builder.build_return(Some(&struct_value)),
-            AnyValue::OpaquePointer(opaque_value) => self.builder.build_return(Some(&opaque_value)),
+            InternalValue::IntValue(int_value, _) => self.builder.build_return(Some(&int_value)),
+            InternalValue::FloatValue(float_value, _) => self.builder.build_return(Some(&float_value)),
+            InternalValue::PointerValue(pointer_value) => self.builder.build_return(Some(&pointer_value.ptr)),
+            InternalValue::VectorValue(vector_value, _) => self.builder.build_return(Some(&vector_value)),
+            InternalValue::ArrayValue(array_value, _) => self.builder.build_return(Some(&array_value)),
+            InternalValue::StructValue(struct_value, _) => self.builder.build_return(Some(&struct_value)),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -309,7 +312,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     //     &self,
     //     scope: ScopeRef<'ctx>,
     //     field_access_or_method_call: FieldAccessOrMethodCall,
-    // ) -> AnyValue<'ctx> {
+    // ) -> InternalValue<'ctx> {
     //     let mut final_result = self.build_expr(Rc::clone(&scope), *field_access_or_method_call.expr);
 
     //     for item in field_access_or_method_call.chains {
@@ -317,7 +320,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     //             either::Either::Left(method_call) => {
     //                 // here we get the function from "imported module value"
     //                 // we call it, and assign the result into final_result and continue the process as you can see.
-    //                 if let AnyValue::ImportedModuleValue(ref imported_module_value) = final_result {
+    //                 if let InternalValue::ImportedModuleValue(ref imported_module_value) = final_result {
     //                     if let Some(func_metadata) = imported_module_value
     //                         .metadata
     //                         .imported_funcs
@@ -327,7 +330,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     //                         new_method_call.identifier.name = func_metadata.func_decl.name.clone();
     //                         let call_site_value = self.build_func_call(Rc::clone(&scope), new_method_call);
     //                         if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-    //                             final_result = AnyValue::try_from(basic_value).unwrap();
+    //                             final_result = InternalValue::try_from(basic_value).unwrap();
     //                         }
     //                     } else {
     //                         display_single_diag(Diag {
@@ -344,12 +347,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     //                     // ordinary value
     //                     let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
     //                     if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-    //                         final_result = AnyValue::try_from(basic_value).unwrap();
+    //                         final_result = InternalValue::try_from(basic_value).unwrap();
     //                     }
     //                 }
     //             }
     //             either::Either::Right(field_access) => {
-    //                 if let AnyValue::StructValue(struct_value) = final_result {
+    //                 if let InternalValue::StructValue(struct_value) = final_result {
     //                     let (struct_name, struct_metadata) = self.find_struct_by_type(
     //                         struct_value.get_type(),
     //                         field_access.loc.clone(),
@@ -405,7 +408,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .iter()
             .enumerate()
             .map(|(idx, arg)| {
-                let rvalue = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), arg.clone()));
+                let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), arg.clone()));
 
                 if let Some(params) = &params {
                     // checked before through check_func_args_count_mismatch
@@ -475,7 +478,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> CallSiteValue<'ctx> {
+    pub(crate) fn build_func_call(
+        &self,
+        scope: ScopeRef<'ctx>,
+        func_call: FuncCall,
+    ) -> (CallSiteValue<'ctx>, InternalType<'ctx>) {
         let func_name = func_call.identifier.name.clone();
 
         if let Some(func_metadata) = self.func_table.get(&func_name.clone()) {
@@ -491,7 +498,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 func_call.clone(),
             );
 
-            self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap()
+            (
+                self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap(),
+                func_metadata.return_type.clone(),
+            )
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

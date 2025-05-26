@@ -1,4 +1,4 @@
-use crate::AnyType;
+use crate::InternalType;
 use inkwell::values::PointerValue;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -7,7 +7,7 @@ pub type ScopeRef<'a> = Rc<RefCell<Scope<'a>>>;
 #[derive(Debug, Clone)]
 pub struct ScopeRecord<'a> {
     pub ptr: PointerValue<'a>,
-    pub ty: AnyType<'a>,
+    pub ty: InternalType<'a>,
 }
 
 pub struct Scope<'a> {

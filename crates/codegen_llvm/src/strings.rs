@@ -1,5 +1,5 @@
 use inkwell::{AddressSpace, values::PointerValue};
-use crate::{AnyValue, CodeGenLLVM, StringValue};
+use crate::{values::TypedPointerValue, CodeGenLLVM, InternalValue, StringValue};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn string_from_struct_value(&self, struct_ptr: PointerValue<'ctx>) -> StringValue<'ctx> {
@@ -38,12 +38,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         StringValue { struct_value } 
     }
 
-    pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> AnyValue<'ctx> {
-        let data_str = self
-            .builder
-            .build_extract_value(string_value.struct_value, 0, "load_string")
-            .unwrap();
+    pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> InternalValue<'ctx> {
+        // FIXME
+        todo!();
 
-        AnyValue::OpaquePointer(data_str.into_pointer_value())
+        // let data_str = self
+        //     .builder
+        //     .build_extract_value(string_value.struct_value, 0, "load_string")
+        //     .unwrap();
+
+        // InternalValue::PointerValue(TypedPointerValue{
+        //     ptr: todo!(),
+        //     pointee_ty: todo!(),
+        // })
     }
 }

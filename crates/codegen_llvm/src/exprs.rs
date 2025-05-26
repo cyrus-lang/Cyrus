@@ -1,8 +1,8 @@
 use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    types::{AnyType, TypedPointerType},
-    values::{AnyValue, ImportedModuleValue, StringValue, TypedPointerValue},
+    types::{InternalType, TypedPointerType},
+    values::{ImportedModuleValue, InternalValue, StringValue, TypedPointerValue},
 };
 use ast::{
     ast::*,
@@ -10,12 +10,10 @@ use ast::{
 };
 use inkwell::{
     AddressSpace,
-    llvm_sys::{core::LLVMBuildGEP2, prelude::LLVMValueRef},
-    types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum},
-    values::{ArrayValue, AsValueRef, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    types::{BasicMetadataTypeEnum, BasicType},
+    values::{BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{
-    ffi::CString,
     ops::{Deref, DerefMut},
     process::exit,
     rc::Rc,
@@ -23,24 +21,21 @@ use std::{
 use utils::purify_string::unescape_string;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
+    pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         match expr {
             Expression::FieldAccess(field_access) => todo!(),
             Expression::MethodCall(method_call) => todo!(),
-            Expression::Identifier(identifier) => {
-                self.build_load_lvalue(
-                    Rc::clone(&scope),
-                    ModuleImport {
-                        segments: vec![ModuleSegment::SubModule(identifier.clone())],
-                        span: identifier.span,
-                        loc: identifier.loc,
-                    },
-                )
-                .0
-            }
+            Expression::Identifier(identifier) => self.build_load_lvalue(
+                Rc::clone(&scope),
+                ModuleImport {
+                    segments: vec![ModuleSegment::SubModule(identifier.clone())],
+                    span: identifier.span,
+                    loc: identifier.loc,
+                },
+            ),
             Expression::Assignment(assignment) => {
                 self.build_assignment(Rc::clone(&scope), assignment);
-                AnyValue::PointerValue(self.build_null())
+                InternalValue::PointerValue(self.build_null())
             }
             Expression::Literal(literal) => self.build_literal(literal),
             Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
@@ -52,24 +47,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::StructInit(struct_init) => self.build_struct_init(Rc::clone(&scope), struct_init),
             Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
-            Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import).0,
+            Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import),
             Expression::FuncCall(func_call) => {
-                let call_site_value = self.build_func_call(Rc::clone(&scope), func_call);
-                if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-                    AnyValue::try_from(basic_value).unwrap()
+                let (call_site_value, return_type) = self.build_func_call(Rc::clone(&scope), func_call);
+                if let Some(value) = call_site_value.try_as_basic_value().left() {
+                    self.new_internal_value_from_basic_value_enum(value, return_type)
                 } else {
-                    AnyValue::PointerValue(self.build_null())
+                    InternalValue::PointerValue(self.build_null())
                 }
             }
-            Expression::TypeToken(_) => AnyValue::PointerValue(self.build_null()),
+            Expression::TypeToken(_) => InternalValue::PointerValue(self.build_null()),
         }
     }
 
-    pub(crate) fn build_address_of(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
+    pub(crate) fn build_address_of(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
 
         match any_value {
-            AnyValue::PointerValue(typed_pointer_value) => AnyValue::PointerValue(typed_pointer_value),
+            InternalValue::PointerValue(typed_pointer_value) => InternalValue::PointerValue(typed_pointer_value),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -81,11 +76,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> AnyValue<'ctx> {
+    pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), expr);
 
         match any_value {
-            AnyValue::PointerValue(pointer_value) => {
+            InternalValue::PointerValue(pointer_value) => {
                 let inner_ptr_value = self
                     .builder
                     .build_load(
@@ -96,12 +91,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .unwrap()
                     .into_pointer_value();
 
-                AnyValue::PointerValue(TypedPointerValue {
+                InternalValue::PointerValue(TypedPointerValue {
                     ptr: inner_ptr_value,
                     pointee_ty: pointer_value.pointee_ty,
                 })
             }
-            AnyValue::StringValue(string_value) => self.build_load_string(string_value),
+            InternalValue::StringValue(string_value) => self.build_load_string(string_value),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -117,12 +112,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
-    ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
+    ) -> InternalValue<'ctx> {
         if module_import.segments.len() == 1 {
             return self.build_load_lvalue(Rc::clone(&scope), module_import);
         }
 
-        let record: (PointerValue<'ctx>, AnyType<'ctx>);
+        let record: (PointerValue<'ctx>, InternalType<'ctx>);
 
         let first_segment = {
             match module_import.segments.first().unwrap() {
@@ -173,10 +168,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     match self.find_loaded_module(module_identifier.clone()) {
                         Some(metadata) => {
-                            return (
-                                AnyValue::ImportedModuleValue(ImportedModuleValue { metadata }),
-                                AnyType::ImportedModuleValue,
-                            );
+                            return InternalValue::ImportedModuleValue(ImportedModuleValue { metadata });
                         }
                         None => {
                             display_single_diag(Diag {
@@ -190,6 +182,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
         };
+
         let scope_record = binding.borrow_mut().deref().clone();
         record = (scope_record.ptr.clone(), scope_record.ty.clone());
 
@@ -199,32 +192,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_load_internal(
         &self,
         ptr: PointerValue<'ctx>,
-        pointee_ty: AnyType<'ctx>,
-    ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
-        let value = self
+        pointee_ty: InternalType<'ctx>,
+    ) -> InternalValue<'ctx> {
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let loaded_value = self
             .builder
-            .build_load(
-                pointee_ty.to_basic_type(self.context.ptr_type(AddressSpace::default())),
-                ptr,
-                "load",
-            )
+            .build_load(pointee_ty.to_basic_type(ptr_type), ptr, "load")
             .unwrap();
-
-        if value.get_type() == BasicTypeEnum::StructType(self.string_type.struct_type.clone()) {
-            (
-                AnyValue::StringValue(self.string_from_struct_value(ptr)),
-                pointee_ty.clone(),
-            )
-        } else {
-            (AnyValue::try_from(value).unwrap(), pointee_ty.clone())
-        }
+        self.new_internal_value_from_basic_value_enum(loaded_value, pointee_ty)
     }
 
-    pub(crate) fn build_load_lvalue(
-        &self,
-        scope: ScopeRef<'ctx>,
-        module_import: ModuleImport,
-    ) -> (AnyValue<'ctx>, AnyType<'ctx>) {
+    pub(crate) fn build_load_lvalue(&self, scope: ScopeRef<'ctx>, module_import: ModuleImport) -> InternalValue<'ctx> {
         match module_import.segments.first().unwrap() {
             ModuleSegment::SubModule(identifier) => {
                 let binding = {
@@ -232,10 +210,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         Some(record) => record,
                         None => match self.find_loaded_module(identifier.name.clone()) {
                             Some(metadata) => {
-                                return (
-                                    AnyValue::ImportedModuleValue(ImportedModuleValue { metadata }),
-                                    AnyType::ImportedModuleValue,
-                                );
+                                return InternalValue::ImportedModuleValue(ImportedModuleValue { metadata });
                             }
                             None => {
                                 display_single_diag(Diag {
@@ -250,13 +225,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 };
 
                 let record = binding.borrow();
-                (
-                    AnyValue::PointerValue(TypedPointerValue {
-                        ptr: record.ptr.clone(),
-                        pointee_ty: record.ty.clone(),
-                    }),
-                    record.ty.clone(),
-                )
+                InternalValue::PointerValue(TypedPointerValue {
+                    ptr: record.ptr.clone(),
+                    pointee_ty: record.ty.clone(),
+                })
             }
         }
     }
@@ -265,7 +237,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let assign_to = self.build_expr(Rc::clone(&scope), assignment.assign_to);
         let value = self.build_expr(Rc::clone(&scope), assignment.expr);
 
-        if let AnyValue::PointerValue(pointer_value) = assign_to {
+        if let InternalValue::PointerValue(pointer_value) = assign_to {
             self.build_store(pointer_value.ptr, value);
         } else {
             display_single_diag(Diag {
@@ -277,28 +249,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> AnyValue<'ctx> {
-        let elements: Vec<BasicValueEnum> = array
-            .elements
-            .iter()
-            .map(|item| BasicValueEnum::from(self.build_expr(Rc::clone(&scope), item.clone())))
-            .collect();
+    pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
+        // FIXME
+        todo!();
 
-        let first_element_type = elements[0].get_type();
-        let _ = elements.iter().map(|item| {
-            if first_element_type != item.get_type() {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::InconsistentArrayItemTypes,
-                    location: None,
-                });
-                exit(1);
-            }
-        });
+        // let elements: Vec<BasicValueEnum> = array
+        //     .elements
+        //     .iter()
+        //     .map(|item| BasicValueEnum::from(self.build_expr(Rc::clone(&scope), item.clone())))
+        //     .collect();
 
-        let array_type = first_element_type.array_type(elements.len().try_into().unwrap());
-        let array_elements = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
-        AnyValue::ArrayValue(array_type.const_array(&[array_elements]))
+        // let first_element_type = elements[0].get_type();
+        // let _ = elements.iter().map(|item| {
+        //     if first_element_type != item.get_type() {
+        //         display_single_diag(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: DiagKind::InconsistentArrayItemTypes,
+        //             location: None,
+        //         });
+        //         exit(1);
+        //     }
+        // });
+
+        // let array_type = first_element_type.array_type(elements.len().try_into().unwrap());
+        // let array_elements = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
+        // InternalValue::ArrayValue(array_type.const_array(&[array_elements]))
     }
 
     pub(crate) fn build_ordered_indexes(
@@ -309,7 +284,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let mut ordered_indexes: Vec<IntValue> = Vec::new();
         ordered_indexes.push(self.context.i32_type().const_int(0, false));
         for index_expr in dimensions {
-            if let AnyValue::IntValue(index) = self.build_expr(Rc::clone(&scope), index_expr.clone()) {
+            if let InternalValue::IntValue(index, _) = self.build_expr(Rc::clone(&scope), index_expr.clone()) {
                 ordered_indexes.push(index);
             } else {
                 display_single_diag(Diag {
@@ -323,65 +298,76 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         ordered_indexes
     }
 
-    pub(crate) fn build_array_index(&self, scope: ScopeRef<'ctx>, array_index: ArrayIndex) -> AnyValue<'ctx> {
-        let any_value = self.build_expr(Rc::clone(&scope), *array_index.expr);
+    pub(crate) fn build_array_index(&self, scope: ScopeRef<'ctx>, array_index: ArrayIndex) -> InternalValue<'ctx> {
+        // FIXME
+        todo!();
 
-        if let AnyValue::PointerValue(pointer_value) = any_value {
-            if let AnyType::ArrayType(_) = pointer_value.pointee_ty {
-                let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
+        // let any_value = self.build_expr(Rc::clone(&scope), *array_index.expr);
 
-                let index_ptr = unsafe {
-                    let name = CString::new("gep").unwrap();
-                    let mut indices: Vec<LLVMValueRef> =
-                        ordered_indexes.iter().map(|item| item.as_value_ref()).collect();
+        // if let InternalValue::PointerValue(pointer_value) = any_value {
+        //     if let InternalType::ArrayType(_) = pointer_value.pointee_ty {
+        //         let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
 
-                    PointerValue::new(LLVMBuildGEP2(
-                        self.builder.as_mut_ptr(),
-                        pointer_value.pointee_ty.as_type_ref(),
-                        pointer_value.ptr.as_value_ref(),
-                        indices.as_mut_ptr(),
-                        ordered_indexes.len().try_into().unwrap(),
-                        name.as_ptr(),
-                    ))
-                };
+        //         let index_ptr = unsafe {
+        //             let name = CString::new("gep").unwrap();
+        //             let mut indices: Vec<LLVMValueRef> =
+        //                 ordered_indexes.iter().map(|item| item.as_value_ref()).collect();
 
-                let ptr_type = self.context.ptr_type(AddressSpace::default());
-                let array_element_type = pointer_value
-                    .pointee_ty
-                    .to_basic_type(ptr_type)
-                    .into_array_type()
-                    .get_element_type();
+        //             PointerValue::new(LLVMBuildGEP2(
+        //                 self.builder.as_mut_ptr(),
+        //                 pointer_value.pointee_ty.as_type_ref(),
+        //                 pointer_value.ptr.as_value_ref(),
+        //                 indices.as_mut_ptr(),
+        //                 ordered_indexes.len().try_into().unwrap(),
+        //                 name.as_ptr(),
+        //             ))
+        //         };
 
-                let index_value = self.builder.build_load(array_element_type, index_ptr, "load").unwrap();
-                AnyValue::try_from(index_value).unwrap()
-            } else {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(
-                        "Cannot build array indexing to a pointer with non-array pointee type.".to_string(),
-                    ),
-                    location: None,
-                });
-                exit(1);
-            }
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Cannot apply array indexing to a non-array pointer type.".to_string()),
-                location: None,
-            });
-            exit(1);
-        }
+        //         let ptr_type = self.context.ptr_type(AddressSpace::default());
+        //         let array_element_type = pointer_value
+        //             .pointee_ty
+        //             .to_basic_type(ptr_type)
+        //             .into_array_type()
+        //             .get_element_type();
+
+        //         let index_value = self.builder.build_load(array_element_type, index_ptr, "load").unwrap();
+        //         InternalValue::try_from(index_value).unwrap()
+        //     } else {
+        //         display_single_diag(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: DiagKind::Custom(
+        //                 "Cannot build array indexing to a pointer with non-array pointee type.".to_string(),
+        //             ),
+        //             location: None,
+        //         });
+        //         exit(1);
+        //     }
+        // } else {
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::Custom("Cannot apply array indexing to a non-array pointer type.".to_string()),
+        //         location: None,
+        //     });
+        //     exit(1);
+        // }
     }
 
-    pub(crate) fn build_literal(&self, literal: Literal) -> AnyValue<'ctx> {
+    pub(crate) fn build_literal(&self, literal: Literal) -> InternalValue<'ctx> {
         match literal {
-            Literal::Integer(integer_literal) => AnyValue::IntValue(self.build_integer_literal(integer_literal)),
-            Literal::Float(float_literal) => AnyValue::FloatValue(self.build_float_literal(float_literal)),
-            Literal::Bool(bool_literal) => AnyValue::IntValue(self.build_bool_literal(bool_literal)),
+            Literal::Integer(integer_literal) => {
+                InternalValue::IntValue(self.build_integer_literal(integer_literal), self.context.i32_type())
+            }
+            Literal::Float(float_literal) => {
+                InternalValue::FloatValue(self.build_float_literal(float_literal), self.context.f32_type())
+            }
+            Literal::Bool(bool_literal) => {
+                InternalValue::IntValue(self.build_bool_literal(bool_literal), self.context.bool_type())
+            }
+            Literal::Char(char_literal) => {
+                InternalValue::IntValue(self.build_char_literal(char_literal), self.context.i8_type())
+            }
             Literal::String(string_literal) => self.build_string_literal(string_literal),
-            Literal::Char(char_literal) => AnyValue::IntValue(self.build_char_literal(char_literal)),
-            Literal::Null => AnyValue::PointerValue(self.build_null()),
+            Literal::Null => InternalValue::PointerValue(self.build_null()),
         }
     }
 
@@ -396,7 +382,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.context.f64_type().const_float(value)
     }
 
-    pub(crate) fn build_string_literal(&self, value: String) -> AnyValue<'ctx> {
+    pub(crate) fn build_string_literal(&self, value: String) -> InternalValue<'ctx> {
         let mut bytes = unescape_string(value).into_bytes();
         bytes.push(0); // null terminator
 
@@ -413,7 +399,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         string_global.set_constant(true);
         string_global.set_linkage(inkwell::module::Linkage::Private);
 
-        AnyValue::StringValue(StringValue {
+        InternalValue::StringValue(StringValue {
             struct_value: self.string_type.struct_type.const_named_struct(&[
                 BasicValueEnum::PointerValue(string_global.as_pointer_value()),
                 BasicValueEnum::IntValue(
@@ -433,9 +419,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         TypedPointerValue {
             ptr: ptr_type.const_null(),
-            pointee_ty: AnyType::PointerType(Box::new(TypedPointerType {
+            pointee_ty: InternalType::PointerType(Box::new(TypedPointerType {
                 ptr_type,
-                pointee_ty: AnyType::IntType(self.context.i32_type()),
+                pointee_ty: InternalType::IntType(self.context.i32_type()),
             })),
         }
     }
@@ -446,20 +432,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_cast_as_internal(
         &self,
-        any_value: AnyValue<'ctx>,
-        target_type: AnyType<'ctx>,
+        internal_type: InternalValue<'ctx>,
+        target_type: InternalType<'ctx>,
         loc: Location,
         span_end: usize,
-    ) -> AnyValue<'ctx> {
-        match any_value {
-            AnyValue::IntValue(int_value) => match target_type {
-                AnyType::IntType(int_type) => {
-                    AnyValue::IntValue(self.builder.build_int_cast(int_value, int_type, "cast").unwrap())
-                }
-                AnyType::FloatType(float_type) => AnyValue::FloatValue(
+    ) -> InternalValue<'ctx> {
+        match internal_type {
+            InternalValue::IntValue(int_value, _) => match target_type {
+                InternalType::IntType(int_type) => InternalValue::IntValue(
+                    self.builder.build_int_cast(int_value, int_type, "cast").unwrap(),
+                    int_type,
+                ),
+                InternalType::FloatType(float_type) => InternalValue::FloatValue(
                     self.builder
                         .build_signed_int_to_float(int_value, float_type, "cast")
                         .unwrap(),
+                    float_type,
                 ),
                 _ => {
                     display_single_diag(Diag {
@@ -475,15 +463,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
             },
-            AnyValue::FloatValue(float_value) => match target_type {
-                AnyType::IntType(int_type) => AnyValue::IntValue(
+            InternalValue::FloatValue(float_value, _) => match target_type {
+                InternalType::IntType(int_type) => InternalValue::IntValue(
                     self.builder
                         .build_float_to_signed_int(float_value, int_type, "cast")
                         .unwrap(),
+                    int_type,
                 ),
-                AnyType::FloatType(float_type) => {
-                    AnyValue::FloatValue(self.builder.build_float_cast(float_value, float_type, "cast").unwrap())
-                }
+                InternalType::FloatType(float_type) => InternalValue::FloatValue(
+                    self.builder.build_float_cast(float_value, float_type, "cast").unwrap(),
+                    float_type,
+                ),
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -498,22 +488,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
             },
-            AnyValue::PointerValue(pointer_value) => match target_type {
-                AnyType::OpaquePointer(pointer_type) => {
-                    let casted_ptr = self
-                        .builder
-                        .build_pointer_cast(pointer_value.ptr, pointer_type, "cast_ptr")
-                        .unwrap();
-
-                    AnyValue::OpaquePointer(casted_ptr)
-                }
-                AnyType::PointerType(typed_pointer_type) => {
+            InternalValue::PointerValue(pointer_value) => match target_type {
+                InternalType::PointerType(typed_pointer_type) => {
                     let casted_ptr = self
                         .builder
                         .build_pointer_cast(pointer_value.ptr, typed_pointer_type.ptr_type, "cast_ptr")
                         .unwrap();
 
-                    AnyValue::PointerValue(TypedPointerValue {
+                    InternalValue::PointerValue(TypedPointerValue {
                         ptr: casted_ptr,
                         pointee_ty: typed_pointer_type.pointee_ty,
                     })
@@ -532,13 +514,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
             },
-            AnyValue::StringValue(string_value) => {
+            InternalValue::StringValue(string_value) => {
+                // FIXME
+                //
+                //
                 match target_type {
-                    AnyType::PointerType(ref typed_pointer_type) => {
+                    InternalType::PointerType(ref typed_pointer_type) => {
                         match &typed_pointer_type.pointee_ty {
                             // TODO Implement cast string as struct type
-                            AnyType::StructType(struct_type) => todo!("Might be implemented later"),
-                            AnyType::IntType(int_type) => {
+                            InternalType::StructType(struct_type) => todo!("Might be implemented later"),
+                            InternalType::IntType(int_type) => {
                                 let alloca = self
                                     .builder
                                     .build_alloca(
@@ -592,7 +577,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                         )
                                         .unwrap();
 
-                                    return AnyValue::PointerValue(TypedPointerValue {
+                                    return InternalValue::PointerValue(TypedPointerValue {
                                         ptr: alloca,
                                         pointee_ty: target_type.clone(),
                                     });
@@ -612,10 +597,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                     exit(1);
                                 }
                             }
-                            AnyType::ArrayType(array_type) => todo!(),
-                            AnyType::StringType(string_type) => todo!(),
-                            AnyType::OpaquePointer(pointer_type) => todo!(),
-                            AnyType::PointerType(typed_pointer_type) => todo!(),
+                            InternalType::ArrayType(array_type) => todo!(),
+                            InternalType::StringType(string_type) => todo!(),
+                            InternalType::PointerType(typed_pointer_type) => todo!(),
                             _ => {
                                 display_single_diag(Diag {
                                     level: DiagLevel::Error,
@@ -664,23 +648,29 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_cast_as(&self, scope: ScopeRef<'ctx>, cast_as: Cast) -> AnyValue<'ctx> {
+    pub(crate) fn build_cast_as(&self, scope: ScopeRef<'ctx>, cast_as: Cast) -> InternalValue<'ctx> {
         let any_value = self.build_expr(Rc::clone(&scope), *cast_as.expr.clone());
         let target_type = self.build_type(cast_as.type_token, cast_as.loc.clone(), cast_as.span.end);
 
         self.build_cast_as_internal(any_value, target_type, cast_as.loc.clone(), cast_as.span.end)
     }
 
-    pub(crate) fn build_prefix_expr(&self, scope: ScopeRef<'ctx>, unary_expression: UnaryExpression) -> AnyValue<'ctx> {
+    pub(crate) fn build_prefix_expr(
+        &self,
+        scope: ScopeRef<'ctx>,
+        unary_expression: UnaryExpression,
+    ) -> InternalValue<'ctx> {
         let operand = self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone());
         match unary_expression.operator.kind {
             TokenKind::Minus => match operand {
-                AnyValue::IntValue(int_value) => {
-                    AnyValue::IntValue(self.builder.build_int_neg(int_value, "prefix_iminus").unwrap())
-                }
-                AnyValue::FloatValue(float_value) => {
-                    AnyValue::FloatValue(self.builder.build_float_neg(float_value, "prefix_fminus").unwrap())
-                }
+                InternalValue::IntValue(int_value, _) => InternalValue::IntValue(
+                    self.builder.build_int_neg(int_value, "prefix_iminus").unwrap(),
+                    int_value.get_type(),
+                ),
+                InternalValue::FloatValue(float_value, _) => InternalValue::FloatValue(
+                    self.builder.build_float_neg(float_value, "prefix_fminus").unwrap(),
+                    float_value.get_type(),
+                ),
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -696,7 +686,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             },
             TokenKind::Bang => match operand {
-                AnyValue::IntValue(int_value) => {
+                InternalValue::IntValue(int_value, _) => {
                     let zero = int_value.get_type().const_int(0, false);
                     let one = int_value.get_type().const_int(1, false);
 
@@ -706,9 +696,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         .unwrap();
 
                     if is_zero.get_zero_extended_constant().unwrap() == 0 {
-                        AnyValue::IntValue(zero)
+                        InternalValue::IntValue(zero, int_value.get_type())
                     } else {
-                        AnyValue::IntValue(one)
+                        InternalValue::IntValue(one, int_value.get_type())
                     }
                 }
                 _ => {
@@ -741,20 +731,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_unary_operator(&self, scope: ScopeRef<'ctx>, unary_operator: UnaryOperator) -> AnyValue<'ctx> {
+    pub(crate) fn build_unary_operator(
+        &self,
+        scope: ScopeRef<'ctx>,
+        unary_operator: UnaryOperator,
+    ) -> InternalValue<'ctx> {
         let int_one = self.context.i32_type().const_int(1, false);
-        let value = self.any_value_as_rvalue(
-            self.build_module_import(Rc::clone(&scope), unary_operator.module_import)
-                .0,
-        );
+        let value =
+            self.internal_value_as_rvalue(self.build_module_import(Rc::clone(&scope), unary_operator.module_import));
 
         match value {
-            AnyValue::IntValue(int_value) => match unary_operator.ty {
+            InternalValue::IntValue(int_value, _) => match unary_operator.ty {
                 UnaryOperatorType::PreIncrement => {
-                    return AnyValue::IntValue(self.builder.build_int_add(int_value, int_one, "unaryop").unwrap());
+                    return InternalValue::IntValue(
+                        self.builder.build_int_add(int_value, int_one, "unaryop").unwrap(),
+                        int_value.get_type(),
+                    );
                 }
                 UnaryOperatorType::PreDecrement => {
-                    return AnyValue::IntValue(self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap());
+                    return InternalValue::IntValue(
+                        self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap(),
+                        int_value.get_type(),
+                    );
                 }
                 UnaryOperatorType::PostIncrement => {
                     let clone = value.clone();
@@ -782,9 +780,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         scope: ScopeRef<'ctx>,
         binary_expression: BinaryExpression,
-    ) -> AnyValue<'ctx> {
-        let left = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.left));
-        let right = self.any_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.right));
+    ) -> InternalValue<'ctx> {
+        let left = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.left));
+        let right = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.right));
 
         let result = match binary_expression.operator.kind {
             TokenKind::Plus => self.bin_op_add(left, right),
@@ -837,8 +835,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> IntValue<'ctx> {
-        if let AnyValue::IntValue(value) = self.any_value_as_rvalue(self.build_expr(scope, expr)) {
-            value
+        if let InternalValue::IntValue(int_value, _) = self.internal_value_as_rvalue(self.build_expr(scope, expr)) {
+            int_value
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

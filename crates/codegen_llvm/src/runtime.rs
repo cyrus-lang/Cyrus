@@ -26,7 +26,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             span: Span::default(),
             loc: Location::default(),
         };
-        let ptr = self.build_func_decl(func_decl.clone(), true);
+        let ptr = self.build_func_decl(func_decl.clone());
         self.builder.build_call(ptr, &[], "call").unwrap();
     }
 
