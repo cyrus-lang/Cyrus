@@ -62,23 +62,6 @@ impl Lexer {
     }
 
     fn peek_char(&self) -> char {
-        // if self.next_pos >= self.input.len() {
-        //     ' '
-        // } else {
-        //     match self.input.chars().nth(self.next_pos) {
-        //         Some(ch) => ch,
-        //         None => {
-        //             lexer_unknown_char_error(
-        //                 self.file_name.clone(),
-        //                 self.line,
-        //                 self.column - 1,
-        //                 self.ch,
-        //                 Box::new(self.input.clone()),
-        //             );
-        //             std::process::exit(1);
-        //         }
-        //     }
-        // }
         self.input.chars().nth(self.next_pos).unwrap_or('\0')
     }
 
