@@ -213,7 +213,7 @@ impl<'a> Parser<'a> {
         } else if self.current_token_is(TokenKind::LeftBracket) {
             return Ok(Expression::ArrayIndex(self.parse_array_index(expr)?));
         } else if self.peek_token_is(TokenKind::LeftParen) {
-            return self.parse_func_call();
+            return self.parse_func_call(expr);
         }
 
         Ok(expr)
@@ -506,11 +506,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_func_call(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_func_call(&mut self, operand: Expression) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
 
-        let identifier = self.parse_identifier()?;
-        self.next_token(); // consume identifier
+        self.expect_peek(TokenKind::LeftParen)?;
 
         let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
         if !(self.current_token_is(TokenKind::RightParen)) {
@@ -525,7 +524,7 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Expression::FuncCall(FuncCall {
-            identifier,
+            operand: Box::new(operand),
             arguments,
             span: Span::new(start, self.current_token.span.end),
             loc: self.current_location(),

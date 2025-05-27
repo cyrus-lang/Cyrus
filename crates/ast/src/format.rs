@@ -45,15 +45,12 @@ impl fmt::Display for Cast {
 
 impl fmt::Display for FuncCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, ".{}(", self.identifier.name)?;
-        self.arguments.iter().map(|s| s).fold(String::new(), |mut acc, s| {
-            if !acc.is_empty() {
-                acc.push_str(", ");
-            }
-            acc.push_str(&s.to_string());
-            acc
-        });
-        write!(f, ")")
+        write!(
+            f,
+            "{}({})",
+            self.operand,
+            expression_series_to_string(self.arguments.clone())
+        )
     }
 }
 
@@ -114,12 +111,7 @@ impl fmt::Display for Expression {
                 write!(f, "({} {} {})", left, operator.kind, right)
             }
             Expression::FuncCall(func_call) => {
-                write!(
-                    f,
-                    "{}({})",
-                    func_call.identifier.name,
-                    expression_series_to_string(func_call.arguments.clone())
-                )
+                write!(f, "{}", func_call)
             }
             Expression::FieldAccess(field_access) => {
                 write!(f, "{}.{}", field_access.operand, field_access.field_name)

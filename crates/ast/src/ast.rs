@@ -96,7 +96,7 @@ pub struct UnaryOperator {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncCall {
-    pub identifier: Identifier,
+    pub operand: Box<Expression>,
     pub arguments: Vec<Expression>,
     pub span: Span,
     pub loc: Location,
