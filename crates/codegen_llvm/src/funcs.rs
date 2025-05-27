@@ -2,7 +2,7 @@ use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
-use ast::ast::{Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams};
+use ast::ast::{Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, TypeSpecifier};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
@@ -68,14 +68,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
 
         let return_type = self.build_type(
-            func_decl
-                .return_type
-                .clone()
-                .unwrap_or(Token {
-                    kind: TokenKind::Void,
-                    span: Span::default(),
-                })
-                .kind,
+            func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
+                kind: TokenKind::Void,
+                span: Span::default(),
+            })),
             func_decl.loc.clone(),
             func_decl.span.end,
         );
@@ -133,15 +129,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_def.params.list.clone(),
         );
 
-        let return_type_token = func_def
-            .return_type
-            .unwrap_or(Token {
+        let return_type = self.build_type(
+            TypeSpecifier::TypeToken(Token {
                 kind: TokenKind::Void,
                 span: Span::default(),
-            })
-            .kind;
-
-        let return_type = self.build_type(return_type_token.clone(), func_def.loc.clone(), func_def.span.end);
+            }),
+            func_def.loc.clone(),
+            func_def.span.end,
+        );
 
         let fn_type = unsafe {
             FunctionType::new(LLVMFunctionType(
@@ -214,7 +209,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         }
 
-        if return_type_token == TokenKind::Void {
+        if return_type.is_void_type() {
             if build_return {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -483,37 +478,40 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         func_call: FuncCall,
     ) -> (CallSiteValue<'ctx>, InternalType<'ctx>) {
-        let func_name = func_call.identifier.name.clone();
+        // FIXME
+        todo!();
 
-        if let Some(func_metadata) = self.func_table.get(&func_name.clone()) {
-            let arguments = &self.build_arguments(
-                Rc::clone(&scope),
-                func_call.arguments.clone(),
-                Some(func_metadata.func_decl.params.clone()),
-            );
+        // let func_name = func_call.identifier.name.clone();
 
-            self.check_func_args_count_mismatch(
-                func_metadata.func_decl.name.clone(),
-                func_metadata.func_decl.clone(),
-                func_call.clone(),
-            );
+        // if let Some(func_metadata) = self.func_table.get(&func_name.clone()) {
+        //     let arguments = &self.build_arguments(
+        //         Rc::clone(&scope),
+        //         func_call.arguments.clone(),
+        //         Some(func_metadata.func_decl.params.clone()),
+        //     );
 
-            (
-                self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap(),
-                func_metadata.return_type.clone(),
-            )
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncNotFound(func_name),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: func_call.loc.line,
-                    column: func_call.loc.column,
-                    length: func_call.span.end,
-                }),
-            });
-            exit(1);
-        }
+        //     self.check_func_args_count_mismatch(
+        //         func_metadata.func_decl.name.clone(),
+        //         func_metadata.func_decl.clone(),
+        //         func_call.clone(),
+        //     );
+
+        //     (
+        //         self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap(),
+        //         func_metadata.return_type.clone(),
+        //     )
+        // } else {
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::FuncNotFound(func_name),
+        //         location: Some(DiagLoc {
+        //             file: self.file_path.clone(),
+        //             line: func_call.loc.line,
+        //             column: func_call.loc.column,
+        //             length: func_call.span.end,
+        //         }),
+        //     });
+        //     exit(1);
+        // }
     }
 }

@@ -73,7 +73,7 @@ pub struct EnumValuedField {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cast {
     pub expr: Box<Expression>,
-    pub type_token: TypeSpecifier,
+    pub target_type: TypeSpecifier,
     pub span: Span,
     pub loc: Location,
 }

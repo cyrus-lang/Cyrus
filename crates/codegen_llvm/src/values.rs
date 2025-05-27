@@ -154,7 +154,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         target_type: InternalType<'ctx>,
     ) -> BasicValueEnum<'ctx> {
         todo!();
-        // self.build_cast_as_internal(rvalue, target_type, Location::default(), 0)
+        // self.build_cast_expression_internal(rvalue, target_type, Location::default(), 0)
         //     .into()
     }
 

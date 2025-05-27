@@ -1,5 +1,5 @@
 use ast::ast::*;
-use ast::token::{Location, TokenKind};
+use ast::token::Location;
 use build::{BuildManifest, OutputKind};
 use diag::*;
 use funcs::FuncTable;
@@ -168,12 +168,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_alloca(
         &self,
-        var_type_token: TokenKind,
+        var_type: TypeSpecifier,
         var_name: String,
         loc: Location,
         span_end: usize,
     ) -> (PointerValue<'ctx>, InternalType<'ctx>) {
-        let any_type = self.build_type(var_type_token, loc.clone(), span_end);
+        let any_type = self.build_type(var_type, loc.clone(), span_end);
         match any_type {
             InternalType::VectorType(_) => todo!(),
             InternalType::StructType(struct_type) => (

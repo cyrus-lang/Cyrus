@@ -100,11 +100,15 @@ mod tests {
                 assert_eq!(
                     func_call,
                     FuncCall {
-                        identifier: Identifier {
-                            name: "foo".to_string(),
+                        operand: Box::new(Expression::ModuleImport(ModuleImport {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
+                                name: "foo".to_string(),
+                                span: Span::new(0, 2),
+                                loc: Location::new(0, 5)
+                            })],
                             span: Span::new(0, 3),
                             loc: Location::new(0, 5)
-                        },
+                        })),
                         arguments: vec![
                             Expression::Literal(Literal::Integer(1)),
                             Expression::Literal(Literal::Integer(2))
@@ -133,11 +137,15 @@ mod tests {
                     assert_eq!(
                         array.elements[2],
                         Expression::FuncCall(FuncCall {
-                            identifier: Identifier {
-                                name: "func_call".to_string(),
+                            operand: Box::new(Expression::ModuleImport(ModuleImport {
+                                segments: vec![ModuleSegment::SubModule(Identifier {
+                                    name: "func_call".to_string(),
+                                    span: Span::new(14, 22),
+                                    loc: Location::new(0, 25)
+                                })],
                                 span: Span::new(14, 23),
                                 loc: Location::new(0, 25)
-                            },
+                            })),
                             arguments: vec![
                                 Expression::Literal(Literal::Integer(1)),
                                 Expression::Literal(Literal::Integer(2))
@@ -299,7 +307,7 @@ mod tests {
             if let Expression::Cast(cast_as) = expression {
                 assert_eq!(*cast_as.expr, Expression::Literal(Literal::Integer(10)));
                 assert_eq!(
-                    cast_as.type_token,
+                    cast_as.target_type,
                     TypeSpecifier::TypeToken(Token {
                         kind: TokenKind::Float64,
                         span: Span::new(1, 8)

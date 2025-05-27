@@ -434,15 +434,15 @@ impl<'a> Parser<'a> {
 
     pub fn parse_cast_expression(&mut self, start: usize) -> Result<Expression, ParseError> {
         self.expect_current(TokenKind::LeftParen)?;
-        let type_token = self.parse_type_specifier()?;
-        self.next_token(); // consume type_token
+        let target_type = self.parse_type_specifier()?;
+        self.next_token(); // consume target_type
         self.expect_current(TokenKind::RightParen)?;
 
         let expr = self.parse_expression(Precedence::Lowest)?.0;
 
         Ok(Expression::Cast(Cast {
             expr: Box::new(expr),
-            type_token,
+            target_type,
             span: Span::new(start, self.current_token.span.end),
             loc: self.current_location(),
         }))

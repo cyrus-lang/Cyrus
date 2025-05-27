@@ -41,7 +41,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
             Expression::Infix(binary_expression) => self.build_infix_expr(Rc::clone(&scope), binary_expression),
             Expression::UnaryOperator(unary_operator) => self.build_unary_operator(Rc::clone(&scope), unary_operator),
-            Expression::Cast(cast_as) => self.build_cast_as(Rc::clone(&scope), cast_as),
+            Expression::Cast(cast_as) => self.build_cast_expression(Rc::clone(&scope), cast_as),
             Expression::AddressOf(expr) => self.build_address_of(Rc::clone(&scope), *expr),
             Expression::Dereference(expression) => self.build_deref(Rc::clone(&scope), *expression),
             Expression::StructInit(struct_init) => self.build_struct_init(Rc::clone(&scope), struct_init),
@@ -438,7 +438,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.context.bool_type().const_int(if value { 1 } else { 0 }, false)
     }
 
-    pub(crate) fn build_cast_as_internal(
+    pub(crate) fn build_cast_expression_internal(
         &self,
         internal_type: InternalValue<'ctx>,
         target_type: InternalType<'ctx>,
@@ -656,11 +656,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_cast_as(&self, scope: ScopeRef<'ctx>, cast_as: Cast) -> InternalValue<'ctx> {
-        let any_value = self.build_expr(Rc::clone(&scope), *cast_as.expr.clone());
-        let target_type = self.build_type(cast_as.type_token, cast_as.loc.clone(), cast_as.span.end);
+    pub(crate) fn build_cast_expression(&self, scope: ScopeRef<'ctx>, cast: Cast) -> InternalValue<'ctx> {
+        let any_value = self.build_expr(Rc::clone(&scope), *cast.expr.clone());
+        let target_type = self.build_type(cast.target_type, cast.loc.clone(), cast.span.end);
 
-        self.build_cast_as_internal(any_value, target_type, cast_as.loc.clone(), cast_as.span.end)
+        self.build_cast_expression_internal(any_value, target_type, cast.loc.clone(), cast.span.end)
     }
 
     pub(crate) fn build_prefix_expr(

@@ -1,6 +1,7 @@
-use crate::InternalValue;
 use crate::CodeGenLLVM;
 use crate::diag::*;
+use ast::ast::ArrayCapacity;
+use ast::ast::TypeSpecifier;
 use ast::token::*;
 use inkwell::AddressSpace;
 use inkwell::context::Context;
@@ -56,6 +57,38 @@ impl<'a> TryFrom<BasicTypeEnum<'a>> for InternalType<'a> {
 }
 
 impl<'a> InternalType<'a> {
+    pub fn is_int_type(&self) -> bool {
+        matches!(self, InternalType::IntType(_))
+    }
+
+    pub fn is_float_type(&self) -> bool {
+        matches!(self, InternalType::FloatType(_))
+    }
+
+    pub fn is_array_type(&self) -> bool {
+        matches!(self, InternalType::ArrayType(_))
+    }
+
+    pub fn is_struct_type(&self) -> bool {
+        matches!(self, InternalType::StructType(_))
+    }
+
+    pub fn is_vector_type(&self) -> bool {
+        matches!(self, InternalType::VectorType(_))
+    }
+
+    pub fn is_string_type(&self) -> bool {
+        matches!(self, InternalType::StringType(_))
+    }
+
+    pub fn is_void_type(&self) -> bool {
+        matches!(self, InternalType::VoidType(_))
+    }
+
+    pub fn is_pointer_type(&self) -> bool {
+        matches!(self, InternalType::PointerType(_))
+    }
+
     pub fn to_basic_type(&self, ptr_type: PointerType<'a>) -> BasicTypeEnum<'a> {
         match self {
             InternalType::IntType(t) => (*t).as_basic_type_enum(),
@@ -94,8 +127,33 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         StringType { struct_type }
     }
 
-    pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> InternalType<'ctx> {
-        match token_kind {
+    pub(crate) fn build_type(
+        &self,
+        type_specifier: TypeSpecifier,
+        loc: Location,
+        span_end: usize,
+    ) -> InternalType<'ctx> {
+        match type_specifier {
+            TypeSpecifier::Identifier(identifier) => todo!(),
+            TypeSpecifier::ModuleImport(module_import) => todo!(),
+            TypeSpecifier::Const(type_specifier) => todo!(),
+            TypeSpecifier::AddressOf(type_specifier) => todo!(),
+            TypeSpecifier::Dereference(type_specifier) => {
+                let pointee_ty = self.build_type(*type_specifier, loc.clone(), span_end);
+                InternalType::PointerType(Box::new(TypedPointerType {
+                    ptr_type: self.context.ptr_type(AddressSpace::default()).into(),
+                    pointee_ty,
+                }))
+            }
+            TypeSpecifier::Array(type_token, dimensions) => {
+                self.build_array_type(*type_token, dimensions, loc, span_end)
+            }
+            TypeSpecifier::TypeToken(token) => self.build_type_token(token, loc.clone()),
+        }
+    }
+
+    pub(crate) fn build_type_token(&self, type_token: Token, loc: Location) -> InternalType<'ctx> {
+        match type_token.kind {
             TokenKind::Identifier { name } => {
                 match self.struct_table.get(&name) {
                     Some(struct_metadata) => {
@@ -103,7 +161,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                         todo!();
                         // TODO
-                    },
+                    }
                     None => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
@@ -112,13 +170,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 file: self.file_path.clone(),
                                 line: loc.line,
                                 column: loc.column,
-                                length: span_end,
+                                length: type_token.span.end,
                             }),
                         });
                         exit(1);
-                    },
+                    }
                 }
-            },
+            }
             TokenKind::Int => {
                 let data_layout = self.target_machine.get_target_data();
                 InternalType::IntType(self.context.ptr_sized_int_type(&data_layout, None))
@@ -135,14 +193,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TokenKind::Void => InternalType::VoidType(self.context.void_type()),
             TokenKind::Bool => InternalType::IntType(self.context.bool_type()),
             TokenKind::String => InternalType::StringType(self.string_type.clone()),
-            TokenKind::Dereference(inner_data_type) => {
-                let pointee_ty = self.build_type(*inner_data_type, loc.clone(), span_end);
-                InternalType::PointerType(Box::new(TypedPointerType {
-                    ptr_type: self.context.ptr_type(AddressSpace::default()).into(),
-                    pointee_ty,
-                }))
-            }
-            TokenKind::Array(type_token, dimensions) => self.build_array_type(*type_token, dimensions, loc, span_end),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -151,7 +201,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         file: self.file_path.clone(),
                         line: loc.line,
                         column: loc.column,
-                        length: span_end,
+                        length: type_token.span.end,
                     }),
                 });
                 exit(1);
@@ -161,14 +211,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     fn build_array_type(
         &self,
-        type_token: TokenKind,
+        type_specifier: TypeSpecifier,
         dimensions: Vec<ArrayCapacity>,
         loc: Location,
         span_end: usize,
     ) -> InternalType<'ctx> {
         // FIXME
         todo!();
-        
+
         // let mut data_type = self.build_type(type_token, loc.clone(), span_end);
 
         // for array_capacity in dimensions {
