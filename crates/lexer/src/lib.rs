@@ -26,9 +26,9 @@ impl Lexer {
             input: input.to_string(),
             pos: 0,      // points to current position
             next_pos: 0, // points to next position
-            ch: ' ',
+            ch: '\0',
             file_name,
-            line: 0,
+            line: 1,
             column: 0,
         };
 
@@ -62,47 +62,43 @@ impl Lexer {
     }
 
     fn peek_char(&self) -> char {
-        if self.next_pos >= self.input.len() {
-            ' '
-        } else {
-            match self.input.chars().nth(self.next_pos) {
-                Some(ch) => ch,
-                None => {
-                    lexer_unknown_char_error(
-                        self.file_name.clone(),
-                        self.line,
-                        self.column - 1,
-                        self.ch,
-                        Box::new(self.input.clone()),
-                    );
-                    std::process::exit(1);
-                }
-            }
-        }
+        // if self.next_pos >= self.input.len() {
+        //     ' '
+        // } else {
+        //     match self.input.chars().nth(self.next_pos) {
+        //         Some(ch) => ch,
+        //         None => {
+        //             lexer_unknown_char_error(
+        //                 self.file_name.clone(),
+        //                 self.line,
+        //                 self.column - 1,
+        //                 self.ch,
+        //                 Box::new(self.input.clone()),
+        //             );
+        //             std::process::exit(1);
+        //         }
+        //     }
+        // }
+        self.input.chars().nth(self.next_pos).unwrap_or('\0')
     }
 
     fn read_char(&mut self) {
-        if self.next_pos >= self.input.len() {
-            self.ch = ' ';
-        } else {
-            self.ch = self.input.chars().nth(self.next_pos).unwrap_or(' ');
-        }
-
+        self.ch = self.input.chars().nth(self.next_pos).unwrap_or('\0');
+        self.pos = self.next_pos;
+        self.next_pos += self.ch.len_utf8();
         if self.ch == '\n' {
             self.line += 1;
             self.column = 0;
+        } else {
+            self.column += 1;
         }
-
-        self.pos = self.next_pos;
-        self.next_pos += 1;
-        self.column += 1;
     }
 
     pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
         self.skip_comments();
 
-        if self.is_eof() {
+        if self.ch == '\0' {
             return Token {
                 kind: TokenKind::EOF,
                 span: Span {
@@ -511,8 +507,8 @@ impl Lexer {
         let mut is_float = false;
 
         // hexadecimal literals
-        let token_kind = if self.ch == '0' && (self.peek_char() == 'x' || self.peek_char() == 'X') {
-            number.push(self.ch);
+        let token_kind = if self.ch == '0' && (self.peek_char().to_ascii_lowercase() == 'x') {
+            number.push('0');
             self.read_char(); // consume '0'
             number.push(self.ch);
             self.read_char(); // consume 'x' or 'X'
@@ -664,11 +660,7 @@ impl Lexer {
     }
 
     fn skip_whitespace(&mut self) {
-        while Self::is_whitespace(self.ch) {
-            if self.is_eof() {
-                break;
-            }
-
+        while Self::is_whitespace(self.ch) && !self.is_eof() {
             self.read_char();
         }
     }
