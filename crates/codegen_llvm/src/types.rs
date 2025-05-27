@@ -27,7 +27,6 @@ pub(crate) enum InternalType<'a> {
     StringType(StringType<'a>),
     VoidType(VoidType<'a>),
     PointerType(Box<TypedPointerType<'a>>),
-    ImportedModuleValue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,7 +66,6 @@ impl<'a> InternalType<'a> {
             InternalType::PointerType(t) => t.ptr_type.as_basic_type_enum(),
             InternalType::StringType(t) => (*t).struct_type.as_basic_type_enum(),
             InternalType::VoidType(_) => BasicTypeEnum::PointerType(ptr_type),
-            InternalType::ImportedModuleValue => unreachable!(),
         }
     }
 
@@ -81,36 +79,6 @@ impl<'a> InternalType<'a> {
             InternalType::PointerType(t) => t.ptr_type.as_type_ref(),
             InternalType::StringType(t) => t.struct_type.as_type_ref(),
             InternalType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).as_type_ref(),
-            InternalType::ImportedModuleValue => unreachable!(),
-        }
-    }
-
-    pub fn to_string(&self) -> String {
-        match self {
-            InternalType::IntType(t) => format!("int{}", t.get_bit_width()),
-            InternalType::FloatType(t) => {
-                // FIXME
-                format!("f{}", t.get_alignment().get_type().get_bit_width())
-            }
-            InternalType::ArrayType(t) => {
-                format!("{}[{}]", t.get_element_type(), t.len(),)
-            }
-            InternalType::StructType(t) => {
-                if let Some(name) = t.get_name() {
-                    format!("struct {}", name.to_str().unwrap())
-                } else {
-                    "anonymous struct".to_string()
-                }
-            }
-            InternalType::VectorType(_) => {
-                todo!()
-            }
-            InternalType::PointerType(tp) => {
-                format!("{}*", tp.pointee_ty.to_string())
-            }
-            InternalType::StringType(_) => "string".to_string(),
-            InternalType::VoidType(_) => "void".to_string(),
-            InternalType::ImportedModuleValue => unreachable!(),
         }
     }
 }
@@ -128,6 +96,29 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_type(&self, token_kind: TokenKind, loc: Location, span_end: usize) -> InternalType<'ctx> {
         match token_kind {
+            TokenKind::Identifier { name } => {
+                match self.struct_table.get(&name) {
+                    Some(struct_metadata) => {
+                        dbg!(struct_metadata);
+
+                        todo!();
+                        // TODO
+                    },
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::UndefinedDataType(name),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    },
+                }
+            },
             TokenKind::Int => {
                 let data_layout = self.target_machine.get_target_data();
                 InternalType::IntType(self.context.ptr_sized_int_type(&data_layout, None))

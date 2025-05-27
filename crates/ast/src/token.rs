@@ -90,25 +90,12 @@ pub enum TokenKind {
     False,
     Null,
     As,
-
     Const,
-    ConstOf(Box<TokenKind>),
-    AddressOf(Box<TokenKind>),
-    Dereference(Box<TokenKind>),
-
-    // DataType, Dimensions
-    Array(Box<TokenKind>, Vec<ArrayCapacity>),
 
     // Object Visibility Keywords
     Extern,
     Public,
     Inline,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ArrayCapacity {
-    Static(TokenKind), // token_kind->literal
-    Dynamic,
 }
 
 pub const PRIMITIVE_TYPES: &[TokenKind] = &[
@@ -214,22 +201,6 @@ impl fmt::Display for TokenKind {
                 Literal::Bool(v) => write!(f, "{}", v),
                 Literal::Null => write!(f, "null"),
             },
-            Self::Array(data_type, array) => {
-                write!(f, "{}", data_type)?;
-
-                for item in array {
-                    write!(
-                        f,
-                        "[{}]",
-                        match item {
-                            ArrayCapacity::Static(token_kind) => token_kind.to_string(),
-                            ArrayCapacity::Dynamic => "".to_string(),
-                        }
-                    )?;
-                }
-
-                write!(f, "")
-            }
             Self::String => write!(f, "string"),
             // ETC
             Self::Illegal => write!(f, "ILLEGAL"),

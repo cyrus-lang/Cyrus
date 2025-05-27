@@ -144,7 +144,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ptr: value.into_pointer_value(),
                 pointee_ty: typed_pointer_type.pointee_ty,
             }),
-            InternalType::ImportedModuleValue => todo!(),
         }
     }
 

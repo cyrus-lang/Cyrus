@@ -169,19 +169,16 @@ impl<'a> Parser<'a> {
             _ => {
                 if self.matches_type_token(self.current_token.kind.clone()) {
                     let start = self.current_token.span.start;
-                    let type_token = self.parse_type_token()?;
+                    let type_specifier = self.parse_type_specifier()?;
 
                     if self.peek_token_is(TokenKind::LeftBrace) {
                         self.next_token();
-                        return Ok(self.parse_array(type_token)?);
+                        return Ok(self.parse_array(type_specifier)?);
                     } else if self.current_token_is(TokenKind::LeftBrace) {
                         todo!();
                     }
 
-                    Expression::TypeToken(Token {
-                        kind: type_token,
-                        span: Span::new(start, self.current_token.span.end),
-                    })
+                    Expression::TypeSpecifier(type_specifier)
                 } else {
                     return Err(CompileTimeError {
                         location: self.current_location(),
@@ -296,9 +293,148 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    pub fn parse_module_import(&mut self) -> Result<ModuleImport, ParseError> {
+        let start = self.current_token.span.start;
+        let mut segments = match self.current_token.kind.clone() {
+            TokenKind::Identifier { name } => {
+                vec![ModuleSegment::SubModule(Identifier {
+                    name,
+                    span: Span {
+                        start,
+                        end: self.current_token.span.end - 1,
+                    },
+                    loc: self.current_location(),
+                })]
+            }
+            _ => {
+                return Err(CompileTimeError {
+                    location: self.current_location(),
+                    etype: ParserErrorType::ExpectedIdentifier,
+                    file_name: Some(self.lexer.file_name.clone()),
+                    source_content: Box::new(self.lexer.input.clone()),
+                    verbose: None,
+                    caret: true,
+                });
+            }
+        };
+
+        if !self.peek_token_is(TokenKind::DoubleColon) {
+            return Ok(ModuleImport {
+                segments,
+                span: Span::new(start, self.current_token.span.end),
+                loc: self.current_location(),
+            });
+        }
+
+        self.next_token(); // consume first identifier
+
+        loop {
+            if self.current_token_is(TokenKind::DoubleColon) {
+                self.next_token(); // consume double colon
+            } else if let TokenKind::Identifier { name } = self.current_token.kind.clone() {
+                segments.push(ModuleSegment::SubModule(Identifier {
+                    name,
+                    span: Span {
+                        start,
+                        end: self.peek_token.span.end - 1,
+                    },
+                    loc: self.current_location(),
+                }));
+
+                if self.peek_token_is(TokenKind::DoubleColon) {
+                    self.next_token();
+                    continue;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(ModuleImport {
+            segments,
+            span: Span::new(start, self.current_token.span.end),
+            loc: self.current_location(),
+        })
+    }
+
+    pub fn parse_module_path(&mut self) -> Result<ModulePath, ParseError> {
+        let mut module_path = ModulePath {
+            alias: None,
+            segments: Vec::new(),
+        };
+
+        while !self.current_token_is(TokenKind::Semicolon) {
+            match self.current_token.kind.clone() {
+                TokenKind::Identifier { name: identifier } => {
+                    let span = self.current_token.span.clone();
+                    self.next_token(); // consume identifier
+
+                    if self.current_token_is(TokenKind::Colon) {
+                        if module_path.alias.is_none() {
+                            self.next_token();
+                            module_path.alias = Some(identifier);
+                            continue;
+                        } else {
+                            return Err(CompileTimeError {
+                                location: self.current_location(),
+                                etype: ParserErrorType::UnexpectedToken(
+                                    TokenKind::DoubleColon,
+                                    self.current_token.kind.clone(),
+                                ),
+                                file_name: Some(self.lexer.file_name.clone()),
+                                source_content: Box::new(self.lexer.input.clone()),
+                                verbose: None,
+                                caret: true,
+                            });
+                        }
+                    }
+
+                    module_path.segments.push(ModuleSegment::SubModule(Identifier {
+                        name: identifier.clone(),
+                        span: span.clone(),
+                        loc: self.current_location(),
+                    }));
+
+                    if self.current_token_is(TokenKind::DoubleColon) {
+                        continue;
+                    } else if self.current_token_is(TokenKind::Semicolon) {
+                        return Ok(module_path);
+                    } else {
+                        return Err(CompileTimeError {
+                            location: self.current_location(),
+                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                            file_name: Some(self.lexer.file_name.clone()),
+                            source_content: Box::new(self.lexer.input.clone()),
+                            verbose: None,
+                            caret: true,
+                        });
+                    }
+                }
+                TokenKind::DoubleColon => {
+                    self.next_token();
+                    continue;
+                }
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::ExpectedIdentifier,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        verbose: None,
+                        caret: true,
+                    });
+                }
+            }
+        }
+
+        Ok(module_path)
+    }
+
     pub fn parse_cast_expression(&mut self, start: usize) -> Result<Expression, ParseError> {
         self.expect_current(TokenKind::LeftParen)?;
-        let type_token = self.parse_type_token()?;
+        let type_token = self.parse_type_specifier()?;
         self.next_token(); // consume type_token
         self.expect_current(TokenKind::RightParen)?;
 
@@ -506,7 +642,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn parse_array(&mut self, data_type: TokenKind) -> Result<Expression, ParseError> {
+    pub fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
 
         if !self.current_token_is(TokenKind::LeftBrace) {

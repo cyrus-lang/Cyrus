@@ -32,7 +32,7 @@ impl ProgramTree {
 pub enum Expression {
     Cast(Cast),
     Identifier(Identifier),
-    TypeToken(Token),
+    TypeSpecifier(TypeSpecifier),
     ModuleImport(ModuleImport),
     Assignment(Box<Assignment>),
     Literal(Literal),
@@ -67,13 +67,13 @@ pub enum EnumField {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumValuedField {
     pub name: Identifier,
-    pub field_type: TokenKind,
+    pub field_type: TypeSpecifier,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cast {
     pub expr: Box<Expression>,
-    pub type_token: TokenKind,
+    pub type_token: TypeSpecifier,
     pub span: Span,
     pub loc: Location,
 }
@@ -144,6 +144,24 @@ pub enum Literal {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum TypeSpecifier {
+    Identifier(Identifier),
+    ModuleImport(ModuleImport),
+    TypeToken(Token),
+    Const(Box<TypeSpecifier>),
+    AddressOf(Box<TypeSpecifier>),
+    Dereference(Box<TypeSpecifier>),
+    // DataType, Dimensions
+    Array(Box<TypeSpecifier>, Vec<ArrayCapacity>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArrayCapacity {
+    Static(TokenKind), // token_kind->literal
+    Dynamic,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct UnaryExpression {
     pub operator: Token,
     pub operand: Box<Expression>,
@@ -162,7 +180,7 @@ pub struct BinaryExpression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Array {
-    pub data_type: TokenKind,
+    pub data_type: TypeSpecifier,
     pub elements: Vec<Expression>,
     pub span: Span,
     pub loc: Location,
@@ -256,7 +274,7 @@ pub struct StructInit {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     pub name: String,
-    pub ty: TokenKind,
+    pub ty: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
 }
@@ -300,7 +318,7 @@ pub struct FuncDef {
     pub name: String,
     pub params: FuncParams,
     pub body: Box<BlockStatement>,
-    pub return_type: Option<Token>,
+    pub return_type: Option<TypeSpecifier>,
     pub storage_class: StorageClass,
     pub span: Span,
     pub loc: Location,
@@ -310,7 +328,7 @@ pub struct FuncDef {
 pub struct FuncDecl {
     pub name: String,
     pub params: FuncParams,
-    pub return_type: Option<Token>,
+    pub return_type: Option<TypeSpecifier>,
     pub storage_class: StorageClass,
     pub renamed_as: Option<String>,
     pub span: Span,
@@ -337,7 +355,7 @@ pub struct BlockStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Variable {
     pub name: String,
-    pub ty: Option<TokenKind>,
+    pub ty: Option<TypeSpecifier>,
     pub expr: Option<Expression>,
     pub span: Span,
     pub loc: Location,
@@ -354,7 +372,7 @@ pub struct Assignment {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncParam {
     pub identifier: Identifier,
-    pub ty: Option<TokenKind>,
+    pub ty: Option<TypeSpecifier>,
     pub default_value: Option<Expression>,
     pub span: Span,
     pub loc: Location,
@@ -363,7 +381,7 @@ pub struct FuncParam {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncParams {
     pub list: Vec<FuncParam>,
-    pub variadic: Option<TokenKind>,
+    pub variadic: Option<TypeSpecifier>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

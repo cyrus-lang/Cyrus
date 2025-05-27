@@ -40,16 +40,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_type_token(&mut self) -> Result<TokenKind, ParseError> {
+    pub fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, ParseError> {
         let mut base_type = self.parse_base_type_token()?;
 
         loop {
             if self.peek_token_is(TokenKind::Asterisk) {
                 self.next_token();
-                base_type = TokenKind::Dereference(Box::new(base_type));
+                base_type = TypeSpecifier::Dereference(Box::new(base_type));
             } else if self.peek_token_is(TokenKind::Ampersand) {
                 self.next_token();
-                base_type = TokenKind::AddressOf(Box::new(base_type));
+                base_type = TypeSpecifier::AddressOf(Box::new(base_type));
             } else if self.peek_token_is(TokenKind::LeftBracket) {
                 self.next_token(); // consume base_type
                 base_type = self.parse_array_type(base_type)?;
@@ -61,20 +61,39 @@ impl<'a> Parser<'a> {
         Ok(base_type)
     }
 
-    fn parse_base_type_token(&mut self) -> Result<TokenKind, ParseError> {
-        let current_kind = self.current_token.kind.clone();
+    fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, ParseError> {
+        let current = self.current_token.clone();
 
-        let parsed_kind = match current_kind {
-            token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(token_kind),
+        let parsed_kind = match current.kind.clone() {
+            token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
             TokenKind::Const => {
                 self.next_token(); // consume const
                 let inner_type = self.parse_base_type_token()?;
-                Ok(TokenKind::ConstOf(Box::new(inner_type)))
+                Ok(TypeSpecifier::Const(Box::new(inner_type)))
             }
-            TokenKind::Identifier { .. } => Ok(current_kind),
+            TokenKind::Identifier { .. } => {
+                if self.peek_token_is(TokenKind::DoubleColon) {
+                    let module_import = self.parse_module_import()?;
+                    dbg!(module_import.clone());
+                    dbg!(self.current_token.kind.clone());
+                    Ok(TypeSpecifier::ModuleImport(module_import))
+                } else {
+                    Ok(TypeSpecifier::Identifier(Identifier {
+                        name: {
+                            if let TokenKind::Identifier { name } = current.kind {
+                                name
+                            } else {
+                                unreachable!()
+                            }
+                        },
+                        span: current.span,
+                        loc: self.current_location(),
+                    }))
+                }
+            }
             _ => Err(CompileTimeError {
                 location: self.current_location(),
-                etype: ParserErrorType::InvalidTypeToken(current_kind.clone()),
+                etype: ParserErrorType::InvalidTypeToken(current.kind.clone()),
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
@@ -85,7 +104,7 @@ impl<'a> Parser<'a> {
         parsed_kind
     }
 
-    pub fn parse_array_type(&mut self, data_type: TokenKind) -> Result<TokenKind, ParseError> {
+    pub fn parse_array_type(&mut self, type_specifier: TypeSpecifier) -> Result<TypeSpecifier, ParseError> {
         let mut dimensions: Vec<ArrayCapacity> = Vec::new();
 
         while self.current_token_is(TokenKind::LeftBracket) {
@@ -97,7 +116,7 @@ impl<'a> Parser<'a> {
             dimensions.push(array_capacity);
         }
 
-        Ok(TokenKind::Array(Box::new(data_type), dimensions))
+        Ok(TypeSpecifier::Array(Box::new(type_specifier), dimensions))
     }
 
     pub fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParseError> {

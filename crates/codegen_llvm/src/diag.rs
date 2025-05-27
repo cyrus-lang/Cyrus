@@ -11,14 +11,16 @@ pub enum DiagKind {
     UnimplementedFeature,
     InvalidTokenAsArrayCapacity,
     IdentifierNotDefined(String),
-    TypeAnnotationRequiredForParam(String, String),
     TypeAnnotationRequired,
     InconsistentArrayItemTypes,
+    UndefinedDataType(String),
     FuncNotFound(String),
     InvalidWildcard,
     ModuleNotFound(String),
     FuncCallArgumentCountMismatch(String, i32, i32),
+    TypeAnnotationRequiredForParam(String, String),
     LenCalledWithInvalidInput,
+
     Custom(String),
 }
 
@@ -72,6 +74,9 @@ impl fmt::Display for DiagKind {
                 expected, func_name, current
             ),
             DiagKind::LenCalledWithInvalidInput => "Cannot get length of non-string or non-array value.",
+            DiagKind::UndefinedDataType(type_name) => {
+                &format!("The data type '{}' is not defined in this module.", type_name)
+            }
         };
         write!(f, "{}", msg)
     }

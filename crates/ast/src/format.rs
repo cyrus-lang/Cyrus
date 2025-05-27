@@ -65,6 +65,35 @@ impl fmt::Display for ModuleSegment {
     }
 }
 
+impl fmt::Display for TypeSpecifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeSpecifier::TypeToken(token) => write!(f, "{}", token.kind),
+            TypeSpecifier::Identifier(identifier) => write!(f, "{}", identifier),
+            TypeSpecifier::ModuleImport(module_import) => write!(f, "{}", module_import),
+            TypeSpecifier::Const(type_specifier) => write!(f, "const {}", type_specifier),
+            TypeSpecifier::AddressOf(type_specifier) => write!(f, "{}&", type_specifier),
+            TypeSpecifier::Dereference(type_specifier) => write!(f, "{}*", type_specifier),
+            TypeSpecifier::Array(type_specifier, items) => {
+                write!(f, "{}", type_specifier)?;
+
+                for item in items {
+                    write!(
+                        f,
+                        "[{}]",
+                        match item {
+                            ArrayCapacity::Static(token_kind) => token_kind.to_string(),
+                            ArrayCapacity::Dynamic => "".to_string(),
+                        }
+                    )?;
+                }
+
+                write!(f, "")
+            }
+        }
+    }
+}
+
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -136,9 +165,7 @@ impl fmt::Display for Expression {
             Expression::ModuleImport(module_import) => {
                 write!(f, "{}", module_import.to_string())
             }
-            Expression::TypeToken(token) => {
-                write!(f, "{}", token.kind)
-            }
+            Expression::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
         }
     }
 }

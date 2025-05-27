@@ -227,89 +227,84 @@ mod tests {
         }
     });
 
-    define_test!(
-        field_access,
-        "object.field;",
-        |program: ProgramTree| {
-            if let Statement::Expression(expression) = &program.body[0] {
-                if let Expression::FieldAccess(field_access) = expression.clone() {
-                    assert_eq!(
-                        field_access,
-                        FieldAccess {
-                            operand: Box::new(Expression::ModuleImport(ModuleImport {
-                                segments: vec![ModuleSegment::SubModule(Identifier {
-                                    name: "object".to_string(),
-                                    span: Span::new(0, 5),
-                                    loc: Location::new(0, 8),
-                                })],
-                                span: Span::new(0, 6),
-                                loc: Location::new(0, 8)
-                            })),
-                            field_name: Identifier {
-                                name: "field".to_string(),
-                                span: Span { start: 7, end: 12 },
-                                loc: Location { line: 0, column: 14 },
-                            },
-                            span: Span::new(7, 12),
-                            loc: Location::new(0, 14)
-                        }
-                    );
-                } else {
-                    panic!("Expected a field access or field access but got something else.");
-                }
+    define_test!(field_access, "object.field;", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::FieldAccess(field_access) = expression.clone() {
+                assert_eq!(
+                    field_access,
+                    FieldAccess {
+                        operand: Box::new(Expression::ModuleImport(ModuleImport {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
+                                name: "object".to_string(),
+                                span: Span::new(0, 5),
+                                loc: Location::new(0, 8),
+                            })],
+                            span: Span::new(0, 6),
+                            loc: Location::new(0, 8)
+                        })),
+                        field_name: Identifier {
+                            name: "field".to_string(),
+                            span: Span { start: 7, end: 12 },
+                            loc: Location { line: 0, column: 14 },
+                        },
+                        span: Span::new(7, 12),
+                        loc: Location::new(0, 14)
+                    }
+                );
             } else {
-                panic!("Expected an expression but got something else.");
+                panic!("Expected a field access or field access but got something else.");
             }
+        } else {
+            panic!("Expected an expression but got something else.");
         }
-    );
-    define_test!(
-        method_call,
-        "object.method(1, 2);",
-        |program: ProgramTree| {
-            if let Statement::Expression(expression) = &program.body[0] {
-                if let Expression::MethodCall(method_call) = expression.clone() {
-                    assert_eq!(
-                        method_call,
-                        MethodCall {
-                            operand: Box::new(Expression::ModuleImport(ModuleImport {
-                                segments: vec![ModuleSegment::SubModule(Identifier {
-                                    name: "object".to_string(),
-                                    span: Span::new(0, 5),
-                                    loc: Location::new(0, 8),
-                                })],
-                                span: Span::new(0, 6),
-                                loc: Location::new(0, 8)
-                            })),
-                            method_name: Identifier {
-                                name: "method".to_string(),
-                                span: Span { start: 7, end: 13 },
-                                loc: Location { line: 0, column: 15 },
-                            },
-                            arguments: vec![
-                                Expression::Literal(Literal::Integer(1)),
-                                Expression::Literal(Literal::Integer(2)),
-                            ],
-                            span: Span::new(7, 18),
-                            loc: Location::new(0, 15)
-                        }
-                    );
-                } else {
-                    panic!("Expected a field access or method call but got something else.");
-                }
+    });
+    define_test!(method_call, "object.method(1, 2);", |program: ProgramTree| {
+        if let Statement::Expression(expression) = &program.body[0] {
+            if let Expression::MethodCall(method_call) = expression.clone() {
+                assert_eq!(
+                    method_call,
+                    MethodCall {
+                        operand: Box::new(Expression::ModuleImport(ModuleImport {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
+                                name: "object".to_string(),
+                                span: Span::new(0, 5),
+                                loc: Location::new(0, 8),
+                            })],
+                            span: Span::new(0, 6),
+                            loc: Location::new(0, 8)
+                        })),
+                        method_name: Identifier {
+                            name: "method".to_string(),
+                            span: Span { start: 7, end: 13 },
+                            loc: Location { line: 0, column: 15 },
+                        },
+                        arguments: vec![
+                            Expression::Literal(Literal::Integer(1)),
+                            Expression::Literal(Literal::Integer(2)),
+                        ],
+                        span: Span::new(7, 18),
+                        loc: Location::new(0, 15)
+                    }
+                );
             } else {
-                panic!("Expected an expression but got something else.");
+                panic!("Expected a field access or method call but got something else.");
             }
+        } else {
+            panic!("Expected an expression but got something else.");
         }
-    );
+    });
 
     define_test!(cast_expression, "(float64) 10;", |program: ProgramTree| {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::Cast(cast_as) = expression {
+                assert_eq!(*cast_as.expr, Expression::Literal(Literal::Integer(10)));
                 assert_eq!(
-                    *cast_as.expr,
-                    Expression::Literal(Literal::Integer(10))
+                    cast_as.type_token,
+                    TypeSpecifier::TypeToken(Token {
+                        kind: TokenKind::Float64,
+                        span: Span::new(1, 8)
+                    })
                 );
-                assert_eq!(cast_as.type_token, TokenKind::Float64);
             } else {
                 panic!("Expected a cast expression but got something else.");
             }
@@ -367,7 +362,10 @@ mod tests {
                     for_statement.initializer,
                     Some(Variable {
                         name: "i".to_string(),
-                        ty: Some(TokenKind::Int),
+                        ty: Some(TypeSpecifier::TypeToken(Token {
+                            kind: TokenKind::Int,
+                            span: Span::new(9, 12)
+                        })),
                         expr: Some(Expression::Literal(Literal::Integer(0))),
                         span: Span::new(5, 16),
                         loc: Location::new(0, 20)
@@ -426,7 +424,10 @@ mod tests {
                     for_statement.initializer,
                     Some(Variable {
                         name: "i".to_string(),
-                        ty: Some(TokenKind::Int),
+                        ty: Some(TypeSpecifier::TypeToken(Token {
+                            kind: TokenKind::Int,
+                            span: Span::new(9, 12)
+                        })),
                         expr: Some(Expression::Literal(Literal::Integer(0))),
                         span: Span::new(5, 16),
                         loc: Location::new(0, 19)

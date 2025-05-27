@@ -81,7 +81,7 @@ impl<'a> Parser<'a> {
                 let field_name = self.parse_identifier()?;
                 self.next_token(); // consume field name
 
-                let field_type = self.parse_type_token()?;
+                let field_type = self.parse_type_specifier()?;
                 self.next_token();
 
                 variant_fields.push(EnumValuedField {
@@ -251,7 +251,7 @@ impl<'a> Parser<'a> {
 
                     self.next_token(); // consume identifier
 
-                    let type_token = self.parse_type_token()?;
+                    let type_token = self.parse_type_specifier()?;
                     self.next_token();
 
                     let field = Field {
@@ -278,8 +278,6 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-
-        self.next_token(); // consume right brace
 
         Ok(Statement::Struct(Struct {
             storage_class,
@@ -327,147 +325,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_module_import(&mut self) -> Result<ModuleImport, ParseError> {
-        let start = self.current_token.span.start;
-        let mut segments = match self.current_token.kind.clone() {
-            TokenKind::Identifier { name } => {
-                vec![ModuleSegment::SubModule(Identifier {
-                    name,
-                    span: Span {
-                        start,
-                        end: self.current_token.span.end - 1,
-                    },
-                    loc: self.current_location(),
-                })]
-            }
-            _ => {
-                return Err(CompileTimeError {
-                    location: self.current_location(),
-                    etype: ParserErrorType::ExpectedIdentifier,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: None,
-                    caret: true,
-                });
-            }
-        };
-
-        // this is because if there is only one sub_module, it should not be consume
-        // due to mechanism of our parser that latest expression should not be consumed
-        if self.peek_token_is(TokenKind::DoubleColon) {
-            self.next_token();
-        }
-
-        while self.current_token_is(TokenKind::DoubleColon) {
-            let start = self.current_token.span.end + 1;
-            self.next_token();
-
-            match self.current_token.kind.clone() {
-                TokenKind::Identifier { name } => {
-                    if self.peek_token_is(TokenKind::LeftParen) {
-                        // this means that this module_import is a part of func call
-                        // so we should not consider func_name as a sub_module here.
-                        break;
-                    }
-
-                    segments.push(ModuleSegment::SubModule(Identifier {
-                        name,
-                        span: Span {
-                            start,
-                            end: self.peek_token.span.end - 1,
-                        },
-                        loc: self.current_location(),
-                    }));
-                }
-                _ => {
-                    break;
-                }
-            }
-
-            self.next_token();
-        }
-
-        let end = self.current_token.span.end;
-        Ok(ModuleImport {
-            segments,
-            span: Span::new(start, end),
-            loc: self.current_location(),
-        })
-    }
-
-    pub fn parse_module_path(&mut self) -> Result<ModulePath, ParseError> {
-        let mut module_path = ModulePath {
-            alias: None,
-            segments: Vec::new(),
-        };
-
-        while !self.current_token_is(TokenKind::Semicolon) {
-            match self.current_token.kind.clone() {
-                TokenKind::Identifier { name: identifier } => {
-                    let span = self.current_token.span.clone();
-                    self.next_token(); // consume identifier
-
-                    if self.current_token_is(TokenKind::Colon) {
-                        if module_path.alias.is_none() {
-                            self.next_token();
-                            module_path.alias = Some(identifier);
-                            continue;
-                        } else {
-                            return Err(CompileTimeError {
-                                location: self.current_location(),
-                                etype: ParserErrorType::UnexpectedToken(
-                                    TokenKind::DoubleColon,
-                                    self.current_token.kind.clone(),
-                                ),
-                                file_name: Some(self.lexer.file_name.clone()),
-                                source_content: Box::new(self.lexer.input.clone()),
-                                verbose: None,
-                                caret: true,
-                            });
-                        }
-                    }
-
-                    module_path.segments.push(ModuleSegment::SubModule(Identifier {
-                        name: identifier.clone(),
-                        span: span.clone(),
-                        loc: self.current_location(),
-                    }));
-
-                    if self.current_token_is(TokenKind::DoubleColon) {
-                        continue;
-                    } else if self.current_token_is(TokenKind::Semicolon) {
-                        return Ok(module_path);
-                    } else {
-                        return Err(CompileTimeError {
-                            location: self.current_location(),
-                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                            file_name: Some(self.lexer.file_name.clone()),
-                            source_content: Box::new(self.lexer.input.clone()),
-                            verbose: None,
-                            caret: true,
-                        });
-                    }
-                }
-                TokenKind::DoubleColon => {
-                    self.next_token();
-                    continue;
-                }
-                _ => {
-                    return Err(CompileTimeError {
-                        location: self.current_location(),
-                        etype: ParserErrorType::ExpectedIdentifier,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: None,
-                        caret: true,
-                    });
-                }
-            }
-        }
-
-        Ok(module_path)
-    }
-
     pub fn parse_import(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
         self.next_token(); // consume import keyword
@@ -509,7 +366,7 @@ impl<'a> Parser<'a> {
     pub fn parse_func_params(&mut self) -> Result<FuncParams, ParseError> {
         self.expect_current(TokenKind::LeftParen)?;
 
-        let mut variadic: Option<TokenKind> = None;
+        let mut variadic: Option<TypeSpecifier> = None;
         let mut list: Vec<FuncParam> = Vec::new();
 
         while self.current_token.kind != TokenKind::RightParen {
@@ -517,7 +374,7 @@ impl<'a> Parser<'a> {
                 TokenKind::TripleDot => {
                     self.next_token(); // consume triple_dot
 
-                    let variadic_data_type = self.parse_type_token()?;
+                    let variadic_data_type = self.parse_type_specifier()?;
                     self.next_token();
 
                     variadic = Some(variadic_data_type);
@@ -542,11 +399,11 @@ impl<'a> Parser<'a> {
 
                     // get the var type
 
-                    let mut var_type: Option<TokenKind> = None;
+                    let mut var_type: Option<TypeSpecifier> = None;
                     if self.current_token_is(TokenKind::Colon) {
                         self.next_token(); // consume the colon
 
-                        var_type = Some(self.parse_type_token()?);
+                        var_type = Some(self.parse_type_specifier()?);
                         self.next_token();
                     }
 
@@ -613,7 +470,7 @@ impl<'a> Parser<'a> {
         Ok(FuncParams { list, variadic })
     }
 
-    pub fn parse_for_loop_body(&mut self, expr_start: usize) -> Result<Box<BlockStatement>, ParseError> {
+    pub fn parse_for_loop_body(&mut self) -> Result<Box<BlockStatement>, ParseError> {
         let body: Box<BlockStatement>;
         if self.current_token_is(TokenKind::LeftBrace) {
             body = Box::new(self.parse_block_statement()?);
@@ -708,7 +565,7 @@ impl<'a> Parser<'a> {
         if self.peek_token_is(TokenKind::LeftBrace) {
             self.expect_current(TokenKind::RightParen)?;
 
-            let body = self.parse_for_loop_body(start)?;
+            let body = self.parse_for_loop_body()?;
             return Ok(Statement::For(For {
                 initializer,
                 condition: None,
@@ -733,7 +590,7 @@ impl<'a> Parser<'a> {
         }
 
         self.expect_current(TokenKind::RightParen)?;
-        let body = self.parse_for_loop_body(start)?;
+        let body = self.parse_for_loop_body()?;
 
         Ok(Statement::For(For {
             initializer,
@@ -769,11 +626,11 @@ impl<'a> Parser<'a> {
             }));
         }
 
-        let mut variable_type: Option<TokenKind> = None;
+        let mut variable_type: Option<TypeSpecifier> = None;
         if self.current_token_is(TokenKind::Colon) {
             self.next_token(); // consume the colon
 
-            variable_type = Some(self.parse_type_token()?);
+            variable_type = Some(self.parse_type_specifier()?);
             self.next_token();
         }
 
@@ -828,7 +685,7 @@ impl<'a> Parser<'a> {
 
         let params = self.parse_func_params()?;
 
-        let mut return_type: Option<Token> = None;
+        let mut return_type: Option<TypeSpecifier> = None;
 
         // parse return type
         if self.current_token_is(TokenKind::Colon) {
@@ -845,16 +702,8 @@ impl<'a> Parser<'a> {
                 });
             }
 
-            let return_type_start = self.current_token.span.start.clone();
-            let return_type_token = self.parse_type_token()?;
+            return_type = Some(self.parse_type_specifier()?);
             self.next_token();
-            return_type = Some(Token {
-                kind: return_type_token,
-                span: Span {
-                    start: return_type_start,
-                    end: self.current_token.span.end,
-                },
-            });
         }
 
         // parse as func decl

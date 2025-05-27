@@ -56,7 +56,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     InternalValue::PointerValue(self.build_null())
                 }
             }
-            Expression::TypeToken(_) => InternalValue::PointerValue(self.build_null()),
+            Expression::TypeSpecifier(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build type specifier here.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
         }
     }
 
@@ -129,6 +136,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match scope.borrow().get(first_segment.name.clone()) {
                 Some(record) => {
                     if module_import.segments.len() >= 2 {
+                        // FIXME
                         // let chains: Vec<Either<FuncCall, FieldAccess>> = module_import.segments
                         //     [1..module_import.segments.len()]
                         //     .iter()
