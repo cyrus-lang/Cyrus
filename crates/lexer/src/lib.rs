@@ -26,9 +26,9 @@ impl Lexer {
             input: input.to_string(),
             pos: 0,      // points to current position
             next_pos: 0, // points to next position
-            ch: ' ',
+            ch: '\0',
             file_name,
-            line: 0,
+            line: 1,
             column: 0,
         };
 
@@ -62,47 +62,26 @@ impl Lexer {
     }
 
     fn peek_char(&self) -> char {
-        if self.next_pos >= self.input.len() {
-            ' '
-        } else {
-            match self.input.chars().nth(self.next_pos) {
-                Some(ch) => ch,
-                None => {
-                    lexer_unknown_char_error(
-                        self.file_name.clone(),
-                        self.line,
-                        self.column - 1,
-                        self.ch,
-                        Box::new(self.input.clone()),
-                    );
-                    std::process::exit(1);
-                }
-            }
-        }
+        self.input.chars().nth(self.next_pos).unwrap_or('\0')
     }
 
     fn read_char(&mut self) {
-        if self.next_pos >= self.input.len() {
-            self.ch = ' ';
-        } else {
-            self.ch = self.input.chars().nth(self.next_pos).unwrap_or(' ');
-        }
-
+        self.ch = self.input.chars().nth(self.next_pos).unwrap_or('\0');
+        self.pos = self.next_pos;
+        self.next_pos += self.ch.len_utf8();
         if self.ch == '\n' {
             self.line += 1;
             self.column = 0;
+        } else {
+            self.column += 1;
         }
-
-        self.pos = self.next_pos;
-        self.next_pos += 1;
-        self.column += 1;
     }
 
     pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
         self.skip_comments();
 
-        if self.is_eof() {
+        if self.ch == '\0' {
             return Token {
                 kind: TokenKind::EOF,
                 span: Span {
@@ -511,8 +490,8 @@ impl Lexer {
         let mut is_float = false;
 
         // hexadecimal literals
-        let token_kind = if self.ch == '0' && (self.peek_char() == 'x' || self.peek_char() == 'X') {
-            number.push(self.ch);
+        let token_kind = if self.ch == '0' && (self.peek_char().to_ascii_lowercase() == 'x') {
+            number.push('0');
             self.read_char(); // consume '0'
             number.push(self.ch);
             self.read_char(); // consume 'x' or 'X'
@@ -664,72 +643,48 @@ impl Lexer {
     }
 
     fn skip_whitespace(&mut self) {
-        while Self::is_whitespace(self.ch) {
-            if self.is_eof() {
-                break;
-            }
-
+        while Self::is_whitespace(self.ch) && !self.is_eof() {
             self.read_char();
         }
     }
 
     fn skip_comments(&mut self) {
-        if self.ch == '/' && self.peek_char() == '/' {
-            self.read_char();
-            self.read_char();
-
-            loop {
-                if self.is_eof() || self.ch == '\n' {
-                    break;
-                }
-
-                self.read_char(); // consume
-            }
-
-            loop {
-                if self.ch == '\n' {
-                    // consume the new line char
+        while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
+            if self.peek_char() == '/' {
+                // Handle single-line comment
+                self.read_char();
+                self.read_char();
+    
+                while !self.is_eof() && self.ch != '\n' {
                     self.read_char();
-                } else {
-                    break;
                 }
-            }
-        } else if self.ch == '/' && self.peek_char() == '*' {
-            self.read_char();
-            self.read_char();
-
-            loop {
-                if self.is_eof() || self.ch == '*' {
-                    if self.peek_char() != '/' {
-                        CompileTimeError {
-                            location: Location {
-                                line: self.line,
-                                column: self.column,
-                            },
-                            source_content: Box::new(self.input.clone()),
-                            etype: LexicalErrorType::UnterminatedMultiLineComment,
-                            verbose: None,
-                            caret: true,
-                            file_name: Some(self.file_name.clone()),
-                        }
-                        .print();
-                        exit(1);
+                
+                // Consume the newline character, if present
+                if !self.is_eof() && self.ch == '\n' {
+                    self.read_char();
+                }
+            } else if self.peek_char() == '*' {
+                // Handle multi-line comment
+                self.read_char();
+                self.read_char();
+    
+                while !self.is_eof() {
+                    if self.ch == '*' && self.peek_char() == '/' {
+                        self.read_char();
+                        self.read_char();
+                        break;
                     }
-
                     self.read_char();
-                    self.read_char();
-
-                    break;
                 }
-
-                self.read_char();
+                
+                // Skip any trailing newlines after the comment
+                while !self.is_eof() && self.ch == '\n' {
+                    self.read_char();
+                }
             }
-
-            // Skip extra new lines
-
-            while self.ch == '\n' {
-                self.read_char();
-            }
+            
+            // Skip whitespace to advance to the next valid character
+            self.skip_whitespace();
         }
     }
 
