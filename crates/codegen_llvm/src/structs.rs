@@ -1,5 +1,5 @@
 use crate::{
-    InternalValue, CodeGenLLVM,
+    CodeGenLLVM, InternalValue,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     scope::ScopeRef,
 };
@@ -8,10 +8,10 @@ use ast::{
     token::Location,
 };
 use inkwell::{
+    AddressSpace,
     types::{BasicTypeEnum, StructType},
-    values::{AggregateValueEnum, BasicValueEnum}, AddressSpace,
 };
-use std::{collections::HashMap, process::exit, rc::Rc};
+use std::{collections::HashMap, process::exit};
 
 #[derive(Debug, Clone)]
 pub struct StructMetadata<'a> {
@@ -37,7 +37,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_struct(&self, struct_statement: Struct) -> StructType<'ctx> {
         let field_types = self.build_struct_fields(struct_statement.fields.clone());
         let struct_type = self.context.struct_type(&field_types, false);
-        if !matches!(struct_statement.storage_class, StorageClass::Public | StorageClass::Internal) {
+        if !matches!(
+            struct_statement.storage_class,
+            StorageClass::Public | StorageClass::Internal
+        ) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom("Structs can only be defined public or internal.".to_string()),
@@ -53,130 +56,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         struct_type
     }
 
-    pub(crate) fn find_struct_by_type(
-        &self,
-        struct_type: StructType<'ctx>,
-        loc: Location,
-        span_end: usize,
-    ) -> (String, StructMetadata<'ctx>) {
-        let mut record: Option<(String, StructMetadata<'ctx>)> = None;
-
-        for (_, (name, metadata)) in self.struct_table.iter().enumerate() {
-            if metadata.struct_type == struct_type {
-                record = Some((name.clone(), metadata.clone()));
-                break;
-            }
-        }
-
-        if record.is_none() {
-            for loaded_module in self.loaded_modules.clone() {
-                for (_, (name, metadata)) in loaded_module.imported_structs.iter().enumerate() {
-                    if metadata.struct_type == struct_type {
-                        record = Some((
-                            name.clone(),
-                            StructMetadata {
-                                struct_type,
-                                inherits: metadata.inherits.clone(),
-                                fields: metadata.fields.clone(),
-                                storage_class: metadata.storage_class.clone(),
-                            },
-                        ));
-                        break;
-                    }
-                }
-            }
-        }
-
-        if let Some((struct_name, struct_metadata)) = record {
-            (struct_name, struct_metadata)
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Unknown struct type.".to_string()),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        }
-    }
-
-    pub(crate) fn find_struct(
-        &self,
-        scope: ScopeRef<'ctx>,
-        struct_name: ModuleImport,
-        loc: Location,
-        span_end: usize,
-    ) -> StructMetadata<'ctx> {
-        // FIXME
-        todo!();
-
-        // lookup in locals
-        // match self
-        //     .struct_table
-        //     .get(&struct_name.segments.first().unwrap().to_string())
-        // {
-        //     Some(metadata) => metadata.clone(),
-        //     None => {
-        //         // lookup in loaded modules
-        //         let (internal_value, _) = self.build_module_import(Rc::clone(&scope), struct_name.clone());
-        //         match internal_value {
-        //             InternalValue::ModuleValue(imported_module_value) => {
-        //                 match struct_name.segments.last().unwrap() {
-        //                     ast::ast::ModuleSegment::SubModule(identifier) => {
-        //                         match imported_module_value.metadata.imported_structs.get(&identifier.name) {
-        //                             Some(struct_metadata) => StructMetadata {
-        //                                 struct_type: struct_metadata.struct_type.clone(),
-        //                                 inherits: struct_metadata.inherits.clone(),
-        //                                 fields: struct_metadata.fields.clone(),
-        //                                 storage_class: struct_metadata.storage_class.clone(),
-        //                             },
-        //                             None => {
-        //                                 display_single_diag(Diag {
-        //                                     level: DiagLevel::Error,
-        //                                     kind: DiagKind::Custom(format!(
-        //                                         "Struct '{}' not defined.",
-        //                                         struct_name.to_string()
-        //                                     )),
-        //                                     location: Some(DiagLoc {
-        //                                         file: self.file_path.clone(),
-        //                                         line: loc.line,
-        //                                         column: loc.column,
-        //                                         length: span_end,
-        //                                     }),
-        //                                 });
-        //                                 exit(1);
-        //                             }
-        //                         }
-        //                     }
-        //                 }
-        //             }
-        //             _ => {
-        //                 display_single_diag(Diag {
-        //                     level: DiagLevel::Error,
-        //                     kind: DiagKind::Custom(
-        //                         "Expected ImportedModuleValue as result of build_module_import but something else."
-        //                             .to_string(),
-        //                     ),
-        //                     location: Some(DiagLoc {
-        //                         file: self.file_path.clone(),
-        //                         line: loc.line,
-        //                         column: loc.column,
-        //                         length: span_end,
-        //                     }),
-        //                 });
-        //                 exit(1);
-        //             }
-        //         }
-        //     }
-        // }
-    }
-
     pub(crate) fn build_struct_init(&self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> InternalValue<'ctx> {
         // FIXME
+        dbg!(struct_init.clone());
         todo!();
 
         // let struct_metadata = self.find_struct(

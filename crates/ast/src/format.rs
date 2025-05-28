@@ -200,5 +200,5 @@ pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
         .iter()
         .map(|p| p.to_string())
         .collect::<Vec<String>>()
-        .join(".")
+        .join("::")
 }

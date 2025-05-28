@@ -1,6 +1,7 @@
-import sample;
-extern fn sqrt(x: float64): float64;
+public fn sample(x: int32) {
+    
+}
 
 fn main() {
-    #a = sqrt(16.0);
+    
 }

@@ -1,35 +1,26 @@
-use crate::{CodeGenLLVM, build::BuildManifest, diag::*, funcs::FuncTable, structs::StructTable};
-use ast::{
-    ast::{Field, FuncDecl, Identifier, Import, ModulePath, ModuleSegment, StorageClass, Struct},
-    format::module_segments_as_string,
-    token::{Location, Span},
+use crate::{
+    CodeGenLLVM,
+    build::BuildManifest,
+    diag::*,
+    funcs::{FuncMetadata, FuncTable},
+    structs::{StructMetadata, StructTable},
 };
-use inkwell::{module::Module, types::StructType};
+use ast::{
+    ast::{Import, ModulePath, ModuleSegment, StorageClass},
+    format::module_segments_as_string,
+    token::Location,
+};
+use inkwell::module::Module;
 use std::{cell::RefCell, collections::HashMap, process::exit, rc::Rc};
 use utils::fs::find_file_from_sources;
-
-#[derive(Debug, Clone)]
-pub struct ExportedFuncMetadata {
-    pub func_decl: FuncDecl,
-}
-
-#[derive(Debug, Clone)]
-pub struct ExportedStructMetadata<'ctx> {
-    pub name: String,
-    pub storage_class: StorageClass,
-    pub inherits: Vec<Identifier>,
-    pub fields: Vec<Field>,
-    pub methods: Vec<FuncDecl>,
-    pub struct_type: StructType<'ctx>,
-}
 
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'ctx> {
     pub identifier: String,
     pub file_path: String,
     pub module: Rc<RefCell<Module<'ctx>>>,
-    pub imported_funcs: HashMap<String, ExportedFuncMetadata>,
-    pub imported_structs: HashMap<String, ExportedStructMetadata<'ctx>>,
+    pub func_table: HashMap<String, FuncMetadata<'ctx>>,
+    pub struct_table: HashMap<String, StructMetadata<'ctx>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -215,8 +206,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let module_metadata = ModuleMetadata {
             module: Rc::clone(&sub_module),
-            imported_funcs: self.build_imported_funcs(sub_codegen.func_table),
-            imported_structs: self.build_imported_structs(sub_codegen.struct_table),
+            func_table: self.build_imported_funcs(sub_codegen.func_table),
+            struct_table: self.build_imported_structs(sub_codegen.struct_table),
             identifier: module_identifier,
             file_path,
         };
@@ -225,20 +216,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module_metadata
     }
 
-    fn build_imported_funcs(&mut self, func_table: FuncTable) -> HashMap<String, ExportedFuncMetadata> {
-        let mut imported_funcs: HashMap<String, ExportedFuncMetadata> = HashMap::new();
+    fn build_imported_funcs(&mut self, func_table: FuncTable<'ctx>) -> HashMap<String, FuncMetadata<'ctx>> {
+        let mut imported_funcs: HashMap<String, FuncMetadata> = HashMap::new();
 
         for (_, (_, metadata)) in func_table.iter().enumerate() {
-            // only pub funcs are exported imported from sub_module
-            if metadata.func_decl.storage_class == StorageClass::Public {
-                imported_funcs.insert(
-                    metadata.func_decl.renamed_as.clone().unwrap(),
-                    ExportedFuncMetadata {
-                        func_decl: metadata.func_decl.clone(),
-                    },
-                );
+            if metadata.func_decl.storage_class == StorageClass::Public
+                || metadata.func_decl.storage_class == StorageClass::PublicExtern
+                || metadata.func_decl.storage_class == StorageClass::PublicInline
+            {
+                let func_value = self.build_func_decl(metadata.func_decl.clone());
 
-                self.build_func_decl(metadata.func_decl.clone());
+                let mut new_metadata = metadata.clone();
+                new_metadata.ptr = func_value;
+                imported_funcs.insert(metadata.func_decl.renamed_as.clone().unwrap(), new_metadata);
+            } else {
+                imported_funcs.insert(metadata.func_decl.renamed_as.clone().unwrap(), metadata.clone());
             }
         }
 
@@ -247,33 +239,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     // TODO
     // Implement import struct methods
-    fn build_imported_structs(&self, struct_table: StructTable) -> HashMap<String, ExportedStructMetadata<'ctx>> {
-        let mut imported_structs: HashMap<String, ExportedStructMetadata> = HashMap::new();
+    fn build_imported_structs(&self, struct_table: StructTable<'ctx>) -> HashMap<String, StructMetadata<'ctx>> {
+        let mut imported_structs: HashMap<String, StructMetadata> = HashMap::new();
 
         for (_, (struct_name, metadata)) in struct_table.iter().enumerate() {
-            // only pub structs are exported imported from sub_module
-            let struct_statement = Struct {
-                name: struct_name.clone(),
-                storage_class: metadata.storage_class.clone(),
-                inherits: metadata.inherits.clone(),
-                fields: metadata.fields.clone(),
-                methods: Vec::new(), // FIXME
-                loc: Location::default(),
-                span: Span::default(),
-            };
-            let struct_type = self.build_struct(struct_statement);
-
-            imported_structs.insert(
-                struct_name.clone(),
-                ExportedStructMetadata {
-                    name: struct_name.clone(),
-                    storage_class: metadata.storage_class.clone(),
-                    inherits: metadata.inherits.clone(),
-                    fields: metadata.fields.clone(),
-                    methods: Vec::new(), // FIXME
-                    struct_type,
-                },
-            );
+            imported_structs.insert(struct_name.clone(), metadata.clone());
         }
 
         imported_structs

@@ -2,7 +2,10 @@ use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
-use ast::ast::{Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, StorageClass, TypeSpecifier};
+use ast::ast::{
+    Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, ModuleSegment, StorageClass, TypeSpecifier,
+};
+use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
@@ -403,9 +406,54 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let func_metadata = {
             match expr {
-                InternalValue::ModuleValue(imported_module_value) => {
-                    // TODO Lookup in func_table of the imported module
-                    todo!();
+                InternalValue::ModuleValue(module_metadata) => {
+                    if let Expression::ModuleImport(module_import) = *func_call.operand.clone() {
+                        let module_import_str = module_segments_as_string(module_import.segments.clone());
+                        let ModuleSegment::SubModule(func_name) = module_import.segments.last().unwrap();
+
+                        match module_metadata.func_table.get(&func_name.name) {
+                            Some(func_metadata) => {
+                                if !(func_metadata.func_decl.storage_class == StorageClass::Public
+                                    || func_metadata.func_decl.storage_class == StorageClass::PublicExtern
+                                || func_metadata.func_decl.storage_class == StorageClass::PublicInline)
+                                {
+                                    display_single_diag(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: DiagKind::Custom(format!(
+                                            "Function '{}' defined locally and cannot bed called here. Consider to make it public and try again.",
+                                            module_import_str
+                                        )),
+                                        location: Some(DiagLoc {
+                                            file: self.file_path.clone(),
+                                            line: func_call.loc.line,
+                                            column: func_call.loc.column,
+                                            length: func_call.span.end,
+                                        }),
+                                    });
+                                    exit(1);
+                                }
+                                func_metadata.clone()
+                            }
+                            None => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(format!(
+                                        "Function '{}' not found in module '{}'.",
+                                        func_name.name, module_import_str
+                                    )),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: func_call.loc.line,
+                                        column: func_call.loc.column,
+                                        length: func_call.span.end,
+                                    }),
+                                });
+                                exit(1);
+                            }
+                        }
+                    } else {
+                        unreachable!();
+                    }
                 }
                 InternalValue::FunctionValue(func_metadata) => func_metadata,
                 _ => {
