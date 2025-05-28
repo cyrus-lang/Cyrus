@@ -1,9 +1,13 @@
-use crate::{CodeGenLLVM, InternalType, StringType, diag::*, modules::ModuleMetadata, types::TypedPointerType};
+use crate::{
+    CodeGenLLVM, InternalType, StringType, diag::*, funcs::FuncMetadata, modules::ModuleMetadata, scope::ScopeRef,
+    types::TypedPointerType,
+};
+use ast::token::Location;
 use inkwell::{
     FloatPredicate, IntPredicate,
     types::{ArrayType, FloatType, IntType, StructType, VectorType},
     values::{
-        ArrayValue, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue,
+        AnyValue, ArrayValue, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue,
         VectorValue,
     },
 };
@@ -18,12 +22,8 @@ pub(crate) enum InternalValue<'a> {
     VectorValue(VectorValue<'a>, VectorType<'a>),
     StringValue(StringValue<'a>),
     PointerValue(TypedPointerValue<'a>),
-    ImportedModuleValue(ImportedModuleValue<'a>),
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ImportedModuleValue<'a> {
-    pub metadata: ModuleMetadata<'a>,
+    ModuleValue(ModuleMetadata<'a>),
+    FunctionValue(FuncMetadata<'a>),
 }
 
 #[derive(Debug, Clone)]
@@ -47,10 +47,18 @@ impl<'a> InternalValue<'a> {
             InternalValue::VectorValue(v, ..) => BasicMetadataValueEnum::VectorValue(*v),
             InternalValue::StringValue(v) => BasicMetadataValueEnum::StructValue(v.struct_value),
             InternalValue::PointerValue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
-            InternalValue::ImportedModuleValue(_) => {
+            InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot convert ImportedModuleValue to BasicMetadataValueEnum.".to_string()),
+                    kind: DiagKind::Custom("Cannot convert ModuleValue to BasicMetadataValueEnum.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
+            InternalValue::FunctionValue(func_metadata) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot convert FunctionValue to BasicMetadataValueEnum.".to_string()),
                     location: None,
                 });
                 exit(1);
@@ -70,10 +78,18 @@ impl<'a> InternalValue<'a> {
                 pointee_ty: v.pointee_ty.clone(),
             })),
             InternalValue::StringValue(_) => InternalType::StringType(string_type),
-            InternalValue::ImportedModuleValue(_) => {
+            InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot get type of an ImportedModuleValue.".to_string()),
+                    kind: DiagKind::Custom("Cannot get type of an ModuleValue.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
+            InternalValue::FunctionValue(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot get type of an FunctionValue.".to_string()),
                     location: None,
                 });
                 exit(1);
@@ -87,44 +103,6 @@ impl<'a> From<TypedPointerValue<'a>> for InternalValue<'a> {
         InternalValue::PointerValue(val)
     }
 }
-
-// impl<'a> From<InternalValue<'a>> for BasicValueEnum<'a> {
-//     fn from(value: InternalValue<'a>) -> Self {
-//         match value {
-//             InternalValue::IntValue(v) => v.as_basic_value_enum(),
-//             InternalValue::FloatValue(v) => v.as_basic_value_enum(),
-//             InternalValue::ArrayValue(v) => v.as_basic_value_enum(),
-//             InternalValue::StructValue(v) => v.as_basic_value_enum(),
-//             InternalValue::VectorValue(v) => v.as_basic_value_enum(),
-//             InternalValue::PointerValue(v) => v.ptr.as_basic_value_enum(),
-//             InternalValue::OpaquePointer(v) => v.as_basic_value_enum(),
-//             InternalValue::StringValue(v) => v.struct_value.as_basic_value_enum(),
-//             InternalValue::ImportedModuleValue(_) => {
-//                 display_single_diag(Diag {
-//                     level: DiagLevel::Error,
-//                     kind: DiagKind::Custom("Cannot get BasicValueEnum from an ImportedModuleValue.".to_string()),
-//                     location: None,
-//                 });
-//                 exit(1);
-//             }
-//         }
-//     }
-// }
-
-// impl<'a> TryFrom<BasicValueEnum<'a>> for InternalValue<'a> {
-//     type Error = &'static str;
-
-//     fn try_from(value: BasicValueEnum<'a>, ty: InternalType<'a>) -> Result<Self, Self::Error> {
-//         match value {
-//             BasicValueEnum::IntValue(v) => Ok(InternalValue::IntValue(v)),
-//             BasicValueEnum::FloatValue(v) => Ok(InternalValue::FloatValue(v)),
-//             BasicValueEnum::ArrayValue(v) => Ok(InternalValue::ArrayValue(v)),
-//             BasicValueEnum::StructValue(v) => Ok(InternalValue::StructValue(v)),
-//             BasicValueEnum::VectorValue(v) => Ok(InternalValue::VectorValue(v)),
-//             BasicValueEnum::PointerValue(v) => Ok(InternalValue::OpaquePointer(v)),
-//         }
-//     }
-// }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn new_internal_value_from_basic_value_enum(
@@ -148,18 +126,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     // FIXME
-    pub(crate) fn implicitly_casted(
+    pub(crate) fn implicit_cast(
         &self,
         rvalue: InternalValue<'ctx>,
         target_type: InternalType<'ctx>,
     ) -> BasicValueEnum<'ctx> {
-        todo!();
-        // self.build_cast_expression_internal(rvalue, target_type, Location::default(), 0)
-        //     .into()
+        self.build_cast_expression_internal(rvalue, target_type, Location::default(), 0)
+            .to_basic_metadata()
+            .as_any_value_enum()
+            .try_into()
+            .unwrap()
     }
 
-    pub(crate) fn internal_value_as_rvalue(&self, any_value: InternalValue<'ctx>) -> InternalValue<'ctx> {
-        match any_value {
+    pub(crate) fn internal_value_as_rvalue(&self, internal_value: InternalValue<'ctx>) -> InternalValue<'ctx> {
+        match internal_value {
             InternalValue::IntValue(v, ty) => InternalValue::IntValue(v, ty),
             InternalValue::FloatValue(v, ty) => InternalValue::FloatValue(v, ty),
             InternalValue::ArrayValue(v, ty) => InternalValue::ArrayValue(v, ty),
@@ -180,7 +160,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 //     .try_into()
                 //     .unwrap()
             }
-            InternalValue::ImportedModuleValue(_) => unreachable!(),
+            InternalValue::ModuleValue(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot load ModuleValue as an rvalue.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
+            InternalValue::FunctionValue(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot load FunctionValue as an rvalue.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
         }
     }
 

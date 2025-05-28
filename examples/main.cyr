@@ -1,3 +1,5 @@
-fn main(): int32 {
-    #a = foo::bar(1, 2);
+extern fn sqrt(x: float64): float64;
+
+fn main() {
+    sqrt(16.0);
 }

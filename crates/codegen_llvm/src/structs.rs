@@ -122,9 +122,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         //     Some(metadata) => metadata.clone(),
         //     None => {
         //         // lookup in loaded modules
-        //         let (any_value, _) = self.build_module_import(Rc::clone(&scope), struct_name.clone());
-        //         match any_value {
-        //             InternalValue::ImportedModuleValue(imported_module_value) => {
+        //         let (internal_value, _) = self.build_module_import(Rc::clone(&scope), struct_name.clone());
+        //         match internal_value {
+        //             InternalValue::ModuleValue(imported_module_value) => {
         //                 match struct_name.segments.last().unwrap() {
         //                     ast::ast::ModuleSegment::SubModule(identifier) => {
         //                         match imported_module_value.metadata.imported_structs.get(&identifier.name) {

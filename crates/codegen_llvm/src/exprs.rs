@@ -2,7 +2,7 @@ use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     types::{InternalType, TypedPointerType},
-    values::{ImportedModuleValue, InternalValue, StringValue, TypedPointerValue},
+    values::{InternalValue, StringValue, TypedPointerValue},
 };
 use ast::{
     ast::*,
@@ -68,9 +68,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_address_of(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
-        let any_value = self.build_expr(Rc::clone(&scope), expr);
+        let internal_value = self.build_expr(Rc::clone(&scope), expr);
 
-        match any_value {
+        match internal_value {
             InternalValue::PointerValue(typed_pointer_value) => InternalValue::PointerValue(typed_pointer_value),
             _ => {
                 display_single_diag(Diag {
@@ -84,9 +84,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
-        let any_value = self.build_expr(Rc::clone(&scope), expr);
+        let internal_value = self.build_expr(Rc::clone(&scope), expr);
 
-        match any_value {
+        match internal_value {
             InternalValue::PointerValue(pointer_value) => {
                 let inner_ptr_value = self
                     .builder
@@ -176,7 +176,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     match self.find_loaded_module(module_identifier.clone()) {
                         Some(metadata) => {
-                            return InternalValue::ImportedModuleValue(ImportedModuleValue { metadata });
+                            return InternalValue::ModuleValue(metadata);
                         }
                         None => {
                             display_single_diag(Diag {
@@ -211,33 +211,36 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_load_lvalue(&self, scope: ScopeRef<'ctx>, module_import: ModuleImport) -> InternalValue<'ctx> {
-        match module_import.segments.first().unwrap() {
-            ModuleSegment::SubModule(identifier) => {
-                let binding = {
-                    match scope.borrow().get(identifier.name.clone()) {
-                        Some(record) => record,
-                        None => match self.find_loaded_module(identifier.name.clone()) {
-                            Some(metadata) => {
-                                return InternalValue::ImportedModuleValue(ImportedModuleValue { metadata });
-                            }
-                            None => {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),
-                                    location: None,
-                                });
-                                exit(1);
-                            }
-                        },
-                    }
-                };
+        let first_segment = module_import.segments.first().unwrap();
+        let ModuleSegment::SubModule(identifier) = first_segment;
 
-                let record = binding.borrow();
-                InternalValue::PointerValue(TypedPointerValue {
+        // If the module import has only one segment, we try to find the identifier in the current scope.
+        // If not found, we check if it's an imported module.
+        // If neither is found, we report an error.
+        if module_import.segments.len() == 1 {
+            // local variable
+            if let Some(record) = scope.borrow().get(identifier.name.clone()) {
+                let record = record.borrow();
+                return InternalValue::PointerValue(TypedPointerValue {
                     ptr: record.ptr.clone(),
                     pointee_ty: record.ty.clone(),
-                })
+                });
             }
+            // local function
+            else if let Some(func_metadata) = self.func_table.get(&identifier.name.clone()) {
+                return InternalValue::FunctionValue(func_metadata.clone());
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),
+                    location: None,
+                });
+                exit(1);
+            }
+        } else {
+            // TODO
+            // Implement module import
+            todo!();
         }
     }
 
@@ -310,9 +313,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         // FIXME
         todo!();
 
-        // let any_value = self.build_expr(Rc::clone(&scope), *array_index.expr);
+        // let internal_value = self.build_expr(Rc::clone(&scope), *array_index.expr);
 
-        // if let InternalValue::PointerValue(pointer_value) = any_value {
+        // if let InternalValue::PointerValue(pointer_value) = internal_value {
         //     if let InternalType::ArrayType(_) = pointer_value.pointee_ty {
         //         let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
 
@@ -657,10 +660,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_cast_expression(&self, scope: ScopeRef<'ctx>, cast: Cast) -> InternalValue<'ctx> {
-        let any_value = self.build_expr(Rc::clone(&scope), *cast.expr.clone());
+        let internal_value = self.build_expr(Rc::clone(&scope), *cast.expr.clone());
         let target_type = self.build_type(cast.target_type, cast.loc.clone(), cast.span.end);
 
-        self.build_cast_expression_internal(any_value, target_type, cast.loc.clone(), cast.span.end)
+        self.build_cast_expression_internal(internal_value, target_type, cast.loc.clone(), cast.span.end)
     }
 
     pub(crate) fn build_prefix_expr(

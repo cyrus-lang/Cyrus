@@ -173,8 +173,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> (PointerValue<'ctx>, InternalType<'ctx>) {
-        let any_type = self.build_type(var_type, loc.clone(), span_end);
-        match any_type {
+        let internal_type = self.build_type(var_type, loc.clone(), span_end);
+        match internal_type {
             InternalType::VectorType(_) => todo!(),
             InternalType::StructType(struct_type) => (
                 self.builder.build_alloca(struct_type, &var_name).unwrap(),

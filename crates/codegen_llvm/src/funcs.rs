@@ -302,97 +302,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // FIXME
-    // pub(crate) fn build_field_access_or_method_call(
-    //     &self,
-    //     scope: ScopeRef<'ctx>,
-    //     field_access_or_method_call: FieldAccessOrMethodCall,
-    // ) -> InternalValue<'ctx> {
-    //     let mut final_result = self.build_expr(Rc::clone(&scope), *field_access_or_method_call.expr);
-
-    //     for item in field_access_or_method_call.chains {
-    //         match item {
-    //             either::Either::Left(method_call) => {
-    //                 // here we get the function from "imported module value"
-    //                 // we call it, and assign the result into final_result and continue the process as you can see.
-    //                 if let InternalValue::ImportedModuleValue(ref imported_module_value) = final_result {
-    //                     if let Some(func_metadata) = imported_module_value
-    //                         .metadata
-    //                         .imported_funcs
-    //                         .get(&method_call.identifier.name.clone())
-    //                     {
-    //                         let mut new_method_call = method_call.clone();
-    //                         new_method_call.identifier.name = func_metadata.func_decl.name.clone();
-    //                         let call_site_value = self.build_func_call(Rc::clone(&scope), new_method_call);
-    //                         if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-    //                             final_result = InternalValue::try_from(basic_value).unwrap();
-    //                         }
-    //                     } else {
-    //                         display_single_diag(Diag {
-    //                             level: DiagLevel::Error,
-    //                             kind: DiagKind::Custom(format!(
-    //                                 "Function '{}' not defined in module '{}'.",
-    //                                 method_call.identifier.name, imported_module_value.metadata.identifier
-    //                             )),
-    //                             location: None,
-    //                         });
-    //                         exit(1);
-    //                     }
-    //                 } else {
-    //                     // ordinary value
-    //                     let call_site_value = self.build_func_call(Rc::clone(&scope), method_call);
-    //                     if let Some(basic_value) = call_site_value.try_as_basic_value().left() {
-    //                         final_result = InternalValue::try_from(basic_value).unwrap();
-    //                     }
-    //                 }
-    //             }
-    //             either::Either::Right(field_access) => {
-    //                 if let InternalValue::StructValue(struct_value) = final_result {
-    //                     let (struct_name, struct_metadata) = self.find_struct_by_type(
-    //                         struct_value.get_type(),
-    //                         field_access.loc.clone(),
-    //                         field_access.span.end,
-    //                     );
-
-    //                     match struct_metadata
-    //                         .fields
-    //                         .iter()
-    //                         .position(|f| f.name == field_access.identifier.name)
-    //                     {
-    //                         Some(field_idx) => {
-    //                             let basic_value = self
-    //                                 .builder
-    //                                 .build_extract_value(struct_value, field_idx.try_into().unwrap(), "extract")
-    //                                 .unwrap();
-    //                             final_result = basic_value.try_into().unwrap();
-    //                         }
-    //                         None => {
-    //                             display_single_diag(Diag {
-    //                                 level: DiagLevel::Error,
-    //                                 kind: DiagKind::Custom(format!(
-    //                                     "Undefined field '{}' for struct '{}'.",
-    //                                     field_access.identifier.name, struct_name,
-    //                                 )),
-    //                                 location: None,
-    //                             });
-    //                             exit(1);
-    //                         }
-    //                     }
-    //                 } else {
-    //                     display_single_diag(Diag {
-    //                         level: DiagLevel::Error,
-    //                         kind: DiagKind::Custom("Cannot build field access for non-struct values.".to_string()),
-    //                         location: None,
-    //                     });
-    //                     exit(1);
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     final_result
-    // }
-
     pub(crate) fn build_arguments(
         &self,
         scope: ScopeRef<'ctx>,
@@ -409,7 +318,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     // checked before through check_func_args_count_mismatch
                     if let Some(param) = params.list.get(idx) {
                         if let Some(target_type) = &param.ty {
-                            self.implicitly_casted(
+                            self.implicit_cast(
                                 rvalue,
                                 self.build_type(target_type.clone(), param.loc.clone(), param.span.end),
                             )
@@ -478,40 +387,46 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         func_call: FuncCall,
     ) -> (CallSiteValue<'ctx>, InternalType<'ctx>) {
-        // FIXME
-        todo!();
+        let expr = self.build_expr(Rc::clone(&scope), *func_call.operand.clone());
 
-        // let func_name = func_call.identifier.name.clone();
+        let func_metadata = {
+            match expr {
+                InternalValue::ModuleValue(imported_module_value) => {
+                    // TODO Lookup in func_table of the imported module
+                    todo!();
+                }
+                InternalValue::FunctionValue(func_metadata) => func_metadata,
+                _ => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Function call with invalid value as expr is not allowed.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: func_call.loc.line,
+                            column: func_call.loc.column,
+                            length: func_call.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            }
+        };
 
-        // if let Some(func_metadata) = self.func_table.get(&func_name.clone()) {
-        //     let arguments = &self.build_arguments(
-        //         Rc::clone(&scope),
-        //         func_call.arguments.clone(),
-        //         Some(func_metadata.func_decl.params.clone()),
-        //     );
+        let arguments = &self.build_arguments(
+            Rc::clone(&scope),
+            func_call.arguments.clone(),
+            Some(func_metadata.func_decl.params.clone()),
+        );
 
-        //     self.check_func_args_count_mismatch(
-        //         func_metadata.func_decl.name.clone(),
-        //         func_metadata.func_decl.clone(),
-        //         func_call.clone(),
-        //     );
+        self.check_func_args_count_mismatch(
+            func_metadata.func_decl.name.clone(),
+            func_metadata.func_decl.clone(),
+            func_call.clone(),
+        );
 
-        //     (
-        //         self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap(),
-        //         func_metadata.return_type.clone(),
-        //     )
-        // } else {
-        //     display_single_diag(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: DiagKind::FuncNotFound(func_name),
-        //         location: Some(DiagLoc {
-        //             file: self.file_path.clone(),
-        //             line: func_call.loc.line,
-        //             column: func_call.loc.column,
-        //             length: func_call.span.end,
-        //         }),
-        //     });
-        //     exit(1);
-        // }
+        (
+            self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap(),
+            func_metadata.return_type.clone(),
+        )
     }
 }

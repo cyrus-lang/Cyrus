@@ -20,7 +20,6 @@ pub enum DiagKind {
     FuncCallArgumentCountMismatch(String, i32, i32),
     TypeAnnotationRequiredForParam(String, String),
     LenCalledWithInvalidInput,
-
     Custom(String),
 }
 
@@ -61,7 +60,7 @@ impl fmt::Display for DiagKind {
             DiagKind::TypeAnnotationRequired => &format!("Type annotation required.",),
             DiagKind::InfixNonBasic => "Cannot build infix expression for non-basic value.",
             DiagKind::InvalidTokenAsArrayCapacity => "Invalid token given as array capacity.",
-            DiagKind::IdentifierNotDefined(value) => &format!("The '{}' not defined in this scope.", value),
+            DiagKind::IdentifierNotDefined(value) => &format!("The '{}' not found anywhere.", value),
             DiagKind::FuncNotFound(func_name) => &format!("Function '{}' not found in this module.", func_name),
             DiagKind::InconsistentArrayItemTypes => "Inconsistent array element types.",
             DiagKind::InvalidWildcard => "Wildcard cannot be used in the begging or middle of a module path.",
