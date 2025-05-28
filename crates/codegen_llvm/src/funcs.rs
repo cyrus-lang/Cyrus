@@ -2,11 +2,12 @@ use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
-use ast::ast::{Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, TypeSpecifier};
+use ast::ast::{Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, StorageClass, TypeSpecifier};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
+use inkwell::module::Linkage;
 use inkwell::types::FunctionType;
 use inkwell::values::{BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
 use std::cell::RefCell;
@@ -25,6 +26,17 @@ pub struct FuncMetadata<'a> {
 pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    fn build_func_linkage(&self, storage_class: StorageClass) -> Linkage {
+        match storage_class {
+            StorageClass::Extern => Linkage::External,
+            StorageClass::Public => Linkage::External,
+            StorageClass::Internal => Linkage::Private,
+            StorageClass::Inline => Linkage::Internal,
+            StorageClass::PublicInline => Linkage::LinkOnceODR,
+            StorageClass::PublicExtern => Linkage::Appending,
+        }
+    }
+
     pub(crate) fn build_func_params(
         &mut self,
         func_name: String,
@@ -85,7 +97,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let func_linkage = self.build_linkage(func_decl.storage_class.clone());
+        let func_linkage = self.build_func_linkage(func_decl.storage_class.clone());
         let func_ptr = self
             .module
             .borrow_mut()
@@ -150,7 +162,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let actual_func_name = format!("{}.{}", self.module_name, func_def.name.clone());
         func_decl.name = actual_func_name.clone();
 
-        let func_linkage = self.build_linkage(func_def.storage_class.clone());
+        let func_linkage = self.build_func_linkage(func_def.storage_class.clone());
         let func = self
             .module
             .borrow_mut()

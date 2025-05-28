@@ -238,9 +238,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
         } else {
-            // TODO
-            // Implement module import
-            todo!();
+            self.build_module_import(Rc::clone(&scope), module_import)
         }
     }
 

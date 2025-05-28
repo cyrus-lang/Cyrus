@@ -29,7 +29,6 @@ pub mod diag;
 mod enums;
 mod exprs;
 mod funcs;
-mod linkage;
 mod modules;
 pub mod opts;
 mod runtime;

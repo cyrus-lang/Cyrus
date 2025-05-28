@@ -1,5 +1,5 @@
 use crate::{
-    CodeGenLLVM, InternalType, StringType, diag::*, funcs::FuncMetadata, modules::ModuleMetadata, scope::ScopeRef,
+    CodeGenLLVM, InternalType, StringType, diag::*, funcs::FuncMetadata, modules::ModuleMetadata,
     types::TypedPointerType,
 };
 use ast::token::Location;
@@ -55,7 +55,7 @@ impl<'a> InternalValue<'a> {
                 });
                 exit(1);
             }
-            InternalValue::FunctionValue(func_metadata) => {
+            InternalValue::FunctionValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot convert FunctionValue to BasicMetadataValueEnum.".to_string()),
@@ -147,18 +147,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::VectorValue(v, ty) => InternalValue::VectorValue(v, ty),
             InternalValue::StringValue(v) => todo!(),
             InternalValue::PointerValue(typed_pointer_value) => {
-                // FIXME
-                todo!();
+                // typed_pointer_value.pointee_ty
+                
                 // let ptr_type = self.context.ptr_type(AddressSpace::default());
-                // self.builder
+                // let value = self.builder
                 //     .build_load(
                 //         typed_pointer_value.pointee_ty.to_basic_type(ptr_type),
                 //         typed_pointer_value.ptr,
                 //         "load",
                 //     )
                 //     .unwrap()
-                //     .try_into()
-                //     .unwrap()
+                // FIXME
+                todo!()
             }
             InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
