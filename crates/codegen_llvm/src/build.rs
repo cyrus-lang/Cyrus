@@ -168,6 +168,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         if let Some(output_path) = output_path {
             ensure_output_dir(Path::new(&output_path.clone()));
             let file_path = format!("{}/{}.asm", output_path, self.generate_output_file_name());
+
             if let Err(err) = self.target_machine.write_to_file(
                 &self.module.borrow_mut().deref_mut(),
                 FileType::Assembly,
@@ -183,7 +184,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom("Output directory must be specified to generate llvm-ir..".to_string()),
+                kind: DiagKind::Custom("Output directory must be specified to generate llvm-ir.".to_string()),
                 location: None,
             });
             exit(1);
@@ -191,15 +192,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn generate_executable_file(&self, output_path: Option<String>) {
-        let mut object_files: Vec<String>;
+        let object_files: Vec<String> = self.build_manifest.objects.values().cloned().collect();
+
         let output_path = {
             if let Some(path) = output_path {
-                // generate object file path and save it in system temp
-                let mut temp_path = env::temp_dir();
-                temp_path.push(format!("{}.o", generate_random_hex()));
-                let temp_path_str = temp_path.to_str().unwrap().to_string();
-                self.generate_object_file_internal(temp_path_str.clone());
-                object_files = vec![temp_path_str];
                 path
             } else {
                 if self.compiler_invoked_single {
@@ -212,8 +208,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 }
-
-                object_files = self.build_manifest.objects.values().cloned().collect();
 
                 ensure_output_dir(Path::new(OUTPUT_FILE_PATH));
                 format!("{}/{}", OUTPUT_FILE_PATH, {
@@ -233,21 +227,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 })
             }
         };
-        object_files.extend(self.internal_object_modules.clone());
 
         self.execute_linker(output_path, object_files, Vec::new());
     }
 
     fn generate_dynamic_library(&self, output_path: Option<String>) {
-        let mut object_files: Vec<String> = Vec::new();
+        let object_files: Vec<String> = self.build_manifest.objects.values().cloned().collect();
+
         let output_path = {
             if let Some(path) = output_path {
-                // generate object file path and save it in system temp
-                let mut temp_path = env::temp_dir();
-                temp_path.push(format!("{}.o", generate_random_hex()));
-                let temp_path_str = temp_path.to_str().unwrap().to_string();
-                self.generate_object_file_internal(temp_path_str.clone());
-                object_files.push(temp_path_str);
                 path
             } else {
                 display_single_diag(Diag {
@@ -260,7 +248,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
         };
-        object_files.extend(self.internal_object_modules.clone());
 
         ensure_output_dir(Path::new(&output_path.clone()));
         let output_path = format!(
@@ -270,9 +257,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             dylib_extension()
         );
 
-        self.execute_linker(output_path, object_files, vec![
-            "-fPIC".to_string()
-        ]);
+        self.execute_linker(output_path, object_files, vec!["-fPIC".to_string()]);
     }
 
     fn generate_object_file(&self, output_path: Option<String>) {
@@ -336,7 +321,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             let entry_block = self.context.append_basic_block(entry_point, "entry");
             self.builder.position_at_end(entry_block);
-            
+
             self.runtime_init_gc();
             self.builder.build_call(main_func_ptr, &[], "call_main").unwrap();
 

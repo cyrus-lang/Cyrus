@@ -64,7 +64,6 @@ pub struct CodeGenLLVM<'ctx> {
     string_type: StringType<'ctx>,
     loaded_modules: Vec<ModuleMetadata<'ctx>>,
     dependent_modules: HashMap<String, Vec<String>>,
-    internal_object_modules: Vec<String>,
     output_kind: OutputKind,
 }
 
@@ -107,7 +106,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             module_name: module_name.clone(),
             loaded_modules: Vec::new(),
             dependent_modules: HashMap::new(),
-            internal_object_modules: Vec::new(),
             output_kind,
         };
 

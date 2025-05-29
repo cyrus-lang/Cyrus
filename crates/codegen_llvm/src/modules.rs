@@ -191,7 +191,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             loaded_modules: Vec::new(),
             dependent_modules: HashMap::new(),
             output_kind: self.output_kind.clone(),
-            internal_object_modules: self.internal_object_modules.clone(),
         };
 
         // preventing entry_point of being in dependent_modules
@@ -213,6 +212,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         self.loaded_modules.push(module_metadata.clone());
+
         module_metadata
     }
 
@@ -224,10 +224,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 || metadata.func_decl.storage_class == StorageClass::PublicExtern
                 || metadata.func_decl.storage_class == StorageClass::PublicInline
             {
-                let func_value = self.build_func_decl(metadata.func_decl.clone());
-
                 let mut new_metadata = metadata.clone();
+                let func_value = self.build_func_decl(new_metadata.func_decl.clone());
                 new_metadata.ptr = func_value;
+
                 imported_funcs.insert(metadata.func_decl.renamed_as.clone().unwrap(), new_metadata);
             } else {
                 imported_funcs.insert(metadata.func_decl.renamed_as.clone().unwrap(), metadata.clone());
