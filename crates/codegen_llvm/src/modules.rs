@@ -237,8 +237,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         imported_funcs
     }
 
-    // TODO
-    // Implement import struct methods
+    // TODO Implement import struct methods
     fn build_imported_structs(&self, struct_table: StructTable<'ctx>) -> HashMap<String, StructMetadata<'ctx>> {
         let mut imported_structs: HashMap<String, StructMetadata> = HashMap::new();
 

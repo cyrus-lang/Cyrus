@@ -1,5 +1,8 @@
 use crate::CodeGenLLVM;
+use crate::InternalValue;
+use crate::StringValue;
 use crate::diag::*;
+use crate::values::TypedPointerValue;
 use ast::ast::ArrayCapacity;
 use ast::ast::TypeSpecifier;
 use ast::token::*;
@@ -57,6 +60,27 @@ impl<'a> TryFrom<BasicTypeEnum<'a>> for InternalType<'a> {
 }
 
 impl<'a> InternalType<'a> {
+    pub fn to_internal_value(
+        &self,
+        value: inkwell::values::BasicValueEnum<'a>,
+    ) -> Result<InternalValue<'a>, &'static str> {
+        match self {
+            InternalType::IntType(ty) => Ok(InternalValue::IntValue(value.into_int_value(), ty.clone())),
+            InternalType::FloatType(ty) => Ok(InternalValue::FloatValue(value.into_float_value(), ty.clone())),
+            InternalType::ArrayType(ty) => Ok(InternalValue::ArrayValue(value.into_array_value(), ty.clone())),
+            InternalType::StructType(ty) => Ok(InternalValue::StructValue(value.into_struct_value(), ty.clone())),
+            InternalType::VectorType(ty) => Ok(InternalValue::VectorValue(value.into_vector_value(), ty.clone())),
+            InternalType::StringType(_) => Ok(InternalValue::StringValue(StringValue {
+                struct_value: value.into_struct_value(),
+            })),
+            InternalType::PointerType(ptr_ty) => Ok(InternalValue::PointerValue(TypedPointerValue {
+                ptr: value.into_pointer_value(),
+                pointee_ty: ptr_ty.pointee_ty.clone(),
+            })),
+            InternalType::VoidType(_) => Err("Cannot convert VoidType to InternalValue."),
+        }
+    }
+
     pub fn is_int_type(&self) -> bool {
         matches!(self, InternalType::IntType(_))
     }
@@ -138,8 +162,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TypeSpecifier::ModuleImport(module_import) => todo!(),
             TypeSpecifier::Const(type_specifier) => todo!(),
             TypeSpecifier::AddressOf(type_specifier) => todo!(),
-            TypeSpecifier::Dereference(type_specifier) => {
-                let pointee_ty = self.build_type(*type_specifier, loc.clone(), span_end);
+            TypeSpecifier::Dereference(inner_type_specifier) => {
+                let pointee_ty = self.build_type(*inner_type_specifier, loc.clone(), span_end);
                 InternalType::PointerType(Box::new(TypedPointerType {
                     ptr_type: self.context.ptr_type(AddressSpace::default()).into(),
                     pointee_ty,

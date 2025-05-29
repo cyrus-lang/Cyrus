@@ -420,7 +420,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                     display_single_diag(Diag {
                                         level: DiagLevel::Error,
                                         kind: DiagKind::Custom(format!(
-                                            "Function '{}' defined locally and cannot bed called here. Consider to make it public and try again.",
+                                            "Function '{}' defined locally and cannot be called here. Consider to make it public and try again.",
                                             module_import_str
                                         )),
                                         location: Some(DiagLoc {

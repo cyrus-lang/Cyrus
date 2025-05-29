@@ -3,7 +3,6 @@ use ast::token::Location;
 use build::{BuildManifest, OutputKind};
 use diag::*;
 use funcs::FuncTable;
-use inkwell::OptimizationLevel;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -11,6 +10,7 @@ use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::values::{FunctionValue, PointerValue};
+use inkwell::{AddressSpace, OptimizationLevel};
 use modules::ModuleMetadata;
 use opts::Options;
 use scope::{Scope, ScopeRef};
@@ -171,48 +171,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         span_end: usize,
     ) -> (PointerValue<'ctx>, InternalType<'ctx>) {
         let internal_type = self.build_type(var_type, loc.clone(), span_end);
-        match internal_type {
-            InternalType::VectorType(_) => todo!(),
-            InternalType::StructType(struct_type) => (
-                self.builder.build_alloca(struct_type, &var_name).unwrap(),
-                InternalType::StructType(struct_type),
-            ),
-            InternalType::IntType(int_type) => (
-                self.builder.build_alloca(int_type, &var_name).unwrap(),
-                InternalType::IntType(int_type),
-            ),
-            InternalType::FloatType(float_type) => (
-                self.builder.build_alloca(float_type, &var_name).unwrap(),
-                InternalType::FloatType(float_type),
-            ),
-            InternalType::PointerType(typed_pointer) => (
-                self.builder.build_alloca(typed_pointer.ptr_type, &var_name).unwrap(),
-                typed_pointer.pointee_ty,
-            ),
-            InternalType::ArrayType(array_type) => (
-                self.builder.build_alloca(array_type, &var_name).unwrap(),
-                InternalType::ArrayType(array_type),
-            ),
-            InternalType::StringType(string_type) => (
-                self.builder.build_alloca(string_type.struct_type, &var_name).unwrap(),
-                InternalType::StringType(StringType {
-                    struct_type: string_type.struct_type,
-                }),
-            ),
-            _ => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot allocate memory for non-basic type.".to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-        }
+        let basic_type = internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default()));
+        let alloca = self.builder.build_alloca(basic_type, &var_name).unwrap();
+        (alloca, internal_type)
     }
 
     pub(crate) fn build_store(&self, ptr: PointerValue, value: InternalValue<'ctx>) {

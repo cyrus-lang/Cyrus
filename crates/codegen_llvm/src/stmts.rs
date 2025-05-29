@@ -25,7 +25,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
             Statement::Return(statement) => {
-                self.build_return(self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), statement.argument)));
+                self.build_return(
+                    self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), statement.argument)),
+                );
             }
             Statement::FuncDef(func_def) => {
                 if func_def.name == "main" {
@@ -182,17 +184,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_variable(&self, scope: ScopeRef<'ctx>, variable: Variable) {
         match variable.ty {
-            Some(var_type_token) => {
+            Some(type_specifier) => {
                 let (ptr, ty) = self.build_alloca(
-                    var_type_token,
+                    type_specifier,
                     variable.name.clone(),
                     variable.loc.clone(),
                     variable.span.end,
                 );
 
                 if let Some(expr) = variable.expr {
-                    let value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
-                    self.build_store(ptr, value);
+                    let rvalue = self.implicit_cast(
+                        self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr)),
+                        ty.clone(),
+                    );
+
+                    self.builder.build_store(ptr, rvalue).unwrap();
                 }
 
                 scope

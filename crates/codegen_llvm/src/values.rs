@@ -4,7 +4,7 @@ use crate::{
 };
 use ast::token::Location;
 use inkwell::{
-    FloatPredicate, IntPredicate,
+    AddressSpace, FloatPredicate, IntPredicate,
     types::{ArrayType, FloatType, IntType, StructType, VectorType},
     values::{
         AnyValue, ArrayValue, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue,
@@ -20,6 +20,7 @@ pub(crate) enum InternalValue<'a> {
     ArrayValue(ArrayValue<'a>, ArrayType<'a>),
     StructValue(StructValue<'a>, StructType<'a>),
     VectorValue(VectorValue<'a>, VectorType<'a>),
+    StrValue(PointerValue<'a>, ArrayType<'a>),
     StringValue(StringValue<'a>),
     PointerValue(TypedPointerValue<'a>),
     ModuleValue(ModuleMetadata<'a>),
@@ -47,6 +48,7 @@ impl<'a> InternalValue<'a> {
             InternalValue::VectorValue(v, ..) => BasicMetadataValueEnum::VectorValue(*v),
             InternalValue::StringValue(v) => BasicMetadataValueEnum::StructValue(v.struct_value),
             InternalValue::PointerValue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
+            InternalValue::StrValue(v, ..) => BasicMetadataValueEnum::PointerValue(*v),
             InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -76,6 +78,10 @@ impl<'a> InternalValue<'a> {
             InternalValue::PointerValue(v) => InternalType::PointerType(Box::new(TypedPointerType {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
+            })),
+            InternalValue::StrValue(ptr, ty) => InternalType::PointerType(Box::new(TypedPointerType {
+                ptr_type: ptr.get_type(),
+                pointee_ty: InternalType::ArrayType(ty.clone()),
             })),
             InternalValue::StringValue(_) => InternalType::StringType(string_type),
             InternalValue::ModuleValue(_) => {
@@ -125,7 +131,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // FIXME
     pub(crate) fn implicit_cast(
         &self,
         rvalue: InternalValue<'ctx>,
@@ -145,20 +150,33 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::ArrayValue(v, ty) => InternalValue::ArrayValue(v, ty),
             InternalValue::StructValue(v, ty) => InternalValue::StructValue(v, ty),
             InternalValue::VectorValue(v, ty) => InternalValue::VectorValue(v, ty),
-            InternalValue::StringValue(v) => todo!(),
+            InternalValue::StrValue(v, ty) => InternalValue::PointerValue(TypedPointerValue {
+                ptr: v,
+                pointee_ty: InternalType::ArrayType(ty),
+            }),
+            InternalValue::StringValue(v) => InternalValue::StringValue(v),
             InternalValue::PointerValue(typed_pointer_value) => {
-                // typed_pointer_value.pointee_ty
-                
-                // let ptr_type = self.context.ptr_type(AddressSpace::default());
-                // let value = self.builder
-                //     .build_load(
-                //         typed_pointer_value.pointee_ty.to_basic_type(ptr_type),
-                //         typed_pointer_value.ptr,
-                //         "load",
-                //     )
-                //     .unwrap()
-                // FIXME
-                todo!()
+                let ptr_type = self.context.ptr_type(AddressSpace::default());
+                let value = self
+                    .builder
+                    .build_load(
+                        typed_pointer_value.pointee_ty.to_basic_type(ptr_type),
+                        typed_pointer_value.ptr,
+                        "load",
+                    )
+                    .unwrap();
+
+                typed_pointer_value
+                    .pointee_ty
+                    .to_internal_value(value)
+                    .unwrap_or_else(|_| {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Failed to convert loaded value to InternalValue.".to_string()),
+                            location: None,
+                        });
+                        exit(1);
+                    })
             }
             InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
