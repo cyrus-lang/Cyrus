@@ -77,7 +77,10 @@ impl<'a> InternalType<'a> {
                 ptr: value.into_pointer_value(),
                 pointee_ty: ptr_ty.pointee_ty.clone(),
             })),
-            InternalType::VoidType(_) => Err("Cannot convert VoidType to InternalValue."),
+            InternalType::VoidType(ty) => Ok(InternalValue::PointerValue(TypedPointerValue {
+                ptr: value.into_pointer_value(),
+                pointee_ty: InternalType::VoidType(*ty),
+            })),
         }
     }
 

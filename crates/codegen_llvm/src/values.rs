@@ -169,7 +169,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 typed_pointer_value
                     .pointee_ty
                     .to_internal_value(value)
-                    .unwrap_or_else(|_| {
+                    .unwrap_or_else(|e| {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom("Failed to convert loaded value to InternalValue.".to_string()),
