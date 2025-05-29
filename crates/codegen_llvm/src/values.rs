@@ -122,12 +122,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::ArrayType(array_type) => InternalValue::ArrayValue(value.into_array_value(), array_type),
             InternalType::StructType(struct_type) => InternalValue::StructValue(value.into_struct_value(), struct_type),
             InternalType::VectorType(vector_type) => InternalValue::VectorValue(value.into_vector_value(), vector_type),
-            InternalType::StringType(string_type) => todo!(),
-            InternalType::VoidType(void_type) => todo!(),
+            InternalType::StringType(_) => InternalValue::StringValue(StringValue {
+                struct_value: value.into_struct_value(),
+            }),
             InternalType::PointerType(typed_pointer_type) => InternalValue::PointerValue(TypedPointerValue {
                 ptr: value.into_pointer_value(),
                 pointee_ty: typed_pointer_type.pointee_ty,
             }),
+            InternalType::VoidType(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot create InternalValue from VoidType.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
         }
     }
 
@@ -169,7 +178,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 typed_pointer_value
                     .pointee_ty
                     .to_internal_value(value)
-                    .unwrap_or_else(|e| {
+                    .unwrap_or_else(|_| {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom("Failed to convert loaded value to InternalValue.".to_string()),
