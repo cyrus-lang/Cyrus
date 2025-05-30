@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
-use types::{InternalType, StringType};
+use types::{InternalType, LvalueType, StringType};
 use utils::fs::file_stem;
 use utils::tui::tui_compiled;
 use values::{InternalValue, StringValue};
@@ -170,9 +170,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> (PointerValue<'ctx>, InternalType<'ctx>) {
-        let internal_type = self.build_type(var_type, loc.clone(), span_end);
-        let basic_type = internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default()));
-        let alloca = self.builder.build_alloca(basic_type, &var_name).unwrap();
+        let internal_type = self.build_type(var_type.clone(), loc.clone(), span_end);
+        let alloca = self
+            .builder
+            .build_alloca(
+                internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                &var_name,
+            )
+            .unwrap();
         (alloca, internal_type)
     }
 

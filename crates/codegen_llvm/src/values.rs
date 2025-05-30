@@ -25,11 +25,18 @@ pub(crate) enum InternalValue<'a> {
     PointerValue(TypedPointerValue<'a>),
     ModuleValue(ModuleMetadata<'a>),
     FunctionValue(FuncMetadata<'a>),
+    Lvalue(Lvalue<'a>),
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct StringValue<'a> {
     pub struct_value: StructValue<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Lvalue<'a> {
+    pub ptr: PointerValue<'a>,
+    pub pointee_ty: InternalType<'a>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +55,7 @@ impl<'a> InternalValue<'a> {
             InternalValue::VectorValue(v, ..) => BasicMetadataValueEnum::VectorValue(*v),
             InternalValue::StringValue(v) => BasicMetadataValueEnum::StructValue(v.struct_value),
             InternalValue::PointerValue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
+            InternalValue::Lvalue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
             InternalValue::StrValue(v, ..) => BasicMetadataValueEnum::PointerValue(*v),
             InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
@@ -76,6 +84,10 @@ impl<'a> InternalValue<'a> {
             InternalValue::StructValue(_, ty, ..) => InternalType::StructType(ty.clone()),
             InternalValue::VectorValue(_, ty, ..) => InternalType::VectorType(ty.clone()),
             InternalValue::PointerValue(v) => InternalType::PointerType(Box::new(TypedPointerType {
+                ptr_type: v.ptr.get_type(),
+                pointee_ty: v.pointee_ty.clone(),
+            })),
+            InternalValue::Lvalue(v) => InternalType::PointerType(Box::new(TypedPointerType {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
             })),
@@ -129,6 +141,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ptr: value.into_pointer_value(),
                 pointee_ty: typed_pointer_type.pointee_ty,
             }),
+            InternalType::Lvalue(typed_pointer_type) => InternalValue::Lvalue(Lvalue {
+                ptr: value.into_pointer_value(),
+                pointee_ty: typed_pointer_type.pointee_ty,
+            }),
             InternalType::VoidType(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -154,6 +170,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn internal_value_as_rvalue(&self, internal_value: InternalValue<'ctx>) -> InternalValue<'ctx> {
         match internal_value {
+            InternalValue::PointerValue(typed_pointer_value) => InternalValue::PointerValue(typed_pointer_value),
             InternalValue::IntValue(v, ty) => InternalValue::IntValue(v, ty),
             InternalValue::FloatValue(v, ty) => InternalValue::FloatValue(v, ty),
             InternalValue::ArrayValue(v, ty) => InternalValue::ArrayValue(v, ty),
@@ -164,7 +181,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 pointee_ty: InternalType::ArrayType(ty),
             }),
             InternalValue::StringValue(v) => InternalValue::StringValue(v),
-            InternalValue::PointerValue(typed_pointer_value) => {
+            InternalValue::Lvalue(typed_pointer_value) => {
                 let ptr_type = self.context.ptr_type(AddressSpace::default());
                 let value = self
                     .builder

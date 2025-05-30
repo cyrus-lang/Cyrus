@@ -1,3 +1,4 @@
+use crate::values::Lvalue;
 use crate::CodeGenLLVM;
 use crate::InternalValue;
 use crate::StringValue;
@@ -31,6 +32,13 @@ pub(crate) enum InternalType<'a> {
     StringType(StringType<'a>),
     VoidType(VoidType<'a>),
     PointerType(Box<TypedPointerType<'a>>),
+    Lvalue(Box<LvalueType<'a>>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LvalueType<'a> {
+    pub ptr_type: PointerType<'a>,
+    pub pointee_ty: InternalType<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +85,10 @@ impl<'a> InternalType<'a> {
                 ptr: value.into_pointer_value(),
                 pointee_ty: ptr_ty.pointee_ty.clone(),
             })),
+            InternalType::Lvalue(ptr_ty) => Ok(InternalValue::Lvalue(Lvalue {
+                ptr: value.into_pointer_value(),
+                pointee_ty: ptr_ty.pointee_ty.clone(),
+            })),
             InternalType::VoidType(ty) => Ok(InternalValue::PointerValue(TypedPointerValue {
                 ptr: value.into_pointer_value(),
                 pointee_ty: InternalType::VoidType(*ty),
@@ -84,26 +96,32 @@ impl<'a> InternalType<'a> {
         }
     }
 
+    #[allow(unused)]
     pub fn is_int_type(&self) -> bool {
         matches!(self, InternalType::IntType(_))
     }
 
+    #[allow(unused)]
     pub fn is_float_type(&self) -> bool {
         matches!(self, InternalType::FloatType(_))
     }
 
+    #[allow(unused)]
     pub fn is_array_type(&self) -> bool {
         matches!(self, InternalType::ArrayType(_))
     }
 
+    #[allow(unused)]
     pub fn is_struct_type(&self) -> bool {
         matches!(self, InternalType::StructType(_))
     }
 
+    #[allow(unused)]
     pub fn is_vector_type(&self) -> bool {
         matches!(self, InternalType::VectorType(_))
     }
 
+    #[allow(unused)]
     pub fn is_string_type(&self) -> bool {
         matches!(self, InternalType::StringType(_))
     }
@@ -112,6 +130,7 @@ impl<'a> InternalType<'a> {
         matches!(self, InternalType::VoidType(_))
     }
 
+    #[allow(unused)]
     pub fn is_pointer_type(&self) -> bool {
         matches!(self, InternalType::PointerType(_))
     }
@@ -124,6 +143,7 @@ impl<'a> InternalType<'a> {
             InternalType::StructType(t) => (*t).as_basic_type_enum(),
             InternalType::VectorType(t) => (*t).as_basic_type_enum(),
             InternalType::PointerType(t) => t.ptr_type.as_basic_type_enum(),
+            InternalType::Lvalue(t) => t.ptr_type.as_basic_type_enum(),
             InternalType::StringType(t) => (*t).struct_type.as_basic_type_enum(),
             InternalType::VoidType(_) => BasicTypeEnum::PointerType(ptr_type),
         }
@@ -137,6 +157,7 @@ impl<'a> InternalType<'a> {
             InternalType::StructType(t) => t.as_type_ref(),
             InternalType::VectorType(t) => t.as_type_ref(),
             InternalType::PointerType(t) => t.ptr_type.as_type_ref(),
+            InternalType::Lvalue(t) => t.ptr_type.as_type_ref(),
             InternalType::StringType(t) => t.struct_type.as_type_ref(),
             InternalType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).as_type_ref(),
         }

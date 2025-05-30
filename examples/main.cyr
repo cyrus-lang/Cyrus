@@ -1,7 +1,3 @@
-public fn sample(x: int32) {
-    
-}
-
 fn main() {
-    
+	#a: foo::Bar;
 }

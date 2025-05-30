@@ -2,7 +2,7 @@ use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     types::{InternalType, TypedPointerType},
-    values::{InternalValue, StringValue, TypedPointerValue},
+    values::{InternalValue, Lvalue, StringValue, TypedPointerValue},
 };
 use ast::{
     ast::*,
@@ -71,21 +71,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_address_of(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         let internal_value = self.build_expr(Rc::clone(&scope), expr);
 
-        match internal_value {
-            InternalValue::PointerValue(typed_pointer_value) => InternalValue::PointerValue(typed_pointer_value),
-            _ => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot take the address of an rvalue.".to_string()),
-                    location: None,
-                });
-                exit(1);
-            }
+        if let InternalValue::Lvalue(lvalue) = internal_value {
+            return InternalValue::PointerValue(TypedPointerValue {
+                ptr: lvalue.ptr,
+                pointee_ty: lvalue.pointee_ty,
+            });
         }
+
+        display_single_diag(Diag {
+            level: DiagLevel::Error,
+            kind: DiagKind::Custom("Cannot take the address of an rvalue.".to_string()),
+            location: None,
+        });
+        exit(1);
     }
 
     pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
-        let internal_value = self.build_expr(Rc::clone(&scope), expr);
+        let internal_value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
 
         match internal_value {
             InternalValue::PointerValue(pointer_value) => {
@@ -221,7 +223,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             // local variable
             if let Some(record) = scope.borrow().get(identifier.name.clone()) {
                 let record = record.borrow();
-                return InternalValue::PointerValue(TypedPointerValue {
+                return InternalValue::Lvalue(Lvalue {
                     ptr: record.ptr.clone(),
                     pointee_ty: record.ty.clone(),
                 });
@@ -254,6 +256,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
 
         if let InternalValue::PointerValue(pointer_value) = assign_to {
+            self.builder.build_store(pointer_value.ptr, rvalue).unwrap();
+        } else if let InternalValue::Lvalue(pointer_value) = assign_to {
             self.builder.build_store(pointer_value.ptr, rvalue).unwrap();
         } else {
             display_single_diag(Diag {
