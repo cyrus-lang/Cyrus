@@ -11,27 +11,24 @@ mod tests;
 
 macro_rules! single_char_token {
     ($self:ident, $kind:expr) => {{
+        let start = $self.pos;
         $self.read_char();
+
         Token {
             kind: $kind,
-            span: Span {
-                start: $self.pos - 1,
-                end: $self.pos - 1,
-            },
+            span: Span { start, end: $self.pos },
         }
     }};
 }
-
 macro_rules! double_char_token {
     ($self:ident, $first_char:expr, $second_char:expr, $kind:expr) => {{
+        let start = $self.pos;
         $self.read_char(); // consume first char
         $self.read_char(); // consume second char
+
         Token {
             kind: $kind,
-            span: Span {
-                start: $self.pos - 2,
-                end: $self.pos - 1,
-            },
+            span: Span { start, end: $self.pos },
         }
     }};
 }
@@ -163,7 +160,7 @@ impl Lexer {
             ',' => single_char_token!(self, TokenKind::Comma),
             '#' => single_char_token!(self, TokenKind::Hashtag),
             ';' => single_char_token!(self, TokenKind::Semicolon),
-            
+
             ':' => {
                 if self.peek_char() == ':' {
                     double_char_token!(self, ':', ':', TokenKind::DoubleColon)
@@ -171,7 +168,7 @@ impl Lexer {
                     single_char_token!(self, TokenKind::Colon)
                 }
             }
-            
+
             '.' => {
                 self.read_char();
                 if self.ch == '.' && self.peek_char() == '.' {
@@ -188,7 +185,7 @@ impl Lexer {
                     }
                 }
             }
-            
+
             '=' => {
                 if self.peek_char() == '=' {
                     double_char_token!(self, '=', '=', TokenKind::Equal)
@@ -196,7 +193,7 @@ impl Lexer {
                     single_char_token!(self, TokenKind::Assign)
                 }
             }
-            
+
             '!' => {
                 if self.peek_char() == '=' {
                     double_char_token!(self, '!', '=', TokenKind::NotEqual)
@@ -204,7 +201,7 @@ impl Lexer {
                     single_char_token!(self, TokenKind::Bang)
                 }
             }
-            
+
             '<' => {
                 if self.peek_char() == '=' {
                     double_char_token!(self, '<', '=', TokenKind::LessEqual)
@@ -212,7 +209,7 @@ impl Lexer {
                     single_char_token!(self, TokenKind::LessThan)
                 }
             }
-            
+
             '>' => {
                 if self.peek_char() == '=' {
                     double_char_token!(self, '>', '=', TokenKind::GreaterEqual)
@@ -220,7 +217,7 @@ impl Lexer {
                     single_char_token!(self, TokenKind::GreaterThan)
                 }
             }
-            
+
             '&' => {
                 if self.peek_char() == '&' {
                     double_char_token!(self, '&', '&', TokenKind::And)
@@ -228,7 +225,7 @@ impl Lexer {
                     single_char_token!(self, TokenKind::Ampersand)
                 }
             }
-            
+
             '|' => {
                 if self.peek_char() == '|' {
                     double_char_token!(self, '|', '|', TokenKind::Or)
@@ -236,10 +233,10 @@ impl Lexer {
                     single_char_token!(self, TokenKind::Pipe)
                 }
             }
-            
+
             '"' => return self.read_string(),
             '\'' => return self.read_char_literal(),
-            
+
             _ => {
                 if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_identifier();
@@ -263,11 +260,11 @@ impl Lexer {
 
     fn read_char_literal(&mut self) -> Token {
         let (value, start, end) = self.read_quoted('\'', LexicalErrorType::UnterminatedStringLiteral);
-        
+
         if value.len() != 1 {
             lexer_error!(self, LexicalErrorType::EmptyCharLiteral);
         }
-        
+
         Token {
             kind: TokenKind::Literal(Literal::Char(value.chars().next().unwrap())),
             span: Span { start, end },
@@ -285,36 +282,51 @@ impl Lexer {
     fn read_quoted(&mut self, quote_char: char, error_type: LexicalErrorType) -> (String, usize, usize) {
         let start = self.pos + 1;
         let mut value = String::new();
-    
+        self.read_char();
         loop {
-            self.read_char();
-            
             if self.ch == quote_char {
                 break;
             }
-            
+
+            if self.ch == '\\' {
+                self.read_char();
+                value.push(match self.ch {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '0' => '\0',
+                    '\\' => '\\',
+                    '\'' => '\'',
+                    '"' => '"',
+                    _ => {
+                        lexer_error!(self, LexicalErrorType::InvalidChar(self.ch));
+                    }
+                });
+                continue;
+            }
+
             if self.is_eof() {
                 lexer_error!(self, error_type);
             }
-            
+
             value.push(self.ch);
+            self.read_char();
         }
-    
+
         self.read_char(); // consume closing quote
         let end = self.pos;
-        
         (value, start - 1, end)
     }
 
     fn read_identifier(&mut self) -> Token {
         let start = self.pos;
         let mut ident = String::new();
-    
+
         while self.ch.is_alphanumeric() || self.ch == '_' {
             ident.push(self.ch);
             self.read_char();
         }
-    
+
         Token {
             kind: self.lookup_identifier(ident),
             span: Span { start, end: self.pos },
@@ -323,7 +335,7 @@ impl Lexer {
 
     fn read_number(&mut self) -> Token {
         let start = self.pos;
-        
+
         match (self.ch, self.peek_char().to_ascii_lowercase()) {
             ('0', 'x') => self.read_hex_number(start),
             ('0', 'b') => self.read_binary_number(start),
@@ -338,14 +350,14 @@ impl Lexer {
         self.read_char(); // consume '0'
         number.push(self.ch);
         self.read_char(); // consume 'o' or 'O'
-    
+
         while self.ch.is_digit(8) || self.ch == '_' {
             if self.ch != '_' {
                 number.push(self.ch);
             }
             self.read_char();
         }
-    
+
         match i64::from_str_radix(&number[2..], 8) {
             Ok(value) => Token {
                 kind: TokenKind::Literal(Literal::Integer(value)),
@@ -361,14 +373,14 @@ impl Lexer {
         self.read_char(); // consume '0'
         number.push(self.ch);
         self.read_char(); // consume 'b' or 'B'
-    
+
         while self.ch == '0' || self.ch == '1' || self.ch == '_' {
             if self.ch != '_' {
                 number.push(self.ch);
             }
             self.read_char();
         }
-    
+
         match i64::from_str_radix(&number[2..], 2) {
             Ok(value) => Token {
                 kind: TokenKind::Literal(Literal::Integer(value)),
@@ -384,14 +396,14 @@ impl Lexer {
         self.read_char(); // consume '0'
         number.push(self.ch);
         self.read_char(); // consume 'x' or 'X'
-    
+
         while self.ch.is_ascii_hexdigit() || self.ch == '_' {
             if self.ch != '_' {
                 number.push(self.ch);
             }
             self.read_char();
         }
-    
+
         match i64::from_str_radix(&number[2..], 16) {
             Ok(value) => Token {
                 kind: TokenKind::Literal(Literal::Integer(value)),
@@ -400,11 +412,11 @@ impl Lexer {
             Err(_) => self.number_parse_error(start),
         }
     }
-    
+
     fn read_decimal_number(&mut self, start: usize) -> Token {
         let mut number = String::new();
         let mut is_float = false;
-    
+
         // Integer part
         while self.ch.is_ascii_digit() || self.ch == '_' {
             if self.ch != '_' {
@@ -412,13 +424,13 @@ impl Lexer {
             }
             self.read_char();
         }
-    
+
         // Decimal part
         if self.ch == '.' && self.peek_char().is_ascii_digit() {
             is_float = true;
             number.push(self.ch);
             self.read_char();
-    
+
             while self.ch.is_ascii_digit() || self.ch == '_' {
                 if self.ch != '_' {
                     number.push(self.ch);
@@ -426,32 +438,32 @@ impl Lexer {
                 self.read_char();
             }
         }
-    
+
         // Exponent part
-        if (self.ch == 'e' || self.ch == 'E') && (self.peek_char().is_ascii_digit() || 
+        if (self.ch == 'e' || self.ch == 'E') && (self.peek_char().is_ascii_digit() ||
             (self.peek_char() == '+' || self.peek_char() == '-')) {
             is_float = true;
             number.push(self.ch);
             self.read_char();
-    
+
             if self.ch == '+' || self.ch == '-' {
                 number.push(self.ch);
                 self.read_char();
             }
-    
+
             while self.ch.is_ascii_digit() {
                 number.push(self.ch);
                 self.read_char();
             }
         }
-    
+
         // Suffixes
         if matches!(self.ch, 'f' | 'F' | 'l' | 'L') {
             is_float = matches!(self.ch, 'f' | 'F');
             number.push(self.ch);
             self.read_char();
         }
-    
+
         if is_float {
             match number.parse::<f64>() {
                 Ok(value) => Token {
@@ -470,7 +482,7 @@ impl Lexer {
             }
         }
     }
-    
+
     fn number_parse_error(&self, start: usize) -> ! {
         CompileTimeError {
             location: Location {
@@ -495,8 +507,8 @@ impl Lexer {
         ch.is_ascii_digit()
     }
 
-    fn is_eof(&mut self) -> bool {
-        self.pos == self.input.len()
+    fn is_eof(&self) -> bool {
+        self.pos >= self.input.len()
     }
 
     fn is_whitespace(ch: char) -> bool {
@@ -532,20 +544,18 @@ impl Lexer {
                 // Handle single-line comment
                 self.read_char();
                 self.read_char();
-    
+
                 while !self.is_eof() && self.ch != '\n' {
                     self.read_char();
                 }
-                
+
                 // Consume the newline character, if present
                 if !self.is_eof() && self.ch == '\n' {
                     self.read_char();
                 }
             } else if self.peek_char() == '*' {
-                // Handle multi-line comment
                 self.read_char();
                 self.read_char();
-    
                 while !self.is_eof() {
                     if self.ch == '*' && self.peek_char() == '/' {
                         self.read_char();
@@ -554,13 +564,14 @@ impl Lexer {
                     }
                     self.read_char();
                 }
-                
-                // Skip any trailing newlines after the comment
+                if self.is_eof() && !(self.ch == '*' && self.peek_char() == '/') {
+                    lexer_error!(self, LexicalErrorType::UnterminatedMultiLineComment);
+                }
                 while !self.is_eof() && self.ch == '\n' {
                     self.read_char();
                 }
             }
-            
+
             // Skip whitespace to advance to the next valid character
             // self.skip_whitespace();
         }
