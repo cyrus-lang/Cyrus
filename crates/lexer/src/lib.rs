@@ -9,6 +9,51 @@ mod diag;
 mod format;
 mod tests;
 
+macro_rules! single_char_token {
+    ($self:ident, $kind:expr) => {{
+        $self.read_char();
+        Token {
+            kind: $kind,
+            span: Span {
+                start: $self.pos - 1,
+                end: $self.pos - 1,
+            },
+        }
+    }};
+}
+
+macro_rules! double_char_token {
+    ($self:ident, $first_char:expr, $second_char:expr, $kind:expr) => {{
+        $self.read_char(); // consume first char
+        $self.read_char(); // consume second char
+        Token {
+            kind: $kind,
+            span: Span {
+                start: $self.pos - 2,
+                end: $self.pos - 1,
+            },
+        }
+    }};
+}
+
+macro_rules! lexer_error {
+    ($self:ident, $error_type:expr) => {{
+        CompileTimeError {
+            location: Location {
+                line: $self.line,
+                column: $self.column,
+            },
+            source_content: Box::new($self.input.clone()),
+            etype: $error_type,
+            verbose: None,
+            caret: true,
+            file_name: Some($self.file_name.clone()),
+        }
+        .print();
+        exit(1);
+    }};
+}
+
 #[derive(Debug, Clone)]
 pub struct Lexer {
     pos: usize,
@@ -78,8 +123,7 @@ impl Lexer {
     }
 
     pub fn next_token(&mut self) -> Token {
-        self.skip_whitespace();
-        self.skip_comments();
+        self.skip_whitespace_and_comments();
 
         if self.ch == '\0' {
             return Token {
@@ -91,242 +135,111 @@ impl Lexer {
             };
         }
 
-        let token_kind: TokenKind = match self.ch {
-            ' ' => return self.next_token(),
-            '`' => TokenKind::BackTick,
+        let token = match self.ch {
+            '`' => single_char_token!(self, TokenKind::BackTick),
             '+' => {
                 if self.peek_char() == '+' {
-                    self.read_char();
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::Increment,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                    };
+                    double_char_token!(self, '+', '+', TokenKind::Increment)
                 } else {
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::Plus,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
+                    single_char_token!(self, TokenKind::Plus)
                 }
             }
             '-' => {
                 if self.peek_char() == '-' {
-                    self.read_char();
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::Decrement,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                    };
+                    double_char_token!(self, '-', '-', TokenKind::Decrement)
                 } else {
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::Minus,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
+                    single_char_token!(self, TokenKind::Minus)
                 }
             }
-            '*' => TokenKind::Asterisk,
-            '/' => TokenKind::Slash,
-            '%' => TokenKind::Percent,
-            '(' => TokenKind::LeftParen,
-            ')' => TokenKind::RightParen,
-            '{' => TokenKind::LeftBrace,
-            '}' => TokenKind::RightBrace,
-            '[' => TokenKind::LeftBracket,
-            ']' => TokenKind::RightBracket,
+            '*' => single_char_token!(self, TokenKind::Asterisk),
+            '/' => single_char_token!(self, TokenKind::Slash),
+            '%' => single_char_token!(self, TokenKind::Percent),
+            '(' => single_char_token!(self, TokenKind::LeftParen),
+            ')' => single_char_token!(self, TokenKind::RightParen),
+            '{' => single_char_token!(self, TokenKind::LeftBrace),
+            '}' => single_char_token!(self, TokenKind::RightBrace),
+            '[' => single_char_token!(self, TokenKind::LeftBracket),
+            ']' => single_char_token!(self, TokenKind::RightBracket),
+            ',' => single_char_token!(self, TokenKind::Comma),
+            '#' => single_char_token!(self, TokenKind::Hashtag),
+            ';' => single_char_token!(self, TokenKind::Semicolon),
+            
             ':' => {
-                self.read_char();
-                if self.ch == ':' {
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::DoubleColon,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                    };
+                if self.peek_char() == ':' {
+                    double_char_token!(self, ':', ':', TokenKind::DoubleColon)
                 } else {
-                    return Token {
-                        kind: TokenKind::Colon,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
+                    single_char_token!(self, TokenKind::Colon)
                 }
             }
-            ',' => TokenKind::Comma,
+            
             '.' => {
                 self.read_char();
-
-                let mut kind = TokenKind::Dot;
-
                 if self.ch == '.' && self.peek_char() == '.' {
-                    self.read_char();
-                    self.read_char();
-                    kind = TokenKind::TripleDot;
+                    double_char_token!(self, '.', '.', TokenKind::TripleDot)
                 } else if self.ch == '.' {
-                    self.read_char();
-                    kind = TokenKind::DoubleDot;
+                    single_char_token!(self, TokenKind::DoubleDot)
+                } else {
+                    Token {
+                        kind: TokenKind::Dot,
+                        span: Span {
+                            start: self.pos - 1,
+                            end: self.pos - 1,
+                        },
+                    }
                 }
-
-                return Token {
-                    kind,
-                    span: Span {
-                        start: self.pos - 1,
-                        end: self.pos - 1,
-                    },
-                };
             }
-            '#' => TokenKind::Hashtag,
-            '"' => return self.read_string(),
-            '\'' => return self.read_char_literal(),
+            
             '=' => {
                 if self.peek_char() == '=' {
-                    self.read_char(); // consume current equal sign
-                    self.read_char(); // consume peeked equal sign
-                    return Token {
-                        kind: TokenKind::Equal,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                    };
+                    double_char_token!(self, '=', '=', TokenKind::Equal)
                 } else {
-                    self.read_char(); // consume current equal sign
-                    return Token {
-                        kind: TokenKind::Assign,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
+                    single_char_token!(self, TokenKind::Assign)
                 }
             }
+            
             '!' => {
                 if self.peek_char() == '=' {
-                    self.read_char();
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::NotEqual,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                    };
+                    double_char_token!(self, '!', '=', TokenKind::NotEqual)
                 } else {
-                    self.read_char(); // consume current equal sign
-                    return Token {
-                        kind: TokenKind::Bang,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
+                    single_char_token!(self, TokenKind::Bang)
                 }
             }
+            
             '<' => {
                 if self.peek_char() == '=' {
-                    self.read_char();
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::LessEqual,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                    };
+                    double_char_token!(self, '<', '=', TokenKind::LessEqual)
                 } else {
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::LessThan,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
+                    single_char_token!(self, TokenKind::LessThan)
                 }
             }
+            
             '>' => {
                 if self.peek_char() == '=' {
-                    self.read_char();
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::GreaterEqual,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                    };
+                    double_char_token!(self, '>', '=', TokenKind::GreaterEqual)
                 } else {
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::GreaterThan,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
+                    single_char_token!(self, TokenKind::GreaterThan)
                 }
             }
+            
             '&' => {
                 if self.peek_char() == '&' {
-                    self.read_char();
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::And,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                    };
+                    double_char_token!(self, '&', '&', TokenKind::And)
                 } else {
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::Ampersand,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
+                    single_char_token!(self, TokenKind::Ampersand)
                 }
             }
+            
             '|' => {
                 if self.peek_char() == '|' {
-                    self.read_char();
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::Or,
-                        span: Span {
-                            start: self.pos - 2,
-                            end: self.pos - 1,
-                        },
-                    };
+                    double_char_token!(self, '|', '|', TokenKind::Or)
                 } else {
-                    self.read_char();
-                    return Token {
-                        kind: TokenKind::Pipe,
-                        span: Span {
-                            start: self.pos - 1,
-                            end: self.pos - 1,
-                        },
-                    };
+                    single_char_token!(self, TokenKind::Pipe)
                 }
             }
-            ';' => TokenKind::Semicolon,
+            
+            '"' => return self.read_string(),
+            '\'' => return self.read_char_literal(),
+            
             _ => {
                 if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_identifier();
@@ -345,272 +258,237 @@ impl Lexer {
             }
         };
 
-        self.read_char();
-
-        Token {
-            kind: token_kind,
-            span: Span {
-                start: self.pos - 1,
-                end: self.pos - 1,
-            },
-        }
+        token
     }
 
     fn read_char_literal(&mut self) -> Token {
-        let start: usize = self.pos + 1;
-
-        let mut final_char: Option<char> = None;
-
-        loop {
-            self.read_char();
-
-            if self.ch == '\'' {
-                break;
-            }
-
-            final_char = Some(self.ch);
-
-            if self.is_eof() {
-                CompileTimeError {
-                    location: Location {
-                        line: self.line,
-                        column: self.column,
-                    },
-                    source_content: Box::new(self.input.clone()),
-                    etype: LexicalErrorType::UnterminatedStringLiteral,
-                    verbose: None,
-                    caret: true,
-                    file_name: Some(self.file_name.clone()),
-                }
-                .print();
-                exit(1);
-            }
+        let (value, start, end) = self.read_quoted('\'', LexicalErrorType::UnterminatedStringLiteral);
+        
+        if value.len() != 1 {
+            lexer_error!(self, LexicalErrorType::EmptyCharLiteral);
         }
-
-        if self.ch == '\'' {
-            // consume the ending single quote
-            self.read_char();
-        }
-
-        let end = self.pos;
-
-        let span = Span { start: start - 1, end };
-
-        if let Some(value) = final_char {
-            Token {
-                kind: TokenKind::Literal(Literal::Char(value)),
-                span,
-            }
-        } else {
-            CompileTimeError {
-                location: Location {
-                    line: self.line,
-                    column: self.column,
-                },
-                source_content: Box::new(self.input.clone()),
-                etype: LexicalErrorType::EmptyCharLiteral,
-                verbose: None,
-                caret: true,
-                file_name: Some(self.file_name.clone()),
-            }
-            .print();
-            exit(1);
+        
+        Token {
+            kind: TokenKind::Literal(Literal::Char(value.chars().next().unwrap())),
+            span: Span { start, end },
         }
     }
 
     fn read_string(&mut self) -> Token {
-        let start: usize = self.pos + 1;
+        let (value, start, end) = self.read_quoted('"', LexicalErrorType::UnterminatedStringLiteral);
+        Token {
+            kind: TokenKind::Literal(Literal::String(value)),
+            span: Span { start, end },
+        }
+    }
 
-        let mut final_string = String::new();
-
+    fn read_quoted(&mut self, quote_char: char, error_type: LexicalErrorType) -> (String, usize, usize) {
+        let start = self.pos + 1;
+        let mut value = String::new();
+    
         loop {
             self.read_char();
-
-            if self.ch == '"' {
+            
+            if self.ch == quote_char {
                 break;
             }
-
-            final_string.push(self.ch);
-
+            
             if self.is_eof() {
-                CompileTimeError {
-                    location: Location {
-                        line: self.line,
-                        column: self.column,
-                    },
-                    source_content: Box::new(self.input.clone()),
-                    etype: LexicalErrorType::UnterminatedStringLiteral,
-                    verbose: None,
-                    caret: true,
-                    file_name: Some(self.file_name.clone()),
-                }
-                .print();
-                exit(1);
+                lexer_error!(self, error_type);
             }
+            
+            value.push(self.ch);
         }
-
-        if self.ch == '"' {
-            // consume the ending double quote
-            self.read_char();
-        }
-
+    
+        self.read_char(); // consume closing quote
         let end = self.pos;
-
-        let span = Span { start: start - 1, end };
-
-        Token {
-            kind: TokenKind::Literal(Literal::String(final_string)),
-            span,
-        }
+        
+        (value, start - 1, end)
     }
 
     fn read_identifier(&mut self) -> Token {
         let start = self.pos;
-
-        let mut final_identifier = String::new();
-
+        let mut ident = String::new();
+    
         while self.ch.is_alphanumeric() || self.ch == '_' {
-            final_identifier.push(self.ch);
+            ident.push(self.ch);
             self.read_char();
         }
-
-        let end = self.pos;
-
-        let token_kind = self.lookup_identifier(final_identifier);
-
+    
         Token {
-            kind: token_kind,
-            span: Span { start, end },
+            kind: self.lookup_identifier(ident),
+            span: Span { start, end: self.pos },
         }
     }
 
     fn read_number(&mut self) -> Token {
         let start = self.pos;
+        
+        match (self.ch, self.peek_char().to_ascii_lowercase()) {
+            ('0', 'x') => self.read_hex_number(start),
+            ('0', 'b') => self.read_binary_number(start),
+            ('0', 'o') => self.read_octal_number(start),
+            _ => self.read_decimal_number(start),
+        }
+    }
+
+    fn read_octal_number(&mut self, start: usize) -> Token {
+        let mut number = String::new();
+        number.push('0');
+        self.read_char(); // consume '0'
+        number.push(self.ch);
+        self.read_char(); // consume 'o' or 'O'
+    
+        while self.ch.is_digit(8) || self.ch == '_' {
+            if self.ch != '_' {
+                number.push(self.ch);
+            }
+            self.read_char();
+        }
+    
+        match i64::from_str_radix(&number[2..], 8) {
+            Ok(value) => Token {
+                kind: TokenKind::Literal(Literal::Integer(value)),
+                span: Span { start, end: self.pos },
+            },
+            Err(_) => self.number_parse_error(start),
+        }
+    }
+
+    fn read_binary_number(&mut self, start: usize) -> Token {
+        let mut number = String::new();
+        number.push('0');
+        self.read_char(); // consume '0'
+        number.push(self.ch);
+        self.read_char(); // consume 'b' or 'B'
+    
+        while self.ch == '0' || self.ch == '1' || self.ch == '_' {
+            if self.ch != '_' {
+                number.push(self.ch);
+            }
+            self.read_char();
+        }
+    
+        match i64::from_str_radix(&number[2..], 2) {
+            Ok(value) => Token {
+                kind: TokenKind::Literal(Literal::Integer(value)),
+                span: Span { start, end: self.pos },
+            },
+            Err(_) => self.number_parse_error(start),
+        }
+    }
+
+    fn read_hex_number(&mut self, start: usize) -> Token {
+        let mut number = String::new();
+        number.push('0');
+        self.read_char(); // consume '0'
+        number.push(self.ch);
+        self.read_char(); // consume 'x' or 'X'
+    
+        while self.ch.is_ascii_hexdigit() || self.ch == '_' {
+            if self.ch != '_' {
+                number.push(self.ch);
+            }
+            self.read_char();
+        }
+    
+        match i64::from_str_radix(&number[2..], 16) {
+            Ok(value) => Token {
+                kind: TokenKind::Literal(Literal::Integer(value)),
+                span: Span { start, end: self.pos },
+            },
+            Err(_) => self.number_parse_error(start),
+        }
+    }
+    
+    fn read_decimal_number(&mut self, start: usize) -> Token {
         let mut number = String::new();
         let mut is_float = false;
-
-        // hexadecimal literals
-        let token_kind = if self.ch == '0' && (self.peek_char().to_ascii_lowercase() == 'x') {
-            number.push('0');
-            self.read_char(); // consume '0'
+    
+        // Integer part
+        while self.ch.is_ascii_digit() || self.ch == '_' {
+            if self.ch != '_' {
+                number.push(self.ch);
+            }
+            self.read_char();
+        }
+    
+        // Decimal part
+        if self.ch == '.' && self.peek_char().is_ascii_digit() {
+            is_float = true;
             number.push(self.ch);
-            self.read_char(); // consume 'x' or 'X'
-
-            while self.ch.is_ascii_hexdigit() || self.ch == '_' {
-                if self.ch != '_' {
-                    number.push(self.ch);
-                }
-                self.read_char();
-            }
-
-            match i64::from_str_radix(&number[2..], 16) {
-                Ok(value) => TokenKind::Literal(Literal::Integer(value)),
-                Err(_) => {
-                    CompileTimeError {
-                        location: Location {
-                            line: self.line,
-                            column: self.column,
-                        },
-                        source_content: Box::new(self.input.clone()),
-                        etype: LexicalErrorType::InvalidIntegerLiteral,
-                        verbose: None,
-                        caret: true,
-                        file_name: Some(self.file_name.clone()),
-                    }
-                    .print();
-                    exit(1);
-                }
-            }
-        } else {
-            // Match leading digits (optional)
+            self.read_char();
+    
             while self.ch.is_ascii_digit() || self.ch == '_' {
                 if self.ch != '_' {
                     number.push(self.ch);
                 }
                 self.read_char();
             }
-
-            // Decimal point and fractional part
-            if self.ch == '.' && self.peek_char().is_ascii_digit() {
-                is_float = true;
-                number.push(self.ch);
-                self.read_char();
-
-                while self.ch.is_ascii_digit() || self.ch == '_' {
-                    if self.ch != '_' {
-                        number.push(self.ch);
-                    }
-                    self.read_char();
-                }
-            }
-
-            // Exponent part (e.g., e+10, E-5)
-            if self.ch == 'e' || self.ch == 'E' {
-                is_float = true;
-                number.push(self.ch);
-                self.read_char();
-
-                if self.ch == '+' || self.ch == '-' {
-                    number.push(self.ch);
-                    self.read_char();
-                }
-
-                while self.ch.is_ascii_digit() {
-                    number.push(self.ch);
-                    self.read_char();
-                }
-            }
-
-            if matches!(self.ch, 'f' | 'F' | 'l' | 'L') {
-                number.push(self.ch);
-                self.read_char();
-            }
-
-            if is_float {
-                match number.parse::<f64>() {
-                    Ok(value) => TokenKind::Literal(Literal::Float(value)),
-                    Err(_) => {
-                        CompileTimeError {
-                            location: Location {
-                                line: self.line,
-                                column: self.column,
-                            },
-                            source_content: Box::new(self.input.clone()),
-                            etype: LexicalErrorType::InvalidFloatLiteral,
-                            verbose: None,
-                            caret: true,
-                            file_name: Some(self.file_name.clone()),
-                        }
-                        .print();
-                        exit(1);
-                    }
-                }
-            } else {
-                match number.parse::<i64>() {
-                    Ok(value) => TokenKind::Literal(Literal::Integer(value)),
-                    Err(_) => {
-                        CompileTimeError {
-                            location: Location {
-                                line: self.line,
-                                column: self.column,
-                            },
-                            source_content: Box::new(self.input.clone()),
-                            etype: LexicalErrorType::InvalidIntegerLiteral,
-                            verbose: None,
-                            caret: true,
-                            file_name: Some(self.file_name.clone()),
-                        }
-                        .print();
-                        exit(1);
-                    }
-                }
-            }
-        };
-
-        Token {
-            kind: token_kind,
-            span: Span { start, end: self.pos },
         }
+    
+        // Exponent part
+        if (self.ch == 'e' || self.ch == 'E') && (self.peek_char().is_ascii_digit() || 
+            (self.peek_char() == '+' || self.peek_char() == '-')) {
+            is_float = true;
+            number.push(self.ch);
+            self.read_char();
+    
+            if self.ch == '+' || self.ch == '-' {
+                number.push(self.ch);
+                self.read_char();
+            }
+    
+            while self.ch.is_ascii_digit() {
+                number.push(self.ch);
+                self.read_char();
+            }
+        }
+    
+        // Suffixes
+        if matches!(self.ch, 'f' | 'F' | 'l' | 'L') {
+            is_float = matches!(self.ch, 'f' | 'F');
+            number.push(self.ch);
+            self.read_char();
+        }
+    
+        if is_float {
+            match number.parse::<f64>() {
+                Ok(value) => Token {
+                    kind: TokenKind::Literal(Literal::Float(value)),
+                    span: Span { start, end: self.pos },
+                },
+                Err(_) => self.number_parse_error(start),
+            }
+        } else {
+            match number.parse::<i64>() {
+                Ok(value) => Token {
+                    kind: TokenKind::Literal(Literal::Integer(value)),
+                    span: Span { start, end: self.pos },
+                },
+                Err(_) => self.number_parse_error(start),
+            }
+        }
+    }
+    
+    fn number_parse_error(&self, start: usize) -> ! {
+        CompileTimeError {
+            location: Location {
+                line: self.line,
+                column: self.column,
+            },
+            source_content: Box::new(self.input.clone()),
+            etype: if start == self.pos {
+                LexicalErrorType::InvalidIntegerLiteral
+            } else {
+                LexicalErrorType::InvalidFloatLiteral
+            },
+            verbose: None,
+            caret: true,
+            file_name: Some(self.file_name.clone()),
+        }
+        .print();
+        exit(1);
     }
 
     fn is_numeric(&self, ch: char) -> bool {
@@ -684,7 +562,18 @@ impl Lexer {
             }
             
             // Skip whitespace to advance to the next valid character
+            // self.skip_whitespace();
+        }
+    }
+
+    fn skip_whitespace_and_comments(&mut self) {
+        loop {
             self.skip_whitespace();
+            let start = self.pos;
+            self.skip_comments();
+            if self.pos == start {
+                break;
+            }
         }
     }
 
