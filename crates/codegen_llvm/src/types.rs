@@ -1,8 +1,8 @@
-use crate::values::Lvalue;
 use crate::CodeGenLLVM;
 use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
+use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
 use ast::ast::ArrayCapacity;
 use ast::ast::TypeSpecifier;
@@ -32,6 +32,8 @@ pub(crate) enum InternalType<'a> {
     StringType(StringType<'a>),
     VoidType(VoidType<'a>),
     PointerType(Box<TypedPointerType<'a>>),
+    ConstType(Box<InternalType<'a>>),
+    #[allow(unused)]
     Lvalue(Box<LvalueType<'a>>),
 }
 
@@ -93,6 +95,7 @@ impl<'a> InternalType<'a> {
                 ptr: value.into_pointer_value(),
                 pointee_ty: InternalType::VoidType(*ty),
             })),
+            InternalType::ConstType(internal_type) => internal_type.to_internal_value(value),
         }
     }
 
@@ -146,6 +149,7 @@ impl<'a> InternalType<'a> {
             InternalType::Lvalue(t) => t.ptr_type.as_basic_type_enum(),
             InternalType::StringType(t) => (*t).struct_type.as_basic_type_enum(),
             InternalType::VoidType(_) => BasicTypeEnum::PointerType(ptr_type),
+            InternalType::ConstType(t) => t.to_basic_type(ptr_type),
         }
     }
 
@@ -160,6 +164,7 @@ impl<'a> InternalType<'a> {
             InternalType::Lvalue(t) => t.ptr_type.as_type_ref(),
             InternalType::StringType(t) => t.struct_type.as_type_ref(),
             InternalType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).as_type_ref(),
+            InternalType::ConstType(internal_type) => internal_type.as_type_ref(),
         }
     }
 }
@@ -182,9 +187,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         span_end: usize,
     ) -> InternalType<'ctx> {
         match type_specifier {
+            TypeSpecifier::Const(inner_type_specifier) => {
+                InternalType::ConstType(Box::new(self.build_type(*inner_type_specifier, loc, span_end)))
+            }
             TypeSpecifier::Identifier(identifier) => todo!(),
             TypeSpecifier::ModuleImport(module_import) => todo!(),
-            TypeSpecifier::Const(type_specifier) => todo!(),
             TypeSpecifier::AddressOf(type_specifier) => todo!(),
             TypeSpecifier::Dereference(inner_type_specifier) => {
                 let pointee_ty = self.build_type(*inner_type_specifier, loc.clone(), span_end);

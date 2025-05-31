@@ -10,14 +10,12 @@ use ast::{
 };
 use inkwell::{
     AddressSpace,
-    types::{BasicMetadataTypeEnum, BasicType},
-    values::{AnyValue, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    values::{AnyValue, FloatValue, IntValue, PointerValue},
 };
 use std::{
     ops::{Deref, DerefMut},
     process::exit,
     rc::Rc,
-    string,
 };
 use utils::purify_string::unescape_string;
 
@@ -91,18 +89,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         match internal_value {
             InternalValue::PointerValue(pointer_value) => {
-                let inner_ptr_value = self
-                    .builder
-                    .build_load(
-                        self.context.ptr_type(AddressSpace::default()),
-                        pointer_value.ptr,
-                        "deref",
-                    )
-                    .unwrap()
-                    .into_pointer_value();
-
-                InternalValue::PointerValue(TypedPointerValue {
-                    ptr: inner_ptr_value,
+                InternalValue::Lvalue(Lvalue {
+                    ptr: pointer_value.ptr,
                     pointee_ty: pointer_value.pointee_ty,
                 })
             }
@@ -246,26 +234,50 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
         let assign_to = self.build_expr(Rc::clone(&scope), assignment.assign_to);
-        let internal_type = self
-            .internal_value_as_rvalue(assign_to.clone())
-            .get_type(self.string_type.clone());
 
-        let rvalue = self.implicit_cast(
-            self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), assignment.expr)),
-            internal_type,
-        );
+        match assign_to {
+            InternalValue::PointerValue(typed_pointer_value) => {
+                if let InternalType::ConstType(_) = typed_pointer_value.pointee_ty {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Cannot assign to a constant lvalue.".to_string()),
+                        location: None,
+                    });
+                    exit(1);
+                }
 
-        if let InternalValue::PointerValue(pointer_value) = assign_to {
-            self.builder.build_store(pointer_value.ptr, rvalue).unwrap();
-        } else if let InternalValue::Lvalue(pointer_value) = assign_to {
-            self.builder.build_store(pointer_value.ptr, rvalue).unwrap();
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Cannot store value in non-pointer allocation.".to_string()),
-                location: None,
-            });
-            exit(1);
+                let rvalue = self.implicit_cast(
+                    self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), assignment.expr)),
+                    typed_pointer_value.pointee_ty,
+                );
+
+                self.builder.build_store(typed_pointer_value.ptr, rvalue).unwrap();
+            }
+            InternalValue::Lvalue(lvalue) => {
+                if let InternalType::ConstType(_) = lvalue.pointee_ty {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Cannot assign to a constant lvalue.".to_string()),
+                        location: None,
+                    });
+                    exit(1);
+                }
+
+                let rvalue = self.implicit_cast(
+                    self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), assignment.expr)),
+                    lvalue.pointee_ty,
+                );
+
+                self.builder.build_store(lvalue.ptr, rvalue).unwrap();
+            }
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot assign to a non-pointer value.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
         }
     }
 
@@ -460,6 +472,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         .unwrap(),
                     float_type,
                 ),
+                InternalType::ConstType(inner_type) => {
+                    self.build_cast_expression_internal(internal_value, *inner_type, loc, span_end)
+                }
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -485,6 +500,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder.build_float_cast(float_value, float_type, "cast").unwrap(),
                     float_type,
                 ),
+                InternalType::ConstType(inner_type) => {
+                    self.build_cast_expression_internal(internal_value, *inner_type, loc, span_end)
+                }
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -559,6 +577,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         pointee_ty: typed_pointer_type.pointee_ty,
                     })
                 }
+                InternalType::ConstType(inner_type) => {
+                    self.build_cast_expression_internal(internal_value, *inner_type, loc, span_end)
+                }
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -576,6 +597,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::StringValue(string_value) => match target_type {
                 InternalType::PointerType(typed_pointer_type) => match &typed_pointer_type.pointee_ty {
                     InternalType::IntType(_) => self.build_load_string(string_value.clone()),
+                    InternalType::ConstType(inner_type) => {
+                        self.build_cast_expression_internal(internal_value, *inner_type.clone(), loc, span_end)
+                    }
                     _ => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,

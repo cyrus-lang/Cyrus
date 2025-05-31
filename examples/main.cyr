@@ -1,3 +1,7 @@
+extern fn printf(v: char*, ...void*);
+
 fn main() {
-	#a: foo::Bar;
+	#a = 0;
+
+	printf("Value: %d\n", a);
 }

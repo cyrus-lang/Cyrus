@@ -1,4 +1,4 @@
-use crate::{diag::*, InternalType};
+use crate::diag::*;
 use crate::scope::ScopeRecord;
 use crate::structs::StructMetadata;
 use crate::{CodeGenLLVM, scope::ScopeRef};
@@ -195,7 +195,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 if let Some(expr) = variable.expr {
                     let rvalue = self.implicit_cast(
                         self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr)),
-                        self.build_type(type_specifier, variable.loc.clone(), variable.span.end)
+                        self.build_type(type_specifier, variable.loc.clone(), variable.span.end),
                     );
 
                     self.builder.build_store(ptr, rvalue).unwrap();

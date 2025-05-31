@@ -153,6 +153,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
+            InternalType::ConstType(_) => unimplemented!(),
         }
     }
 

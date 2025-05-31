@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
-use types::{InternalType, LvalueType, StringType};
+use types::{InternalType, StringType};
 use utils::fs::file_stem;
 use utils::tui::tui_compiled;
 use values::{InternalValue, StringValue};
