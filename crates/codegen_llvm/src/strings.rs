@@ -1,15 +1,16 @@
-use inkwell::values::BasicValueEnum;
+use inkwell::{AddressSpace, context::Context};
 
-use crate::{CodeGenLLVM, InternalType, InternalValue, StringValue, values::TypedPointerValue};
+use crate::{CodeGenLLVM, InternalType, InternalValue, StringType, StringValue, values::TypedPointerValue};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_string(&self, buffer_ptr: BasicValueEnum<'ctx>, len: u64) -> InternalValue<'ctx> {
-        InternalValue::StringValue(StringValue {
-            struct_value: self.string_type.struct_type.const_named_struct(&[
-                buffer_ptr,
-                BasicValueEnum::IntValue(self.context.i64_type().const_int(len, false)),
-            ]),
-        })
+    pub(crate) fn build_string_type(context: &'ctx Context) -> StringType<'ctx> {
+        let i8_ptr_type = context.ptr_type(AddressSpace::default());
+        let i64_type = context.i64_type();
+
+        let struct_type = context.opaque_struct_type("str");
+        struct_type.set_body(&[i8_ptr_type.into(), i64_type.into()], false);
+
+        StringType { struct_type }
     }
 
     pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> InternalValue<'ctx> {

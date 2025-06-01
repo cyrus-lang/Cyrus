@@ -50,8 +50,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         params
             .iter()
             .map(|param| {
-                if let Some(param_type_token) = &param.ty {
-                    self.build_type(param_type_token.clone(), func_loc.clone(), span_end)
+                if let Some(type_specifier) = &param.ty {
+                    if let TypeSpecifier::TypeToken(type_token) = type_specifier.clone() {
+                        if type_token.kind == TokenKind::Void {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom("Cannot declare a func param with 'void' type.".to_string()),
+                                location: None,
+                            });
+                            exit(1);
+                        }
+                    }
+
+                    self.build_type(type_specifier.clone(), func_loc.clone(), span_end)
                         .as_type_ref()
                 } else {
                     display_single_diag(Diag {

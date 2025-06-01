@@ -88,12 +88,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let internal_value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
 
         match internal_value {
-            InternalValue::PointerValue(pointer_value) => {
-                InternalValue::Lvalue(Lvalue {
-                    ptr: pointer_value.ptr,
-                    pointee_ty: pointer_value.pointee_ty,
-                })
-            }
+            InternalValue::PointerValue(pointer_value) => InternalValue::Lvalue(Lvalue {
+                ptr: pointer_value.ptr,
+                pointee_ty: pointer_value.pointee_ty,
+            }),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -234,8 +232,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
         let assign_to = self.build_expr(Rc::clone(&scope), assignment.assign_to);
+        let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), assignment.expr));
 
-        match assign_to {
+        match assign_to.clone() {
             InternalValue::PointerValue(typed_pointer_value) => {
                 if let InternalType::ConstType(_) = typed_pointer_value.pointee_ty {
                     display_single_diag(Diag {
@@ -246,12 +245,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                let rvalue = self.implicit_cast(
-                    self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), assignment.expr)),
-                    typed_pointer_value.pointee_ty,
-                );
-
-                self.builder.build_store(typed_pointer_value.ptr, rvalue).unwrap();
+                if !self.compatible_types(
+                    typed_pointer_value.pointee_ty.clone(),
+                    rvalue.get_type(self.string_type.clone()),
+                ) {
+                    // FIXME We need accurate type name tracking here
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Cannot assign value of type '{}' to lvalue of type '{}'.",
+                            typed_pointer_value
+                                .pointee_ty
+                                .to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                            rvalue
+                                .get_type(self.string_type.clone())
+                                .to_basic_type(self.context.ptr_type(AddressSpace::default()))
+                        )),
+                        location: None,
+                    });
+                    exit(1);
+                };
+                let final_rvalue = self.implicit_cast(rvalue, typed_pointer_value.pointee_ty);
+                self.builder.build_store(typed_pointer_value.ptr, final_rvalue).unwrap();
             }
             InternalValue::Lvalue(lvalue) => {
                 if let InternalType::ConstType(_) = lvalue.pointee_ty {
@@ -263,12 +278,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                let rvalue = self.implicit_cast(
-                    self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), assignment.expr)),
-                    lvalue.pointee_ty,
-                );
-
-                self.builder.build_store(lvalue.ptr, rvalue).unwrap();
+                if !self.compatible_types(lvalue.pointee_ty.clone(), rvalue.get_type(self.string_type.clone())) {
+                    // FIXME We need accurate type name tracking here
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Cannot assign value of type {} to lvalue of type {}.",
+                            lvalue
+                                .pointee_ty
+                                .clone()
+                                .to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                            rvalue
+                                .get_type(self.string_type.clone())
+                                .to_basic_type(self.context.ptr_type(AddressSpace::default()))
+                        )),
+                        location: None,
+                    });
+                    exit(1);
+                };
+                let final_rvalue = self.implicit_cast(rvalue, lvalue.pointee_ty);
+                self.builder.build_store(lvalue.ptr, final_rvalue).unwrap();
             }
             _ => {
                 display_single_diag(Diag {
@@ -647,6 +676,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_cast_expression(&self, scope: ScopeRef<'ctx>, cast: Cast) -> InternalValue<'ctx> {
         let internal_value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *cast.expr.clone()));
         let target_type = self.build_type(cast.target_type, cast.loc.clone(), cast.span.end);
+
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        if !self.compatible_types(target_type.clone(), internal_value.get_type(self.string_type.clone())) {
+            // FIXME We need accurate type name tracking here
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Cannot assign value of type '{}' to lvalue of type '{}'.",
+                    internal_value.get_type(self.string_type.clone()).to_basic_type(ptr_type),
+                    target_type.to_basic_type(ptr_type)
+                )),
+                location: None,
+            });
+            exit(1);
+        };
 
         self.build_cast_expression_internal(internal_value, target_type, cast.loc.clone(), cast.span.end)
     }

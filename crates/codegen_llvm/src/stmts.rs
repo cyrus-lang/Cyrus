@@ -2,7 +2,8 @@ use crate::diag::*;
 use crate::scope::ScopeRecord;
 use crate::structs::StructMetadata;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use ast::ast::{If, Statement, Variable};
+use ast::ast::{If, Statement, TypeSpecifier, Variable};
+use ast::token::TokenKind;
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
 use std::process::exit;
@@ -185,6 +186,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_variable(&self, scope: ScopeRef<'ctx>, variable: Variable) {
         match variable.ty {
             Some(type_specifier) => {
+                if let TypeSpecifier::TypeToken(type_token) = type_specifier.clone() {
+                    if type_token.kind == TokenKind::Void {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Cannot declare a variable with 'void' type.".to_string()),
+                            location: None,
+                        });
+                        exit(1);
+                    }
+                }
+
                 let (ptr, ty) = self.build_alloca(
                     type_specifier.clone(),
                     variable.name.clone(),
@@ -193,12 +205,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 );
 
                 if let Some(expr) = variable.expr {
-                    let rvalue = self.implicit_cast(
-                        self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr)),
+                    let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
+
+                    if !self.compatible_types(ty.clone(), rvalue.get_type(self.string_type.clone())) {
+                        // FIXME We need accurate type name tracking here
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(format!(
+                                "Cannot assign value of type '{}' to lvalue of type '{}'.",
+                                ty.to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                                rvalue
+                                    .get_type(self.string_type.clone())
+                                    .to_basic_type(self.context.ptr_type(AddressSpace::default()))
+                            )),
+                            location: None,
+                        });
+                        exit(1);
+                    };
+
+                    let final_rvalue = self.implicit_cast(
+                        rvalue,
                         self.build_type(type_specifier, variable.loc.clone(), variable.span.end),
                     );
 
-                    self.builder.build_store(ptr, rvalue).unwrap();
+                    self.builder.build_store(ptr, final_rvalue).unwrap();
                 }
 
                 scope
@@ -207,8 +237,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             None => {
                 if let Some(expr) = variable.expr {
-                    let value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
-                    let var_type = value.get_type(self.string_type.clone());
+                    let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
+                    let var_type = rvalue.get_type(self.string_type.clone());
+
                     let ptr = self
                         .builder
                         .build_alloca(
@@ -217,7 +248,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         )
                         .unwrap();
 
-                    self.build_store(ptr, value);
+                    self.build_store(ptr, rvalue);
 
                     scope
                         .borrow_mut()

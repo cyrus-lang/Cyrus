@@ -20,6 +20,7 @@ use inkwell::types::PointerType;
 use inkwell::types::StructType;
 use inkwell::types::VectorType;
 use inkwell::types::VoidType;
+use std::fmt;
 use std::process::exit;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -169,15 +170,47 @@ impl<'a> InternalType<'a> {
     }
 }
 
+// TODO
+// impl<'a> fmt::Display for InternalType<'a> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         match self {
+//             InternalType::IntType(int_type) => {
+//                 match int_type.get_bit_width() {
+//                     1 => write!(f, "bool"),
+//                     8 => write!(f, "i8"),
+//                     16 => write!(f, "i16"),
+//                     32 => write!(f, "i32"),
+//                     64 => write!(f, "i64"),
+//                     128 => write!(f, "i128"),
+//                 }
+//             },
+//             InternalType::FloatType(float_type) => todo!(),
+//             InternalType::ArrayType(array_type) => todo!(),
+//             InternalType::StructType(struct_type) => todo!(),
+//             InternalType::VectorType(vector_type) => todo!(),
+//             InternalType::StringType(string_type) => todo!(),
+//             InternalType::VoidType(void_type) => todo!(),
+//             InternalType::PointerType(typed_pointer_type) => todo!(),
+//             InternalType::ConstType(internal_type) => todo!(),
+//             InternalType::Lvalue(lvalue_type) => todo!(),
+//         }
+//     }
+// }
+
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_string_type(context: &'ctx Context) -> StringType<'ctx> {
-        let i8_ptr_type = context.ptr_type(AddressSpace::default());
-        let i64_type = context.i64_type();
-
-        let struct_type = context.opaque_struct_type("str");
-        struct_type.set_body(&[i8_ptr_type.into(), i64_type.into()], false);
-
-        StringType { struct_type }
+    pub(crate) fn compatible_types(&self, lvalue_type: InternalType<'ctx>, rvalue_type: InternalType<'ctx>) -> bool {
+        match (lvalue_type, rvalue_type) {
+            (InternalType::IntType(_), InternalType::IntType(_)) => true,
+            (InternalType::FloatType(_), InternalType::FloatType(_)) => true,
+            (InternalType::FloatType(_), InternalType::IntType(_)) => true,
+            (InternalType::IntType(_), InternalType::FloatType(_)) => true,
+            (InternalType::PointerType(_), InternalType::PointerType(_)) => true,
+            (InternalType::StructType(_), InternalType::StructType(_)) => true,
+            (InternalType::VectorType(_), InternalType::VectorType(_)) => true,
+            (InternalType::StringType(_), InternalType::StringType(_)) => true,
+            (InternalType::VoidType(_), _) => false,
+            _ => false,
+        }
     }
 
     pub(crate) fn build_type(
