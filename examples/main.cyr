@@ -1,5 +1,3 @@
 fn main() {
 	#a: foo::Bar;
-    // sdsd
-    /* ddd */
 }
