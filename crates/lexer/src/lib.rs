@@ -117,6 +117,8 @@ impl Lexer {
         } else {
             self.column += 1;
         }
+
+        println!("read_char: ch={}, pos={}, line={}, column={}", self.ch, self.pos, self.line, self.column);
     }
 
     pub fn next_token(&mut self) -> Token {
@@ -254,6 +256,7 @@ impl Lexer {
                 }
             }
         };
+        println!("Token: kind={:?}, span={:?}, line={}, column={}", token.kind, token.span, self.line, self.column);
 
         token
     }
@@ -541,39 +544,30 @@ impl Lexer {
     fn skip_comments(&mut self) {
         while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
             if self.peek_char() == '/' {
-                // Handle single-line comment
-                self.read_char();
-                self.read_char();
+                self.read_char(); // consume '/'
+                self.read_char(); // consume second '/'
 
-                while !self.is_eof() && self.ch != '\n' {
-                    self.read_char();
-                }
+                while !self.is_eof() && self.ch != '\n' { self.read_char(); } // Properly track line and column in single-line comment
 
-                // Consume the newline character, if present
-                if !self.is_eof() && self.ch == '\n' {
-                    self.read_char();
-                }
+                if !self.is_eof() && self.ch == '\n' { self.read_char(); } // Consume newline and update line/column
+
             } else if self.peek_char() == '*' {
-                self.read_char();
-                self.read_char();
+                self.read_char(); // consume '/'
+                self.read_char(); // consume '*'
+
                 while !self.is_eof() {
                     if self.ch == '*' && self.peek_char() == '/' {
-                        self.read_char();
-                        self.read_char();
+                        self.read_char(); // consume '*'
+                        self.read_char(); // consume '/'
                         break;
                     }
-                    self.read_char();
+                    self.read_char(); // Track line and column in multi-line comment
                 }
+
                 if self.is_eof() && !(self.ch == '*' && self.peek_char() == '/') {
                     lexer_error!(self, LexicalErrorType::UnterminatedMultiLineComment);
                 }
-                while !self.is_eof() && self.ch == '\n' {
-                    self.read_char();
-                }
             }
-
-            // Skip whitespace to advance to the next valid character
-            // self.skip_whitespace();
         }
     }
 
