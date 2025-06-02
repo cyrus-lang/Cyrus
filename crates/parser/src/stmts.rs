@@ -366,7 +366,7 @@ impl<'a> Parser<'a> {
     pub fn parse_func_params(&mut self) -> Result<FuncParams, ParseError> {
         self.expect_current(TokenKind::LeftParen)?;
 
-        let mut variadic: Option<TypeSpecifier> = None;
+        let mut variadic: Option<FuncVariadicParams> = None;
         let mut list: Vec<FuncParam> = Vec::new();
 
         while self.current_token.kind != TokenKind::RightParen {
@@ -374,25 +374,22 @@ impl<'a> Parser<'a> {
                 TokenKind::TripleDot => {
                     self.next_token(); // consume triple_dot
 
-                    let variadic_data_type = self.parse_type_specifier()?;
-                    self.next_token();
-
-                    variadic = Some(variadic_data_type);
-
                     if self.current_token_is(TokenKind::Comma) {
                         return Err(CompileTimeError {
                             location: self.current_location(),
                             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
-                            verbose: Some(String::from("Define all parameters before the variadic argument.")),
+                            verbose: Some(String::from("Fixed parameters must be defined before the vargs.")),
                             caret: false,
                         });
-                    } else {
-                        break;
                     }
+
+                    variadic = Some(FuncVariadicParams::UntypedCStyle);
+                    break;
                 }
                 TokenKind::Identifier { name } => {
+                    let identifier = self.parse_identifier()?;
                     self.next_token(); // consume the identifier
 
                     let start = self.current_token.span.start;
@@ -403,8 +400,18 @@ impl<'a> Parser<'a> {
                     if self.current_token_is(TokenKind::Colon) {
                         self.next_token(); // consume the colon
 
-                        var_type = Some(self.parse_type_specifier()?);
-                        self.next_token();
+                        if self.current_token_is(TokenKind::TripleDot) {
+                            self.next_token(); // consume triple dot
+
+                            let variadic_data_type = self.parse_type_specifier()?;
+                            self.next_token();
+
+                            variadic = Some(FuncVariadicParams::Typed(identifier, variadic_data_type));
+                            continue;
+                        } else {
+                            var_type = Some(self.parse_type_specifier()?);
+                            self.next_token();
+                        }
                     }
 
                     let mut default_value: Option<Expression> = None;
@@ -916,7 +923,7 @@ impl<'a> Parser<'a> {
                         caret: true,
                     });
                 }
-                
+
                 self.expect_current(TokenKind::LeftParen)?;
                 let (condition, _) = self.parse_expression(Precedence::Lowest)?;
                 self.next_token(); // consume last token of the expression

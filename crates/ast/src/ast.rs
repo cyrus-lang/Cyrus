@@ -381,7 +381,13 @@ pub struct FuncParam {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncParams {
     pub list: Vec<FuncParam>,
-    pub variadic: Option<TypeSpecifier>,
+    pub variadic: Option<FuncVariadicParams>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FuncVariadicParams {
+    UntypedCStyle,
+    Typed(Identifier, TypeSpecifier),
 }
 
 #[derive(Debug, Clone, PartialEq)]

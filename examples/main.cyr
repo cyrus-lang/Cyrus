@@ -1,7 +1,5 @@
-extern fn printf(v: char*, ...void*);
+extern fn printf(v: char*, list: ...void*);
 
 fn main() {
-	#a = 0;
-
-	printf("Value: %d\n", a);
+	
 }
