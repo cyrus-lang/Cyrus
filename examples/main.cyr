@@ -1,5 +1,5 @@
-extern fn printf(v: char*, list: ...void*);
-
 fn main() {
+	#a: int[] = int[]{1, 2, 3};
+
 	
 }

@@ -2,7 +2,7 @@ use ::diag::errors::CompileTimeError;
 use ast::ast::Literal;
 use ast::token::*;
 use core::panic;
-use diag::{LexicalErrorType, lexer_invalid_char_error, lexer_unknown_char_error};
+use diag::{LexicalErrorType, lexer_invalid_char_error};
 use std::{fmt::Debug, ops::Range, process::exit};
 
 mod diag;
@@ -654,11 +654,11 @@ impl Lexer {
                 // Handle single-line comment
                 self.read_char();
                 self.read_char();
-    
+
                 while !self.is_eof() && self.ch != '\n' {
                     self.read_char();
                 }
-                
+
                 // Consume the newline character, if present
                 if !self.is_eof() && self.ch == '\n' {
                     self.read_char();
@@ -667,7 +667,7 @@ impl Lexer {
                 // Handle multi-line comment
                 self.read_char();
                 self.read_char();
-    
+
                 while !self.is_eof() {
                     if self.ch == '*' && self.peek_char() == '/' {
                         self.read_char();
@@ -676,13 +676,13 @@ impl Lexer {
                     }
                     self.read_char();
                 }
-                
+
                 // Skip any trailing newlines after the comment
                 while !self.is_eof() && self.ch == '\n' {
                     self.read_char();
                 }
             }
-            
+
             // Skip whitespace to advance to the next valid character
             self.skip_whitespace();
         }
@@ -747,5 +747,20 @@ impl Iterator for Lexer {
         }
 
         Some(token)
+    }
+}
+
+pub fn new_lexer_debugger(input: String) {
+    let mut lexer = Lexer::new(input, "debug.cyr".to_string());
+    loop {
+        let token = lexer.next_token();
+        if token.kind == TokenKind::EOF {
+            break;
+        }
+
+        println!(
+            "{:?} Span({}, {}) Line({})",
+            token.kind, token.span.start, token.span.end, lexer.line
+        );
     }
 }
