@@ -1,11 +1,12 @@
-use crate::diag::*;
 use crate::scope::ScopeRecord;
 use crate::structs::StructMetadata;
 use crate::{CodeGenLLVM, scope::ScopeRef};
+use crate::{InternalType, InternalValue, diag::*};
 use ast::ast::{If, Statement, TypeSpecifier, Variable};
 use ast::token::TokenKind;
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
+use inkwell::values::{AnyValue, BasicValueEnum};
 use std::process::exit;
 use std::rc::Rc;
 
@@ -213,10 +214,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(format!(
                                 "Cannot assign value of type '{}' to lvalue of type '{}'.",
-                                ty.to_basic_type(self.context.ptr_type(AddressSpace::default())),
                                 rvalue
                                     .get_type(self.string_type.clone())
-                                    .to_basic_type(self.context.ptr_type(AddressSpace::default()))
+                                    .to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                                ty.to_basic_type(self.context.ptr_type(AddressSpace::default())),
                             )),
                             location: None,
                         });
@@ -228,6 +229,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         self.build_type(type_specifier, variable.loc.clone(), variable.span.end),
                     );
 
+                    self.builder.build_store(ptr, final_rvalue).unwrap();
+                } else if ty.is_const_type() && variable.expr.is_none() {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Variable '{}' is declared as constant but has no initializer.",
+                            variable.name
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: variable.loc.line,
+                            column: variable.loc.column,
+                            length: variable.span.end,
+                        }),
+                    });
+                    exit(1);
+                } else {
+                    let zero_init = self.build_zero_initialized_internal_value(ty.clone());
+                    let final_rvalue: BasicValueEnum =
+                        zero_init.to_basic_metadata().as_any_value_enum().try_into().unwrap();
                     self.builder.build_store(ptr, final_rvalue).unwrap();
                 }
 

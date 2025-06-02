@@ -123,6 +123,24 @@ impl<'a> From<TypedPointerValue<'a>> for InternalValue<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn build_zero_initialized_internal_value(&self, value_type: InternalType<'ctx>) -> InternalValue<'ctx> {
+        match value_type {
+            InternalType::IntType(int_type) => InternalValue::IntValue(int_type.const_zero(), int_type),
+            InternalType::FloatType(float_type) => InternalValue::FloatValue(float_type.const_zero(), float_type),
+            InternalType::ArrayType(array_type) => InternalValue::ArrayValue(array_type.const_zero(), array_type),
+            InternalType::StructType(struct_type) => InternalValue::StructValue(struct_type.const_zero(), struct_type),
+            InternalType::VectorType(vector_type) => InternalValue::VectorValue(vector_type.const_zero(), vector_type),
+            InternalType::StringType(_) => self.build_zeroinit_string(),
+            InternalType::PointerType(typed_pointer_type) => InternalValue::PointerValue(TypedPointerValue {
+                ptr: typed_pointer_type.ptr_type.const_zero(),
+                pointee_ty: typed_pointer_type.pointee_ty,
+            }),
+            InternalType::ConstType(_) => unreachable!(),
+            InternalType::Lvalue(_) => unreachable!(),
+            InternalType::VoidType(_) => unreachable!(),
+        }
+    }
+
     pub(crate) fn new_internal_value_from_basic_value_enum(
         &self,
         value: BasicValueEnum<'ctx>,

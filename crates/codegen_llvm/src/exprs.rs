@@ -254,12 +254,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
                             "Cannot assign value of type '{}' to lvalue of type '{}'.",
+                            rvalue
+                                .get_type(self.string_type.clone())
+                                .to_basic_type(self.context.ptr_type(AddressSpace::default())),
                             typed_pointer_value
                                 .pointee_ty
                                 .to_basic_type(self.context.ptr_type(AddressSpace::default())),
-                            rvalue
-                                .get_type(self.string_type.clone())
-                                .to_basic_type(self.context.ptr_type(AddressSpace::default()))
                         )),
                         location: None,
                     });
@@ -284,13 +284,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
                             "Cannot assign value of type {} to lvalue of type {}.",
+                            rvalue
+                                .get_type(self.string_type.clone())
+                                .to_basic_type(self.context.ptr_type(AddressSpace::default())),
                             lvalue
                                 .pointee_ty
                                 .clone()
                                 .to_basic_type(self.context.ptr_type(AddressSpace::default())),
-                            rvalue
-                                .get_type(self.string_type.clone())
-                                .to_basic_type(self.context.ptr_type(AddressSpace::default()))
                         )),
                         location: None,
                     });
@@ -554,18 +554,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     {
                         inkwell::types::BasicTypeEnum::ArrayType(array_type) => {
                             let buffer_size = self.context.i64_type().const_int(array_type.len().into(), false);
-                            let undef = self.string_type.struct_type.get_undef();
-                            let str_val = self
-                                .builder
-                                .build_insert_value(undef, pointer_value.ptr, 0, "str.buffer")
-                                .unwrap();
-                            let str_val2 = self
-                                .builder
-                                .build_insert_value(str_val, buffer_size, 1, "str.length")
-                                .unwrap()
-                                .into_struct_value();
-
-                            InternalValue::StringValue(StringValue { struct_value: str_val2 })
+                            self.build_construct_string_value(pointer_value.ptr, buffer_size)
                         }
                         inkwell::types::BasicTypeEnum::IntType(_) => {
                             display_single_diag(Diag {
@@ -684,7 +673,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
                     "Cannot assign value of type '{}' to lvalue of type '{}'.",
-                    internal_value.get_type(self.string_type.clone()).to_basic_type(ptr_type),
+                    internal_value
+                        .get_type(self.string_type.clone())
+                        .to_basic_type(ptr_type),
                     target_type.to_basic_type(ptr_type)
                 )),
                 location: None,

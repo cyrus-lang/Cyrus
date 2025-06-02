@@ -139,6 +139,16 @@ impl<'a> InternalType<'a> {
         matches!(self, InternalType::PointerType(_))
     }
 
+    #[allow(unused)]
+    pub fn is_const_type(&self) -> bool {
+        matches!(self, InternalType::ConstType(_))
+    }
+
+    #[allow(unused)]
+    pub fn is_lvalue_type(&self) -> bool {
+        matches!(self, InternalType::Lvalue(_))
+    }
+
     pub fn to_basic_type(&self, ptr_type: PointerType<'a>) -> BasicTypeEnum<'a> {
         match self {
             InternalType::IntType(t) => (*t).as_basic_type_enum(),
@@ -208,6 +218,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalType::StructType(_), InternalType::StructType(_)) => true,
             (InternalType::VectorType(_), InternalType::VectorType(_)) => true,
             (InternalType::StringType(_), InternalType::StringType(_)) => true,
+            (InternalType::StringType(_), InternalType::PointerType(typed_pointer_type)) => {
+                // allow const_str assignment to StringType
+                typed_pointer_type.pointee_ty.is_array_type()
+            }
+            (InternalType::PointerType(_), InternalType::StringType(_)) => {
+                // allow StringType assignment to char*
+                true
+            }
             (InternalType::VoidType(_), _) => false,
             _ => false,
         }
@@ -265,7 +283,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
             }
-            TokenKind::Int => {
+            TokenKind::Int | TokenKind::UInt => {
                 let data_layout = self.target_machine.get_target_data();
                 InternalType::IntType(self.context.ptr_sized_int_type(&data_layout, None))
             }
