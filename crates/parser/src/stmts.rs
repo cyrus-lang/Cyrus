@@ -916,7 +916,10 @@ impl<'a> Parser<'a> {
                         caret: true,
                     });
                 }
+                
+                self.expect_current(TokenKind::LeftParen)?;
                 let (condition, _) = self.parse_expression(Precedence::Lowest)?;
+                self.next_token(); // consume last token of the expression
 
                 let consequent = Box::new(self.parse_block_statement()?);
                 self.expect_current(TokenKind::RightBrace)?;
