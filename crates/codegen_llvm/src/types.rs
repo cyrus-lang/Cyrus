@@ -8,7 +8,6 @@ use ast::ast::ArrayCapacity;
 use ast::ast::TypeSpecifier;
 use ast::token::*;
 use inkwell::AddressSpace;
-use inkwell::context::Context;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::types::ArrayType;
 use inkwell::types::AsTypeRef;
@@ -20,7 +19,6 @@ use inkwell::types::PointerType;
 use inkwell::types::StructType;
 use inkwell::types::VectorType;
 use inkwell::types::VoidType;
-use std::fmt;
 use std::process::exit;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,7 +69,26 @@ impl<'a> TryFrom<BasicTypeEnum<'a>> for InternalType<'a> {
 }
 
 impl<'a> InternalType<'a> {
-    pub fn to_internal_value(
+    pub fn into_array_type(&self, size: u32) -> Result<InternalType<'a>, String> {
+        match self {
+            InternalType::IntType(int_type) => Ok(InternalType::ArrayType(int_type.array_type(size))),
+            InternalType::FloatType(float_type) => Ok(InternalType::ArrayType(float_type.array_type(size))),
+            InternalType::ArrayType(array_type) => Ok(InternalType::ArrayType(array_type.array_type(size))),
+            InternalType::StructType(struct_type) => Ok(InternalType::ArrayType(struct_type.array_type(size))),
+            InternalType::VectorType(vector_type) => Ok(InternalType::ArrayType(vector_type.array_type(size))),
+            InternalType::StringType(string_type) => {
+                Ok(InternalType::ArrayType(string_type.struct_type.array_type(size)))
+            }
+            InternalType::PointerType(typed_pointer_type) => {
+                Ok(InternalType::ArrayType(typed_pointer_type.ptr_type.array_type(size)))
+            }
+            InternalType::ConstType(internal_type) => internal_type.into_array_type(size),
+            InternalType::VoidType(_) => Err("VoidType cannot be converted to an array type.".to_string()),
+            InternalType::Lvalue(_) => Err("Lvalue cannot be converted to an array type.".to_string()),
+        }
+    }
+
+    pub fn into_internal_value(
         &self,
         value: inkwell::values::BasicValueEnum<'a>,
     ) -> Result<InternalValue<'a>, &'static str> {
@@ -96,7 +113,7 @@ impl<'a> InternalType<'a> {
                 ptr: value.into_pointer_value(),
                 pointee_ty: InternalType::VoidType(*ty),
             })),
-            InternalType::ConstType(internal_type) => internal_type.to_internal_value(value),
+            InternalType::ConstType(internal_type) => internal_type.into_internal_value(value),
         }
     }
 
@@ -227,6 +244,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 true
             }
             (InternalType::VoidType(_), _) => false,
+            (InternalType::ConstType(inner_type), rvalue_type) => self.compatible_types(*inner_type, rvalue_type),
             _ => false,
         }
     }
@@ -315,106 +333,122 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    fn build_array_type(
+    pub(crate) fn build_array_type(
         &self,
         type_specifier: TypeSpecifier,
         dimensions: Vec<ArrayCapacity>,
         loc: Location,
         span_end: usize,
     ) -> InternalType<'ctx> {
-        // FIXME
-        todo!();
+        let mut data_type = self.build_type(type_specifier, loc.clone(), span_end);
 
-        // let mut data_type = self.build_type(type_token, loc.clone(), span_end);
+        for array_capacity in dimensions.iter().rev() {
+            let capacity = match array_capacity {
+                ArrayCapacity::Static(token_kind) => {
+                    if let TokenKind::Literal(literal) = token_kind {
+                        match self.build_literal(literal.clone()) {
+                            InternalValue::IntValue(int_value, ..) => int_value,
+                            _ => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::InvalidTokenAsArrayCapacity,
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: loc.line,
+                                        column: loc.column,
+                                        length: span_end,
+                                    }),
+                                });
+                                exit(1);
+                            }
+                        }
+                    } else {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::InvalidTypeToken,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+                ArrayCapacity::Dynamic => todo!(),
+            }
+            .get_zero_extended_constant()
+            .unwrap();
 
-        // for array_capacity in dimensions {
-        //     let capacity = match array_capacity {
-        //         ArrayCapacity::Static(token_kind) => {
-        //             if let TokenKind::Literal(literal) = token_kind {
-        //                 let literal_value = self.build_literal(literal);
-        //                 match literal_value {
-        //                     InternalValue::IntValue(int_value) => int_value,
-        //                     _ => {
-        //                         display_single_diag(Diag {
-        //                             level: DiagLevel::Error,
-        //                             kind: DiagKind::InvalidTokenAsArrayCapacity,
-        //                             location: Some(DiagLoc {
-        //                                 file: self.file_path.clone(),
-        //                                 line: loc.line,
-        //                                 column: loc.column,
-        //                                 length: span_end,
-        //                             }),
-        //                         });
-        //                         exit(1);
-        //                     }
-        //                 }
-        //             } else {
-        //                 display_single_diag(Diag {
-        //                     level: DiagLevel::Error,
-        //                     kind: DiagKind::InvalidTypeToken,
-        //                     location: Some(DiagLoc {
-        //                         file: self.file_path.clone(),
-        //                         line: loc.line,
-        //                         column: loc.column,
-        //                         length: span_end,
-        //                     }),
-        //                 });
-        //                 exit(1);
-        //             }
-        //         }
-        //         ArrayCapacity::Dynamic => todo!(),
-        //     }
-        //     .get_zero_extended_constant()
-        //     .unwrap();
-
-        //     data_type = match data_type {
-        //         InternalType::StringType(string_type) => {
-        //             InternalType::ArrayType(string_type.struct_type.array_type(capacity.try_into().unwrap()))
-        //         }
-        //         InternalType::IntType(int_type) => InternalType::ArrayType(int_type.array_type(capacity.try_into().unwrap())),
-        //         InternalType::FloatType(float_type) => {
-        //             InternalType::ArrayType(float_type.array_type(capacity.try_into().unwrap()))
-        //         }
-        //         InternalType::ArrayType(array_type) => {
-        //             InternalType::ArrayType(array_type.array_type(capacity.try_into().unwrap()))
-        //         }
-        //         InternalType::StructType(struct_type) => {
-        //             InternalType::ArrayType(struct_type.array_type(capacity.try_into().unwrap()))
-        //         }
-        //         InternalType::VectorType(vector_type) => {
-        //             InternalType::ArrayType(vector_type.array_type(capacity.try_into().unwrap()))
-        //         }
-        //         InternalType::PointerType(pointer_type) => {
-        //             InternalType::ArrayType((*pointer_type).ptr_type.array_type(capacity.try_into().unwrap()))
-        //         }
-        //         InternalType::VoidType(_) => {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::Custom("Void cannot be an array element type.".to_string()),
-        //                 location: Some(DiagLoc {
-        //                     file: self.file_path.clone(),
-        //                     line: loc.line,
-        //                     column: loc.column,
-        //                     length: span_end,
-        //                 }),
-        //             });
-        //             exit(1);
-        //         }
-        //         _ => {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::InvalidTypeToken,
-        //                 location: Some(DiagLoc {
-        //                     file: self.file_path.clone(),
-        //                     line: loc.line,
-        //                     column: loc.column,
-        //                     length: span_end,
-        //                 }),
-        //             });
-        //             exit(1);
-        //         }
-        //     };
-        // }
-        // data_type
+            data_type = match data_type {
+                InternalType::StringType(string_type) => {
+                    InternalType::ArrayType(string_type.struct_type.array_type(capacity.try_into().unwrap()))
+                }
+                InternalType::IntType(int_type) => {
+                    InternalType::ArrayType(int_type.array_type(capacity.try_into().unwrap()))
+                }
+                InternalType::FloatType(float_type) => {
+                    InternalType::ArrayType(float_type.array_type(capacity.try_into().unwrap()))
+                }
+                InternalType::ArrayType(array_type) => {
+                    InternalType::ArrayType(array_type.array_type(capacity.try_into().unwrap()))
+                }
+                InternalType::StructType(struct_type) => {
+                    InternalType::ArrayType(struct_type.array_type(capacity.try_into().unwrap()))
+                }
+                InternalType::VectorType(vector_type) => {
+                    InternalType::ArrayType(vector_type.array_type(capacity.try_into().unwrap()))
+                }
+                InternalType::PointerType(pointer_type) => {
+                    InternalType::ArrayType((*pointer_type).ptr_type.array_type(capacity.try_into().unwrap()))
+                }
+                InternalType::VoidType(_) => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Void cannot be an array element type.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+                InternalType::ConstType(internal_type) => {
+                    match internal_type.into_array_type(capacity.try_into().unwrap()) {
+                        Ok(internal_array_type) => internal_array_type,
+                        Err(err) => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom(err),
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: loc.line,
+                                    column: loc.column,
+                                    length: span_end,
+                                }),
+                            });
+                            exit(1);
+                        }
+                    }
+                }
+                InternalType::Lvalue(_) => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Lvalue cannot be an array element type.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
+        }
+        data_type
     }
 }

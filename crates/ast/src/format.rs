@@ -71,10 +71,10 @@ impl fmt::Display for TypeSpecifier {
             TypeSpecifier::Const(type_specifier) => write!(f, "const {}", type_specifier),
             TypeSpecifier::AddressOf(type_specifier) => write!(f, "{}&", type_specifier),
             TypeSpecifier::Dereference(type_specifier) => write!(f, "{}*", type_specifier),
-            TypeSpecifier::Array(type_specifier, items) => {
+            TypeSpecifier::Array(type_specifier, dimensions) => {
                 write!(f, "{}", type_specifier)?;
 
-                for item in items {
+                for item in dimensions {
                     write!(
                         f,
                         "[{}]",

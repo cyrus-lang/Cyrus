@@ -281,7 +281,6 @@ impl<'a> Parser<'a> {
             self.next_token();
             series.push(self.parse_expression(Precedence::Lowest)?.0);
         }
-
         self.next_token(); // consume latest token of the expression
 
         Ok((
@@ -655,17 +654,90 @@ impl<'a> Parser<'a> {
             });
         }
 
-        let elements = self.parse_expression_series(TokenKind::RightBrace)?.0;
-        if !self.current_token_is(TokenKind::RightBrace) {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::MissingClosingBrace,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: true,
-            });
+        let mut elements: Vec<Expression> = Vec::new();
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Expression::Array(Array {
+                elements,
+                data_type,
+                span: Span::new(start, self.current_token.span.end),
+                loc: self.current_location(),
+            }));
         }
+
+        loop {
+            if self.current_token_is(TokenKind::LeftBrace) {
+                let untyped_array_start = self.current_token.span.start;
+                let mut untyped_array: Vec<Expression> = Vec::new();
+                self.next_token(); // consume left brace
+
+                loop {
+                    if self.current_token_is(TokenKind::RightBrace) {
+                        return Err(CompileTimeError {
+                            location: self.current_location(),
+                            etype: ParserErrorType::InvalidUntypedArrayConstructor,
+                            file_name: Some(self.lexer.file_name.clone()),
+                            source_content: Box::new(self.lexer.input.clone()),
+                            verbose: None,
+                            caret: true,
+                        });
+                    }
+
+                    untyped_array.push(self.parse_expression(Precedence::Lowest)?.0);
+
+                    if self.peek_token_is(TokenKind::Comma) {
+                        self.next_token(); // consume last token of the expression
+                        self.next_token(); // consume comma
+                    } else if self.peek_token_is(TokenKind::RightBrace) {
+                        self.next_token();
+                        break;
+                    } else {
+                        return Err(CompileTimeError {
+                            location: self.current_location(),
+                            etype: ParserErrorType::InvalidToken(self.peek_token.kind.clone()),
+                            file_name: Some(self.lexer.file_name.clone()),
+                            source_content: Box::new(self.lexer.input.clone()),
+                            verbose: None,
+                            caret: true,
+                        });
+                    }
+                }
+
+                if let TypeSpecifier::Array(inner_type_specifier, ..) = data_type.clone() {
+                    elements.push(Expression::Array(Array {
+                        data_type: TypeSpecifier::Array(
+                            inner_type_specifier,
+                            vec![ArrayCapacity::Static(TokenKind::Literal(Literal::Integer(
+                                untyped_array.len().try_into().unwrap(),
+                            )))],
+                        ),
+                        elements: untyped_array,
+                        span: Span::new(untyped_array_start, self.current_token.span.end),
+                        loc: self.current_location(),
+                    }));
+                } else {
+                    unreachable!()
+                }
+            } else {
+                elements.push(self.parse_expression(Precedence::Lowest)?.0);
+            }
+
+            if self.peek_token_is(TokenKind::Comma) {
+                self.next_token(); // consume last token of the expression
+
+                if self.peek_token_is(TokenKind::RightBrace) {
+                    break;
+                }
+
+                self.next_token(); // consume comma
+                continue;
+            } else {
+                break;
+            }
+        }
+
+        self.expect_peek(TokenKind::RightBrace)?;
 
         Ok(Expression::Array(Array {
             elements,

@@ -16,6 +16,7 @@ pub enum ParserErrorType {
     MissingSemicolon,
     MissingComma,
     IncompleteConditionalForLoop,
+    InvalidUntypedArrayConstructor,
 }
 
 impl fmt::Display for ParserErrorType {
@@ -33,6 +34,7 @@ impl fmt::Display for ParserErrorType {
             ParserErrorType::MissingSemicolon => write!(f, "MissingSemicolon"),
             ParserErrorType::MissingComma => write!(f, "MissingComma"),
             ParserErrorType::IncompleteConditionalForLoop => write!(f, "IncompleteConditionalForLoop"),
+            ParserErrorType::InvalidUntypedArrayConstructor => write!(f, "InvalidUntypedArrayConstructor"),
         }
     }
 }
@@ -64,6 +66,9 @@ impl CompileTypeErrorType for ParserErrorType {
                     "Defined a conditional for loop with incomplete condition. \n
                     Consider to add a condition to current for loop or change it into unconditional for loop"
                 )
+            }
+            ParserErrorType::InvalidUntypedArrayConstructor => {
+                "If untyped array constructor would not have an item, consider to remove it.".to_string()
             }
         }
     }

@@ -8,9 +8,11 @@ use ast::{
     ast::*,
     token::{Location, TokenKind},
 };
+use core::panic;
 use inkwell::{
     AddressSpace,
-    values::{AnyValue, FloatValue, IntValue, PointerValue},
+    types::BasicType,
+    values::{AnyValue, ArrayValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{
     ops::{Deref, DerefMut},
@@ -311,31 +313,124 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
-        // FIXME
-        todo!();
+        match array.data_type {
+            TypeSpecifier::Array(element_type_specifier, dimensions) => {
+                let array_type = self.build_array_type(*element_type_specifier, dimensions, array.loc, array.span.end);
 
-        // let elements: Vec<BasicValueEnum> = array
-        //     .elements
-        //     .iter()
-        //     .map(|item| BasicValueEnum::from(self.build_expr(Rc::clone(&scope), item.clone())))
-        //     .collect();
+                dbg!(array.elements.clone());
 
-        // let first_element_type = elements[0].get_type();
-        // let _ = elements.iter().map(|item| {
-        //     if first_element_type != item.get_type() {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::InconsistentArrayItemTypes,
-        //             location: None,
-        //         });
-        //         exit(1);
-        //     }
-        // });
-
-        // let array_type = first_element_type.array_type(elements.len().try_into().unwrap());
-        // let array_elements = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
-        // InternalValue::ArrayValue(array_type.const_array(&[array_elements]))
+                todo!();
+            }
+            _ => unreachable!(),
+        }
     }
+
+    // pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
+    //     match array.data_type {
+    //         TypeSpecifier::Array(element_type_specifier, dimensions) => {
+    //             let mut array_value_vec: Vec<ArrayValue<'ctx>> = Vec::new();
+    //             let ptr_type = self.context.ptr_type(AddressSpace::default());
+    //             let element_type = self.build_type(*element_type_specifier.clone(), array.loc.clone(), array.span.end);
+    //             let dimensions_len = dimensions.len();
+
+    //             dbg!(dimensions.iter().rev());
+
+    //             for array_capacity in dimensions.iter().rev() {
+    //                 match array_capacity {
+    //                     ArrayCapacity::Static(token_kind) => {
+    //                         let array_size: u32 = match token_kind {
+    //                             TokenKind::Literal(literal) => match literal {
+    //                                 Literal::Integer(value) => (*value).try_into().unwrap(),
+    //                                 _ => {
+    //                                     display_single_diag(Diag {
+    //                                         level: DiagLevel::Error,
+    //                                         kind: DiagKind::Custom(
+    //                                             "Cannot build array type with non-integer value as it's capacity."
+    //                                                 .to_string(),
+    //                                         ),
+    //                                         location: None,
+    //                                     });
+    //                                     exit(1);
+    //                                 }
+    //                             },
+    //                             _ => {
+    //                                 display_single_diag(Diag {
+    //                                     level: DiagLevel::Error,
+    //                                     kind: DiagKind::Custom(
+    //                                         "Cannot build array type with non-integer value as it's capacity."
+    //                                             .to_string(),
+    //                                     ),
+    //                                     location: None,
+    //                                 });
+    //                                 exit(1);
+    //                             }
+    //                         };
+
+    //                         let mut element_values: Vec<BasicValueEnum<'ctx>> =
+    //                             Vec::with_capacity(array_size.try_into().unwrap());
+
+    //                         // ensure type compatibility of the items
+    //                         for (idx, element) in array.elements.iter().enumerate() {
+    //                             let element_value = self.build_expr(Rc::clone(&scope), element.clone());
+
+    //                             if !self.compatible_types(
+    //                                 element_type.clone(),
+    //                                 element_value.get_type(self.string_type.clone()),
+    //                             ) {
+    //                                 display_single_diag(Diag {
+    //                                     level: DiagLevel::Error,
+    //                                     kind: DiagKind::Custom(format!(
+    //                                         "Incompatible item in array construction at index {}.",
+    //                                         idx
+    //                                     )),
+    //                                     location: Some(DiagLoc {
+    //                                         file: self.file_path.clone(),
+    //                                         line: array.loc.line,
+    //                                         column: array.loc.column,
+    //                                         length: array.span.end,
+    //                                     }),
+    //                                 });
+    //                                 exit(1);
+    //                             }
+
+    //                             element_values.push(
+    //                                 element_value
+    //                                     .to_basic_metadata()
+    //                                     .as_any_value_enum()
+    //                                     .try_into()
+    //                                     .unwrap(),
+    //                             );
+    //                         }
+
+    //                         let array_value = unsafe {
+    //                             ArrayValue::new_const_array(&element_type.to_basic_type(ptr_type), &element_values)
+    //                         };
+    //                         array_value_vec.push(array_value);
+    //                     }
+    //                     ArrayCapacity::Dynamic => {
+    //                         display_single_diag(Diag {
+    //                             level: DiagLevel::Error,
+    //                             kind: DiagKind::Custom(
+    //                                 "Cannot build array with dynamic memory management. Consider to checkout `std::vec` module."
+    //                                     .to_string(),
+    //                             ),
+    //                             location: None,
+    //                         });
+    //                         exit(1);
+    //                     }
+    //                 }
+    //             }
+
+    //             let outer_array_type = element_type
+    //                 .to_basic_type(ptr_type)
+    //                 .array_type(dimensions_len.try_into().unwrap());
+    //             dbg!(array_value_vec.clone());
+
+    //             todo!();
+    //         }
+    //         _ => unreachable!(),
+    //     }
+    // }
 
     pub(crate) fn build_ordered_indexes(
         &self,

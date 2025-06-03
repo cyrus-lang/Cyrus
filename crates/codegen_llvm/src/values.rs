@@ -213,7 +213,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                 typed_pointer_value
                     .pointee_ty
-                    .to_internal_value(value)
+                    .into_internal_value(value)
                     .unwrap_or_else(|_| {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
