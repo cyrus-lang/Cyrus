@@ -151,13 +151,18 @@ pub enum TypeSpecifier {
     Const(Box<TypeSpecifier>),
     AddressOf(Box<TypeSpecifier>),
     Dereference(Box<TypeSpecifier>),
-    // DataType, Dimensions
-    Array(Box<TypeSpecifier>, Vec<ArrayCapacity>),
+    Array(ArrayTypeSpecifier),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrayTypeSpecifier {
+    pub size: ArrayCapacity,
+    pub element_type: Box<TypeSpecifier>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArrayCapacity {
-    Static(TokenKind), // token_kind->literal
+    Fixed(TokenKind),
     Dynamic,
 }
 

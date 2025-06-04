@@ -706,12 +706,12 @@ impl<'a> Parser<'a> {
 
                 if let TypeSpecifier::Array(inner_type_specifier, ..) = data_type.clone() {
                     elements.push(Expression::Array(Array {
-                        data_type: TypeSpecifier::Array(
-                            inner_type_specifier,
-                            vec![ArrayCapacity::Static(TokenKind::Literal(Literal::Integer(
+                        data_type: TypeSpecifier::Array(ArrayTypeSpecifier {
+                            size: ArrayCapacity::Fixed(TokenKind::Literal(Literal::Integer(
                                 untyped_array.len().try_into().unwrap(),
-                            )))],
-                        ),
+                            ))),
+                            element_type: inner_type_specifier.element_type,
+                        }),
                         elements: untyped_array,
                         span: Span::new(untyped_array_start, self.current_token.span.end),
                         loc: self.current_location(),

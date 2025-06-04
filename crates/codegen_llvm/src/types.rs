@@ -5,6 +5,7 @@ use crate::diag::*;
 use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
 use ast::ast::ArrayCapacity;
+use ast::ast::ArrayTypeSpecifier;
 use ast::ast::TypeSpecifier;
 use ast::token::*;
 use inkwell::AddressSpace;
@@ -234,6 +235,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalType::PointerType(_), InternalType::PointerType(_)) => true,
             (InternalType::StructType(_), InternalType::StructType(_)) => true,
             (InternalType::VectorType(_), InternalType::VectorType(_)) => true,
+            (InternalType::ArrayType(arr1), InternalType::ArrayType(arr2)) => {
+                (arr1.len() == arr2.len()) && (arr1.get_element_type() == arr2.get_element_type())
+            }
             (InternalType::StringType(_), InternalType::StringType(_)) => true,
             (InternalType::StringType(_), InternalType::PointerType(typed_pointer_type)) => {
                 // allow const_str assignment to StringType
@@ -269,9 +273,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     pointee_ty,
                 }))
             }
-            TypeSpecifier::Array(type_token, dimensions) => {
-                self.build_array_type(*type_token, dimensions, loc, span_end)
-            }
+            TypeSpecifier::Array(array_type_specifier) => self.build_array_type(array_type_specifier, loc, span_end),
             TypeSpecifier::TypeToken(token) => self.build_type_token(token, loc.clone()),
         }
     }
@@ -335,94 +337,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_array_type(
         &self,
-        type_specifier: TypeSpecifier,
-        dimensions: Vec<ArrayCapacity>,
+        array_type_specifier: ArrayTypeSpecifier,
         loc: Location,
         span_end: usize,
     ) -> InternalType<'ctx> {
-        let mut data_type = self.build_type(type_specifier, loc.clone(), span_end);
-
-        for array_capacity in dimensions.iter().rev() {
-            let capacity = match array_capacity {
-                ArrayCapacity::Static(token_kind) => {
-                    if let TokenKind::Literal(literal) = token_kind {
-                        match self.build_literal(literal.clone()) {
-                            InternalValue::IntValue(int_value, ..) => int_value,
-                            _ => {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::InvalidTokenAsArrayCapacity,
-                                    location: Some(DiagLoc {
-                                        file: self.file_path.clone(),
-                                        line: loc.line,
-                                        column: loc.column,
-                                        length: span_end,
-                                    }),
-                                });
-                                exit(1);
-                            }
-                        }
-                    } else {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::InvalidTypeToken,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                }
-                ArrayCapacity::Dynamic => todo!(),
+        let element_type = self.build_type(*array_type_specifier.element_type, loc.clone(), span_end);
+        let array_type = match element_type.into_array_type(
+            self.build_array_capacity(array_type_specifier.size, loc.clone(), span_end)
+                .try_into()
+                .unwrap(),
+        ) {
+            Ok(t) => t,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
             }
-            .get_zero_extended_constant()
-            .unwrap();
+        };
 
-            data_type = match data_type {
-                InternalType::StringType(string_type) => {
-                    InternalType::ArrayType(string_type.struct_type.array_type(capacity.try_into().unwrap()))
-                }
-                InternalType::IntType(int_type) => {
-                    InternalType::ArrayType(int_type.array_type(capacity.try_into().unwrap()))
-                }
-                InternalType::FloatType(float_type) => {
-                    InternalType::ArrayType(float_type.array_type(capacity.try_into().unwrap()))
-                }
-                InternalType::ArrayType(array_type) => {
-                    InternalType::ArrayType(array_type.array_type(capacity.try_into().unwrap()))
-                }
-                InternalType::StructType(struct_type) => {
-                    InternalType::ArrayType(struct_type.array_type(capacity.try_into().unwrap()))
-                }
-                InternalType::VectorType(vector_type) => {
-                    InternalType::ArrayType(vector_type.array_type(capacity.try_into().unwrap()))
-                }
-                InternalType::PointerType(pointer_type) => {
-                    InternalType::ArrayType((*pointer_type).ptr_type.array_type(capacity.try_into().unwrap()))
-                }
-                InternalType::VoidType(_) => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Void cannot be an array element type.".to_string()),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
-                }
-                InternalType::ConstType(internal_type) => {
-                    match internal_type.into_array_type(capacity.try_into().unwrap()) {
-                        Ok(internal_array_type) => internal_array_type,
-                        Err(err) => {
+        array_type
+    }
+
+    pub(crate) fn build_array_capacity(&self, array_capacity: ArrayCapacity, loc: Location, span_end: usize) -> u64 {
+        match array_capacity {
+            ArrayCapacity::Fixed(token_kind) => {
+                if let TokenKind::Literal(literal) = token_kind {
+                    match self.build_literal(literal.clone()) {
+                        InternalValue::IntValue(int_value, ..) => int_value,
+                        _ => {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
-                                kind: DiagKind::Custom(err),
+                                kind: DiagKind::InvalidTokenAsArrayCapacity,
                                 location: Some(DiagLoc {
                                     file: self.file_path.clone(),
                                     line: loc.line,
@@ -433,11 +386,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             exit(1);
                         }
                     }
-                }
-                InternalType::Lvalue(_) => {
+                } else {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Lvalue cannot be an array element type.".to_string()),
+                        kind: DiagKind::InvalidTypeToken,
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: loc.line,
@@ -447,8 +399,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 }
-            };
+            }
+            ArrayCapacity::Dynamic => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(
+                        "Cannot build array with dynamic memory management. Consider to use vector instead."
+                            .to_string(),
+                    ),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
         }
-        data_type
+        .get_zero_extended_constant()
+        .unwrap()
     }
 }

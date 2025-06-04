@@ -311,69 +311,83 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_array_dimensions(&self, dimensions: Vec<ArrayCapacity>) -> Vec<u32> {
-        dimensions
+    pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
+        let mut array_elements: Vec<InternalValue<'ctx>> = array
+            .elements
             .iter()
-            .map(|d| match d {
-                ArrayCapacity::Static(token_kind) => match token_kind {
-                    TokenKind::Literal(literal) => match literal {
-                        Literal::Integer(value) => u32::try_from(*value).unwrap(),
-                        _ => {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom(
-                                    "Cannot build array type with non-integer value as it's capacity.".to_string(),
-                                ),
-                                location: None,
-                            });
-                            exit(1);
-                        }
-                    },
-                    _ => {
+            .map(|expr| self.build_expr(Rc::clone(&scope), expr.clone()))
+            .collect();
+
+        // let array_type = self.build_type(array.data_type.clone(), array.loc.clone(), array.span.end);
+
+        if let TypeSpecifier::Array(array_internal_type) = array.data_type {
+            let ptr_type = self.context.ptr_type(AddressSpace::default());
+            let element_type = self.build_type(*array_internal_type.element_type, array.loc.clone(), array.span.end);
+            let array_size = self.build_array_capacity(array_internal_type.size, array.loc.clone(), array.span.end);
+
+            if array_elements.len() > array_size as usize {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Array construction has more elements than specified capacity that is {}.",
+                        array_size
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: array.loc.line,
+                        column: array.loc.column,
+                        length: array.span.end,
+                    }),
+                });
+                exit(1);
+            } else if array_elements.len() != array_size as usize {
+                // zeroinit for unknown fields of the array!
+                for _ in array_elements.len()..(array_size as usize) {
+                    let zeroinit_value = self.build_zero_initialized_internal_value(element_type.clone());
+                    array_elements.push(zeroinit_value);
+                }
+            }
+
+            let array_element_values: Vec<BasicValueEnum<'ctx>> = array_elements
+                .iter()
+                .enumerate()
+                .map(|(idx, v)| {
+                    if !self.compatible_types(v.get_type(self.string_type.clone()), element_type.clone()) {
+                        // FIXME We need accurate type name tracking here
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
-                            kind: DiagKind::Custom(
-                                "Cannot build array type with non-literal value as it's capacity.".to_string(),
-                            ),
-                            location: None,
+                            kind: DiagKind::Custom(format!(
+                                "Incompatible item in array construction at index {}. Expected item with type '{:?}' but got '{:?}'.",
+                                idx,
+                                element_type.to_basic_type(ptr_type).as_basic_type_enum(),
+                                v.get_type(self.string_type.clone()).to_basic_type(ptr_type).as_basic_type_enum(),
+                            )),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: array.loc.line,
+                                column: array.loc.column,
+                                length: array.span.end,
+                            }),
                         });
                         exit(1);
                     }
-                },
-                ArrayCapacity::Dynamic => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(
-                            "Cannot build array with dynamic memory management. Consider to checkout `std::vec` module."
-                                .to_string(),
-                        ),
-                        location: None,
-                    });
-                    exit(1);
-                }
-            })
-            .collect()
-    }
 
-    pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
-        match array.data_type {
-            TypeSpecifier::Array(element_type_specifier, dimensions) => {
-                let element_type = self.build_type(*element_type_specifier, array.loc.clone(), array.span.end);
-                let dimension_values = self.build_array_dimensions(dimensions);
+                    v.to_basic_metadata().as_any_value_enum().try_into().unwrap()
+                })
+                .collect();
 
-                let array_value = self.build_const_array(
-                    Rc::clone(&scope),
-                    element_type,
-                    array.elements,
-                    dimension_values[0],
-                    array.loc.clone(),
-                    array.span.end,
-                );
+            let array_value =
+                unsafe { ArrayValue::new_const_array(&element_type.to_basic_type(ptr_type), &array_element_values) };
 
-                InternalValue::ArrayValue(array_value, array_value.get_type())
-            }
-            _ => unreachable!(),
+            return InternalValue::ArrayValue(
+                array_value,
+                element_type
+                    .to_basic_type(ptr_type)
+                    .array_type(array_size.try_into().unwrap()),
+            );
         }
+
+        unreachable!();
     }
 
     pub(crate) fn build_const_array(
@@ -381,7 +395,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         element_type: InternalType<'ctx>,
         array_elements: Vec<Expression>,
-        count: u32,
         loc: Location,
         span_end: usize,
     ) -> ArrayValue<'ctx> {
@@ -415,35 +428,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             })
             .collect::<Vec<BasicValueEnum<'ctx>>>();
 
-        if array_elements.len() > count as usize {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!(
-                    "Array construction has more elements than specified capacity that is {}.",
-                    count
-                )),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        } else if array_elements.len() != count as usize {
-            // zeroinit for unknown fields of the array!
-            for _ in array_elements.len()..(count as usize) {
-                let zeroinit_value = self.build_zero_initialized_internal_value(element_type.clone());
-                array_elements.push(
-                    zeroinit_value
-                        .to_basic_metadata()
-                        .as_any_value_enum()
-                        .try_into()
-                        .unwrap(),
-                );
-            }
-        }
-
         match element_type.to_basic_type(self.context.ptr_type(AddressSpace::default())) {
             BasicTypeEnum::ArrayType(array_type) => array_type.const_array(
                 &array_elements
@@ -463,149 +447,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             BasicTypeEnum::VectorType(vector_type) => todo!(),
         }
     }
-
-    // fn build_const_array(
-    //     &self,
-    //     element_type: BasicTypeEnum<'ctx>,
-    //     dimensions: &[u32],
-    //     flat_values: &mut dyn Iterator<Item = BasicValueEnum<'ctx>>,
-    // ) -> ArrayValue<'ctx> {
-    //     assert!(!dimensions.is_empty());
-
-    //     let current_dim = dimensions[0];
-
-    //     if dimensions.len() == 1 {
-    //         // Leaf level: collect scalar values (e.g., IntValue)
-    //         let mut elements: Vec<IntValue<'ctx>> = Vec::with_capacity(current_dim as usize);
-    //         for _ in 0..current_dim {
-    //             match flat_values.next().expect("Not enough elements") {
-    //                 BasicValueEnum::IntValue(iv) => elements.push(iv),
-    //                 other => panic!("Expected IntValue, found {:?}", other),
-    //             }
-    //         }
-
-    //         element_type.into_int_type().const_array(&elements)
-    //     } else {
-    //         // Nested array level: collect inner arrays
-    //         let mut inner_arrays: Vec<ArrayValue<'ctx>> = Vec::with_capacity(current_dim as usize);
-    //         for _ in 0..current_dim {
-    //             let inner = self.build_const_array(element_type, &dimensions[1..], flat_values);
-    //             inner_arrays.push(inner);
-    //         }
-
-    //         element_type
-    //             .array_type(dimensions[1]) // inner type
-    //             .array_type(current_dim)
-    //             .const_array(&inner_arrays)
-    //     }
-    // }
-
-    // pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
-    //     match array.data_type {
-    //         TypeSpecifier::Array(element_type_specifier, dimensions) => {
-    //             let mut array_value_vec: Vec<ArrayValue<'ctx>> = Vec::new();
-    //             let ptr_type = self.context.ptr_type(AddressSpace::default());
-    //             let element_type = self.build_type(*element_type_specifier.clone(), array.loc.clone(), array.span.end);
-    //             let dimensions_len = dimensions.len();
-
-    //             dbg!(dimensions.iter().rev());
-
-    //             for array_capacity in dimensions.iter().rev() {
-    //                 match array_capacity {
-    //                     ArrayCapacity::Static(token_kind) => {
-    //                         let array_size: u32 = match token_kind {
-    //                             TokenKind::Literal(literal) => match literal {
-    //                                 Literal::Integer(value) => (*value).try_into().unwrap(),
-    //                                 _ => {
-    //                                     display_single_diag(Diag {
-    //                                         level: DiagLevel::Error,
-    //                                         kind: DiagKind::Custom(
-    //                                             "Cannot build array type with non-integer value as it's capacity."
-    //                                                 .to_string(),
-    //                                         ),
-    //                                         location: None,
-    //                                     });
-    //                                     exit(1);
-    //                                 }
-    //                             },
-    //                             _ => {
-    //                                 display_single_diag(Diag {
-    //                                     level: DiagLevel::Error,
-    //                                     kind: DiagKind::Custom(
-    //                                         "Cannot build array type with non-integer value as it's capacity."
-    //                                             .to_string(),
-    //                                     ),
-    //                                     location: None,
-    //                                 });
-    //                                 exit(1);
-    //                             }
-    //                         };
-
-    //                         let mut element_values: Vec<BasicValueEnum<'ctx>> =
-    //                             Vec::with_capacity(array_size.try_into().unwrap());
-
-    //                         // ensure type compatibility of the items
-    //                         for (idx, element) in array.elements.iter().enumerate() {
-    //                             let element_value = self.build_expr(Rc::clone(&scope), element.clone());
-
-    //                             if !self.compatible_types(
-    //                                 element_type.clone(),
-    //                                 element_value.get_type(self.string_type.clone()),
-    //                             ) {
-    //                                 display_single_diag(Diag {
-    //                                     level: DiagLevel::Error,
-    //                                     kind: DiagKind::Custom(format!(
-    //                                         "Incompatible item in array construction at index {}.",
-    //                                         idx
-    //                                     )),
-    //                                     location: Some(DiagLoc {
-    //                                         file: self.file_path.clone(),
-    //                                         line: array.loc.line,
-    //                                         column: array.loc.column,
-    //                                         length: array.span.end,
-    //                                     }),
-    //                                 });
-    //                                 exit(1);
-    //                             }
-
-    //                             element_values.push(
-    //                                 element_value
-    //                                     .to_basic_metadata()
-    //                                     .as_any_value_enum()
-    //                                     .try_into()
-    //                                     .unwrap(),
-    //                             );
-    //                         }
-
-    //                         let array_value = unsafe {
-    //                             ArrayValue::new_const_array(&element_type.to_basic_type(ptr_type), &element_values)
-    //                         };
-    //                         array_value_vec.push(array_value);
-    //                     }
-    //                     ArrayCapacity::Dynamic => {
-    //                         display_single_diag(Diag {
-    //                             level: DiagLevel::Error,
-    //                             kind: DiagKind::Custom(
-    //                                 "Cannot build array with dynamic memory management. Consider to checkout `std::vec` module."
-    //                                     .to_string(),
-    //                             ),
-    //                             location: None,
-    //                         });
-    //                         exit(1);
-    //                     }
-    //                 }
-    //             }
-
-    //             let outer_array_type = element_type
-    //                 .to_basic_type(ptr_type)
-    //                 .array_type(dimensions_len.try_into().unwrap());
-    //             dbg!(array_value_vec.clone());
-
-    //             todo!();
-    //         }
-    //         _ => unreachable!(),
-    //     }
-    // }
 
     pub(crate) fn build_ordered_indexes(
         &self,

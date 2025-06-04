@@ -104,7 +104,7 @@ impl<'a> Parser<'a> {
         parsed_kind
     }
 
-    pub fn parse_array_type(&mut self, type_specifier: TypeSpecifier) -> Result<TypeSpecifier, ParseError> {
+    pub fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, ParseError> {
         let mut dimensions: Vec<ArrayCapacity> = Vec::new();
 
         while self.current_token_is(TokenKind::LeftBracket) {
@@ -116,7 +116,15 @@ impl<'a> Parser<'a> {
             dimensions.push(array_capacity);
         }
 
-        Ok(TypeSpecifier::Array(Box::new(type_specifier), dimensions))
+        let mut type_specifier = base_type_specifier.clone();
+        for dimension in dimensions.iter().rev() {
+            type_specifier = TypeSpecifier::Array(ArrayTypeSpecifier {
+                size: dimension.clone(),
+                element_type: Box::new(type_specifier),
+            });
+        }
+
+        Ok(type_specifier)
     }
 
     pub fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParseError> {
@@ -126,7 +134,7 @@ impl<'a> Parser<'a> {
         }
         let capacity = self.current_token.kind.clone();
         self.expect_peek(TokenKind::RightBracket)?;
-        Ok(ArrayCapacity::Static(capacity))
+        Ok(ArrayCapacity::Fixed(capacity))
     }
 
     pub fn parse_single_array_index(&mut self) -> Result<Expression, ParseError> {

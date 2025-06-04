@@ -71,21 +71,15 @@ impl fmt::Display for TypeSpecifier {
             TypeSpecifier::Const(type_specifier) => write!(f, "const {}", type_specifier),
             TypeSpecifier::AddressOf(type_specifier) => write!(f, "{}&", type_specifier),
             TypeSpecifier::Dereference(type_specifier) => write!(f, "{}*", type_specifier),
-            TypeSpecifier::Array(type_specifier, dimensions) => {
-                write!(f, "{}", type_specifier)?;
-
-                for item in dimensions {
-                    write!(
-                        f,
-                        "[{}]",
-                        match item {
-                            ArrayCapacity::Static(token_kind) => token_kind.to_string(),
-                            ArrayCapacity::Dynamic => "".to_string(),
-                        }
-                    )?;
-                }
-
-                write!(f, "")
+            TypeSpecifier::Array(array_type_specifier) => {
+                write!(
+                    f,
+                    "{}[{}]",
+                    array_type_specifier.element_type, match &array_type_specifier.size {
+                        ArrayCapacity::Fixed(size) => size.to_string(),
+                        ArrayCapacity::Dynamic => "".to_string(),
+                    }
+                )
             }
         }
     }
