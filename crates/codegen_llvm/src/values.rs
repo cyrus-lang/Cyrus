@@ -5,7 +5,6 @@ use crate::{
 use ast::token::Location;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    types::{ArrayType, FloatType, IntType, StructType, VectorType},
     values::{
         AnyValue, ArrayValue, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue,
         VectorValue,
@@ -15,12 +14,13 @@ use std::process::exit;
 
 #[derive(Debug, Clone)]
 pub(crate) enum InternalValue<'a> {
-    IntValue(IntValue<'a>, IntType<'a>),
-    FloatValue(FloatValue<'a>, FloatType<'a>),
-    ArrayValue(ArrayValue<'a>, ArrayType<'a>),
-    StructValue(StructValue<'a>, StructType<'a>),
-    VectorValue(VectorValue<'a>, VectorType<'a>),
-    StrValue(PointerValue<'a>, ArrayType<'a>),
+    BoolValue(IntValue<'a>),
+    IntValue(IntValue<'a>, InternalType<'a>),
+    FloatValue(FloatValue<'a>, InternalType<'a>),
+    ArrayValue(ArrayValue<'a>, InternalType<'a>),
+    StructValue(StructValue<'a>, InternalType<'a>),
+    VectorValue(VectorValue<'a>, InternalType<'a>),
+    StrValue(PointerValue<'a>, InternalType<'a>),
     StringValue(StringValue<'a>),
     PointerValue(TypedPointerValue<'a>),
     ModuleValue(ModuleMetadata<'a>),
@@ -48,6 +48,7 @@ pub(crate) struct TypedPointerValue<'a> {
 impl<'a> InternalValue<'a> {
     pub fn to_basic_metadata(&self) -> BasicMetadataValueEnum<'a> {
         match self {
+            InternalValue::BoolValue(v) => BasicMetadataValueEnum::IntValue(*v),
             InternalValue::IntValue(v, ..) => BasicMetadataValueEnum::IntValue(*v),
             InternalValue::FloatValue(v, ..) => BasicMetadataValueEnum::FloatValue(*v),
             InternalValue::ArrayValue(v, ..) => BasicMetadataValueEnum::ArrayValue(*v),
@@ -78,11 +79,12 @@ impl<'a> InternalValue<'a> {
 
     pub(crate) fn get_type(&self, string_type: StringType<'a>) -> InternalType<'a> {
         match self {
-            InternalValue::IntValue(_, ty) => InternalType::IntType(ty.clone()),
-            InternalValue::FloatValue(_, ty, ..) => InternalType::FloatType(ty.clone()),
-            InternalValue::ArrayValue(_, ty, ..) => InternalType::ArrayType(ty.clone()),
-            InternalValue::StructValue(_, ty, ..) => InternalType::StructType(ty.clone()),
-            InternalValue::VectorValue(_, ty, ..) => InternalType::VectorType(ty.clone()),
+            InternalValue::BoolValue(v) => InternalType::BoolType(v.get_type()),
+            InternalValue::IntValue(_, ty) => ty.clone(),
+            InternalValue::FloatValue(_, ty, ..) => ty.clone(),
+            InternalValue::ArrayValue(_, ty, ..) => ty.clone(),
+            InternalValue::StructValue(_, ty, ..) => ty.clone(),
+            InternalValue::VectorValue(_, ty, ..) => ty.clone(),
             InternalValue::PointerValue(v) => InternalType::PointerType(Box::new(TypedPointerType {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
@@ -93,7 +95,7 @@ impl<'a> InternalValue<'a> {
             })),
             InternalValue::StrValue(ptr, ty) => InternalType::PointerType(Box::new(TypedPointerType {
                 ptr_type: ptr.get_type(),
-                pointee_ty: InternalType::ArrayType(ty.clone()),
+                pointee_ty: ty.clone(),
             })),
             InternalValue::StringValue(_) => InternalType::StringType(string_type),
             InternalValue::ModuleValue(_) => {
@@ -125,11 +127,21 @@ impl<'a> From<TypedPointerValue<'a>> for InternalValue<'a> {
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_zero_initialized_internal_value(&self, value_type: InternalType<'ctx>) -> InternalValue<'ctx> {
         match value_type {
-            InternalType::IntType(int_type) => InternalValue::IntValue(int_type.const_zero(), int_type),
-            InternalType::FloatType(float_type) => InternalValue::FloatValue(float_type.const_zero(), float_type),
-            InternalType::ArrayType(array_type) => InternalValue::ArrayValue(array_type.const_zero(), array_type),
-            InternalType::StructType(struct_type) => InternalValue::StructValue(struct_type.const_zero(), struct_type),
-            InternalType::VectorType(vector_type) => InternalValue::VectorValue(vector_type.const_zero(), vector_type),
+            InternalType::IntType(int_type) => {
+                InternalValue::IntValue(int_type.const_zero(), InternalType::IntType(int_type))
+            }
+            InternalType::FloatType(float_type) => {
+                InternalValue::FloatValue(float_type.const_zero(), InternalType::FloatType(float_type))
+            }
+            InternalType::ArrayType(element_type, array_type) => {
+                InternalValue::ArrayValue(array_type.const_zero(), InternalType::ArrayType(element_type, array_type))
+            }
+            InternalType::StructType(struct_type) => {
+                InternalValue::StructValue(struct_type.const_zero(), InternalType::StructType(struct_type))
+            }
+            InternalType::VectorType(vector_type) => {
+                InternalValue::VectorValue(vector_type.const_zero(), InternalType::VectorType(vector_type))
+            }
             InternalType::StringType(_) => self.build_zeroinit_string(),
             InternalType::PointerType(typed_pointer_type) => InternalValue::PointerValue(TypedPointerValue {
                 ptr: typed_pointer_type.ptr_type.const_zero(),
@@ -138,20 +150,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::ConstType(_) => unreachable!(),
             InternalType::Lvalue(_) => unreachable!(),
             InternalType::VoidType(_) => unreachable!(),
+            InternalType::BoolType(int_type) => InternalValue::BoolValue(int_type.const_zero()),
         }
     }
 
-    pub(crate) fn new_internal_value_from_basic_value_enum(
+    pub(crate) fn new_internal_value(
         &self,
         value: BasicValueEnum<'ctx>,
         value_type: InternalType<'ctx>,
     ) -> InternalValue<'ctx> {
         match value_type {
-            InternalType::IntType(int_type) => InternalValue::IntValue(value.into_int_value(), int_type),
-            InternalType::FloatType(float_type) => InternalValue::FloatValue(value.into_float_value(), float_type),
-            InternalType::ArrayType(array_type) => InternalValue::ArrayValue(value.into_array_value(), array_type),
-            InternalType::StructType(struct_type) => InternalValue::StructValue(value.into_struct_value(), struct_type),
-            InternalType::VectorType(vector_type) => InternalValue::VectorValue(value.into_vector_value(), vector_type),
+            InternalType::BoolType(_) => InternalValue::BoolValue(value.into_int_value()),
+            InternalType::IntType(int_type) => {
+                InternalValue::IntValue(value.into_int_value(), InternalType::IntType(int_type))
+            }
+            InternalType::FloatType(float_type) => {
+                InternalValue::FloatValue(value.into_float_value(), InternalType::FloatType(float_type))
+            }
+            InternalType::ArrayType(element_type, array_type) => {
+                InternalValue::ArrayValue(value.into_array_value(), InternalType::ArrayType(element_type, array_type))
+            }
+            InternalType::StructType(struct_type) => {
+                InternalValue::StructValue(value.into_struct_value(), InternalType::StructType(struct_type))
+            }
+            InternalType::VectorType(vector_type) => {
+                InternalValue::VectorValue(value.into_vector_value(), InternalType::VectorType(vector_type))
+            }
             InternalType::StringType(_) => InternalValue::StringValue(StringValue {
                 struct_value: value.into_struct_value(),
             }),
@@ -189,16 +213,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn internal_value_as_rvalue(&self, internal_value: InternalValue<'ctx>) -> InternalValue<'ctx> {
         match internal_value {
+            InternalValue::BoolValue(int_value) => InternalValue::BoolValue(int_value),
             InternalValue::PointerValue(typed_pointer_value) => InternalValue::PointerValue(typed_pointer_value),
             InternalValue::IntValue(v, ty) => InternalValue::IntValue(v, ty),
             InternalValue::FloatValue(v, ty) => InternalValue::FloatValue(v, ty),
             InternalValue::ArrayValue(v, ty) => InternalValue::ArrayValue(v, ty),
             InternalValue::StructValue(v, ty) => InternalValue::StructValue(v, ty),
             InternalValue::VectorValue(v, ty) => InternalValue::VectorValue(v, ty),
-            InternalValue::StrValue(v, ty) => InternalValue::PointerValue(TypedPointerValue {
-                ptr: v,
-                pointee_ty: InternalType::ArrayType(ty),
-            }),
+            InternalValue::StrValue(v, ty) => InternalValue::PointerValue(TypedPointerValue { ptr: v, pointee_ty: ty }),
             InternalValue::StringValue(v) => InternalValue::StringValue(v),
             InternalValue::Lvalue(typed_pointer_value) => {
                 let ptr_type = self.context.ptr_type(AddressSpace::default());
@@ -468,7 +490,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder
                     .build_int_compare(IntPredicate::SLT, left, right, "cmp_lt")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::IntType(self.context.bool_type()),
             )),
             (InternalValue::FloatValue(left, _), InternalValue::IntValue(right, _)) => {
                 let right = self
@@ -479,7 +501,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OLT, left, right, "cmp_lt")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, _)) => {
@@ -491,14 +513,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OLT, left, right, "cmp_lt")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Some(InternalValue::IntValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OLT, left, right, "cmp_lt")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             _ => None,
         }
@@ -517,7 +539,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder
                     .build_int_compare(IntPredicate::SLE, left, right, "cmp_le")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             (InternalValue::FloatValue(left, _), InternalValue::IntValue(right, _)) => {
                 let right = self
@@ -528,7 +550,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OLE, left, right, "cmp_le")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, _)) => {
@@ -540,14 +562,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OLE, left, right, "cmp_le")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Some(InternalValue::IntValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OLE, left, right, "cmp_le")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             _ => None,
         }
@@ -566,7 +588,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder
                     .build_int_compare(IntPredicate::SGT, left, right, "cmp_gt")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             (InternalValue::FloatValue(left, _), InternalValue::IntValue(right, _)) => {
                 let right = self
@@ -577,7 +599,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OGT, left, right, "cmp_gt")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, _)) => {
@@ -589,14 +611,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OGT, left, right, "cmp_gt")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Some(InternalValue::IntValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OGT, left, right, "cmp_gt")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             _ => None,
         }
@@ -615,7 +637,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder
                     .build_int_compare(IntPredicate::SGE, left, right, "cmp_ge")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             (InternalValue::FloatValue(left, _), InternalValue::IntValue(right, _)) => {
                 let right = self
@@ -626,7 +648,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OGE, left, right, "cmp_ge")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, _)) => {
@@ -638,14 +660,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OGE, left, right, "cmp_ge")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Some(InternalValue::IntValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OGE, left, right, "cmp_ge")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             _ => None,
         }
@@ -664,7 +686,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder
                     .build_int_compare(IntPredicate::EQ, left, right, "cmp_eq")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             (InternalValue::FloatValue(left, _), InternalValue::IntValue(right, _)) => {
                 let right = self
@@ -675,7 +697,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_eq")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, _)) => {
@@ -687,14 +709,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_eq")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Some(InternalValue::IntValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_eq")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             _ => None,
         }
@@ -713,7 +735,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder
                     .build_int_compare(IntPredicate::NE, left, right, "cmp_neq")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             (InternalValue::FloatValue(left, _), InternalValue::IntValue(right, _)) => {
                 let right = self
@@ -724,7 +746,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::ONE, left, right, "cmp_neq")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, _)) => {
@@ -736,14 +758,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_compare(FloatPredicate::ONE, left, right, "cmp_neq")
                         .unwrap(),
-                    self.context.bool_type(),
+                    InternalType::BoolType(self.context.bool_type()),
                 ))
             }
             (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Some(InternalValue::IntValue(
                 self.builder
                     .build_float_compare(FloatPredicate::ONE, left, right, "cmp_neq")
                     .unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             _ => None,
         }
@@ -760,7 +782,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         match (left_value, right_value) {
             (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Some(InternalValue::IntValue(
                 self.builder.build_or(left, right, "or").unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             _ => None,
         }
@@ -777,7 +799,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         match (left_value, right_value) {
             (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Some(InternalValue::IntValue(
                 self.builder.build_and(left, right, "and").unwrap(),
-                self.context.bool_type(),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             _ => None,
         }

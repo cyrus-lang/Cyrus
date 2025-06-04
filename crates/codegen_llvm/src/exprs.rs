@@ -10,7 +10,7 @@ use ast::{
 };
 use inkwell::{
     AddressSpace,
-    types::{BasicType, BasicTypeEnum},
+    types::BasicType,
     values::{AnyValue, ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{
@@ -51,7 +51,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::FuncCall(func_call) => {
                 let (call_site_value, return_type) = self.build_func_call(Rc::clone(&scope), func_call);
                 if let Some(value) = call_site_value.try_as_basic_value().left() {
-                    self.new_internal_value_from_basic_value_enum(value, return_type)
+                    self.new_internal_value(value, return_type)
                 } else {
                     InternalValue::PointerValue(self.build_null())
                 }
@@ -196,7 +196,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .builder
             .build_load(pointee_ty.to_basic_type(ptr_type), ptr, "load")
             .unwrap();
-        self.new_internal_value_from_basic_value_enum(loaded_value, pointee_ty)
+        self.new_internal_value(loaded_value, pointee_ty)
     }
 
     pub(crate) fn build_load_lvalue(&self, scope: ScopeRef<'ctx>, module_import: ModuleImport) -> InternalValue<'ctx> {
@@ -318,8 +318,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .map(|expr| self.build_expr(Rc::clone(&scope), expr.clone()))
             .collect();
 
-        // let array_type = self.build_type(array.data_type.clone(), array.loc.clone(), array.span.end);
-
         if let TypeSpecifier::Array(array_internal_type) = array.data_type {
             let ptr_type = self.context.ptr_type(AddressSpace::default());
             let element_type = self.build_type(*array_internal_type.element_type, array.loc.clone(), array.span.end);
@@ -370,9 +368,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             }),
                         });
                         exit(1);
-                    }
+                    }   
 
-                    v.to_basic_metadata().as_any_value_enum().try_into().unwrap()
+                    self.implicit_cast(self.internal_value_as_rvalue(v.clone()), element_type.clone()).as_basic_value_enum()
                 })
                 .collect();
 
@@ -381,80 +379,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             return InternalValue::ArrayValue(
                 array_value,
-                element_type
-                    .to_basic_type(ptr_type)
-                    .array_type(array_size.try_into().unwrap()),
+                InternalType::ArrayType(
+                    Box::new(element_type.clone()),
+                    element_type
+                        .to_basic_type(ptr_type)
+                        .array_type(array_size.try_into().unwrap()),
+                ),
             );
         }
 
         unreachable!();
     }
 
-    pub(crate) fn build_const_array(
-        &self,
-        scope: ScopeRef<'ctx>,
-        element_type: InternalType<'ctx>,
-        array_elements: Vec<Expression>,
-        loc: Location,
-        span_end: usize,
-    ) -> ArrayValue<'ctx> {
-        let mut array_elements = array_elements
-            .iter()
-            .map(|element| {
-                let element_value = self.build_expr(Rc::clone(&scope), element.clone());
-                // if !self
-                //     .compatible_types(element_type.clone(), element_value.get_type(self.string_type.clone()))
-                // {
-                //     display_single_diag(Diag {
-                //         level: DiagLevel::Error,
-                //         kind: DiagKind::Custom(format!(
-                //             "Incompatible item in array construction at index {}.",
-                //             array.elements.iter().position(|e| e == element).unwrap()
-                //         )),
-                //         location: Some(DiagLoc {
-                //             file: self.file_path.clone(),
-                //             line: array.loc.line,
-                //             column: array.loc.column,
-                //             length: array.span.end,
-                //         }),
-                //     });
-                //     exit(1);
-                // }
-                element_value
-                    .to_basic_metadata()
-                    .as_any_value_enum()
-                    .try_into()
-                    .unwrap()
-            })
-            .collect::<Vec<BasicValueEnum<'ctx>>>();
-
-        match element_type.to_basic_type(self.context.ptr_type(AddressSpace::default())) {
-            BasicTypeEnum::ArrayType(array_type) => array_type.const_array(
-                &array_elements
-                    .iter()
-                    .map(|e| e.into_array_value())
-                    .collect::<Vec<ArrayValue<'ctx>>>(),
-            ),
-            BasicTypeEnum::IntType(int_type) => int_type.const_array(
-                &array_elements
-                    .iter()
-                    .map(|e| e.into_int_value())
-                    .collect::<Vec<IntValue<'ctx>>>(),
-            ),
-            BasicTypeEnum::FloatType(float_type) => todo!(),
-            BasicTypeEnum::PointerType(pointer_type) => todo!(),
-            BasicTypeEnum::StructType(struct_type) => todo!(),
-            BasicTypeEnum::VectorType(vector_type) => todo!(),
-        }
-    }
-
     pub(crate) fn build_ordered_indexes(
         &self,
         scope: ScopeRef<'ctx>,
         dimensions: Vec<Expression>,
-    ) -> Vec<IntValue<'_>> {
+    ) -> Vec<IntValue<'ctx>> {
         let mut ordered_indexes: Vec<IntValue> = Vec::new();
-        ordered_indexes.push(self.context.i32_type().const_int(0, false));
+        ordered_indexes.push(self.build_integer_literal(0)); // first index is always 0
         for index_expr in dimensions {
             if let InternalValue::IntValue(index, _) = self.build_expr(Rc::clone(&scope), index_expr.clone()) {
                 ordered_indexes.push(index);
@@ -470,74 +413,64 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         ordered_indexes
     }
 
-    // FIXME
     pub(crate) fn build_array_index(&self, scope: ScopeRef<'ctx>, array_index: ArrayIndex) -> InternalValue<'ctx> {
-        todo!();
+        let (pointer, pointee_ty) = match self.build_expr(Rc::clone(&scope), *array_index.expr) {
+            InternalValue::PointerValue(typed_pointer_value) => {
+                (typed_pointer_value.ptr, typed_pointer_value.pointee_ty)
+            }
+            InternalValue::Lvalue(lvalue) => (lvalue.ptr, lvalue.pointee_ty),
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build array index to a non-array value.".to_string()),
+                    location: None,
+                });
+                exit(1);
+            }
+        };
 
-        // let internal_value = self.build_expr(Rc::clone(&scope), *array_index.expr);
+        if !pointee_ty.is_array_type() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Cannot build array index to a non-array value.".to_string()),
+                location: None,
+            });
+            exit(1);
+        }
 
-        // if let InternalValue::PointerValue(pointer_value) = internal_value {
-        //     if let InternalType::ArrayType(_) = pointer_value.pointee_ty {
-        //         let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
+        if let InternalType::ArrayType(array_element_type, _) = pointee_ty.clone() {
+            let ptr_type = self.context.ptr_type(AddressSpace::default());
+            let ordered_indexes = self.build_ordered_indexes(Rc::clone(&scope), array_index.dimensions);
+            let element_pointer = unsafe {
+                self.builder
+                    .build_in_bounds_gep(pointee_ty.to_basic_type(ptr_type), pointer, &ordered_indexes, "gep")
+                    .unwrap()
+            };
 
-        //         let index_ptr = unsafe {
-        //             let name = CString::new("gep").unwrap();
-        //             let mut indices: Vec<LLVMValueRef> =
-        //                 ordered_indexes.iter().map(|item| item.as_value_ref()).collect();
-
-        //             PointerValue::new(LLVMBuildGEP2(
-        //                 self.builder.as_mut_ptr(),
-        //                 pointer_value.pointee_ty.as_type_ref(),
-        //                 pointer_value.ptr.as_value_ref(),
-        //                 indices.as_mut_ptr(),
-        //                 ordered_indexes.len().try_into().unwrap(),
-        //                 name.as_ptr(),
-        //             ))
-        //         };
-
-        //         let ptr_type = self.context.ptr_type(AddressSpace::default());
-        //         let array_element_type = pointer_value
-        //             .pointee_ty
-        //             .to_basic_type(ptr_type)
-        //             .into_array_type()
-        //             .get_element_type();
-
-        //         let index_value = self.builder.build_load(array_element_type, index_ptr, "load").unwrap();
-        //         InternalValue::try_from(index_value).unwrap()
-        //     } else {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::Custom(
-        //                 "Cannot build array indexing to a pointer with non-array pointee type.".to_string(),
-        //             ),
-        //             location: None,
-        //         });
-        //         exit(1);
-        //     }
-        // } else {
-        //     display_single_diag(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: DiagKind::Custom("Cannot apply array indexing to a non-array pointer type.".to_string()),
-        //         location: None,
-        //     });
-        //     exit(1);
-        // }
+            InternalValue::Lvalue(Lvalue {
+                ptr: element_pointer,
+                pointee_ty: *array_element_type,
+            })
+        } else {
+            unreachable!();
+        }
     }
 
     pub(crate) fn build_literal(&self, literal: Literal) -> InternalValue<'ctx> {
         match literal {
-            Literal::Integer(integer_literal) => {
-                InternalValue::IntValue(self.build_integer_literal(integer_literal), self.context.i32_type())
-            }
-            Literal::Float(float_literal) => {
-                InternalValue::FloatValue(self.build_float_literal(float_literal), self.context.f32_type())
-            }
-            Literal::Bool(bool_literal) => {
-                InternalValue::IntValue(self.build_bool_literal(bool_literal), self.context.bool_type())
-            }
-            Literal::Char(char_literal) => {
-                InternalValue::IntValue(self.build_char_literal(char_literal), self.context.i8_type())
-            }
+            Literal::Integer(integer_literal) => InternalValue::IntValue(
+                self.build_integer_literal(integer_literal),
+                InternalType::IntType(self.context.i32_type()),
+            ),
+            Literal::Float(float_literal) => InternalValue::FloatValue(
+                self.build_float_literal(float_literal),
+                InternalType::FloatType(self.context.f32_type()),
+            ),
+            Literal::Bool(bool_literal) => InternalValue::BoolValue(self.build_bool_literal(bool_literal)),
+            Literal::Char(char_literal) => InternalValue::IntValue(
+                self.build_char_literal(char_literal),
+                InternalType::IntType(self.context.i8_type()),
+            ),
             Literal::String(string_literal) => self.build_string_literal(string_literal),
             Literal::Null => InternalValue::PointerValue(self.build_null()),
         }
@@ -571,7 +504,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         string_global.set_constant(true);
         string_global.set_linkage(inkwell::module::Linkage::Private);
 
-        InternalValue::StrValue(string_global.as_any_value_enum().into_pointer_value(), i8_array_type)
+        InternalValue::StrValue(
+            string_global.as_any_value_enum().into_pointer_value(),
+            InternalType::ArrayType(
+                Box::new(InternalType::ArrayType(
+                    Box::new(InternalType::IntType(self.context.i8_type())),
+                    i8_array_type,
+                )),
+                i8_array_type,
+            ),
+        )
     }
 
     pub(crate) fn build_char_literal(&self, value: char) -> IntValue<'ctx> {
@@ -604,13 +546,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::IntValue(int_value, _) => match target_type {
                 InternalType::IntType(int_type) => InternalValue::IntValue(
                     self.builder.build_int_cast(int_value, int_type, "cast").unwrap(),
-                    int_type,
+                    InternalType::IntType(int_type),
                 ),
                 InternalType::FloatType(float_type) => InternalValue::FloatValue(
                     self.builder
                         .build_signed_int_to_float(int_value, float_type, "cast")
                         .unwrap(),
-                    float_type,
+                    InternalType::FloatType(float_type),
                 ),
                 InternalType::ConstType(inner_type) => {
                     self.build_cast_expression_internal(internal_value, *inner_type, loc, span_end)
@@ -634,11 +576,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder
                         .build_float_to_signed_int(float_value, int_type, "cast")
                         .unwrap(),
-                    int_type,
+                    InternalType::IntType(int_type),
                 ),
                 InternalType::FloatType(float_type) => InternalValue::FloatValue(
                     self.builder.build_float_cast(float_value, float_type, "cast").unwrap(),
-                    float_type,
+                    InternalType::FloatType(float_type),
                 ),
                 InternalType::ConstType(inner_type) => {
                     self.build_cast_expression_internal(internal_value, *inner_type, loc, span_end)
@@ -757,19 +699,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
             },
-            _ => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(String::from("Cannot cast non-basic value.")),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
+            _ => internal_value,
         }
     }
 
@@ -794,6 +724,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         };
 
+        if matches!(
+            target_type,
+            InternalType::StructType(..)
+                | InternalType::VectorType(..)
+                | InternalType::VoidType(..)
+                | InternalType::Lvalue(..),
+        ) {
+            // FIXME We need accurate type name tracking here
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!("Cannot cast value of type '{:?}'.", target_type)),
+                location: None,
+            });
+            exit(1);
+        }
+
         self.build_cast_expression_internal(internal_value, target_type, cast.loc.clone(), cast.span.end)
     }
 
@@ -807,11 +753,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TokenKind::Minus => match operand {
                 InternalValue::IntValue(int_value, _) => InternalValue::IntValue(
                     self.builder.build_int_neg(int_value, "prefix_iminus").unwrap(),
-                    int_value.get_type(),
+                    InternalType::IntType(int_value.get_type()),
                 ),
                 InternalValue::FloatValue(float_value, _) => InternalValue::FloatValue(
                     self.builder.build_float_neg(float_value, "prefix_fminus").unwrap(),
-                    float_value.get_type(),
+                    InternalType::FloatType(float_value.get_type()),
                 ),
                 _ => {
                     display_single_diag(Diag {
@@ -838,9 +784,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         .unwrap();
 
                     if is_zero.get_zero_extended_constant().unwrap() == 0 {
-                        InternalValue::IntValue(zero, int_value.get_type())
+                        InternalValue::IntValue(zero, InternalType::BoolType(int_value.get_type()))
                     } else {
-                        InternalValue::IntValue(one, int_value.get_type())
+                        InternalValue::IntValue(one, InternalType::BoolType(int_value.get_type()))
                     }
                 }
                 _ => {
@@ -887,13 +833,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 UnaryOperatorType::PreIncrement => {
                     return InternalValue::IntValue(
                         self.builder.build_int_add(int_value, int_one, "unaryop").unwrap(),
-                        int_value.get_type(),
+                        InternalType::IntType(int_value.get_type()),
                     );
                 }
                 UnaryOperatorType::PreDecrement => {
                     return InternalValue::IntValue(
                         self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap(),
-                        int_value.get_type(),
+                        InternalType::IntType(int_value.get_type()),
                     );
                 }
                 UnaryOperatorType::PostIncrement => {

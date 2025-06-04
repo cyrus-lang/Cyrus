@@ -24,17 +24,17 @@ use std::process::exit;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum InternalType<'a> {
+    BoolType(IntType<'a>),
     IntType(IntType<'a>),
     FloatType(FloatType<'a>),
-    ArrayType(ArrayType<'a>),
     StructType(StructType<'a>),
     VectorType(VectorType<'a>),
     StringType(StringType<'a>),
     VoidType(VoidType<'a>),
     PointerType(Box<TypedPointerType<'a>>),
     ConstType(Box<InternalType<'a>>),
-    #[allow(unused)]
     Lvalue(Box<LvalueType<'a>>),
+    ArrayType(Box<InternalType<'a>>, ArrayType<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,38 +54,44 @@ pub(crate) struct StringType<'a> {
     pub struct_type: StructType<'a>,
 }
 
-impl<'a> TryFrom<BasicTypeEnum<'a>> for InternalType<'a> {
-    type Error = &'static str;
-
-    fn try_from(ty: BasicTypeEnum<'a>) -> Result<Self, Self::Error> {
-        match ty {
-            BasicTypeEnum::IntType(v) => Ok(InternalType::IntType(v)),
-            BasicTypeEnum::FloatType(v) => Ok(InternalType::FloatType(v)),
-            BasicTypeEnum::ArrayType(v) => Ok(InternalType::ArrayType(v)),
-            BasicTypeEnum::StructType(v) => Ok(InternalType::StructType(v)),
-            BasicTypeEnum::VectorType(v) => Ok(InternalType::VectorType(v)),
-            BasicTypeEnum::PointerType(_) => Err("Cannot infer pointee type from opaque PointerType."),
-        }
-    }
-}
-
 impl<'a> InternalType<'a> {
     pub fn into_array_type(&self, size: u32) -> Result<InternalType<'a>, String> {
         match self {
-            InternalType::IntType(int_type) => Ok(InternalType::ArrayType(int_type.array_type(size))),
-            InternalType::FloatType(float_type) => Ok(InternalType::ArrayType(float_type.array_type(size))),
-            InternalType::ArrayType(array_type) => Ok(InternalType::ArrayType(array_type.array_type(size))),
-            InternalType::StructType(struct_type) => Ok(InternalType::ArrayType(struct_type.array_type(size))),
-            InternalType::VectorType(vector_type) => Ok(InternalType::ArrayType(vector_type.array_type(size))),
-            InternalType::StringType(string_type) => {
-                Ok(InternalType::ArrayType(string_type.struct_type.array_type(size)))
-            }
-            InternalType::PointerType(typed_pointer_type) => {
-                Ok(InternalType::ArrayType(typed_pointer_type.ptr_type.array_type(size)))
-            }
+            InternalType::IntType(int_type) => Ok(InternalType::ArrayType(
+                Box::new(InternalType::IntType(*int_type)),
+                int_type.array_type(size),
+            )),
+            InternalType::FloatType(float_type) => Ok(InternalType::ArrayType(
+                Box::new(InternalType::FloatType(*float_type)),
+                float_type.array_type(size),
+            )),
+            InternalType::ArrayType(element_type, array_type) => Ok(InternalType::ArrayType(
+                element_type.clone(),
+                array_type.array_type(size),
+            )),
+            InternalType::StructType(struct_type) => Ok(InternalType::ArrayType(
+                Box::new(InternalType::StructType(*struct_type)),
+                struct_type.array_type(size),
+            )),
+            InternalType::VectorType(vector_type) => Ok(InternalType::ArrayType(
+                Box::new(InternalType::VectorType(*vector_type)),
+                vector_type.array_type(size),
+            )),
+            InternalType::StringType(string_type) => Ok(InternalType::ArrayType(
+                Box::new(InternalType::StringType(string_type.clone())),
+                string_type.struct_type.array_type(size),
+            )),
+            InternalType::PointerType(typed_pointer_type) => Ok(InternalType::ArrayType(
+                Box::new(InternalType::PointerType(typed_pointer_type.clone())),
+                typed_pointer_type.ptr_type.array_type(size),
+            )),
             InternalType::ConstType(internal_type) => internal_type.into_array_type(size),
             InternalType::VoidType(_) => Err("VoidType cannot be converted to an array type.".to_string()),
             InternalType::Lvalue(_) => Err("Lvalue cannot be converted to an array type.".to_string()),
+            InternalType::BoolType(int_type) => Ok(InternalType::ArrayType(
+                Box::new(InternalType::BoolType(*int_type)),
+                int_type.array_type(size),
+            )),
         }
     }
 
@@ -94,11 +100,27 @@ impl<'a> InternalType<'a> {
         value: inkwell::values::BasicValueEnum<'a>,
     ) -> Result<InternalValue<'a>, &'static str> {
         match self {
-            InternalType::IntType(ty) => Ok(InternalValue::IntValue(value.into_int_value(), ty.clone())),
-            InternalType::FloatType(ty) => Ok(InternalValue::FloatValue(value.into_float_value(), ty.clone())),
-            InternalType::ArrayType(ty) => Ok(InternalValue::ArrayValue(value.into_array_value(), ty.clone())),
-            InternalType::StructType(ty) => Ok(InternalValue::StructValue(value.into_struct_value(), ty.clone())),
-            InternalType::VectorType(ty) => Ok(InternalValue::VectorValue(value.into_vector_value(), ty.clone())),
+            InternalType::BoolType(_) => Ok(InternalValue::BoolValue(value.into_int_value())),
+            InternalType::IntType(ty) => Ok(InternalValue::IntValue(
+                value.into_int_value(),
+                InternalType::IntType(ty.clone()),
+            )),
+            InternalType::FloatType(ty) => Ok(InternalValue::FloatValue(
+                value.into_float_value(),
+                InternalType::FloatType(ty.clone()),
+            )),
+            InternalType::ArrayType(element_type, ty) => Ok(InternalValue::ArrayValue(
+                value.into_array_value(),
+                InternalType::ArrayType(element_type.clone(), ty.clone()),
+            )),
+            InternalType::StructType(ty) => Ok(InternalValue::StructValue(
+                value.into_struct_value(),
+                InternalType::StructType(ty.clone()),
+            )),
+            InternalType::VectorType(ty) => Ok(InternalValue::VectorValue(
+                value.into_vector_value(),
+                InternalType::VectorType(ty.clone()),
+            )),
             InternalType::StringType(_) => Ok(InternalValue::StringValue(StringValue {
                 struct_value: value.into_struct_value(),
             })),
@@ -130,7 +152,7 @@ impl<'a> InternalType<'a> {
 
     #[allow(unused)]
     pub fn is_array_type(&self) -> bool {
-        matches!(self, InternalType::ArrayType(_))
+        matches!(self, InternalType::ArrayType(_, _))
     }
 
     #[allow(unused)]
@@ -171,7 +193,7 @@ impl<'a> InternalType<'a> {
         match self {
             InternalType::IntType(t) => (*t).as_basic_type_enum(),
             InternalType::FloatType(t) => (*t).as_basic_type_enum(),
-            InternalType::ArrayType(t) => (*t).as_basic_type_enum(),
+            InternalType::ArrayType(_, t) => (*t).as_basic_type_enum(),
             InternalType::StructType(t) => (*t).as_basic_type_enum(),
             InternalType::VectorType(t) => (*t).as_basic_type_enum(),
             InternalType::PointerType(t) => t.ptr_type.as_basic_type_enum(),
@@ -179,6 +201,7 @@ impl<'a> InternalType<'a> {
             InternalType::StringType(t) => (*t).struct_type.as_basic_type_enum(),
             InternalType::VoidType(_) => BasicTypeEnum::PointerType(ptr_type),
             InternalType::ConstType(t) => t.to_basic_type(ptr_type),
+            InternalType::BoolType(t) => (*t).as_basic_type_enum(),
         }
     }
 
@@ -186,14 +209,15 @@ impl<'a> InternalType<'a> {
         match self {
             InternalType::IntType(t) => t.as_type_ref(),
             InternalType::FloatType(t) => t.as_type_ref(),
-            InternalType::ArrayType(t) => t.as_type_ref(),
+            InternalType::ArrayType(_, t) => t.as_type_ref(),
             InternalType::StructType(t) => t.as_type_ref(),
             InternalType::VectorType(t) => t.as_type_ref(),
             InternalType::PointerType(t) => t.ptr_type.as_type_ref(),
             InternalType::Lvalue(t) => t.ptr_type.as_type_ref(),
             InternalType::StringType(t) => t.struct_type.as_type_ref(),
             InternalType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).as_type_ref(),
-            InternalType::ConstType(internal_type) => internal_type.as_type_ref(),
+            InternalType::ConstType(t) => t.as_type_ref(),
+            InternalType::BoolType(t) => t.as_type_ref(),
         }
     }
 }
@@ -235,8 +259,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalType::PointerType(_), InternalType::PointerType(_)) => true,
             (InternalType::StructType(_), InternalType::StructType(_)) => true,
             (InternalType::VectorType(_), InternalType::VectorType(_)) => true,
-            (InternalType::ArrayType(arr1), InternalType::ArrayType(arr2)) => {
-                (arr1.len() == arr2.len()) && (arr1.get_element_type() == arr2.get_element_type())
+            (InternalType::ArrayType(element_type1, arr1), InternalType::ArrayType(element_type2, arr2)) => {
+                (arr1.len() == arr2.len()) && self.compatible_types(*element_type1, *element_type2)
             }
             (InternalType::StringType(_), InternalType::StringType(_)) => true,
             (InternalType::StringType(_), InternalType::PointerType(typed_pointer_type)) => {
