@@ -103,8 +103,8 @@ impl DiagReporter {
     pub fn display_diags(&self) {
         for diag in &self.diags {
             match diag.level {
-                DiagLevel::Error => tui_error(self.fmt_diag(diag)),
-                DiagLevel::Warning => tui_warning(self.fmt_diag(diag)),
+                DiagLevel::Error => tui_error(self.format_panel(diag)),
+                DiagLevel::Warning => tui_warning(self.format_panel(diag)),
             }
         }
     }
@@ -113,7 +113,9 @@ impl DiagReporter {
         self.diags.len() > 0
     }
 
-    fn fmt_diag(&self, diag: &Diag) -> String {
+    fn format_panel(&self, diag: &Diag) -> String {
+        dbg!(diag.clone());
+        
         let mut formatted = String::new();
         if let Some(loc) = &diag.location {
             formatted.push_str(&format!("{}:{}:{}: ", loc.file, loc.line, loc.column));

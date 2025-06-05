@@ -56,7 +56,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
                                 kind: DiagKind::Custom("Cannot declare a func param with 'void' type.".to_string()),
-                                location: None,
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: param.loc.line,
+                                    column: param.loc.column,
+                                    length: param.span.end,
+                                }),
                             });
                             exit(1);
                         }
@@ -231,7 +236,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     build_return = true;
                     let expr =
                         self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), return_statement.argument));
-                    self.build_return(expr);
+                    self.build_return(expr, return_statement.loc, return_statement.span.end);
                 }
                 _ => self.build_statement(Rc::clone(&scope), expr),
             }
@@ -291,7 +296,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         return func;
     }
 
-    pub(crate) fn build_return(&mut self, value: InternalValue) {
+    pub(crate) fn build_return(&mut self, value: InternalValue, loc: Location, span_end: usize) {
         let result: Result<InstructionValue, BuilderError> = match value {
             InternalValue::IntValue(int_value, _) => self.builder.build_return(Some(&int_value)),
             InternalValue::FloatValue(float_value, _) => self.builder.build_return(Some(&float_value)),
@@ -303,7 +308,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(String::from("Cannot build return statement with non-basic value.")),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
                 });
                 exit(1);
             }
@@ -312,8 +322,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         if let Err(err) = result {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!("Cannot build return statement:\n{}", err.to_string())),
-                location: None,
+                kind: DiagKind::Custom(format!("Cannot build return statement: {}", err.to_string())),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
             });
             exit(1);
         }
@@ -325,7 +340,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom("Failed to mark block terminated.".to_string()),
-                location: None,
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
             });
         }
     }

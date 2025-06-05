@@ -29,6 +29,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Return(statement) => {
                 self.build_return(
                     self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), statement.argument)),
+                    statement.loc,
+                    statement.span.end,
                 );
             }
             Statement::FuncDef(func_def) => {

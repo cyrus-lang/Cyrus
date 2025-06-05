@@ -57,12 +57,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
             Expression::TypeSpecifier(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot build type specifier here.".to_string()),
-                    location: None,
-                });
-                exit(1);
+                InternalValue::PointerValue(self.build_null())
+
             }
         }
     }
@@ -171,7 +167,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
                                 kind: DiagKind::Custom(format!("Module '{}' not found.", module_identifier)),
-                                location: None,
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: module_import.loc.line,
+                                    column: module_import.loc.column,
+                                    length: module_import.span.end,
+                                }),
                             });
                             exit(1);
                         }
@@ -222,7 +223,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: module_import.loc.line,
+                        column: module_import.loc.column,
+                        length: module_import.span.end,
+                    }),
                 });
                 exit(1);
             }
@@ -262,7 +268,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 .pointee_ty
                                 .to_basic_type(self.context.ptr_type(AddressSpace::default())),
                         )),
-                        location: None,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: assignment.loc.line,
+                            column: assignment.loc.column,
+                            length: assignment.span.end,
+                        }),
                     });
                     exit(1);
                 };
@@ -274,7 +285,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom("Cannot assign to a constant lvalue.".to_string()),
-                        location: None,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: assignment.loc.line,
+                            column: assignment.loc.column,
+                            length: assignment.span.end,
+                        }),
                     });
                     exit(1);
                 }
@@ -293,7 +309,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 .clone()
                                 .to_basic_type(self.context.ptr_type(AddressSpace::default())),
                         )),
-                        location: None,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: assignment.loc.line,
+                            column: assignment.loc.column,
+                            length: assignment.span.end,
+                        }),
                     });
                     exit(1);
                 };
@@ -304,7 +325,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot assign to a non-pointer value.".to_string()),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: assignment.loc.line,
+                        column: assignment.loc.column,
+                        length: assignment.span.end,
+                    }),
                 });
                 exit(1);
             }
@@ -454,7 +480,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot build array index to a non-array value.".to_string()),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: array_index.loc.line,
+                        column: array_index.loc.column,
+                        length: array_index.span.end,
+                    }),
                 });
                 exit(1);
             }
@@ -464,7 +495,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom("Cannot build array index to a non-array value.".to_string()),
-                location: None,
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: array_index.loc.line,
+                    column: array_index.loc.column,
+                    length: array_index.span.end,
+                }),
             });
             exit(1);
         }
@@ -487,7 +523,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             index_int_value.get_zero_extended_constant().unwrap(),
                             array_type.len(),
                         )),
-                        location: None,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: array_index.loc.line,
+                            column: array_index.loc.column,
+                            length: array_index.span.end,
+                        }),
                     });
                     exit(1);
                 } else if !index_int_value.is_const() {
@@ -500,7 +541,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot build array indexing with a non-integer index.".to_string()),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: array_index.loc.line,
+                        column: array_index.loc.column,
+                        length: array_index.span.end,
+                    }),
                 });
                 exit(1);
             }
@@ -783,7 +829,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         .to_basic_type(ptr_type),
                     target_type.to_basic_type(ptr_type)
                 )),
-                location: None,
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: cast.loc.line,
+                    column: cast.loc.column,
+                    length: cast.span.end,
+                }),
             });
             exit(1);
         };
@@ -799,7 +850,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!("Cannot cast value of type '{:?}'.", target_type)),
-                location: None,
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: cast.loc.line,
+                    column: cast.loc.column,
+                    length: cast.span.end,
+                }),
             });
             exit(1);
         }
@@ -921,7 +977,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(String::from("Cannot build unary operator for non-integer value.")),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: unary_operator.loc.line,
+                        column: unary_operator.loc.column,
+                        length: unary_operator.span.end,
+                    }),
                 });
                 exit(1);
             }
