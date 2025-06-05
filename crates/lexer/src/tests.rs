@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::Lexer;
-    use ast::token::{Span, TokenKind};
     use ast::ast::Literal;
+    use ast::token::{Span, TokenKind};
 
     #[test]
     fn test_select() {
@@ -326,11 +326,7 @@ mod tests {
 
     #[test]
     fn test_floating_numbers() {
-        assert_tokens(
-            "2.56",
-            Some(&vec![TokenKind::Literal(Literal::Float(2.56))]),
-            None,
-        );
+        assert_tokens("2.56", Some(&vec![TokenKind::Literal(Literal::Float(2.56))]), None);
     }
 
     #[test]

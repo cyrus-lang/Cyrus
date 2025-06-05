@@ -1,4 +1,4 @@
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{Rng, distributions::Alphanumeric};
 
 pub fn generate_random_hex() -> String {
     let rng = rand::thread_rng();

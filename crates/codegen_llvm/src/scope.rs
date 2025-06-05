@@ -41,5 +41,5 @@ impl<'a> Scope<'a> {
     }
 }
 
-// TODO 
+// TODO
 // Write unit test for this section

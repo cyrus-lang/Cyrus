@@ -209,9 +209,9 @@ impl<'a> Parser<'a> {
             }
         } else if self.peek_token_is(TokenKind::LeftBracket) {
             self.next_token();
-            return Ok(Expression::ArrayIndex(self.parse_array_index(expr)?));
+            return Ok(self.parse_array_index(expr)?);
         } else if self.current_token_is(TokenKind::LeftBracket) {
-            return Ok(Expression::ArrayIndex(self.parse_array_index(expr)?));
+            return Ok(self.parse_array_index(expr)?);
         } else if self.peek_token_is(TokenKind::LeftParen) {
             return self.parse_func_call(expr);
         }
@@ -617,27 +617,34 @@ impl<'a> Parser<'a> {
         })))
     }
 
-    pub fn parse_array_index(&mut self, expr: Expression) -> Result<ArrayIndex, ParseError> {
+    pub fn parse_array_index(&mut self, expr: Expression) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
 
-        let mut dimensions: Vec<Expression> = Vec::new();
+        let mut base_index = Expression::ArrayIndex(ArrayIndex {
+            expr: Box::new(expr),
+            index: Box::new(self.parse_single_array_index()?),
+            span: Span::new(start, self.current_token.span.end),
+            loc: self.current_location(),
+        });
+
+        if self.peek_token_is(TokenKind::LeftBracket) {
+            self.next_token();
+        }
 
         while self.current_token_is(TokenKind::LeftBracket) {
-            let expr = self.parse_single_array_index()?;
-            dimensions.push(expr);
+            base_index = Expression::ArrayIndex(ArrayIndex {
+                expr: Box::new(base_index),
+                index: Box::new(self.parse_single_array_index()?),
+                span: Span::new(start, self.current_token.span.end),
+                loc: self.current_location(),
+            });
+
             if self.peek_token_is(TokenKind::LeftBracket) {
                 self.next_token();
             }
         }
 
-        let end = self.current_token.span.end;
-
-        Ok(ArrayIndex {
-            dimensions,
-            span: Span { start, end },
-            expr: Box::new(expr),
-            loc: self.current_location(),
-        })
+        Ok(base_index)
     }
 
     pub fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expression, ParseError> {

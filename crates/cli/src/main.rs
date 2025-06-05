@@ -218,7 +218,15 @@ macro_rules! init_compiler {
             };
 
             let (program, file_name) = parse_program(file_path.clone());
-            let codegen_llvm = match CodeGenLLVM::new($context, file_path, file_name.clone(), program, opts, true, $output_kind) {
+            let codegen_llvm = match CodeGenLLVM::new(
+                $context,
+                file_path,
+                file_name.clone(),
+                program,
+                opts,
+                true,
+                $output_kind,
+            ) {
                 Ok(instance) => instance,
                 Err(err) => {
                     display_single_diag(Diag {

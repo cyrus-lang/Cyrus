@@ -221,12 +221,10 @@ mod tests {
         }
     );
 
-    define_test!(array_index, "arr[0][1];", |program: ProgramTree| {
+    define_test!(array_index, "arr[0];", |program: ProgramTree| {
         if let Statement::Expression(expression) = &program.body[0] {
             if let Expression::ArrayIndex(array_index) = expression {
-                assert_eq!(array_index.dimensions.len(), 2);
-                assert_eq!(array_index.dimensions[0], Expression::Literal(Literal::Integer(0)));
-                assert_eq!(array_index.dimensions[1], Expression::Literal(Literal::Integer(1)));
+                assert_eq!(array_index.index, Box::new(Expression::Literal(Literal::Integer(0))));
             } else {
                 panic!("Expected an array index but got something else.");
             }

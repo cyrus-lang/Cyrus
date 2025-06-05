@@ -25,21 +25,25 @@ fn saturating_sub(value: usize, input: usize) -> usize {
     }
 }
 
+const PANEL_LENGTH: usize = 3;
+
 impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
     pub fn print(&self) {
-        let mut starting_line = saturating_sub(self.location.line, 5);
+        println!();
+
+        let mut starting_line = saturating_sub(self.location.line, PANEL_LENGTH);
         let source_content = unescape_string(*self.source_content.clone());
         let sources_lines: Vec<&str> = source_content.split("\n").collect();
 
-        while starting_line < self.location.line + 5 {
+        while starting_line < self.location.line + PANEL_LENGTH {
             if let Some(line_str) = sources_lines.get(starting_line) {
                 if starting_line + 1 == self.location.line && user_attended() {
                     print!(
                         "{}",
-                        format!("{} | {}", starting_line + 1, line_str).color(Colors::RedFg)
+                        format!("{}  | {}", starting_line + 1, line_str).color(Colors::RedFg)
                     );
                 } else {
-                    print!("{} | {}", starting_line + 1, line_str);
+                    print!("{}  | {}", starting_line + 1, line_str);
                 }
             } else {
                 break;

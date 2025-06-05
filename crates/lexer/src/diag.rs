@@ -38,10 +38,10 @@ impl CompileTypeErrorType for LexicalErrorType {
             LexicalErrorType::EmptyCharLiteral => "Empty char literal is invalid",
             LexicalErrorType::InvalidChar(ch) => {
                 return format!("Invalid char: '{}'", ch);
-            },
+            }
             LexicalErrorType::UnknownChar(ch) => {
                 return format!("Unknown char: '{}'", ch);
-            },
+            }
         })
     }
 }

@@ -1,5 +1,5 @@
-use core::fmt;
 use crate::Lexer;
+use core::fmt;
 
 impl fmt::Display for Lexer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> fmt::Result {

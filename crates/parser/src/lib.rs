@@ -143,7 +143,7 @@ impl<'a> Parser<'a> {
             self.next_token(); // consume current token
             return Ok(());
         }
-        
+
         Err(CompileTimeError {
             location: self.current_location(),
             etype: ParserErrorType::ExpectedToken(token_kind),

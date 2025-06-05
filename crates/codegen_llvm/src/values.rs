@@ -133,9 +133,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::FloatType(float_type) => {
                 InternalValue::FloatValue(float_type.const_zero(), InternalType::FloatType(float_type))
             }
-            InternalType::ArrayType(element_type, array_type) => {
-                InternalValue::ArrayValue(array_type.const_zero(), InternalType::ArrayType(element_type, array_type))
-            }
+            InternalType::ArrayType(element_type, array_type) => InternalValue::ArrayValue(
+                array_type.const_zero(),
+                InternalType::ArrayType(element_type, array_type),
+            ),
             InternalType::StructType(struct_type) => {
                 InternalValue::StructValue(struct_type.const_zero(), InternalType::StructType(struct_type))
             }
@@ -167,9 +168,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::FloatType(float_type) => {
                 InternalValue::FloatValue(value.into_float_value(), InternalType::FloatType(float_type))
             }
-            InternalType::ArrayType(element_type, array_type) => {
-                InternalValue::ArrayValue(value.into_array_value(), InternalType::ArrayType(element_type, array_type))
-            }
+            InternalType::ArrayType(element_type, array_type) => InternalValue::ArrayValue(
+                value.into_array_value(),
+                InternalType::ArrayType(element_type, array_type),
+            ),
             InternalType::StructType(struct_type) => {
                 InternalValue::StructValue(value.into_struct_value(), InternalType::StructType(struct_type))
             }

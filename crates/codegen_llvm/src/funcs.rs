@@ -428,7 +428,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             Some(func_metadata) => {
                                 if !(func_metadata.func_decl.storage_class == StorageClass::Public
                                     || func_metadata.func_decl.storage_class == StorageClass::PublicExtern
-                                || func_metadata.func_decl.storage_class == StorageClass::PublicInline)
+                                    || func_metadata.func_decl.storage_class == StorageClass::PublicInline)
                                 {
                                     display_single_diag(Diag {
                                         level: DiagLevel::Error,

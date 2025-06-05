@@ -75,7 +75,8 @@ impl fmt::Display for TypeSpecifier {
                 write!(
                     f,
                     "{}[{}]",
-                    array_type_specifier.element_type, match &array_type_specifier.size {
+                    array_type_specifier.element_type,
+                    match &array_type_specifier.size {
                         ArrayCapacity::Fixed(size) => size.to_string(),
                         ArrayCapacity::Dynamic => "".to_string(),
                     }
@@ -123,11 +124,7 @@ impl fmt::Display for Expression {
                 write!(f, "[{}]", expression_series_to_string(array.elements.clone()))
             }
             Expression::ArrayIndex(array_index) => {
-                write!(f, "{}", array_index.expr.to_string())?;
-                for item in &array_index.dimensions {
-                    write!(f, "[{}]", item)?;
-                }
-                write!(f, "")
+                write!(f, "{}[{}]", array_index.expr.to_string(), array_index.index)
             }
             Expression::Assignment(assignment) => {
                 write!(f, "{} = {}", assignment.assign_to.to_string(), assignment.expr)

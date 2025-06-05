@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{build::OutputKind, opts::Options, CodeGenLLVM};
+    use crate::{CodeGenLLVM, build::OutputKind, opts::Options};
     use inkwell::context::Context;
 
     #[test]
@@ -16,7 +16,7 @@ mod tests {
             },
             Options::default(),
             true,
-            OutputKind::None
+            OutputKind::None,
         );
     }
 }
