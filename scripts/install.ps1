@@ -27,7 +27,7 @@ if (Test-Path "$INSTALL_DIR\$EXECUTABLE_NAME") {
     Write-Host "   - Check version:       cyrus version"
     Write-Host "   - Show help:           cyrus help"
     Write-Host ""
-    Write-Host "Happy coding with Cyrus Lang! 👾"
+    Write-Host "Happy coding with Cyrus! 👾"
 } else {
     Write-Host "Installation failed."
     exit 1
