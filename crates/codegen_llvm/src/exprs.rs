@@ -9,9 +9,7 @@ use ast::{
     token::{Location, TokenKind},
 };
 use inkwell::{
-    AddressSpace,
-    types::BasicType,
-    values::{AnyValue, ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    llvm_sys, types::{BasicType, BasicTypeEnum}, values::{AnyValue, ArrayValue, AsValueRef, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue}, AddressSpace
 };
 use std::{
     ops::{Deref, DerefMut},
@@ -312,10 +310,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
+        let mut is_const_array = false;
         let mut array_elements: Vec<InternalValue<'ctx>> = array
             .elements
             .iter()
-            .map(|expr| self.build_expr(Rc::clone(&scope), expr.clone()))
+            .map(|expr| 
+                {
+                    let internal_value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr.clone()));
+                    let is_const = unsafe { llvm_sys::core::LLVMIsConstant(internal_value.to_basic_metadata().as_value_ref()) };
+                    if is_const == 1 {
+                        is_const_array = true;
+                    }
+                    internal_value
+                }
+            )
             .collect();
 
         if let TypeSpecifier::Array(array_internal_type) = array.data_type {
@@ -370,12 +378,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         exit(1);
                     }   
 
-                    self.implicit_cast(self.internal_value_as_rvalue(v.clone()), element_type.clone()).as_basic_value_enum()
+                    self.implicit_cast(v.clone(), element_type.clone()).as_basic_value_enum()
                 })
                 .collect();
 
-            let array_value =
-                unsafe { ArrayValue::new_const_array(&element_type.to_basic_type(ptr_type), &array_element_values) };
+            let array_value = {
+                if is_const_array     {
+                    self.build_const_array(element_type.to_basic_type(ptr_type), array_element_values)
+                } else{
+                    self.build_runtime_array(element_type.into_array_type(array_size.try_into().unwrap()).unwrap().to_basic_type(ptr_type), array_element_values)
+                }
+            };
 
             return InternalValue::ArrayValue(
                 array_value,
@@ -389,6 +402,27 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         unreachable!();
+    }
+
+    pub(crate) fn build_runtime_array(&self, array_type: BasicTypeEnum<'ctx>, values: Vec<BasicValueEnum<'ctx>>) -> ArrayValue<'ctx> {
+        let zero_array_value = array_type.into_array_type().const_zero();
+        let array_alloca = self.builder.build_alloca(array_type.clone(), "array").unwrap();
+        self.builder.build_store(array_alloca, zero_array_value).unwrap();
+        
+        for (idx, value) in values.iter().enumerate() {
+            let mut ordered_indexes: Vec<IntValue> = Vec::new();
+            ordered_indexes.push(self.build_integer_literal(0)); // first index is always 0
+            ordered_indexes.push(self.build_integer_literal(idx.try_into().unwrap())); // add item index
+            let element_pointer = unsafe { self.builder.build_in_bounds_gep(array_type, array_alloca, &ordered_indexes, "gep").unwrap() };
+            self.builder.build_store(element_pointer, value.clone()).unwrap();
+        }
+
+        let array_value = self.builder.build_load(array_type, array_alloca, "load").unwrap();
+        array_value.into_array_value()
+    }
+
+    pub(crate) fn build_const_array(&self, element_type: BasicTypeEnum<'ctx>, values: Vec<BasicValueEnum<'ctx>> ) -> ArrayValue<'ctx> {
+        unsafe { ArrayValue::new_const_array(&element_type, &values) }
     }
 
     pub(crate) fn build_ordered_indexes(
