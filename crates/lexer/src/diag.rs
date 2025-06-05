@@ -1,6 +1,6 @@
 use core::fmt;
 
-use ast::token::Location;
+use ast::token::{Location, Span};
 use diag::errors::{CompileTimeError, CompileTypeErrorType};
 
 #[derive(Debug)]
@@ -46,25 +46,39 @@ impl CompileTypeErrorType for LexicalErrorType {
     }
 }
 
-pub fn lexer_invalid_char_error(file_name: String, line: usize, column: usize, ch: char, source_content: Box<String>) {
+pub fn lexer_invalid_char_error(
+    file_name: String,
+    line: usize,
+    column: usize,
+    ch: char,
+    span: Span,
+    source_content: Box<String>,
+) {
     CompileTimeError {
         location: Location::new(line, column),
         etype: LexicalErrorType::InvalidChar(ch),
         file_name: Some(file_name),
         verbose: None,
-        caret: false,
+        caret: Some(span),
         source_content,
     }
     .print();
 }
 
-pub fn lexer_unknown_char_error(file_name: String, line: usize, column: usize, ch: char, source_content: Box<String>) {
+pub fn lexer_unknown_char_error(
+    file_name: String,
+    line: usize,
+    column: usize,
+    ch: char,
+    span: Span,
+    source_content: Box<String>,
+) {
     CompileTimeError {
         location: Location::new(line, column),
         etype: LexicalErrorType::UnknownChar(ch),
         file_name: Some(file_name),
         verbose: None,
-        caret: false,
+        caret: Some(span),
         source_content,
     }
     .print();

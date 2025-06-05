@@ -49,6 +49,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_enum_field(&mut self) -> Result<EnumField, ParseError> {
+        let start = self.current_token.span.start;
+
         let variant_name = self.parse_identifier()?;
         self.next_token();
 
@@ -74,7 +76,7 @@ impl<'a> Parser<'a> {
                         verbose: Some(String::from(
                             "Consider to add a field to enum variant or remove the parenthesis.",
                         )),
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
 
@@ -182,7 +184,7 @@ impl<'a> Parser<'a> {
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
                             verbose: None,
-                            caret: true,
+                            caret: Some(Span::new(struct_start, self.current_token.span.end)),
                         });
                     }
                     TokenKind::Identifier { name: inherit_struct } => {
@@ -204,7 +206,7 @@ impl<'a> Parser<'a> {
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
                             verbose: None,
-                            caret: true,
+                            caret: Some(Span::new(struct_start, self.current_token.span.end)),
                         });
                     }
                 }
@@ -228,7 +230,7 @@ impl<'a> Parser<'a> {
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
                     });
                 }
                 TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
@@ -273,7 +275,7 @@ impl<'a> Parser<'a> {
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: Some(String::from("Invalid token inside a struct definition.")),
-                        caret: true,
+                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
                     });
                 }
             }
@@ -294,6 +296,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_break(&mut self) -> Result<Statement, ParseError> {
+        let start = self.current_token.span.start;
+
         self.next_token();
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
@@ -302,7 +306,7 @@ impl<'a> Parser<'a> {
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         } else {
             Ok(Statement::Break(self.current_location()))
@@ -310,6 +314,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_continue(&mut self) -> Result<Statement, ParseError> {
+        let start = self.current_token.span.start;
+
         self.next_token();
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
@@ -318,7 +324,7 @@ impl<'a> Parser<'a> {
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         } else {
             Ok(Statement::Continue(self.current_location()))
@@ -346,7 +352,7 @@ impl<'a> Parser<'a> {
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
-                    caret: true,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
         } else {
@@ -364,6 +370,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_func_params(&mut self) -> Result<FuncParams, ParseError> {
+        let start = self.current_token.span.start;
+
         self.expect_current(TokenKind::LeftParen)?;
 
         let mut variadic: Option<FuncVariadicParams> = None;
@@ -381,7 +389,7 @@ impl<'a> Parser<'a> {
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
                             verbose: Some(String::from("Fixed parameters must be defined before the vargs.")),
-                            caret: false,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
                         });
                     }
 
@@ -454,7 +462,7 @@ impl<'a> Parser<'a> {
                                 file_name: Some(self.lexer.file_name.clone()),
                                 source_content: Box::new(self.lexer.input.clone()),
                                 verbose: None,
-                                caret: true,
+                                caret: Some(Span::new(start, self.current_token.span.end)),
                             });
                         }
                     }
@@ -466,7 +474,7 @@ impl<'a> Parser<'a> {
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
             }
@@ -478,6 +486,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_for_loop_body(&mut self) -> Result<Box<BlockStatement>, ParseError> {
+        let start = self.current_token.span.start;
+
         let body: Box<BlockStatement>;
         if self.current_token_is(TokenKind::LeftBrace) {
             body = Box::new(self.parse_block_statement()?);
@@ -489,7 +499,7 @@ impl<'a> Parser<'a> {
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
-                    caret: true,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
 
@@ -503,7 +513,7 @@ impl<'a> Parser<'a> {
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
         Ok(body)
@@ -527,7 +537,7 @@ impl<'a> Parser<'a> {
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
 
@@ -541,7 +551,7 @@ impl<'a> Parser<'a> {
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
-                    caret: true,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
 
@@ -684,12 +694,13 @@ impl<'a> Parser<'a> {
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
-                    caret: true,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
         }; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
+        // self.expect_current(token_kind)
         let params = self.parse_func_params()?;
 
         let mut return_type: Option<TypeSpecifier> = None;
@@ -705,7 +716,7 @@ impl<'a> Parser<'a> {
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: Some(String::from("Return type required before closing brace '{'")),
-                    caret: true,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
 
@@ -740,7 +751,7 @@ impl<'a> Parser<'a> {
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
             }; // export the name of the function
@@ -756,7 +767,7 @@ impl<'a> Parser<'a> {
                     verbose: Some(String::from(
                         "FuncDecl does not accept a body. Use a semicolon `;` instead of a body `{ ... }`.",
                     )),
-                    caret: true,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
 
@@ -778,15 +789,15 @@ impl<'a> Parser<'a> {
         // we pass this statement that is inside a brace to parse_block_statement.
         if self.current_token_is(TokenKind::LeftBrace) {
             let body = Box::new(self.parse_block_statement()?);
-
-            if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
+            
+            if !self.current_token_is(TokenKind::RightBrace) {
                 return Err(CompileTimeError {
                     location: self.current_location(),
                     etype: ParserErrorType::MissingClosingBrace,
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
-                    caret: true,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
 
@@ -809,11 +820,11 @@ impl<'a> Parser<'a> {
 
         return Err(CompileTimeError {
             location: self.current_location(),
-            etype: ParserErrorType::MissingClosingBrace,
+            etype: ParserErrorType::MissingOpeningBrace,
             file_name: Some(self.lexer.file_name.clone()),
             source_content: Box::new(self.lexer.input.clone()),
             verbose: None,
-            caret: true,
+            caret: Some(Span::new(start, self.current_token.span.end)),
         });
     }
 
@@ -848,7 +859,7 @@ impl<'a> Parser<'a> {
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
         self.next_token(); // consume left brace
@@ -884,7 +895,7 @@ impl<'a> Parser<'a> {
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
 
@@ -901,7 +912,7 @@ impl<'a> Parser<'a> {
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
         self.next_token(); // consume right brace
@@ -920,7 +931,7 @@ impl<'a> Parser<'a> {
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
 
@@ -952,7 +963,7 @@ impl<'a> Parser<'a> {
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
             }

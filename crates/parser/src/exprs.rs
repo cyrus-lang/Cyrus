@@ -51,6 +51,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
+        let loc = self.current_location();
         let start = self.current_token.span.start;
 
         let expr = match &self.current_token.clone().kind {
@@ -65,7 +66,7 @@ impl<'a> Parser<'a> {
                         module_import: module_import.clone(),
                         ty: UnaryOperatorType::PostIncrement,
                         span: Span::new(start, self.current_token.span.end),
-                        loc: self.current_location(),
+                        loc: loc.clone(),
                     })
                 } else if self.peek_token_is(TokenKind::Decrement) {
                     self.next_token();
@@ -73,7 +74,7 @@ impl<'a> Parser<'a> {
                         module_import: module_import.clone(),
                         ty: UnaryOperatorType::PostDecrement,
                         span: Span::new(start, self.current_token.span.end),
-                        loc: self.current_location(),
+                        loc: loc.clone(),
                     })
                 } else {
                     Expression::ModuleImport(module_import)
@@ -94,12 +95,12 @@ impl<'a> Parser<'a> {
                     TokenKind::Decrement => UnaryOperatorType::PreDecrement,
                     _ => {
                         return Err(CompileTimeError {
-                            location: self.current_location(),
+                            location: loc,
                             etype: ParserErrorType::InvalidToken(token_kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
                             verbose: Some(String::from("Expected increment (++) or decrement (--) operator.")),
-                            caret: true,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
                         });
                     }
                 };
@@ -117,17 +118,17 @@ impl<'a> Parser<'a> {
                                 start,
                                 end: self.current_token.span.end,
                             },
-                            loc: self.current_location(),
+                            loc: loc.clone(),
                         })
                     }
                     _ => {
                         return Err(CompileTimeError {
-                            location: self.current_location(),
+                            location: loc,
                             etype: ParserErrorType::InvalidToken(token_kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
                             verbose: Some(String::from("Expected an identifier.")),
-                            caret: true,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
                         });
                     }
                 }
@@ -151,7 +152,7 @@ impl<'a> Parser<'a> {
                     operator: prefix_operator,
                     operand: Box::new(expr),
                     span: Span { start, end: span.end },
-                    loc: self.current_location(),
+                    loc: loc.clone(),
                 })
             }
             TokenKind::LeftParen => {
@@ -168,7 +169,6 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 if self.matches_type_token(self.current_token.kind.clone()) {
-                    let start = self.current_token.span.start;
                     let type_specifier = self.parse_type_specifier()?;
 
                     if self.peek_token_is(TokenKind::LeftBrace) {
@@ -181,12 +181,12 @@ impl<'a> Parser<'a> {
                     Expression::TypeSpecifier(type_specifier)
                 } else {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: loc,
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
             }
@@ -199,12 +199,12 @@ impl<'a> Parser<'a> {
                 return Ok(struct_init);
             } else {
                 return Err(CompileTimeError {
-                    location: self.current_location(),
+                    location: loc,
                     etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
-                    caret: true,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
         } else if self.peek_token_is(TokenKind::LeftBracket) {
@@ -224,6 +224,8 @@ impl<'a> Parser<'a> {
         left: Expression,
         left_start: usize,
     ) -> Option<Result<Expression, ParseError>> {
+        let loc = self.current_location();
+        
         match self.peek_token.kind.clone() {
             TokenKind::Plus
             | TokenKind::Minus
@@ -254,7 +256,7 @@ impl<'a> Parser<'a> {
                         start: left_start,
                         end: span.end,
                     },
-                    loc: self.current_location(),
+                    loc,
                 })))
             }
             _ => None,
@@ -293,7 +295,9 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_module_import(&mut self) -> Result<ModuleImport, ParseError> {
+        let loc = self.current_location();
         let start = self.current_token.span.start;
+
         let mut segments = match self.current_token.kind.clone() {
             TokenKind::Identifier { name } => {
                 vec![ModuleSegment::SubModule(Identifier {
@@ -302,17 +306,17 @@ impl<'a> Parser<'a> {
                         start,
                         end: self.current_token.span.end - 1,
                     },
-                    loc: self.current_location(),
+                    loc: loc.clone()
                 })]
             }
             _ => {
                 return Err(CompileTimeError {
-                    location: self.current_location(),
+                    location: loc.clone(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
-                    caret: true,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
         };
@@ -321,7 +325,7 @@ impl<'a> Parser<'a> {
             return Ok(ModuleImport {
                 segments,
                 span: Span::new(start, self.current_token.span.end),
-                loc: self.current_location(),
+                loc,
             });
         }
 
@@ -337,7 +341,7 @@ impl<'a> Parser<'a> {
                         start,
                         end: self.peek_token.span.end - 1,
                     },
-                    loc: self.current_location(),
+                    loc: loc.clone(),
                 }));
 
                 if self.peek_token_is(TokenKind::DoubleColon) {
@@ -354,11 +358,14 @@ impl<'a> Parser<'a> {
         Ok(ModuleImport {
             segments,
             span: Span::new(start, self.current_token.span.end),
-            loc: self.current_location(),
+            loc,
         })
     }
 
     pub fn parse_module_path(&mut self) -> Result<ModulePath, ParseError> {
+        let loc = self.current_location();
+        let start = self.current_token.span.start;
+
         let mut module_path = ModulePath {
             alias: None,
             segments: Vec::new(),
@@ -377,7 +384,7 @@ impl<'a> Parser<'a> {
                             continue;
                         } else {
                             return Err(CompileTimeError {
-                                location: self.current_location(),
+                                location: loc.clone(),
                                 etype: ParserErrorType::UnexpectedToken(
                                     TokenKind::DoubleColon,
                                     self.current_token.kind.clone(),
@@ -385,7 +392,7 @@ impl<'a> Parser<'a> {
                                 file_name: Some(self.lexer.file_name.clone()),
                                 source_content: Box::new(self.lexer.input.clone()),
                                 verbose: None,
-                                caret: true,
+                                caret: Some(Span::new(start, self.current_token.span.end)),
                             });
                         }
                     }
@@ -393,7 +400,7 @@ impl<'a> Parser<'a> {
                     module_path.segments.push(ModuleSegment::SubModule(Identifier {
                         name: identifier.clone(),
                         span: span.clone(),
-                        loc: self.current_location(),
+                        loc: loc.clone(),
                     }));
 
                     if self.current_token_is(TokenKind::DoubleColon) {
@@ -402,12 +409,12 @@ impl<'a> Parser<'a> {
                         return Ok(module_path);
                     } else {
                         return Err(CompileTimeError {
-                            location: self.current_location(),
+                            location: loc.clone(),
                             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
                             verbose: None,
-                            caret: true,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
                         });
                     }
                 }
@@ -417,12 +424,12 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: loc.clone(),
                         etype: ParserErrorType::ExpectedIdentifier,
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
             }
@@ -432,6 +439,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_cast_expression(&mut self, start: usize) -> Result<Expression, ParseError> {
+        let loc = self.current_location();
+
         self.expect_current(TokenKind::LeftParen)?;
         let target_type = self.parse_type_specifier()?;
         self.next_token(); // consume target_type
@@ -443,7 +452,7 @@ impl<'a> Parser<'a> {
             expr: Box::new(expr),
             target_type,
             span: Span::new(start, self.current_token.span.end),
-            loc: self.current_location(),
+            loc,
         }))
     }
 
@@ -456,24 +465,24 @@ impl<'a> Parser<'a> {
     ) -> Result<Expression, ParseError> {
         if !self.current_token_is(TokenKind::LeftParen) {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: loc.clone(),
                 etype: ParserErrorType::MissingOpeningParen,
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
 
         let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
         if !self.current_token_is(TokenKind::RightParen) {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: loc.clone(),
                 etype: ParserErrorType::MissingClosingParen,
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
 
@@ -506,6 +515,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_func_call(&mut self, operand: Expression) -> Result<Expression, ParseError> {
+        let loc = self.current_location();
         let start = self.current_token.span.start;
 
         self.expect_peek(TokenKind::LeftParen)?;
@@ -513,12 +523,12 @@ impl<'a> Parser<'a> {
         let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
         if !(self.current_token_is(TokenKind::RightParen)) {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: loc.clone(),
                 etype: ParserErrorType::MissingClosingParen,
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
 
@@ -526,11 +536,12 @@ impl<'a> Parser<'a> {
             operand: Box::new(operand),
             arguments,
             span: Span::new(start, self.current_token.span.end),
-            loc: self.current_location(),
+            loc: loc,
         }))
     }
 
     pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<Expression, ParseError> {
+        let loc = self.current_location();
         let start = self.current_token.span.start;
         let mut field_inits: Vec<FieldInit> = Vec::new();
         self.expect_current(TokenKind::LeftBrace)?;
@@ -539,7 +550,7 @@ impl<'a> Parser<'a> {
             return Ok(Expression::StructInit(StructInit {
                 struct_name: struct_name.clone(),
                 field_inits: Vec::new(),
-                loc: self.current_location(),
+                loc: loc.clone(),
                 span: Span {
                     start,
                     end: self.current_token.span.end,
@@ -569,7 +580,7 @@ impl<'a> Parser<'a> {
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
                 TokenKind::Comma => {
@@ -588,7 +599,7 @@ impl<'a> Parser<'a> {
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
             }
@@ -597,7 +608,7 @@ impl<'a> Parser<'a> {
         return Ok(Expression::StructInit(StructInit {
             struct_name,
             field_inits,
-            loc: self.current_location(),
+            loc,
             span: Span {
                 start,
                 end: self.current_token.span.end,
@@ -606,6 +617,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_assignment(&mut self, assign_to: Expression, start: usize) -> Result<Expression, ParseError> {
+        let loc = self.current_location();
+
         self.expect_current(TokenKind::Assign)?;
         let expr = self.parse_expression(Precedence::Lowest)?.0;
         let end = self.current_token.span.end;
@@ -613,18 +626,19 @@ impl<'a> Parser<'a> {
             assign_to,
             expr,
             span: Span { start, end },
-            loc: self.current_location(),
+            loc,
         })))
     }
 
     pub fn parse_array_index(&mut self, expr: Expression) -> Result<Expression, ParseError> {
+        let loc = self.current_location();
         let start = self.current_token.span.start;
 
         let mut base_index = Expression::ArrayIndex(ArrayIndex {
             expr: Box::new(expr),
             index: Box::new(self.parse_single_array_index()?),
             span: Span::new(start, self.current_token.span.end),
-            loc: self.current_location(),
+            loc: loc.clone(),
         });
 
         if self.peek_token_is(TokenKind::LeftBracket) {
@@ -636,7 +650,7 @@ impl<'a> Parser<'a> {
                 expr: Box::new(base_index),
                 index: Box::new(self.parse_single_array_index()?),
                 span: Span::new(start, self.current_token.span.end),
-                loc: self.current_location(),
+                loc: loc.clone(),
             });
 
             if self.peek_token_is(TokenKind::LeftBracket) {
@@ -648,16 +662,17 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expression, ParseError> {
+        let loc = self.current_location();
         let start = self.current_token.span.start;
 
         if !self.current_token_is(TokenKind::LeftBrace) {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: loc.clone(),
                 etype: ParserErrorType::MissingOpeningBrace,
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
 
@@ -669,7 +684,7 @@ impl<'a> Parser<'a> {
                 elements,
                 data_type,
                 span: Span::new(start, self.current_token.span.end),
-                loc: self.current_location(),
+                loc: loc.clone(),
             }));
         }
 
@@ -682,12 +697,12 @@ impl<'a> Parser<'a> {
                 loop {
                     if self.current_token_is(TokenKind::RightBrace) {
                         return Err(CompileTimeError {
-                            location: self.current_location(),
+                            location: loc.clone(),
                             etype: ParserErrorType::InvalidUntypedArrayConstructor,
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
                             verbose: None,
-                            caret: true,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
                         });
                     }
 
@@ -701,12 +716,12 @@ impl<'a> Parser<'a> {
                         break;
                     } else {
                         return Err(CompileTimeError {
-                            location: self.current_location(),
+                            location: loc.clone(),
                             etype: ParserErrorType::InvalidToken(self.peek_token.kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
                             verbose: None,
-                            caret: true,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
                         });
                     }
                 }
@@ -721,7 +736,7 @@ impl<'a> Parser<'a> {
                         }),
                         elements: untyped_array,
                         span: Span::new(untyped_array_start, self.current_token.span.end),
-                        loc: self.current_location(),
+                        loc: loc.clone(),
                     }));
                 } else {
                     unreachable!()
@@ -750,7 +765,7 @@ impl<'a> Parser<'a> {
             elements,
             data_type,
             span: Span::new(start, self.current_token.span.end),
-            loc: self.current_location(),
+            loc,
         }))
     }
 }

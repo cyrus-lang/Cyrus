@@ -338,6 +338,7 @@ impl Lexer {
                         self.line,
                         self.column - 1,
                         self.ch,
+                        Span::new(self.column - 1, self.column),
                         Box::new(self.input.clone()),
                     );
                     exit(1);
@@ -379,7 +380,7 @@ impl Lexer {
                     source_content: Box::new(self.input.clone()),
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
-                    caret: true,
+                    caret: Some(Span::new(start, self.column + 1)),
                     file_name: Some(self.file_name.clone()),
                 }
                 .print();
@@ -410,7 +411,7 @@ impl Lexer {
                 source_content: Box::new(self.input.clone()),
                 etype: LexicalErrorType::EmptyCharLiteral,
                 verbose: None,
-                caret: true,
+                caret: Some(span),
                 file_name: Some(self.file_name.clone()),
             }
             .print();
@@ -441,7 +442,7 @@ impl Lexer {
                     source_content: Box::new(self.input.clone()),
                     etype: LexicalErrorType::UnterminatedStringLiteral,
                     verbose: None,
-                    caret: true,
+                    caret: Some(Span::new(start, self.column + 1)),
                     file_name: Some(self.file_name.clone()),
                 }
                 .print();
@@ -514,7 +515,7 @@ impl Lexer {
                         source_content: Box::new(self.input.clone()),
                         etype: LexicalErrorType::InvalidIntegerLiteral,
                         verbose: None,
-                        caret: true,
+                        caret: Some(Span::new(start, self.column + 1)),
                         file_name: Some(self.file_name.clone()),
                     }
                     .print();
@@ -578,7 +579,7 @@ impl Lexer {
                             source_content: Box::new(self.input.clone()),
                             etype: LexicalErrorType::InvalidFloatLiteral,
                             verbose: None,
-                            caret: true,
+                            caret: Some(Span::new(start, self.column + 1)),
                             file_name: Some(self.file_name.clone()),
                         }
                         .print();
@@ -597,7 +598,7 @@ impl Lexer {
                             source_content: Box::new(self.input.clone()),
                             etype: LexicalErrorType::InvalidIntegerLiteral,
                             verbose: None,
-                            caret: true,
+                            caret: Some(Span::new(start, self.column + 1)),
                             file_name: Some(self.file_name.clone()),
                         }
                         .print();

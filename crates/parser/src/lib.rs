@@ -150,7 +150,7 @@ impl<'a> Parser<'a> {
             file_name: Some(self.lexer.file_name.clone()),
             source_content: Box::new(self.lexer.input.clone()),
             verbose: None,
-            caret: true,
+            caret: Some(self.current_token.span.clone()),
         })
     }
 
@@ -168,7 +168,7 @@ impl<'a> Parser<'a> {
             file_name: Some(self.lexer.file_name.clone()),
             source_content: Box::new(self.lexer.input.clone()),
             verbose: None,
-            caret: true,
+            caret: Some(self.current_token.span.clone()),
         })
     }
 }

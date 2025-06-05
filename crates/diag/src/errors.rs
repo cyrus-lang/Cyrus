@@ -1,4 +1,4 @@
-use ast::token::Location;
+use ast::token::{Location, Span};
 use colorized::{Color, Colors};
 use console::user_attended;
 use std::fmt::{Debug, Display};
@@ -14,7 +14,11 @@ pub struct CompileTimeError<ErrorType: CompileTypeErrorType> {
     pub location: Location,
     pub source_content: Box<String>,
     pub verbose: Option<String>,
-    pub caret: bool,
+    pub caret: Option<Span>,
+}
+
+fn spaces(n: usize) -> String {
+    " ".repeat(n)
 }
 
 fn saturating_sub(value: usize, input: usize) -> usize {
@@ -25,33 +29,11 @@ fn saturating_sub(value: usize, input: usize) -> usize {
     }
 }
 
-const PANEL_LENGTH: usize = 3;
+const PANEL_LENGTH: usize = 4;
 
 impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
     pub fn print(&self) {
         println!();
-
-        let mut starting_line = saturating_sub(self.location.line, PANEL_LENGTH);
-        let source_content = unescape_string(*self.source_content.clone());
-        let sources_lines: Vec<&str> = source_content.split("\n").collect();
-
-        while starting_line < self.location.line + PANEL_LENGTH {
-            if let Some(line_str) = sources_lines.get(starting_line) {
-                if starting_line + 1 == self.location.line && user_attended() {
-                    print!(
-                        "{}",
-                        format!("{}  | {}", starting_line + 1, line_str).color(Colors::RedFg)
-                    );
-                } else {
-                    print!("{}  | {}", starting_line + 1, line_str);
-                }
-            } else {
-                break;
-            }
-
-            starting_line += 1;
-            print!("\n");
-        }
 
         let error_message = {
             if let Some(verbose) = self.verbose.clone() {
@@ -62,14 +44,46 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
         };
 
         if let Some(file_name) = self.file_name.clone() {
+            tui_error(error_message.to_lowercase());
+            println!(
+                "       --> {}:{}:{}",
+                file_name, self.location.line, self.location.column
+            );
             println!();
-            tui_error(format!(
-                "{}:{}: {} ({})",
-                file_name,
-                self.location.line,
-                error_message,
-                self.etype.to_string()
-            ));
         }
+
+        let mut starting_line = saturating_sub(self.location.line, PANEL_LENGTH);
+        let source_content = unescape_string(*self.source_content.clone());
+        let sources_lines: Vec<&str> = source_content.split("\n").collect();
+
+        while starting_line < self.location.line + PANEL_LENGTH {
+            if let Some(line_str) = sources_lines.get(starting_line) {
+                if starting_line + 1 == self.location.line && user_attended() {
+                    print!(
+                        "{}",
+                        format!("{}{}  |  {}", spaces(2), starting_line + 1, line_str).color(Colors::RedFg)
+                    );
+                    // if let Some(caret) = self.caret.clone() {
+                    //     println!();
+                    //     print!("{}   ", spaces(2));
+                    //     dbg!(self);
+                    //     for _ in caret.start..caret.end {
+                    //         print!("{}", spaces(self.location.column));
+                    //         print!("{}", "^".color(Colors::RedFg));
+
+                    //     }
+                    // }
+                } else {
+                    print!("{}{}  |  {}", spaces(2), starting_line + 1, line_str);
+                }
+            } else {
+                break;
+            }
+
+            starting_line += 1;
+            print!("\n");
+        }
+
+        println!();
     }
 }

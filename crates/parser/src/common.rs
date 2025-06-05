@@ -21,7 +21,7 @@ impl<'a> Parser<'a> {
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
-                    caret: true,
+                    caret: Some(self.current_token.span.clone()),
                 });
             }
         }
@@ -97,7 +97,7 @@ impl<'a> Parser<'a> {
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(current.span.start, self.current_token.span.end)),
             }),
         };
 
@@ -139,6 +139,8 @@ impl<'a> Parser<'a> {
 
     pub fn parse_single_array_index(&mut self) -> Result<Expression, ParseError> {
         self.expect_current(TokenKind::LeftBracket)?;
+        let start = self.current_token.span.start;
+
         if self.current_token_is(TokenKind::RightBracket) {
             return Err(CompileTimeError {
                 location: self.current_location(),
@@ -146,7 +148,7 @@ impl<'a> Parser<'a> {
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
                 verbose: None,
-                caret: true,
+                caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
         let index = self.parse_expression(Precedence::Lowest)?.0;
@@ -180,7 +182,7 @@ impl<'a> Parser<'a> {
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
                     verbose: None,
-                    caret: true,
+                    caret: Some(token.span.clone()),
                 });
             }
         };

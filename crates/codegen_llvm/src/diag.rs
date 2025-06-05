@@ -114,7 +114,7 @@ impl DiagReporter {
     }
 
     fn format_panel(&self, diag: &Diag) -> String {
-        dbg!(diag.clone());
+        // dbg!(diag.clone());
         
         let mut formatted = String::new();
         if let Some(loc) = &diag.location {
