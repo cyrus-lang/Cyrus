@@ -441,7 +441,6 @@ impl Lexer {
                 break;
             }
 
-            dbg!(self.ch.clone());
             final_string.push(self.ch);
 
             if self.is_eof() {
