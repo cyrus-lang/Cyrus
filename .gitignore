@@ -5,3 +5,4 @@ tmp/**
 result
 **.o
 build/
+test.cyr

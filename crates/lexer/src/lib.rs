@@ -431,17 +431,13 @@ impl Lexer {
         let mut final_string = String::new();
         
         self.read_char(); // Consume the opening double quote
-        println!("Starting string at pos: {}, line: {}, column: {}", start, self.line, self.column);
 
         while self.ch != '"' && !self.is_eof() {
-            println!("Processing char: '{}' (U+{:04X}) at pos: {}, line: {}, column: {}", 
-                    self.ch, self.ch as u32, self.pos, self.line, self.column);
             final_string.push(self.ch);
             self.read_char();
         }
 
         if self.is_eof() && self.ch != '"' {
-            println!("Unterminated string detected '{}' at pos: {}, line: {}, column: {}", self.ch, self.pos, self.line, self.column);
             CompileTimeError {
                 location: Location {
                     line: self.line,
@@ -456,8 +452,7 @@ impl Lexer {
             .print();
             exit(1);
         }
-        
-        println!("Ending string at pos: {}, line: {}, column: {}", self.pos, self.line, self.column);
+
         self.read_char(); // Consume the closing double quote
 
         let end = self.pos;
