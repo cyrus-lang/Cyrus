@@ -430,7 +430,7 @@ impl Lexer {
         let start: usize = self.pos;
         let mut final_string = String::new();
         
-        self.read_char(); // Consume the opening double quote
+        self.read_char();
 
         while self.ch != '"' && !self.is_eof() {
             final_string.push(self.ch);
@@ -453,7 +453,9 @@ impl Lexer {
             exit(1);
         }
 
-        self.read_char(); // Consume the closing double quote
+        if self.ch == '"' {
+            self.read_char();
+        }
 
         let end = self.pos;
 
