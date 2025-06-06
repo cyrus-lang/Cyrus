@@ -331,10 +331,9 @@ mod tests {
         );
     }
 
-    // #[test]
-    // FIXME
-    // fn test_tokenizing_emoji() {
-    //     assert_tokens("\"This is 🖤 made by a string.\"", None, None);
-    //     assert_tokens("printf(\"Hello 🖤\");", None, None);
-    // }
+    #[test]
+    fn test_tokenizing_emoji() {
+        assert_tokens("\"This is 🖤 made by a string.\"", None, None);
+        assert_tokens("printf(\"Hello 🖤\");", None, None);
+    }
 }
