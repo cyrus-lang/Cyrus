@@ -62,18 +62,28 @@ impl Lexer {
     }
 
     fn peek_char(&self) -> char {
-        self.input.chars().nth(self.next_pos).unwrap_or('\0')
+        self.input[self.next_pos..].chars().next().unwrap_or('\0')
     }
 
     fn read_char(&mut self) {
-        self.ch = self.input.chars().nth(self.next_pos).unwrap_or('\0');
-        self.pos = self.next_pos;
-        self.next_pos += self.ch.len_utf8();
-        if self.ch == '\n' {
-            self.line += 1;
-            self.column = 0;
+        if self.next_pos >= self.input.len() {
+            self.ch = '\0';
+            return;
+        }
+
+        let remaining_input = &self.input[self.next_pos..];
+        if let Some(c) = remaining_input.chars().next() {
+            self.ch = c;
+            self.pos = self.next_pos;
+            self.next_pos += c.len_utf8(); 
+            if c == '\n' {
+                self.line += 1;
+                self.column = 0;
+            } else {
+                self.column += 1;
+            }
         } else {
-            self.column += 1;
+            self.ch = '\0';
         }
     }
 
@@ -431,6 +441,7 @@ impl Lexer {
                 break;
             }
 
+            dbg!(self.ch.clone());
             final_string.push(self.ch);
 
             if self.is_eof() {
