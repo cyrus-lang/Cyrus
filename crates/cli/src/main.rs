@@ -1,10 +1,10 @@
+use codegen_llvm::opts::BuildDir;
 use ::parser::parse_program;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::build::OutputKind;
 use codegen_llvm::diag::*;
 use utils::fs::get_directory_of_file;
-use utils::tui::tui_compile_finished;
 
 const PROJECT_FILE_PATH: &str = "Project.toml";
 
@@ -72,13 +72,11 @@ struct CompilerOptions {
     #[clap(
         long = "build-dir",
         value_name = "PATH",
-        default_value = "./build",
         help = "Specifies the directory where build artifacts will be stored.
 This includes compiled binaries, intermediate files, and other outputs 
-generated during the build process. If not provided, a default directory \
-    (e.g., './build') will be used."
+generated during the build process. If not provided, a tmp directory will be used."
     )]
-    build_dir: String,
+    build_dir: Option<String>,
 }
 
 impl CompilerOptions {
@@ -88,13 +86,18 @@ impl CompilerOptions {
             cpu: self.cpu.to_string(),
             library_path: self.library_path.clone(),
             libraries: self.libraries.clone(),
-            build_dir: self.build_dir.clone(),
             sources_dir: self.sources_dir.clone(),
             project_name: None,
             project_version: None,
             cyrus_version: None,
             authors: None,
             project_type: None,
+            build_dir: { 
+                match self.build_dir.clone() {
+                    Some(path) => BuildDir::Provided(path),
+                    None => BuildDir::Default,
+                }
+            },
         }
     }
 }
@@ -370,7 +373,7 @@ pub fn main() {
                 OutputKind::None
             );
             codegen_llvm.compile();
-            tui_compile_finished();
+            codegen_llvm.compilation_process_finished();
             codegen_llvm.execute();
         }
         Commands::EmitLLVM {
@@ -389,7 +392,7 @@ pub fn main() {
                 OutputKind::LlvmIr(output_path)
             );
             codegen_llvm.compile();
-            tui_compile_finished();
+            codegen_llvm.compilation_process_finished();
         }
         Commands::EmitASM {
             file_path,
@@ -407,7 +410,7 @@ pub fn main() {
                 OutputKind::Asm(output_path)
             );
             codegen_llvm.compile();
-            tui_compile_finished();
+            codegen_llvm.compilation_process_finished();
         }
         Commands::Build {
             file_path,
@@ -426,7 +429,7 @@ pub fn main() {
             );
             codegen_llvm.compile();
             codegen_llvm.generate_executable_file(output_path);
-            tui_compile_finished();
+            codegen_llvm.compilation_process_finished();
         }
         Commands::Object {
             file_path,
@@ -444,7 +447,7 @@ pub fn main() {
                 OutputKind::ObjectFile(output_path)
             );
             codegen_llvm.compile();
-            tui_compile_finished();
+            codegen_llvm.compilation_process_finished();
         }
         Commands::Dylib {
             file_path,
@@ -462,7 +465,7 @@ pub fn main() {
                 OutputKind::Dylib(output_path)
             );
             codegen_llvm.compile();
-            tui_compile_finished();
+            codegen_llvm.compilation_process_finished();
         }
         Commands::Version => {
             println!("Cyrus {}", version)

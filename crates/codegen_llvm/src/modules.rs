@@ -191,6 +191,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             loaded_modules: Vec::new(),
             dependent_modules: HashMap::new(),
             output_kind: self.output_kind.clone(),
+            final_build_dir: self.final_build_dir.clone(),
         };
 
         // preventing entry_point of being in dependent_modules

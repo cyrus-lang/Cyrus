@@ -12,8 +12,15 @@ pub struct Options {
     pub library_path: Vec<String>,
     pub libraries: Vec<String>,
     pub sources_dir: Vec<String>,
-    pub build_dir: String,
+    pub build_dir: BuildDir,
 }
+
+#[derive(Deserialize, Debug, Clone)]
+pub enum BuildDir {
+    Default,
+    Provided(String),
+}
+
 
 impl Options {
     pub fn default() -> Self {
@@ -25,7 +32,7 @@ impl Options {
             cpu: String::new(),
             library_path: Vec::new(),
             libraries: Vec::new(),
-            build_dir: String::new(),
+            build_dir: BuildDir::Default,
             cyrus_version: None,
             project_version: None,
             sources_dir: vec!["./".to_string()],
