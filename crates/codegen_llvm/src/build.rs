@@ -1,5 +1,6 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
+use crate::opts::BuildDir;
 use ast::ast::StorageClass;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
@@ -28,11 +29,10 @@ use utils::fs::ensure_output_dir;
 use utils::fs::executable_extension;
 use utils::generate_random_hex::generate_random_hex;
 
-const BUILD_DIR_PATH: &str = "build/";
 const SOURCES_DIR_PATH: &str = "build/sources";
-const OBJ_DIR_PATH: &str = "build/obj";
-const MANIFEST_FILE_PATH: &str = "build/manifest.json";
-const OUTPUT_FILE_PATH: &str = "build/output";
+const OBJECTS_FILENAME: &str = "build/obj";
+const MANIFEST_FILENAME: &str = "manifest.json";
+const OUTPUT_FILENAME: &str = "build/output";
 
 #[derive(Debug, Clone)]
 pub enum OutputKind {
@@ -59,19 +59,23 @@ impl Default for BuildManifest {
 }
 
 impl BuildManifest {
-    fn save_file(&self) {
-        fs::remove_file(MANIFEST_FILE_PATH).unwrap();
-        let mut file = File::create(MANIFEST_FILE_PATH).unwrap();
+    fn save_file(&self, build_dir: String) {
+        let manifest_filepath = format!("{}/{}", build_dir, MANIFEST_FILENAME);
+
+        fs::remove_file(manifest_filepath.clone()).unwrap();
+        let mut file = File::create(manifest_filepath).unwrap();
         file.write(serde_json::to_string(&self).unwrap().as_bytes()).unwrap();
     }
 
-    fn read_file(&self) -> Self {
-        match serde_json::from_str::<BuildManifest>(&utils::fs::read_file(MANIFEST_FILE_PATH.to_string()).0) {
+    fn read_file(&self, build_dir: String) -> Self {
+        let manifest_filepath = format!("{}/{}", build_dir, MANIFEST_FILENAME);
+
+        match serde_json::from_str::<BuildManifest>(&utils::fs::read_file(manifest_filepath.to_string()).0) {
             Ok(manifest) => manifest,
             Err(err) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!("Failed to parse '{}': {}", MANIFEST_FILE_PATH, err.to_string())),
+                    kind: DiagKind::Custom(format!("Failed to parse '{}': {}", manifest_filepath, err.to_string())),
                     location: None,
                 });
                 exit(1);
@@ -86,8 +90,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let linker = "cc";
 
         let mut linker_command = std::process::Command::new(linker);
-
-        linker_command.arg("-lgc");
         linker_command.arg("-o").arg(output_path);
 
         for path in object_files {
@@ -113,6 +115,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
+        }
+
+        if let BuildDir::Default = self.opts.build_dir {
+            fs::remove_dir_all(format!("{}/{}", self.final_build_dir.clone(), "build")).unwrap();
+            fs::remove_file(format!("{}/{}", self.final_build_dir.clone(), MANIFEST_FILENAME)).unwrap();
         }
     }
 
@@ -176,7 +183,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ) {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!("Failed to print assembly into file:\n{}", err.to_string())),
+                    kind: DiagKind::Custom(format!("Failed to write assembly into file:\n{}", err.to_string())),
                     location: None,
                 });
                 exit(1);
@@ -184,7 +191,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom("Output directory must be specified to generate llvm-ir.".to_string()),
+                kind: DiagKind::Custom("Output directory must be specified to generate assembly.".to_string()),
                 location: None,
             });
             exit(1);
@@ -209,20 +216,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                ensure_output_dir(Path::new(OUTPUT_FILE_PATH));
-                format!("{}/{}", OUTPUT_FILE_PATH, {
+                ensure_output_dir(Path::new(OUTPUT_FILENAME));
+                format!("{}/{}", OUTPUT_FILENAME, {
                     if let Some(file_name) = &self.opts.project_name {
                         file_name.clone()
                     } else {
-                        let file_name = Path::new(&self.file_path)
+                        Path::new(&self.file_path)
                             .file_stem()
                             .unwrap()
                             .to_str()
                             .unwrap()
                             .replace(".", "_")
                             .replace("/", "")
-                            .to_string();
-                        file_name.clone()
+                            .to_string()
                     }
                 })
             }
@@ -322,7 +328,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let entry_block = self.context.append_basic_block(entry_point, "entry");
             self.builder.position_at_end(entry_block);
 
-            self.runtime_init_gc();
             self.builder.build_call(main_func_ptr, &[], "call_main").unwrap();
 
             self.builder
@@ -376,9 +381,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn ensure_build_manifest(&mut self) {
-        if !fs::exists(MANIFEST_FILE_PATH).unwrap() {
-            match File::create(MANIFEST_FILE_PATH) {
+    pub(crate) fn ensure_build_manifest(&mut self, build_dir: String) {
+        if !fs::exists(format!("{}/{}", build_dir, MANIFEST_FILENAME)).unwrap() {
+            match File::create(format!("{}/{}", build_dir, MANIFEST_FILENAME)) {
                 Ok(mut file) => {
                     file.write(serde_json::to_string(&BuildManifest::default()).unwrap().as_bytes())
                         .unwrap();
@@ -388,7 +393,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
                             "Failed to create '{}': {}",
-                            MANIFEST_FILE_PATH,
+                            format!("{}/{}", build_dir, MANIFEST_FILENAME),
                             err.to_string()
                         )),
                         location: None,
@@ -397,14 +402,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
         } else {
-            self.build_manifest = self.build_manifest.read_file();
+            self.build_manifest = self.build_manifest.read_file(build_dir);
         }
     }
 
-    pub(crate) fn ensure_build_directory(&self) {
-        ensure_output_dir(Path::new(BUILD_DIR_PATH));
-        ensure_output_dir(Path::new(OBJ_DIR_PATH));
-        ensure_output_dir(Path::new(SOURCES_DIR_PATH));
+    pub(crate) fn ensure_build_directory(&self, build_dir: String) {
+        ensure_output_dir(Path::new(&build_dir.clone()));
+        ensure_output_dir(Path::new(&format!("{}/{}", build_dir, OBJECTS_FILENAME)));
+        ensure_output_dir(Path::new(&format!("{}/{}", build_dir, SOURCES_DIR_PATH)));
     }
 
     pub(crate) fn hash_source_code(&mut self) -> String {
@@ -418,12 +423,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.build_manifest.objects.get(&file_path.clone()).is_some()
     }
 
-    pub(crate) fn source_code_changed(&mut self) -> bool {
+    pub(crate) fn source_code_changed(&mut self, build_dir: String) -> bool {
         let output_dir = SOURCES_DIR_PATH.to_string();
         let current_hash = self.hash_source_code();
         let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
-        if let Some(hash_file_path) = self.build_manifest.read_file().sources.get(&file_path.clone()) {
+        if let Some(hash_file_path) = self
+            .build_manifest
+            .read_file(build_dir.clone())
+            .sources
+            .get(&file_path.clone())
+        {
             match File::open(hash_file_path.clone()) {
                 Ok(mut file) => {
                     let mut saved_hash = String::new();
@@ -436,14 +446,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.build_manifest.sources.remove(&file_path.clone());
                     let output_file = self.save_source_hash(output_dir, current_hash);
                     self.build_manifest.sources.insert(file_path.clone(), output_file);
-                    self.build_manifest.save_file();
+                    self.build_manifest.save_file(build_dir);
                     true
                 }
             }
         } else {
             let output_file = self.save_source_hash(output_dir, current_hash);
             self.build_manifest.sources.insert(file_path.clone(), output_file);
-            self.build_manifest.save_file();
+            self.build_manifest.save_file(build_dir);
             true
         }
     }
@@ -459,10 +469,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         output_file
     }
 
-    pub(crate) fn save_object_file(&mut self) {
+    pub(crate) fn save_object_file(&mut self, build_dir: String) {
         let rng = rand::rng();
         let random_hex: String = rng.sample_iter(&Alphanumeric).take(30).map(char::from).collect();
-        let output_file = format!("{}/{}.o", OBJ_DIR_PATH, random_hex);
+        let output_file = format!("{}/{}/{}.o", build_dir, OBJECTS_FILENAME, random_hex);
 
         let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
@@ -477,6 +487,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         // generate new object_file
         self.generate_object_file_internal(output_file.clone());
         self.build_manifest.objects.insert(file_path.clone(), output_file);
-        self.build_manifest.save_file();
+        self.build_manifest.save_file(build_dir);
     }
 }

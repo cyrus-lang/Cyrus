@@ -13,26 +13,10 @@ use std::ops::DerefMut;
 use utils::generate_random_hex::generate_random_hex;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn runtime_init_gc(&mut self) {
-        let func_decl = FuncDecl {
-            name: "GC_init".to_string(),
-            params: FuncParams {
-                list: Vec::new(),
-                variadic: None,
-            },
-            return_type: None,
-            storage_class: StorageClass::Inline,
-            renamed_as: None,
-            span: Span::default(),
-            loc: Location::default(),
-        };
-        let ptr = self.build_func_decl(func_decl.clone());
-        self.builder.build_call(ptr, &[], "call").unwrap();
-    }
-
     #[allow(unused)]
     fn runtime_check_bounds(&self) -> FunctionValue<'ctx> {
         let return_type = self.context.i32_type();
+        
         let func_type = return_type.fn_type(
             &[
                 BasicMetadataTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default())),
@@ -40,6 +24,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ],
             false,
         );
+
         let func = self.module.borrow_mut().deref_mut().add_function(
             &format!("check_bounds_{}", generate_random_hex()),
             func_type,

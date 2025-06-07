@@ -1,0 +1,5 @@
+extern fn printf(v: const char*, ...);
+
+fn main() {
+    printf("Hello World");
+}

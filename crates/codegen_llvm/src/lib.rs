@@ -16,12 +16,13 @@ use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::env;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
 use types::{InternalType, StringType};
 use utils::fs::file_stem;
-use utils::tui::tui_compiled;
+use utils::tui::{tui_compile_finished, tui_compiled};
 use values::{InternalValue, StringValue};
 
 pub mod build;
@@ -65,6 +66,7 @@ pub struct CodeGenLLVM<'ctx> {
     loaded_modules: Vec<ModuleMetadata<'ctx>>,
     dependent_modules: HashMap<String, Vec<String>>,
     output_kind: OutputKind,
+    final_build_dir: String,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -83,7 +85,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let builder = context.create_builder();
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&module));
 
+        let final_build_dir = {
+            match opts.build_dir.clone() {
+                opts::BuildDir::Default => {
+                    // specify a tmp directory to be used as build_dir
+                    env::temp_dir().to_str().unwrap().to_string()
+                }
+                opts::BuildDir::Provided(path) => path,
+            }
+        };
+
         let codegen_llvm = CodeGenLLVM {
+            final_build_dir,
             opts,
             context,
             builder,
@@ -147,20 +160,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
+        self.ensure_build_directory(self.final_build_dir.clone());
+        self.ensure_build_manifest(self.final_build_dir.clone());
+
         self.build_entry_point();
         self.optimize();
         if !self.compiler_invoked_single {
-            self.ensure_build_directory();
-            self.ensure_build_manifest();
             self.rebuild_dependent_modules();
-            if self.source_code_changed() || !self.object_file_exists() {
-                self.save_object_file();
+            if self.source_code_changed(self.final_build_dir.clone()) || !self.object_file_exists() {
+                self.save_object_file(self.final_build_dir.clone());
             }
+        } else {
+            self.save_object_file(self.final_build_dir.clone());
         }
 
         self.generate_output();
-
         tui_compiled(self.file_path.clone());
+    }
+
+    pub fn compilation_process_finished(&self) {
+        tui_compile_finished();
     }
 
     pub(crate) fn build_alloca(
