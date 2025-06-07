@@ -650,6 +650,8 @@ impl Lexer {
     }
 
     fn skip_comments(&mut self) {
+        let start = self.pos;
+        
         while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
             if self.peek_char() == '/' {
                 // Handle single-line comment
@@ -666,17 +668,33 @@ impl Lexer {
                 }
             } else if self.peek_char() == '*' {
                 // Handle multi-line comment
-                self.read_char();
-                self.read_char();
 
-                while !self.is_eof() {
+                self.read_char();
+                self.read_char();
+                while self.peek_char() != '\0' {
                     if self.ch == '*' && self.peek_char() == '/' {
-                        self.read_char();
-                        self.read_char();
                         break;
                     }
                     self.read_char();
                 }
+
+                if !(self.ch == '*' && self.peek_char() == '/') {
+                    CompileTimeError {
+                        location: Location {
+                            line: self.line,
+                            column: self.column,
+                        },
+                        source_content: Box::new(self.input.clone()),
+                        etype: LexicalErrorType::UnterminatedMultiLineComment,
+                        verbose: None,
+                        caret: Some(Span::new(start, self.column + 1)),
+                        file_name: Some(self.file_name.clone()),
+                    }
+                    .print();
+                    exit(1);
+                }
+                self.read_char();
+                self.read_char();
 
                 // Skip any trailing newlines after the comment
                 while !self.is_eof() && self.ch == '\n' {
