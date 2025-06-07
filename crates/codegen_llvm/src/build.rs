@@ -87,7 +87,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let mut linker_command = std::process::Command::new(linker);
 
-        linker_command.arg("-lgc");
         linker_command.arg("-o").arg(output_path);
 
         for path in object_files {
