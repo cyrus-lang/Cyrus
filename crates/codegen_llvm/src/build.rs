@@ -321,7 +321,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let entry_block = self.context.append_basic_block(entry_point, "entry");
             self.builder.position_at_end(entry_block);
 
-            self.runtime_init_gc();
             self.builder.build_call(main_func_ptr, &[], "call_main").unwrap();
 
             self.builder
