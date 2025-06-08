@@ -5,7 +5,7 @@ fn main() {
     
     {
         #value: uint = 5;
-        printf("value: %d\n", value);
+        printf("value: %d\n", value)
     }
 
     printf("value: %d\n", value);

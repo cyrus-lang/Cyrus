@@ -44,8 +44,7 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
         }
 
         let mut starting_line = saturating_sub(self.location.line, PANEL_LENGTH);
-        let source_content = unescape_string(*self.source_content.clone());
-        let sources_lines: Vec<&str> = source_content.split("\n").collect();
+        let sources_lines: Vec<&str> = self.source_content.split("\n").collect();
 
         while starting_line < self.location.line + PANEL_LENGTH {
             if let Some(line_str) = sources_lines.get(starting_line) {
