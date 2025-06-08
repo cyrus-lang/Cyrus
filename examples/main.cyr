@@ -1,22 +1,12 @@
 extern fn printf(_: const char*, ...);
 
 fn main() {
-    // #a = 0;
-    // #ptr: void* = &a;
-    // #result = ptr || null;
+    #value: uint = 10;
+    
     {
-        #a = 0;
-        {
-            #c = 10;
-        }
+        #value: uint = 5;
+        printf("value: %d\n", value);
+    }
 
-        #d = 0;
-    }   
-
-    1 + 2;
-    #e = 10;
-
-    { #b = 0; }
-
-    #e = 10;
+    printf("value: %d\n", value);
 }
