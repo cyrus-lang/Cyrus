@@ -355,6 +355,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         arguments: Vec<Expression>,
         params: Option<FuncParams>,
+        func_name: String,
+        loc: Location,
+        span_end: usize
     ) -> Vec<BasicMetadataValueEnum<'ctx>> {
         arguments
             .iter()
@@ -370,7 +373,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 self.build_type(target_type_specifier.clone(), param.loc.clone(), param.span.end);
 
                             if !self.compatible_types(target_type.clone(), rvalue.get_type(self.string_type.clone())) {
-                                todo!();
+                                // FIXME We need accurate type name tracking here
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(
+                                        format!("Argument at index {} for function '{}' is not compatible with type '{:?}' for implicit casting.",
+                                            idx, 
+                                            func_name,
+                                            target_type
+                                        )
+                                    ),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: loc.line,
+                                        column: loc.column,
+                                        length: span_end,
+                                    }),
+                                });
+                                exit(1);
                             }
 
                             self.implicit_cast(rvalue, target_type).into()
@@ -512,6 +532,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Rc::clone(&scope),
             func_call.arguments.clone(),
             Some(func_metadata.func_decl.params.clone()),
+            func_metadata.func_decl.renamed_as.clone().unwrap_or(func_metadata.func_decl.name.clone()),
+            func_call.loc.clone(),  
+            func_call.span.end,            
         );
 
         self.check_func_args_count_mismatch(
