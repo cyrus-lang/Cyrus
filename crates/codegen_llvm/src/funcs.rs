@@ -365,12 +365,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 if let Some(params) = &params {
                     // checked before through check_func_args_count_mismatch
                     if let Some(param) = params.list.get(idx) {
-                        if let Some(target_type) = &param.ty {
-                            self.implicit_cast(
-                                rvalue,
-                                self.build_type(target_type.clone(), param.loc.clone(), param.span.end),
-                            )
-                            .into()
+                        if let Some(target_type_specifier) = &param.ty {
+                            let target_type =
+                                self.build_type(target_type_specifier.clone(), param.loc.clone(), param.span.end);
+
+                            if !self.compatible_types(target_type.clone(), rvalue.get_type(self.string_type.clone())) {
+                                todo!();
+                            }
+
+                            self.implicit_cast(rvalue, target_type).into()
                         } else {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
