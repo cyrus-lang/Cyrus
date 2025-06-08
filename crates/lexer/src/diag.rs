@@ -10,7 +10,6 @@ pub enum LexicalErrorType {
     InvalidIntegerLiteral,
     UnterminatedMultiLineComment,
     InvalidChar(char),
-    UnknownChar(char),
     EmptyCharLiteral,
 }
 
@@ -23,7 +22,6 @@ impl fmt::Display for LexicalErrorType {
             LexicalErrorType::UnterminatedMultiLineComment => write!(f, "UnterminatedMultiLineComment"),
             LexicalErrorType::EmptyCharLiteral => write!(f, "EmptyCharLiteral"),
             LexicalErrorType::InvalidChar(_) => write!(f, "InvalidChar"),
-            LexicalErrorType::UnknownChar(_) => write!(f, "UnknownChar"),
         }
     }
 }
@@ -38,9 +36,6 @@ impl CompileTypeErrorType for LexicalErrorType {
             LexicalErrorType::EmptyCharLiteral => "Empty char literal is invalid",
             LexicalErrorType::InvalidChar(ch) => {
                 return format!("Invalid char: '{}'", ch);
-            }
-            LexicalErrorType::UnknownChar(ch) => {
-                return format!("Unknown char: '{}'", ch);
             }
         })
     }
@@ -57,25 +52,6 @@ pub fn lexer_invalid_char_error(
     CompileTimeError {
         location: Location::new(line, column),
         etype: LexicalErrorType::InvalidChar(ch),
-        file_name: Some(file_name),
-        verbose: None,
-        caret: Some(span),
-        source_content,
-    }
-    .print();
-}
-
-pub fn lexer_unknown_char_error(
-    file_name: String,
-    line: usize,
-    column: usize,
-    ch: char,
-    span: Span,
-    source_content: Box<String>,
-) {
-    CompileTimeError {
-        location: Location::new(line, column),
-        etype: LexicalErrorType::UnknownChar(ch),
         file_name: Some(file_name),
         verbose: None,
         caret: Some(span),

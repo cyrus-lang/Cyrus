@@ -1,7 +1,7 @@
+use crate::diag::*;
 use crate::scope::ScopeRecord;
 use crate::structs::StructMetadata;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use crate::{InternalType, InternalValue, diag::*};
 use ast::ast::{If, Statement, TypeSpecifier, Variable};
 use ast::token::TokenKind;
 use inkwell::AddressSpace;
@@ -254,9 +254,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder.build_store(ptr, final_rvalue).unwrap();
                 }
 
-                scope
-                    .borrow_mut()
-                    .insert(variable.name.clone(), ScopeRecord { ptr, ty });
+                let mut scope_borrow = scope.borrow_mut();
+
+                if scope_borrow.get(variable.name.clone()).is_some() {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Variable '{}' would shadow a previous declaration.",
+                            variable.name
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: variable.loc.line,
+                            column: variable.loc.column,
+                            length: variable.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
+                scope_borrow.insert(variable.name.clone(), ScopeRecord { ptr, ty });
             }
             None => {
                 if let Some(expr) = variable.expr {

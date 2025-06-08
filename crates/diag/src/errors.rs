@@ -2,7 +2,10 @@ use ast::token::{Location, Span};
 use colorized::{Color, Colors};
 use console::user_attended;
 use std::fmt::{Debug, Display};
-use utils::{purify_string::unescape_string, tui::tui_error};
+use utils::{
+    purify_string::{saturating_sub, spaces, unescape_string},
+    tui::tui_error,
+};
 
 pub trait CompileTypeErrorType: Display + Debug {
     fn context(&self) -> String;
@@ -15,18 +18,6 @@ pub struct CompileTimeError<ErrorType: CompileTypeErrorType> {
     pub source_content: Box<String>,
     pub verbose: Option<String>,
     pub caret: Option<Span>,
-}
-
-fn spaces(n: usize) -> String {
-    " ".repeat(n)
-}
-
-fn saturating_sub(value: usize, input: usize) -> usize {
-    if input >= value {
-        return 0;
-    } else {
-        return value.saturating_sub(input);
-    }
 }
 
 const PANEL_LENGTH: usize = 4;
@@ -53,8 +44,7 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
         }
 
         let mut starting_line = saturating_sub(self.location.line, PANEL_LENGTH);
-        let source_content = unescape_string(*self.source_content.clone());
-        let sources_lines: Vec<&str> = source_content.split("\n").collect();
+        let sources_lines: Vec<&str> = self.source_content.split("\n").collect();
 
         while starting_line < self.location.line + PANEL_LENGTH {
             if let Some(line_str) = sources_lines.get(starting_line) {
@@ -63,16 +53,6 @@ impl<ErrorType: CompileTypeErrorType> CompileTimeError<ErrorType> {
                         "{}",
                         format!("{}{}  |  {}", spaces(2), starting_line + 1, line_str).color(Colors::RedFg)
                     );
-                    // if let Some(caret) = self.caret.clone() {
-                    //     println!();
-                    //     print!("{}   ", spaces(2));
-                    //     dbg!(self);
-                    //     for _ in caret.start..caret.end {
-                    //         print!("{}", spaces(self.location.column));
-                    //         print!("{}", "^".color(Colors::RedFg));
-
-                    //     }
-                    // }
                 } else {
                     print!("{}{}  |  {}", spaces(2), starting_line + 1, line_str);
                 }

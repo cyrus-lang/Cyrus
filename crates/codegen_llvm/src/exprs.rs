@@ -56,10 +56,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     InternalValue::PointerValue(self.build_null())
                 }
             }
-            Expression::TypeSpecifier(_) => {
-                InternalValue::PointerValue(self.build_null())
-
-            }
+            Expression::TypeSpecifier(_) => InternalValue::PointerValue(self.build_null()),
         }
     }
 
@@ -869,6 +866,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         unary_expression: UnaryExpression,
     ) -> InternalValue<'ctx> {
         let operand = self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone());
+
         match unary_expression.operator.kind {
             TokenKind::Minus => match operand {
                 InternalValue::IntValue(int_value, _) => InternalValue::IntValue(
@@ -945,32 +943,67 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         unary_operator: UnaryOperator,
     ) -> InternalValue<'ctx> {
         let int_one = self.context.i32_type().const_int(1, false);
-        let value =
-            self.internal_value_as_rvalue(self.build_module_import(Rc::clone(&scope), unary_operator.module_import));
+        let operand_internal_value = self.build_module_import(Rc::clone(&scope), unary_operator.module_import);
 
-        match value {
+        let (ptr, _) = match operand_internal_value.clone() {
+            InternalValue::Lvalue(lvalue) => (lvalue.ptr, lvalue.pointee_ty),
+            InternalValue::PointerValue(typed_pointer_value) => {
+                (typed_pointer_value.ptr, typed_pointer_value.pointee_ty)
+            }
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot apply unary operator to a non-lvalue.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: unary_operator.loc.line,
+                        column: unary_operator.loc.column,
+                        length: unary_operator.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        match self.internal_value_as_rvalue(operand_internal_value.clone()) {
             InternalValue::IntValue(int_value, _) => match unary_operator.ty {
                 UnaryOperatorType::PreIncrement => {
-                    return InternalValue::IntValue(
-                        self.builder.build_int_add(int_value, int_one, "unaryop").unwrap(),
-                        InternalType::IntType(int_value.get_type()),
+                    let rvalue = self.builder.build_int_add(int_value, int_one, "unaryop").unwrap();
+                    self.build_store(
+                        ptr,
+                        InternalValue::IntValue(rvalue.clone(), InternalType::IntType(rvalue.get_type())),
                     );
+                    InternalValue::IntValue(rvalue, InternalType::IntType(rvalue.get_type()))
                 }
                 UnaryOperatorType::PreDecrement => {
-                    return InternalValue::IntValue(
-                        self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap(),
-                        InternalType::IntType(int_value.get_type()),
+                    let rvalue = self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap();
+                    self.build_store(
+                        ptr,
+                        InternalValue::IntValue(rvalue.clone(), InternalType::IntType(rvalue.get_type())),
                     );
+                    InternalValue::IntValue(rvalue, InternalType::IntType(rvalue.get_type()))
                 }
                 UnaryOperatorType::PostIncrement => {
-                    let clone = value.clone();
-                    self.builder.build_int_add(int_value, int_one, "unaryop").unwrap();
-                    return clone;
+                    let rvalue = self
+                        .builder
+                        .build_int_add(int_value.clone(), int_one, "unaryop")
+                        .unwrap();
+                    self.build_store(
+                        ptr,
+                        InternalValue::IntValue(rvalue.clone(), InternalType::IntType(rvalue.get_type())),
+                    );
+                    return InternalValue::IntValue(int_value, InternalType::IntType(int_value.get_type()));
                 }
                 UnaryOperatorType::PostDecrement => {
-                    let clone = value.clone();
-                    self.builder.build_int_sub(int_value, int_one, "unaryop").unwrap();
-                    return clone;
+                    let rvalue = self
+                        .builder
+                        .build_int_sub(int_value.clone(), int_one, "unaryop")
+                        .unwrap();
+                    self.build_store(
+                        ptr,
+                        InternalValue::IntValue(rvalue.clone(), InternalType::IntType(rvalue.get_type())),
+                    );
+                    return InternalValue::IntValue(int_value, InternalType::IntType(int_value.get_type()));
                 }
             },
             _ => {
@@ -1026,19 +1059,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        result.unwrap_or_else(|| {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::InfixNonBasic,
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: binary_expression.loc.line,
-                    column: binary_expression.loc.column,
-                    length: binary_expression.span.end,
-                }),
-            });
-            exit(1);
-        })
+        match result {
+            Ok(value) => value,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: binary_expression.loc.line,
+                        column: binary_expression.loc.column,
+                        length: binary_expression.span.end,
+                    }),
+                });
+                exit(1);
+            },
+        }
     }
 
     pub(crate) fn build_cond(
@@ -1048,12 +1084,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> IntValue<'ctx> {
-        if let InternalValue::IntValue(int_value, _) = self.internal_value_as_rvalue(self.build_expr(scope, expr)) {
-            int_value
+        if let InternalValue::BoolValue(bool_value) = self.internal_value_as_rvalue(self.build_expr(scope, expr)) {
+            bool_value
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom("Condition result must be an integer value.".to_string()),
+                kind: DiagKind::Custom("Condition result must be an bool value.".to_string()),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
                     line: loc.line,

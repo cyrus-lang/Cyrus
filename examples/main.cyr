@@ -1,5 +1,12 @@
-extern fn printf(v: const char*, ...);
+extern fn printf(_: const char*, ...);
 
 fn main() {
-    printf("Hello World");
+    #value: uint = 10;
+    
+    {
+        #value: uint = 5;
+        printf("value: %d\n", value)
+    }
+
+    printf("value: %d\n", value);
 }
