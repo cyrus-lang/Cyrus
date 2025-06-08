@@ -5,6 +5,10 @@ fn display_pair(list: int32[2]) {
 }
 
 fn main() {
-    display_pair(int32[2] {1, 2});
-    display_pair(int32[2] {2, 4});
+    // display_pair(int32[2] {1, 2});
+    // display_pair(int32[2] {2, 4});
+    #a = 1;
+
+    printf("value: %d\n", ++a);
+    printf("value: %d\n", a);
 }
