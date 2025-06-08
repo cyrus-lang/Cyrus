@@ -15,7 +15,7 @@ use inkwell::types::FunctionType;
 use inkwell::values::{BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::DerefMut;
+use std::ops::{DerefMut, Index};
 use std::process::exit;
 use std::rc::Rc;
 
@@ -196,36 +196,53 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let mut scope_borrowed = scope.borrow_mut();
         for (idx, param) in func.get_param_iter().enumerate() {
-            // let param_ptr = self.builder.build_alloca(param.get_type(), "param").unwrap();
-            // self.builder.build_store(param_ptr, param).unwrap();
-            // if let Some(func_param) = func_def.params.list.get(idx) {
-            //     let param_ptr_type = param.get_type().try_into().unwrap();
+            let param_ptr = self.builder.build_alloca(param.get_type(), "param").unwrap();
+            self.builder.build_store(param_ptr, param).unwrap();
 
-            //     scope_borrowed.insert(
-            //         func_param.identifier.name.clone(),
-            //         ScopeRecord {
-            //             ptr: param_ptr,
-            //             ty: param_ptr_type,
-            //         },
-            //     );
-            // } else {
-            //     display_single_diag(Diag {
-            //         level: DiagLevel::Error,
-            //         kind: DiagKind::Custom(format!(
-            //             "Unmatched parameter for function '{}' when adding params to the scope.",
-            //             &func_def.name
-            //         )),
-            //         location: Some(DiagLoc {
-            //             file: self.file_path.clone(),
-            //             line: func_def.loc.line,
-            //             column: func_def.loc.column,
-            //             length: func_def.span.end,
-            //         }),
-            //     });
-            //     exit(1);
-            // }
-            // FIXME Func params need to be refactored
-            todo!();
+            if let Some(func_param) = func_def.params.list.get(idx) {
+                if let Some(param_type_specifier) = func_decl.params.list.index(idx).ty.clone() {
+                    let param_internal_type = self.build_type(param_type_specifier, func_param.loc.clone(), func_param.span.end);
+
+                    scope_borrowed.insert(
+                        func_param.identifier.name.clone(),
+                        ScopeRecord {
+                            ptr: param_ptr,
+                            ty: param_internal_type,
+                        },
+                    );
+                } else {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Consider to add an type annotation for parameter '{}'.",
+                            func_param.identifier.name.clone()
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: func_def.loc.line,
+                            column: func_def.loc.column,
+                            length: func_def.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Unmatched parameter for function '{}' when adding params to the scope.",
+                        &func_def.name
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: func_def.loc.line,
+                        column: func_def.loc.column,
+                        length: func_def.span.end,
+                    }),
+                });
+                exit(1);
+            }
+
         }
         drop(scope_borrowed);
 
