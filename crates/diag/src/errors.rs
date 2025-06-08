@@ -2,7 +2,10 @@ use ast::token::{Location, Span};
 use colorized::{Color, Colors};
 use console::user_attended;
 use std::fmt::{Debug, Display};
-use utils::{purify_string::{saturating_sub, spaces, unescape_string}, tui::tui_error};
+use utils::{
+    purify_string::{saturating_sub, spaces, unescape_string},
+    tui::tui_error,
+};
 
 pub trait CompileTypeErrorType: Display + Debug {
     fn context(&self) -> String;

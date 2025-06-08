@@ -1059,19 +1059,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        result.unwrap_or_else(|| {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::InfixNonBasic,
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: binary_expression.loc.line,
-                    column: binary_expression.loc.column,
-                    length: binary_expression.span.end,
-                }),
-            });
-            exit(1);
-        })
+        match result {
+            Ok(value) => value,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: binary_expression.loc.line,
+                        column: binary_expression.loc.column,
+                        length: binary_expression.span.end,
+                    }),
+                });
+                exit(1);
+            },
+        }
     }
 
     pub(crate) fn build_cond(
@@ -1081,12 +1084,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> IntValue<'ctx> {
-        if let InternalValue::IntValue(int_value, _) = self.internal_value_as_rvalue(self.build_expr(scope, expr)) {
-            int_value
+        if let InternalValue::BoolValue(bool_value) = self.internal_value_as_rvalue(self.build_expr(scope, expr)) {
+            bool_value
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom("Condition result must be an integer value.".to_string()),
+                kind: DiagKind::Custom("Condition result must be an bool value.".to_string()),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
                     line: loc.line,

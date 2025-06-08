@@ -1,14 +1,8 @@
 extern fn printf(_: const char*, ...);
 
-fn display_pair(list: int32[2]) {
-    printf("(%d, %d)\n", list[0], list[1]);
-}
-
 fn main() {
-    // display_pair(int32[2] {1, 2});
-    // display_pair(int32[2] {2, 4});
-    #a = 1;
+    #a = 0;
+    #ptr: void* = &a;
 
-    printf("value: %d\n", ++a);
-    printf("value: %d\n", a);
+    ptr || null;
 }

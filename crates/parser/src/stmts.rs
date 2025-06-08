@@ -789,7 +789,7 @@ impl<'a> Parser<'a> {
         // we pass this statement that is inside a brace to parse_block_statement.
         if self.current_token_is(TokenKind::LeftBrace) {
             let body = Box::new(self.parse_block_statement()?);
-            
+
             if !self.current_token_is(TokenKind::RightBrace) {
                 return Err(CompileTimeError {
                     location: self.current_location(),
@@ -799,10 +799,6 @@ impl<'a> Parser<'a> {
                     verbose: None,
                     caret: Some(Span::new(start, self.current_token.span.end)),
                 });
-            }
-
-            if self.peek_token_is(TokenKind::Semicolon) {
-                self.next_token();
             }
 
             let end = self.current_token.span.end;
@@ -915,7 +911,10 @@ impl<'a> Parser<'a> {
                 caret: Some(Span::new(start, self.current_token.span.end)),
             });
         }
-        self.next_token(); // consume right brace
+
+        if self.peek_token_is(TokenKind::Else) {
+            self.next_token(); // consume right brace
+        }
 
         while self.current_token_is(TokenKind::Else) {
             self.next_token(); // consume else token
@@ -940,7 +939,21 @@ impl<'a> Parser<'a> {
                 self.next_token(); // consume last token of the expression
 
                 let consequent = Box::new(self.parse_block_statement()?);
-                self.expect_current(TokenKind::RightBrace)?;
+
+                if !self.current_token_is(TokenKind::RightBrace) {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::MissingClosingBrace,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        verbose: None,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
+                    });
+                }
+
+                if self.peek_token_is(TokenKind::Else) {
+                    self.next_token(); // consume else token
+                }
 
                 let end = self.current_token.span.end;
 
@@ -969,7 +982,16 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_current(TokenKind::RightBrace)?;
+        if !self.current_token_is(TokenKind::RightBrace) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingClosingBrace,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: Some(Span::new(start, self.current_token.span.end)),
+            });
+        }
 
         let end = self.current_token.span.end;
 
