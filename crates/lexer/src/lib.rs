@@ -4,6 +4,7 @@ use ast::token::*;
 use core::panic;
 use diag::{LexicalErrorType, lexer_invalid_char_error};
 use std::{fmt::Debug, ops::Range, process::exit};
+use utils::purify_string::escape_string;
 
 mod diag;
 mod format;
@@ -75,7 +76,7 @@ impl Lexer {
         if let Some(c) = remaining_input.chars().next() {
             self.ch = c;
             self.pos = self.next_pos;
-            self.next_pos += c.len_utf8(); 
+            self.next_pos += c.len_utf8();
             if c == '\n' {
                 self.line += 1;
                 self.column = 0;
@@ -466,11 +467,10 @@ impl Lexer {
         }
 
         let end = self.pos;
-
         let span = Span { start: start - 1, end };
 
         Token {
-            kind: TokenKind::Literal(Literal::String(final_string)),
+            kind: TokenKind::Literal(Literal::String(escape_string(&final_string))),
             span,
         }
     }
@@ -661,7 +661,7 @@ impl Lexer {
 
     fn skip_comments(&mut self) {
         let start = self.pos;
-        
+
         while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
             if self.peek_char() == '/' {
                 // Handle single-line comment

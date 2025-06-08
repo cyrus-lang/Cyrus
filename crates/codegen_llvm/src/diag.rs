@@ -2,7 +2,7 @@ use colorized::{Color, Colors};
 use console::user_attended;
 use core::fmt;
 use std::fs;
-use utils::purify_string::{saturating_sub, spaces, unescape_string};
+use utils::purify_string::{escape_string, saturating_sub, spaces, unescape_string};
 
 const PANEL_LENGTH: usize = 4;
 
@@ -129,11 +129,15 @@ impl DiagReporter {
         formatted.push_str(&format!("{}: {}\n", diag_level_text, diag.kind.to_string()));
 
         if let Some(loc) = &diag.location {
-            formatted.push_str(&format!("       --> {}:{}:{}\n\n", loc.file.clone(), loc.line, loc.column));
+            formatted.push_str(&format!(
+                "       --> {}:{}:{}\n\n",
+                loc.file.clone(),
+                loc.line,
+                loc.column
+            ));
 
             let mut starting_line = saturating_sub(loc.line, PANEL_LENGTH);
-            let file_content = fs::read_to_string(loc.file.clone()).unwrap();
-            let source_content = unescape_string(file_content);
+            let source_content = fs::read_to_string(loc.file.clone()).unwrap();
             let sources_lines: Vec<&str> = source_content.split("\n").collect();
 
             while starting_line < loc.line + PANEL_LENGTH {
