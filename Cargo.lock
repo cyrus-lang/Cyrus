@@ -146,6 +146,7 @@ dependencies = [
  "cc",
  "clap",
  "colorized",
+ "console",
  "crc32fast",
  "inkwell",
  "parser",

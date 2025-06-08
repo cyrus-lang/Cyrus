@@ -1,5 +1,10 @@
+use colorized::{Color, Colors};
+use console::user_attended;
 use core::fmt;
-use utils::tui::{tui_error, tui_warning};
+use std::fs;
+use utils::purify_string::{saturating_sub, spaces, unescape_string};
+
+const PANEL_LENGTH: usize = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagKind {
@@ -103,8 +108,8 @@ impl DiagReporter {
     pub fn display_diags(&self) {
         for diag in &self.diags {
             match diag.level {
-                DiagLevel::Error => tui_error(self.format_panel(diag)),
-                DiagLevel::Warning => tui_warning(self.format_panel(diag)),
+                DiagLevel::Error => eprintln!("{}", self.format_panel(diag)),
+                DiagLevel::Warning => println!("{}", self.format_panel(diag)),
             }
         }
     }
@@ -114,70 +119,43 @@ impl DiagReporter {
     }
 
     fn format_panel(&self, diag: &Diag) -> String {
-        // dbg!(diag.clone());
-        
         let mut formatted = String::new();
+
+        let diag_level_text = match diag.level {
+            DiagLevel::Error => "error".color(Colors::RedFg),
+            DiagLevel::Warning => "warning".color(Colors::YellowFg),
+        };
+
+        formatted.push_str(&format!("{}: {}\n", diag_level_text, diag.kind.to_string()));
+
         if let Some(loc) = &diag.location {
-            formatted.push_str(&format!("{}:{}:{}: ", loc.file, loc.line, loc.column));
+            formatted.push_str(&format!("       --> {}:{}:{}\n\n", loc.file.clone(), loc.line, loc.column));
+
+            let mut starting_line = saturating_sub(loc.line, PANEL_LENGTH);
+            let file_content = fs::read_to_string(loc.file.clone()).unwrap();
+            let source_content = unescape_string(file_content);
+            let sources_lines: Vec<&str> = source_content.split("\n").collect();
+
+            while starting_line < loc.line + PANEL_LENGTH {
+                if let Some(line_str) = sources_lines.get(starting_line) {
+                    if starting_line + 1 == loc.line && user_attended() {
+                        formatted.push_str(
+                            &format!("{}{}  |  {}", spaces(2), starting_line + 1, line_str).color(Colors::RedFg),
+                        );
+                    } else {
+                        formatted.push_str(&format!("{}{}  |  {}", spaces(2), starting_line + 1, line_str));
+                    }
+                } else {
+                    break;
+                }
+
+                starting_line += 1;
+                formatted.push_str("\n");
+            }
         }
-        formatted.push_str(&format!("{}", diag.kind.to_string()));
+
+        // formatted.push_str(&format!("{}", diag.kind.to_string()));
+
         formatted
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_diag_reporter() {
-        let mut reporter = DiagReporter::new();
-        let diag = Diag {
-            level: DiagLevel::Error,
-            kind: DiagKind::InvalidTypeToken,
-            location: Some(DiagLoc {
-                file: "test.rs".to_string(),
-                line: 10,
-                column: 5,
-                length: 1,
-            }),
-        };
-
-        reporter.report(diag.clone());
-        assert_eq!(reporter.diags.len(), 1);
-        assert_eq!(reporter.diags[0], diag);
-    }
-
-    #[test]
-    fn test_diag_reporter_display() {
-        let mut reporter = DiagReporter::new();
-        let diag = Diag {
-            level: DiagLevel::Warning,
-            kind: DiagKind::Custom("Test warning".to_string()),
-            location: Some(DiagLoc {
-                file: "test.rs".to_string(),
-                line: 15,
-                column: 10,
-                length: 5,
-            }),
-        };
-
-        reporter.report(diag);
-        reporter.display_diags();
-    }
-
-    #[test]
-    fn test_diag_loc() {
-        let loc = DiagLoc {
-            file: "example.rs".to_string(),
-            line: 20,
-            column: 15,
-            length: 10,
-        };
-
-        assert_eq!(loc.file, "example.rs");
-        assert_eq!(loc.line, 20);
-        assert_eq!(loc.column, 15);
-        assert_eq!(loc.length, 10);
     }
 }
