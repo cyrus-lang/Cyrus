@@ -37,31 +37,6 @@ impl Lexer {
         lexer
     }
 
-    /// Selects a substring from the input string within the specified range.
-    ///
-    /// # Parameters
-    /// - `range`: A `Range<usize>` specifying the start (inclusive) and end (exclusive) indices
-    ///   of the substring to extract. Both indices must be within the bounds of the input string,
-    ///   and the start index must not exceed the end index.
-    ///
-    /// # Returns
-    /// A `String` containing the substring specified by the given range.
-    ///
-    /// # Panics
-    /// This method will panic if:
-    /// - The start or end indices are out of bounds of the input string's length.
-    /// - The start index is greater than the end index.
-    ///
-    pub fn select(&self, range: Range<usize>) -> String {
-        let len = self.input.len();
-
-        if range.start > len || range.end > len || range.start > range.end {
-            panic!("Range {:?} is out of bounds for string of length {}", range, len);
-        }
-
-        self.input[range].to_string()
-    }
-
     fn peek_char(&self) -> char {
         self.input[self.next_pos..].chars().next().unwrap_or('\0')
     }
@@ -629,7 +604,7 @@ impl Lexer {
     }
 
     fn is_eof(&mut self) -> bool {
-        self.pos == self.input.len()
+        self.pos == self.input.len() || self.ch == '\0'
     }
 
     fn is_whitespace(ch: char) -> bool {
@@ -664,7 +639,7 @@ impl Lexer {
 
         while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
             if self.peek_char() == '/' {
-                // Handle single-line comment
+                // handle single-line comment
                 self.read_char();
                 self.read_char();
 
@@ -677,7 +652,7 @@ impl Lexer {
                     self.read_char();
                 }
             } else if self.peek_char() == '*' {
-                // Handle multi-line comment
+                // handle multi-line comment
 
                 self.read_char();
                 self.read_char();
@@ -706,13 +681,13 @@ impl Lexer {
                 self.read_char();
                 self.read_char();
 
-                // Skip any trailing newlines after the comment
+                // skip any trailing newlines after the comment
                 while !self.is_eof() && self.ch == '\n' {
                     self.read_char();
                 }
             }
 
-            // Skip whitespace to advance to the next valid character
+            // skip whitespace to advance to the next valid character
             self.skip_whitespace();
         }
     }
