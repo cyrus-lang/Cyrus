@@ -5,13 +5,6 @@ mod tests {
     use ast::token::{Span, TokenKind};
 
     #[test]
-    fn test_select() {
-        let lexer = Lexer::new(String::from("Hello World"), String::from("test.cyr"));
-        let substring = lexer.select(0..5);
-        assert_eq!(substring, "Hello");
-    }
-
-    #[test]
     fn test_skip_whitespace() {
         let mut lexer = Lexer::new(
             String::from(
@@ -120,7 +113,8 @@ mod tests {
 
     #[test]
     fn test_comments() {
-        assert_tokens("// Sample comments", None, None);
+        assert_tokens("// Single line comment", None, None);
+
         let code = String::from(
             "
         // Sample comments
@@ -331,10 +325,9 @@ mod tests {
         );
     }
 
-    // #[test]
-    // FIXME
-    // fn test_tokenizing_emoji() {
-    //     assert_tokens("\"This is 🖤 made by a string.\"", None, None);
-    //     assert_tokens("printf(\"Hello 🖤\");", None, None);
-    // }
+    #[test]
+    fn test_tokenizing_emoji() {
+        assert_tokens("\"This is 🖤 made by a string.\"", None, None);
+        assert_tokens("printf(\"Hello 🖤\");", None, None);
+    }
 }

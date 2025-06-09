@@ -37,7 +37,10 @@ impl<'a> Parser<'a> {
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Import => self.parse_import(),
-            TokenKind::LeftBrace => Ok(Statement::BlockStatement(self.parse_block_statement()?)),
+            TokenKind::LeftBrace => {
+                let block_statement = self.parse_block_statement()?;
+                Ok(Statement::BlockStatement(block_statement))
+            }
             _ => self.parse_expression_statement(),
         }
     }
@@ -763,31 +766,18 @@ impl<'a> Parser<'a> {
             }));
         }
 
-        // we used current_token_is because we don't want to consume it,
-        // we pass this statement that is inside a brace to parse_block_statement.
-        if self.current_token_is(TokenKind::LeftBrace) {
-            let body = Box::new(self.parse_block_statement()?);
-            let end = self.current_token.span.end;
+        let body = Box::new(self.parse_block_statement()?);
+        let end = self.current_token.span.end;
 
-            return Ok(Statement::FuncDef(FuncDef {
-                name: func_name,
-                params,
-                body,
-                return_type,
-                storage_class,
-                span: Span { start, end },
-                loc,
-            }));
-        }
-
-        return Err(CompileTimeError {
-            location: self.current_location(),
-            etype: ParserErrorType::MissingOpeningBrace,
-            file_name: Some(self.lexer.file_name.clone()),
-            source_content: Box::new(self.lexer.input.clone()),
-            verbose: None,
-            caret: Some(Span::new(start, self.current_token.span.end)),
-        });
+        return Ok(Statement::FuncDef(FuncDef {
+            name: func_name,
+            params,
+            body,
+            return_type,
+            storage_class,
+            span: Span { start, end },
+            loc,
+        }));
     }
 
     pub fn parse_return(&mut self) -> Result<Statement, ParseError> {
@@ -815,23 +805,31 @@ impl<'a> Parser<'a> {
 
         let mut block_statement: Vec<Statement> = Vec::new();
 
-        while !self.current_token_is(TokenKind::RightBrace) && !self.current_token_is(TokenKind::EOF) {
-            let statement = self.parse_statement()?;
-            block_statement.push(statement);
-            self.next_token();
-        }
-
-        if !self.current_token_is(TokenKind::RightBrace) {
-            return Err(CompileTimeError {
-                location: self.current_location(),
-                etype: ParserErrorType::MissingClosingBrace,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
+        if self.current_token_is(TokenKind::RightBrace) {
+            // detected empty block statement
+            return Ok(BlockStatement {
+                exprs: block_statement,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc: self.current_location(),
             });
         }
 
+        loop {
+            let statement = self.parse_statement()?;
+            block_statement.push(statement);
+
+            match self.peek_token.kind {
+                TokenKind::RightBrace => break,
+                _ => {
+                    self.next_token();
+                }
+            }
+        }
+
+        self.expect_peek(TokenKind::RightBrace)?;
         let end = self.current_token.span.end;
 
         Ok(BlockStatement {

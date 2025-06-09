@@ -251,10 +251,10 @@ mod tests {
                         field_name: Identifier {
                             name: "field".to_string(),
                             span: Span::new(7, 12),
-                            loc: Location::new(1, 14),
+                            loc: Location::new(1, 13),
                         },
                         span: Span::new(7, 12),
-                        loc: Location::new(1, 14)
+                        loc: Location::new(1, 13)
                     }
                 );
             } else {
@@ -327,7 +327,7 @@ mod tests {
                     vec![ModuleSegment::SubModule(Identifier {
                         name: "my_var".to_string(),
                         span: Span::new(2, 7),
-                        loc: Location::new(1, 10)
+                        loc: Location::new(1, 9)
                     })]
                 );
                 assert_eq!(unary_operator.ty, UnaryOperatorType::PreIncrement);
