@@ -3,7 +3,7 @@ use colorized::{Color, Colors};
 use console::user_attended;
 use std::fmt::{Debug, Display};
 use utils::{
-    purify_string::{saturating_sub, spaces, unescape_string},
+    purify_string::{saturating_sub, spaces},
     tui::tui_error,
 };
 
