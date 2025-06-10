@@ -1,0 +1,22 @@
+extern fn printf(_: const char*, ...): void;
+
+struct Person {
+    name: string;
+    age: int32;
+
+    public fn greet() {
+        printf("Greet from Person struct.\n");
+    }
+}
+
+fn main() {
+    #age = 18;
+
+    #a = Person {
+        name: "Taha",
+        age: age
+    };
+
+    printf("age: %d\n", a.age);
+    printf("name: %s\n", a.name);
+}

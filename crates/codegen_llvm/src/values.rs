@@ -137,9 +137,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 array_type.const_zero(),
                 InternalType::ArrayType(element_type, array_type),
             ),
-            InternalType::StructType(struct_type) => {
-                InternalValue::StructValue(struct_type.const_zero(), InternalType::StructType(struct_type))
-            }
+            InternalType::StructType(struct_metadata) => InternalValue::StructValue(
+                struct_metadata.struct_type.const_zero(),
+                InternalType::StructType(struct_metadata),
+            ),
             InternalType::VectorType(vector_type) => {
                 InternalValue::VectorValue(vector_type.const_zero(), InternalType::VectorType(vector_type))
             }

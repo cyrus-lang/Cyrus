@@ -2,7 +2,7 @@ use crate::diag::*;
 use crate::scope::ScopeRecord;
 use crate::structs::StructMetadata;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use ast::ast::{If, Statement, TypeSpecifier, Variable};
+use ast::ast::{Identifier, If, ModuleImport, ModuleSegment, Statement, TypeSpecifier, Variable};
 use ast::token::TokenKind;
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
@@ -60,8 +60,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Struct(struct_statement) => {
                 let struct_type = self.build_struct(struct_statement.clone());
                 self.struct_table.insert(
-                    struct_statement.name,
+                    struct_statement.name.clone(),
                     StructMetadata {
+                        struct_name: ModuleImport {
+                            segments: vec![ModuleSegment::SubModule(Identifier {
+                                name: struct_statement.name,
+                                span: struct_statement.span.clone(),
+                                loc: struct_statement.loc.clone(),
+                            })],
+                            span: struct_statement.span.clone(),
+                            loc: struct_statement.loc.clone(),
+                        },
                         struct_type,
                         fields: struct_statement.fields,
                         inherits: struct_statement.inherits,

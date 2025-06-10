@@ -239,6 +239,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
                     let storage_class = self.parse_storage_class(self.current_token.clone())?;
                     if let Statement::FuncDef(method) = self.parse_func(Some(storage_class))? {
+                        self.next_token(); // consume right brace
                         methods.push(method);
                     } else {
                         unreachable!();
@@ -246,6 +247,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Function => {
                     if let Statement::FuncDef(method) = self.parse_func(None)? {
+                        self.next_token(); // consume right brace
                         methods.push(method);
                     } else {
                         unreachable!();
@@ -253,8 +255,9 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Identifier { name: field_name } => {
                     let start = self.current_token.span.start;
-
                     self.next_token(); // consume identifier
+
+                    self.expect_current(TokenKind::Colon)?;
 
                     let type_token = self.parse_type_specifier()?;
                     self.next_token();
@@ -269,6 +272,7 @@ impl<'a> Parser<'a> {
                         },
                     };
 
+                    self.expect_current(TokenKind::Semicolon)?;
                     fields.push(field);
                 }
                 _ => {

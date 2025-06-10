@@ -23,7 +23,7 @@ use utils::purify_string::unescape_string;
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         match expr {
-            Expression::FieldAccess(field_access) => todo!(),
+            Expression::FieldAccess(field_access) => self.build_field_access(Rc::clone(&scope), field_access),
             Expression::MethodCall(method_call) => todo!(),
             Expression::Identifier(identifier) => self.build_load_lvalue(
                 Rc::clone(&scope),
@@ -1073,7 +1073,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 });
                 exit(1);
-            },
+            }
         }
     }
 

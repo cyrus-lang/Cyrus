@@ -1,9 +1,8 @@
 use ::diag::errors::CompileTimeError;
 use ast::ast::Literal;
 use ast::token::*;
-use core::panic;
 use diag::{LexicalErrorType, lexer_invalid_char_error};
-use std::{fmt::Debug, ops::Range, process::exit};
+use std::{fmt::Debug, process::exit};
 use utils::purify_string::escape_string;
 
 mod diag;

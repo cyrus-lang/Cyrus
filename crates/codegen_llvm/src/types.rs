@@ -2,10 +2,13 @@ use crate::CodeGenLLVM;
 use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
+use crate::structs::StructMetadata;
 use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
 use ast::ast::ArrayCapacity;
 use ast::ast::ArrayTypeSpecifier;
+use ast::ast::ModuleImport;
+use ast::ast::ModuleSegment;
 use ast::ast::TypeSpecifier;
 use ast::token::*;
 use inkwell::AddressSpace;
@@ -27,7 +30,7 @@ pub(crate) enum InternalType<'a> {
     BoolType(IntType<'a>),
     IntType(IntType<'a>),
     FloatType(FloatType<'a>),
-    StructType(StructType<'a>),
+    StructType(StructMetadata<'a>),
     VectorType(VectorType<'a>),
     StringType(StringType<'a>),
     VoidType(VoidType<'a>),
@@ -54,6 +57,20 @@ pub(crate) struct StringType<'a> {
     pub struct_type: StructType<'a>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum DefinedType<'a> {
+    Struct(StructMetadata<'a>),
+    // Typedef(...),
+}
+
+impl<'a> DefinedType<'a> {
+    pub fn into_internal_type(&self) -> InternalType<'a> {
+        match self {
+            DefinedType::Struct(struct_metadata) => InternalType::StructType(struct_metadata.clone()),
+        }
+    }
+}
+
 impl<'a> InternalType<'a> {
     pub fn into_array_type(&self, size: u32) -> Result<InternalType<'a>, String> {
         match self {
@@ -69,9 +86,9 @@ impl<'a> InternalType<'a> {
                 element_type.clone(),
                 array_type.array_type(size),
             )),
-            InternalType::StructType(struct_type) => Ok(InternalType::ArrayType(
-                Box::new(InternalType::StructType(*struct_type)),
-                struct_type.array_type(size),
+            InternalType::StructType(struct_metadata) => Ok(InternalType::ArrayType(
+                Box::new(InternalType::StructType(struct_metadata.clone())),
+                struct_metadata.struct_type.array_type(size),
             )),
             InternalType::VectorType(vector_type) => Ok(InternalType::ArrayType(
                 Box::new(InternalType::VectorType(*vector_type)),
@@ -194,7 +211,7 @@ impl<'a> InternalType<'a> {
             InternalType::IntType(t) => (*t).as_basic_type_enum(),
             InternalType::FloatType(t) => (*t).as_basic_type_enum(),
             InternalType::ArrayType(_, t) => (*t).as_basic_type_enum(),
-            InternalType::StructType(t) => (*t).as_basic_type_enum(),
+            InternalType::StructType(t) => (*t).struct_type.as_basic_type_enum(),
             InternalType::VectorType(t) => (*t).as_basic_type_enum(),
             InternalType::PointerType(t) => t.ptr_type.as_basic_type_enum(),
             InternalType::Lvalue(t) => t.ptr_type.as_basic_type_enum(),
@@ -210,7 +227,7 @@ impl<'a> InternalType<'a> {
             InternalType::IntType(t) => t.as_type_ref(),
             InternalType::FloatType(t) => t.as_type_ref(),
             InternalType::ArrayType(_, t) => t.as_type_ref(),
-            InternalType::StructType(t) => t.as_type_ref(),
+            InternalType::StructType(t) => t.struct_type.as_type_ref(),
             InternalType::VectorType(t) => t.as_type_ref(),
             InternalType::PointerType(t) => t.ptr_type.as_type_ref(),
             InternalType::Lvalue(t) => t.ptr_type.as_type_ref(),
@@ -277,6 +294,40 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn find_defined_type(
+        &self,
+        module_import: ModuleImport,
+        loc: Location,
+        span_end: usize,
+    ) -> DefinedType<'ctx> {
+        if module_import.segments.len() == 1 {
+            let first_segment = module_import.segments[0].clone();
+            let ast::ast::ModuleSegment::SubModule(identifier) = first_segment;
+
+            match self.struct_table.get(&identifier.name.clone()) {
+                Some(struct_metadata) => DefinedType::Struct(struct_metadata.clone()),
+                None => {
+                    // TODO Lookup in typedef table
+
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::UndefinedDataType(identifier.name),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            }
+        } else {
+            // TODO
+            todo!("Implement module import for find_type");
+        }
+    }
+
     pub(crate) fn build_type(
         &self,
         type_specifier: TypeSpecifier,
@@ -287,7 +338,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TypeSpecifier::Const(inner_type_specifier) => {
                 InternalType::ConstType(Box::new(self.build_type(*inner_type_specifier, loc, span_end)))
             }
-            TypeSpecifier::Identifier(identifier) => todo!(),
+            TypeSpecifier::Identifier(identifier) => self
+                .find_defined_type(
+                    ModuleImport {
+                        segments: vec![ModuleSegment::SubModule(identifier.clone())],
+                        span: identifier.span.clone(),
+                        loc: identifier.loc.clone(),
+                    },
+                    loc,
+                    span_end,
+                )
+                .into_internal_type(),
             TypeSpecifier::ModuleImport(module_import) => todo!(),
             TypeSpecifier::AddressOf(type_specifier) => todo!(),
             TypeSpecifier::Dereference(inner_type_specifier) => {
