@@ -1,6 +1,6 @@
 use crate::{
     CodeGenLLVM, InternalType, StringType, diag::*, funcs::FuncMetadata, modules::ModuleMetadata,
-    types::TypedPointerType,
+    structs::UnnamedStructMetadata, types::TypedPointerType,
 };
 use ast::token::Location;
 use inkwell::{
@@ -19,6 +19,7 @@ pub(crate) enum InternalValue<'a> {
     FloatValue(FloatValue<'a>, InternalType<'a>),
     ArrayValue(ArrayValue<'a>, InternalType<'a>),
     StructValue(StructValue<'a>, InternalType<'a>),
+    UnnamedStructValue(StructValue<'a>, InternalType<'a>),
     VectorValue(VectorValue<'a>, InternalType<'a>),
     StrValue(PointerValue<'a>, InternalType<'a>),
     StringValue(StringValue<'a>),
@@ -74,6 +75,7 @@ impl<'a> InternalValue<'a> {
                 });
                 exit(1);
             }
+            InternalValue::UnnamedStructValue(struct_value, _) => BasicMetadataValueEnum::StructValue(*struct_value),
         }
     }
 
@@ -114,6 +116,7 @@ impl<'a> InternalValue<'a> {
                 });
                 exit(1);
             }
+            InternalValue::UnnamedStructValue(_, internal_type) => internal_type.clone(),
         }
     }
 }
@@ -140,6 +143,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::StructType(struct_metadata) => InternalValue::StructValue(
                 struct_metadata.struct_type.const_zero(),
                 InternalType::StructType(struct_metadata),
+            ),
+            InternalType::UnnamedStruct(unnamed_struct_metadata) => InternalValue::UnnamedStructValue(
+                unnamed_struct_metadata.struct_type.const_zero(),
+                InternalType::UnnamedStruct(unnamed_struct_metadata),
             ),
             InternalType::VectorType(vector_type) => {
                 InternalValue::VectorValue(vector_type.const_zero(), InternalType::VectorType(vector_type))
@@ -199,6 +206,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
             InternalType::ConstType(_) => unimplemented!(),
+            InternalType::UnnamedStruct(unnamed_struct_metadata) => InternalValue::UnnamedStructValue(
+                value.into_struct_value(),
+                InternalType::UnnamedStruct(unnamed_struct_metadata),
+            ),
         }
     }
 
@@ -222,6 +233,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::FloatValue(v, ty) => InternalValue::FloatValue(v, ty),
             InternalValue::ArrayValue(v, ty) => InternalValue::ArrayValue(v, ty),
             InternalValue::StructValue(v, ty) => InternalValue::StructValue(v, ty),
+            InternalValue::UnnamedStructValue(v, ty) => InternalValue::UnnamedStructValue(v, ty),
             InternalValue::VectorValue(v, ty) => InternalValue::VectorValue(v, ty),
             InternalValue::StrValue(v, ty) => InternalValue::PointerValue(TypedPointerValue { ptr: v, pointee_ty: ty }),
             InternalValue::StringValue(v) => InternalValue::StringValue(v),

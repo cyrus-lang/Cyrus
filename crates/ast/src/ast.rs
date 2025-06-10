@@ -145,13 +145,19 @@ pub enum Literal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeSpecifier {
-    Identifier(Identifier),
-    ModuleImport(ModuleImport),
     TypeToken(Token),
+    Identifier(Identifier),
     Const(Box<TypeSpecifier>),
+    Array(ArrayTypeSpecifier),
+    ModuleImport(ModuleImport),
     AddressOf(Box<TypeSpecifier>),
     Dereference(Box<TypeSpecifier>),
-    Array(ArrayTypeSpecifier),
+    UnnamedStruct(UnnamedStruct),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnnamedStruct {
+    pub fields: Vec<Field>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

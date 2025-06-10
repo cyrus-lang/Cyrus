@@ -6,15 +6,16 @@ use crate::{
     values::Lvalue,
 };
 use ast::{
-    ast::{Field, FieldAccess, Identifier, ModuleImport, ModuleSegment, StorageClass, Struct, StructInit},
+    ast::{
+        Field, FieldAccess, Identifier, ModuleImport, ModuleSegment, StorageClass, Struct, StructInit, UnnamedStruct,
+    },
     format::module_segments_as_string,
     token::Location,
 };
 use inkwell::{
     AddressSpace,
-    llvm_sys::core::LLVMGetGEPSourceElementType,
     types::{BasicTypeEnum, StructType},
-    values::{AggregateValueEnum, PointerValue, StructValue},
+    values::{AggregateValueEnum, PointerValue},
 };
 use std::{collections::HashMap, process::exit, rc::Rc};
 
@@ -25,6 +26,12 @@ pub struct StructMetadata<'a> {
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub storage_class: StorageClass,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnnamedStructMetadata<'a> {
+    pub struct_type: StructType<'a>,
+    pub fields: Vec<Field>,
 }
 
 pub type StructTable<'a> = HashMap<String, StructMetadata<'a>>;
@@ -176,57 +183,74 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> InternalValue<'ctx> {
-        let struct_metadata = match struct_internal_type {
-            InternalType::StructType(struct_metadata) => struct_metadata,
+        let (struct_type, field_idx, field) = match struct_internal_type {
+            InternalType::StructType(struct_metadata) => {
+                match struct_metadata
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .find(|(_, f)| f.name == field_name)
+                {
+                    Some((field_idx, field)) => (struct_metadata.struct_type, field_idx, field.clone()),
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(format!(
+                                "Struct '{}' has not field named '{}'.",
+                                module_segments_as_string(struct_metadata.struct_name.segments),
+                                field_name
+                            )),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            }
+            InternalType::UnnamedStruct(struct_metadata) => struct_metadata
+                .fields
+                .iter()
+                .enumerate()
+                .find(|(_, f)| f.name == field_name)
+                .map_or_else(
+                    || {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(format!("Unnamed struct has not field named '{}'.", field_name)),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    },
+                    |(field_idx, field)| (struct_metadata.struct_type, field_idx, field.clone()),
+                ),
             _ => unreachable!(),
         };
 
-        match struct_metadata
-            .fields
-            .iter()
-            .enumerate()
-            .find(|(_, f)| f.name == field_name)
-        {
-            Some((field_idx, field)) => {
-                let field_ptr = self
-                    .builder
-                    .build_struct_gep(
-                        struct_metadata.struct_type,
-                        pointer,
-                        field_idx.try_into().unwrap(),
-                        "gep",
-                    )
-                    .unwrap();
+        let field_ptr = self
+            .builder
+            .build_struct_gep(struct_type, pointer, field_idx.try_into().unwrap(), "gep")
+            .unwrap();
 
-                InternalValue::Lvalue(Lvalue {
-                    ptr: field_ptr,
-                    pointee_ty: self.build_type(field.ty.clone(), field.loc.clone(), field.span.end),
-                })
-            }
-            None => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!(
-                        "Struct '{}' has not field named '{}'.",
-                        module_segments_as_string(struct_metadata.struct_name.segments),
-                        field_name
-                    )),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-        }
+        InternalValue::Lvalue(Lvalue {
+            ptr: field_ptr,
+            pointee_ty: self.build_type(field.ty.clone(), field.loc.clone(), field.span.end),
+        })
     }
     pub(crate) fn build_field_access(&self, scope: ScopeRef<'ctx>, field_access: FieldAccess) -> InternalValue<'ctx> {
         let internal_value = self.build_expr(Rc::clone(&scope), *field_access.operand);
 
         match self.internal_value_as_rvalue(internal_value.clone()) {
-            InternalValue::StructValue(_, struct_internal_type) => {
+            InternalValue::StructValue(_, struct_internal_type)
+            | InternalValue::UnnamedStructValue(_, struct_internal_type) => {
                 let pointer = match internal_value {
                     InternalValue::PointerValue(typed_pointer_value) => typed_pointer_value.ptr,
                     InternalValue::Lvalue(lvalue) => lvalue.ptr,
@@ -307,5 +331,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
         }
+    }
+
+    pub(crate) fn build_unnamed_struct_type(&self, unnamed_struct: UnnamedStruct) -> InternalType<'ctx> {
+        let field_values = self.build_struct_fields(unnamed_struct.fields.clone());
+        let struct_type = self.context.struct_type(&field_values, false);
+        let unnamed_struct_metadata = UnnamedStructMetadata {
+            struct_type,
+            fields: unnamed_struct.fields,
+        };
+        InternalType::UnnamedStruct(unnamed_struct_metadata)
     }
 }

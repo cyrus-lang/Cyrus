@@ -3,6 +3,7 @@ use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
 use crate::structs::StructMetadata;
+use crate::structs::UnnamedStructMetadata;
 use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
 use ast::ast::ArrayCapacity;
@@ -31,6 +32,7 @@ pub(crate) enum InternalType<'a> {
     IntType(IntType<'a>),
     FloatType(FloatType<'a>),
     StructType(StructMetadata<'a>),
+    UnnamedStruct(UnnamedStructMetadata<'a>),
     VectorType(VectorType<'a>),
     StringType(StringType<'a>),
     VoidType(VoidType<'a>),
@@ -109,6 +111,10 @@ impl<'a> InternalType<'a> {
                 Box::new(InternalType::BoolType(*int_type)),
                 int_type.array_type(size),
             )),
+            InternalType::UnnamedStruct(unnamed_struct_metadata) => Ok(InternalType::ArrayType(
+                Box::new(InternalType::UnnamedStruct(unnamed_struct_metadata.clone())),
+                unnamed_struct_metadata.struct_type.array_type(size),
+            )),
         }
     }
 
@@ -133,6 +139,10 @@ impl<'a> InternalType<'a> {
             InternalType::StructType(ty) => Ok(InternalValue::StructValue(
                 value.into_struct_value(),
                 InternalType::StructType(ty.clone()),
+            )),
+            InternalType::UnnamedStruct(ty) => Ok(InternalValue::UnnamedStructValue(
+                value.into_struct_value(),
+                InternalType::UnnamedStruct(ty.clone()),
             )),
             InternalType::VectorType(ty) => Ok(InternalValue::VectorValue(
                 value.into_vector_value(),
@@ -219,6 +229,7 @@ impl<'a> InternalType<'a> {
             InternalType::VoidType(_) => BasicTypeEnum::PointerType(ptr_type),
             InternalType::ConstType(t) => t.to_basic_type(ptr_type),
             InternalType::BoolType(t) => (*t).as_basic_type_enum(),
+            InternalType::UnnamedStruct(t) => (*t).struct_type.as_basic_type_enum(),
         }
     }
 
@@ -235,6 +246,7 @@ impl<'a> InternalType<'a> {
             InternalType::VoidType(t) => inkwell::types::AnyType::as_any_type_enum(t).as_type_ref(),
             InternalType::ConstType(t) => t.as_type_ref(),
             InternalType::BoolType(t) => t.as_type_ref(),
+            InternalType::UnnamedStruct(t) => t.struct_type.as_type_ref(),
         }
     }
 }
@@ -360,6 +372,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             TypeSpecifier::Array(array_type_specifier) => self.build_array_type(array_type_specifier, loc, span_end),
             TypeSpecifier::TypeToken(token) => self.build_type_token(token, loc.clone()),
+            TypeSpecifier::UnnamedStruct(unnamed_struct) => self.build_unnamed_struct_type(unnamed_struct),
         }
     }
 

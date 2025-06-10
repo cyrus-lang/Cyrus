@@ -66,6 +66,7 @@ impl<'a> Parser<'a> {
 
         let parsed_kind = match current.kind.clone() {
             token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
+            TokenKind::Struct => self.parse_struct_type(),
             TokenKind::Const => {
                 self.next_token(); // consume const
                 let inner_type = self.parse_base_type_token()?;
@@ -188,5 +189,69 @@ impl<'a> Parser<'a> {
         };
 
         Ok(storage_class)
+    }
+
+    pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParseError> {
+        let struct_start = self.current_token.span.start;
+
+        self.expect_current(TokenKind::Struct)?;
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut fields: Vec<Field> = Vec::new();
+
+        loop {
+            match self.current_token.kind.clone() {
+                TokenKind::RightBrace => {
+                    break;
+                }
+                TokenKind::EOF => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::MissingClosingBrace,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        verbose: None,
+                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                    });
+                }
+                TokenKind::Identifier { name: field_name } => {
+                    let start = self.current_token.span.start;
+                    self.next_token(); // consume identifier
+
+                    self.expect_current(TokenKind::Colon)?;
+
+                    let type_token = self.parse_type_specifier()?;
+                    self.next_token();
+
+                    fields.push(Field {
+                        name: field_name,
+                        ty: type_token,
+                        loc: self.current_location(),
+                        span: Span {
+                            start,
+                            end: self.current_token.span.end,
+                        },
+                    });
+
+                    if self.current_token_is(TokenKind::RightBrace) {
+                        break;
+                    } else {
+                        self.expect_current(TokenKind::Comma)?;
+                    }
+                }
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                        file_name: Some(self.lexer.file_name.clone()),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        verbose: Some(String::from("Invalid token inside a anonymous struct definition.")),
+                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                    });
+                }
+            }
+        }
+
+        Ok(TypeSpecifier::UnnamedStruct(UnnamedStruct { fields }))
     }
 }

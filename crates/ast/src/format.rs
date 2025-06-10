@@ -82,6 +82,19 @@ impl fmt::Display for TypeSpecifier {
                     }
                 )
             }
+            TypeSpecifier::UnnamedStruct(unnamed_struct) => {
+                write!(f, "struct {{ ")?;
+                for (idx, field) in unnamed_struct.fields.iter().enumerate() {
+                    write!(f, "{}: {}", field.name, field.ty)?;
+
+                    if idx == unnamed_struct.fields.len() - 1 {
+                        write!(f, " ")?;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "}}")
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 extern fn printf(format: const char*, ...): void;
 
+// Global struct
 struct Person {
     name: string;
     age: int32;
@@ -10,15 +11,18 @@ struct Person {
 }
 
 fn main() {
-    struct Sample {}
+    // Local struct
+    // struct localPerson {
+    //     name: string;
+    //     age: int32;
+    // };
 
-    #age = 18;
+    // Unnamed struct
+    #user: struct { name: string, age: int32 };
 
-    #a = Person {
-        name: "Taha",
-        age: age
-    };
+    user.name = "Taha";
+    user.age = 18;
 
-    printf("age: %d\n", a.age);
-    printf("name: %s\n", a.name);
+    printf("name: %s\n", user.name);
+    printf("age: %d\n", user.age);
 }
