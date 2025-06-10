@@ -6,7 +6,7 @@ use crate::{
     values::Lvalue,
 };
 use ast::{
-    ast::{Field, FieldAccess, Identifier, ModuleImport, StorageClass, Struct, StructInit},
+    ast::{Field, FieldAccess, Identifier, ModuleImport, ModuleSegment, StorageClass, Struct, StructInit},
     format::module_segments_as_string,
     token::Location,
 };
@@ -60,6 +60,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
         struct_type
+    }
+
+    pub(crate) fn build_global_struct(&mut self, struct_statement: Struct) {
+        let struct_type = self.build_struct(struct_statement.clone());
+        self.struct_table.insert(
+            struct_statement.name.clone(),
+            StructMetadata {
+                struct_name: ModuleImport {
+                    segments: vec![ModuleSegment::SubModule(Identifier {
+                        name: struct_statement.name,
+                        span: struct_statement.span.clone(),
+                        loc: struct_statement.loc.clone(),
+                    })],
+                    span: struct_statement.span.clone(),
+                    loc: struct_statement.loc.clone(),
+                },
+                struct_type,
+                fields: struct_statement.fields,
+                inherits: struct_statement.inherits,
+                storage_class: struct_statement.storage_class,
+            },
+        );
     }
 
     pub(crate) fn build_struct_init(&self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> InternalValue<'ctx> {
@@ -232,7 +254,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::VectorValue(vector_value, internal_type) => todo!(),
             InternalValue::StrValue(pointer_value, internal_type) => todo!(),
             InternalValue::StringValue(string_value) => todo!(),
-            InternalValue::ModuleValue(module_metadata) => {
+            InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot access fields on a module_value.".to_string()),
@@ -245,7 +267,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
-            InternalValue::PointerValue(typed_pointer_value) => {
+            InternalValue::PointerValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot access fields on a pointer_value.".to_string()),
@@ -258,7 +280,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
-            InternalValue::FunctionValue(func_metadata) => {
+            InternalValue::FunctionValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot access fields on an function_value.".to_string()),
@@ -271,7 +293,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
-            InternalValue::Lvalue(lvalue) => {
+            InternalValue::Lvalue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot access fields on an lvalue.".to_string()),

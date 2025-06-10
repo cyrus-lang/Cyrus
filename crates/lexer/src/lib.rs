@@ -444,7 +444,7 @@ impl Lexer {
         let span = Span { start: start - 1, end };
 
         Token {
-            kind: TokenKind::Literal(Literal::String(escape_string(&final_string))),
+            kind: TokenKind::Literal(Literal::String(escape_string(final_string))),
             span,
         }
     }

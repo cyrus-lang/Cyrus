@@ -1,12 +1,42 @@
+use crate::{CodeGenLLVM, InternalType, InternalValue, StringType, StringValue, values::TypedPointerValue};
 use inkwell::{
     AddressSpace,
     context::Context,
-    values::{IntValue, PointerValue},
+    values::{AnyValue, IntValue, PointerValue},
 };
-
-use crate::{CodeGenLLVM, InternalType, InternalValue, StringType, StringValue, values::TypedPointerValue};
+use std::ops::DerefMut;
+use utils::purify_string::unescape_string;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn build_string_literal(&self, value: String) -> InternalValue<'ctx> {
+        let mut bytes = unescape_string(value).into_bytes();
+        bytes.push(0); // null terminator
+
+        let i8_array_type = self.context.i8_type().array_type(bytes.len() as u32);
+
+        let string_global =
+            self.module
+                .borrow_mut()
+                .deref_mut()
+                .add_global(i8_array_type, Some(AddressSpace::default()), ".str");
+
+        let const_string = self.context.const_string(&bytes, false);
+        string_global.set_initializer(&const_string);
+        string_global.set_constant(true);
+        string_global.set_linkage(inkwell::module::Linkage::Private);
+
+        InternalValue::StrValue(
+            string_global.as_any_value_enum().into_pointer_value(),
+            InternalType::ArrayType(
+                Box::new(InternalType::ArrayType(
+                    Box::new(InternalType::IntType(self.context.i8_type())),
+                    i8_array_type,
+                )),
+                i8_array_type,
+            ),
+        )
+    }
+
     pub(crate) fn build_string_type(context: &'ctx Context) -> StringType<'ctx> {
         let i8_ptr_type = context.ptr_type(AddressSpace::default());
         let i64_type = context.i64_type();

@@ -1,8 +1,7 @@
 use crate::diag::*;
 use crate::scope::ScopeRecord;
-use crate::structs::StructMetadata;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use ast::ast::{Identifier, If, ModuleImport, ModuleSegment, Statement, TypeSpecifier, Variable};
+use ast::ast::{If, Statement, TypeSpecifier, Variable};
 use ast::token::TokenKind;
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
@@ -58,25 +57,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Statement::Break(location) => todo!(),
             Statement::Continue(location) => todo!(),
             Statement::Struct(struct_statement) => {
-                let struct_type = self.build_struct(struct_statement.clone());
-                self.struct_table.insert(
-                    struct_statement.name.clone(),
-                    StructMetadata {
-                        struct_name: ModuleImport {
-                            segments: vec![ModuleSegment::SubModule(Identifier {
-                                name: struct_statement.name,
-                                span: struct_statement.span.clone(),
-                                loc: struct_statement.loc.clone(),
-                            })],
-                            span: struct_statement.span.clone(),
-                            loc: struct_statement.loc.clone(),
-                        },
-                        struct_type,
-                        fields: struct_statement.fields,
-                        inherits: struct_statement.inherits,
-                        storage_class: struct_statement.storage_class,
-                    },
-                );
+                self.build_global_struct(struct_statement);
             }
             Statement::Enum(enum_statement) => self.build_enum(enum_statement),
             Statement::Import(import) => self.build_import(import),

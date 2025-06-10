@@ -1,4 +1,4 @@
-extern fn printf(_: const char*, ...): void;
+extern fn printf(format: const char*, ...): void;
 
 struct Person {
     name: string;
@@ -10,6 +10,8 @@ struct Person {
 }
 
 fn main() {
+    struct Sample {}
+
     #age = 18;
 
     #a = Person {
