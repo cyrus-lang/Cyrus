@@ -3,7 +3,7 @@ use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
 use crate::structs::StructMetadata;
-use crate::structs::UnnamedStructMetadata;
+use crate::structs::UnnamedStructTypeMetadata;
 use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
 use ast::ast::ArrayCapacity;
@@ -32,7 +32,7 @@ pub(crate) enum InternalType<'a> {
     IntType(IntType<'a>),
     FloatType(FloatType<'a>),
     StructType(StructMetadata<'a>),
-    UnnamedStruct(UnnamedStructMetadata<'a>),
+    UnnamedStruct(UnnamedStructTypeMetadata<'a>),
     VectorType(VectorType<'a>),
     StringType(StringType<'a>),
     VoidType(VoidType<'a>),

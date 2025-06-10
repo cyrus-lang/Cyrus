@@ -7,7 +7,8 @@ use crate::{
 };
 use ast::{
     ast::{
-        Field, FieldAccess, Identifier, ModuleImport, ModuleSegment, StorageClass, Struct, StructInit, UnnamedStruct,
+        Field, FieldAccess, Identifier, ModuleImport, ModuleSegment, StorageClass, Struct, StructInit,
+        UnnamedStructType, UnnamedStructTypeField, UnnamedStructValue, UnnamedStructValueField,
     },
     format::module_segments_as_string,
     token::Location,
@@ -15,7 +16,7 @@ use ast::{
 use inkwell::{
     AddressSpace,
     types::{BasicTypeEnum, StructType},
-    values::{AggregateValueEnum, PointerValue},
+    values::{AggregateValueEnum, BasicValueEnum, PointerValue},
 };
 use std::{collections::HashMap, process::exit, rc::Rc};
 
@@ -29,15 +30,21 @@ pub struct StructMetadata<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UnnamedStructMetadata<'a> {
+pub struct UnnamedStructTypeMetadata<'a> {
     pub struct_type: StructType<'a>,
-    pub fields: Vec<Field>,
+    pub fields: Vec<(String, InternalType<'a>)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnnamedStructValueMetadata<'a> {
+    pub struct_type: StructType<'a>,
+    pub fields: Vec<(String, InternalType<'a>)>,
 }
 
 pub type StructTable<'a> = HashMap<String, StructMetadata<'a>>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_struct_fields(&self, fields: Vec<Field>) -> Vec<BasicTypeEnum> {
+    pub(crate) fn build_struct_field_types(&self, fields: Vec<Field>) -> Vec<BasicTypeEnum> {
         fields
             .iter()
             .map(|field| {
@@ -48,7 +55,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_struct(&self, struct_statement: Struct) -> StructType<'ctx> {
-        let field_types = self.build_struct_fields(struct_statement.fields.clone());
+        let field_types = self.build_struct_field_types(struct_statement.fields.clone());
         let struct_type = self.context.struct_type(&field_types, false);
         if !matches!(
             struct_statement.storage_class,
@@ -183,7 +190,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> InternalValue<'ctx> {
-        let (struct_type, field_idx, field) = match struct_internal_type {
+        match struct_internal_type {
             InternalType::StructType(struct_metadata) => {
                 match struct_metadata
                     .fields
@@ -191,7 +198,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .enumerate()
                     .find(|(_, f)| f.name == field_name)
                 {
-                    Some((field_idx, field)) => (struct_metadata.struct_type, field_idx, field.clone()),
+                    Some((field_idx, field)) => {
+                        let field_ptr = self
+                            .builder
+                            .build_struct_gep(
+                                struct_metadata.struct_type,
+                                pointer,
+                                field_idx.try_into().unwrap(),
+                                "gep",
+                            )
+                            .unwrap();
+
+                        InternalValue::Lvalue(Lvalue {
+                            ptr: field_ptr,
+                            pointee_ty: self.build_type(field.ty.clone(), field.loc.clone(), field.span.end),
+                        })
+                    }
                     None => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
@@ -211,11 +233,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
             }
-            InternalType::UnnamedStruct(struct_metadata) => struct_metadata
+            InternalType::UnnamedStruct(unnamed_struct_metadata) => unnamed_struct_metadata
                 .fields
                 .iter()
                 .enumerate()
-                .find(|(_, f)| f.name == field_name)
+                .find(|(_, f)| f.0 == field_name)
                 .map_or_else(
                     || {
                         display_single_diag(Diag {
@@ -230,21 +252,27 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         });
                         exit(1);
                     },
-                    |(field_idx, field)| (struct_metadata.struct_type, field_idx, field.clone()),
+                    |(field_idx, (_, field_type))| {
+                        let field_ptr = self
+                            .builder
+                            .build_struct_gep(
+                                unnamed_struct_metadata.struct_type,
+                                pointer,
+                                field_idx.try_into().unwrap(),
+                                "gep",
+                            )
+                            .unwrap();
+
+                        InternalValue::Lvalue(Lvalue {
+                            ptr: field_ptr,
+                            pointee_ty: field_type.clone(),
+                        })
+                    },
                 ),
             _ => unreachable!(),
-        };
-
-        let field_ptr = self
-            .builder
-            .build_struct_gep(struct_type, pointer, field_idx.try_into().unwrap(), "gep")
-            .unwrap();
-
-        InternalValue::Lvalue(Lvalue {
-            ptr: field_ptr,
-            pointee_ty: self.build_type(field.ty.clone(), field.loc.clone(), field.span.end),
-        })
+        }
     }
+
     pub(crate) fn build_field_access(&self, scope: ScopeRef<'ctx>, field_access: FieldAccess) -> InternalValue<'ctx> {
         let internal_value = self.build_expr(Rc::clone(&scope), *field_access.operand);
 
@@ -333,13 +361,118 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_unnamed_struct_type(&self, unnamed_struct: UnnamedStruct) -> InternalType<'ctx> {
-        let field_values = self.build_struct_fields(unnamed_struct.fields.clone());
-        let struct_type = self.context.struct_type(&field_values, false);
-        let unnamed_struct_metadata = UnnamedStructMetadata {
+    pub(crate) fn build_unnamed_struct_type(&self, unnamed_struct: UnnamedStructType) -> InternalType<'ctx> {
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+
+        let field_types: Vec<BasicTypeEnum<'ctx>> = unnamed_struct
+            .fields
+            .iter()
+            .map(|f| {
+                self.build_type(f.field_type.clone(), f.loc.clone(), f.span.end)
+                    .to_basic_type(ptr_type)
+            })
+            .collect();
+
+        let struct_type = self.context.struct_type(&field_types, false);
+        let unnamed_struct_metadata = UnnamedStructTypeMetadata {
             struct_type,
-            fields: unnamed_struct.fields,
+            fields: unnamed_struct
+                .fields
+                .iter()
+                .map(|f| {
+                    (
+                        f.field_name.clone(),
+                        self.build_type(f.field_type.clone(), f.loc.clone(), f.span.end),
+                    )
+                })
+                .collect(),
         };
         InternalType::UnnamedStruct(unnamed_struct_metadata)
+    }
+
+    pub(crate) fn build_unnamed_struct_value(
+        &self,
+        scope: ScopeRef<'ctx>,
+        unnamed_struct_value: UnnamedStructValue,
+    ) -> InternalValue<'ctx> {
+        let mut field_values: Vec<(String, InternalValue<'ctx>)> = Vec::new();
+
+        for (_, field) in unnamed_struct_value.fields.iter().enumerate() {
+            let field_type: InternalType<'ctx>;
+
+            let field_value =
+                self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *field.field_value.clone()));
+
+            if let Some(field_type_specifier) = field.field_type.clone() {
+                field_type = self.build_type(field_type_specifier, field.loc.clone(), field.span.end);
+            } else {
+                field_type = field_value.get_type(self.string_type.clone());
+            }
+
+            if !self.compatible_types(field_type.clone(), field_value.get_type(self.string_type.clone())) {
+                // FIXME We need accurate type name tracking here
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Rvalue with type '{:?}' is not compatible with field type '{:?}' for field '{}'.",
+                        field_value.get_type(self.string_type.clone()),
+                        field_type,
+                        field.field_name
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: field.loc.line,
+                        column: field.loc.column,
+                        length: field.span.end,
+                    }),
+                });
+                exit(1);
+            }
+
+            let field_value =
+                self.new_internal_value(self.implicit_cast(field_value, field_type.clone()), field_type.clone());
+
+            field_values.push((field.field_name.name.clone(), field_value));
+        }
+
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let field_types: Vec<BasicTypeEnum<'ctx>> = field_values
+            .iter()
+            .map(|f| f.1.get_type(self.string_type.clone()).to_basic_type(ptr_type).clone())
+            .collect();
+
+        let struct_type = self.context.struct_type(&field_types, false);
+        let struct_alloca = self.builder.build_alloca(struct_type, "alloca").unwrap();
+        let struct_value = struct_type.get_undef();
+    
+        self.builder.build_store(struct_alloca, struct_value).unwrap();
+
+        for (idx, (_, field_value)) in field_values.iter().enumerate() {
+            let field_gep = self
+                .builder
+                .build_struct_gep(struct_type, struct_alloca, idx.try_into().unwrap(), "gep")
+                .unwrap();
+
+            dbg!(field_gep.clone());
+            
+            // let field_basic_value: BasicValueEnum<'ctx> = field_value.to_basic_metadata().try_into().unwrap();
+            // self.builder.build_store(field_gep, field_basic_value).unwrap();
+        }
+
+        InternalValue::UnnamedStructValue(
+            struct_value,
+            InternalType::UnnamedStruct(UnnamedStructTypeMetadata {
+                struct_type,
+                fields: field_values
+                    .iter()
+                    .map(|(field_name, field_value)| {
+                        (
+                            field_name.clone(),
+                            field_value.get_type(self.string_type.clone()).clone(),
+                        )
+                    })
+                    .collect(),
+            }),
+        )
     }
 }

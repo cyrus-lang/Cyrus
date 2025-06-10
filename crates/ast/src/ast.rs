@@ -47,6 +47,36 @@ pub enum Expression {
     FuncCall(FuncCall),
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
+    UnnamedStructValue(UnnamedStructValue),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnnamedStructValue {
+    pub fields: Vec<UnnamedStructValueField>,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnnamedStructValueField {
+    pub field_name: Identifier,
+    pub field_type: Option<TypeSpecifier>,
+    pub field_value: Box<Expression>,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnnamedStructType {
+    pub fields: Vec<UnnamedStructTypeField>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnnamedStructTypeField {
+    pub field_name: String,
+    pub field_type: TypeSpecifier,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,12 +182,7 @@ pub enum TypeSpecifier {
     ModuleImport(ModuleImport),
     AddressOf(Box<TypeSpecifier>),
     Dereference(Box<TypeSpecifier>),
-    UnnamedStruct(UnnamedStruct),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct UnnamedStruct {
-    pub fields: Vec<Field>,
+    UnnamedStruct(UnnamedStructType),
 }
 
 #[derive(Debug, Clone, PartialEq)]

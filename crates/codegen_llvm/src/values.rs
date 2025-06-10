@@ -1,6 +1,6 @@
 use crate::{
     CodeGenLLVM, InternalType, StringType, diag::*, funcs::FuncMetadata, modules::ModuleMetadata,
-    structs::UnnamedStructMetadata, types::TypedPointerType,
+    types::TypedPointerType,
 };
 use ast::token::Location;
 use inkwell::{

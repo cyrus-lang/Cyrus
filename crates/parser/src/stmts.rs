@@ -823,6 +823,15 @@ impl<'a> Parser<'a> {
 
         loop {
             let statement = self.parse_statement()?;
+
+            // Some statements are valid to be inside a block statement, like
+            // struct definitions that works both globally and locally.
+            // Global statements does not need an semicolon, but local statements
+            // must be ended with a semicolon. That's the reason, we add some extra rules here.
+            if matches!(statement, Statement::Struct(_) | Statement::Enum(_)) {
+                self.expect_peek(TokenKind::Semicolon)?;
+            }
+
             block_statement.push(statement);
 
             match self.peek_token.kind {

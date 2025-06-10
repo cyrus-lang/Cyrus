@@ -1,28 +1,24 @@
 extern fn printf(format: const char*, ...): void;
 
-// Global struct
-struct Person {
-    name: string;
-    age: int32;
-
-    public fn greet() {
-        printf("Greet from Person struct.\n");
-    }
-}
-
 fn main() {
     // Local struct
-    // struct localPerson {
+    // struct localModel {
     //     name: string;
-    //     age: int32;
+
+    //     fn to_something() {
+    //         printf("hello world\n");
+    //     }
     // };
 
-    // Unnamed struct
-    #user: struct { name: string, age: int32 };
+    // Nested unnamed struct
+    #user = struct { 
+        field1: int64 = 10,
+        field2: int64 = 20,
+    };
 
-    user.name = "Taha";
-    user.age = 18;
-
-    printf("name: %s\n", user.name);
-    printf("age: %d\n", user.age);
+    // printf("name: %d\n", user.field2);
 }
+
+// #a: int32 = 10;
+// #arr = int32[3] {a, 2, 3};
+// printf("value: %d\n", arr[0]);

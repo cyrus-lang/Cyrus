@@ -11,14 +11,9 @@ use ast::{
 use inkwell::{
     AddressSpace, llvm_sys,
     types::{BasicType, BasicTypeEnum},
-    values::{AnyValue, ArrayValue, AsValueRef, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    values::{ArrayValue, AsValueRef, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
-use std::{
-    ops::{Deref, DerefMut},
-    process::exit,
-    rc::Rc,
-};
-use utils::purify_string::unescape_string;
+use std::{ops::Deref, process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
@@ -57,6 +52,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
             Expression::TypeSpecifier(_) => InternalValue::PointerValue(self.build_null()),
+            Expression::UnnamedStructValue(unnamed_struct_value) => {
+                self.build_unnamed_struct_value(Rc::clone(&scope), unnamed_struct_value)
+            }
         }
     }
 
@@ -444,7 +442,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder.build_store(array_alloca, zero_array_value).unwrap();
 
         for (idx, value) in values.iter().enumerate() {
-            let mut ordered_indexes: Vec<IntValue> = Vec::new();
+            let mut ordered_indexes: Vec<IntValue<'ctx>> = Vec::new();
             ordered_indexes.push(self.build_integer_literal(0)); // first index is always 0
             ordered_indexes.push(self.build_integer_literal(idx.try_into().unwrap())); // add item index
             let element_pointer = unsafe {

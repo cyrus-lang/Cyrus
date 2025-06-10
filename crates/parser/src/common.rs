@@ -197,7 +197,7 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::Struct)?;
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let mut fields: Vec<Field> = Vec::new();
+        let mut fields: Vec<UnnamedStructTypeField> = Vec::new();
 
         loop {
             match self.current_token.kind.clone() {
@@ -220,12 +220,12 @@ impl<'a> Parser<'a> {
 
                     self.expect_current(TokenKind::Colon)?;
 
-                    let type_token = self.parse_type_specifier()?;
+                    let field_type_specifier = self.parse_type_specifier()?;
                     self.next_token();
 
-                    fields.push(Field {
-                        name: field_name,
-                        ty: type_token,
+                    fields.push(UnnamedStructTypeField {
+                        field_name,
+                        field_type: field_type_specifier,
                         loc: self.current_location(),
                         span: Span {
                             start,
@@ -252,6 +252,6 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(TypeSpecifier::UnnamedStruct(UnnamedStruct { fields }))
+        Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType { fields }))
     }
 }
