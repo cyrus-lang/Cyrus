@@ -333,18 +333,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
-        let mut is_const_array = false;
+        let mut is_const_array = true;
         let mut array_elements: Vec<InternalValue<'ctx>> = array
             .elements
             .iter()
             .map(|expr| {
-                let internal_value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr.clone()));
-                let is_const =
-                    unsafe { llvm_sys::core::LLVMIsConstant(internal_value.to_basic_metadata().as_value_ref()) };
-                if is_const == 1 {
-                    is_const_array = true;
+                let internal_value = self.build_expr(Rc::clone(&scope), expr.clone());
+
+                if !internal_value.is_const() {
+                    is_const_array = false;
                 }
-                internal_value
+
+                self.internal_value_as_rvalue(internal_value)
             })
             .collect();
 

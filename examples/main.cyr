@@ -5,11 +5,15 @@ struct Person {
 }
 
 fn main() {
-    #item1 = Person { name: "Taha" };
+    // #item1 = Person { name: "Taha" };
+    // #arr = Person*[1] { &item1 };
 
-    #arr = Person*[1] {
-        &item1
-    };
+    // printf("name: %s\n", (*arr[0]).name);
 
-    printf("name: %s\n", (*arr[0]).name);
+    #x = 10;
+    #y = 20;
+    #arr = int32[3] {1, 1, 2};
+
+    printf("value: %d\n", arr[0]);
+
 }
