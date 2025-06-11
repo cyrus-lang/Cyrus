@@ -1,24 +1,21 @@
 extern fn printf(format: const char*, ...): void;
 
-fn main() {
-    // Local struct
-    // struct localModel {
-    //     name: string;
-
-    //     fn to_something() {
-    //         printf("hello world\n");
-    //     }
-    // };
-
-    // Nested unnamed struct
-    #user = struct { 
-        field1: int64 = 10,
-        field2: int64 = 20,
-    };
-
-    // printf("name: %d\n", user.field2);
+struct Person {
+    name: string;
+    age: int;
 }
 
-// #a: int32 = 10;
-// #arr = int32[3] {a, 2, 3};
-// printf("value: %d\n", arr[0]);
+fn main() {
+    // Nested unnamed struct
+    #user = struct { 
+        metadata = struct {
+            uuid = 1,
+            role = "Admin",
+            description = "This is my fuckin' programming language!!!"
+        },
+    };
+
+    printf("uuid: %d\n", user.metadata.uuid);
+    printf("role: %s\n", user.metadata.role);
+    printf("description: %s\n", user.metadata.description);
+}

@@ -286,7 +286,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalType::FloatType(_), InternalType::IntType(_)) => true,
             (InternalType::IntType(_), InternalType::FloatType(_)) => true,
             (InternalType::PointerType(_), InternalType::PointerType(_)) => true,
-            (InternalType::StructType(_), InternalType::StructType(_)) => true,
+            (InternalType::StructType(struct_metadata1), InternalType::StructType(struct_metadata2)) => {
+                struct_metadata1.struct_type == struct_metadata2.struct_type
+                    && struct_metadata1.fields.len() == struct_metadata2.fields.len()
+            }
+            (
+                InternalType::UnnamedStruct(unnamed_struct_metadata1),
+                InternalType::UnnamedStruct(unnamed_struct_metadata2),
+            ) => {
+                unnamed_struct_metadata1.struct_type == unnamed_struct_metadata2.struct_type
+                    && unnamed_struct_metadata1.fields.len() == unnamed_struct_metadata2.fields.len()
+            }
             (InternalType::VectorType(_), InternalType::VectorType(_)) => true,
             (InternalType::ArrayType(element_type1, arr1), InternalType::ArrayType(element_type2, arr2)) => {
                 (arr1.len() == arr2.len()) && self.compatible_types(*element_type1, *element_type2)

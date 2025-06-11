@@ -262,7 +262,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 "gep",
                             )
                             .unwrap();
-
+                        
                         InternalValue::Lvalue(Lvalue {
                             ptr: field_ptr,
                             pointee_ty: field_type.clone(),
@@ -443,9 +443,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let struct_type = self.context.struct_type(&field_types, false);
         let struct_alloca = self.builder.build_alloca(struct_type, "alloca").unwrap();
-        let struct_value = struct_type.get_undef();
-    
-        self.builder.build_store(struct_alloca, struct_value).unwrap();
 
         for (idx, (_, field_value)) in field_values.iter().enumerate() {
             let field_gep = self
@@ -453,11 +450,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .build_struct_gep(struct_type, struct_alloca, idx.try_into().unwrap(), "gep")
                 .unwrap();
 
-            dbg!(field_gep.clone());
-            
-            // let field_basic_value: BasicValueEnum<'ctx> = field_value.to_basic_metadata().try_into().unwrap();
-            // self.builder.build_store(field_gep, field_basic_value).unwrap();
+            let field_basic_value: BasicValueEnum<'ctx> = field_value.to_basic_metadata().try_into().unwrap();
+            self.builder.build_store(field_gep, field_basic_value).unwrap();
         }
+
+        let struct_value = self.builder.build_load(struct_type, struct_alloca, "load").unwrap().into_struct_value();
 
         InternalValue::UnnamedStructValue(
             struct_value,
