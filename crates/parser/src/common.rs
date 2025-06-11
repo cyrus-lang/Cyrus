@@ -29,9 +29,9 @@ impl<'a> Parser<'a> {
 
     pub fn matches_type_token(&mut self, token_kind: TokenKind) -> bool {
         if PRIMITIVE_TYPES.contains(&token_kind.clone()) {
-            return true;
+            true
         } else if let TokenKind::Identifier { .. } = token_kind.clone() {
-            return true;
+            true
         } else {
             matches!(
                 token_kind.clone(),

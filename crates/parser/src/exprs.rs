@@ -57,28 +57,39 @@ impl<'a> Parser<'a> {
         let expr = match &self.current_token.clone().kind {
             TokenKind::Struct => self.parse_unnamed_struct_value()?,
             TokenKind::Identifier { .. } => {
-                let module_import = self.parse_module_import()?;
+                if self.matches_type_token(self.peek_token.kind.clone()) {
+                    let type_specifier = self.parse_type_specifier()?;
 
-                if self.current_token_is(TokenKind::LeftBrace) {
-                    self.parse_struct_init(module_import)?
-                } else if self.peek_token_is(TokenKind::Increment) {
-                    self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        module_import: module_import.clone(),
-                        ty: UnaryOperatorType::PostIncrement,
-                        span: Span::new(start, self.current_token.span.end),
-                        loc: loc.clone(),
-                    })
-                } else if self.peek_token_is(TokenKind::Decrement) {
-                    self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        module_import: module_import.clone(),
-                        ty: UnaryOperatorType::PostDecrement,
-                        span: Span::new(start, self.current_token.span.end),
-                        loc: loc.clone(),
-                    })
+                    if self.peek_token_is(TokenKind::LeftBrace) {
+                        self.next_token();
+                        return Ok(self.parse_array(type_specifier)?);
+                    }
+
+                    Expression::TypeSpecifier(type_specifier)
                 } else {
-                    Expression::ModuleImport(module_import)
+                    let module_import = self.parse_module_import()?;
+
+                    if self.current_token_is(TokenKind::LeftBrace) {
+                        self.parse_struct_init(module_import)?
+                    } else if self.peek_token_is(TokenKind::Increment) {
+                        self.next_token();
+                        Expression::UnaryOperator(UnaryOperator {
+                            module_import: module_import.clone(),
+                            ty: UnaryOperatorType::PostIncrement,
+                            span: Span::new(start, self.current_token.span.end),
+                            loc: loc.clone(),
+                        })
+                    } else if self.peek_token_is(TokenKind::Decrement) {
+                        self.next_token();
+                        Expression::UnaryOperator(UnaryOperator {
+                            module_import: module_import.clone(),
+                            ty: UnaryOperatorType::PostDecrement,
+                            span: Span::new(start, self.current_token.span.end),
+                            loc: loc.clone(),
+                        })
+                    } else {
+                        Expression::ModuleImport(module_import)
+                    }
                 }
             }
             TokenKind::Ampersand => {
@@ -158,7 +169,9 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LeftParen => {
                 // c-style casting
-                if self.matches_type_token(self.peek_token.kind.clone()) {
+                if self.matches_type_token(self.peek_token.kind.clone())
+                    && !(self.peek_token_is(TokenKind::Ampersand) || self.peek_token_is(TokenKind::Asterisk))
+                {
                     self.parse_cast_expression(start)?
                 } else {
                     // grouped expression
@@ -175,8 +188,6 @@ impl<'a> Parser<'a> {
                     if self.peek_token_is(TokenKind::LeftBrace) {
                         self.next_token();
                         return Ok(self.parse_array(type_specifier)?);
-                    } else if self.current_token_is(TokenKind::LeftBrace) {
-                        todo!();
                     }
 
                     Expression::TypeSpecifier(type_specifier)
@@ -215,9 +226,9 @@ impl<'a> Parser<'a> {
             return Ok(self.parse_array_index(expr)?);
         } else if self.peek_token_is(TokenKind::LeftParen) {
             return self.parse_func_call(expr);
+        } else {
+            Ok(expr)
         }
-
-        Ok(expr)
     }
 
     pub fn parse_infix_expression(

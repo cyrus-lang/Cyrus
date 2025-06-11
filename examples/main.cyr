@@ -1,21 +1,15 @@
-extern fn printf(format: const char*, ...): void;
+extern fn printf(format: const char*, ...);
 
 struct Person {
     name: string;
-    age: int;
 }
 
 fn main() {
-    // Nested unnamed struct
-    #user = struct { 
-        metadata = struct {
-            uuid = 1,
-            role = "Admin",
-            description = "This is my fuckin' programming language!!!"
-        },
+    #item1 = Person { name: "Taha" };
+
+    #arr = Person*[1] {
+        &item1
     };
 
-    printf("uuid: %d\n", user.metadata.uuid);
-    printf("role: %s\n", user.metadata.role);
-    printf("description: %s\n", user.metadata.description);
+    printf("name: %s\n", (*arr[0]).name);
 }
