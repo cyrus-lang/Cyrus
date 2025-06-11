@@ -47,6 +47,24 @@ pub(crate) struct TypedPointerValue<'a> {
 }
 
 impl<'a> InternalValue<'a> {
+    pub fn is_const(&self) -> bool {
+        match self {
+            InternalValue::BoolValue(..) => true,
+            InternalValue::IntValue(..) => true,
+            InternalValue::FloatValue(..) => true,
+            InternalValue::StrValue(..) => true,
+            InternalValue::StringValue(..) => false,
+            InternalValue::Lvalue(..) => false,
+            InternalValue::PointerValue(..) => false,
+            InternalValue::ModuleValue(..) => unreachable!(),
+            InternalValue::FunctionValue(..) => unreachable!(),
+            InternalValue::ArrayValue(array_value, ..) => array_value.is_const(),
+            InternalValue::StructValue(struct_value, ..) => struct_value.is_const(),
+            InternalValue::UnnamedStructValue(struct_value, ..) => struct_value.is_const(),
+            InternalValue::VectorValue(vector_value, ..) => vector_value.is_const(),
+        }
+    }
+
     pub fn to_basic_metadata(&self) -> BasicMetadataValueEnum<'a> {
         match self {
             InternalValue::BoolValue(v) => BasicMetadataValueEnum::IntValue(*v),
