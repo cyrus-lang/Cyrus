@@ -1,0 +1,15 @@
+extern fn printf(format: const char*, ...);
+
+struct Person {
+    name: string;
+}
+
+fn main() {
+    #item1 = Person { name: "Taha" };
+
+    #arr = Person*[1] {
+        &item1
+    };
+
+    printf("name: %s\n", (*arr[0]).name);
+}

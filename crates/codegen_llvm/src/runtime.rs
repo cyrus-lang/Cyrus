@@ -1,8 +1,4 @@
 use crate::CodeGenLLVM;
-use ast::{
-    ast::{FuncDecl, FuncParams, StorageClass},
-    token::{Location, Span},
-};
 use inkwell::{
     AddressSpace,
     module::Linkage,
@@ -16,7 +12,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     #[allow(unused)]
     fn runtime_check_bounds(&self) -> FunctionValue<'ctx> {
         let return_type = self.context.i32_type();
-        
+
         let func_type = return_type.fn_type(
             &[
                 BasicMetadataTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default())),

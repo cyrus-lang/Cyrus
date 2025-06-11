@@ -1,20 +1,19 @@
 pub fn unescape_string(str: String) -> String {
-    str.replace("\\n", "\n")
+    str.replace("\\\\", "\\") // <-- Move this to the top
+        .replace("\\n", "\n")
         .replace("\\t", "\t")
         .replace("\\r", "\r")
         .replace("\\b", r"\b")
         .replace("\\a", r"\a")
         .replace("\\v", r"\v")
         .replace("\\f", r"\f")
-        .replace("\\'", r"\'")
         .replace("\\\"", "\"")
         .replace("\\'", "'")
-        .replace("\\\\", "\\")
 }
 
-pub fn escape_string(input: &str) -> String {
+pub fn escape_string(str: String) -> String {
     let mut result = String::new();
-    for c in input.chars() {
+    for c in str.chars() {
         match c {
             '\n' => result.push_str("\\n"),
             '\t' => result.push_str("\\t"),

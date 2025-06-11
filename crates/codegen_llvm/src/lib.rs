@@ -207,6 +207,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::ArrayValue(array_value, _) => self.builder.build_store(ptr, array_value),
             InternalValue::VectorValue(vector_value, _) => self.builder.build_store(ptr, vector_value),
             InternalValue::StructValue(struct_value, _) => self.builder.build_store(ptr, struct_value),
+            InternalValue::UnnamedStructValue(struct_value, _) => self.builder.build_store(ptr, struct_value),
             InternalValue::StringValue(string_value) => self.builder.build_store(ptr, string_value.struct_value),
             InternalValue::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value.ptr),
             _ => {

@@ -82,6 +82,19 @@ impl fmt::Display for TypeSpecifier {
                     }
                 )
             }
+            TypeSpecifier::UnnamedStruct(unnamed_struct) => {
+                write!(f, "struct {{ ")?;
+                for (idx, field) in unnamed_struct.fields.iter().enumerate() {
+                    write!(f, "{}: {}", field.field_name, field.field_type)?;
+
+                    if idx == unnamed_struct.fields.len() - 1 {
+                        write!(f, " ")?;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "}}")
+            }
         }
     }
 }
@@ -139,6 +152,23 @@ impl fmt::Display for Expression {
                 )?;
                 for field in &struct_init.field_inits {
                     write!(f, "{}: {};", field.name, field.value)?;
+                }
+                write!(f, "}}")
+            }
+            Expression::UnnamedStructValue(unnamed_struct_value) => {
+                write!(f, "struct {{ ")?;
+                for (idx, field) in unnamed_struct_value.fields.iter().enumerate() {
+                    if let Some(field_type) = &field.field_type {
+                        write!(f, "{}: {} = {}", field.field_name, field_type, field.field_value)?;
+                    } else {
+                        write!(f, "{} = {}", field.field_name, field.field_value)?;
+                    }
+
+                    if idx == unnamed_struct_value.fields.len() - 1 {
+                        write!(f, " ")?;
+                    } else {
+                        write!(f, ", ")?;
+                    }
                 }
                 write!(f, "}}")
             }

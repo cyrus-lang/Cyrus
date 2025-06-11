@@ -11,19 +11,14 @@ use ast::{
 use inkwell::{
     AddressSpace, llvm_sys,
     types::{BasicType, BasicTypeEnum},
-    values::{AnyValue, ArrayValue, AsValueRef, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    values::{ArrayValue, AsValueRef, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
-use std::{
-    ops::{Deref, DerefMut},
-    process::exit,
-    rc::Rc,
-};
-use utils::purify_string::unescape_string;
+use std::{ops::Deref, process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         match expr {
-            Expression::FieldAccess(field_access) => todo!(),
+            Expression::FieldAccess(field_access) => self.build_field_access(Rc::clone(&scope), field_access),
             Expression::MethodCall(method_call) => todo!(),
             Expression::Identifier(identifier) => self.build_load_lvalue(
                 Rc::clone(&scope),
@@ -57,6 +52,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
             Expression::TypeSpecifier(_) => InternalValue::PointerValue(self.build_null()),
+            Expression::UnnamedStructValue(unnamed_struct_value) => {
+                self.build_unnamed_struct_value(Rc::clone(&scope), unnamed_struct_value)
+            }
         }
     }
 
@@ -444,7 +442,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder.build_store(array_alloca, zero_array_value).unwrap();
 
         for (idx, value) in values.iter().enumerate() {
-            let mut ordered_indexes: Vec<IntValue> = Vec::new();
+            let mut ordered_indexes: Vec<IntValue<'ctx>> = Vec::new();
             ordered_indexes.push(self.build_integer_literal(0)); // first index is always 0
             ordered_indexes.push(self.build_integer_literal(idx.try_into().unwrap())); // add item index
             let element_pointer = unsafe {
@@ -592,35 +590,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_float_literal(&self, value: f64) -> FloatValue<'ctx> {
         self.context.f64_type().const_float(value)
-    }
-
-    pub(crate) fn build_string_literal(&self, value: String) -> InternalValue<'ctx> {
-        let mut bytes = unescape_string(value).into_bytes();
-        bytes.push(0); // null terminator
-
-        let i8_array_type = self.context.i8_type().array_type(bytes.len() as u32);
-
-        let string_global =
-            self.module
-                .borrow_mut()
-                .deref_mut()
-                .add_global(i8_array_type, Some(AddressSpace::default()), ".str");
-
-        let const_string = self.context.const_string(&bytes, false);
-        string_global.set_initializer(&const_string);
-        string_global.set_constant(true);
-        string_global.set_linkage(inkwell::module::Linkage::Private);
-
-        InternalValue::StrValue(
-            string_global.as_any_value_enum().into_pointer_value(),
-            InternalType::ArrayType(
-                Box::new(InternalType::ArrayType(
-                    Box::new(InternalType::IntType(self.context.i8_type())),
-                    i8_array_type,
-                )),
-                i8_array_type,
-            ),
-        )
     }
 
     pub(crate) fn build_char_literal(&self, value: char) -> IntValue<'ctx> {
@@ -1073,7 +1042,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 });
                 exit(1);
-            },
+            }
         }
     }
 

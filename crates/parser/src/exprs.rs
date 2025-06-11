@@ -55,29 +55,41 @@ impl<'a> Parser<'a> {
         let start = self.current_token.span.start;
 
         let expr = match &self.current_token.clone().kind {
+            TokenKind::Struct => self.parse_unnamed_struct_value()?,
             TokenKind::Identifier { .. } => {
-                let module_import = self.parse_module_import()?;
+                if self.matches_type_token(self.peek_token.kind.clone()) {
+                    let type_specifier = self.parse_type_specifier()?;
 
-                if self.current_token_is(TokenKind::LeftBrace) {
-                    self.parse_struct_init(module_import)?
-                } else if self.peek_token_is(TokenKind::Increment) {
-                    self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        module_import: module_import.clone(),
-                        ty: UnaryOperatorType::PostIncrement,
-                        span: Span::new(start, self.current_token.span.end),
-                        loc: loc.clone(),
-                    })
-                } else if self.peek_token_is(TokenKind::Decrement) {
-                    self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        module_import: module_import.clone(),
-                        ty: UnaryOperatorType::PostDecrement,
-                        span: Span::new(start, self.current_token.span.end),
-                        loc: loc.clone(),
-                    })
+                    if self.peek_token_is(TokenKind::LeftBrace) {
+                        self.next_token();
+                        return Ok(self.parse_array(type_specifier)?);
+                    }
+
+                    Expression::TypeSpecifier(type_specifier)
                 } else {
-                    Expression::ModuleImport(module_import)
+                    let module_import = self.parse_module_import()?;
+
+                    if self.current_token_is(TokenKind::LeftBrace) {
+                        self.parse_struct_init(module_import)?
+                    } else if self.peek_token_is(TokenKind::Increment) {
+                        self.next_token();
+                        Expression::UnaryOperator(UnaryOperator {
+                            module_import: module_import.clone(),
+                            ty: UnaryOperatorType::PostIncrement,
+                            span: Span::new(start, self.current_token.span.end),
+                            loc: loc.clone(),
+                        })
+                    } else if self.peek_token_is(TokenKind::Decrement) {
+                        self.next_token();
+                        Expression::UnaryOperator(UnaryOperator {
+                            module_import: module_import.clone(),
+                            ty: UnaryOperatorType::PostDecrement,
+                            span: Span::new(start, self.current_token.span.end),
+                            loc: loc.clone(),
+                        })
+                    } else {
+                        Expression::ModuleImport(module_import)
+                    }
                 }
             }
             TokenKind::Ampersand => {
@@ -157,7 +169,9 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LeftParen => {
                 // c-style casting
-                if self.matches_type_token(self.peek_token.kind.clone()) {
+                if self.matches_type_token(self.peek_token.kind.clone())
+                    && !(self.peek_token_is(TokenKind::Ampersand) || self.peek_token_is(TokenKind::Asterisk))
+                {
                     self.parse_cast_expression(start)?
                 } else {
                     // grouped expression
@@ -174,8 +188,6 @@ impl<'a> Parser<'a> {
                     if self.peek_token_is(TokenKind::LeftBrace) {
                         self.next_token();
                         return Ok(self.parse_array(type_specifier)?);
-                    } else if self.current_token_is(TokenKind::LeftBrace) {
-                        todo!();
                     }
 
                     Expression::TypeSpecifier(type_specifier)
@@ -214,9 +226,9 @@ impl<'a> Parser<'a> {
             return Ok(self.parse_array_index(expr)?);
         } else if self.peek_token_is(TokenKind::LeftParen) {
             return self.parse_func_call(expr);
+        } else {
+            Ok(expr)
         }
-
-        Ok(expr)
     }
 
     pub fn parse_infix_expression(
@@ -225,7 +237,7 @@ impl<'a> Parser<'a> {
         left_start: usize,
     ) -> Option<Result<Expression, ParseError>> {
         let loc = self.current_location();
-        
+
         match self.peek_token.kind.clone() {
             TokenKind::Plus
             | TokenKind::Minus
@@ -306,7 +318,7 @@ impl<'a> Parser<'a> {
                         start,
                         end: self.current_token.span.end - 1,
                     },
-                    loc: loc.clone()
+                    loc: loc.clone(),
                 })]
             }
             _ => {
@@ -766,6 +778,91 @@ impl<'a> Parser<'a> {
             data_type,
             span: Span::new(start, self.current_token.span.end),
             loc,
+        }))
+    }
+
+    pub fn parse_unnamed_struct_value(&mut self) -> Result<Expression, ParseError> {
+        let struct_start = self.current_token.span.start;
+
+        self.expect_current(TokenKind::Struct)?;
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut fields: Vec<UnnamedStructValueField> = Vec::new();
+
+        loop {
+            match self.current_token.kind.clone() {
+                TokenKind::RightBrace => {
+                    break;
+                }
+                TokenKind::EOF => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::MissingClosingBrace,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        verbose: None,
+                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                    });
+                }
+                TokenKind::Identifier { name: field_name } => {
+                    let start = self.current_token.span.start;
+                    self.next_token(); // consume identifier
+
+                    let mut field_type: Option<TypeSpecifier> = None;
+                    if self.current_token_is(TokenKind::Colon) {
+                        self.next_token();
+
+                        let type_specifier = self.parse_type_specifier()?;
+                        self.next_token();
+
+                        field_type = Some(type_specifier);
+                    }
+
+                    self.expect_current(TokenKind::Assign)?;
+                    let field_value = self.parse_expression(Precedence::Lowest)?.0;
+                    self.next_token();
+
+                    fields.push(UnnamedStructValueField {
+                        field_name: Identifier {
+                            name: field_name.clone(),
+                            span: Span {
+                                start,
+                                end: self.current_token.span.end,
+                            },
+                            loc: self.current_location(),
+                        },
+                        field_type,
+                        field_value: Box::new(field_value),
+                        loc: self.current_location(),
+                        span: Span {
+                            start,
+                            end: self.current_token.span.end,
+                        },
+                    });
+
+                    if self.current_token_is(TokenKind::RightBrace) {
+                        break;
+                    } else {
+                        self.expect_current(TokenKind::Comma)?;
+                    }
+                }
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_location(),
+                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                        file_name: Some(self.lexer.file_name.clone()),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        verbose: Some(String::from("Invalid token inside a anonymous struct definition.")),
+                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                    });
+                }
+            }
+        }
+
+        Ok(Expression::UnnamedStructValue(UnnamedStructValue {
+            fields,
+            loc: self.current_location(),
+            span: Span::new(struct_start, self.current_token.span.end),
         }))
     }
 }
