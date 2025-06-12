@@ -147,10 +147,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_complete_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
-        todo!();
-    }
-
     pub(crate) fn build_conditional_for_statement(
         &mut self,
         scope: ScopeRef<'ctx>,
@@ -169,24 +165,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.builder.position_at_end(current_block);
         self.builder.build_unconditional_branch(cond_block).unwrap();
+        self.mark_block_terminated(current_block);
 
         self.builder.position_at_end(cond_block);
         let condition = self.build_cond(Rc::clone(&scope), condition, loc.clone(), span_end);
         self.builder
             .build_conditional_branch(condition, body_block, end_block)
             .unwrap();
+        self.mark_block_terminated(cond_block);
 
         self.current_block_ref = Some(body_block);
         self.builder.position_at_end(body_block);
         self.build_statements(Rc::new(RefCell::new(scope.borrow().deep_clone_detached())), body.exprs);
 
-        // Increment‍
-        if let Some(increment) = increment {
-            self.build_expr(Rc::clone(&scope), increment);
-        }
+        let after_body_block = self.get_current_block("for statement", loc.clone(), span_end);
 
-        if !self.block_terminated(body_block) {
+        if !self.block_terminated(after_body_block) {
+            self.builder.position_at_end(after_body_block);
+
+            // build increment expression
+            if let Some(increment) = increment {
+                self.build_expr(Rc::clone(&scope), increment);
+            }
+
             self.builder.build_unconditional_branch(cond_block).unwrap();
+            self.mark_block_terminated(after_body_block);
         }
 
         self.current_block_ref = Some(end_block);
@@ -229,116 +232,89 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_if(&mut self, scope: ScopeRef<'ctx>, if_statement: If) {
-        if let Some(current_func) = self.current_func_ref {
-            let then_block = self.context.append_basic_block(current_func, "if.then");
-            let else_block = self.context.append_basic_block(current_func, "if.else");
-            let end_block = self.context.append_basic_block(current_func, "if.end");
+        let current_block = self.get_current_block("for statement", if_statement.loc.clone(), if_statement.span.end);
+        let current_func = self.get_current_func("for statement", if_statement.loc.clone(), if_statement.span.end);
 
-            if let Some(current_block) = self.current_block_ref {
-                let cond = self.build_cond(
-                    Rc::clone(&scope),
-                    if_statement.condition,
-                    if_statement.loc.clone(),
-                    if_statement.span.end,
-                );
+        let then_block = self.context.append_basic_block(current_func, "if.then");
+        let else_block = self.context.append_basic_block(current_func, "if.else");
+        let end_block = self.context.append_basic_block(current_func, "if.end");
 
-                self.builder.position_at_end(current_block);
-                if !self.block_terminated(current_block) {
-                    self.builder
-                        .build_conditional_branch(cond, then_block, else_block)
-                        .unwrap();
-                    self.mark_block_terminated(current_block);
-                }
+        let cond = self.build_cond(
+            Rc::clone(&scope),
+            if_statement.condition,
+            if_statement.loc.clone(),
+            if_statement.span.end,
+        );
 
-                self.builder.position_at_end(then_block);
-                self.current_block_ref = Some(then_block);
-                self.build_statements(
-                    Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
-                    if_statement.consequent.exprs,
-                );
-                if !self.block_terminated(then_block) {
-                    self.builder.build_unconditional_branch(end_block).unwrap();
-                    self.mark_block_terminated(then_block);
-                }
-
-                let mut current_else_block = else_block;
-                for else_if in if_statement.branches {
-                    let new_else_block = self.context.append_basic_block(current_func, "else_if");
-                    let new_then_block = self.context.append_basic_block(current_func, "else_if.then");
-
-                    self.builder.position_at_end(current_else_block);
-                    let else_if_cond = self.build_cond(
-                        Rc::clone(&scope),
-                        else_if.condition,
-                        else_if.loc.clone(),
-                        else_if.span.end,
-                    );
-
-                    if !self.block_terminated(current_else_block) {
-                        self.builder
-                            .build_conditional_branch(else_if_cond, new_then_block, new_else_block)
-                            .unwrap();
-                        self.mark_block_terminated(current_else_block);
-                    }
-
-                    self.builder.position_at_end(new_then_block);
-                    self.current_block_ref = Some(new_then_block);
-                    self.build_statements(
-                        Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
-                        else_if.consequent.exprs,
-                    );
-                    if !self.block_terminated(new_then_block) {
-                        self.builder.build_unconditional_branch(end_block).unwrap();
-                        self.mark_block_terminated(new_then_block);
-                    }
-
-                    current_else_block = new_else_block;
-                }
-
-                // handle the final "else" block
-                self.builder.position_at_end(current_else_block);
-                self.current_block_ref = Some(current_else_block);
-                if let Some(alternate) = if_statement.alternate {
-                    self.build_statements(
-                        Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
-                        alternate.exprs,
-                    );
-                }
-                if !self.block_terminated(current_else_block) {
-                    self.builder.build_unconditional_branch(end_block).unwrap();
-                    self.mark_block_terminated(current_else_block);
-                }
-
-                self.builder.position_at_end(end_block);
-                self.current_block_ref = Some(end_block);
-            } else {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(
-                        "Cannot build if statement without having reference to current block.".to_string(),
-                    ),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: if_statement.loc.line,
-                        column: if_statement.loc.column,
-                        length: if_statement.span.end,
-                    }),
-                });
-                exit(1);
-            }
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Cannot build if statement outside of a function.".to_string()),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: if_statement.loc.line,
-                    column: if_statement.loc.column,
-                    length: if_statement.span.end,
-                }),
-            });
-            exit(1);
+        self.builder.position_at_end(current_block);
+        if !self.block_terminated(current_block) {
+            self.builder
+                .build_conditional_branch(cond, then_block, else_block)
+                .unwrap();
+            self.mark_block_terminated(current_block);
         }
+
+        self.builder.position_at_end(then_block);
+        self.current_block_ref = Some(then_block);
+        self.build_statements(
+            Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
+            if_statement.consequent.exprs,
+        );
+        if !self.block_terminated(then_block) {
+            self.builder.build_unconditional_branch(end_block).unwrap();
+            self.mark_block_terminated(then_block);
+        }
+
+        let mut current_else_block = else_block;
+        for else_if in if_statement.branches {
+            let new_else_block = self.context.append_basic_block(current_func, "else_if");
+            let new_then_block = self.context.append_basic_block(current_func, "else_if.then");
+
+            self.builder.position_at_end(current_else_block);
+            let else_if_cond = self.build_cond(
+                Rc::clone(&scope),
+                else_if.condition,
+                else_if.loc.clone(),
+                else_if.span.end,
+            );
+
+            if !self.block_terminated(current_else_block) {
+                self.builder
+                    .build_conditional_branch(else_if_cond, new_then_block, new_else_block)
+                    .unwrap();
+                self.mark_block_terminated(current_else_block);
+            }
+
+            self.builder.position_at_end(new_then_block);
+            self.current_block_ref = Some(new_then_block);
+            self.build_statements(
+                Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
+                else_if.consequent.exprs,
+            );
+            if !self.block_terminated(new_then_block) {
+                self.builder.build_unconditional_branch(end_block).unwrap();
+                self.mark_block_terminated(new_then_block);
+            }
+
+            current_else_block = new_else_block;
+        }
+
+        // handle the final "else" block
+        self.builder.position_at_end(current_else_block);
+        self.current_block_ref = Some(current_else_block);
+        if let Some(alternate) = if_statement.alternate {
+            self.build_statements(
+                Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
+                alternate.exprs,
+            );
+        }
+        if !self.block_terminated(current_else_block) {
+            self.builder.build_unconditional_branch(end_block).unwrap();
+            self.mark_block_terminated(current_else_block);
+        }
+
+        self.builder.position_at_end(end_block);
+        self.current_block_ref = Some(end_block);
     }
 
     pub(crate) fn build_variable(&self, scope: ScopeRef<'ctx>, variable: Variable) {

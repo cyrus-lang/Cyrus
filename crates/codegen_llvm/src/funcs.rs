@@ -300,7 +300,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
 
-            if !self.block_terminated(self.get_current_block("function definition", func_def.loc, func_def.span.end)) {
+            let current_block = self.get_current_block("function definition", func_def.loc, func_def.span.end);
+            if !self.block_terminated(current_block) {
                 let _ = self.builder.build_return(None).unwrap();
             }
         } else if !build_return {

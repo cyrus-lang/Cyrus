@@ -2,20 +2,22 @@ public extern fn printf(format: const char*, ...);
 public extern fn exit(status: int);
 
 fn display_block() {
-    for (#i = 0; i <= 10; i++) {
-        printf("| ");
-
-        for (#j = 3; j != 0; j--) {
-            printf("- ");
-        }
-
-        printf("|");
-        printf("\n");
-    }
+    
 }
 
 fn main() {
     printf("Cyrus Programming Language!\n");
+    // display_block();    
 
-    display_block();    
+    #something = 0;
+
+    for (#i = 0; i <= 10; i++) {
+        printf("always executed");
+        
+        // if (i == 3) {
+        //     printf("if body");
+        // } else {
+        //     printf("if else");
+        // }
+    }
 }
