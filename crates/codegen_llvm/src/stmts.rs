@@ -1,11 +1,11 @@
 use crate::diag::*;
 use crate::scope::ScopeRecord;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use ast::ast::{If, Statement, TypeSpecifier, Variable};
-use ast::token::TokenKind;
+use ast::ast::{For, If, Statement, TypeSpecifier, Variable};
+use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
-use inkwell::values::{AnyValue, BasicValueEnum};
+use inkwell::values::{AnyValue, BasicValueEnum, FunctionValue};
 use std::cell::RefCell;
 use std::process::exit;
 use std::rc::Rc;
@@ -21,7 +21,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         match stmt {
             Statement::BlockStatement(block_statement) => {
                 self.build_statements(
-                    Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached())),
+                    Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
                     block_statement.exprs,
                 );
             }
@@ -56,7 +56,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_func_decl(func_decl);
             }
             Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),
-            Statement::For(_) => todo!(),
+            Statement::For(for_statement) => self.build_for(
+                Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
+                for_statement,
+            ),
             Statement::Switch(_) => todo!(),
             Statement::Break(location) => todo!(),
             Statement::Continue(location) => todo!(),
@@ -74,6 +77,85 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn mark_block_terminated(&mut self, block: BasicBlock<'ctx>) {
         self.terminated_blocks.push(block);
+    }
+
+    pub(crate) fn get_current_block(&self, stmt_name: &'ctx str, loc: Location, span_end: usize) -> BasicBlock<'ctx> {
+        match self.current_block_ref {
+            Some(bb) => bb,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Cannot build {} without having reference to current block.",
+                        stmt_name
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+    }
+
+    pub(crate) fn get_current_func(&self, stmt_name: &'ctx str, loc: Location, span_end: usize) -> FunctionValue<'ctx> {
+        match self.current_func_ref {
+            Some(bb) => bb,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Cannot build {} outside of a function.", stmt_name)),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+    }
+
+    pub(crate) fn build_infinite_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
+        let current_block = self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
+        let current_func = self.get_current_func("for statement", for_statement.loc.clone(), for_statement.span.end);
+
+        let body_block = self.context.append_basic_block(current_func, "loop.body");
+        self.builder.position_at_end(current_block);
+        self.builder.build_unconditional_branch(body_block).unwrap();
+
+        self.current_block_ref = Some(body_block);
+        self.builder.position_at_end(body_block);
+
+        self.build_statements(
+            Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
+            for_statement.body.exprs,
+        );
+
+        // retrieve current_block again because it's potentially updated by
+        // other statements when building the body_block.
+        let current_block = self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
+
+        if !self.block_terminated(current_block) {
+            self.builder.build_unconditional_branch(body_block).unwrap();
+            self.mark_block_terminated(current_block);
+        }
+    }
+
+    pub(crate) fn build_for(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
+        // unconditional for loop
+        if for_statement.condition.is_none() && for_statement.increment.is_none() && for_statement.initializer.is_none()
+        {
+            self.build_infinite_for_statement(scope, for_statement);
+            return;
+        }
+
+        // TODO
+        todo!();
     }
 
     pub(crate) fn build_if(&mut self, scope: ScopeRef<'ctx>, if_statement: If) {
@@ -101,7 +183,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder.position_at_end(then_block);
                 self.current_block_ref = Some(then_block);
                 self.build_statements(
-                    Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached())),
+                    Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
                     if_statement.consequent.exprs,
                 );
                 if !self.block_terminated(then_block) {
@@ -132,7 +214,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.builder.position_at_end(new_then_block);
                     self.current_block_ref = Some(new_then_block);
                     self.build_statements(
-                        Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached())),
+                        Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
                         else_if.consequent.exprs,
                     );
                     if !self.block_terminated(new_then_block) {
@@ -148,7 +230,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.current_block_ref = Some(current_else_block);
                 if let Some(alternate) = if_statement.alternate {
                     self.build_statements(
-                        Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached())),
+                        Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
                         alternate.exprs,
                     );
                 }

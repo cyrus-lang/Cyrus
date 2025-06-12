@@ -1,9 +1,10 @@
 public extern fn printf(format: const char*, ...);
+public extern fn exit(status: int);
 
 fn main() {
-    #a = 10;
-    
-    if (a == 2) {
-        // printf("value: %d\n", a);
+    printf("Hello from entry block\n");
+
+    for (#a = 0; i < 20; i++) {
+        printf("Iteration %d\n", i);
     }
 }

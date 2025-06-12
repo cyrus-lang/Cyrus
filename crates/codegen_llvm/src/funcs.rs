@@ -264,7 +264,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
-                        "The function '{}' is not allowed to have a return statement.",
+                        "The function '{}' with void return type is not allowed to have a return statement.",
                         &func_def.name
                     )),
                     location: Some(DiagLoc {
@@ -277,7 +277,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
 
-            let _ = self.builder.build_return(None).unwrap();
+            if !self.block_terminated(self.get_current_block("function definition", func_def.loc, func_def.span.end)) {
+                let _ = self.builder.build_return(None).unwrap();
+            }
         } else if !build_return {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

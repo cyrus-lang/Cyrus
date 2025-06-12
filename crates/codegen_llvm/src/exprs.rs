@@ -834,7 +834,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         unary_expression: UnaryExpression,
     ) -> InternalValue<'ctx> {
-        let operand = self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone());
+        let operand =
+            self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone()));
 
         match unary_expression.operator.kind {
             TokenKind::Minus => match operand {
@@ -997,7 +998,34 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         binary_expression: BinaryExpression,
     ) -> InternalValue<'ctx> {
         let left = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.left));
-        let right = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.right));
+        let mut right = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.right));
+
+        if !self.compatible_types(
+            left.get_type(self.string_type.clone()),
+            right.get_type(self.string_type.clone()),
+        ) {
+            // FIXME We need accurate type name tracking here
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Incompatible types for binary operation: '{:?}' and '{:?}'.",
+                    left.get_type(self.string_type.clone()),
+                    right.get_type(self.string_type.clone())
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: binary_expression.loc.line,
+                    column: binary_expression.loc.column,
+                    length: binary_expression.span.end,
+                }),
+            });
+            exit(1);
+        }
+
+        right = self.new_internal_value(
+            self.implicit_cast(right, left.get_type(self.string_type.clone())),
+            left.get_type(self.string_type.clone()),
+        );
 
         let result = match binary_expression.operator.kind {
             TokenKind::Plus => self.bin_op_add(left, right),
