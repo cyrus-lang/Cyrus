@@ -1,7 +1,7 @@
 use crate::diag::*;
 use crate::scope::ScopeRecord;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use ast::ast::{For, If, Statement, TypeSpecifier, Variable};
+use ast::ast::{BlockStatement, Expression, For, If, Statement, TypeSpecifier, Variable};
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
@@ -38,6 +38,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Statement::FuncDef(func_def) => {
                 if func_def.name == "main" {
+                    // entry_point gonna be evaluated in the final step of code generation
+                    // that is why here we store it in the context
                     if self.entry_point.is_some() {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
@@ -49,14 +51,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     self.entry_point = Some(func_def);
                 } else {
-                    self.build_func_def(func_def.clone());
+                    self.build_func_def(func_def.clone(), false);
                 }
             }
             Statement::FuncDecl(func_decl) => {
                 self.build_func_decl(func_decl);
             }
             Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),
-            Statement::For(for_statement) => self.build_for(
+            Statement::For(for_statement) => self.build_for_statement(
                 Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
                 for_statement,
             ),
@@ -130,7 +132,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.current_block_ref = Some(body_block);
         self.builder.position_at_end(body_block);
-
         self.build_statements(
             Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
             for_statement.body.exprs,
@@ -146,16 +147,85 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_for(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
-        // unconditional for loop
-        if for_statement.condition.is_none() && for_statement.increment.is_none() && for_statement.initializer.is_none()
-        {
-            self.build_infinite_for_statement(scope, for_statement);
-            return;
+    pub(crate) fn build_complete_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
+        todo!();
+    }
+
+    pub(crate) fn build_conditional_for_statement(
+        &mut self,
+        scope: ScopeRef<'ctx>,
+        condition: Expression,
+        body: BlockStatement,
+        increment: Option<Expression>,
+        loc: Location,
+        span_end: usize,
+    ) {
+        let current_block = self.get_current_block("for statement", loc.clone(), span_end);
+        let current_func = self.get_current_func("for statement", loc.clone(), span_end);
+
+        let cond_block = self.context.append_basic_block(current_func, "loop.cond");
+        let body_block = self.context.append_basic_block(current_func, "loop.body");
+        let end_block = self.context.append_basic_block(current_func, "loop.end");
+
+        self.builder.position_at_end(current_block);
+        self.builder.build_unconditional_branch(cond_block).unwrap();
+
+        self.builder.position_at_end(cond_block);
+        let condition = self.build_cond(Rc::clone(&scope), condition, loc.clone(), span_end);
+        self.builder
+            .build_conditional_branch(condition, body_block, end_block)
+            .unwrap();
+
+        self.current_block_ref = Some(body_block);
+        self.builder.position_at_end(body_block);
+        self.build_statements(Rc::new(RefCell::new(scope.borrow().deep_clone_detached())), body.exprs);
+
+        // Increment‍
+        if let Some(increment) = increment {
+            self.build_expr(Rc::clone(&scope), increment);
         }
 
-        // TODO
-        todo!();
+        if !self.block_terminated(body_block) {
+            self.builder.build_unconditional_branch(cond_block).unwrap();
+        }
+
+        self.current_block_ref = Some(end_block);
+        self.builder.position_at_end(end_block);
+    }
+
+    pub(crate) fn build_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
+        // unconditional for loop
+        if for_statement.condition.is_none() && for_statement.increment.is_none() {
+            if let Some(initializer) = for_statement.initializer.clone() {
+                let scope_cloned = Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached()));
+                self.build_variable(Rc::clone(&scope_cloned), initializer);
+                self.build_infinite_for_statement(Rc::clone(&scope_cloned), for_statement);
+            } else {
+                self.build_infinite_for_statement(scope, for_statement);
+            }
+        } else if for_statement.increment.is_none() {
+            let scope_cloned = Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached()));
+            self.build_variable(Rc::clone(&scope_cloned), for_statement.initializer.unwrap());
+            self.build_conditional_for_statement(
+                scope_cloned,
+                for_statement.condition.unwrap(),
+                *for_statement.body,
+                None,
+                for_statement.loc.clone(),
+                for_statement.span.end,
+            );
+        } else {
+            let scope_cloned = Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached()));
+            self.build_variable(Rc::clone(&scope_cloned), for_statement.initializer.unwrap());
+            self.build_conditional_for_statement(
+                scope_cloned,
+                for_statement.condition.unwrap(),
+                *for_statement.body,
+                Some(for_statement.increment.unwrap()),
+                for_statement.loc.clone(),
+                for_statement.span.end,
+            );
+        }
     }
 
     pub(crate) fn build_if(&mut self, scope: ScopeRef<'ctx>, if_statement: If) {

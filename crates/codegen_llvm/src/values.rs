@@ -527,7 +527,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder
                     .build_int_compare(IntPredicate::SLT, left, right, "cmp_lt")
                     .unwrap(),
-                InternalType::IntType(self.context.bool_type()),
+                InternalType::BoolType(self.context.bool_type()),
             )),
             (InternalValue::FloatValue(left, _), InternalValue::IntValue(right, _)) => {
                 let right = self

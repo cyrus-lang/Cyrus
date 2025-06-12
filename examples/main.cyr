@@ -1,10 +1,21 @@
 public extern fn printf(format: const char*, ...);
 public extern fn exit(status: int);
 
-fn main() {
-    printf("Hello from entry block\n");
+fn display_block() {
+    for (#i = 0; i <= 10; i++) {
+        printf("| ");
 
-    for (#a = 0; i < 20; i++) {
-        printf("Iteration %d\n", i);
+        for (#j = 3; j != 0; j--) {
+            printf("- ");
+        }
+
+        printf("|");
+        printf("\n");
     }
+}
+
+fn main() {
+    printf("Cyrus Programming Language!\n");
+
+    display_block();    
 }
