@@ -873,6 +873,7 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::LeftParen)?;
         let condition = self.parse_expression(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::RightParen)?;
+        self.next_token(); // consume right paren
 
         let consequent = Box::new(self.parse_block_statement()?);
 

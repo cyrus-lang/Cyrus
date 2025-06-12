@@ -1,19 +1,9 @@
-extern fn printf(format: const char*, ...);
-
-struct Person {
-    name: string;
-}
+public extern fn printf(format: const char*, ...);
 
 fn main() {
-    // #item1 = Person { name: "Taha" };
-    // #arr = Person*[1] { &item1 };
-
-    // printf("name: %s\n", (*arr[0]).name);
-
-    #x = 10;
-    #y = 20;
-    #arr = int32[3] {1, 1, 2};
-
-    printf("value: %d\n", arr[0]);
-
+    #a = 10;
+    
+    if (a == 2) {
+        // printf("value: %d\n", a);
+    }
 }

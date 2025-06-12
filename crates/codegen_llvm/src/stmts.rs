@@ -6,6 +6,7 @@ use ast::token::TokenKind;
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
 use inkwell::values::{AnyValue, BasicValueEnum};
+use std::cell::RefCell;
 use std::process::exit;
 use std::rc::Rc;
 
@@ -19,7 +20,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_statement(&mut self, scope: ScopeRef<'ctx>, stmt: Statement) {
         match stmt {
             Statement::BlockStatement(block_statement) => {
-                self.build_statements(Rc::clone(&scope), block_statement.exprs);
+                self.build_statements(
+                    Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached())),
+                    block_statement.exprs,
+                );
             }
             Statement::Expression(expression) => {
                 self.build_expr(Rc::clone(&scope), expression);
@@ -96,7 +100,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                 self.builder.position_at_end(then_block);
                 self.current_block_ref = Some(then_block);
-                self.build_statements(Rc::clone(&scope), if_statement.consequent.exprs);
+                self.build_statements(
+                    Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached())),
+                    if_statement.consequent.exprs,
+                );
                 if !self.block_terminated(then_block) {
                     self.builder.build_unconditional_branch(end_block).unwrap();
                     self.mark_block_terminated(then_block);
@@ -124,7 +131,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     self.builder.position_at_end(new_then_block);
                     self.current_block_ref = Some(new_then_block);
-                    self.build_statements(Rc::clone(&scope), else_if.consequent.exprs);
+                    self.build_statements(
+                        Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached())),
+                        else_if.consequent.exprs,
+                    );
                     if !self.block_terminated(new_then_block) {
                         self.builder.build_unconditional_branch(end_block).unwrap();
                         self.mark_block_terminated(new_then_block);
@@ -137,7 +147,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder.position_at_end(current_else_block);
                 self.current_block_ref = Some(current_else_block);
                 if let Some(alternate) = if_statement.alternate {
-                    self.build_statements(Rc::clone(&scope), alternate.exprs);
+                    self.build_statements(
+                        Rc::new(RefCell::new(scope.borrow_mut().deep_clone_detached())),
+                        alternate.exprs,
+                    );
                 }
                 if !self.block_terminated(current_else_block) {
                     self.builder.build_unconditional_branch(end_block).unwrap();

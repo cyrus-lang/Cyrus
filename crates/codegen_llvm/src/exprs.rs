@@ -1053,9 +1053,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> IntValue<'ctx> {
-        if let InternalValue::BoolValue(bool_value) = self.internal_value_as_rvalue(self.build_expr(scope, expr)) {
-            bool_value
-        } else {
+        let condition = self.internal_value_as_rvalue(self.build_expr(scope, expr));
+
+        if !condition.get_type(self.string_type.clone()).is_bool_type() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom("Condition result must be an bool value.".to_string()),
@@ -1067,6 +1067,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }),
             });
             exit(1);
+        }
+
+        match condition {
+            InternalValue::BoolValue(int_value) => int_value,
+            InternalValue::IntValue(int_value, ..) => int_value,
+            _ => {
+                unreachable!()
+            }
         }
     }
 }
