@@ -912,8 +912,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         unary_operator: UnaryOperator,
     ) -> InternalValue<'ctx> {
-        let int_one = self.context.i32_type().const_int(1, false);
         let operand_internal_value = self.build_module_import(Rc::clone(&scope), unary_operator.module_import);
+
+        let int_one_value = self.build_integer_literal(1);
+        let int_one = self
+            .implicit_cast(
+                InternalValue::IntValue(int_one_value, InternalType::IntType(int_one_value.get_type())),
+                self.internal_value_as_rvalue(operand_internal_value.clone())
+                    .get_type(self.string_type.clone()),
+            )
+            .into_int_value();
 
         let (ptr, _) = match operand_internal_value.clone() {
             InternalValue::Lvalue(lvalue) => (lvalue.ptr, lvalue.pointee_ty),

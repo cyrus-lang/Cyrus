@@ -1,23 +1,16 @@
 public extern fn printf(format: const char*, ...);
 public extern fn exit(status: int);
 
-fn display_block() {
-    
-}
-
 fn main() {
-    printf("Cyrus Programming Language!\n");
-    // display_block();    
-
-    #something = 0;
-
     for (#i = 0; i <= 10; i++) {
-        printf("always executed");
-        
-        // if (i == 3) {
-        //     printf("if body");
-        // } else {
-        //     printf("if else");
-        // }
+        if (i == 3) {
+            printf("(3) v: %d\n", i);
+        } 
+        else if (i % 4 == 0) {
+            printf("(4) v: %d\n", i);
+        }
+        else {
+            printf("v: %d\n", i);
+        }
     }
 }
