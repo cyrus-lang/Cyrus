@@ -1,21 +1,7 @@
-public extern fn printf(format: const char*, ...);
-public extern fn exit(status: int);
+extern fn printf(format: const char*, ...);
 
 fn main() {
-    for {
-        printf("hello");
-        continue;
-    }
+    #arr = int32[3] {10, 20, 30};
 
-    // for (#i = 0; i <= 6; i++) {
-    //     if (i == 2) {
-    //         printf("i -> 3\n");
-    //     } else {
-    //         printf("exec once\n");
-    //     }
-
-    //     break;
-
-    //     printf("should not be executed\n");
-    // }
+    
 }

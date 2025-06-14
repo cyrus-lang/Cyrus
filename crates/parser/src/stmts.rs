@@ -798,7 +798,17 @@ impl<'a> Parser<'a> {
 
         let argument = self.parse_expression(Precedence::Lowest)?.0;
         self.next_token();
-        self.expect_current(TokenKind::Semicolon)?;
+
+        if !self.current_token_is(TokenKind::Semicolon) {
+            return Err(CompileTimeError {
+                location: self.current_location(),
+                etype: ParserErrorType::MissingSemicolon,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: Some(Span::new(start, self.current_token.span.end)),
+            });
+        }
 
         let end = self.current_token.span.end;
 

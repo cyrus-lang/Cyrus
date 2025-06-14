@@ -161,14 +161,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_def.params.list.clone(),
         );
 
-        let return_type = self.build_type(
-            TypeSpecifier::TypeToken(Token {
-                kind: TokenKind::Void,
-                span: Span::default(),
-            }),
-            func_def.loc.clone(),
-            func_def.span.end,
-        );
+        let return_type = self.build_type(func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
+            kind: TokenKind::Void,
+            span: Span::default(),
+        })), func_decl.loc.clone(), func_decl.span.end);
 
         let fn_type = unsafe {
             FunctionType::new(LLVMFunctionType(
