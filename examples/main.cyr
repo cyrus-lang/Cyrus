@@ -1,19 +1,21 @@
-extern fn printf(format: const char*, ...);
-
-struct Person {
-    name: string;
-}
+public extern fn printf(format: const char*, ...);
+public extern fn exit(status: int);
 
 fn main() {
-    // #item1 = Person { name: "Taha" };
-    // #arr = Person*[1] { &item1 };
+    for {
+        printf("hello");
+        continue;
+    }
 
-    // printf("name: %s\n", (*arr[0]).name);
+    // for (#i = 0; i <= 6; i++) {
+    //     if (i == 2) {
+    //         printf("i -> 3\n");
+    //     } else {
+    //         printf("exec once\n");
+    //     }
 
-    #x = 10;
-    #y = 20;
-    #arr = int32[3] {1, 1, 2};
+    //     break;
 
-    printf("value: %d\n", arr[0]);
-
+    //     printf("should not be executed\n");
+    // }
 }

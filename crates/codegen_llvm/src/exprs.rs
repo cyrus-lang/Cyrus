@@ -834,7 +834,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         unary_expression: UnaryExpression,
     ) -> InternalValue<'ctx> {
-        let operand = self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone());
+        let operand =
+            self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone()));
 
         match unary_expression.operator.kind {
             TokenKind::Minus => match operand {
@@ -911,8 +912,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         unary_operator: UnaryOperator,
     ) -> InternalValue<'ctx> {
-        let int_one = self.context.i32_type().const_int(1, false);
         let operand_internal_value = self.build_module_import(Rc::clone(&scope), unary_operator.module_import);
+
+        let int_one_value = self.build_integer_literal(1);
+        let int_one = self
+            .implicit_cast(
+                InternalValue::IntValue(int_one_value, InternalType::IntType(int_one_value.get_type())),
+                self.internal_value_as_rvalue(operand_internal_value.clone())
+                    .get_type(self.string_type.clone()),
+            )
+            .into_int_value();
 
         let (ptr, _) = match operand_internal_value.clone() {
             InternalValue::Lvalue(lvalue) => (lvalue.ptr, lvalue.pointee_ty),
@@ -997,7 +1006,34 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         binary_expression: BinaryExpression,
     ) -> InternalValue<'ctx> {
         let left = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.left));
-        let right = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.right));
+        let mut right = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *binary_expression.right));
+
+        if !self.compatible_types(
+            left.get_type(self.string_type.clone()),
+            right.get_type(self.string_type.clone()),
+        ) {
+            // FIXME We need accurate type name tracking here
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Incompatible types for binary operation: '{:?}' and '{:?}'.",
+                    left.get_type(self.string_type.clone()),
+                    right.get_type(self.string_type.clone())
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: binary_expression.loc.line,
+                    column: binary_expression.loc.column,
+                    length: binary_expression.span.end,
+                }),
+            });
+            exit(1);
+        }
+
+        right = self.new_internal_value(
+            self.implicit_cast(right, left.get_type(self.string_type.clone())),
+            left.get_type(self.string_type.clone()),
+        );
 
         let result = match binary_expression.operator.kind {
             TokenKind::Plus => self.bin_op_add(left, right),
@@ -1053,9 +1089,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> IntValue<'ctx> {
-        if let InternalValue::BoolValue(bool_value) = self.internal_value_as_rvalue(self.build_expr(scope, expr)) {
-            bool_value
-        } else {
+        let condition = self.internal_value_as_rvalue(self.build_expr(scope, expr));
+
+        if !condition.get_type(self.string_type.clone()).is_bool_type() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom("Condition result must be an bool value.".to_string()),
@@ -1067,6 +1103,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }),
             });
             exit(1);
+        }
+
+        match condition {
+            InternalValue::BoolValue(int_value) => int_value,
+            InternalValue::IntValue(int_value, ..) => int_value,
+            _ => {
+                unreachable!()
+            }
         }
     }
 }

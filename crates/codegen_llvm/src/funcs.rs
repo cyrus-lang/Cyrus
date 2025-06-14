@@ -7,6 +7,7 @@ use ast::ast::{
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
+use inkwell::attributes::AttributeLoc;
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
@@ -139,10 +140,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_ptr
     }
 
-    pub(crate) fn build_func_def(&mut self, func_def: FuncDef) -> FunctionValue<'ctx> {
+    pub(crate) fn build_func_def(&mut self, func_def: FuncDef, is_entry_point: bool) -> FunctionValue<'ctx> {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
 
-        let mut func_decl = FuncDecl {
+        let func_decl = FuncDecl {
             name: func_def.name.clone(),
             params: func_def.params.clone(),
             return_type: func_def.return_type.clone(),
@@ -178,15 +179,37 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let actual_func_name = format!("{}.{}", self.module_name, func_def.name.clone());
-        func_decl.name = actual_func_name.clone();
+        let actual_func_name = if !is_entry_point { 
+            format!("{}.{}", self.module_name, func_def.name.clone())
+        } else {
+            func_decl.name.clone()
+        };
+        
+        if is_entry_point && !matches!(func_def.storage_class, StorageClass::Internal) {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Module entry point cannot be declared with non-internal storage_class.".to_string()),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_def.loc.line,
+                    column: func_def.loc.column,
+                    length: func_def.span.end,
+                }),
+            });
+            exit(1);
+        } 
 
-        let func_linkage = self.build_func_linkage(func_def.storage_class.clone());
+        let func_linkage: Option<Linkage> = if !is_entry_point {
+            Some(self.build_func_linkage(func_def.storage_class.clone()))
+        } else {
+            None
+        };
+
         let func = self
             .module
             .borrow_mut()
             .deref_mut()
-            .add_function(&actual_func_name, fn_type, Some(func_linkage));
+            .add_function(&actual_func_name, fn_type, func_linkage);
 
         self.current_func_ref = Some(func);
 
@@ -264,7 +287,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
-                        "The function '{}' is not allowed to have a return statement.",
+                        "The function '{}' with void return type is not allowed to have a return statement.",
                         &func_def.name
                     )),
                     location: Some(DiagLoc {
@@ -277,7 +300,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
 
-            let _ = self.builder.build_return(None).unwrap();
+            let current_block = self.get_current_block("function definition", func_def.loc, func_def.span.end);
+            if !self.block_terminated(current_block) {
+                let _ = self.builder.build_return(None).unwrap();
+            }
         } else if !build_return {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

@@ -216,6 +216,11 @@ impl<'a> InternalType<'a> {
         matches!(self, InternalType::Lvalue(_))
     }
 
+    #[allow(unused)]
+    pub fn is_bool_type(&self) -> bool {
+        matches!(self, InternalType::BoolType(_))
+    }
+
     pub fn to_basic_type(&self, ptr_type: PointerType<'a>) -> BasicTypeEnum<'a> {
         match self {
             InternalType::IntType(t) => (*t).as_basic_type_enum(),

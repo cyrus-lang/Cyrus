@@ -316,7 +316,10 @@ impl<'a> Parser<'a> {
                 caret: Some(Span::new(start, self.current_token.span.end)),
             });
         } else {
-            Ok(Statement::Break(self.current_location()))
+            Ok(Statement::Break(Break {
+                loc: self.current_location(),
+                span: Span::new(start, self.current_token.span.end),
+            }))
         }
     }
 
@@ -334,7 +337,10 @@ impl<'a> Parser<'a> {
                 caret: Some(Span::new(start, self.current_token.span.end)),
             });
         } else {
-            Ok(Statement::Continue(self.current_location()))
+            Ok(Statement::Continue(Continue {
+                loc: self.current_location(),
+                span: Span::new(start, self.current_token.span.end),
+            }))
         }
     }
 
@@ -873,6 +879,7 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::LeftParen)?;
         let condition = self.parse_expression(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::RightParen)?;
+        self.next_token(); // consume right paren
 
         let consequent = Box::new(self.parse_block_statement()?);
 
@@ -887,20 +894,10 @@ impl<'a> Parser<'a> {
                 let start = self.current_token.span.start;
                 self.next_token(); // consume if token
 
-                if !self.current_token_is(TokenKind::LeftParen) {
-                    return Err(CompileTimeError {
-                        location: self.current_location(),
-                        etype: ParserErrorType::MissingOpeningParen,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: None,
-                        caret: Some(Span::new(start, self.current_token.span.end)),
-                    });
-                }
-
                 self.expect_current(TokenKind::LeftParen)?;
                 let (condition, _) = self.parse_expression(Precedence::Lowest)?;
                 self.next_token(); // consume last token of the expression
+                self.expect_current(TokenKind::RightParen)?;
 
                 let consequent = Box::new(self.parse_block_statement()?);
 

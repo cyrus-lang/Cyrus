@@ -289,51 +289,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_entry_point(&mut self) {
-        if let Some(mut main_func) = self.entry_point.clone() {
-            main_func.name = format!("main_{}", generate_random_hex());
-            if main_func.storage_class != StorageClass::Internal {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::NonInternalEntryPoint,
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: main_func.loc.line,
-                        column: main_func.loc.column,
-                        length: main_func.span.end,
-                    }),
-                });
-                exit(1);
-            }
-
-            // wrap actual main_func as entry point
-            let return_type = self.context.i32_type();
-            let mut param_types: Vec<LLVMTypeRef> = Vec::new();
-            let fn_type = unsafe {
-                FunctionType::new(LLVMFunctionType(
-                    return_type.as_type_ref(),
-                    param_types.as_mut_ptr(),
-                    param_types.len() as u32,
-                    0,
-                ))
-            };
-
-            let main_func_ptr = self.build_func_def(main_func.clone());
-
-            let entry_point =
-                self.module
-                    .borrow_mut()
-                    .deref_mut()
-                    .add_function("main", fn_type, Some(Linkage::External));
-
-            let entry_block = self.context.append_basic_block(entry_point, "entry");
-            self.builder.position_at_end(entry_block);
-
-            self.builder.build_call(main_func_ptr, &[], "call_main").unwrap();
-
-            self.builder
-                .build_return(Some(&return_type.const_int(0, false)))
-                .unwrap();
-        } else if !self.is_entry_point {
+        if let Some(main_func) = self.entry_point.clone() {
+            self.build_func_def(main_func, true);
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
