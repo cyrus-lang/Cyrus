@@ -25,6 +25,8 @@ use utils::fs::file_stem;
 use utils::tui::{tui_compile_finished, tui_compiled};
 use values::{InternalValue, StringValue};
 
+use crate::stmts::LoopBlockRefs;
+
 pub mod build;
 pub mod diag;
 mod enums;
@@ -62,6 +64,7 @@ pub struct CodeGenLLVM<'ctx> {
     current_func_ref: Option<FunctionValue<'ctx>>,
     current_block_ref: Option<BasicBlock<'ctx>>,
     terminated_blocks: Vec<BasicBlock<'ctx>>,
+    current_loop_ref: Option<LoopBlockRefs<'ctx>>,
     string_type: StringType<'ctx>,
     loaded_modules: Vec<ModuleMetadata<'ctx>>,
     dependent_modules: HashMap<String, Vec<String>>,
@@ -114,6 +117,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_func_ref: None,
             current_block_ref: None,
             terminated_blocks: Vec::new(),
+            current_loop_ref: None,
             string_type: CodeGenLLVM::build_string_type(context),
             module: module.clone(),
             module_name: module_name.clone(),

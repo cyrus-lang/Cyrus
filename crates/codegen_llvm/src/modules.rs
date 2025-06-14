@@ -192,6 +192,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             dependent_modules: HashMap::new(),
             output_kind: self.output_kind.clone(),
             final_build_dir: self.final_build_dir.clone(),
+            current_loop_ref: None,
         };
 
         // preventing entry_point of being in dependent_modules

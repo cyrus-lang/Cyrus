@@ -250,9 +250,21 @@ pub enum Statement {
     Struct(Struct),
     Import(Import),
     BlockStatement(BlockStatement),
-    Break(Location),
-    Continue(Location),
     Enum(Enum),
+    Break(Break),
+    Continue(Continue),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Break {
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Continue {
+    pub loc: Location,
+    pub span: Span,
 }
 
 pub fn format_expressions(exprs: &Vec<Expression>) -> String {

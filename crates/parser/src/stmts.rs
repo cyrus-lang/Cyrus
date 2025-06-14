@@ -316,7 +316,10 @@ impl<'a> Parser<'a> {
                 caret: Some(Span::new(start, self.current_token.span.end)),
             });
         } else {
-            Ok(Statement::Break(self.current_location()))
+            Ok(Statement::Break(Break {
+                loc: self.current_location(),
+                span: Span::new(start, self.current_token.span.end),
+            }))
         }
     }
 
@@ -334,7 +337,10 @@ impl<'a> Parser<'a> {
                 caret: Some(Span::new(start, self.current_token.span.end)),
             });
         } else {
-            Ok(Statement::Continue(self.current_location()))
+            Ok(Statement::Continue(Continue {
+                loc: self.current_location(),
+                span: Span::new(start, self.current_token.span.end),
+            }))
         }
     }
 
