@@ -3,5 +3,6 @@ extern fn printf(format: const char*, ...);
 fn main() {
     #arr = int32[3] {10, 20, 30};
 
-    
+    foreach (#item in arr) {  }
+    foreach (#idx, #item in arr) {  }
 }
