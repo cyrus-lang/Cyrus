@@ -12,7 +12,6 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct LoopBlockRefs<'a> {
-    pub body_block: BasicBlock<'a>,
     pub cond_block: BasicBlock<'a>,
     pub end_block: BasicBlock<'a>,
 }
@@ -214,11 +213,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let end_block = self.context.append_basic_block(current_func, "loop.end");
 
         // track current_loop
-        self.current_loop_ref = Some(LoopBlockRefs {
-            body_block,
-            cond_block,
-            end_block,
-        });
+        let previous_loop_ref = self.current_loop_ref.clone();
+        self.current_loop_ref = Some(LoopBlockRefs { cond_block, end_block });
 
         self.builder.position_at_end(current_block);
         self.builder.build_unconditional_branch(cond_block).unwrap();
@@ -262,7 +258,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder.position_at_end(end_block);
 
         // clear current_loop
-        self.current_loop_ref = None;
+        self.current_loop_ref = previous_loop_ref;
     }
 
     pub(crate) fn build_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
