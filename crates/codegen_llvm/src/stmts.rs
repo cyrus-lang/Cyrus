@@ -1,7 +1,7 @@
 use crate::diag::*;
 use crate::scope::ScopeRecord;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use ast::ast::{BlockStatement, Break, Expression, For, If, Statement, TypeSpecifier, Variable};
+use ast::ast::{BlockStatement, Break, Continue, Expression, For, If, Literal, Statement, TypeSpecifier, Variable};
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
@@ -70,10 +70,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 for_statement,
             ),
             Statement::Switch(_) => todo!(),
-            Statement::Break(loc) => {
-                self.build_break_statement(loc);
+            Statement::Break(break_statement) => {
+                self.build_break_statement(break_statement);
             }
-            Statement::Continue(location) => todo!(),
+            Statement::Continue(continue_statement) => self.build_continue_statement(continue_statement),
             Statement::Struct(struct_statement) => {
                 self.build_global_struct(struct_statement);
             }
@@ -131,7 +131,35 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // FIXME
+    pub(crate) fn build_continue_statement(&mut self, continue_statement: Continue) {
+        let current_block = self.get_current_block(
+            "continue statement",
+            continue_statement.loc.clone(),
+            continue_statement.span.end,
+        );
+
+        let loop_end_block = match &self.current_loop_ref {
+            Some(loop_block_refs) => loop_block_refs.cond_block,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Continue statement can only be used inside of a for loop.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: continue_statement.loc.line,
+                        column: continue_statement.loc.column,
+                        length: continue_statement.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        self.mark_block_terminated(current_block);
+        self.builder.build_unconditional_branch(loop_end_block).unwrap();
+        self.builder.position_at_end(loop_end_block);
+    }
+
     pub(crate) fn build_break_statement(&mut self, break_statement: Break) {
         let current_block =
             self.get_current_block("break statement", break_statement.loc.clone(), break_statement.span.end);
@@ -158,31 +186,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder.position_at_end(loop_end_block);
     }
 
-    // FIXME
     pub(crate) fn build_infinite_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
-        todo!();
-        // let current_block = self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
-        // let current_func = self.get_current_func("for statement", for_statement.loc.clone(), for_statement.span.end);
-
-        // let body_block = self.context.append_basic_block(current_func, "loop.body");
-        // self.builder.position_at_end(current_block);
-        // self.builder.build_unconditional_branch(body_block).unwrap();
-
-        // self.current_block_ref = Some(body_block);
-        // self.builder.position_at_end(body_block);
-        // self.build_statements(
-        //     Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
-        //     for_statement.body.exprs,
-        // );
-
-        // // retrieve current_block again because it's potentially updated by
-        // // other statements when building the body_block.
-        // let current_block = self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
-
-        // if !self.block_terminated(current_block) {
-        //     self.builder.build_unconditional_branch(body_block).unwrap();
-        //     self.mark_block_terminated(current_block);
-        // }
+        self.build_conditional_for_statement(
+            scope,
+            Expression::Literal(Literal::Bool(true)),
+            *for_statement.body,
+            None,
+            for_statement.loc.clone(),
+            for_statement.span.end,
+        );
     }
 
     pub(crate) fn build_conditional_for_statement(

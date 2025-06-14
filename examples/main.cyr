@@ -2,13 +2,20 @@ public extern fn printf(format: const char*, ...);
 public extern fn exit(status: int);
 
 fn main() {
-    for (#i = 0; i <= 6; i++) {
-        if (i == 0) {
-            printf("i -> 3\n");
-        }
-
-        break;
-
-        printf("should not be executed\n");
+    for {
+        printf("hello");
+        continue;
     }
+
+    // for (#i = 0; i <= 6; i++) {
+    //     if (i == 2) {
+    //         printf("i -> 3\n");
+    //     } else {
+    //         printf("exec once\n");
+    //     }
+
+    //     break;
+
+    //     printf("should not be executed\n");
+    // }
 }
