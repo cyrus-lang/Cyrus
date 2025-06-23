@@ -51,8 +51,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_prefix_expression(&mut self) -> Result<Expression, ParseError> {
-        let loc = self.current_location();
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         let expr = match &self.current_token.clone().kind {
             TokenKind::Struct => self.parse_unnamed_struct_value()?,
@@ -236,7 +236,7 @@ impl<'a> Parser<'a> {
         left: Expression,
         left_start: usize,
     ) -> Option<Result<Expression, ParseError>> {
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
 
         match self.peek_token.kind.clone() {
             TokenKind::Plus
@@ -307,8 +307,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_module_import(&mut self) -> Result<ModuleImport, ParseError> {
-        let loc = self.current_location();
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         let mut segments = match self.current_token.kind.clone() {
             TokenKind::Identifier { name } => {
@@ -375,8 +375,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_module_path(&mut self) -> Result<ModulePath, ParseError> {
-        let loc = self.current_location();
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         let mut module_path = ModulePath {
             alias: None,
@@ -451,7 +451,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_cast_expression(&mut self, start: usize) -> Result<Expression, ParseError> {
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
 
         self.expect_current(TokenKind::LeftParen)?;
         let target_type = self.parse_type_specifier()?;
@@ -509,7 +509,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_field_access(&mut self, operand: Expression) -> Result<Expression, ParseError> {
         let start = self.current_token.span.start;
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
 
         let identifier = self.parse_identifier()?;
 
@@ -527,7 +527,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_func_call(&mut self, operand: Expression) -> Result<Expression, ParseError> {
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
         let start = self.current_token.span.start;
 
         self.expect_peek(TokenKind::LeftParen)?;
@@ -553,8 +553,9 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<Expression, ParseError> {
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
         let start = self.current_token.span.start;
+
         let mut field_inits: Vec<FieldInit> = Vec::new();
         self.expect_current(TokenKind::LeftBrace)?;
 
@@ -572,6 +573,8 @@ impl<'a> Parser<'a> {
 
         loop {
             let field_name = self.parse_identifier()?.name;
+            let field_loc = self.current_token.loc.clone();
+
             self.next_token(); // consume identifier
             self.expect_current(TokenKind::Colon)?;
 
@@ -581,13 +584,13 @@ impl<'a> Parser<'a> {
             field_inits.push(FieldInit {
                 name: field_name,
                 value,
-                loc: self.current_location(),
+                loc: field_loc,
             });
 
             match self.current_token.kind.clone() {
                 TokenKind::EOF => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: self.current_token.loc.clone(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -606,7 +609,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: self.current_token.loc.clone(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -629,7 +632,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_assignment(&mut self, assign_to: Expression, start: usize) -> Result<Expression, ParseError> {
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
 
         self.expect_current(TokenKind::Assign)?;
         let expr = self.parse_expression(Precedence::Lowest)?.0;
@@ -643,7 +646,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_array_index(&mut self, expr: Expression) -> Result<Expression, ParseError> {
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
         let start = self.current_token.span.start;
 
         let mut base_index = Expression::ArrayIndex(ArrayIndex {
@@ -674,7 +677,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expression, ParseError> {
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
         let start = self.current_token.span.start;
 
         if !self.current_token_is(TokenKind::LeftBrace) {
@@ -796,7 +799,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::EOF => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: self.current_token.loc.clone(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -806,6 +809,8 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Identifier { name: field_name } => {
                     let start = self.current_token.span.start;
+                    let loc = self.current_token.loc.clone();
+
                     self.next_token(); // consume identifier
 
                     let mut field_type: Option<TypeSpecifier> = None;
@@ -829,11 +834,11 @@ impl<'a> Parser<'a> {
                                 start,
                                 end: self.current_token.span.end,
                             },
-                            loc: self.current_location(),
+                            loc: loc.clone(),
                         },
                         field_type,
                         field_value: Box::new(field_value),
-                        loc: self.current_location(),
+                        loc,
                         span: Span {
                             start,
                             end: self.current_token.span.end,
@@ -848,7 +853,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: self.current_token.loc.clone(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -861,7 +866,7 @@ impl<'a> Parser<'a> {
 
         Ok(Expression::UnnamedStructValue(UnnamedStructValue {
             fields,
-            loc: self.current_location(),
+            loc: self.current_token.loc.clone(),
             span: Span::new(struct_start, self.current_token.span.end),
         }))
     }

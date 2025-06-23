@@ -7,7 +7,6 @@ use ast::ast::{
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
-use inkwell::attributes::AttributeLoc;
 use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
@@ -103,6 +102,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
                 kind: TokenKind::Void,
                 span: Span::default(),
+                loc: Location::default()
             })),
             func_decl.loc.clone(),
             func_decl.span.end,
@@ -165,6 +165,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TypeSpecifier::TypeToken(Token {
                 kind: TokenKind::Void,
                 span: Span::default(),
+                loc: Location::default()
             }),
             func_def.loc.clone(),
             func_def.span.end,

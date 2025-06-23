@@ -12,11 +12,11 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier { name } => Ok(Identifier {
                 name,
                 span: self.current_token.span.clone(),
-                loc: self.current_location(),
+                loc: self.current_token.loc.clone(),
             }),
             _ => {
                 return Err(CompileTimeError {
-                    location: self.current_location(),
+                    location: self.current_token.loc.clone(),
                     etype: ParserErrorType::ExpectedIdentifier,
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
@@ -88,12 +88,12 @@ impl<'a> Parser<'a> {
                             }
                         },
                         span: current.span,
-                        loc: self.current_location(),
+                        loc: self.current_token.loc.clone(),
                     }))
                 }
             }
             _ => Err(CompileTimeError {
-                location: self.current_location(),
+                location: self.current_token.loc.clone(),
                 etype: ParserErrorType::InvalidTypeToken(current.kind.clone()),
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
@@ -144,7 +144,7 @@ impl<'a> Parser<'a> {
 
         if self.current_token_is(TokenKind::RightBracket) {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: self.current_token.loc.clone(),
                 etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
@@ -178,7 +178,7 @@ impl<'a> Parser<'a> {
                 }
             } else {
                 return Err(CompileTimeError {
-                    location: self.current_location(),
+                    location: token.loc,
                     etype: ParserErrorType::InvalidToken(token.kind),
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
@@ -206,7 +206,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::EOF => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: self.current_token.loc.clone(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -216,6 +216,8 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Identifier { name: field_name } => {
                     let start = self.current_token.span.start;
+                    let loc = self.current_token.loc.clone();
+
                     self.next_token(); // consume identifier
 
                     self.expect_current(TokenKind::Colon)?;
@@ -226,7 +228,7 @@ impl<'a> Parser<'a> {
                     fields.push(UnnamedStructTypeField {
                         field_name,
                         field_type: field_type_specifier,
-                        loc: self.current_location(),
+                        loc,
                         span: Span {
                             start,
                             end: self.current_token.span.end,
@@ -241,7 +243,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: self.current_token.loc.clone(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
