@@ -200,6 +200,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         } 
 
+        if func_def.storage_class == StorageClass::Extern {
+             display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Extern storage class specifier is not permitted in function definitions.".to_string()),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_def.loc.line,
+                    column: func_def.loc.column,
+                    length: func_def.span.end,
+                }),
+            });
+            exit(1);
+        }
+
         let func_linkage: Option<Linkage> = if !is_entry_point {
             Some(self.build_func_linkage(func_def.storage_class.clone()))
         } else {

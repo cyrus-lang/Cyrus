@@ -2,8 +2,7 @@ extern fn printf(format: const char*, ...);
 extern fn exit(status: int);
 
 struct Person {
-    public fn display(name: string) {
-        self.name;
+    extern fn display(name: string) {
         printf("Hello, %s\n", name);
     }
 }
