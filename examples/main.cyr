@@ -3,4 +3,9 @@ extern fn exit(status: int);
 
 fn main() {
     printf("Hello world\n");
+    printf("Hello world\n");
+    printf("Hello world\n");
+    printf("Hello world\n");
+    printf("Hello world\n");
+    printf("Hello world\n");
 }

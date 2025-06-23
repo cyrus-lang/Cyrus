@@ -104,17 +104,17 @@ mod tests {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "foo".to_string(),
                                 span: Span::new(0, 2),
-                                loc: Location::new(1, 5)
+                                loc: Location::new(1, 4)
                             })],
                             span: Span::new(0, 3),
-                            loc: Location::new(1, 5)
+                            loc: Location::new(1, 4)
                         })),
                         arguments: vec![
                             Expression::Literal(Literal::Integer(1)),
                             Expression::Literal(Literal::Integer(2))
                         ],
                         span: Span::new(0, 8),
-                        loc: Location::new(1, 5)
+                        loc: Location::new(1, 4)
                     }
                 );
             } else {
@@ -141,17 +141,17 @@ mod tests {
                                 segments: vec![ModuleSegment::SubModule(Identifier {
                                     name: "func_call".to_string(),
                                     span: Span::new(14, 22),
-                                    loc: Location::new(1, 25)
+                                    loc: Location::new(1, 24)
                                 })],
                                 span: Span::new(14, 23),
-                                loc: Location::new(1, 25)
+                                loc: Location::new(1, 24)
                             })),
                             arguments: vec![
                                 Expression::Literal(Literal::Integer(1)),
                                 Expression::Literal(Literal::Integer(2))
                             ],
                             span: Span::new(14, 28),
-                            loc: Location::new(1, 25)
+                            loc: Location::new(1, 24)
                         })
                     );
                 } else {
@@ -172,10 +172,10 @@ mod tests {
                         segments: vec![ModuleSegment::SubModule(Identifier {
                             name: "x".to_string(),
                             span: Span::new(0, 0),
-                            loc: Location::new(1, 4)
+                            loc: Location::new(1, 2)
                         })],
                         span: Span::new(0, 1),
-                        loc: Location::new(1, 4)
+                        loc: Location::new(1, 2)
                     })
                 );
                 assert_eq!(assignment.expr, Expression::Literal(Literal::Integer(5)));
@@ -198,7 +198,7 @@ mod tests {
                         vec![ModuleSegment::SubModule(Identifier {
                             name: "MyStruct".to_string(),
                             span: Span::new(0, 7),
-                            loc: Location::new(1, 11)
+                            loc: Location::new(1, 9)
                         })]
                     );
                     assert_eq!(struct_init.field_inits.len(), 2);
@@ -243,10 +243,10 @@ mod tests {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "object".to_string(),
                                 span: Span::new(0, 5),
-                                loc: Location::new(1, 8),
+                                loc: Location::new(1, 7),
                             })],
                             span: Span::new(0, 6),
-                            loc: Location::new(1, 8)
+                            loc: Location::new(1, 7)
                         })),
                         field_name: Identifier {
                             name: "field".to_string(),
@@ -274,22 +274,22 @@ mod tests {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "object".to_string(),
                                 span: Span::new(0, 5),
-                                loc: Location::new(1, 8),
+                                loc: Location::new(1, 7),
                             })],
                             span: Span::new(0, 6),
-                            loc: Location::new(1, 8)
+                            loc: Location::new(1, 7)
                         })),
                         method_name: Identifier {
                             name: "method".to_string(),
-                            span: Span { start: 7, end: 13 },
-                            loc: Location { line: 1, column: 15 },
+                            span: Span::new(7, 13),
+                            loc: Location::new(1, 14),
                         },
                         arguments: vec![
                             Expression::Literal(Literal::Integer(1)),
                             Expression::Literal(Literal::Integer(2)),
                         ],
                         span: Span::new(7, 18),
-                        loc: Location::new(1, 15)
+                        loc: Location::new(1, 14)
                     }
                 );
             } else {
@@ -309,6 +309,7 @@ mod tests {
                     TypeSpecifier::TypeToken(Token {
                         kind: TokenKind::Float64,
                         span: Span::new(1, 8),
+                        loc: Location::new(1, 9)
                     })
                 );
             } else {
@@ -346,8 +347,8 @@ mod tests {
                     unary_operator.module_import.segments,
                     vec![ModuleSegment::SubModule(Identifier {
                         name: "my_var".to_string(),
-                        span: Span { start: 0, end: 5 },
-                        loc: Location { line: 1, column: 9 }
+                        span: Span::new(0, 5),
+                        loc: Location::new(1, 7)
                     })]
                 );
                 assert_eq!(unary_operator.ty, UnaryOperatorType::PostDecrement);
@@ -370,11 +371,12 @@ mod tests {
                         name: "i".to_string(),
                         ty: Some(TypeSpecifier::TypeToken(Token {
                             kind: TokenKind::Int,
-                            span: Span::new(9, 12)
+                            span: Span::new(9, 12),
+                            loc: Location::new(1, 13)
                         })),
                         expr: Some(Expression::Literal(Literal::Integer(0))),
                         span: Span::new(5, 16),
-                        loc: Location::new(1, 20)
+                        loc: Location::new(1, 6)
                     })
                 );
                 assert_eq!(
@@ -384,14 +386,14 @@ mod tests {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
                                 span: Span::new(26, 26),
-                                loc: Location::new(1, 30)
+                                loc: Location::new(1, 28)
                             })],
                             span: Span::new(26, 27),
-                            loc: Location::new(1, 30)
+                            loc: Location::new(1, 28)
                         },
                         ty: UnaryOperatorType::PostIncrement,
                         span: Span::new(26, 28),
-                        loc: Location::new(1, 30)
+                        loc: Location::new(1, 28)
                     }))
                 );
                 assert_eq!(
@@ -399,20 +401,21 @@ mod tests {
                     Some(Expression::Infix(BinaryExpression {
                         operator: Token {
                             kind: TokenKind::LessThan,
-                            span: Span::new(20, 20)
+                            span: Span::new(20, 20),
+                            loc: Location::new(1, 21)
                         },
                         left: Box::new(Expression::ModuleImport(ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
                                 span: Span::new(18, 18),
-                                loc: Location::new(1, 22)
+                                loc: Location::new(1, 20)
                             })],
                             span: Span::new(18, 19),
-                            loc: Location::new(1, 22)
+                            loc: Location::new(1, 20)
                         })),
                         right: Box::new(Expression::Literal(Literal::Integer(10))),
                         span: Span::new(18, 24),
-                        loc: Location::new(1, 22)
+                        loc: Location::new(1, 20)
                     }))
                 );
             } else {
@@ -432,11 +435,12 @@ mod tests {
                         name: "i".to_string(),
                         ty: Some(TypeSpecifier::TypeToken(Token {
                             kind: TokenKind::Int,
-                            span: Span::new(9, 12)
+                            span: Span::new(9, 12),
+                            loc: Location::new(1, 13)
                         })),
                         expr: Some(Expression::Literal(Literal::Integer(0))),
                         span: Span::new(5, 16),
-                        loc: Location::new(1, 19)
+                        loc: Location::new(1, 6)
                     })
                 );
                 assert_eq!(for_statement.increment, None);
@@ -470,14 +474,14 @@ mod tests {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
                                 span: Span::new(14, 14),
-                                loc: Location::new(1, 18)
+                                loc: Location::new(1, 16)
                             })],
                             span: Span::new(14, 15),
-                            loc: Location::new(1, 18)
+                            loc: Location::new(1, 16)
                         },
                         ty: UnaryOperatorType::PostIncrement,
                         span: Span::new(14, 16),
-                        loc: Location::new(1, 18)
+                        loc: Location::new(1, 16)
                     }))
                 );
                 assert_eq!(
@@ -485,20 +489,21 @@ mod tests {
                     Some(Expression::Infix(BinaryExpression {
                         operator: Token {
                             kind: TokenKind::LessThan,
-                            span: Span::new(9, 9)
+                            span: Span::new(9, 9),
+                            loc: Location::new(1, 10)
                         },
                         left: Box::new(Expression::ModuleImport(ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "i".to_string(),
                                 span: Span::new(7, 7),
-                                loc: Location::new(1, 11)
+                                loc: Location::new(1, 9)
                             })],
                             span: Span::new(7, 8),
-                            loc: Location::new(1, 11)
+                            loc: Location::new(1, 9)
                         })),
                         right: Box::new(Expression::Literal(Literal::Integer(0))),
                         span: Span::new(7, 12),
-                        loc: Location::new(1, 11)
+                        loc: Location::new(1, 9)
                     }))
                 );
             } else {
