@@ -19,7 +19,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         match expr {
             Expression::FieldAccess(field_access) => self.build_field_access(Rc::clone(&scope), field_access),
-            Expression::MethodCall(method_call) => todo!(),
+            Expression::MethodCall(method_call) => self.build_method_call(Rc::clone(&scope), method_call),
             Expression::Identifier(identifier) => self.build_load_lvalue(
                 Rc::clone(&scope),
                 ModuleImport {
@@ -44,12 +44,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
             Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import),
             Expression::FuncCall(func_call) => {
-                let (call_site_value, return_type) = self.build_func_call(Rc::clone(&scope), func_call);
-                if let Some(value) = call_site_value.try_as_basic_value().left() {
-                    self.new_internal_value(value, return_type)
-                } else {
-                    InternalValue::PointerValue(self.build_null())
-                }
+                self.build_func_call(Rc::clone(&scope), func_call)
             }
             Expression::TypeSpecifier(_) => InternalValue::PointerValue(self.build_null()),
             Expression::UnnamedStructValue(unnamed_struct_value) => {

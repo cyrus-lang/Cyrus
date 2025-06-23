@@ -461,36 +461,36 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn check_func_args_count_mismatch(&self, func_name: String, func_decl: FuncDecl, func_call: FuncCall) {
-        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != func_call.arguments.len() {
+    pub(crate) fn check_func_args_count_mismatch(&self, func_name: String, func_decl: FuncDecl, arguments_length: usize, loc: Location, span_end: usize) {
+        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != arguments_length {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
                     func_name.clone(),
-                    func_call.arguments.len().try_into().unwrap(),
+                    arguments_length.try_into().unwrap(),
                     func_decl.params.list.len().try_into().unwrap(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
-                    line: func_call.loc.line,
-                    column: func_call.loc.column,
-                    length: func_call.span.end,
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
                 }),
             });
             exit(1);
-        } else if func_decl.params.variadic.is_some() && func_call.arguments.len() < func_decl.params.list.len() {
+        } else if func_decl.params.variadic.is_some() && arguments_length < func_decl.params.list.len() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
                     func_name.clone(),
-                    func_call.arguments.len().try_into().unwrap(),
+                    arguments_length.try_into().unwrap(),
                     func_decl.params.list.len().try_into().unwrap(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
-                    line: func_call.loc.line,
-                    column: func_call.loc.column,
-                    length: func_call.span.end,
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
                 }),
             });
             exit(1);
@@ -501,7 +501,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         scope: ScopeRef<'ctx>,
         func_call: FuncCall,
-    ) -> (CallSiteValue<'ctx>, InternalType<'ctx>) {
+    ) -> InternalValue<'ctx> {
         let expr = self.build_expr(Rc::clone(&scope), *func_call.operand.clone());
 
         let func_metadata = {
@@ -559,7 +559,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Function call with invalid value as expr is not allowed.".to_string()),
+                        kind: DiagKind::Custom("Cannot build function call with an invalid expression.".to_string()),
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: func_call.loc.line,
@@ -584,12 +584,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.check_func_args_count_mismatch(
             func_metadata.func_decl.name.clone(),
             func_metadata.func_decl.clone(),
-            func_call.clone(),
-        );
+            func_call.arguments.len(),
+            func_call.loc.clone(),
+            func_call.span.end,
+        );  
 
-        (
-            self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap(),
-            func_metadata.return_type.clone(),
-        )
+        let call_site_value = self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap();
+        let return_type = func_metadata.return_type.clone();
+
+        if let Some(value) = call_site_value.try_as_basic_value().left() {
+            self.new_internal_value(value, return_type)
+        } else {
+            InternalValue::PointerValue(self.build_null())
+        }
     }
 }
