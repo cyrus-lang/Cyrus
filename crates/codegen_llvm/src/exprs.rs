@@ -844,7 +844,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Trying to get size of an unsized struct in compilation time. This is not a valid instruction and size of it is gonna be determined in runtime. It's not implemented yet!".to_string()),
+                        kind: DiagKind::SizeOfOperatorOnUnsizedObject,
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: loc.line,
@@ -861,7 +861,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     None => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
-                            kind: DiagKind::Custom("Trying to get size of an unsized struct in compilation time. This is not a valid instruction and size of it is gonna be determined in runtime. It's not implemented yet!".to_string()),
+                            kind: DiagKind::SizeOfOperatorOnUnsizedObject,
                             location: Some(DiagLoc {
                                 file: self.file_path.clone(),
                                 line: loc.line,
@@ -878,7 +878,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Trying to get size of an unsized vector in compilation time. This is not a valid instruction and size of it is gonna be determined in runtime. It's not implemented yet!".to_string()),
+                        kind: DiagKind::SizeOfOperatorOnUnsizedObject,
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: loc.line,
@@ -901,7 +901,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Trying to get size of an unsized array in compilation time. This is not a valid instruction and size of it is gonna be determined in runtime. It's not implemented yet!".to_string()),
+                        kind: DiagKind::SizeOfOperatorOnUnsizedObject,
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: loc.line,
