@@ -1,7 +1,12 @@
 extern fn printf(format: const char*, ...);
 extern fn exit(status: int);
 
-
 fn main() {
-    
+    #a = 10;
+    #b = 20;
+    #c = 30;
+
+    #arr = int32[3] {1, b, c};
+    #size = sizeof arr / sizeof arr[0];
+    printf("value: %d\n", size);
 }

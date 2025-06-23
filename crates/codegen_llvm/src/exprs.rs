@@ -507,9 +507,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             if let InternalValue::IntValue(index_int_value, _) =
                 self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *array_index.index))
-            {
+            {   
                 if index_int_value.is_const()
-                    && array_type.len() < index_int_value.get_zero_extended_constant().unwrap() as u32
+                    && array_type.len() - 1 < index_int_value.get_zero_extended_constant().unwrap() as u32
                 {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
