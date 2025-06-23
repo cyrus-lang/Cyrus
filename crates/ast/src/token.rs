@@ -63,6 +63,7 @@ pub enum TokenKind {
     Continue,
     Struct,
     Import,
+    SizeOf,
     // Types
     Int,
     Int8,
@@ -194,6 +195,7 @@ impl fmt::Display for TokenKind {
             Self::Inline => write!(f, "inline"),
             Self::Public => write!(f, "public"),
             Self::Const => write!(f, "const"),
+            Self::SizeOf => write!(f, "sizeof"),
             Self::Literal(literal) => match literal {
                 Literal::Integer(v) => write!(f, "{}", v),
                 Literal::Float(v) => write!(f, "{}", v),

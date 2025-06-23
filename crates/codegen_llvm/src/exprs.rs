@@ -9,9 +9,9 @@ use ast::{
     token::{Location, TokenKind},
 };
 use inkwell::{
-    AddressSpace, llvm_sys,
+    AddressSpace,
     types::{BasicType, BasicTypeEnum},
-    values::{ArrayValue, AsValueRef, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
 use std::{ops::Deref, process::exit, rc::Rc};
 
@@ -829,6 +829,105 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.build_cast_expression_internal(internal_value, target_type, cast.loc.clone(), cast.span.end)
     }
 
+    pub(crate) fn build_sizeof_operator_internal(
+        &self,
+        internal_type: InternalType<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> IntValue<'ctx> {
+        match internal_type {
+            InternalType::BoolType(int_type) => int_type.size_of(),
+            InternalType::IntType(int_type) => int_type.size_of(),
+            InternalType::FloatType(float_type) => float_type.size_of(),
+            InternalType::StructType(struct_metadata) => match struct_metadata.struct_type.size_of() {
+                Some(size) => size,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Trying to get size of an unsized struct in compilation time. This is not a valid instruction and size of it is gonna be determined in runtime. It's not implemented yet!".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
+            InternalType::UnnamedStruct(unnamed_struct_type_metadata) => {
+                match unnamed_struct_type_metadata.struct_type.size_of() {
+                    Some(size) => size,
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Trying to get size of an unsized struct in compilation time. This is not a valid instruction and size of it is gonna be determined in runtime. It's not implemented yet!".to_string()),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            }
+            InternalType::VectorType(vector_type) => match vector_type.size_of() {
+                Some(size) => size,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Trying to get size of an unsized vector in compilation time. This is not a valid instruction and size of it is gonna be determined in runtime. It's not implemented yet!".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
+            InternalType::StringType(string_type) => string_type.struct_type.size_of().unwrap(),
+            InternalType::VoidType(_) => self.build_integer_literal(0),
+            InternalType::PointerType(typed_pointer_type) => typed_pointer_type.ptr_type.size_of(),
+            InternalType::ConstType(internal_type) => {
+                self.build_sizeof_operator_internal(*internal_type, loc, span_end)
+            }
+            InternalType::Lvalue(lvalue_type) => lvalue_type.ptr_type.size_of(),
+            InternalType::ArrayType(_, array_type) => match array_type.size_of() {
+                Some(size) => size,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Trying to get size of an unsized array in compilation time. This is not a valid instruction and size of it is gonna be determined in runtime. It's not implemented yet!".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
+        }
+    }
+
+    pub(crate) fn build_sizeof_operator(
+        &self,
+        scope: ScopeRef<'ctx>,
+        expr: Expression,
+        loc: Location,
+        span_end: usize,
+    ) -> InternalValue<'ctx> {
+        let internal_value = self.internal_value_as_rvalue(self.build_expr(scope, expr));
+        let internal_type = internal_value.get_type(self.string_type.clone());
+        let size_int_value = self.build_sizeof_operator_internal(internal_type, loc, span_end);
+        InternalValue::IntValue(size_int_value, InternalType::IntType(size_int_value.get_type()))
+    }
+
     pub(crate) fn build_prefix_expr(
         &self,
         scope: ScopeRef<'ctx>,
@@ -838,6 +937,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone()));
 
         match unary_expression.operator.kind {
+            TokenKind::SizeOf => self.build_sizeof_operator(
+                Rc::clone(&scope),
+                *unary_expression.operand,
+                unary_expression.loc.clone(),
+                unary_expression.span.end,
+            ),
             TokenKind::Minus => match operand {
                 InternalValue::IntValue(int_value, _) => InternalValue::IntValue(
                     self.builder.build_int_neg(int_value, "prefix_iminus").unwrap(),

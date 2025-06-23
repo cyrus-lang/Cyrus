@@ -155,7 +155,7 @@ impl<'a> Parser<'a> {
                 Expression::Literal(Literal::Bool(value))
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
-            TokenKind::Minus | TokenKind::Bang => {
+            TokenKind::Minus | TokenKind::Bang | TokenKind::SizeOf => {
                 let start = self.current_token.span.start;
                 let prefix_operator = self.current_token.clone();
                 self.next_token(); // consume the prefix operator
