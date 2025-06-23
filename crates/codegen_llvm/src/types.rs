@@ -517,7 +517,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(
-                        "Cannot build array with dynamic memory management. Consider to use vector instead."
+                        "Cannot build array with unspecified size. Consider to use vector if you need a dynamic array."
                             .to_string(),
                     ),
                     location: Some(DiagLoc {

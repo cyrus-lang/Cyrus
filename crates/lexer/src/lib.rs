@@ -763,6 +763,7 @@ impl Lexer {
             "inline" => TokenKind::Inline,
             "public" => TokenKind::Public,
             "const" => TokenKind::Const,
+            "sizeof" => TokenKind::SizeOf,
             _ => TokenKind::Identifier {
                 name: ident.to_string(),
             },
