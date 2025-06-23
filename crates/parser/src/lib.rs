@@ -113,14 +113,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Returns the current location (line and column) of the lexer.
-    pub fn current_location(&mut self) -> Location {
-        Location {
-            line: self.lexer.line,
-            column: self.lexer.column,
-        }
-    }
-
     pub fn next_token(&mut self) -> Token {
         self.current_token = self.peek_token.clone();
         self.peek_token = self.lexer.next_token();
@@ -145,7 +137,7 @@ impl<'a> Parser<'a> {
         }
 
         Err(CompileTimeError {
-            location: self.current_location(),
+            location: self.peek_token.loc.clone(),
             etype: ParserErrorType::ExpectedToken(token_kind),
             file_name: Some(self.lexer.file_name.clone()),
             source_content: Box::new(self.lexer.input.clone()),
@@ -163,7 +155,7 @@ impl<'a> Parser<'a> {
         }
 
         Err(CompileTimeError {
-            location: self.current_location(),
+            location: self.current_token.loc.clone(),
             etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), token_kind),
             file_name: Some(self.lexer.file_name.clone()),
             source_content: Box::new(self.lexer.input.clone()),

@@ -2,21 +2,5 @@ extern fn printf(format: const char*, ...);
 extern fn exit(status: int);
 
 fn main() {
-    for {
-        printf("hello\n");
-
-        for (#i = 0; i <= 6; i++) {
-            if (i == 2) {
-                printf("i -> 3\n");
-            } else {
-                printf("exec once\n");
-            }
-
-            break;
-
-            printf("should not be executed\n");
-        }
-
-        break;
-    }
+    printf("Hello world\n");
 }

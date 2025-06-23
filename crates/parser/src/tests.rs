@@ -308,7 +308,7 @@ mod tests {
                     cast_as.target_type,
                     TypeSpecifier::TypeToken(Token {
                         kind: TokenKind::Float64,
-                        span: Span::new(1, 8)
+                        span: Span::new(1, 8),
                     })
                 );
             } else {

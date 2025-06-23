@@ -53,6 +53,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_enum_field(&mut self) -> Result<EnumField, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         let variant_name = self.parse_identifier()?;
         self.next_token();
@@ -72,7 +73,7 @@ impl<'a> Parser<'a> {
             loop {
                 if self.current_token_is(TokenKind::RightParen) {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: loc,
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -107,6 +108,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_enum(&mut self, storage_class: Option<StorageClass>) -> Result<Statement, ParseError> {
+        let loc = self.current_token.loc.clone();
         let storage_class = storage_class.unwrap_or(StorageClass::Inline);
 
         self.next_token(); // parse enum keyword
@@ -123,7 +125,7 @@ impl<'a> Parser<'a> {
                 name: enum_name,
                 variants: enum_fields,
                 storage_class,
-                loc: self.current_location(),
+                loc,
             }));
         }
 
@@ -147,8 +149,6 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        let loc = self.current_location();
-
         self.expect_current(TokenKind::RightBrace)?;
 
         Ok(Statement::Enum(Enum {
@@ -160,7 +160,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_struct(&mut self, storage_class: Option<StorageClass>) -> Result<Statement, ParseError> {
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
         let struct_start = self.current_token.span.start.clone();
 
         let storage_class = storage_class.unwrap_or(StorageClass::Internal);
@@ -182,7 +182,7 @@ impl<'a> Parser<'a> {
                     }
                     TokenKind::EOF => {
                         return Err(CompileTimeError {
-                            location: self.current_location(),
+                            location: loc,
                             etype: ParserErrorType::MissingOpeningBrace,
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
@@ -195,7 +195,7 @@ impl<'a> Parser<'a> {
                         inherits.push(Identifier {
                             name: inherit_struct,
                             span: self.current_token.span.clone(),
-                            loc: self.current_location(),
+                            loc: loc.clone(),
                         });
                     }
                     TokenKind::Comma => {
@@ -204,7 +204,7 @@ impl<'a> Parser<'a> {
                     }
                     _ => {
                         return Err(CompileTimeError {
-                            location: self.current_location(),
+                            location: loc,
                             etype: ParserErrorType::ExpectedIdentifier,
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
@@ -228,7 +228,7 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::EOF => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: self.current_token.loc.clone(),
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -255,6 +255,8 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::Identifier { name: field_name } => {
                     let start = self.current_token.span.start;
+                    let loc = self.current_token.loc.clone();
+
                     self.next_token(); // consume identifier
 
                     self.expect_current(TokenKind::Colon)?;
@@ -265,7 +267,7 @@ impl<'a> Parser<'a> {
                     let field = Field {
                         name: field_name,
                         ty: type_token,
-                        loc: self.current_location(),
+                        loc,
                         span: Span {
                             start,
                             end: self.current_token.span.end,
@@ -277,7 +279,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: self.current_token.loc.clone(),
                         etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -304,11 +306,12 @@ impl<'a> Parser<'a> {
 
     pub fn parse_break(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         self.next_token();
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: loc,
                 etype: ParserErrorType::MissingSemicolon,
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
@@ -317,7 +320,7 @@ impl<'a> Parser<'a> {
             });
         } else {
             Ok(Statement::Break(Break {
-                loc: self.current_location(),
+                loc,
                 span: Span::new(start, self.current_token.span.end),
             }))
         }
@@ -325,11 +328,12 @@ impl<'a> Parser<'a> {
 
     pub fn parse_continue(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         self.next_token();
         if !self.current_token_is(TokenKind::Semicolon) {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: loc,
                 etype: ParserErrorType::MissingSemicolon,
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
@@ -338,7 +342,7 @@ impl<'a> Parser<'a> {
             });
         } else {
             Ok(Statement::Continue(Continue {
-                loc: self.current_location(),
+                loc,
                 span: Span::new(start, self.current_token.span.end),
             }))
         }
@@ -346,6 +350,8 @@ impl<'a> Parser<'a> {
 
     pub fn parse_import(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
+
         self.next_token(); // consume import keyword
 
         let mut paths: Vec<ModulePath> = Vec::new();
@@ -360,7 +366,7 @@ impl<'a> Parser<'a> {
 
             if !self.current_token_is(TokenKind::RightParen) {
                 return Err(CompileTimeError {
-                    location: self.current_location(),
+                    location: loc,
                     etype: ParserErrorType::MissingClosingParen,
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
@@ -378,12 +384,13 @@ impl<'a> Parser<'a> {
                 start,
                 end: self.current_token.span.end,
             },
-            loc: self.current_location(),
+            loc,
         }));
     }
 
     pub fn parse_func_params(&mut self) -> Result<FuncParams, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         self.expect_current(TokenKind::LeftParen)?;
 
@@ -397,7 +404,7 @@ impl<'a> Parser<'a> {
 
                     if self.current_token_is(TokenKind::Comma) {
                         return Err(CompileTimeError {
-                            location: self.current_location(),
+                            location: self.current_token.loc.clone(),
                             etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
                             file_name: Some(self.lexer.file_name.clone()),
                             source_content: Box::new(self.lexer.input.clone()),
@@ -410,6 +417,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 TokenKind::Identifier { name } => {
+                    let param_loc = self.current_token.loc.clone();
                     let identifier = self.parse_identifier()?;
                     self.next_token(); // consume the identifier
 
@@ -449,7 +457,7 @@ impl<'a> Parser<'a> {
                         identifier: Identifier {
                             name: name,
                             span: self.current_token.span.clone(),
-                            loc: self.current_location(),
+                            loc: param_loc.clone(),
                         },
                         ty: var_type,
                         default_value: default_value,
@@ -457,7 +465,7 @@ impl<'a> Parser<'a> {
                             start: start,
                             end: self.current_token.span.end,
                         },
-                        loc: self.current_location(),
+                        loc: param_loc,
                     });
 
                     // after reading
@@ -470,7 +478,7 @@ impl<'a> Parser<'a> {
                         }
                         _ => {
                             return Err(CompileTimeError {
-                                location: self.current_location(),
+                                location: loc,
                                 etype: ParserErrorType::MissingComma,
                                 file_name: Some(self.lexer.file_name.clone()),
                                 source_content: Box::new(self.lexer.input.clone()),
@@ -482,7 +490,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: loc,
                         etype: ParserErrorType::ExpectedIdentifier,
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -500,6 +508,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_for_loop_body(&mut self) -> Result<Box<BlockStatement>, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         let body: Box<BlockStatement>;
         if self.current_token_is(TokenKind::LeftBrace) {
@@ -510,7 +519,7 @@ impl<'a> Parser<'a> {
             }
         } else {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: loc,
                 etype: ParserErrorType::MissingOpeningBrace,
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
@@ -523,6 +532,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_for_loop(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         self.next_token(); // consume for token
 
@@ -537,7 +547,7 @@ impl<'a> Parser<'a> {
                 }
             } else {
                 return Err(CompileTimeError {
-                    location: self.current_location(),
+                    location: loc,
                     etype: ParserErrorType::MissingOpeningBrace,
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
@@ -555,7 +565,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc: self.current_location(),
+                loc,
             }));
         }
 
@@ -583,7 +593,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc: self.current_location(),
+                loc
             }));
         }
 
@@ -609,12 +619,13 @@ impl<'a> Parser<'a> {
                 start,
                 end: self.current_token.span.end,
             },
-            loc: self.current_location(),
+            loc,
         }))
     }
 
     pub fn parse_variable(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
 
         self.next_token(); // consume sharp token
 
@@ -630,7 +641,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc: self.current_location(),
+                loc,
             }));
         }
 
@@ -651,7 +662,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc: self.current_location(),
+                loc,
             }));
         }
         self.expect_current(TokenKind::Assign)?;
@@ -664,13 +675,13 @@ impl<'a> Parser<'a> {
             expr: Some(expr),
             span: Span { start, end: span.end },
             ty: variable_type,
-            loc: self.current_location(),
+            loc,
         }))
     }
 
     pub fn parse_func(&mut self, storage_class: Option<StorageClass>) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
 
         let storage_class = storage_class.unwrap_or(StorageClass::Internal);
 
@@ -751,7 +762,7 @@ impl<'a> Parser<'a> {
                 self.next_token();
             } else if self.peek_token_is(TokenKind::LeftBrace) {
                 return Err(CompileTimeError {
-                    location: self.current_location(),
+                    location: loc,
                     etype: ParserErrorType::InvalidToken(self.peek_token.kind.clone()),
                     file_name: Some(self.lexer.file_name.clone()),
                     source_content: Box::new(self.lexer.input.clone()),
@@ -792,7 +803,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_return(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
-        let loc = self.current_location();
+        let loc = self.current_token.loc.clone();
 
         self.next_token(); // consume return token
 
@@ -811,6 +822,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_block_statement(&mut self) -> Result<BlockStatement, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut block_statement: Vec<Statement> = Vec::new();
@@ -823,7 +835,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc: self.current_location(),
+                loc,
             });
         }
 
@@ -854,12 +866,14 @@ impl<'a> Parser<'a> {
         Ok(BlockStatement {
             exprs: block_statement,
             span: Span { start, end },
-            loc: self.current_location(),
+            loc,
         })
     }
 
     pub fn parse_if(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
+
         let mut branches: Vec<If> = Vec::new();
         let mut alternate: Option<Box<BlockStatement>> = None;
 
@@ -867,7 +881,7 @@ impl<'a> Parser<'a> {
 
         if !self.current_token_is(TokenKind::LeftParen) {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: loc,
                 etype: ParserErrorType::MissingOpeningParen,
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
@@ -913,7 +927,7 @@ impl<'a> Parser<'a> {
                     branches: vec![],
                     alternate: None,
                     span: Span { start, end },
-                    loc: self.current_location(),
+                    loc: loc.clone(),
                 });
             } else {
                 // parse alternate
@@ -921,7 +935,7 @@ impl<'a> Parser<'a> {
 
                 if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
                     return Err(CompileTimeError {
-                        location: self.current_location(),
+                        location: loc,
                         etype: ParserErrorType::MissingClosingBrace,
                         file_name: Some(self.lexer.file_name.clone()),
                         source_content: Box::new(self.lexer.input.clone()),
@@ -934,7 +948,7 @@ impl<'a> Parser<'a> {
 
         if !self.current_token_is(TokenKind::RightBrace) {
             return Err(CompileTimeError {
-                location: self.current_location(),
+                location: loc,
                 etype: ParserErrorType::MissingClosingBrace,
                 file_name: Some(self.lexer.file_name.clone()),
                 source_content: Box::new(self.lexer.input.clone()),
@@ -951,7 +965,7 @@ impl<'a> Parser<'a> {
             branches,
             alternate,
             span: Span { start, end },
-            loc: self.current_location(),
+            loc,
         }))
     }
 }
