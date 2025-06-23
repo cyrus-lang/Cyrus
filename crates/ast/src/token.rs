@@ -5,6 +5,7 @@ use std::fmt;
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
+    pub loc: Location
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -16,8 +16,8 @@ pub struct Lexer {
     ch: char,
     pub input: String,
     pub file_name: String,
-    pub line: usize,
-    pub column: usize,
+    line: usize,
+    column: usize,
 }
 
 impl Lexer {
@@ -66,6 +66,8 @@ impl Lexer {
         self.skip_whitespace();
         self.skip_comments();
 
+        let loc = Location::new(self.line, self.column);
+
         if self.ch == '\0' {
             return Token {
                 kind: TokenKind::EOF,
@@ -73,11 +75,15 @@ impl Lexer {
                     start: self.pos,
                     end: self.pos,
                 },
+                loc: Location::new(self.line, self.column),
             };
         }
 
         let token_kind: TokenKind = match self.ch {
-            ' ' => return self.next_token(),
+            ' ' => {
+                self.next_token(); // consume whitespace
+                return self.next_token(); // recurse to get the next non-whitespace token
+            }
             '`' => TokenKind::BackTick,
             '+' => {
                 if self.peek_char() == '+' {
@@ -89,6 +95,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 } else {
                     self.read_char();
@@ -98,6 +105,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 }
             }
@@ -111,6 +119,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 } else {
                     self.read_char();
@@ -120,6 +129,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 }
             }
@@ -142,6 +152,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 } else {
                     return Token {
@@ -150,6 +161,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 }
             }
@@ -174,6 +186,7 @@ impl Lexer {
                         start: self.pos - 1,
                         end: self.pos - 1,
                     },
+                    loc
                 };
             }
             '#' => TokenKind::Hashtag,
@@ -189,6 +202,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 } else {
                     self.read_char(); // consume current equal sign
@@ -198,6 +212,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 }
             }
@@ -211,6 +226,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 } else {
                     self.read_char(); // consume current equal sign
@@ -220,6 +236,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 }
             }
@@ -233,6 +250,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 } else {
                     self.read_char();
@@ -242,6 +260,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 }
             }
@@ -255,6 +274,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 } else {
                     self.read_char();
@@ -264,6 +284,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 }
             }
@@ -277,6 +298,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 } else {
                     self.read_char();
@@ -286,6 +308,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 }
             }
@@ -299,6 +322,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 } else {
                     self.read_char();
@@ -308,6 +332,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
+                        loc
                     };
                 }
             }
@@ -339,6 +364,7 @@ impl Lexer {
                 start: self.pos - 1,
                 end: self.pos - 1,
             },
+            loc
         }
     }
 
@@ -386,6 +412,7 @@ impl Lexer {
             Token {
                 kind: TokenKind::Literal(Literal::Char(value)),
                 span,
+                loc: Location::new(self.line, self.column),
             }
         } else {
             CompileTimeError {
@@ -446,6 +473,7 @@ impl Lexer {
         Token {
             kind: TokenKind::Literal(Literal::String(escape_string(final_string))),
             span,
+            loc: Location::new(self.line, self.column),
         }
     }
 
@@ -466,6 +494,7 @@ impl Lexer {
         Token {
             kind: token_kind,
             span: Span { start, end },
+            loc: Location::new(self.line, self.column),
         }
     }
 
@@ -595,6 +624,7 @@ impl Lexer {
         Token {
             kind: token_kind,
             span: Span { start, end: self.pos },
+            loc: Location::new(self.line, self.column),
         }
     }
 
@@ -762,8 +792,8 @@ pub fn new_lexer_debugger(input: String) {
         }
 
         println!(
-            "{:?} Span({}, {}) Line({})",
-            token.kind, token.span.start, token.span.end, lexer.line
+            "{:?} Span({}, {}) Line({}) Column({})",
+            token.kind, token.span.start, token.span.end, token.loc.line, token.loc.column
         );
     }
 }
