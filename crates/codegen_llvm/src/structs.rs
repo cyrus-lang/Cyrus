@@ -398,6 +398,27 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         match method_metadata {
             Some((func_decl, func_value)) => {
+                let func_basic_blocks = func_value.get_basic_blocks();
+                let current_block =
+                    self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
+
+                if !func_basic_blocks.contains(&current_block) && func_decl.storage_class != StorageClass::Public {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Method '{}' is defined internally for the struct and cannot be called directly from outside. It is intended for internal use only.",
+                            method_call.method_name.name.clone()
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: method_call.method_name.loc.line,
+                            column: method_call.method_name.loc.column,
+                            length: method_call.method_name.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
                 let arguments = &self.build_arguments(
                     Rc::clone(&scope),
                     method_call.arguments.clone(),
