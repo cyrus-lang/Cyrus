@@ -45,19 +45,93 @@ pub struct UnnamedStructValueMetadata<'a> {
 pub type StructTable<'a> = HashMap<String, StructMetadata<'a>>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_struct_field_types(&self, fields: Vec<Field>) -> Vec<BasicTypeEnum> {
+    pub(crate) fn is_struct_using_uncompleted_type(
+        &self,
+        struct_name: String,
+        field_type_specifier: TypeSpecifier,
+    ) -> bool {
+        match field_type_specifier.clone() {
+            TypeSpecifier::Identifier(identifier) => identifier.name == struct_name,
+            TypeSpecifier::Const(inner_type_specifier) => {
+                self.is_struct_using_uncompleted_type(struct_name, *inner_type_specifier)
+            }
+            TypeSpecifier::Array(array_type_specifier) => {
+                self.is_struct_using_uncompleted_type(struct_name, *array_type_specifier.element_type)
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn build_struct_field_types(&self, struct_name: String, fields: Vec<Field>) -> Vec<BasicTypeEnum> {
         fields
             .iter()
             .map(|field| {
+                if field.name == "this" {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("The field name 'this' is a reserved keyword and cannot be used. Please choose a different field name.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: field.loc.line,
+                            column: field.loc.column,
+                            length: field.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
+                if self.is_struct_using_uncompleted_type(struct_name.clone(), field.ty.clone()) {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Field has incomplete type '{}'. Consider to use '{}*' instead",
+                            struct_name, struct_name,
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: field.loc.line,
+                            column: field.loc.column,
+                            length: field.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
                 self.build_type(field.ty.clone(), field.loc.clone(), field.span.end)
                     .to_basic_type(self.context.ptr_type(AddressSpace::default()))
             })
             .collect()
     }
 
-    pub(crate) fn build_struct(&self, struct_statement: Struct) -> StructType<'ctx> {
-        let field_types = self.build_struct_field_types(struct_statement.fields.clone());
-        let struct_type = self.context.struct_type(&field_types, false);
+    pub(crate) fn build_global_struct(&mut self, struct_statement: Struct) {
+        let opaque_struct = self
+            .context
+            .opaque_struct_type(&format!("{}.{}", self.module_name, struct_statement.name));
+
+        let struct_methods = self.build_struct_methods(struct_statement.name.clone(), struct_statement.methods.clone());
+
+        self.struct_table.insert(
+            struct_statement.name.clone(),
+            StructMetadata {
+                struct_name: ModuleImport {
+                    segments: vec![ModuleSegment::SubModule(Identifier {
+                        name: struct_statement.name.clone(),
+                        span: struct_statement.span.clone(),
+                        loc: struct_statement.loc.clone(),
+                    })],
+                    span: struct_statement.span.clone(),
+                    loc: struct_statement.loc.clone(),
+                },
+                struct_type: opaque_struct,
+                fields: struct_statement.fields.clone(),
+                methods: struct_methods,
+                inherits: struct_statement.inherits.clone(),
+                storage_class: struct_statement.storage_class.clone(),
+            },
+        );
+
+        let field_types = self.build_struct_field_types(struct_statement.name.clone(), struct_statement.fields.clone());
+
         if !matches!(
             struct_statement.storage_class,
             StorageClass::Public | StorageClass::Internal
@@ -74,32 +148,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         }
-        struct_type
-    }
 
-    pub(crate) fn build_global_struct(&mut self, struct_statement: Struct) {
-        let struct_type = self.build_struct(struct_statement.clone());
-        let struct_methods = self.build_struct_methods(struct_statement.name.clone(), struct_statement.methods);
-
-        self.struct_table.insert(
-            struct_statement.name.clone(),
-            StructMetadata {
-                struct_name: ModuleImport {
-                    segments: vec![ModuleSegment::SubModule(Identifier {
-                        name: struct_statement.name,
-                        span: struct_statement.span.clone(),
-                        loc: struct_statement.loc.clone(),
-                    })],
-                    span: struct_statement.span.clone(),
-                    loc: struct_statement.loc.clone(),
-                },
-                struct_type,
-                fields: struct_statement.fields,
-                methods: struct_methods,
-                inherits: struct_statement.inherits,
-                storage_class: struct_statement.storage_class,
-            },
-        );
+        opaque_struct.set_body(&field_types, false);
     }
 
     pub(crate) fn build_struct_methods(
@@ -356,6 +406,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     method_call.loc.clone(),
                     method_call.span.end,
                 );
+
+                // ----
+                // TODO Add this object to arguments of the method_call!!!
+                // Feature: this modifier
+                // ----
+                // ----
 
                 self.check_func_args_count_mismatch(
                     func_decl.name.clone(),

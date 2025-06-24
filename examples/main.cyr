@@ -2,13 +2,13 @@ extern fn printf(format: const char*, ...);
 extern fn exit(status: int);
 
 struct Person {
-    extern fn display(name: string) {
-        printf("Hello, %s\n", name);
-    }
+    // this: Person*;
+
+    // public fn display(name: string) {
+    //     printf("Hello, %s\n", name);
+    // }
 }
 
 fn main() {
-    #user = Person { };
-
-    user.display("Taha");
+    // #user: Person;
 }
