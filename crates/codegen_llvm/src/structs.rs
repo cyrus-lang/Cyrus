@@ -2,7 +2,7 @@ use crate::{
     CodeGenLLVM, InternalType, InternalValue,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     scope::ScopeRef,
-    types::DefinedType,
+    types::{DefinedType, LvalueType},
     values::Lvalue,
 };
 use ast::{
@@ -15,6 +15,7 @@ use ast::{
 };
 use inkwell::{
     AddressSpace,
+    llvm_sys::prelude::LLVMTypeRef,
     types::{BasicTypeEnum, StructType},
     values::{AggregateValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
@@ -125,38 +126,43 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .context
             .opaque_struct_type(&format!("{}.{}", self.module_name, struct_statement.name));
 
-        self.struct_table.insert(
-            struct_statement.name.clone(),
-            StructMetadata {
-                struct_name: ModuleImport {
-                    segments: vec![ModuleSegment::SubModule(Identifier {
-                        name: struct_statement.name.clone(),
-                        span: struct_statement.span.clone(),
-                        loc: struct_statement.loc.clone(),
-                    })],
+        let struct_metadata = StructMetadata {
+            struct_name: ModuleImport {
+                segments: vec![ModuleSegment::SubModule(Identifier {
+                    name: struct_statement.name.clone(),
                     span: struct_statement.span.clone(),
                     loc: struct_statement.loc.clone(),
-                },
-                struct_type: opaque_struct,
-                fields: struct_statement.fields.clone(),
-                methods: Vec::new(),
-                inherits: struct_statement.inherits.clone(),
-                storage_class: struct_statement.storage_class.clone(),
+                })],
+                span: struct_statement.span.clone(),
+                loc: struct_statement.loc.clone(),
             },
-        );
+            struct_type: opaque_struct,
+            fields: struct_statement.fields.clone(),
+            methods: Vec::new(),
+            inherits: struct_statement.inherits.clone(),
+            storage_class: struct_statement.storage_class.clone(),
+        };
+
+        self.struct_table
+            .insert(struct_statement.name.clone(), struct_metadata.clone());
 
         let field_types = self.build_struct_field_types(struct_statement.name.clone(), struct_statement.fields.clone());
         opaque_struct.set_body(&field_types, false);
 
-        let struct_methods = self.build_struct_methods(struct_statement.name.clone(), struct_statement.methods.clone());
+        let struct_methods = self.build_struct_methods(
+            struct_metadata,
+            struct_statement.name.clone(),
+            struct_statement.methods.clone(),
+        );
 
-        let struct_metadata = self.struct_table.get_mut(&struct_statement.name.clone()).unwrap();
-        struct_metadata.methods = struct_methods;
-        struct_metadata.struct_type = opaque_struct;
+        let new_struct_metadata = self.struct_table.get_mut(&struct_statement.name.clone()).unwrap();
+        new_struct_metadata.methods = struct_methods;
+        new_struct_metadata.struct_type = opaque_struct;
     }
 
     pub(crate) fn build_struct_methods(
         &mut self,
+        struct_metadata: StructMetadata<'ctx>,
         struct_name: String,
         methods: Vec<FuncDef>,
     ) -> Vec<(FuncDecl, FunctionValue<'ctx>)> {
@@ -165,27 +171,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         for mut func_def in methods {
             let method_name = func_def.name.clone();
             let method_underlying_name = format!("{}.{}", struct_name.clone(), method_name);
+            func_def.name = method_underlying_name.clone();
 
-            // push this_modifier param
+            // this_modifier
+            let mut func_param_types: Vec<LLVMTypeRef> = self.build_func_params(
+                func_def.name.clone(),
+                func_def.loc.clone(),
+                func_def.span.end,
+                func_def.params.list.clone(),
+            );
+
+            func_param_types.insert(
+                0,
+                InternalType::Lvalue(Box::new(LvalueType {
+                    ptr_type: self.context.ptr_type(AddressSpace::default()),
+                    pointee_ty: InternalType::StructType(struct_metadata.clone()),
+                }))
+                .as_type_ref(),
+            );
+
             let this_modifier = FuncParam {
                 identifier: Identifier {
                     name: "this".to_string(),
                     loc: func_def.loc.clone(),
                     span: func_def.span.clone(),
                 },
-                ty: Some(TypeSpecifier::Identifier(Identifier {
-                    name: struct_name.clone(),
-                    loc: func_def.loc.clone(),
-                    span: func_def.span.clone(),
-                })),
+                ty: Some(TypeSpecifier::Dereference(Box::new(TypeSpecifier::Identifier(
+                    Identifier {
+                        name: struct_name.clone(),
+                        loc: func_def.loc.clone(),
+                        span: func_def.span.clone(),
+                    },
+                )))),
                 default_value: None,
                 loc: func_def.loc.clone(),
                 span: func_def.span.clone(),
             };
             func_def.params.list.insert(0, this_modifier);
 
-            func_def.name = method_underlying_name.clone();
-            let func_value = self.build_func_def(func_def.clone(), false);
+            let func_value = self.build_func_def(func_def.clone(), func_param_types, false);
 
             let func_decl = FuncDecl {
                 name: method_underlying_name,
@@ -379,9 +403,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_method_call(&self, scope: ScopeRef<'ctx>, method_call: MethodCall) -> InternalValue<'ctx> {
-        let operand = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *method_call.operand.clone()));
+        let operand = self.build_expr(Rc::clone(&scope), *method_call.operand.clone());
+        let operand_rvalue = self.internal_value_as_rvalue(operand.clone());
 
-        let struct_metadata = match operand.clone() {
+        let struct_metadata = match operand_rvalue.clone() {
             InternalValue::StructValue(_, internal_type) => match internal_type {
                 InternalType::StructType(struct_metadata) => struct_metadata,
                 _ => unreachable!(),
@@ -541,7 +566,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::PointerValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot access fields on a pointer_value.".to_string()),
+                    kind: DiagKind::Custom("Cannot access fields on a pointer value. Consider to use fat arrow instead to dereference before accessing the field.".to_string()),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
                         line: field_access.loc.line,

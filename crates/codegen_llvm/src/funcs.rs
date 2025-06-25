@@ -89,14 +89,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl) -> FunctionValue<'ctx> {
+    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl, mut func_param_types: Vec<LLVMTypeRef>) -> FunctionValue<'ctx> {
         let is_var_args = func_decl.params.variadic.is_some();
-        let mut param_types = self.build_func_params(
-            func_decl.name.clone(),
-            func_decl.loc.clone(),
-            func_decl.span.end,
-            func_decl.params.list.clone(),
-        );
 
         let return_type = self.build_type(
             func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
@@ -111,8 +105,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let fn_type = unsafe {
             FunctionType::new(LLVMFunctionType(
                 return_type.as_type_ref(),
-                param_types.as_mut_ptr(),
-                param_types.len() as u32,
+                func_param_types.as_mut_ptr(),
+                func_param_types.len() as u32,
                 is_var_args as i32,
             ))
         };
@@ -140,7 +134,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_ptr
     }
 
-    pub(crate) fn build_func_def(&mut self, func_def: FuncDef, is_entry_point: bool) -> FunctionValue<'ctx> {
+    pub(crate) fn build_func_def(&mut self, func_def: FuncDef, mut func_param_types: Vec<LLVMTypeRef>, is_entry_point: bool) -> FunctionValue<'ctx> {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
 
         let func_decl = FuncDecl {
@@ -154,12 +148,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let is_var_args = func_def.params.variadic.is_some();
-        let mut param_types = self.build_func_params(
-            func_def.name.clone(),
-            func_def.loc.clone(),
-            func_def.span.end,
-            func_def.params.list.clone(),
-        );
 
         let return_type = self.build_type(
             TypeSpecifier::TypeToken(Token {
@@ -174,8 +162,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let fn_type = unsafe {
             FunctionType::new(LLVMFunctionType(
                 return_type.as_type_ref(),
-                param_types.as_mut_ptr(),
-                param_types.len() as u32,
+                func_param_types.as_mut_ptr(),
+                func_param_types.len() as u32,
                 is_var_args as i32,
             ))
         };

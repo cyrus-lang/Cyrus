@@ -290,7 +290,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_entry_point(&mut self) {
         if let Some(main_func) = self.entry_point.clone() {
-            self.build_func_def(main_func, true);
+            let func_param_types: Vec<*mut inkwell::llvm_sys::LLVMType> = self.build_func_params(
+                main_func.name.clone(),
+                main_func.loc.clone(),
+                main_func.span.end,
+                main_func.params.list.clone(),
+            );
+
+            self.build_func_def(main_func, func_param_types, true);
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
