@@ -41,7 +41,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_func_params(
-        &mut self,
+        &self,
         func_name: String,
         func_loc: Location,
         span_end: usize,
@@ -499,6 +499,42 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_name.clone(),
                     arguments_length.try_into().unwrap(),
                     func_decl.params.list.len().try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
+    pub(crate) fn check_method_args_count_mismatch(&self, func_name: String, func_decl: FuncDecl, arguments_length: usize, loc: Location, span_end: usize) {
+        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != arguments_length {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    arguments_length.try_into().unwrap(),
+                    (func_decl.params.list.len() - 1).try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        } else if func_decl.params.variadic.is_some() && arguments_length < func_decl.params.list.len() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    arguments_length.try_into().unwrap(),
+                    (func_decl.params.list.len() - 1).try_into().unwrap(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),

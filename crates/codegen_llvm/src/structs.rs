@@ -7,8 +7,8 @@ use crate::{
 };
 use ast::{
     ast::{
-        Field, FieldAccess, FuncDecl, FuncDef, Identifier, MethodCall, ModuleImport, ModuleSegment, StorageClass,
-        Struct, StructInit, TypeSpecifier, UnnamedStructType, UnnamedStructValue,
+        Field, FieldAccess, FuncDecl, FuncDef, FuncParam, Identifier, MethodCall, ModuleImport, ModuleSegment,
+        StorageClass, Struct, StructInit, TypeSpecifier, UnnamedStructType, UnnamedStructValue,
     },
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
@@ -104,34 +104,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_global_struct(&mut self, struct_statement: Struct) {
-        let opaque_struct = self
-            .context
-            .opaque_struct_type(&format!("{}.{}", self.module_name, struct_statement.name));
-
-        let struct_methods = self.build_struct_methods(struct_statement.name.clone(), struct_statement.methods.clone());
-
-        self.struct_table.insert(
-            struct_statement.name.clone(),
-            StructMetadata {
-                struct_name: ModuleImport {
-                    segments: vec![ModuleSegment::SubModule(Identifier {
-                        name: struct_statement.name.clone(),
-                        span: struct_statement.span.clone(),
-                        loc: struct_statement.loc.clone(),
-                    })],
-                    span: struct_statement.span.clone(),
-                    loc: struct_statement.loc.clone(),
-                },
-                struct_type: opaque_struct,
-                fields: struct_statement.fields.clone(),
-                methods: struct_methods,
-                inherits: struct_statement.inherits.clone(),
-                storage_class: struct_statement.storage_class.clone(),
-            },
-        );
-
-        let field_types = self.build_struct_field_types(struct_statement.name.clone(), struct_statement.fields.clone());
-
         if !matches!(
             struct_statement.storage_class,
             StorageClass::Public | StorageClass::Internal
@@ -149,7 +121,38 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
+        let opaque_struct = self
+            .context
+            .opaque_struct_type(&format!("{}.{}", self.module_name, struct_statement.name));
+
+        self.struct_table.insert(
+            struct_statement.name.clone(),
+            StructMetadata {
+                struct_name: ModuleImport {
+                    segments: vec![ModuleSegment::SubModule(Identifier {
+                        name: struct_statement.name.clone(),
+                        span: struct_statement.span.clone(),
+                        loc: struct_statement.loc.clone(),
+                    })],
+                    span: struct_statement.span.clone(),
+                    loc: struct_statement.loc.clone(),
+                },
+                struct_type: opaque_struct,
+                fields: struct_statement.fields.clone(),
+                methods: Vec::new(),
+                inherits: struct_statement.inherits.clone(),
+                storage_class: struct_statement.storage_class.clone(),
+            },
+        );
+
+        let field_types = self.build_struct_field_types(struct_statement.name.clone(), struct_statement.fields.clone());
         opaque_struct.set_body(&field_types, false);
+
+        let struct_methods = self.build_struct_methods(struct_statement.name.clone(), struct_statement.methods.clone());
+
+        let struct_metadata = self.struct_table.get_mut(&struct_statement.name.clone()).unwrap();
+        struct_metadata.methods = struct_methods;
+        struct_metadata.struct_type = opaque_struct;
     }
 
     pub(crate) fn build_struct_methods(
@@ -161,7 +164,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         for mut func_def in methods {
             let method_name = func_def.name.clone();
-            let method_underlying_name = format!("{}.{}", struct_name, method_name);
+            let method_underlying_name = format!("{}.{}", struct_name.clone(), method_name);
+
+            // push this_modifier param
+            let this_modifier = FuncParam {
+                identifier: Identifier {
+                    name: "this".to_string(),
+                    loc: func_def.loc.clone(),
+                    span: func_def.span.clone(),
+                },
+                ty: Some(TypeSpecifier::Identifier(Identifier {
+                    name: struct_name.clone(),
+                    loc: func_def.loc.clone(),
+                    span: func_def.span.clone(),
+                })),
+                default_value: None,
+                loc: func_def.loc.clone(),
+                span: func_def.span.clone(),
+            };
+            func_def.params.list.insert(0, this_modifier);
 
             func_def.name = method_underlying_name.clone();
             let func_value = self.build_func_def(func_def.clone(), false);
@@ -360,7 +381,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_method_call(&self, scope: ScopeRef<'ctx>, method_call: MethodCall) -> InternalValue<'ctx> {
         let operand = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *method_call.operand.clone()));
 
-        let struct_metadata = match operand {
+        let struct_metadata = match operand.clone() {
             InternalValue::StructValue(_, internal_type) => match internal_type {
                 InternalType::StructType(struct_metadata) => struct_metadata,
                 _ => unreachable!(),
@@ -419,30 +440,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                let arguments = &self.build_arguments(
+                // set this_modifier value as first argument
+                let mut arguments: Vec<inkwell::values::BasicMetadataValueEnum<'_>> = vec![operand.to_basic_metadata()];
+
+                let mut func_params_without_this_modifier = func_decl.params.clone();
+                func_params_without_this_modifier.list.remove(0);
+
+                arguments.append(&mut self.build_arguments(
                     Rc::clone(&scope),
                     method_call.arguments.clone(),
-                    Some(func_decl.params.clone()),
+                    Some(func_params_without_this_modifier),
                     func_decl.renamed_as.clone().unwrap_or(func_decl.name.clone()),
                     method_call.loc.clone(),
                     method_call.span.end,
-                );
+                ));
 
-                // ----
-                // TODO Add this object to arguments of the method_call!!!
-                // Feature: this modifier
-                // ----
-                // ----
-
-                self.check_func_args_count_mismatch(
+                self.check_method_args_count_mismatch(
                     func_decl.name.clone(),
                     func_decl.clone(),
-                    method_call.arguments.len(),
+                    method_call.arguments.len() + 1,
                     method_call.loc.clone(),
                     method_call.span.end,
                 );
 
-                let call_site_value = self.builder.build_call(*func_value, arguments, "call").unwrap();
+                let call_site_value = self.builder.build_call(*func_value, &arguments, "call").unwrap();
                 let return_type = self.build_type(
                     func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
                         kind: TokenKind::Void,
