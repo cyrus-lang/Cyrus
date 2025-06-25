@@ -19,7 +19,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         match expr {
             Expression::FieldAccess(field_access) => self.build_field_access(Rc::clone(&scope), field_access),
-            Expression::MethodCall(method_call) => todo!(),
+            Expression::MethodCall(method_call) => self.build_method_call(Rc::clone(&scope), method_call),
             Expression::Identifier(identifier) => self.build_load_lvalue(
                 Rc::clone(&scope),
                 ModuleImport {
@@ -43,14 +43,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
             Expression::ModuleImport(module_import) => self.build_module_import(Rc::clone(&scope), module_import),
-            Expression::FuncCall(func_call) => {
-                let (call_site_value, return_type) = self.build_func_call(Rc::clone(&scope), func_call);
-                if let Some(value) = call_site_value.try_as_basic_value().left() {
-                    self.new_internal_value(value, return_type)
-                } else {
-                    InternalValue::PointerValue(self.build_null())
-                }
-            }
+            Expression::FuncCall(func_call) => self.build_func_call(Rc::clone(&scope), func_call),
             Expression::TypeSpecifier(_) => InternalValue::PointerValue(self.build_null()),
             Expression::UnnamedStructValue(unnamed_struct_value) => {
                 self.build_unnamed_struct_value(Rc::clone(&scope), unnamed_struct_value)
@@ -234,10 +227,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
         let assign_to = self.build_expr(Rc::clone(&scope), assignment.assign_to);
-        let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), assignment.expr));
 
         match assign_to.clone() {
             InternalValue::PointerValue(typed_pointer_value) => {
+                let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), assignment.expr));
+
                 if let InternalType::ConstType(_) = typed_pointer_value.pointee_ty {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -276,6 +270,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder.build_store(typed_pointer_value.ptr, final_rvalue).unwrap();
             }
             InternalValue::Lvalue(lvalue) => {
+                let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), assignment.expr));
+
                 if let InternalType::ConstType(_) = lvalue.pointee_ty {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -371,7 +367,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             } else if array_elements.len() != array_size as usize {
                 // zeroinit for unknown fields of the array!
                 for _ in array_elements.len()..(array_size as usize) {
-                    let zeroinit_value = self.build_zero_initialized_internal_value(element_type.clone());
+                    let zeroinit_value = self.build_zero_initialized_internal_value(
+                        element_type.clone(),
+                        array.loc.clone(),
+                        array.span.end,
+                    );
                     array_elements.push(zeroinit_value);
                 }
             }
@@ -509,7 +509,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *array_index.index))
             {
                 if index_int_value.is_const()
-                    && array_type.len() < index_int_value.get_zero_extended_constant().unwrap() as u32
+                    && array_type.len() - 1 < index_int_value.get_zero_extended_constant().unwrap() as u32
                 {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,

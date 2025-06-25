@@ -146,7 +146,12 @@ impl<'a> From<TypedPointerValue<'a>> for InternalValue<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_zero_initialized_internal_value(&self, value_type: InternalType<'ctx>) -> InternalValue<'ctx> {
+    pub(crate) fn build_zero_initialized_internal_value(
+        &self,
+        value_type: InternalType<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> InternalValue<'ctx> {
         match value_type {
             InternalType::IntType(int_type) => {
                 InternalValue::IntValue(int_type.const_zero(), InternalType::IntType(int_type))
@@ -175,9 +180,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 pointee_ty: typed_pointer_type.pointee_ty,
             }),
             InternalType::ConstType(_) => unreachable!(),
-            InternalType::Lvalue(_) => unreachable!(),
             InternalType::VoidType(_) => unreachable!(),
             InternalType::BoolType(int_type) => InternalValue::BoolValue(int_type.const_zero()),
+            InternalType::Lvalue(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(
+                        "References must be initialized with a valid object. Zero-initialization is not allowed."
+                            .to_string(),
+                    ),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
         }
     }
 

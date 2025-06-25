@@ -377,7 +377,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 )
                 .into_internal_type(),
             TypeSpecifier::ModuleImport(module_import) => todo!(),
-            TypeSpecifier::AddressOf(type_specifier) => todo!(),
             TypeSpecifier::Dereference(inner_type_specifier) => {
                 let pointee_ty = self.build_type(*inner_type_specifier, loc.clone(), span_end);
                 InternalType::PointerType(Box::new(TypedPointerType {

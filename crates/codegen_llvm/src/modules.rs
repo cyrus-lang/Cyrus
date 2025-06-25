@@ -227,7 +227,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 || metadata.func_decl.storage_class == StorageClass::PublicInline
             {
                 let mut new_metadata = metadata.clone();
-                let func_value = self.build_func_decl(new_metadata.func_decl.clone());
+
+                let param_types = self.build_func_params(
+                    metadata.func_decl.name.clone(),
+                    metadata.func_decl.loc.clone(),
+                    metadata.func_decl.span.end,
+                    metadata.func_decl.params.list.clone(),
+                );
+                let func_value = self.build_func_decl(new_metadata.func_decl.clone(), param_types);
                 new_metadata.ptr = func_value;
 
                 imported_funcs.insert(metadata.func_decl.renamed_as.clone().unwrap(), new_metadata);

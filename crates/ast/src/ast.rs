@@ -180,7 +180,6 @@ pub enum TypeSpecifier {
     Const(Box<TypeSpecifier>),
     Array(ArrayTypeSpecifier),
     ModuleImport(ModuleImport),
-    AddressOf(Box<TypeSpecifier>),
     Dereference(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
 }

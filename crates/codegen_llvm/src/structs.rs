@@ -2,21 +2,22 @@ use crate::{
     CodeGenLLVM, InternalType, InternalValue,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     scope::ScopeRef,
-    types::DefinedType,
+    types::{DefinedType, LvalueType},
     values::Lvalue,
 };
 use ast::{
     ast::{
-        Field, FieldAccess, Identifier, ModuleImport, ModuleSegment, StorageClass, Struct, StructInit,
-        UnnamedStructType, UnnamedStructTypeField, UnnamedStructValue, UnnamedStructValueField,
+        Field, FieldAccess, FuncDecl, FuncDef, FuncParam, Identifier, MethodCall, ModuleImport, ModuleSegment,
+        StorageClass, Struct, StructInit, TypeSpecifier, UnnamedStructType, UnnamedStructValue,
     },
     format::module_segments_as_string,
-    token::Location,
+    token::{Location, Span, Token, TokenKind},
 };
 use inkwell::{
     AddressSpace,
+    llvm_sys::prelude::LLVMTypeRef,
     types::{BasicTypeEnum, StructType},
-    values::{AggregateValueEnum, BasicValueEnum, PointerValue},
+    values::{AggregateValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
 use std::{collections::HashMap, process::exit, rc::Rc};
 
@@ -26,6 +27,7 @@ pub struct StructMetadata<'a> {
     pub struct_type: StructType<'a>,
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
+    pub methods: Vec<(FuncDecl, FunctionValue<'a>)>,
     pub storage_class: StorageClass,
 }
 
@@ -44,19 +46,65 @@ pub struct UnnamedStructValueMetadata<'a> {
 pub type StructTable<'a> = HashMap<String, StructMetadata<'a>>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_struct_field_types(&self, fields: Vec<Field>) -> Vec<BasicTypeEnum> {
+    pub(crate) fn is_struct_using_uncompleted_type(
+        &self,
+        struct_name: String,
+        field_type_specifier: TypeSpecifier,
+    ) -> bool {
+        match field_type_specifier.clone() {
+            TypeSpecifier::Identifier(identifier) => identifier.name == struct_name,
+            TypeSpecifier::Const(inner_type_specifier) => {
+                self.is_struct_using_uncompleted_type(struct_name, *inner_type_specifier)
+            }
+            TypeSpecifier::Array(array_type_specifier) => {
+                self.is_struct_using_uncompleted_type(struct_name, *array_type_specifier.element_type)
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn build_struct_field_types(&self, struct_name: String, fields: Vec<Field>) -> Vec<BasicTypeEnum> {
         fields
             .iter()
             .map(|field| {
+                if field.name == "this" {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("The field name 'this' is a reserved keyword and cannot be used. Please choose a different field name.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: field.loc.line,
+                            column: field.loc.column,
+                            length: field.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
+                if self.is_struct_using_uncompleted_type(struct_name.clone(), field.ty.clone()) {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Field has incomplete type '{}'. Consider to use '{}*' instead",
+                            struct_name, struct_name,
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: field.loc.line,
+                            column: field.loc.column,
+                            length: field.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
                 self.build_type(field.ty.clone(), field.loc.clone(), field.span.end)
                     .to_basic_type(self.context.ptr_type(AddressSpace::default()))
             })
             .collect()
     }
 
-    pub(crate) fn build_struct(&self, struct_statement: Struct) -> StructType<'ctx> {
-        let field_types = self.build_struct_field_types(struct_statement.fields.clone());
-        let struct_type = self.context.struct_type(&field_types, false);
+    pub(crate) fn build_global_struct(&mut self, struct_statement: Struct) {
         if !matches!(
             struct_statement.storage_class,
             StorageClass::Public | StorageClass::Internal
@@ -73,29 +121,110 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         }
-        struct_type
-    }
 
-    pub(crate) fn build_global_struct(&mut self, struct_statement: Struct) {
-        let struct_type = self.build_struct(struct_statement.clone());
-        self.struct_table.insert(
-            struct_statement.name.clone(),
-            StructMetadata {
-                struct_name: ModuleImport {
-                    segments: vec![ModuleSegment::SubModule(Identifier {
-                        name: struct_statement.name,
-                        span: struct_statement.span.clone(),
-                        loc: struct_statement.loc.clone(),
-                    })],
+        let opaque_struct = self
+            .context
+            .opaque_struct_type(&format!("{}.{}", self.module_name, struct_statement.name));
+
+        let struct_metadata = StructMetadata {
+            struct_name: ModuleImport {
+                segments: vec![ModuleSegment::SubModule(Identifier {
+                    name: struct_statement.name.clone(),
                     span: struct_statement.span.clone(),
                     loc: struct_statement.loc.clone(),
-                },
-                struct_type,
-                fields: struct_statement.fields,
-                inherits: struct_statement.inherits,
-                storage_class: struct_statement.storage_class,
+                })],
+                span: struct_statement.span.clone(),
+                loc: struct_statement.loc.clone(),
             },
+            struct_type: opaque_struct,
+            fields: struct_statement.fields.clone(),
+            methods: Vec::new(),
+            inherits: struct_statement.inherits.clone(),
+            storage_class: struct_statement.storage_class.clone(),
+        };
+
+        self.struct_table
+            .insert(struct_statement.name.clone(), struct_metadata.clone());
+
+        let field_types = self.build_struct_field_types(struct_statement.name.clone(), struct_statement.fields.clone());
+        opaque_struct.set_body(&field_types, false);
+
+        let struct_methods = self.build_struct_methods(
+            struct_metadata,
+            struct_statement.name.clone(),
+            struct_statement.methods.clone(),
         );
+
+        let new_struct_metadata = self.struct_table.get_mut(&struct_statement.name.clone()).unwrap();
+        new_struct_metadata.methods = struct_methods;
+        new_struct_metadata.struct_type = opaque_struct;
+    }
+
+    pub(crate) fn build_struct_methods(
+        &mut self,
+        struct_metadata: StructMetadata<'ctx>,
+        struct_name: String,
+        methods: Vec<FuncDef>,
+    ) -> Vec<(FuncDecl, FunctionValue<'ctx>)> {
+        let mut struct_methods: Vec<(FuncDecl, FunctionValue<'ctx>)> = Vec::new();
+
+        for mut func_def in methods {
+            let method_name = func_def.name.clone();
+            let method_underlying_name = format!("{}.{}", struct_name.clone(), method_name);
+            func_def.name = method_underlying_name.clone();
+
+            // this_modifier
+            let mut func_param_types: Vec<LLVMTypeRef> = self.build_func_params(
+                func_def.name.clone(),
+                func_def.loc.clone(),
+                func_def.span.end,
+                func_def.params.list.clone(),
+            );
+
+            func_param_types.insert(
+                0,
+                InternalType::Lvalue(Box::new(LvalueType {
+                    ptr_type: self.context.ptr_type(AddressSpace::default()),
+                    pointee_ty: InternalType::StructType(struct_metadata.clone()),
+                }))
+                .as_type_ref(),
+            );
+
+            let this_modifier = FuncParam {
+                identifier: Identifier {
+                    name: "this".to_string(),
+                    loc: func_def.loc.clone(),
+                    span: func_def.span.clone(),
+                },
+                ty: Some(TypeSpecifier::Dereference(Box::new(TypeSpecifier::Identifier(
+                    Identifier {
+                        name: struct_name.clone(),
+                        loc: func_def.loc.clone(),
+                        span: func_def.span.clone(),
+                    },
+                )))),
+                default_value: None,
+                loc: func_def.loc.clone(),
+                span: func_def.span.clone(),
+            };
+            func_def.params.list.insert(0, this_modifier);
+
+            let func_value = self.build_func_def(func_def.clone(), func_param_types, false);
+
+            let func_decl = FuncDecl {
+                name: method_underlying_name,
+                params: func_def.params,
+                return_type: func_def.return_type,
+                storage_class: func_def.storage_class,
+                renamed_as: Some(method_name),
+                span: func_def.span.clone(),
+                loc: func_def.loc.clone(),
+            };
+
+            struct_methods.push((func_decl, func_value))
+        }
+
+        struct_methods
     }
 
     pub(crate) fn build_struct_init(&self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> InternalValue<'ctx> {
@@ -262,7 +391,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 "gep",
                             )
                             .unwrap();
-                        
+
                         InternalValue::Lvalue(Lvalue {
                             ptr: field_ptr,
                             pointee_ty: field_type.clone(),
@@ -270,6 +399,129 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     },
                 ),
             _ => unreachable!(),
+        }
+    }
+
+    pub(crate) fn build_method_call(&self, scope: ScopeRef<'ctx>, method_call: MethodCall) -> InternalValue<'ctx> {
+        let operand = self.build_expr(Rc::clone(&scope), *method_call.operand.clone());
+        let operand_rvalue = self.internal_value_as_rvalue(operand.clone());
+
+        let struct_metadata = match operand_rvalue.clone() {
+            InternalValue::StructValue(_, internal_type) => match internal_type {
+                InternalType::StructType(struct_metadata) => struct_metadata,
+                _ => unreachable!(),
+            },
+            InternalValue::BoolValue(int_value) => todo!(),
+            InternalValue::IntValue(int_value, internal_type) => todo!(),
+            InternalValue::FloatValue(float_value, internal_type) => todo!(),
+            InternalValue::ArrayValue(array_value, internal_type) => todo!(),
+            InternalValue::VectorValue(vector_value, internal_type) => todo!(),
+            InternalValue::StrValue(pointer_value, internal_type) => todo!(),
+            InternalValue::StringValue(string_value) => todo!(),
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Method '{}' not defined for this value.",
+                        method_call.method_name.name.clone()
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: method_call.method_name.loc.line,
+                        column: method_call.method_name.loc.column,
+                        length: method_call.method_name.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        // let's find the method from struct_metadata
+        let method_metadata = struct_metadata
+            .methods
+            .iter()
+            .find(|method| method.0.renamed_as.clone().unwrap() == method_call.method_name.name);
+
+        match method_metadata {
+            Some((func_decl, func_value)) => {
+                let func_basic_blocks = func_value.get_basic_blocks();
+                let current_block =
+                    self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
+
+                if !func_basic_blocks.contains(&current_block) && func_decl.storage_class != StorageClass::Public {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Method '{}' is defined internally for the struct and cannot be called directly from outside. It is intended for internal use only.",
+                            method_call.method_name.name.clone()
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: method_call.method_name.loc.line,
+                            column: method_call.method_name.loc.column,
+                            length: method_call.method_name.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
+                // set this_modifier value as first argument
+                let mut arguments: Vec<inkwell::values::BasicMetadataValueEnum<'_>> = vec![operand.to_basic_metadata()];
+
+                let mut func_params_without_this_modifier = func_decl.params.clone();
+                func_params_without_this_modifier.list.remove(0);
+
+                arguments.append(&mut self.build_arguments(
+                    Rc::clone(&scope),
+                    method_call.arguments.clone(),
+                    Some(func_params_without_this_modifier),
+                    func_decl.renamed_as.clone().unwrap_or(func_decl.name.clone()),
+                    method_call.loc.clone(),
+                    method_call.span.end,
+                ));
+
+                self.check_method_args_count_mismatch(
+                    func_decl.name.clone(),
+                    func_decl.clone(),
+                    method_call.arguments.len() + 1,
+                    method_call.loc.clone(),
+                    method_call.span.end,
+                );
+
+                let call_site_value = self.builder.build_call(*func_value, &arguments, "call").unwrap();
+                let return_type = self.build_type(
+                    func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
+                        kind: TokenKind::Void,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    })),
+                    method_call.loc.clone(),
+                    method_call.span.end,
+                );
+
+                if let Some(value) = call_site_value.try_as_basic_value().left() {
+                    self.new_internal_value(value, return_type)
+                } else {
+                    InternalValue::PointerValue(self.build_null())
+                }
+            }
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Method '{}' not defined for struct '{}'.",
+                        method_call.method_name.name.clone(),
+                        module_segments_as_string(struct_metadata.struct_name.segments)
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: method_call.method_name.loc.line,
+                        column: method_call.method_name.loc.column,
+                        length: method_call.method_name.span.end,
+                    }),
+                });
+                exit(1);
+            }
         }
     }
 
@@ -298,14 +550,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     field_access.span.end,
                 )
             }
-            // TODO Implement internal methods for primitive data types.
-            InternalValue::BoolValue(int_value) => todo!(),
-            InternalValue::IntValue(int_value, internal_type) => todo!(),
-            InternalValue::FloatValue(float_value, internal_type) => todo!(),
-            InternalValue::ArrayValue(array_value, internal_type) => todo!(),
-            InternalValue::VectorValue(vector_value, internal_type) => todo!(),
-            InternalValue::StrValue(pointer_value, internal_type) => todo!(),
-            InternalValue::StringValue(string_value) => todo!(),
             InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -322,7 +566,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::PointerValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot access fields on a pointer_value.".to_string()),
+                    kind: DiagKind::Custom("Cannot access fields on a pointer value. Consider to use fat arrow instead to dereference before accessing the field.".to_string()),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
                         line: field_access.loc.line,
@@ -349,6 +593,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot access fields on an lvalue.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: field_access.loc.line,
+                        column: field_access.loc.column,
+                        length: field_access.span.end,
+                    }),
+                });
+                exit(1);
+            }
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build field access for non-struct values.".to_string()),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
                         line: field_access.loc.line,
@@ -454,7 +711,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.builder.build_store(field_gep, field_basic_value).unwrap();
         }
 
-        let struct_value = self.builder.build_load(struct_type, struct_alloca, "load").unwrap().into_struct_value();
+        let struct_value = self
+            .builder
+            .build_load(struct_type, struct_alloca, "load")
+            .unwrap()
+            .into_struct_value();
 
         InternalValue::UnnamedStructValue(
             struct_value,

@@ -69,7 +69,6 @@ impl fmt::Display for TypeSpecifier {
             TypeSpecifier::Identifier(identifier) => write!(f, "{}", identifier),
             TypeSpecifier::ModuleImport(module_import) => write!(f, "{}", module_import),
             TypeSpecifier::Const(type_specifier) => write!(f, "const {}", type_specifier),
-            TypeSpecifier::AddressOf(type_specifier) => write!(f, "{}&", type_specifier),
             TypeSpecifier::Dereference(type_specifier) => write!(f, "{}*", type_specifier),
             TypeSpecifier::Array(array_type_specifier) => {
                 write!(

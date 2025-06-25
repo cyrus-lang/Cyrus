@@ -41,7 +41,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_func_params(
-        &mut self,
+        &self,
         func_name: String,
         func_loc: Location,
         span_end: usize,
@@ -89,14 +89,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl) -> FunctionValue<'ctx> {
+    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl, mut func_param_types: Vec<LLVMTypeRef>) -> FunctionValue<'ctx> {
         let is_var_args = func_decl.params.variadic.is_some();
-        let mut param_types = self.build_func_params(
-            func_decl.name.clone(),
-            func_decl.loc.clone(),
-            func_decl.span.end,
-            func_decl.params.list.clone(),
-        );
 
         let return_type = self.build_type(
             func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
@@ -111,8 +105,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let fn_type = unsafe {
             FunctionType::new(LLVMFunctionType(
                 return_type.as_type_ref(),
-                param_types.as_mut_ptr(),
-                param_types.len() as u32,
+                func_param_types.as_mut_ptr(),
+                func_param_types.len() as u32,
                 is_var_args as i32,
             ))
         };
@@ -140,7 +134,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_ptr
     }
 
-    pub(crate) fn build_func_def(&mut self, func_def: FuncDef, is_entry_point: bool) -> FunctionValue<'ctx> {
+    pub(crate) fn build_func_def(&mut self, func_def: FuncDef, mut func_param_types: Vec<LLVMTypeRef>, is_entry_point: bool) -> FunctionValue<'ctx> {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
 
         let func_decl = FuncDecl {
@@ -154,12 +148,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let is_var_args = func_def.params.variadic.is_some();
-        let mut param_types = self.build_func_params(
-            func_def.name.clone(),
-            func_def.loc.clone(),
-            func_def.span.end,
-            func_def.params.list.clone(),
-        );
 
         let return_type = self.build_type(
             TypeSpecifier::TypeToken(Token {
@@ -174,8 +162,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let fn_type = unsafe {
             FunctionType::new(LLVMFunctionType(
                 return_type.as_type_ref(),
-                param_types.as_mut_ptr(),
-                param_types.len() as u32,
+                func_param_types.as_mut_ptr(),
+                func_param_types.len() as u32,
                 is_var_args as i32,
             ))
         };
@@ -199,6 +187,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         } 
+
+        if func_def.storage_class == StorageClass::Extern {
+             display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Extern storage class specifier is not permitted in function definitions.".to_string()),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_def.loc.line,
+                    column: func_def.loc.column,
+                    length: func_def.span.end,
+                }),
+            });
+            exit(1);
+        }
 
         let func_linkage: Option<Linkage> = if !is_entry_point {
             Some(self.build_func_linkage(func_def.storage_class.clone()))
@@ -461,36 +463,72 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn check_func_args_count_mismatch(&self, func_name: String, func_decl: FuncDecl, func_call: FuncCall) {
-        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != func_call.arguments.len() {
+    pub(crate) fn check_func_args_count_mismatch(&self, func_name: String, func_decl: FuncDecl, arguments_length: usize, loc: Location, span_end: usize) {
+        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != arguments_length {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
                     func_name.clone(),
-                    func_call.arguments.len().try_into().unwrap(),
+                    arguments_length.try_into().unwrap(),
                     func_decl.params.list.len().try_into().unwrap(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
-                    line: func_call.loc.line,
-                    column: func_call.loc.column,
-                    length: func_call.span.end,
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
                 }),
             });
             exit(1);
-        } else if func_decl.params.variadic.is_some() && func_call.arguments.len() < func_decl.params.list.len() {
+        } else if func_decl.params.variadic.is_some() && arguments_length < func_decl.params.list.len() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
                     func_name.clone(),
-                    func_call.arguments.len().try_into().unwrap(),
+                    arguments_length.try_into().unwrap(),
                     func_decl.params.list.len().try_into().unwrap(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
-                    line: func_call.loc.line,
-                    column: func_call.loc.column,
-                    length: func_call.span.end,
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
+    pub(crate) fn check_method_args_count_mismatch(&self, func_name: String, func_decl: FuncDecl, arguments_length: usize, loc: Location, span_end: usize) {
+        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != arguments_length {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    arguments_length.try_into().unwrap(),
+                    (func_decl.params.list.len() - 1).try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        } else if func_decl.params.variadic.is_some() && arguments_length < func_decl.params.list.len() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    arguments_length.try_into().unwrap(),
+                    (func_decl.params.list.len() - 1).try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
                 }),
             });
             exit(1);
@@ -501,7 +539,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         scope: ScopeRef<'ctx>,
         func_call: FuncCall,
-    ) -> (CallSiteValue<'ctx>, InternalType<'ctx>) {
+    ) -> InternalValue<'ctx> {
         let expr = self.build_expr(Rc::clone(&scope), *func_call.operand.clone());
 
         let func_metadata = {
@@ -559,7 +597,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Function call with invalid value as expr is not allowed.".to_string()),
+                        kind: DiagKind::Custom("Cannot build function call with an invalid expression.".to_string()),
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: func_call.loc.line,
@@ -584,12 +622,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.check_func_args_count_mismatch(
             func_metadata.func_decl.name.clone(),
             func_metadata.func_decl.clone(),
-            func_call.clone(),
-        );
+            func_call.arguments.len(),
+            func_call.loc.clone(),
+            func_call.span.end,
+        );  
 
-        (
-            self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap(),
-            func_metadata.return_type.clone(),
-        )
+        let call_site_value = self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap();
+        let return_type = func_metadata.return_type.clone();
+
+        if let Some(value) = call_site_value.try_as_basic_value().left() {
+            self.new_internal_value(value, return_type)
+        } else {
+            InternalValue::PointerValue(self.build_null())
+        }
     }
 }

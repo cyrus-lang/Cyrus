@@ -57,11 +57,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     self.entry_point = Some(func_def);
                 } else {
-                    self.build_func_def(func_def.clone(), false);
+                    let mut param_types: Vec<*mut inkwell::llvm_sys::LLVMType> = self.build_func_params(
+                        func_def.name.clone(),
+                        func_def.loc.clone(),
+                        func_def.span.end,
+                        func_def.params.list.clone(),
+                    );
+
+                    self.build_func_def(func_def.clone(), param_types, false);
                 }
             }
             Statement::FuncDecl(func_decl) => {
-                self.build_func_decl(func_decl);
+                let param_types = self.build_func_params(
+                    func_decl.name.clone(),
+                    func_decl.loc.clone(),
+                    func_decl.span.end,
+                    func_decl.params.list.clone(),
+                );
+
+                self.build_func_decl(func_decl, param_types);
             }
             Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),
             Statement::For(for_statement) => self.build_for_statement(
@@ -449,7 +463,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 } else {
-                    let zero_init = self.build_zero_initialized_internal_value(ty.clone());
+                    let zero_init =
+                        self.build_zero_initialized_internal_value(ty.clone(), variable.loc.clone(), variable.span.end);
                     let final_rvalue: BasicValueEnum =
                         zero_init.to_basic_metadata().as_any_value_enum().try_into().unwrap();
                     self.builder.build_store(ptr, final_rvalue).unwrap();
