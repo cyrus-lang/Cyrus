@@ -254,8 +254,8 @@ mod tests {
                             span: Span::new(7, 12),
                             loc: Location::new(1, 13),
                         },
-                        span: Span::new(7, 12),
-                        loc: Location::new(1, 13)
+                        span: Span::new(6, 12),
+                        loc: Location::new(1, 7)
                     }
                 );
             } else {
@@ -290,8 +290,8 @@ mod tests {
                             Expression::Literal(Literal::Integer(1)),
                             Expression::Literal(Literal::Integer(2)),
                         ],
-                        span: Span::new(7, 18),
-                        loc: Location::new(1, 14)
+                        span: Span::new(6, 18),
+                        loc: Location::new(1, 7)
                     }
                 );
             } else {
