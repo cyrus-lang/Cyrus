@@ -7,12 +7,11 @@ use ast::ast::{
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
-use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
 use inkwell::types::FunctionType;
-use inkwell::values::{BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
+use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{DerefMut, Index};
