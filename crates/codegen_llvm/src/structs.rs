@@ -403,8 +403,33 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_method_call(&self, scope: ScopeRef<'ctx>, method_call: MethodCall) -> InternalValue<'ctx> {
-        let operand = self.build_expr(Rc::clone(&scope), *method_call.operand.clone());
-        let operand_rvalue = self.internal_value_as_rvalue(operand.clone());
+        let mut operand = self.build_expr(Rc::clone(&scope), *method_call.operand.clone());
+        let mut operand_rvalue = self.internal_value_as_rvalue(operand.clone());
+
+        if method_call.is_fat_arrow {
+            if !operand_rvalue.get_type(self.string_type.clone()).is_pointer_type() {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build fat arrow on non-pointer values.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: method_call.loc.line,
+                        column: method_call.loc.column,
+                        length: method_call.span.end,
+                    }),
+                });
+                exit(1);
+            }
+
+            operand = self.build_deref_internal(
+                Rc::clone(&scope),
+                operand_rvalue.clone(),
+                method_call.loc.clone(),
+                method_call.span.end,
+            );
+
+            operand_rvalue = self.internal_value_as_rvalue(operand.clone());
+        }
 
         let struct_metadata = match operand_rvalue.clone() {
             InternalValue::StructValue(_, internal_type) => match internal_type {
@@ -526,7 +551,27 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_field_access(&self, scope: ScopeRef<'ctx>, field_access: FieldAccess) -> InternalValue<'ctx> {
-        let internal_value = self.build_expr(Rc::clone(&scope), *field_access.operand);
+        let mut internal_value = self.build_expr(Rc::clone(&scope), *field_access.operand);
+
+        if field_access.is_fat_arrow {
+            let rvalue = self.internal_value_as_rvalue(internal_value.clone());
+
+            if !rvalue.get_type(self.string_type.clone()).is_pointer_type() {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build fat arrow on non-pointer values.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: field_access.loc.line,
+                        column: field_access.loc.column,
+                        length: field_access.span.end,
+                    }),
+                });
+                exit(1);
+            }
+
+            internal_value = self.build_deref_internal(scope, rvalue, field_access.loc.clone(), field_access.span.end);
+        }
 
         match self.internal_value_as_rvalue(internal_value.clone()) {
             InternalValue::StructValue(_, struct_internal_type)

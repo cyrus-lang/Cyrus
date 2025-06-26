@@ -121,7 +121,11 @@ impl fmt::Display for Expression {
                 write!(f, "{}", func_call)
             }
             Expression::FieldAccess(field_access) => {
-                write!(f, "{}.{}", field_access.operand, field_access.field_name)
+                if field_access.is_fat_arrow {
+                    write!(f, "{}->{}", field_access.operand, field_access.field_name)
+                } else {
+                    write!(f, "{}.{}", field_access.operand, field_access.field_name)
+                }
             }
             Expression::MethodCall(method_call) => {
                 write!(
@@ -141,8 +145,8 @@ impl fmt::Display for Expression {
             Expression::Assignment(assignment) => {
                 write!(f, "{} = {}", assignment.assign_to.to_string(), assignment.expr)
             }
-            Expression::AddressOf(expression) => write!(f, "&({})", expression),
-            Expression::Dereference(expression) => write!(f, "(*{})", expression),
+            Expression::AddressOf(address_of) => write!(f, "&({})", address_of.expr),
+            Expression::Dereference(dereference) => write!(f, "(*{})", dereference.expr),
             Expression::StructInit(struct_init) => {
                 write!(
                     f,

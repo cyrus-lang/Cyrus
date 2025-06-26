@@ -239,6 +239,7 @@ mod tests {
                 assert_eq!(
                     field_access,
                     FieldAccess {
+                        is_fat_arrow: false,
                         operand: Box::new(Expression::ModuleImport(ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "object".to_string(),
@@ -270,6 +271,7 @@ mod tests {
                 assert_eq!(
                     method_call,
                     MethodCall {
+                        is_fat_arrow: false,
                         operand: Box::new(Expression::ModuleImport(ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "object".to_string(),

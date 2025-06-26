@@ -7,7 +7,8 @@ struct Person {
     public fn display(age: int) {
         printf("name: %s\n", (*this).name);
         
-        (*this).name = "Change!";
+        // (*this).name = "Change!";
+        this->name = "Change!";
 
         printf("age: %d\n", age);
     }
@@ -15,6 +16,8 @@ struct Person {
 
 fn main() {
     #user = Person { name: "Taha" };
-    user.display(18);
-    printf("name: %s\n", user.name);
+    #ref = &user;
+
+    ref.display(10);
+    // user.display(18);
 }

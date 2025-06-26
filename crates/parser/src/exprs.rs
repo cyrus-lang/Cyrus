@@ -11,9 +11,8 @@ impl<'a> Parser<'a> {
         let mut left_start = self.current_token.span.start;
         let mut left = self.parse_prefix_expression()?;
 
-        while self.peek_token_is(TokenKind::Dot) {
+        while self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
             self.next_token(); // consume the left expression
-            self.expect_current(TokenKind::Dot)?;
             left = self.parse_field_access(left)?;
         }
 
@@ -93,12 +92,24 @@ impl<'a> Parser<'a> {
                 }
             }
             TokenKind::Ampersand => {
+                let start = self.current_token.span.start;
+                let loc = self.current_token.loc.clone();
                 self.next_token();
-                Expression::AddressOf(Box::new(self.parse_prefix_expression()?))
+                Expression::AddressOf(AddressOf {
+                    expr: Box::new(self.parse_prefix_expression()?),
+                    span: Span::new(start, self.current_token.span.end),
+                    loc,
+                })
             }
             TokenKind::Asterisk => {
+                let start = self.current_token.span.start;
+                let loc = self.current_token.loc.clone();
                 self.next_token();
-                Expression::Dereference(Box::new(self.parse_prefix_expression()?))
+                Expression::Dereference(Dereference {
+                    expr: Box::new(self.parse_prefix_expression()?),
+                    span: Span::new(start, self.current_token.span.end),
+                    loc,
+                })
             }
             TokenKind::Null => Expression::Literal(Literal::Null),
             token_kind @ TokenKind::Increment | token_kind @ TokenKind::Decrement => {
@@ -472,6 +483,7 @@ impl<'a> Parser<'a> {
         &mut self,
         operand: Expression,
         method_name: Identifier,
+        is_fat_arrow: bool,
         start: usize,
         loc: Location,
     ) -> Result<Expression, ParseError> {
@@ -499,6 +511,7 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Expression::MethodCall(MethodCall {
+            is_fat_arrow,
             operand: Box::new(operand),
             method_name,
             arguments,
@@ -511,14 +524,33 @@ impl<'a> Parser<'a> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
+        let is_fat_arrow = {
+            if self.current_token_is(TokenKind::FatArrow) {
+                self.next_token();
+                true
+            } else if self.current_token_is(TokenKind::Dot) {
+                self.next_token();
+                false
+            } else {
+                return Err(CompileTimeError {
+                    location: loc.clone(),
+                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                    file_name: Some(self.lexer.file_name.clone()),
+                    source_content: Box::new(self.lexer.input.clone()),
+                    verbose: None,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
+                });
+            }
+        };
         let identifier = self.parse_identifier()?;
 
         if self.peek_token_is(TokenKind::LeftParen) {
             self.next_token(); // consume identifier
-            return self.parse_method_call(operand, identifier, start, loc);
+            return self.parse_method_call(operand, identifier, is_fat_arrow, start, loc);
         }
 
         Ok(Expression::FieldAccess(FieldAccess {
+            is_fat_arrow,
             operand: Box::new(operand),
             field_name: identifier,
             span: Span::new(start, self.current_token.span.end),
