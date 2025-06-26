@@ -56,39 +56,28 @@ impl<'a> Parser<'a> {
         let expr = match &self.current_token.clone().kind {
             TokenKind::Struct => self.parse_unnamed_struct_value()?,
             TokenKind::Identifier { .. } => {
-                if self.matches_type_token(self.peek_token.kind.clone()) {
-                    let type_specifier = self.parse_type_specifier()?;
+                let module_import = self.parse_module_import()?;
 
-                    if self.peek_token_is(TokenKind::LeftBrace) {
-                        self.next_token();
-                        return Ok(self.parse_array(type_specifier)?);
-                    }
-
-                    Expression::TypeSpecifier(type_specifier)
+                if self.current_token_is(TokenKind::LeftBrace) {
+                    self.parse_struct_init(module_import)?
+                } else if self.peek_token_is(TokenKind::Increment) {
+                    self.next_token();
+                    Expression::UnaryOperator(UnaryOperator {
+                        module_import: module_import.clone(),
+                        ty: UnaryOperatorType::PostIncrement,
+                        span: Span::new(start, self.current_token.span.end),
+                        loc: loc.clone(),
+                    })
+                } else if self.peek_token_is(TokenKind::Decrement) {
+                    self.next_token();
+                    Expression::UnaryOperator(UnaryOperator {
+                        module_import: module_import.clone(),
+                        ty: UnaryOperatorType::PostDecrement,
+                        span: Span::new(start, self.current_token.span.end),
+                        loc: loc.clone(),
+                    })
                 } else {
-                    let module_import = self.parse_module_import()?;
-
-                    if self.current_token_is(TokenKind::LeftBrace) {
-                        self.parse_struct_init(module_import)?
-                    } else if self.peek_token_is(TokenKind::Increment) {
-                        self.next_token();
-                        Expression::UnaryOperator(UnaryOperator {
-                            module_import: module_import.clone(),
-                            ty: UnaryOperatorType::PostIncrement,
-                            span: Span::new(start, self.current_token.span.end),
-                            loc: loc.clone(),
-                        })
-                    } else if self.peek_token_is(TokenKind::Decrement) {
-                        self.next_token();
-                        Expression::UnaryOperator(UnaryOperator {
-                            module_import: module_import.clone(),
-                            ty: UnaryOperatorType::PostDecrement,
-                            span: Span::new(start, self.current_token.span.end),
-                            loc: loc.clone(),
-                        })
-                    } else {
-                        Expression::ModuleImport(module_import)
-                    }
+                    Expression::ModuleImport(module_import)
                 }
             }
             TokenKind::Ampersand => {

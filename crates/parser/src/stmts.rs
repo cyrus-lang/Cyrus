@@ -807,14 +807,32 @@ impl<'a> Parser<'a> {
 
         self.next_token(); // consume return token
 
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::Return(Return {
+                argument: None,
+                span: Span::new(start, self.current_token.span.end),
+                loc,
+            }));
+        }
+
         let argument = self.parse_expression(Precedence::Lowest)?.0;
         self.next_token();
-        self.expect_current(TokenKind::Semicolon)?;
 
-        let end = self.current_token.span.end;
+        if !self.current_token_is(TokenKind::Semicolon) {
+            return Err(CompileTimeError {
+                location: loc,
+                etype: ParserErrorType::MissingSemicolon,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: Some(Span::new(start, self.current_token.span.end)),
+            });
+        }
+
+        let end = self.peek_token.span.end;
 
         Ok(Statement::Return(Return {
-            argument,
+            argument: Some(argument),
             span: Span { start, end },
             loc,
         }))
@@ -878,19 +896,8 @@ impl<'a> Parser<'a> {
         let mut alternate: Option<Box<BlockStatement>> = None;
 
         self.expect_current(TokenKind::If)?;
-
-        if !self.current_token_is(TokenKind::LeftParen) {
-            return Err(CompileTimeError {
-                location: loc,
-                etype: ParserErrorType::MissingOpeningParen,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
-            });
-        }
-
         self.expect_current(TokenKind::LeftParen)?;
+
         let condition = self.parse_expression(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::RightParen)?;
         self.next_token(); // consume right paren

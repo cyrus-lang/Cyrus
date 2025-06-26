@@ -1,11 +1,36 @@
 extern fn printf(format: const char*, ...);
 extern fn exit(status: int);
 
-fn sample(x: int) {
-    printf("%d\n", x);
-    sample(x + 1);
+fn power(base: int32, exp: int32): int32 {
+    printf("exp: %d\n", exp); // For debugging, showing the decrement
+
+    if (exp == 0) {
+        return 1; // Base case: x ^ 0 = 1
+    } else if (exp < 0) {
+        printf("Error: Negative exponent not supported in this example.\n");
+        return -1; 
+    } else {
+        return base * power(base, exp - 1); // Recursive step
+    }
+
+    return 0;
 }
 
+fn factorial(n: int32): int32 {
+    printf("n: %d\n", n);
+    return n * factorial(n - 1);
+}
+
+// fn fibbonacci(n: int): int {
+//    if (n == 0){
+//       return 0;
+//    } else if (n == 1) {
+//       return 1;
+//    } else {
+//       return (fibbonacci(n-1) + fibbonacci(n-2));
+//    }
+// }
+
 fn main() {
-    sample(1);
+    printf("value: %d\n", power(5, 3));
 }

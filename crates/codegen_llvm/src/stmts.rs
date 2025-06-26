@@ -36,11 +36,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
             Statement::Return(statement) => {
-                self.build_return(
-                    self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), statement.argument)),
-                    statement.loc,
-                    statement.span.end,
-                );
+                self.build_return(Rc::clone(&scope), statement);
             }
             Statement::FuncDef(func_def) => {
                 if func_def.name == "main" {
@@ -57,7 +53,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     self.entry_point = Some(func_def);
                 } else {
-                    let mut param_types: Vec<*mut inkwell::llvm_sys::LLVMType> = self.build_func_params(
+                    let param_types: Vec<*mut inkwell::llvm_sys::LLVMType> = self.build_func_params(
                         func_def.name.clone(),
                         func_def.loc.clone(),
                         func_def.span.end,
