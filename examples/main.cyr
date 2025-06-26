@@ -18,6 +18,8 @@ fn main() {
     #user = Person { name: "Taha" };
     #ref = &user;
 
-    ref.display(10);
-    // user.display(18);
+    // // ref.display(10);      // wrong! because it is pointer now
+    // ref->display(18);  // correct! it must be used with fat_arrow
+
+    ref.name;
 }

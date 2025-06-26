@@ -443,6 +443,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::VectorValue(vector_value, internal_type) => todo!(),
             InternalValue::StrValue(pointer_value, internal_type) => todo!(),
             InternalValue::StringValue(string_value) => todo!(),
+            InternalValue::PointerValue(_) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build method call on pointer values. Consider to deference before calling the method or use fat arrow (->) instead.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: method_call.method_name.loc.line,
+                        column: method_call.method_name.loc.column,
+                        length: method_call.method_name.span.end,
+                    }),
+                });
+                exit(1);
+            }
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -611,7 +624,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::PointerValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot access fields on a pointer value. Consider to use fat arrow instead to dereference before accessing the field.".to_string()),
+                    kind: DiagKind::Custom("Cannot build field access on pointer values. Consider to deference before accessing the field or use fat arrow (->) instead.".to_string()),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
                         line: field_access.loc.line,
