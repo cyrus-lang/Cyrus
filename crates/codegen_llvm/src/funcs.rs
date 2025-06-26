@@ -89,14 +89,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn build_func_decl(&mut self, func_decl: FuncDecl, mut func_param_types: Vec<LLVMTypeRef>) -> FunctionValue<'ctx> {
+    pub(crate) fn build_func_decl(
+        &mut self,
+        func_decl: FuncDecl,
+        mut func_param_types: Vec<LLVMTypeRef>,
+    ) -> FunctionValue<'ctx> {
         let is_var_args = func_decl.params.variadic.is_some();
 
         let return_type = self.build_type(
             func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
                 kind: TokenKind::Void,
                 span: Span::default(),
-                loc: Location::default()
+                loc: Location::default(),
             })),
             func_decl.loc.clone(),
             func_decl.span.end,
@@ -134,100 +138,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_ptr
     }
 
-    pub(crate) fn build_func_def(&mut self, func_def: FuncDef, mut func_param_types: Vec<LLVMTypeRef>, is_entry_point: bool) -> FunctionValue<'ctx> {
-        let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-
-        let func_decl = FuncDecl {
-            name: func_def.name.clone(),
-            params: func_def.params.clone(),
-            return_type: func_def.return_type.clone(),
-            storage_class: func_def.storage_class.clone(),
-            renamed_as: Some(func_def.name.clone()),
-            span: func_def.span.clone(),
-            loc: func_def.loc.clone(),
-        };
-
-        let is_var_args = func_def.params.variadic.is_some();
-
-        let return_type = self.build_type(
-            TypeSpecifier::TypeToken(Token {
-                kind: TokenKind::Void,
-                span: Span::default(),
-                loc: Location::default()
-            }),
-            func_def.loc.clone(),
-            func_def.span.end,
-        );
-
-        let fn_type = unsafe {
-            FunctionType::new(LLVMFunctionType(
-                return_type.as_type_ref(),
-                func_param_types.as_mut_ptr(),
-                func_param_types.len() as u32,
-                is_var_args as i32,
-            ))
-        };
-
-        let actual_func_name = if !is_entry_point { 
-            format!("{}.{}", self.module_name, func_def.name.clone())
-        } else {
-            func_decl.name.clone()
-        };
-        
-        if is_entry_point && !matches!(func_def.storage_class, StorageClass::Internal) {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Module entry point cannot be declared with non-internal storage_class.".to_string()),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: func_def.loc.line,
-                    column: func_def.loc.column,
-                    length: func_def.span.end,
-                }),
-            });
-            exit(1);
-        } 
-
-        if func_def.storage_class == StorageClass::Extern {
-             display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Extern storage class specifier is not permitted in function definitions.".to_string()),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: func_def.loc.line,
-                    column: func_def.loc.column,
-                    length: func_def.span.end,
-                }),
-            });
-            exit(1);
-        }
-
-        let func_linkage: Option<Linkage> = if !is_entry_point {
-            Some(self.build_func_linkage(func_def.storage_class.clone()))
-        } else {
-            None
-        };
-
-        let func = self
-            .module
-            .borrow_mut()
-            .deref_mut()
-            .add_function(&actual_func_name, fn_type, func_linkage);
-
-        self.current_func_ref = Some(func);
-
-        let entry_block = self.context.append_basic_block(func, "entry");
-        self.builder.position_at_end(entry_block);
-        self.current_block_ref = Some(entry_block);
-
+    fn build_func_def_local_params(
+        &mut self,
+        scope: ScopeRef<'ctx>,
+        func_value: FunctionValue<'ctx>,
+        func_def: FuncDef,
+    ) {
         let mut scope_borrowed = scope.borrow_mut();
-        for (idx, param) in func.get_param_iter().enumerate() {
+        for (idx, param) in func_value.get_param_iter().enumerate() {
             let param_ptr = self.builder.build_alloca(param.get_type(), "param").unwrap();
             self.builder.build_store(param_ptr, param).unwrap();
 
             if let Some(func_param) = func_def.params.list.get(idx) {
-                if let Some(param_type_specifier) = func_decl.params.list.index(idx).ty.clone() {
-                    let param_internal_type = self.build_type(param_type_specifier, func_param.loc.clone(), func_param.span.end);
+                if let Some(param_type_specifier) = func_def.params.list.index(idx).ty.clone() {
+                    let param_internal_type =
+                        self.build_type(param_type_specifier, func_param.loc.clone(), func_param.span.end);
 
                     scope_borrowed.insert(
                         func_param.identifier.name.clone(),
@@ -268,9 +193,123 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
-
         }
-        drop(scope_borrowed);
+    }
+
+    fn transform_to_func_decl(&self, func_def: FuncDef) -> FuncDecl {
+        FuncDecl {
+            name: func_def.name.clone(),
+            params: func_def.params.clone(),
+            return_type: func_def.return_type.clone(),
+            storage_class: func_def.storage_class.clone(),
+            renamed_as: Some(func_def.name.clone()),
+            span: func_def.span.clone(),
+            loc: func_def.loc.clone(),
+        }
+    }
+
+    fn validate_func_storage_class(&self, func_def: FuncDef, is_entry_point: bool) {
+        if is_entry_point && !matches!(func_def.storage_class, StorageClass::Internal) {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(
+                    "Module entry point cannot be declared with non-internal storage_class.".to_string(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_def.loc.line,
+                    column: func_def.loc.column,
+                    length: func_def.span.end,
+                }),
+            });
+            exit(1);
+        }
+
+        if func_def.storage_class == StorageClass::Extern {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(
+                    "Extern storage class specifier is not permitted in function definitions.".to_string(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_def.loc.line,
+                    column: func_def.loc.column,
+                    length: func_def.span.end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
+    pub(crate) fn build_func_def(
+        &mut self,
+        func_def: FuncDef,
+        mut func_param_types: Vec<LLVMTypeRef>,
+        is_entry_point: bool,
+    ) -> FunctionValue<'ctx> {
+        self.validate_func_storage_class(func_def.clone(), is_entry_point);
+        let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+        let func_decl = self.transform_to_func_decl(func_def.clone());
+        let is_var_args = func_def.params.variadic.is_some();
+
+        let return_type = self.build_type(
+            TypeSpecifier::TypeToken(Token {
+                kind: TokenKind::Void,
+                span: Span::default(),
+                loc: Location::default(),
+            }),
+            func_def.loc.clone(),
+            func_def.span.end,
+        );
+
+        let fn_type = unsafe {
+            FunctionType::new(LLVMFunctionType(
+                return_type.as_type_ref(),
+                func_param_types.as_mut_ptr(),
+                func_param_types.len() as u32,
+                is_var_args as i32,
+            ))
+        };
+
+        let actual_func_name = if !is_entry_point {
+            format!("{}.{}", self.module_name, func_def.name.clone())
+        } else {
+            func_decl.name.clone()
+        };
+
+        let func_linkage: Option<Linkage> = if !is_entry_point {
+            Some(self.build_func_linkage(func_def.storage_class.clone()))
+        } else {
+            None
+        };
+
+        let func_value = self
+            .module
+            .borrow_mut()
+            .deref_mut()
+            .add_function(&actual_func_name, fn_type, func_linkage);
+
+        self.func_table.insert(
+            if let Some(renamed_as) = func_decl.renamed_as.clone() {
+                renamed_as
+            } else {
+                func_decl.name.clone()
+            },
+            FuncMetadata {
+                func_decl,
+                ptr: func_value,
+                return_type: return_type.clone(),
+            },
+        );
+
+        self.current_func_ref = Some(func_value);
+
+        let entry_block = self.context.append_basic_block(func_value, "entry");
+        self.builder.position_at_end(entry_block);
+        self.current_block_ref = Some(entry_block);
+
+        self.build_func_def_local_params(Rc::clone(&scope), func_value, func_def.clone());
 
         let mut build_return = false;
         for expr in func_def.body.exprs {
@@ -324,22 +363,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        func.verify(true);
-
-        self.func_table.insert(
-            if let Some(renamed_as) = func_decl.renamed_as.clone() {
-                renamed_as
-            } else {
-                func_decl.name.clone()
-            },
-            FuncMetadata {
-                func_decl,
-                ptr: func,
-                return_type,
-            },
-        );
-
-        return func;
+        func_value.verify(true);
+        return func_value;
     }
 
     pub(crate) fn build_return(&mut self, value: InternalValue, loc: Location, span_end: usize) {
@@ -403,7 +428,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         params: Option<FuncParams>,
         func_name: String,
         loc: Location,
-        span_end: usize
+        span_end: usize,
     ) -> Vec<BasicMetadataValueEnum<'ctx>> {
         arguments
             .iter()
@@ -424,7 +449,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                     level: DiagLevel::Error,
                                     kind: DiagKind::Custom(
                                         format!("Argument at index {} for function '{}' is not compatible with type '{:?}' for implicit casting.",
-                                            idx, 
+                                            idx,
                                             func_name,
                                             target_type
                                         )
@@ -463,83 +488,93 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .collect()
     }
 
-    pub(crate) fn check_func_args_count_mismatch(&self, func_name: String, func_decl: FuncDecl, arguments_length: usize, loc: Location, span_end: usize) {
-        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != arguments_length {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncCallArgumentCountMismatch(
-                    func_name.clone(),
-                    arguments_length.try_into().unwrap(),
-                    func_decl.params.list.len().try_into().unwrap(),
-                ),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        } else if func_decl.params.variadic.is_some() && arguments_length < func_decl.params.list.len() {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncCallArgumentCountMismatch(
-                    func_name.clone(),
-                    arguments_length.try_into().unwrap(),
-                    func_decl.params.list.len().try_into().unwrap(),
-                ),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        }
-    }
-
-    pub(crate) fn check_method_args_count_mismatch(&self, func_name: String, func_decl: FuncDecl, arguments_length: usize, loc: Location, span_end: usize) {
-        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != arguments_length {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncCallArgumentCountMismatch(
-                    func_name.clone(),
-                    arguments_length.try_into().unwrap(),
-                    (func_decl.params.list.len() - 1).try_into().unwrap(),
-                ),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        } else if func_decl.params.variadic.is_some() && arguments_length < func_decl.params.list.len() {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncCallArgumentCountMismatch(
-                    func_name.clone(),
-                    arguments_length.try_into().unwrap(),
-                    (func_decl.params.list.len() - 1).try_into().unwrap(),
-                ),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        }
-    }
-
-    pub(crate) fn build_func_call(
+    pub(crate) fn check_func_args_count_mismatch(
         &self,
-        scope: ScopeRef<'ctx>,
-        func_call: FuncCall,
-    ) -> InternalValue<'ctx> {
+        func_name: String,
+        func_decl: FuncDecl,
+        arguments_length: usize,
+        loc: Location,
+        span_end: usize,
+    ) {
+        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != arguments_length {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    arguments_length.try_into().unwrap(),
+                    func_decl.params.list.len().try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        } else if func_decl.params.variadic.is_some() && arguments_length < func_decl.params.list.len() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    arguments_length.try_into().unwrap(),
+                    func_decl.params.list.len().try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
+    pub(crate) fn check_method_args_count_mismatch(
+        &self,
+        func_name: String,
+        func_decl: FuncDecl,
+        arguments_length: usize,
+        loc: Location,
+        span_end: usize,
+    ) {
+        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != arguments_length {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    arguments_length.try_into().unwrap(),
+                    (func_decl.params.list.len() - 1).try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        } else if func_decl.params.variadic.is_some() && arguments_length < func_decl.params.list.len() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::FuncCallArgumentCountMismatch(
+                    func_name.clone(),
+                    arguments_length.try_into().unwrap(),
+                    (func_decl.params.list.len() - 1).try_into().unwrap(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
+    pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> InternalValue<'ctx> {
         let expr = self.build_expr(Rc::clone(&scope), *func_call.operand.clone());
 
         let func_metadata = {
@@ -614,9 +649,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Rc::clone(&scope),
             func_call.arguments.clone(),
             Some(func_metadata.func_decl.params.clone()),
-            func_metadata.func_decl.renamed_as.clone().unwrap_or(func_metadata.func_decl.name.clone()),
-            func_call.loc.clone(),  
-            func_call.span.end,            
+            func_metadata
+                .func_decl
+                .renamed_as
+                .clone()
+                .unwrap_or(func_metadata.func_decl.name.clone()),
+            func_call.loc.clone(),
+            func_call.span.end,
         );
 
         self.check_func_args_count_mismatch(
@@ -625,7 +664,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_call.arguments.len(),
             func_call.loc.clone(),
             func_call.span.end,
-        );  
+        );
 
         let call_site_value = self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap();
         let return_type = func_metadata.return_type.clone();

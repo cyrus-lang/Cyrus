@@ -1,25 +1,11 @@
 extern fn printf(format: const char*, ...);
 extern fn exit(status: int);
 
-struct Person {
-    name: string;
-
-    public fn display(age: int) {
-        printf("name: %s\n", (*this).name);
-        
-        // (*this).name = "Change!";
-        this->name = "Change!";
-
-        printf("age: %d\n", age);
-    }
+fn sample(x: int) {
+    printf("%d\n", x);
+    sample(x + 1);
 }
 
 fn main() {
-    #user = Person { name: "Taha" };
-    #ref = &user;
-
-    // // ref.display(10);      // wrong! because it is pointer now
-    // ref->display(18);  // correct! it must be used with fat_arrow
-
-    ref.name;
+    sample(1);
 }

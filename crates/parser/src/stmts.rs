@@ -593,7 +593,7 @@ impl<'a> Parser<'a> {
                     start,
                     end: self.current_token.span.end,
                 },
-                loc
+                loc,
             }));
         }
 
