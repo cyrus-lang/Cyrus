@@ -1,9 +1,9 @@
-use codegen_llvm::opts::BuildDir;
 use ::parser::parse_program;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::build::OutputKind;
 use codegen_llvm::diag::*;
+use codegen_llvm::opts::BuildDir;
 use utils::fs::get_directory_of_file;
 
 const PROJECT_FILE_PATH: &str = "Project.toml";
@@ -92,7 +92,7 @@ impl CompilerOptions {
             cyrus_version: None,
             authors: None,
             project_type: None,
-            build_dir: { 
+            build_dir: {
                 match self.build_dir.clone() {
                     Some(path) => BuildDir::Provided(path),
                     None => BuildDir::Default,

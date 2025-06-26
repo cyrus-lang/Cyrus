@@ -21,7 +21,6 @@ pub enum BuildDir {
     Provided(String),
 }
 
-
 impl Options {
     pub fn default() -> Self {
         Self {
