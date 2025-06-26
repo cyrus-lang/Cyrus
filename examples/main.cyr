@@ -1,23 +1,39 @@
 extern fn printf(format: const char*, ...);
 extern fn exit(status: int);
 
-fn fibonacci(n: int32): int32 {
-    if (n == 0) {
-        return 0;
-    }
-    else if (n == 1) {
-        return 1;
-    }
-    else if (n < 0) {
-        printf("Error: Fibonacci is not defined for negative numbers in this context.\n");
-    }
-    else {
-        return fibonacci(n - 1) + fibonacci(n - 2);
-    }
-}
+// fn fibonacci(n: int32): int32 {
+    // #result: int32;
+
+    // if (n == 0) {
+    //     result = 0;
+    // }
+    // else if (n == 1) {
+    //     result = 1;
+    // }
+    // else {
+    //     result = fibonacci(n - 1) + fibonacci(n - 2);
+    // }
+
+    // return result;
+    // return 0;
+// }
+// fn fibonacci(n: int32): int32 {
+//     if (n == 0) {
+//         return 0;
+//     }
+//     else if (n == 1) {
+//         return 1;
+//     }
+//     else {
+//         return fibonacci(n - 1) + fibonacci(n - 2);
+//     }
+// }
 
 fn main() {
-    for (#i = 0; i < 30; i++) {
-        printf("%d\n", fibonacci(i));
-    }
+    #i: float64 = 3.14;
+    printf("%f\n", i);
+
+    // for (#i = 0; i < 30; i++) {
+    //     printf("%d\n", fibonacci(i));
+    // }
 }

@@ -582,14 +582,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_literal(&self, literal: Literal) -> InternalValue<'ctx> {
         match literal {
-            Literal::Integer(integer_literal) => InternalValue::IntValue(
-                self.build_integer_literal(integer_literal),
-                InternalType::IntType(self.context.i32_type()),
-            ),
-            Literal::Float(float_literal) => InternalValue::FloatValue(
-                self.build_float_literal(float_literal),
-                InternalType::FloatType(self.context.f32_type()),
-            ),
+            Literal::Integer(integer_literal) => {
+                let value = self.build_integer_literal(integer_literal);
+                InternalValue::IntValue(value, InternalType::IntType(value.get_type()))
+            }
+            Literal::Float(float_literal) => {
+                let value = self.build_float_literal(float_literal);
+                InternalValue::FloatValue(value, InternalType::FloatType(value.get_type()))
+            }
             Literal::Bool(bool_literal) => InternalValue::BoolValue(self.build_bool_literal(bool_literal)),
             Literal::Char(char_literal) => InternalValue::IntValue(
                 self.build_char_literal(char_literal),
@@ -601,14 +601,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_integer_literal(&self, value: i64) -> IntValue<'ctx> {
-        let data_layout = self.target_machine.get_target_data();
-        self.context
-            .ptr_sized_int_type(&data_layout, None)
-            .const_int(value.try_into().unwrap(), false)
+        self.context.i32_type().const_int(value.try_into().unwrap(), true)
     }
 
     pub(crate) fn build_float_literal(&self, value: f64) -> FloatValue<'ctx> {
-        self.context.f64_type().const_float(value)
+        self.context.f32_type().const_float(value)
     }
 
     pub(crate) fn build_char_literal(&self, value: char) -> IntValue<'ctx> {

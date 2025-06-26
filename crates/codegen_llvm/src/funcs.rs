@@ -315,7 +315,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         if !self.block_terminated(current_block) && return_type.is_void_type() {
             self.builder.build_return(None).unwrap();
-        } else if !self.block_terminated(current_block) {
+        } 
+        else if !self.block_terminated(current_block) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
