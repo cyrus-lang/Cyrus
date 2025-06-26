@@ -3,16 +3,15 @@ use crate::scope::{Scope, ScopeRecord, ScopeRef};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
-    Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, ModuleSegment, StorageClass, TypeSpecifier,
+    Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, ModuleSegment, Return, StorageClass, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
-use inkwell::builder::BuilderError;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
 use inkwell::types::FunctionType;
-use inkwell::values::{BasicMetadataValueEnum, CallSiteValue, FunctionValue, InstructionValue};
+use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{DerefMut, Index};
@@ -254,11 +253,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let is_var_args = func_def.params.variadic.is_some();
 
         let return_type = self.build_type(
-            TypeSpecifier::TypeToken(Token {
+            func_def.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
                 kind: TokenKind::Void,
                 span: Span::default(),
                 loc: Location::default(),
-            }),
+            })),
             func_def.loc.clone(),
             func_def.span.end,
         );
@@ -310,43 +309,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.current_block_ref = Some(entry_block);
 
         self.build_func_def_local_params(Rc::clone(&scope), func_value, func_def.clone());
+        self.build_statements(Rc::clone(&scope), func_def.body.exprs);
 
-        let mut build_return = false;
-        for expr in func_def.body.exprs {
-            match expr {
-                ast::ast::Statement::Return(return_statement) => {
-                    build_return = true;
-                    let expr =
-                        self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), return_statement.argument));
-                    self.build_return(expr, return_statement.loc, return_statement.span.end);
-                }
-                _ => self.build_statement(Rc::clone(&scope), expr),
-            }
-        }
+        let current_block = self.get_current_block("func_def statement", func_def.loc.clone(), func_def.span.end);
 
-        if return_type.is_void_type() {
-            if build_return {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!(
-                        "The function '{}' with void return type is not allowed to have a return statement.",
-                        &func_def.name
-                    )),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: func_def.loc.line,
-                        column: func_def.loc.column,
-                        length: func_def.span.end,
-                    }),
-                });
-                exit(1);
-            }
-
-            let current_block = self.get_current_block("function definition", func_def.loc, func_def.span.end);
-            if !self.block_terminated(current_block) {
-                let _ = self.builder.build_return(None).unwrap();
-            }
-        } else if !build_return {
+        if !self.block_terminated(current_block) && return_type.is_void_type() {
+            self.builder.build_return(None).unwrap();
+        } 
+        else if !self.block_terminated(current_block) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
@@ -367,58 +337,73 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         return func_value;
     }
 
-    pub(crate) fn build_return(&mut self, value: InternalValue, loc: Location, span_end: usize) {
-        let result: Result<InstructionValue, BuilderError> = match value {
-            InternalValue::IntValue(int_value, _) => self.builder.build_return(Some(&int_value)),
-            InternalValue::FloatValue(float_value, _) => self.builder.build_return(Some(&float_value)),
-            InternalValue::PointerValue(pointer_value) => self.builder.build_return(Some(&pointer_value.ptr)),
-            InternalValue::VectorValue(vector_value, _) => self.builder.build_return(Some(&vector_value)),
-            InternalValue::ArrayValue(array_value, _) => self.builder.build_return(Some(&array_value)),
-            InternalValue::StructValue(struct_value, _) => self.builder.build_return(Some(&struct_value)),
-            _ => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(String::from("Cannot build return statement with non-basic value.")),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-        };
+    pub(crate) fn build_return(&mut self, scope: ScopeRef<'ctx>, statement: Return) {
+        let current_block = self.get_current_block("return statement", statement.loc.clone(), statement.span.end);
+        let current_func = self.get_current_func("return statement", statement.loc.clone(), statement.span.end);
 
-        if let Err(err) = result {
+        if self.block_terminated(current_block) {
+            return;
+        }
+
+        let func_metadata = self.func_table.values().find(|f| f.ptr == current_func).unwrap();
+
+        if func_metadata.return_type.is_void_type() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!("Cannot build return statement: {}", err.to_string())),
+                kind: DiagKind::Custom(format!(
+                    "The function '{}' with void return type is not allowed to have a return statement.",
+                    &func_metadata
+                        .func_decl
+                        .renamed_as
+                        .clone()
+                        .unwrap_or(func_metadata.func_decl.name.clone())
+                )),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
+                    line: statement.loc.line,
+                    column: statement.loc.column,
+                    length: statement.span.end,
+                }),
+            });
+            exit(1);
+        } else if !func_metadata.return_type.is_void_type() && statement.argument.is_none() {
+            // FIXME We need accurate type name tracking here
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Function '{}' must return a value of type '{:?}'.",
+                    &func_metadata
+                        .func_decl
+                        .renamed_as
+                        .clone()
+                        .unwrap_or(func_metadata.func_decl.name.clone()),
+                    func_metadata.return_type
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: statement.loc.line,
+                    column: statement.loc.column,
+                    length: statement.span.end,
                 }),
             });
             exit(1);
         }
 
-        // mark entry block terminated
-        if let Some(current_block) = self.current_block_ref {
-            self.mark_block_terminated(current_block);
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Failed to mark block terminated.".to_string()),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
+        match statement.argument {
+            Some(argument) => {
+                let argument_basic_value = self.implicit_cast(
+                    self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), argument)),
+                    func_metadata.return_type.clone(),
+                );
+
+                self.builder.build_return(Some(&argument_basic_value)).unwrap();
+            }
+            None => {
+                self.builder.build_return(None).unwrap();
+            }
         }
+
+        self.mark_block_terminated(current_block);
     }
 
     pub(crate) fn build_arguments(

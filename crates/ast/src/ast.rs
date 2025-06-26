@@ -292,7 +292,7 @@ pub fn format_statements(stmts: &Vec<Statement>) -> String {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Return {
-    pub argument: Expression,
+    pub argument: Option<Expression>,
     pub span: Span,
     pub loc: Location,
 }
