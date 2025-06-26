@@ -36,6 +36,7 @@ pub enum TokenKind {
     RightBracket,
     Comma,
     Hashtag,
+    FatArrow,
     Dot,
     DoubleDot,
     TripleDot,

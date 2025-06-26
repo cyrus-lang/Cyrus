@@ -37,8 +37,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::Infix(binary_expression) => self.build_infix_expr(Rc::clone(&scope), binary_expression),
             Expression::UnaryOperator(unary_operator) => self.build_unary_operator(Rc::clone(&scope), unary_operator),
             Expression::Cast(cast_as) => self.build_cast_expression(Rc::clone(&scope), cast_as),
-            Expression::AddressOf(expr) => self.build_address_of(Rc::clone(&scope), *expr),
-            Expression::Dereference(expression) => self.build_deref(Rc::clone(&scope), *expression),
+            Expression::AddressOf(address_of) => self.build_address_of(Rc::clone(&scope), address_of),
+            Expression::Dereference(dereference) => self.build_deref(Rc::clone(&scope), dereference),
             Expression::StructInit(struct_init) => self.build_struct_init(Rc::clone(&scope), struct_init),
             Expression::Array(array) => self.build_array(Rc::clone(&scope), array),
             Expression::ArrayIndex(array_index) => self.build_array_index(Rc::clone(&scope), array_index),
@@ -51,8 +51,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_address_of(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
-        let internal_value = self.build_expr(Rc::clone(&scope), expr);
+    pub(crate) fn build_address_of(&self, scope: ScopeRef<'ctx>, address_of: AddressOf) -> InternalValue<'ctx> {
+        let internal_value = self.build_expr(Rc::clone(&scope), *address_of.expr);
 
         if let InternalValue::Lvalue(lvalue) = internal_value {
             return InternalValue::PointerValue(TypedPointerValue {
@@ -64,14 +64,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         display_single_diag(Diag {
             level: DiagLevel::Error,
             kind: DiagKind::Custom("Cannot take the address of an rvalue.".to_string()),
-            location: None,
+            location: Some(DiagLoc {
+                file: self.file_path.clone(),
+                line: address_of.loc.line,
+                column: address_of.loc.column,
+                length: address_of.span.end,
+            }),
         });
         exit(1);
     }
 
-    pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
-        let internal_value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
-
+    pub(crate) fn build_deref_internal(
+        &self,
+        scope: ScopeRef<'ctx>,
+        internal_value: InternalValue<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> InternalValue<'ctx> {
         match internal_value {
             InternalValue::PointerValue(pointer_value) => InternalValue::Lvalue(Lvalue {
                 ptr: pointer_value.ptr,
@@ -81,11 +90,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot dereference non-pointer value.".to_string()),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
                 });
                 exit(1);
             }
         }
+    }
+
+    pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, dereference: Dereference) -> InternalValue<'ctx> {
+        let internal_value = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), *dereference.expr));
+        self.build_deref_internal(scope, internal_value, dereference.loc, dereference.span.end)
     }
 
     pub(crate) fn build_module_import(

@@ -41,13 +41,27 @@ pub enum Expression {
     UnaryOperator(UnaryOperator),
     Array(Array),
     ArrayIndex(ArrayIndex),
-    AddressOf(Box<Expression>),
-    Dereference(Box<Expression>),
+    AddressOf(AddressOf),
+    Dereference(Dereference),
     StructInit(StructInit),
     FuncCall(FuncCall),
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
     UnnamedStructValue(UnnamedStructValue),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Dereference {
+    pub expr: Box<Expression>,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddressOf {
+    pub expr: Box<Expression>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -134,6 +148,7 @@ pub struct FuncCall {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldAccess {
+    pub is_fat_arrow: bool,
     pub operand: Box<Expression>,
     pub field_name: Identifier,
     pub span: Span,
@@ -142,6 +157,7 @@ pub struct FieldAccess {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MethodCall {
+    pub is_fat_arrow: bool,
     pub operand: Box<Expression>,
     pub method_name: Identifier,
     pub arguments: Vec<Expression>,

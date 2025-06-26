@@ -95,7 +95,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 } else {
                     self.read_char();
@@ -105,7 +105,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 }
             }
@@ -119,7 +119,18 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
+                    };
+                } else if self.peek_char() == '>' {
+                    self.read_char();
+                    self.read_char();
+                    return Token {
+                        kind: TokenKind::FatArrow,
+                        span: Span {
+                            start: self.pos - 2,
+                            end: self.pos - 1,
+                        },
+                        loc,
                     };
                 } else {
                     self.read_char();
@@ -129,7 +140,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 }
             }
@@ -152,7 +163,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 } else {
                     return Token {
@@ -161,7 +172,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 }
             }
@@ -186,7 +197,7 @@ impl Lexer {
                         start: self.pos - 1,
                         end: self.pos - 1,
                     },
-                    loc
+                    loc,
                 };
             }
             '#' => TokenKind::Hashtag,
@@ -202,7 +213,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 } else {
                     self.read_char(); // consume current equal sign
@@ -212,7 +223,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 }
             }
@@ -226,7 +237,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 } else {
                     self.read_char(); // consume current equal sign
@@ -236,7 +247,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 }
             }
@@ -250,7 +261,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 } else {
                     self.read_char();
@@ -260,7 +271,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 }
             }
@@ -274,7 +285,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 } else {
                     self.read_char();
@@ -284,7 +295,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 }
             }
@@ -298,7 +309,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 } else {
                     self.read_char();
@@ -308,7 +319,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 }
             }
@@ -322,7 +333,7 @@ impl Lexer {
                             start: self.pos - 2,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 } else {
                     self.read_char();
@@ -332,7 +343,7 @@ impl Lexer {
                             start: self.pos - 1,
                             end: self.pos - 1,
                         },
-                        loc
+                        loc,
                     };
                 }
             }
@@ -364,7 +375,7 @@ impl Lexer {
                 start: self.pos - 1,
                 end: self.pos - 1,
             },
-            loc
+            loc,
         }
     }
 

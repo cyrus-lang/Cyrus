@@ -239,6 +239,7 @@ mod tests {
                 assert_eq!(
                     field_access,
                     FieldAccess {
+                        is_fat_arrow: false,
                         operand: Box::new(Expression::ModuleImport(ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "object".to_string(),
@@ -253,8 +254,8 @@ mod tests {
                             span: Span::new(7, 12),
                             loc: Location::new(1, 13),
                         },
-                        span: Span::new(7, 12),
-                        loc: Location::new(1, 13)
+                        span: Span::new(6, 12),
+                        loc: Location::new(1, 7)
                     }
                 );
             } else {
@@ -270,6 +271,7 @@ mod tests {
                 assert_eq!(
                     method_call,
                     MethodCall {
+                        is_fat_arrow: false,
                         operand: Box::new(Expression::ModuleImport(ModuleImport {
                             segments: vec![ModuleSegment::SubModule(Identifier {
                                 name: "object".to_string(),
@@ -288,8 +290,8 @@ mod tests {
                             Expression::Literal(Literal::Integer(1)),
                             Expression::Literal(Literal::Integer(2)),
                         ],
-                        span: Span::new(7, 18),
-                        loc: Location::new(1, 14)
+                        span: Span::new(6, 18),
+                        loc: Location::new(1, 7)
                     }
                 );
             } else {
