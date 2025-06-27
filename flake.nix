@@ -82,7 +82,7 @@
         shellHook = ''
           export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
           export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
-          alias cyrus="cargo run --"
+          alias cyrus="cargo run -j24 --"
         '';
       };
     };
