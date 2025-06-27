@@ -1,20 +1,9 @@
 extern fn printf(format: const char*, ...);
 extern fn exit(status: int);
 
-fn fibonacci(n: int32): int32 {
-    if (n == 0) {
-        return 0;
-    }
-    else if (n == 1) {
-        return 1;
-    }
-    else {
-        return fibonacci(n - 1) + fibonacci(n - 2);
-    }
-}
-
 fn main() {
-    for (#i = 0; i < 30; i++) {
-        printf("%d\n", fibonacci(i));
-    }
+    printf("value: %d\n", fibonacci(1));
+    // for (#i = 0; i < 30; i++) {
+    //     printf("%d\n", fibonacci(i));
+    // }
 }

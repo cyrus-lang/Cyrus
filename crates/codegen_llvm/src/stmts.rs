@@ -16,6 +16,12 @@ pub struct LoopBlockRefs<'a> {
     pub end_block: BasicBlock<'a>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TerminatedBlockMetadata<'a> {
+    pub basic_block: BasicBlock<'a>,
+    pub terminated_with_return: bool,
+}
+
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_statements(&mut self, scope: ScopeRef<'ctx>, stmts: Vec<Statement>) {
         for stmt in stmts {
@@ -91,12 +97,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn block_terminated(&self, block: BasicBlock<'ctx>) -> bool {
-        self.terminated_blocks.contains(&block)
+    pub(crate) fn is_block_terminated(&self, basic_block: BasicBlock<'ctx>) -> bool {
+        self.terminated_blocks
+            .iter()
+            .find(|metadata| metadata.basic_block == basic_block)
+            .is_some()
     }
 
-    pub(crate) fn mark_block_terminated(&mut self, block: BasicBlock<'ctx>) {
-        self.terminated_blocks.push(block);
+    pub(crate) fn get_block_terminated_metadata(
+        &self,
+        basic_block: BasicBlock<'ctx>,
+    ) -> Option<TerminatedBlockMetadata<'ctx>> {
+        self.terminated_blocks
+            .iter()
+            .find(|metadata| metadata.basic_block == basic_block)
+            .cloned()
+    }
+
+    pub(crate) fn mark_block_terminated(&mut self, basic_block: BasicBlock<'ctx>, terminated_with_return: bool) {
+        self.terminated_blocks.push(TerminatedBlockMetadata {
+            basic_block,
+            terminated_with_return,
+        });
     }
 
     pub(crate) fn get_current_block(&self, stmt_name: &'ctx str, loc: Location, span_end: usize) -> BasicBlock<'ctx> {
@@ -164,7 +186,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        self.mark_block_terminated(current_block);
+        self.mark_block_terminated(current_block, false);
         self.builder.build_unconditional_branch(loop_end_block).unwrap();
         self.builder.position_at_end(loop_end_block);
     }
@@ -190,20 +212,68 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        self.mark_block_terminated(current_block);
+        self.mark_block_terminated(current_block, false);
         self.builder.build_unconditional_branch(loop_end_block).unwrap();
         self.builder.position_at_end(loop_end_block);
     }
 
     pub(crate) fn build_infinite_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
-        self.build_conditional_for_statement(
-            scope,
-            Expression::Literal(Literal::Bool(true)),
-            *for_statement.body,
-            None,
+        let always_true_condition = Expression::Literal(Literal::Bool(true));
+
+        let current_block = self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
+        let current_func = self.get_current_func("for statement", for_statement.loc.clone(), for_statement.span.end);
+
+        let cond_block = self.context.append_basic_block(current_func, "loop.cond");
+        let body_block = self.context.append_basic_block(current_func, "loop.body");
+        let end_block = self.context.append_basic_block(current_func, "loop.end");
+
+        // track current_loop
+        let previous_loop_ref = self.current_loop_ref.clone();
+        self.current_loop_ref = Some(LoopBlockRefs { cond_block, end_block });
+
+        self.builder.position_at_end(current_block);
+        self.builder.build_unconditional_branch(cond_block).unwrap();
+        self.mark_block_terminated(current_block, false);
+
+        self.builder.position_at_end(cond_block);
+        let condition = self.build_cond(
+            Rc::clone(&scope),
+            always_true_condition,
             for_statement.loc.clone(),
             for_statement.span.end,
         );
+        self.builder
+            .build_conditional_branch(condition, body_block, end_block)
+            .unwrap();
+        self.mark_block_terminated(cond_block, false);
+
+        self.current_block_ref = Some(body_block);
+        self.builder.position_at_end(body_block);
+
+        for stmt in for_statement.body.exprs {
+            let current_block =
+                self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
+            if self.is_block_terminated(current_block) {
+                break;
+            }
+
+            self.build_statement(Rc::clone(&scope), stmt.clone());
+        }
+
+        let after_body_block =
+            self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
+
+        if !self.is_block_terminated(after_body_block) {
+            self.builder.position_at_end(after_body_block);
+            self.builder.build_unconditional_branch(cond_block).unwrap();
+            self.mark_block_terminated(after_body_block, false);
+        }
+
+        self.current_block_ref = Some(end_block);
+        self.builder.position_at_end(end_block);
+
+        // clear current_loop
+        self.current_loop_ref = previous_loop_ref;
     }
 
     pub(crate) fn build_conditional_for_statement(
@@ -228,31 +298,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.builder.position_at_end(current_block);
         self.builder.build_unconditional_branch(cond_block).unwrap();
-        self.mark_block_terminated(current_block);
+        self.mark_block_terminated(current_block, false);
 
         self.builder.position_at_end(cond_block);
         let condition = self.build_cond(Rc::clone(&scope), condition, loc.clone(), span_end);
         self.builder
             .build_conditional_branch(condition, body_block, end_block)
             .unwrap();
-        self.mark_block_terminated(cond_block);
+        self.mark_block_terminated(cond_block, false);
 
         self.current_block_ref = Some(body_block);
         self.builder.position_at_end(body_block);
 
         for stmt in body.exprs {
             let current_block = self.get_current_block("for statement", loc.clone(), span_end);
-            if self.block_terminated(current_block) {
+            if self.is_block_terminated(current_block) {
                 break;
             }
 
             self.build_statement(Rc::clone(&scope), stmt.clone());
         }
-        // self.build_statements(Rc::new(RefCell::new(scope.borrow().deep_clone_detached())), body.exprs);
 
         let after_body_block = self.get_current_block("for statement", loc.clone(), span_end);
 
-        if !self.block_terminated(after_body_block) {
+        if !self.is_block_terminated(after_body_block) {
             self.builder.position_at_end(after_body_block);
 
             // build increment expression
@@ -261,7 +330,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
 
             self.builder.build_unconditional_branch(cond_block).unwrap();
-            self.mark_block_terminated(after_body_block);
+            self.mark_block_terminated(after_body_block, false);
         }
 
         self.current_block_ref = Some(end_block);
@@ -321,12 +390,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             if_statement.span.end,
         );
 
+        // build condition to enter then_block and else_block
         self.builder.position_at_end(current_block);
-        if !self.block_terminated(current_block) {
+        if !self.is_block_terminated(current_block) {
             self.builder
                 .build_conditional_branch(cond, then_block, else_block)
                 .unwrap();
-            self.mark_block_terminated(current_block);
+            self.mark_block_terminated(current_block, false);
         }
 
         self.builder.position_at_end(then_block);
@@ -335,10 +405,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
             if_statement.consequent.exprs,
         );
-        if !self.block_terminated(then_block) {
+        if !self.is_block_terminated(then_block) {
             self.builder.build_unconditional_branch(end_block).unwrap();
-            self.mark_block_terminated(then_block);
+            self.mark_block_terminated(then_block, false);
         }
+
+        let mut branches_terminated_with_return: Vec<bool> = vec![
+            self.get_block_terminated_metadata(then_block)
+                .unwrap()
+                .terminated_with_return,
+        ];
 
         let mut current_else_block = else_block;
         for else_if in if_statement.branches {
@@ -353,11 +429,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 else_if.span.end,
             );
 
-            if !self.block_terminated(current_else_block) {
+            if !self.is_block_terminated(current_else_block) {
                 self.builder
                     .build_conditional_branch(else_if_cond, new_then_block, new_else_block)
                     .unwrap();
-                self.mark_block_terminated(current_else_block);
+                self.mark_block_terminated(current_else_block, false);
             }
 
             self.builder.position_at_end(new_then_block);
@@ -366,10 +442,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
                 else_if.consequent.exprs,
             );
-            if !self.block_terminated(new_then_block) {
+            if !self.is_block_terminated(new_then_block) {
                 self.builder.build_unconditional_branch(end_block).unwrap();
-                self.mark_block_terminated(new_then_block);
+                self.mark_block_terminated(new_then_block, false);
             }
+
+            branches_terminated_with_return.push(
+                self.get_block_terminated_metadata(new_then_block)
+                    .unwrap()
+                    .terminated_with_return,
+            );
 
             current_else_block = new_else_block;
         }
@@ -383,9 +465,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 alternate.exprs,
             );
         }
-        if !self.block_terminated(current_else_block) {
+        if !self.is_block_terminated(current_else_block) {
             self.builder.build_unconditional_branch(end_block).unwrap();
-            self.mark_block_terminated(current_else_block);
+            self.mark_block_terminated(current_else_block, false);
+        }
+        branches_terminated_with_return.push(
+            self.get_block_terminated_metadata(then_block)
+                .unwrap()
+                .terminated_with_return,
+        );
+
+        // here we're sure that all of the branches are terminated with return statement,
+        // so the final branch will never be terminated and llvm gonna raise errors. so we try to safely
+        // remove the ending block because it's not required anymore.
+        if branches_terminated_with_return.iter().all(|&x| x) {
+            end_block.remove_from_function().unwrap();
+            return;
         }
 
         self.builder.position_at_end(end_block);
