@@ -179,7 +179,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             file_path: file_path.clone(),
             reporter: self.reporter.clone(),
             entry_point: None,
-            is_entry_point: false,
             entry_point_path: self.entry_point_path.clone(),
             func_table: HashMap::new(),
             struct_table: HashMap::new(),

@@ -11,7 +11,7 @@ use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
 use inkwell::types::FunctionType;
-use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
+use inkwell::values::{BasicMetadataValueEnum, FunctionValue, IntValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{DerefMut, Index};
@@ -313,10 +313,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let current_block = self.get_current_block("func_def statement", func_def.loc.clone(), func_def.span.end);
 
-        if !self.block_terminated(current_block) && return_type.is_void_type() {
+        if !self.is_block_terminated(current_block) && return_type.is_void_type() {
             self.builder.build_return(None).unwrap();
         } 
-        else if !self.block_terminated(current_block) {
+        else if !self.is_block_terminated(current_block) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
@@ -341,7 +341,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let current_block = self.get_current_block("return statement", statement.loc.clone(), statement.span.end);
         let current_func = self.get_current_func("return statement", statement.loc.clone(), statement.span.end);
 
-        if self.block_terminated(current_block) {
+        if self.is_block_terminated(current_block) {
             return;
         }
 
@@ -403,7 +403,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         }
 
-        self.mark_block_terminated(current_block);
+        self.mark_block_terminated(current_block, true);
     }
 
     pub(crate) fn build_arguments(

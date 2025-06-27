@@ -25,7 +25,7 @@ use utils::fs::file_stem;
 use utils::tui::{tui_compile_finished, tui_compiled};
 use values::{InternalValue, StringValue};
 
-use crate::stmts::LoopBlockRefs;
+use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 
 pub mod build;
 pub mod diag;
@@ -56,14 +56,13 @@ pub struct CodeGenLLVM<'ctx> {
     file_path: String,
     reporter: DiagReporter,
     entry_point: Option<FuncDef>,
-    is_entry_point: bool,
     entry_point_path: String,
     func_table: FuncTable<'ctx>,
     struct_table: StructTable<'ctx>,
     compiler_invoked_single: bool,
     current_func_ref: Option<FunctionValue<'ctx>>,
     current_block_ref: Option<BasicBlock<'ctx>>,
-    terminated_blocks: Vec<BasicBlock<'ctx>>,
+    terminated_blocks: Vec<TerminatedBlockMetadata<'ctx>>,
     current_loop_ref: Option<LoopBlockRefs<'ctx>>,
     string_type: StringType<'ctx>,
     loaded_modules: Vec<ModuleMetadata<'ctx>>,
@@ -109,7 +108,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             target_machine,
             entry_point: None,
             entry_point_path: file_path.clone(),
-            is_entry_point: true,
             func_table: FuncTable::new(),
             struct_table: StructTable::new(),
             build_manifest: BuildManifest::default(),
