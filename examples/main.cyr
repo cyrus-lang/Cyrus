@@ -1,7 +1,6 @@
 extern fn printf(format: const char*, ...);
 
 fn main() {
-    #a: const string = "Hello";
-
+    #a: char* = 1;
     printf("value: %s\n", a);
 }

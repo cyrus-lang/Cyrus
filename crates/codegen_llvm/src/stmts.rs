@@ -528,7 +528,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 rvalue.get_type(self.string_type.clone()),
                                 var_internal_type,
                             )),
-                            location: None,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: variable.loc.line,
+                                column: variable.loc.column,
+                                length: variable.span.end,
+                            }),
                         });
                         exit(1);
                     };
