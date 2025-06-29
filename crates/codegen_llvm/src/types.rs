@@ -210,10 +210,10 @@ impl<'a> InternalType<'a> {
                 inner_type: Box::new(InternalType::StringType(string_type.clone())),
                 array_type: string_type.struct_type.array_type(size),
             })),
-            InternalType::PointerType(typed_pointer_type) => Ok(InternalType::ArrayType(InternalArrayType {
+            InternalType::PointerType(internal_pointer_type) => Ok(InternalType::ArrayType(InternalArrayType {
                 type_str,
-                inner_type: Box::new(InternalType::PointerType(typed_pointer_type.clone())),
-                array_type: typed_pointer_type.ptr_type.array_type(size),
+                inner_type: Box::new(InternalType::PointerType(internal_pointer_type.clone())),
+                array_type: internal_pointer_type.ptr_type.array_type(size),
             })),
             InternalType::ConstType(internal_const_type) => {
                 internal_const_type.inner_type.into_array_type(size, type_str)
@@ -404,10 +404,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     && self.compatible_types(*internal_array_type1.inner_type, *internal_array_type2.inner_type)
             }
             (InternalType::StringType(_), InternalType::StringType(_)) => true,
-            (InternalType::StringType(_), InternalType::PointerType(typed_pointer_type)) => {
-                typed_pointer_type.pointee_ty.is_int_type()
+            (InternalType::StringType(_), InternalType::PointerType(internal_pointer_type)) => {
+                internal_pointer_type.pointee_ty.is_int_type()
             }
-            (InternalType::PointerType(_), InternalType::StringType(_)) => true,
+            (InternalType::PointerType(internal_pointer), InternalType::StringType(_)) => {
+                match internal_pointer.pointee_ty {
+                    InternalType::IntType(_) => true,
+                    InternalType::ConstType(internal_const_type) => match *internal_const_type.inner_type {
+                        InternalType::IntType(_) => {
+                            true
+                        },
+                        _ => false,
+                    },
+                    _ => false,
+                }
+            }
             (InternalType::VoidType(_), _) => false,
             (InternalType::ConstType(internal_const_type), rvalue_type) => {
                 self.compatible_types(*internal_const_type.inner_type, rvalue_type)

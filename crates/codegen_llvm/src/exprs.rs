@@ -1,10 +1,7 @@
 use crate::{
-    CodeGenLLVM, ScopeRef,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    types::{
-        InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalPointerType, InternalType,
-    },
-    values::{InternalValue, Lvalue, TypedPointerValue},
+    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, types::{
+        InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalPointerType, InternalType, InternalVoidType,
+    }, values::{InternalValue, Lvalue, TypedPointerValue}, CodeGenLLVM, ScopeRef
 };
 use ast::{
     ast::*,
@@ -338,7 +335,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
-                            "Cannot assign value of type {} to lvalue of type {}.",
+                            "Cannot assign value of type '{}' to lvalue of type '{}'.",
                             rvalue.get_type(self.string_type.clone()),
                             lvalue.pointee_ty
                         )),
@@ -830,16 +827,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 }
-                InternalType::PointerType(typed_pointer_type) => {
+                InternalType::PointerType(internal_pointer_type) => {
                     let casted_ptr = self
                         .builder
-                        .build_pointer_cast(pointer_value.ptr, typed_pointer_type.ptr_type, "cast_ptr")
+                        .build_pointer_cast(pointer_value.ptr, internal_pointer_type.ptr_type, "cast_ptr")
                         .unwrap();
 
                     InternalValue::PointerValue(TypedPointerValue {
-                        type_str: format!("{}*", typed_pointer_type.pointee_ty.to_string()),
+                        type_str: format!("{}*", internal_pointer_type.pointee_ty.to_string()),
                         ptr: casted_ptr,
-                        pointee_ty: typed_pointer_type.pointee_ty,
+                        pointee_ty: internal_pointer_type.pointee_ty,
                     })
                 }
                 InternalType::ConstType(internal_const_type) => {
@@ -860,18 +857,47 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             },
             InternalValue::StringValue(string_value) => match target_type {
-                InternalType::PointerType(typed_pointer_type) => match &typed_pointer_type.pointee_ty {
+                InternalType::PointerType(internal_pointer_type) => match &internal_pointer_type.pointee_ty {
                     InternalType::IntType(_) => self.build_load_string(string_value.clone()),
-                    InternalType::ConstType(internal_const_type) => self.build_cast_expression_internal(
-                        internal_value,
-                        *internal_const_type.inner_type.clone(),
-                        loc,
-                        span_end,
-                    ),
+                    InternalType::ConstType(internal_const_type) => match *internal_const_type.inner_type.clone() {
+                        InternalType::IntType(internal_int_type) => {
+                            let loaded_string = self.build_load_string(string_value.clone());
+                            match loaded_string {
+                                InternalValue::PointerValue(typed_pointer_value) => {
+                                    InternalValue::PointerValue(TypedPointerValue {
+                                        type_str: "const char*".to_string(),
+                                        ptr: typed_pointer_value.ptr,
+                                        pointee_ty: InternalType::VoidType(InternalVoidType {
+                                            type_str: "const char".to_string(),
+                                            void_type: self.context.void_type(),
+                                        }),
+                                    })
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        _ => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom(String::from(
+                                    "String type cannot be casted to any type except 'const char*'.",
+                                )),
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: loc.line,
+                                    column: loc.column,
+                                    length: span_end,
+                                }),
+                            });
+                            exit(1);
+                        }
+                    },
                     _ => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
-                            kind: DiagKind::Custom(String::from("String type can only be casted to char* type.")),
+                            kind: DiagKind::Custom(String::from(
+                                "String type cannot be casted to any type except 'char*'.",
+                            )),
                             location: Some(DiagLoc {
                                 file: self.file_path.clone(),
                                 line: loc.line,
@@ -882,6 +908,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         exit(1);
                     }
                 },
+                InternalType::ConstType(internal_const_type) => {
+                    todo!();
+                }
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -1017,7 +1046,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             },
             InternalType::StringType(string_type) => string_type.struct_type.size_of().unwrap(),
             InternalType::VoidType(_) => self.build_integer_literal(0),
-            InternalType::PointerType(typed_pointer_type) => typed_pointer_type.ptr_type.size_of(),
+            InternalType::PointerType(internal_pointer_type) => internal_pointer_type.ptr_type.size_of(),
             InternalType::ConstType(internal_const_type) => {
                 self.build_sizeof_operator_internal(*internal_const_type.inner_type, loc, span_end)
             }

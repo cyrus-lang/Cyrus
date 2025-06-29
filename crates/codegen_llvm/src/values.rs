@@ -178,10 +178,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 InternalType::VectorType(internal_vector_type),
             ),
             InternalType::StringType(_) => self.build_empty_string(),
-            InternalType::PointerType(typed_pointer_type) => InternalValue::PointerValue(TypedPointerValue {
-                type_str: format!("{}*", typed_pointer_type.pointee_ty.to_string()),
-                ptr: typed_pointer_type.ptr_type.const_zero(),
-                pointee_ty: typed_pointer_type.pointee_ty,
+            InternalType::PointerType(internal_pointer_type) => InternalValue::PointerValue(TypedPointerValue {
+                type_str: format!("{}*", internal_pointer_type.pointee_ty.to_string()),
+                ptr: internal_pointer_type.ptr_type.const_zero(),
+                pointee_ty: internal_pointer_type.pointee_ty,
             }),
             InternalType::ConstType(_) => {
                 display_single_diag(Diag {
@@ -263,14 +263,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::StringType(_) => InternalValue::StringValue(StringValue {
                 struct_value: value.into_struct_value(),
             }),
-            InternalType::PointerType(typed_pointer_type) => InternalValue::PointerValue(TypedPointerValue {
-                type_str: format!("{}*", typed_pointer_type.pointee_ty.to_string()),
+            InternalType::PointerType(internal_pointer_type) => InternalValue::PointerValue(TypedPointerValue {
+                type_str: format!("{}*", internal_pointer_type.pointee_ty.to_string()),
                 ptr: value.into_pointer_value(),
-                pointee_ty: typed_pointer_type.pointee_ty,
+                pointee_ty: internal_pointer_type.pointee_ty,
             }),
-            InternalType::Lvalue(typed_pointer_type) => InternalValue::Lvalue(Lvalue {
+            InternalType::Lvalue(internal_pointer_type) => InternalValue::Lvalue(Lvalue {
                 ptr: value.into_pointer_value(),
-                pointee_ty: typed_pointer_type.pointee_ty,
+                pointee_ty: internal_pointer_type.pointee_ty,
             }),
             InternalType::VoidType(_) => {
                 display_single_diag(Diag {

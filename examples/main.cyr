@@ -1,5 +1,9 @@
-extern fn printf(format: char*, ...);
+extern fn printf(format: const char*, ...);
 
 fn main() {
-    printf("value: %d\n", 1);
+    #a: const string = "Hello";
+    
+    // #a = (const char*) "Hello";
+    // a = "aaa";
+    // printf("value: %s\n", a);
 }
