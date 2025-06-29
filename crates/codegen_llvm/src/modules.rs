@@ -3,7 +3,8 @@ use crate::{
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
-    structs::{StructMetadata, StructTable},
+    structs::StructTable,
+    types::InternalStructType,
 };
 use ast::{
     ast::{Import, ModulePath, ModuleSegment, StorageClass},
@@ -20,7 +21,7 @@ pub struct ModuleMetadata<'ctx> {
     pub file_path: String,
     pub module: Rc<RefCell<Module<'ctx>>>,
     pub func_table: HashMap<String, FuncMetadata<'ctx>>,
-    pub struct_table: HashMap<String, StructMetadata<'ctx>>,
+    pub struct_table: HashMap<String, InternalStructType<'ctx>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -246,8 +247,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     // TODO Implement import struct methods
-    fn build_imported_structs(&self, struct_table: StructTable<'ctx>) -> HashMap<String, StructMetadata<'ctx>> {
-        let mut imported_structs: HashMap<String, StructMetadata> = HashMap::new();
+    fn build_imported_structs(&self, struct_table: StructTable<'ctx>) -> HashMap<String, InternalStructType<'ctx>> {
+        let mut imported_structs: HashMap<String, InternalStructType> = HashMap::new();
 
         for (_, (struct_name, metadata)) in struct_table.iter().enumerate() {
             imported_structs.insert(struct_name.clone(), metadata.clone());

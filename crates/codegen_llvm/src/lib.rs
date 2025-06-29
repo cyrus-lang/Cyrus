@@ -1,3 +1,4 @@
+use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 use ast::ast::*;
 use ast::token::Location;
 use build::{BuildManifest, OutputKind};
@@ -20,12 +21,10 @@ use std::env;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
-use types::{InternalType, StringType};
+use types::{InternalStringType, InternalType};
 use utils::fs::file_stem;
 use utils::tui::{tui_compile_finished, tui_compiled};
 use values::{InternalValue, StringValue};
-
-use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 
 pub mod build;
 pub mod diag;
@@ -64,7 +63,7 @@ pub struct CodeGenLLVM<'ctx> {
     current_block_ref: Option<BasicBlock<'ctx>>,
     terminated_blocks: Vec<TerminatedBlockMetadata<'ctx>>,
     current_loop_ref: Option<LoopBlockRefs<'ctx>>,
-    string_type: StringType<'ctx>,
+    string_type: InternalStringType<'ctx>,
     loaded_modules: Vec<ModuleMetadata<'ctx>>,
     dependent_modules: HashMap<String, Vec<String>>,
     output_kind: OutputKind,
@@ -192,13 +191,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         span_end: usize,
     ) -> (PointerValue<'ctx>, InternalType<'ctx>) {
         let internal_type = self.build_type(var_type.clone(), loc.clone(), span_end);
-        let alloca = self
-            .builder
-            .build_alloca(
-                internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default())),
-                &var_name,
-            )
-            .unwrap();
+        let basic_type = match internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default())) {
+            Ok(basic_type) => basic_type,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err.to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let alloca = self.builder.build_alloca(basic_type, &var_name).unwrap();
         (alloca, internal_type)
     }
 

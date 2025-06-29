@@ -1,4 +1,8 @@
-use crate::{CodeGenLLVM, InternalType, InternalValue, StringType, StringValue, values::TypedPointerValue};
+use crate::{
+    CodeGenLLVM, InternalType, InternalValue, StringValue,
+    types::{InternalArrayType, InternalIntType, InternalStringType, InternalVoidType},
+    values::TypedPointerValue,
+};
 use inkwell::{
     AddressSpace,
     context::Context,
@@ -27,24 +31,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         InternalValue::StrValue(
             string_global.as_any_value_enum().into_pointer_value(),
-            InternalType::ArrayType(
-                Box::new(InternalType::ArrayType(
-                    Box::new(InternalType::IntType(self.context.i8_type())),
-                    i8_array_type,
-                )),
-                i8_array_type,
-            ),
+            InternalType::ArrayType(InternalArrayType {
+                type_str: "string".to_string(),
+                inner_type: Box::new(InternalType::IntType(InternalIntType {
+                    type_str: "char".to_string(),
+                    int_type: self.context.i8_type(),
+                })),
+                array_type: i8_array_type,
+            }),
         )
     }
 
-    pub(crate) fn build_string_type(context: &'ctx Context) -> StringType<'ctx> {
+    pub(crate) fn build_string_type(context: &'ctx Context) -> InternalStringType<'ctx> {
         let i8_ptr_type = context.ptr_type(AddressSpace::default());
         let i64_type = context.i64_type();
 
         let struct_type = context.opaque_struct_type("str");
         struct_type.set_body(&[i8_ptr_type.into(), i64_type.into()], false);
 
-        StringType { struct_type }
+        InternalStringType {
+            struct_type,
+            type_str: "string".to_string(),
+        }
     }
 
     pub(crate) fn build_load_string(&self, string_value: StringValue<'ctx>) -> InternalValue<'ctx> {
@@ -54,8 +62,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .unwrap();
 
         InternalValue::PointerValue(TypedPointerValue {
+            type_str: "char*".to_string(),
             ptr: data_str.into_pointer_value(),
-            pointee_ty: InternalType::VoidType(self.context.void_type()),
+            pointee_ty: InternalType::VoidType(InternalVoidType {
+                type_str: "char".to_string(),
+                void_type: self.context.void_type(),
+            }),
         })
     }
 

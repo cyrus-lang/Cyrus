@@ -506,7 +506,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
 
-                let (ptr, ty) = self.build_alloca(
+                let (ptr, var_internal_type) = self.build_alloca(
                     type_specifier.clone(),
                     variable.name.clone(),
                     variable.loc.clone(),
@@ -514,18 +514,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 );
 
                 if let Some(expr) = variable.expr {
-                    let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
+                    let rvalue = self.internal_value_as_rvalue(
+                        self.build_expr(Rc::clone(&scope), expr),
+                        variable.loc.clone(),
+                        variable.span.end,
+                    );
 
-                    if !self.compatible_types(ty.clone(), rvalue.get_type(self.string_type.clone())) {
-                        // FIXME We need accurate type name tracking here
+                    if !self.compatible_types(var_internal_type.clone(), rvalue.get_type(self.string_type.clone())) {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(format!(
                                 "Cannot assign value of type '{}' to lvalue of type '{}'.",
-                                rvalue
-                                    .get_type(self.string_type.clone())
-                                    .to_basic_type(self.context.ptr_type(AddressSpace::default())),
-                                ty.to_basic_type(self.context.ptr_type(AddressSpace::default())),
+                                rvalue.get_type(self.string_type.clone()),
+                                var_internal_type,
                             )),
                             location: None,
                         });
@@ -538,7 +539,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     );
 
                     self.builder.build_store(ptr, final_rvalue).unwrap();
-                } else if ty.is_const_type() && variable.expr.is_none() {
+                } else if var_internal_type.is_const_type() && variable.expr.is_none() {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
@@ -554,8 +555,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 } else {
-                    let zero_init =
-                        self.build_zero_initialized_internal_value(ty.clone(), variable.loc.clone(), variable.span.end);
+                    let zero_init = self.build_zero_initialized_internal_value(
+                        var_internal_type.clone(),
+                        variable.loc.clone(),
+                        variable.span.end,
+                    );
                     let final_rvalue: BasicValueEnum =
                         zero_init.to_basic_metadata().as_any_value_enum().try_into().unwrap();
                     self.builder.build_store(ptr, final_rvalue).unwrap();
@@ -580,26 +584,52 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                scope_borrow.insert(variable.name.clone(), ScopeRecord { ptr, ty });
+                scope_borrow.insert(
+                    variable.name.clone(),
+                    ScopeRecord {
+                        ptr,
+                        ty: var_internal_type,
+                    },
+                );
             }
             None => {
                 if let Some(expr) = variable.expr {
-                    let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), expr));
-                    let var_type = rvalue.get_type(self.string_type.clone());
+                    let rvalue = self.internal_value_as_rvalue(
+                        self.build_expr(Rc::clone(&scope), expr),
+                        variable.loc.clone(),
+                        variable.span.end,
+                    );
+                    let var_internal_type = rvalue.get_type(self.string_type.clone());
 
-                    let ptr = self
-                        .builder
-                        .build_alloca(
-                            var_type.to_basic_type(self.context.ptr_type(AddressSpace::default())),
-                            &variable.name,
-                        )
-                        .unwrap();
+                    let var_basic_type =
+                        match var_internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default())) {
+                            Ok(basic_type) => basic_type,
+                            Err(err) => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(err.to_string()),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: variable.loc.line,
+                                        column: variable.loc.column,
+                                        length: variable.span.end,
+                                    }),
+                                });
+                                exit(1);
+                            }
+                        };
+
+                    let ptr = self.builder.build_alloca(var_basic_type, &variable.name).unwrap();
 
                     self.build_store(ptr, rvalue);
 
-                    scope
-                        .borrow_mut()
-                        .insert(variable.name, ScopeRecord { ptr, ty: var_type });
+                    scope.borrow_mut().insert(
+                        variable.name,
+                        ScopeRecord {
+                            ptr,
+                            ty: var_internal_type,
+                        },
+                    );
                 } else {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
