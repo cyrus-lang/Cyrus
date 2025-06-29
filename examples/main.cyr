@@ -1,6 +1,6 @@
 extern fn printf(format: const char*, ...);
 
 fn main() {
-    #a: int32 = "10";
+    #a: const char = "a";
     printf("value: %d\n", a);
 }

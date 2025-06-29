@@ -322,13 +322,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::StructValue(v, ty) => InternalValue::StructValue(v, ty),
             InternalValue::UnnamedStructValue(v, ty) => InternalValue::UnnamedStructValue(v, ty),
             InternalValue::VectorValue(v, ty) => InternalValue::VectorValue(v, ty),
-            InternalValue::StrValue(v, ty) => InternalValue::PointerValue(TypedPointerValue {
+            InternalValue::StrValue(v, ty) => {
+
+                dbg!(ty.to_string());
+                dbg!(ty.clone());
+                InternalValue::PointerValue(TypedPointerValue {
                 // FIXME
                 // REVIEW
                 type_str: ty.to_string(),
                 ptr: v,
                 pointee_ty: ty,
-            }),
+            })},
             InternalValue::StringValue(v) => InternalValue::StringValue(v),
             InternalValue::Lvalue(typed_pointer_value) => {
                 let ptr_type = self.context.ptr_type(AddressSpace::default());
