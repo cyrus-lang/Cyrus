@@ -11,7 +11,7 @@ use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
 use inkwell::types::FunctionType;
-use inkwell::values::{BasicMetadataValueEnum, FunctionValue, IntValue};
+use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{DerefMut, Index};
@@ -315,8 +315,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         if !self.is_block_terminated(current_block) && return_type.is_void_type() {
             self.builder.build_return(None).unwrap();
-        } 
-        else if !self.is_block_terminated(current_block) {
+        } else if !self.is_block_terminated(current_block) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
@@ -367,11 +366,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         } else if !func_metadata.return_type.is_void_type() && statement.argument.is_none() {
-            // FIXME We need accurate type name tracking here
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
-                    "Function '{}' must return a value of type '{:?}'.",
+                    "Function '{}' must return a value of type '{}'.",
                     &func_metadata
                         .func_decl
                         .renamed_as
@@ -392,8 +390,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         match statement.argument {
             Some(argument) => {
                 let argument_basic_value = self.implicit_cast(
-                    self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), argument)),
+                    self.internal_value_as_rvalue(
+                        self.build_expr(Rc::clone(&scope), argument),
+                        statement.loc.clone(),
+                        statement.span.end,
+                    ),
                     func_metadata.return_type.clone(),
+                    statement.loc.clone(),
+                    statement.span.end,
                 );
 
                 self.builder.build_return(Some(&argument_basic_value)).unwrap();
@@ -419,7 +423,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .iter()
             .enumerate()
             .map(|(idx, arg)| {
-                let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), arg.clone()));
+                let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), arg.clone()), loc.clone(), span_end);
 
                 if let Some(params) = &params {
                     // checked before through check_func_args_count_mismatch
@@ -429,11 +433,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 self.build_type(target_type_specifier.clone(), param.loc.clone(), param.span.end);
 
                             if !self.compatible_types(target_type.clone(), rvalue.get_type(self.string_type.clone())) {
-                                // FIXME We need accurate type name tracking here
                                 display_single_diag(Diag {
                                     level: DiagLevel::Error,
                                     kind: DiagKind::Custom(
-                                        format!("Argument at index {} for function '{}' is not compatible with type '{:?}' for implicit casting.",
+                                        format!("Argument at index {} for function '{}' is not compatible with type '{}' for implicit casting.",
                                             idx,
                                             func_name,
                                             target_type
@@ -449,7 +452,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 exit(1);
                             }
 
-                            self.implicit_cast(rvalue, target_type).into()
+                            self.implicit_cast(rvalue, target_type, param.loc.clone(), param.span.end).into()
                         } else {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,

@@ -1,14 +1,8 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
-use ast::ast::StorageClass;
-use inkwell::llvm_sys::core::LLVMFunctionType;
-use inkwell::llvm_sys::prelude::LLVMTypeRef;
-use inkwell::module::Linkage;
 use inkwell::passes::PassManager;
 use inkwell::targets::FileType;
-use inkwell::types::AsTypeRef;
-use inkwell::types::FunctionType;
 use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;

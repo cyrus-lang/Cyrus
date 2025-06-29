@@ -72,8 +72,6 @@ impl<'a> Parser<'a> {
             TokenKind::Identifier { .. } => {
                 if self.peek_token_is(TokenKind::DoubleColon) {
                     let module_import = self.parse_module_import()?;
-                    dbg!(module_import.clone());
-                    dbg!(self.current_token.kind.clone());
                     Ok(TypeSpecifier::ModuleImport(module_import))
                 } else {
                     Ok(TypeSpecifier::Identifier(Identifier {
