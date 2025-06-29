@@ -670,6 +670,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_literal(&self, literal: Literal) -> InternalValue<'ctx> {
+        // FIXME ad location for Literal
+
         match literal {
             Literal::Integer(integer_literal) => {
                 let value = self.build_integer_literal(integer_literal);
@@ -711,7 +713,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 )
             }
-            Literal::String(string_literal) => self.build_string_literal(string_literal),
+            Literal::String(string_literal) => self.build_string_literal(string_literal, Location::default(), 0),
             Literal::Null => InternalValue::PointerValue(self.build_null()),
         }
     }

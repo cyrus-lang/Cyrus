@@ -177,7 +177,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 internal_vector_type.vector_type.const_zero(),
                 InternalType::VectorType(internal_vector_type),
             ),
-            InternalType::StringType(_) => self.build_empty_string(),
+            InternalType::StringType(_) => self.build_empty_string(loc, span_end),
             InternalType::PointerType(internal_pointer_type) => InternalValue::PointerValue(TypedPointerValue {
                 type_str: format!("{}*", internal_pointer_type.pointee_ty.to_string()),
                 ptr: internal_pointer_type.ptr_type.const_zero(),

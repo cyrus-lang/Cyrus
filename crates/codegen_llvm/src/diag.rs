@@ -2,7 +2,7 @@ use colorized::{Color, Colors};
 use console::user_attended;
 use core::fmt;
 use std::fs;
-use utils::purify_string::{saturating_sub, spaces};
+use utils::escaping::{saturating_sub, spaces};
 
 const PANEL_LENGTH: usize = 4;
 

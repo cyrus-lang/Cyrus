@@ -1,18 +1,40 @@
+use std::process::exit;
+
 use crate::{
     CodeGenLLVM, InternalType, InternalValue, StringValue,
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     types::{InternalStringType, InternalVoidType},
     values::TypedPointerValue,
 };
+use ast::token::Location;
 use inkwell::{
     AddressSpace,
     context::Context,
     values::{IntValue, PointerValue},
 };
-use utils::purify_string::unescape_string;
+use utils::escaping::unescape_string;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_string_literal(&self, value: String) -> InternalValue<'ctx> {
-        let unescaped_string = unescape_string(value);
+    pub(crate) fn build_string_literal(&self, value: String, loc: Location, span_end: usize) -> InternalValue<'ctx> {
+        let make_unescaped_string =
+            || -> Result<String, utils::escaping::UnescapeError> { unescape_string(&unescape_string(&value)?) };
+
+        let unescaped_string = match make_unescaped_string() {
+            Ok(v) => v,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err.to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
         let const_str = self.context.const_string(unescaped_string.as_bytes(), true);
         let global_str = self.module.borrow_mut().add_global(const_str.get_type(), None, ".str");
@@ -76,7 +98,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         })
     }
 
-    pub(crate) fn build_empty_string(&self) -> InternalValue<'ctx> {
-        self.build_string_literal("".to_string())
+    pub(crate) fn build_empty_string(&self, loc: Location, span_end: usize) -> InternalValue<'ctx> {
+        self.build_string_literal("".to_string(), loc, span_end)
     }
 }
