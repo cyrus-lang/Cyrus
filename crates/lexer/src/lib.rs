@@ -3,7 +3,7 @@ use ast::ast::Literal;
 use ast::token::*;
 use diag::{LexicalErrorType, lexer_invalid_char_error};
 use std::{fmt::Debug, process::exit};
-use utils::purify_string::escape_string;
+use utils::escaping::escape_string;
 
 mod diag;
 mod format;
@@ -482,7 +482,7 @@ impl Lexer {
         let span = Span { start: start - 1, end };
 
         Token {
-            kind: TokenKind::Literal(Literal::String(escape_string(final_string))),
+            kind: TokenKind::Literal(Literal::String(escape_string(&final_string))),
             span,
             loc: Location::new(self.line, self.column),
         }
