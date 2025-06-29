@@ -1,7 +1,11 @@
 use crate::{
-    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, types::{
-        InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalPointerType, InternalType, InternalVoidType,
-    }, values::{InternalValue, Lvalue, TypedPointerValue}, CodeGenLLVM, ScopeRef
+    CodeGenLLVM, ScopeRef,
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    types::{
+        InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalPointerType, InternalType,
+        InternalVoidType,
+    },
+    values::{InternalValue, Lvalue, TypedPointerValue},
 };
 use ast::{
     ast::*,
@@ -860,22 +864,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 InternalType::PointerType(internal_pointer_type) => match &internal_pointer_type.pointee_ty {
                     InternalType::IntType(_) => self.build_load_string(string_value.clone()),
                     InternalType::ConstType(internal_const_type) => match *internal_const_type.inner_type.clone() {
-                        InternalType::IntType(internal_int_type) => {
-                            let loaded_string = self.build_load_string(string_value.clone());
-                            match loaded_string {
-                                InternalValue::PointerValue(typed_pointer_value) => {
-                                    InternalValue::PointerValue(TypedPointerValue {
-                                        type_str: "const char*".to_string(),
-                                        ptr: typed_pointer_value.ptr,
-                                        pointee_ty: InternalType::VoidType(InternalVoidType {
-                                            type_str: "const char".to_string(),
-                                            void_type: self.context.void_type(),
-                                        }),
-                                    })
-                                }
-                                _ => unreachable!(),
+                        InternalType::IntType(_) => match self.build_load_string(string_value.clone()) {
+                            InternalValue::PointerValue(typed_pointer_value) => {
+                                InternalValue::PointerValue(TypedPointerValue {
+                                    type_str: "const char*".to_string(),
+                                    ptr: typed_pointer_value.ptr,
+                                    pointee_ty: InternalType::VoidType(InternalVoidType {
+                                        type_str: "const char".to_string(),
+                                        void_type: self.context.void_type(),
+                                    }),
+                                })
                             }
-                        }
+                            _ => unreachable!(),
+                        },
                         _ => {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
@@ -908,9 +909,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         exit(1);
                     }
                 },
-                InternalType::ConstType(internal_const_type) => {
-                    todo!();
-                }
+                InternalType::ConstType(_) => internal_value,
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,

@@ -2,8 +2,6 @@ extern fn printf(format: const char*, ...);
 
 fn main() {
     #a: const string = "Hello";
-    
-    // #a = (const char*) "Hello";
-    // a = "aaa";
-    // printf("value: %s\n", a);
+
+    printf("value: %s\n", a);
 }
