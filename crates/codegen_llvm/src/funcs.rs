@@ -396,6 +396,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         statement.span.end,
                     ),
                     func_metadata.return_type.clone(),
+                    statement.loc.clone(),
+                    statement.span.end,
                 );
 
                 self.builder.build_return(Some(&argument_basic_value)).unwrap();
@@ -450,7 +452,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 exit(1);
                             }
 
-                            self.implicit_cast(rvalue, target_type).into()
+                            self.implicit_cast(rvalue, target_type, param.loc.clone(), param.span.end).into()
                         } else {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,

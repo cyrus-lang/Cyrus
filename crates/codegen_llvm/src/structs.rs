@@ -320,7 +320,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
 
-            let field_rvalue = self.implicit_cast(field_rvalue, field_type);
+            let field_rvalue =
+                self.implicit_cast(field_rvalue, field_type, struct_init.loc.clone(), struct_init.span.end);
 
             struct_value = self
                 .builder
@@ -465,7 +466,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::FloatValue(float_value, internal_type) => todo!(),
             InternalValue::ArrayValue(array_value, internal_type) => todo!(),
             InternalValue::VectorValue(vector_value, internal_type) => todo!(),
-            InternalValue::StrValue(pointer_value, internal_type) => todo!(),
             InternalValue::StringValue(string_value) => todo!(),
             InternalValue::PointerValue(_) => {
                 display_single_diag(Diag {
@@ -806,8 +806,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
 
-            let field_value =
-                self.new_internal_value(self.implicit_cast(field_value, field_type.clone()), field_type.clone());
+            let field_value = self.new_internal_value(
+                self.implicit_cast(field_value, field_type.clone(), field.loc.clone(), field.span.end),
+                field_type.clone(),
+            );
 
             field_values.push((field.field_name.name.clone(), field_value));
         }

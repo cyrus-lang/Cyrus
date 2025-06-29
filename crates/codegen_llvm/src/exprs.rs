@@ -305,7 +305,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 };
-                let final_rvalue = self.implicit_cast(rvalue, typed_pointer_value.pointee_ty);
+                let final_rvalue = self.implicit_cast(
+                    rvalue,
+                    typed_pointer_value.pointee_ty,
+                    assignment.loc.clone(),
+                    assignment.span.end,
+                );
                 self.builder.build_store(typed_pointer_value.ptr, final_rvalue).unwrap();
             }
             InternalValue::Lvalue(lvalue) => {
@@ -346,7 +351,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 };
-                let final_rvalue = self.implicit_cast(rvalue, lvalue.pointee_ty);
+                let final_rvalue =
+                    self.implicit_cast(rvalue, lvalue.pointee_ty, assignment.loc.clone(), assignment.span.end);
                 self.builder.build_store(lvalue.ptr, final_rvalue).unwrap();
             }
             _ => {
@@ -436,7 +442,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         exit(1);
                     }
 
-                    self.implicit_cast(v.clone(), element_type.clone()).as_basic_value_enum()
+                    self.implicit_cast(v.clone(), element_type.clone(), array.loc.clone(), array.span.end).as_basic_value_enum()
                 })
                 .collect();
 
@@ -810,41 +816,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             },
             InternalValue::PointerValue(pointer_value) => match target_type {
                 InternalType::StringType(_) => {
-                    match pointer_value
-                        .pointee_ty
-                        .to_basic_type(self.context.ptr_type(AddressSpace::default()))
-                    {
-                        Ok(inkwell::types::BasicTypeEnum::ArrayType(array_type)) => {
-                            let buffer_size = self.context.i64_type().const_int(array_type.len().into(), false);
-                            self.build_construct_string_value(pointer_value.ptr, buffer_size)
-                        }
-                        Ok(inkwell::types::BasicTypeEnum::IntType(_)) => {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom(String::from("Cannot cast char* to string.")),
-                                location: Some(DiagLoc {
-                                    file: self.file_path.clone(),
-                                    line: loc.line,
-                                    column: loc.column,
-                                    length: span_end,
-                                }),
-                            });
-                            exit(1);
-                        }
-                        _ => {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom(String::from("Cannot build invalid cast for constant string.")),
-                                location: Some(DiagLoc {
-                                    file: self.file_path.clone(),
-                                    line: loc.line,
-                                    column: loc.column,
-                                    length: span_end,
-                                }),
-                            });
-                            exit(1);
-                        }
-                    }
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(String::from(
+                            "Cannot construct string from a 'char*' value. Consider to use '.to_string()' method on 'char*' value.",
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
                 }
                 InternalType::PointerType(typed_pointer_type) => {
                     let casted_ptr = self
@@ -1204,6 +1188,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     unary_operator.span.end,
                 )
                 .get_type(self.string_type.clone()),
+                unary_operator.loc.clone(),
+                unary_operator.span.end,
             )
             .into_int_value();
 
@@ -1374,7 +1360,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         right = self.new_internal_value(
-            self.implicit_cast(right, left.get_type(self.string_type.clone())),
+            self.implicit_cast(
+                right,
+                left.get_type(self.string_type.clone()),
+                binary_expression.loc.clone(),
+                binary_expression.span.end,
+            ),
             left.get_type(self.string_type.clone()),
         );
 

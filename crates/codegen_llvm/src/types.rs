@@ -405,13 +405,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             (InternalType::StringType(_), InternalType::StringType(_)) => true,
             (InternalType::StringType(_), InternalType::PointerType(typed_pointer_type)) => {
-                // allow const_str assignment to StringType
-                typed_pointer_type.pointee_ty.is_array_type()
+                typed_pointer_type.pointee_ty.is_int_type()
             }
-            (InternalType::PointerType(_), InternalType::StringType(_)) => {
-                // allow StringType assignment to char*
-                true
-            }
+            (InternalType::PointerType(_), InternalType::StringType(_)) => true,
             (InternalType::VoidType(_), _) => false,
             (InternalType::ConstType(internal_const_type), rvalue_type) => {
                 self.compatible_types(*internal_const_type.inner_type, rvalue_type)

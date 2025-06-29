@@ -536,6 +536,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     let final_rvalue = self.implicit_cast(
                         rvalue,
                         self.build_type(type_specifier, variable.loc.clone(), variable.span.end),
+                        variable.loc.clone(),
+                        variable.span.end,
                     );
 
                     self.builder.build_store(ptr, final_rvalue).unwrap();

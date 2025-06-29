@@ -1,6 +1,5 @@
-extern fn printf(format: const char*, ...);
+extern fn printf(format: char*, ...);
 
 fn main() {
-    #a: const char = "a";
-    printf("value: %d\n", a);
+    printf("value: %d\n", 1);
 }

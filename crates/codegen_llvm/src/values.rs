@@ -3,7 +3,7 @@ use crate::{
     diag::*,
     funcs::FuncMetadata,
     modules::ModuleMetadata,
-    types::{InternalArrayType, InternalBoolType, InternalPointerType, InternalStringType},
+    types::{InternalBoolType, InternalPointerType, InternalStringType},
 };
 use ast::token::Location;
 use inkwell::{
@@ -24,7 +24,6 @@ pub(crate) enum InternalValue<'a> {
     StructValue(StructValue<'a>, InternalType<'a>),
     UnnamedStructValue(StructValue<'a>, InternalType<'a>),
     VectorValue(VectorValue<'a>, InternalType<'a>),
-    StrValue(PointerValue<'a>, InternalType<'a>),
     StringValue(StringValue<'a>),
     PointerValue(TypedPointerValue<'a>),
     ModuleValue(ModuleMetadata<'a>),
@@ -56,7 +55,6 @@ impl<'a> InternalValue<'a> {
             InternalValue::BoolValue(..) => true,
             InternalValue::IntValue(..) => true,
             InternalValue::FloatValue(..) => true,
-            InternalValue::StrValue(..) => true,
             InternalValue::StringValue(..) => false,
             InternalValue::Lvalue(..) => false,
             InternalValue::PointerValue(..) => false,
@@ -80,7 +78,6 @@ impl<'a> InternalValue<'a> {
             InternalValue::StringValue(v) => BasicMetadataValueEnum::StructValue(v.struct_value),
             InternalValue::PointerValue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
             InternalValue::Lvalue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
-            InternalValue::StrValue(v, ..) => BasicMetadataValueEnum::PointerValue(*v),
             InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -116,10 +113,6 @@ impl<'a> InternalValue<'a> {
             InternalValue::Lvalue(v) => InternalType::PointerType(Box::new(InternalPointerType {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
-            })),
-            InternalValue::StrValue(ptr, ty) => InternalType::PointerType(Box::new(InternalPointerType {
-                ptr_type: ptr.get_type(),
-                pointee_ty: ty.clone(),
             })),
             InternalValue::StringValue(_) => InternalType::StringType(string_type),
             InternalValue::ModuleValue(_) => {
@@ -184,7 +177,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 internal_vector_type.vector_type.const_zero(),
                 InternalType::VectorType(internal_vector_type),
             ),
-            InternalType::StringType(_) => self.build_zeroinit_string(),
+            InternalType::StringType(_) => self.build_empty_string(),
             InternalType::PointerType(typed_pointer_type) => InternalValue::PointerValue(TypedPointerValue {
                 type_str: format!("{}*", typed_pointer_type.pointee_ty.to_string()),
                 ptr: typed_pointer_type.ptr_type.const_zero(),
@@ -299,8 +292,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         rvalue: InternalValue<'ctx>,
         target_type: InternalType<'ctx>,
+        loc: Location,
+        span_end: usize,
     ) -> BasicValueEnum<'ctx> {
-        self.build_cast_expression_internal(rvalue, target_type, Location::default(), 0)
+        self.build_cast_expression_internal(rvalue, target_type, loc, span_end)
             .to_basic_metadata()
             .as_any_value_enum()
             .try_into()
@@ -322,17 +317,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::StructValue(v, ty) => InternalValue::StructValue(v, ty),
             InternalValue::UnnamedStructValue(v, ty) => InternalValue::UnnamedStructValue(v, ty),
             InternalValue::VectorValue(v, ty) => InternalValue::VectorValue(v, ty),
-            InternalValue::StrValue(v, ty) => {
-
-                dbg!(ty.to_string());
-                dbg!(ty.clone());
-                InternalValue::PointerValue(TypedPointerValue {
-                // FIXME
-                // REVIEW
-                type_str: ty.to_string(),
-                ptr: v,
-                pointee_ty: ty,
-            })},
             InternalValue::StringValue(v) => InternalValue::StringValue(v),
             InternalValue::Lvalue(typed_pointer_value) => {
                 let ptr_type = self.context.ptr_type(AddressSpace::default());
