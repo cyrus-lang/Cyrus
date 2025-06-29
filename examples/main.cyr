@@ -1,12 +1,6 @@
 extern fn printf(format: const char*, ...);
-extern fn malloc(size: uint): void*;
-extern fn free(pointer: void*);
 
 fn main() {
-    #int_ptr: int* = malloc(sizeof int);
-    *int_ptr = 369;
-
-    printf("value: %d\n", *int_ptr);
-
-    free(int_ptr);
+    #a: int32 = "10";
+    printf("value: %d\n", a);
 }

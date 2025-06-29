@@ -133,7 +133,47 @@ impl<'a> DefinedType<'a> {
 
 impl<'a> fmt::Display for InternalType<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            InternalType::BoolType(_) => write!(f, "bool"),
+            InternalType::IntType(internal_int_type) => {
+                write!(f, "{}", internal_int_type.type_str)
+            }
+            InternalType::FloatType(internal_float_type) => {
+                write!(f, "{}", internal_float_type.type_str)
+            }
+            InternalType::StructType(internal_struct_type) => {
+                write!(f, "{}", internal_struct_type.type_str)
+            }
+            InternalType::UnnamedStruct(internal_unnamed_struct_type) => {
+                write!(f, "{}", internal_unnamed_struct_type.type_str)
+            }
+            InternalType::VectorType(internal_vector_type) => {
+                write!(f, "{}", internal_vector_type.type_str)
+            }
+            InternalType::StringType(_) => {
+                write!(f, "string")
+            }
+            InternalType::VoidType(internal_void_type) => {
+                write!(f, "{}", internal_void_type.type_str)
+            }
+            InternalType::PointerType(internal_pointer_type) => {
+                write!(f, "{}*", internal_pointer_type.pointee_ty)
+            }
+            InternalType::Lvalue(internal_lvalue_type) => {
+                write!(f, "{}", internal_lvalue_type.pointee_ty)
+            }
+            InternalType::ArrayType(internal_array_type) => {
+                write!(
+                    f,
+                    "{}[{}]",
+                    internal_array_type.inner_type,
+                    internal_array_type.array_type.len()
+                )
+            }
+            InternalType::ConstType(internal_const_type) => {
+                write!(f, "const {}", internal_const_type.inner_type)
+            }
+        }
     }
 }
 
