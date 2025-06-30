@@ -912,6 +912,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 },
                 InternalType::ConstType(_) => internal_value,
+                InternalType::StringType(_) => internal_value,
                 _ => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -1411,8 +1412,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TokenKind::GreaterEqual => self.bin_op_ge(left, right),
             TokenKind::Equal => self.bin_op_eq(left, right),
             TokenKind::NotEqual => self.bin_op_neq(left, right),
-            TokenKind::Or => self.bin_op_or(left, right),
-            TokenKind::And => self.bin_op_and(left, right),
+            TokenKind::Or => self.bin_op_logical_or(left, right),
+            TokenKind::And => self.bin_op_logical_and(left, right),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
