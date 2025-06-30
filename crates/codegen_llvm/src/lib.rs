@@ -31,6 +31,7 @@ pub mod diag;
 mod enums;
 mod exprs;
 mod funcs;
+mod internals;
 mod modules;
 pub mod opts;
 mod runtime;
@@ -214,6 +215,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_store(&self, ptr: PointerValue, value: InternalValue<'ctx>) {
         let result = match value {
+            InternalValue::BoolValue(bool_value, _) => self.builder.build_store(ptr, bool_value),
             InternalValue::IntValue(int_value, _) => self.builder.build_store(ptr, int_value),
             InternalValue::FloatValue(float_value, _) => self.builder.build_store(ptr, float_value),
             InternalValue::ArrayValue(array_value, _) => self.builder.build_store(ptr, array_value),

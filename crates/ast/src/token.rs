@@ -188,6 +188,7 @@ impl fmt::Display for TokenKind {
             Self::Float64 => write!(f, "float64"),
             Self::Float128 => write!(f, "float128"),
             Self::Char => write!(f, "char"),
+            Self::Bool => write!(f, "bool"),
             Self::Void => write!(f, "void"),
             Self::Enum => write!(f, "enum"),
             Self::Macro => write!(f, "macro"),

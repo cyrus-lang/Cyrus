@@ -1,8 +1,15 @@
 extern fn printf(format: const char*, ...);
-extern fn exit(status: int);
+
+fn internal_bool_to_string(value: bool): string {
+    if (value == true) {
+        return "true";
+    } else {
+        return "false";
+    }
+}
 
 fn main() {
-    printf("\x1B[32mGreen\x1B[0m\n");
-    printf("\x1B[37mWhite\x1B[0m\n");
-    printf("\x1B[31mRed\x1B[0m\n");
+    #fmt = internal_bool_to_string(true);
+
+    printf("value: %s\n", fmt);
 }
