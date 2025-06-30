@@ -60,7 +60,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let bool_value_str = if bool_value == 1 { "true" } else { "false" };
             self.build_string_literal(bool_value_str.to_string(), loc, span_end)
         } else {
-            // TODO Implement bool to string converter internal function.
+            // TODO Implement bool to string formatter internal function.
             unimplemented!();
         }
     }
