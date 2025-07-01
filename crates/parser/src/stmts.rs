@@ -544,6 +544,7 @@ impl<'a> Parser<'a> {
         let mut index_identifier: Option<Identifier> = None;
 
         if self.current_token_is(TokenKind::Comma) {
+            self.next_token(); // consume comma
             index_identifier = Some(self.parse_identifier()?);
             self.next_token();
         }

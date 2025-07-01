@@ -1,9 +1,9 @@
 extern fn printf(format: const char*, ...);
 
 fn main() {
-    #arr = int32[3] {10, 20, 30};
+    #arr = int32[4] {10, 20, 30, 40};
 
     foreach (item, index in arr) {
-        printf("a is %d\n", a);
+        printf("value: %d\n", item);
     }
 }
