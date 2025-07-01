@@ -380,6 +380,7 @@ impl<'a> InternalType<'a> {
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn compatible_types(&self, lvalue_type: InternalType<'ctx>, rvalue_type: InternalType<'ctx>) -> bool {
         match (lvalue_type, rvalue_type) {
+            (InternalType::BoolType(_), InternalType::BoolType(_)) => true,
             (InternalType::IntType(_), InternalType::IntType(_)) => true,
             (InternalType::FloatType(_), InternalType::FloatType(_)) => true,
             (InternalType::FloatType(_), InternalType::IntType(_)) => true,
@@ -411,9 +412,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 match internal_pointer.pointee_ty {
                     InternalType::IntType(_) => true,
                     InternalType::ConstType(internal_const_type) => match *internal_const_type.inner_type {
-                        InternalType::IntType(_) => {
-                            true
-                        },
+                        InternalType::IntType(_) => true,
                         _ => false,
                     },
                     _ => false,
@@ -572,9 +571,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 type_str: token_kind.to_string(),
                 void_type: self.context.void_type(),
             }),
-            token_kind @ TokenKind::Bool => InternalType::IntType(InternalIntType {
+            token_kind @ TokenKind::Bool => InternalType::BoolType(InternalBoolType {
                 type_str: token_kind.to_string(),
-                int_type: self.context.bool_type(),
+                bool_type: self.context.bool_type(),
             }),
             TokenKind::String => InternalType::StringType(self.string_type.clone()),
             _ => {

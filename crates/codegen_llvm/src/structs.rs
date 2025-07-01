@@ -458,12 +458,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 InternalType::StructType(internal_struct_type) => internal_struct_type,
                 _ => unreachable!(),
             },
-            InternalValue::BoolValue(int_value, internal_type) => todo!(),
-            InternalValue::IntValue(int_value, internal_type) => todo!(),
-            InternalValue::FloatValue(float_value, internal_type) => todo!(),
-            InternalValue::ArrayValue(array_value, internal_type) => todo!(),
-            InternalValue::VectorValue(vector_value, internal_type) => todo!(),
-            InternalValue::StringValue(string_value) => todo!(),
             InternalValue::PointerValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -478,20 +472,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
             _ => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!(
-                        "Method '{}' not defined for this value.",
-                        method_call.method_name.name.clone()
-                    )),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: method_call.method_name.loc.line,
-                        column: method_call.method_name.loc.column,
-                        length: method_call.method_name.span.end,
-                    }),
-                });
-                exit(1);
+                return self.build_internal_methods(
+                    method_call.method_name.name,
+                    operand_rvalue,
+                    method_call.loc.clone(),
+                    method_call.span.end,
+                );
             }
         };
 

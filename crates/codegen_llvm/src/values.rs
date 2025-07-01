@@ -383,7 +383,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder.build_int_add(left, right, "add").unwrap(),
                 left_ty,
             )),
@@ -413,7 +413,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::PointerValue(_), InternalValue::PointerValue(_)) => {
                 Err("Pointer addition gives undefined. Consider to use pointer arithmetic instead.".to_string())
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for add operator.".to_string()),
         }
     }
 
@@ -426,7 +426,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder.build_int_sub(left, right, "sub").unwrap(),
                 left_ty,
             )),
@@ -458,7 +458,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::PointerValue(_), InternalValue::PointerValue(_)) => {
                 Err("Pointer subtracting gives undefined. Consider to use pointer arithmetic instead.".to_string())
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for subtract operator.".to_string()),
         }
     }
 
@@ -471,7 +471,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder.build_int_mul(left, right, "mul").unwrap(),
                 left_ty,
             )),
@@ -501,7 +501,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::PointerValue(_), InternalValue::PointerValue(_)) => {
                 Err("Pointer multiplication gives undefined. Consider to use pointer arithmetic instead.".to_string())
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for multiply operator.".to_string()),
         }
     }
 
@@ -514,7 +514,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder.build_int_signed_div(left, right, "div").unwrap(),
                 left_ty,
             )),
@@ -544,7 +544,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::PointerValue(_), InternalValue::PointerValue(_)) => {
                 Err("Pointer dividing gives undefined. Consider to use pointer arithmetic instead.".to_string())
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for divide operator.".to_string()),
         }
     }
 
@@ -557,7 +557,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder.build_int_signed_rem(left, right, "rem").unwrap(),
                 left_ty,
             )),
@@ -587,7 +587,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::PointerValue(_), InternalValue::PointerValue(_)) => {
                 Err("Pointer remnant gives undefined. Consider to use pointer arithmetic instead.".to_string())
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for remainder operator.".to_string()),
         }
     }
 
@@ -600,7 +600,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_int_compare(IntPredicate::SLT, left, right, "cmp_lt")
                     .unwrap(),
@@ -614,7 +614,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(right, left.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OLT, left, right, "cmp_lt")
                         .unwrap(),
@@ -629,7 +629,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(left, right.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OLT, left, right, "cmp_lt")
                         .unwrap(),
@@ -639,7 +639,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 ))
             }
-            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OLT, left, right, "cmp_lt")
                     .unwrap(),
@@ -665,10 +665,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }),
                     ))
                 } else {
-                    Err("Pointer types do not match for equality comparison.".to_string())
+                    Err("Pointer types do not match for less-than operator.".to_string())
                 }
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for less-than operator.".to_string()),
         }
     }
 
@@ -681,7 +681,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_int_compare(IntPredicate::SLE, left, right, "cmp_le")
                     .unwrap(),
@@ -695,7 +695,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(right, left.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OLE, left, right, "cmp_le")
                         .unwrap(),
@@ -710,7 +710,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(left, right.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OLE, left, right, "cmp_le")
                         .unwrap(),
@@ -720,7 +720,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 ))
             }
-            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OLE, left, right, "cmp_le")
                     .unwrap(),
@@ -746,10 +746,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }),
                     ))
                 } else {
-                    Err("Pointer types do not match for equality comparison.".to_string())
+                    Err("Pointer types do not match for less-equal operator.".to_string())
                 }
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for less-equal operator.".to_string()),
         }
     }
 
@@ -762,7 +762,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_int_compare(IntPredicate::SGT, left, right, "cmp_gt")
                     .unwrap(),
@@ -776,7 +776,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(right, left.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OGT, left, right, "cmp_gt")
                         .unwrap(),
@@ -791,7 +791,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(left, right.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OGT, left, right, "cmp_gt")
                         .unwrap(),
@@ -801,7 +801,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 ))
             }
-            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OGT, left, right, "cmp_gt")
                     .unwrap(),
@@ -827,10 +827,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }),
                     ))
                 } else {
-                    Err("Pointer types do not match for equality comparison.".to_string())
+                    Err("Pointer types do not match for greater-than operator.".to_string())
                 }
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for greater-than operator.".to_string()),
         }
     }
 
@@ -843,7 +843,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_int_compare(IntPredicate::SGE, left, right, "cmp_ge")
                     .unwrap(),
@@ -857,7 +857,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(right, left.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OGE, left, right, "cmp_ge")
                         .unwrap(),
@@ -872,7 +872,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(left, right.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OGE, left, right, "cmp_ge")
                         .unwrap(),
@@ -882,7 +882,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 ))
             }
-            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OGE, left, right, "cmp_ge")
                     .unwrap(),
@@ -908,10 +908,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }),
                     ))
                 } else {
-                    Err("Pointer types do not match for equality comparison.".to_string())
+                    Err("Pointer types do not match for greater-equal operator.".to_string())
                 }
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for greater-equal operator.".to_string()),
         }
     }
 
@@ -924,7 +924,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::BoolValue(left, _), InternalValue::BoolValue(right, _)) => Ok(InternalValue::BoolValue(
+                self.builder
+                    .build_int_compare(IntPredicate::EQ, left, right, "cmp_eq")
+                    .unwrap(),
+                InternalType::BoolType(InternalBoolType {
+                    type_str: "bool".to_string(),
+                    bool_type: self.context.bool_type(),
+                }),
+            )),
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_int_compare(IntPredicate::EQ, left, right, "cmp_eq")
                     .unwrap(),
@@ -938,7 +947,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(right, left.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_eq")
                         .unwrap(),
@@ -953,7 +962,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(left, right.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_eq")
                         .unwrap(),
@@ -963,7 +972,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 ))
             }
-            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_float_compare(FloatPredicate::OEQ, left, right, "cmp_eq")
                     .unwrap(),
@@ -989,10 +998,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }),
                     ))
                 } else {
-                    Err("Pointer types do not match for equality comparison.".to_string())
+                    Err("Pointer types do not match for equal operator.".to_string())
                 }
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for equal operator.".to_string()),
         }
     }
 
@@ -1005,7 +1014,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::BoolValue(left, _), InternalValue::BoolValue(right, _)) => Ok(InternalValue::BoolValue(
+                self.builder
+                    .build_int_compare(IntPredicate::NE, left, right, "cmp_eq")
+                    .unwrap(),
+                InternalType::BoolType(InternalBoolType {
+                    type_str: "bool".to_string(),
+                    bool_type: self.context.bool_type(),
+                }),
+            )),
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_int_compare(IntPredicate::NE, left, right, "cmp_neq")
                     .unwrap(),
@@ -1019,7 +1037,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(right, left.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::ONE, left, right, "cmp_neq")
                         .unwrap(),
@@ -1034,7 +1052,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_signed_int_to_float(left, right.get_type(), "cast")
                     .unwrap();
-                Ok(InternalValue::IntValue(
+                Ok(InternalValue::BoolValue(
                     self.builder
                         .build_float_compare(FloatPredicate::ONE, left, right, "cmp_neq")
                         .unwrap(),
@@ -1044,7 +1062,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 ))
             }
-            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::FloatValue(left, _), InternalValue::FloatValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_float_compare(FloatPredicate::ONE, left, right, "cmp_neq")
                     .unwrap(),
@@ -1070,14 +1088,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }),
                     ))
                 } else {
-                    Err("Pointer types do not match for equality comparison.".to_string())
+                    Err("Pointer types do not match for unequal operator.".to_string())
                 }
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for unequal operator.".to_string()),
         }
     }
 
-    pub(crate) fn bin_op_or<'a>(
+    pub(crate) fn bin_op_logical_or<'a>(
         &self,
         left_value: InternalValue<'a>,
         right_value: InternalValue<'a>,
@@ -1086,7 +1104,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder.build_or(left, right, "or").unwrap(),
                 InternalType::BoolType(InternalBoolType {
                     type_str: "bool".to_string(),
@@ -1099,14 +1117,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     // PHI is a good choice here probably.
                     unimplemented!();
                 } else {
-                    Err("Pointer types do not match for equality comparison.".to_string())
+                    Err("Pointer types do not match for logical-or operator.".to_string())
                 }
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for logical-or operator.".to_string()),
         }
     }
 
-    pub(crate) fn bin_op_and<'a>(
+    pub(crate) fn bin_op_logical_and<'a>(
         &self,
         left_value: InternalValue<'a>,
         right_value: InternalValue<'a>,
@@ -1115,7 +1133,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::IntValue(
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder.build_and(left, right, "and").unwrap(),
                 InternalType::BoolType(InternalBoolType {
                     type_str: "bool".to_string(),
@@ -1128,10 +1146,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     // PHI is a good choice here probably.
                     unimplemented!();
                 } else {
-                    Err("Pointer types do not match for equality comparison.".to_string())
+                    Err("Pointer types do not match for logical-and operator.".to_string())
                 }
             }
-            _ => Err("Unsupported types for inequality comparison.".to_string()),
+            _ => Err("Unsupported types for logical-and operator.".to_string()),
         }
     }
 }
