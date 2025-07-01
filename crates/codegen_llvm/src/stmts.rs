@@ -1,6 +1,6 @@
 use crate::diag::*;
 use crate::scope::ScopeRecord;
-use crate::types::InternalType;
+use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use ast::ast::{
@@ -494,7 +494,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             foreach.item.name.to_string(),
             ScopeRecord {
                 ptr: current_item_ptr,
-                ty: *internal_array_type.inner_type.clone(),
+                ty: *internal_array_type.inner_type,
             },
         );
 
@@ -502,8 +502,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             scope.borrow_mut().insert(
                 index_identifier.name.to_string(),
                 ScopeRecord {
-                    ptr: current_item_ptr,
-                    ty: *internal_array_type.inner_type,
+                    ptr: index_alloca,
+                    ty: InternalType::IntType(InternalIntType {
+                        type_str: "int32".to_string(),
+                        int_type: self.context.i32_type(),
+                    }),
                 },
             );
         }

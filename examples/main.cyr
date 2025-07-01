@@ -4,6 +4,6 @@ fn main() {
     #arr = int32[4] {10, 20, 30, 40};
 
     foreach (item, index in arr) {
-        printf("value: %d\n", item);
+        printf("%d-> %d\n", index, item);
     }
 }
