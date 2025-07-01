@@ -1,7 +1,10 @@
 use crate::diag::*;
 use crate::scope::ScopeRecord;
+use crate::values::InternalValue;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use ast::ast::{BlockStatement, Break, Continue, Expression, For, If, Literal, Statement, TypeSpecifier, Variable};
+use ast::ast::{
+    BlockStatement, Break, Continue, Expression, For, Foreach, If, Literal, Statement, TypeSpecifier, Variable,
+};
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
@@ -84,6 +87,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 Rc::new(RefCell::new(scope.borrow().deep_clone_detached())),
                 for_statement,
             ),
+            Statement::Foreach(foreach) => self.build_foreach(Rc::clone(&scope), foreach),
             Statement::Switch(_) => todo!(),
             Statement::Break(break_statement) => {
                 self.build_break_statement(break_statement);
@@ -375,6 +379,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn build_foreach(&mut self, scope: ScopeRef<'ctx>, foreach: Foreach) {
+        let expr = self.build_expr(Rc::clone(&scope), foreach.expr);
+        let internal_value = self.internal_value_as_rvalue(expr, foreach.loc.clone(), foreach.span.end);
+
+        let (array_value, internal_type) = match internal_value {
+            InternalValue::ArrayValue(array_value, internal_type) => (array_value, internal_type),
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build foreach statement with a non-array expression.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: foreach.loc.line,
+                        column: foreach.loc.column,
+                        length: foreach.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        // foreach.body
+        todo!();
+    }
+
     pub(crate) fn build_if(&mut self, scope: ScopeRef<'ctx>, if_statement: If) {
         let current_block = self.get_current_block("for statement", if_statement.loc.clone(), if_statement.span.end);
         let current_func = self.get_current_func("for statement", if_statement.loc.clone(), if_statement.span.end);
@@ -487,7 +516,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.current_block_ref = Some(end_block);
     }
 
-    pub(crate) fn build_variable(&self, scope: ScopeRef<'ctx>, variable: Variable) {
+    pub(crate) fn build_variable(&mut self, scope: ScopeRef<'ctx>, variable: Variable) {
         match variable.ty {
             Some(type_specifier) => {
                 if let TypeSpecifier::TypeToken(type_token) = type_specifier.clone() {
@@ -514,11 +543,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 );
 
                 if let Some(expr) = variable.expr {
-                    let rvalue = self.internal_value_as_rvalue(
-                        self.build_expr(Rc::clone(&scope), expr),
-                        variable.loc.clone(),
-                        variable.span.end,
-                    );
+                    let expr = self.build_expr(Rc::clone(&scope), expr);
+                    let rvalue = self.internal_value_as_rvalue(expr, variable.loc.clone(), variable.span.end);
 
                     if !self.compatible_types(var_internal_type.clone(), rvalue.get_type(self.string_type.clone())) {
                         display_single_diag(Diag {
@@ -601,11 +627,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             None => {
                 if let Some(expr) = variable.expr {
-                    let rvalue = self.internal_value_as_rvalue(
-                        self.build_expr(Rc::clone(&scope), expr),
-                        variable.loc.clone(),
-                        variable.span.end,
-                    );
+                    let expr = self.build_expr(Rc::clone(&scope), expr);
+                    let rvalue = self.internal_value_as_rvalue(expr, variable.loc.clone(), variable.span.end);
                     let var_internal_type = rvalue.get_type(self.string_type.clone());
 
                     let var_basic_type =

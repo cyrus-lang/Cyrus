@@ -261,6 +261,7 @@ pub enum Statement {
     FuncDef(FuncDef),
     FuncDecl(FuncDecl),
     For(For),
+    Foreach(Foreach),
     Switch(Switch),
     Struct(Struct),
     Import(Import),
@@ -354,6 +355,16 @@ pub struct For {
     pub initializer: Option<Variable>,
     pub condition: Option<Expression>,
     pub increment: Option<Expression>,
+    pub body: Box<BlockStatement>,
+    pub span: Span,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Foreach {
+    pub item: Identifier,
+    pub index: Option<Identifier>,
+    pub expr: Expression,
     pub body: Box<BlockStatement>,
     pub span: Span,
     pub loc: Location,

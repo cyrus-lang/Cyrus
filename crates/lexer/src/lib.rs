@@ -742,6 +742,7 @@ impl Lexer {
             "else" => TokenKind::Else,
             "return" => TokenKind::Return,
             "for" => TokenKind::For,
+            "foreach" => TokenKind::Foreach,
             "break" => TokenKind::Break,
             "continue" => TokenKind::Continue,
             "true" => TokenKind::True,

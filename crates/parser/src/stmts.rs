@@ -34,6 +34,7 @@ impl<'a> Parser<'a> {
             TokenKind::Return => self.parse_return(),
             TokenKind::Hashtag => self.parse_variable(),
             TokenKind::For => self.parse_for_loop(),
+            TokenKind::Foreach => self.parse_foreach(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Import => self.parse_import(),
@@ -528,6 +529,42 @@ impl<'a> Parser<'a> {
             });
         }
         Ok(body)
+    }
+
+    pub fn parse_foreach(&mut self) -> Result<Statement, ParseError> {
+        let start = self.current_token.span.end;
+        let loc = self.current_token.loc.clone();
+
+        self.next_token(); // consume foreach
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let item_identifier = self.parse_identifier()?;
+        self.next_token();
+
+        let mut index_identifier: Option<Identifier> = None;
+
+        if self.current_token_is(TokenKind::Comma) {
+            index_identifier = Some(self.parse_identifier()?);
+            self.next_token();
+        }
+
+        self.expect_current(TokenKind::In)?;
+
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
+        self.next_token();
+
+        self.expect_current(TokenKind::RightParen)?;
+
+        let body = self.parse_block_statement()?;
+
+        Ok(Statement::Foreach(Foreach {
+            item: item_identifier,
+            index: index_identifier,
+            expr,
+            body: Box::new(body),
+            span: Span::new(start, self.current_token.span.end),
+            loc,
+        }))
     }
 
     pub fn parse_for_loop(&mut self) -> Result<Statement, ParseError> {

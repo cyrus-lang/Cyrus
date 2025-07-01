@@ -8,13 +8,19 @@ use crate::{
 };
 use ast::token::Location;
 use inkwell::{
-    AddressSpace,
-    context::Context,
-    values::{IntValue, PointerValue},
+    context::Context, values::{GlobalValue, IntValue, PointerValue}, AddressSpace
 };
 use utils::escaping::unescape_string;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn build_global_str(&self, value: String) -> GlobalValue<'ctx> {
+        let const_str = self.context.const_string(value.as_bytes(), true);
+        let global_str = self.module.borrow_mut().add_global(const_str.get_type(), None, ".str");
+        global_str.set_initializer(&const_str);
+        global_str.set_constant(true);
+        global_str
+    }
+
     pub(crate) fn build_string_literal(&self, value: String, loc: Location, span_end: usize) -> InternalValue<'ctx> {
         let make_unescaped_string =
             || -> Result<String, utils::escaping::UnescapeError> { unescape_string(&unescape_string(&value)?) };
