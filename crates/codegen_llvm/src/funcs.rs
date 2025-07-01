@@ -340,62 +340,63 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let current_block = self.get_current_block("return statement", statement.loc.clone(), statement.span.end);
         let current_func = self.get_current_func("return statement", statement.loc.clone(), statement.span.end);
 
-        if self.is_block_terminated(current_block) {
-            return;
-        }
+        let return_type = {
+            let func_metadata = self.func_table.values().find(|f| f.ptr == current_func).unwrap();
 
-        let func_metadata = self.func_table.values().find(|f| f.ptr == current_func).unwrap();
+            if self.is_block_terminated(current_block) {
+                return;
+            }
 
-        if func_metadata.return_type.is_void_type() {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!(
-                    "The function '{}' with void return type is not allowed to have a return statement.",
-                    &func_metadata
-                        .func_decl
-                        .renamed_as
-                        .clone()
-                        .unwrap_or(func_metadata.func_decl.name.clone())
-                )),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: statement.loc.line,
-                    column: statement.loc.column,
-                    length: statement.span.end,
-                }),
-            });
-            exit(1);
-        } else if !func_metadata.return_type.is_void_type() && statement.argument.is_none() {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!(
-                    "Function '{}' must return a value of type '{}'.",
-                    &func_metadata
-                        .func_decl
-                        .renamed_as
-                        .clone()
-                        .unwrap_or(func_metadata.func_decl.name.clone()),
-                    func_metadata.return_type
-                )),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: statement.loc.line,
-                    column: statement.loc.column,
-                    length: statement.span.end,
-                }),
-            });
-            exit(1);
-        }
+            if func_metadata.return_type.is_void_type() {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "The function '{}' with void return type is not allowed to have a return statement.",
+                        &func_metadata
+                            .func_decl
+                            .renamed_as
+                            .clone()
+                            .unwrap_or(func_metadata.func_decl.name.clone())
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: statement.loc.line,
+                        column: statement.loc.column,
+                        length: statement.span.end,
+                    }),
+                });
+                exit(1);
+            } else if !func_metadata.return_type.is_void_type() && statement.argument.is_none() {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Function '{}' must return a value of type '{}'.",
+                        &func_metadata
+                            .func_decl
+                            .renamed_as
+                            .clone()
+                            .unwrap_or(func_metadata.func_decl.name.clone()),
+                        func_metadata.return_type
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: statement.loc.line,
+                        column: statement.loc.column,
+                        length: statement.span.end,
+                    }),
+                });
+                exit(1);
+            }
+
+            func_metadata.return_type.clone()
+        };
 
         match statement.argument {
             Some(argument) => {
+                let argument_expr = self.build_expr(Rc::clone(&scope), argument);
                 let argument_basic_value = self.implicit_cast(
-                    self.internal_value_as_rvalue(
-                        self.build_expr(Rc::clone(&scope), argument),
-                        statement.loc.clone(),
-                        statement.span.end,
-                    ),
-                    func_metadata.return_type.clone(),
+                    self.internal_value_as_rvalue(argument_expr, statement.loc.clone(), statement.span.end),
+                    return_type.clone(),
                     statement.loc.clone(),
                     statement.span.end,
                 );
@@ -411,7 +412,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_arguments(
-        &self,
+        &mut self,
         scope: ScopeRef<'ctx>,
         arguments: Vec<Expression>,
         params: Option<FuncParams>,
@@ -423,7 +424,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .iter()
             .enumerate()
             .map(|(idx, arg)| {
-                let rvalue = self.internal_value_as_rvalue(self.build_expr(Rc::clone(&scope), arg.clone()), loc.clone(), span_end);
+                let expr = self.build_expr(Rc::clone(&scope), arg.clone());
+                let rvalue = self.internal_value_as_rvalue(expr, loc.clone(), span_end);
 
                 if let Some(params) = &params {
                     // checked before through check_func_args_count_mismatch
@@ -562,7 +564,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_func_call(&self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> InternalValue<'ctx> {
+    pub(crate) fn build_func_call(&mut self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> InternalValue<'ctx> {
         let expr = self.build_expr(Rc::clone(&scope), *func_call.operand.clone());
 
         let func_metadata = {

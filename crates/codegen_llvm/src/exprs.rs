@@ -19,7 +19,7 @@ use inkwell::{
 use std::{ops::Deref, process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_expr(&self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
+    pub(crate) fn build_expr(&mut self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         match expr {
             Expression::FieldAccess(field_access) => self.build_field_access(Rc::clone(&scope), field_access),
             Expression::MethodCall(method_call) => self.build_method_call(Rc::clone(&scope), method_call),
@@ -54,7 +54,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_address_of(&self, scope: ScopeRef<'ctx>, address_of: AddressOf) -> InternalValue<'ctx> {
+    pub(crate) fn build_address_of(&mut self, scope: ScopeRef<'ctx>, address_of: AddressOf) -> InternalValue<'ctx> {
         let internal_value = self.build_expr(Rc::clone(&scope), *address_of.expr);
 
         if let InternalValue::Lvalue(lvalue) = internal_value {
@@ -105,12 +105,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_deref(&self, scope: ScopeRef<'ctx>, dereference: Dereference) -> InternalValue<'ctx> {
-        let internal_value = self.internal_value_as_rvalue(
-            self.build_expr(Rc::clone(&scope), *dereference.expr),
-            dereference.loc.clone(),
-            dereference.span.end,
-        );
+    pub(crate) fn build_deref(&mut self, scope: ScopeRef<'ctx>, dereference: Dereference) -> InternalValue<'ctx> {
+        let internal_value = self.build_expr(Rc::clone(&scope), *dereference.expr);
+        let internal_value =
+            self.internal_value_as_rvalue(internal_value, dereference.loc.clone(), dereference.span.end);
+
         self.build_deref_internal(internal_value, dereference.loc, dereference.span.end)
     }
 
@@ -266,16 +265,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_assignment(&self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
+    pub(crate) fn build_assignment(&mut self, scope: ScopeRef<'ctx>, assignment: Box<Assignment>) {
         let assign_to = self.build_expr(Rc::clone(&scope), assignment.assign_to);
+        let assign_expr = self.build_expr(Rc::clone(&scope), assignment.expr);
 
         match assign_to.clone() {
             InternalValue::PointerValue(typed_pointer_value) => {
-                let rvalue = self.internal_value_as_rvalue(
-                    self.build_expr(Rc::clone(&scope), assignment.expr),
-                    assignment.loc.clone(),
-                    assignment.span.end,
-                );
+                let rvalue = self.internal_value_as_rvalue(assign_expr, assignment.loc.clone(), assignment.span.end);
 
                 if let InternalType::ConstType(_) = typed_pointer_value.pointee_ty {
                     display_single_diag(Diag {
@@ -315,11 +311,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.builder.build_store(typed_pointer_value.ptr, final_rvalue).unwrap();
             }
             InternalValue::Lvalue(lvalue) => {
-                let rvalue = self.internal_value_as_rvalue(
-                    self.build_expr(Rc::clone(&scope), assignment.expr),
-                    assignment.loc.clone(),
-                    assignment.span.end,
-                );
+                let rvalue = self.internal_value_as_rvalue(assign_expr, assignment.loc.clone(), assignment.span.end);
 
                 if let InternalType::ConstType(_) = lvalue.pointee_ty {
                     display_single_diag(Diag {
@@ -372,7 +364,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_array(&self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
+    pub(crate) fn build_array(&mut self, scope: ScopeRef<'ctx>, array: Array) -> InternalValue<'ctx> {
         let mut is_const_array = true;
         let mut array_elements: Vec<InternalValue<'ctx>> = array
             .elements
@@ -553,7 +545,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         unsafe { ArrayValue::new_const_array(&element_type, &values) }
     }
 
-    pub(crate) fn build_array_index(&self, scope: ScopeRef<'ctx>, array_index: ArrayIndex) -> InternalValue<'ctx> {
+    pub(crate) fn build_array_index(&mut self, scope: ScopeRef<'ctx>, array_index: ArrayIndex) -> InternalValue<'ctx> {
         let (pointer, pointee_ty) = match self.build_expr(Rc::clone(&scope), *array_index.expr) {
             InternalValue::PointerValue(typed_pointer_value) => {
                 (typed_pointer_value.ptr, typed_pointer_value.pointee_ty)
@@ -593,11 +585,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let mut ordered_indexes: Vec<IntValue> = Vec::new();
             ordered_indexes.push(self.build_integer_literal(0)); // first index is always 0
 
-            if let InternalValue::IntValue(index_int_value, _) = self.internal_value_as_rvalue(
-                self.build_expr(Rc::clone(&scope), *array_index.index),
-                array_index.loc.clone(),
-                array_index.span.end,
-            ) {
+            let index_expr = self.build_expr(Rc::clone(&scope), *array_index.index);
+            if let InternalValue::IntValue(index_int_value, index_int_value_type) =
+                self.internal_value_as_rvalue(index_expr, array_index.loc.clone(), array_index.span.end)
+            {
                 if index_int_value.is_const()
                     && internal_array_type.array_type.len() - 1
                         < index_int_value.get_zero_extended_constant().unwrap() as u32
@@ -618,8 +609,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 } else if !index_int_value.is_const() {
-                    // FIXME Runtime in_bounds check not implemented yet!
-                    todo!("Runtime in_bounds check not implemented yet!");
+                    return self.build_runtime_inbounds_check(
+                        pointer,
+                        pointee_ty,
+                        InternalValue::IntValue(index_int_value, index_int_value_type),
+                        internal_array_type.array_type.len(),
+                        array_index.loc.clone(),
+                        array_index.span.end,
+                    );
                 }
 
                 ordered_indexes.push(index_int_value);
@@ -931,12 +928,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_cast_expression(&self, scope: ScopeRef<'ctx>, cast: Cast) -> InternalValue<'ctx> {
-        let internal_value = self.internal_value_as_rvalue(
-            self.build_expr(Rc::clone(&scope), *cast.expr.clone()),
-            cast.loc.clone(),
-            cast.span.end,
-        );
+    pub(crate) fn build_cast_expression(&mut self, scope: ScopeRef<'ctx>, cast: Cast) -> InternalValue<'ctx> {
+        let cast_expr = self.build_expr(Rc::clone(&scope), *cast.expr.clone());
+        let internal_value = self.internal_value_as_rvalue(cast_expr, cast.loc.clone(), cast.span.end);
         let target_type = self.build_type(cast.target_type, cast.loc.clone(), cast.span.end);
 
         if !self.compatible_types(target_type.clone(), internal_value.get_type(self.string_type.clone())) {
@@ -1073,13 +1067,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_sizeof_operator(
-        &self,
+        &mut self,
         scope: ScopeRef<'ctx>,
         expr: Expression,
         loc: Location,
         span_end: usize,
     ) -> InternalValue<'ctx> {
-        let internal_value = self.internal_value_as_rvalue(self.build_expr(scope, expr), loc.clone(), span_end);
+        let expr = self.build_expr(scope, expr);
+        let internal_value = self.internal_value_as_rvalue(expr, loc.clone(), span_end);
         let internal_type = internal_value.get_type(self.string_type.clone());
         let size_int_value = self.build_sizeof_operator_internal(internal_type, loc, span_end);
         InternalValue::IntValue(
@@ -1092,15 +1087,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_prefix_expr(
-        &self,
+        &mut self,
         scope: ScopeRef<'ctx>,
         unary_expression: UnaryExpression,
     ) -> InternalValue<'ctx> {
-        let operand_internal_value = self.internal_value_as_rvalue(
-            self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone()),
-            unary_expression.loc.clone(),
-            unary_expression.span.end,
-        );
+        let expr = self.build_expr(Rc::clone(&scope), *unary_expression.operand.clone());
+        let operand_internal_value =
+            self.internal_value_as_rvalue(expr, unary_expression.loc.clone(), unary_expression.span.end);
 
         match unary_expression.operator.kind {
             TokenKind::SizeOf => self.build_sizeof_operator(
@@ -1354,20 +1347,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_infix_expr(
-        &self,
+        &mut self,
         scope: ScopeRef<'ctx>,
         binary_expression: BinaryExpression,
     ) -> InternalValue<'ctx> {
-        let left = self.internal_value_as_rvalue(
-            self.build_expr(Rc::clone(&scope), *binary_expression.left),
-            binary_expression.loc.clone(),
-            binary_expression.span.end,
-        );
-        let mut right = self.internal_value_as_rvalue(
-            self.build_expr(Rc::clone(&scope), *binary_expression.right),
-            binary_expression.loc.clone(),
-            binary_expression.span.end,
-        );
+        let left_expr = self.build_expr(Rc::clone(&scope), *binary_expression.left);
+        let left = self.internal_value_as_rvalue(left_expr, binary_expression.loc.clone(), binary_expression.span.end);
+
+        let right_expr = self.build_expr(Rc::clone(&scope), *binary_expression.right);
+        let mut right =
+            self.internal_value_as_rvalue(right_expr, binary_expression.loc.clone(), binary_expression.span.end);
 
         if !self.compatible_types(
             left.get_type(self.string_type.clone()),
@@ -1448,13 +1437,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_cond(
-        &self,
+        &mut self,
         scope: ScopeRef<'ctx>,
         expr: Expression,
         loc: Location,
         span_end: usize,
     ) -> IntValue<'ctx> {
-        let condition = self.internal_value_as_rvalue(self.build_expr(scope, expr), loc.clone(), span_end);
+        let expr = self.build_expr(scope, expr);
+        let condition = self.internal_value_as_rvalue(expr, loc.clone(), span_end);
 
         if !condition.get_type(self.string_type.clone()).is_bool_type() {
             display_single_diag(Diag {

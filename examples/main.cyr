@@ -1,15 +1,9 @@
 extern fn printf(format: const char*, ...);
 
-fn internal_bool_to_string(value: bool): string {
-    if (value == true) {
-        return "true";
-    } else {
-        return "false";
-    }
-}
-
 fn main() {
-    #fmt = internal_bool_to_string(true);
+    #arr = int32[4] {10, 20, 30, 40};
 
-    printf("value: %s\n", fmt);
+    foreach (item, index in arr) {
+        printf("%d-> %d\n", index, item);
+    }
 }

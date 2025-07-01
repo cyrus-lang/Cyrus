@@ -250,7 +250,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         struct_methods
     }
 
-    pub(crate) fn build_struct_init(&self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> InternalValue<'ctx> {
+    pub(crate) fn build_struct_init(&mut self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> InternalValue<'ctx> {
         let defined_type = self.find_defined_type(
             struct_init.struct_name.clone(),
             struct_init.loc.clone(),
@@ -294,11 +294,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             let field_type = self.build_type(field.ty.clone(), field.loc.clone(), field.span.end);
 
-            let field_rvalue = self.internal_value_as_rvalue(
-                self.build_expr(Rc::clone(&scope), field_init.value.clone()),
-                field.loc.clone(),
-                field.span.end,
-            );
+            let field_expr = self.build_expr(Rc::clone(&scope), field_init.value.clone());
+            let field_rvalue = self.internal_value_as_rvalue(field_expr, field.loc.clone(), field.span.end);
 
             if !self.compatible_types(field_type.clone(), field_rvalue.get_type(self.string_type.clone())) {
                 display_single_diag(Diag {
@@ -431,7 +428,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_method_call(&self, scope: ScopeRef<'ctx>, method_call: MethodCall) -> InternalValue<'ctx> {
+    pub(crate) fn build_method_call(&mut self, scope: ScopeRef<'ctx>, method_call: MethodCall) -> InternalValue<'ctx> {
         let mut operand = self.build_expr(Rc::clone(&scope), *method_call.operand.clone());
         let mut operand_rvalue =
             self.internal_value_as_rvalue(operand.clone(), method_call.loc.clone(), method_call.span.end);
@@ -574,7 +571,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_field_access(&self, scope: ScopeRef<'ctx>, field_access: FieldAccess) -> InternalValue<'ctx> {
+    pub(crate) fn build_field_access(
+        &mut self,
+        scope: ScopeRef<'ctx>,
+        field_access: FieldAccess,
+    ) -> InternalValue<'ctx> {
         let mut internal_value = self.build_expr(Rc::clone(&scope), *field_access.operand);
 
         if field_access.is_fat_arrow {
@@ -752,7 +753,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_unnamed_struct_value(
-        &self,
+        &mut self,
         scope: ScopeRef<'ctx>,
         unnamed_struct_value: UnnamedStructValue,
     ) -> InternalValue<'ctx> {
@@ -761,11 +762,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         for (_, field) in unnamed_struct_value.fields.iter().enumerate() {
             let field_type: InternalType<'ctx>;
 
-            let field_value = self.internal_value_as_rvalue(
-                self.build_expr(Rc::clone(&scope), *field.field_value.clone()),
-                field.loc.clone(),
-                field.span.end,
-            );
+            let field_expr = self.build_expr(Rc::clone(&scope), *field.field_value.clone());
+            let field_value = self.internal_value_as_rvalue(field_expr, field.loc.clone(), field.span.end);
 
             if let Some(field_type_specifier) = field.field_type.clone() {
                 field_type = self.build_type(field_type_specifier, field.loc.clone(), field.span.end);
