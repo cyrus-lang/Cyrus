@@ -1,9 +1,9 @@
 extern fn printf(format: const char*, ...);
 
-fn main() {
-    #arr = int32[4] {10, 20, 30, 40};
+fn sum(static: int, vargs: ...int) {
 
-    foreach (item, index in arr) {
-        printf("%d-> %d\n", index, item);
-    }
+}
+
+fn main() {
+    sum(1, 2, 3);
 }

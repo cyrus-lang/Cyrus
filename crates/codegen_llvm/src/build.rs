@@ -289,6 +289,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 main_func.loc.clone(),
                 main_func.span.end,
                 main_func.params.list.clone(),
+                None
             );
 
             self.build_func_def(main_func, func_param_types, true);

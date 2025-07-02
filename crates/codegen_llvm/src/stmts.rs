@@ -68,6 +68,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         func_def.loc.clone(),
                         func_def.span.end,
                         func_def.params.list.clone(),
+                        func_def.params.variadic.clone(),
                     );
 
                     self.build_func_def(func_def.clone(), param_types, false);
@@ -79,6 +80,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_decl.loc.clone(),
                     func_decl.span.end,
                     func_decl.params.list.clone(),
+                    func_decl.params.variadic.clone(),
                 );
 
                 self.build_func_decl(func_decl, param_types);
