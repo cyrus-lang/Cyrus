@@ -1,9 +1,14 @@
 extern fn printf(format: const char*, ...);
 
 fn sum(static: int, vargs: ...int) {
-
+    // vargs;
 }
 
 fn main() {
-    // sum(1, 2, 3);
+    printf("Hello Cyrus!\n");
+    sum(1, 2, 3, 4, 5);
+    //  ^
+    //  static 
+    //     ^
+    //     vargs
 }

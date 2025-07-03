@@ -42,6 +42,7 @@ mod structs;
 mod tests;
 mod types;
 mod values;
+mod intrinsics;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -176,11 +177,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
         if !self.compiler_invoked_single {
             self.rebuild_dependent_modules();
-            if self.source_code_changed(self.final_build_dir.clone()) || !self.object_file_exists() {
-                self.save_object_file(self.final_build_dir.clone());
+            if self.source_code_changed(self.final_build_dir.clone()) || !self.linkable_file_exists() {
+                self.save_linkable_file(self.final_build_dir.clone());
             }
         } else {
-            self.save_object_file(self.final_build_dir.clone());
+            self.save_linkable_file(self.final_build_dir.clone());
         }
 
         self.generate_output();

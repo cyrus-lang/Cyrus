@@ -1,6 +1,7 @@
 use crate::LoopBlockRefs;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
+use crate::types::{InternalArrayType, InternalIntType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType, build_loop_statement};
 use ast::ast::{
@@ -10,14 +11,17 @@ use ast::ast::{
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::intrinsics::Intrinsic;
-use inkwell::llvm_sys::core::LLVMFunctionType;
-use inkwell::llvm_sys::prelude::LLVMTypeRef;
+use inkwell::llvm_sys::core::{
+    LLVMAddFunction, LLVMFunctionType, LLVMGetIntrinsicDeclaration, LLVMGetIntrinsicID, LLVMIntrinsicGetName,
+};
+use inkwell::llvm_sys::prelude::{LLVMTypeRef, LLVMValueRef};
 use inkwell::module::Linkage;
-use inkwell::types::{AsTypeRef, BasicTypeEnum, FunctionType};
+use inkwell::types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum, FunctionType};
 use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
 use inkwell::{AddressSpace, IntPredicate};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::ops::{Deref, DerefMut, Index};
 use std::process::exit;
 use std::rc::Rc;
@@ -252,43 +256,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         span_end: usize,
     ) {
         let ptr_type = self.context.ptr_type(AddressSpace::default());
-        let element_type = match self
+        let element_basic_type = self
             .build_type(type_specifier, loc.clone(), span_end)
             .to_basic_type(ptr_type)
-        {
-            Ok(basic_type) => basic_type,
-            Err(err) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(err.to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-        };
+            .unwrap(); // FIXME
 
-        let va_start_intrinsic = Intrinsic::find("llvm.va_start").unwrap();
-        let va_start_func = va_start_intrinsic
-            .get_declaration(
-                &*Rc::clone(&self.module).borrow_mut(),
-                &[BasicTypeEnum::PointerType(ptr_type)],
-            )
+        let va_start_func = self.intrinsic_va_start_function();
+        let va_end_func = self.intrinsic_va_end_function();
+
+        let va_list = self
+            .builder
+            .build_alloca(element_basic_type.clone(), "va_list")
             .unwrap();
-
-        let va_end_intrinsic = Intrinsic::find("llvm.va_end").unwrap();
-        let va_end_func = va_end_intrinsic
-            .get_declaration(
-                &*Rc::clone(&self.module).borrow_mut(),
-                &[BasicTypeEnum::PointerType(ptr_type)],
-            )
-            .unwrap();
-
-        let va_list = self.builder.build_alloca(element_type.clone(), "va_list").unwrap();
         self.builder
             .build_call(va_start_func, &[BasicMetadataValueEnum::PointerValue(va_list)], "call")
             .unwrap();
@@ -301,7 +280,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let vargs_array_ptr = self
             .builder
-            .build_array_alloca(element_type, va_args_count, "vargs_array_ptr")
+            .build_array_alloca(element_basic_type, va_args_count, "vargs_array_ptr")
             .unwrap();
 
         let i32_type = self.context.i32_type();
@@ -322,7 +301,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             },
             {
                 let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
-                let va_arg = self.builder.build_va_arg(va_list, element_type, "va_arg").unwrap();
+                let va_arg = self
+                    .builder
+                    .build_va_arg(va_list, element_basic_type, "va_arg")
+                    .unwrap();
                 let gep = unsafe {
                     self.builder
                         .build_in_bounds_gep(
@@ -354,18 +336,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             span_end
         );
 
-        // let type_ref = self.build_type(type_specifier, identifier.loc.clone(), identifier.span.end);
-        // let vargs_ptr = self.builder.build_alloca(type_ref.as_type_ref(), &identifier.name).unwrap();
-
         // scope.borrow_mut().insert(
         //     identifier.name.clone(),
         //     ScopeRecord {
-        //         ptr: vargs_ptr,
-        //         ty: type_ref,
+        //         ptr: vargs_array_ptr,
+        //         ty: InternalType::IntType(InternalIntType {
+        //             type_str: "int32".to_string(),
+        //             int_type: i32_type,
+        //         }),
         //     },
         // );
 
-        // self.builder.build_store(vargs_ptr, self.build_null()).unwrap();
+        self.builder
+            .build_call(va_end_func, &[BasicMetadataValueEnum::PointerValue(va_list)], "call")
+            .unwrap();
     }
 
     pub(crate) fn build_func_def(

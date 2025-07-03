@@ -1,20 +1,9 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
-use inkwell::llvm_sys::core::LLVMCreateFunctionPassManagerForModule;
-use inkwell::llvm_sys::core::LLVMCreatePassManager;
-use inkwell::llvm_sys::core::LLVMDisposePassManager;
-use inkwell::llvm_sys::core::LLVMFinalizeFunctionPassManager;
-use inkwell::llvm_sys::core::LLVMGetFirstFunction;
-use inkwell::llvm_sys::core::LLVMInitializeFunctionPassManager;
-use inkwell::llvm_sys::core::LLVMRunFunctionPassManager;
-use inkwell::llvm_sys::core::LLVMRunPassManager;
-use inkwell::llvm_sys::prelude::LLVMValueRef;
 use inkwell::passes::PassBuilderOptions;
 use inkwell::passes::PassManager;
-use inkwell::passes::PassManagerSubType;
 use inkwell::targets::FileType;
-use inkwell::values::AsValueRef;
 use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;
@@ -53,14 +42,14 @@ pub enum OutputKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildManifest {
     pub sources: HashMap<String, String>,
-    pub objects: HashMap<String, String>,
+    pub linkable_files: HashMap<String, String>,
 }
 
 impl Default for BuildManifest {
     fn default() -> Self {
         Self {
             sources: HashMap::new(),
-            objects: HashMap::new(),
+            linkable_files: HashMap::new(),
         }
     }
 }
@@ -92,14 +81,15 @@ impl BuildManifest {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn execute_linker(&self, output_path: String, object_files: Vec<String>, extra_args: Vec<String>) {
+    pub(crate) fn execute_linker(&self, output_path: String, linkable_files: Vec<String>, extra_args: Vec<String>) {
         // TODO Consider to make linker dynamic through Project.toml and CLI Program.
-        let linker = "cc";
+        // or "gcc" depending on your system and requirements
+        let linker = "clang";
 
         let mut linker_command = std::process::Command::new(linker);
         linker_command.arg("-o").arg(output_path);
 
-        for path in object_files {
+        for path in linkable_files {
             linker_command.arg(path);
         }
 
@@ -206,7 +196,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn generate_executable_file(&self, output_path: Option<String>) {
-        let object_files: Vec<String> = self.build_manifest.objects.values().cloned().collect();
+        let linkable_files: Vec<String> = self.build_manifest.linkable_files.values().cloned().collect();
 
         let output_path = {
             if let Some(path) = output_path {
@@ -241,11 +231,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        self.execute_linker(output_path, object_files, Vec::new());
+        self.execute_linker(output_path, linkable_files, Vec::new());
     }
 
     fn generate_dynamic_library(&self, output_path: Option<String>) {
-        let object_files: Vec<String> = self.build_manifest.objects.values().cloned().collect();
+        let linkable_files: Vec<String> = self.build_manifest.linkable_files.values().cloned().collect();
 
         let output_path = {
             if let Some(path) = output_path {
@@ -270,22 +260,36 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             dylib_extension()
         );
 
-        self.execute_linker(output_path, object_files, vec!["-fPIC".to_string()]);
+        self.execute_linker(output_path, linkable_files, vec!["-fPIC".to_string()]);
     }
 
     fn generate_object_file(&self, output_path: Option<String>) {
-        if let Some(output_path) = output_path {
-            ensure_output_dir(Path::new(&output_path.clone()));
-            let file_path = format!("{}/{}.o", output_path, self.generate_output_file_name());
-            self.generate_object_file_internal(file_path);
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Output directory path must be specified to generate object files.".to_string()),
-                location: None,
-            });
-            exit(1);
-        }
+        let linkable_files: Vec<String> = self.build_manifest.linkable_files.values().cloned().collect();
+
+        let output_path = {
+            if let Some(path) = output_path {
+                path
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(
+                        "Output directory must be specified to generate object file.".to_string(),
+                    ),
+                    location: None,
+                });
+                exit(1);
+            }
+        };
+
+        ensure_output_dir(Path::new(&output_path.clone()));
+        let output_path = format!(
+            "{}/{}.{}",
+            output_path,
+            self.generate_output_file_name(),
+            dylib_extension()
+        );
+
+        self.execute_linker(output_path, linkable_files, vec!["-c".to_string()]);
     }
 
     pub(crate) fn run_passes(&self) {
@@ -350,10 +354,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
     }
 
-    pub(crate) fn generate_object_file_internal(&self, output_path: String) {
+    pub(crate) fn run_llvm_assembler(&self, output_path: String) {
         let temp_dir = env::temp_dir();
         let temp_ll_file_path = temp_dir.join("module.ll");
-        let temp_opt_ll_file_path = temp_dir.join("module.opt.ll");
+        let temp_bc_file_path = temp_dir.join("module.bc");
 
         if let Some(parent) = temp_ll_file_path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
@@ -372,28 +376,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .print_to_file(&temp_ll_file_path)
                 .map_err(|err| format!("Failed to print LLVM IR to temporary file: {}", err))?;
 
-            let opt_command = Command::new("opt")
-                .arg("-O2")
-                .arg("-S")
+            // use llvm-as to convert IR to bytecode
+            let llvm_as_command = Command::new("llvm-as")
                 .arg(&temp_ll_file_path)
                 .arg("-o")
-                .arg(&temp_opt_ll_file_path)
+                .arg(&temp_bc_file_path)
                 .output()
-                .map_err(|e| format!("Failed to execute opt command: {}", e))?;
+                .map_err(|e| format!("Failed to execute llvm-as command: {}", e))?;
 
-            if !opt_command.status.success() {
+            if !llvm_as_command.status.success() {
                 return Err(format!(
-                    "opt command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
-                    opt_command.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&opt_command.stdout),
-                    String::from_utf8_lossy(&opt_command.stderr)
+                    "llvm-as command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
+                    llvm_as_command.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&llvm_as_command.stdout),
+                    String::from_utf8_lossy(&llvm_as_command.stderr)
                 ));
             }
 
-            // Step 3: Call llc on the optimized IR
             let llc_command = Command::new("llc")
                 .arg("-filetype=obj")
-                .arg(&temp_opt_ll_file_path)
+                .arg(&temp_bc_file_path)
                 .arg("-o")
                 .arg(&output_path)
                 .output()
@@ -420,7 +422,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        for path in [&temp_ll_file_path, &temp_opt_ll_file_path] {
+        // clean up temporary files
+        for path in [&temp_ll_file_path, &temp_bc_file_path] {
             if let Err(e) = fs::remove_file(path) {
                 eprintln!("Warning: Failed to remove temporary file {:?}: {}", path, e);
             }
@@ -463,10 +466,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         crc32fast::hash(source_code.as_bytes()).to_string()
     }
 
-    pub(crate) fn object_file_exists(&mut self) -> bool {
+    pub(crate) fn linkable_file_exists(&mut self) -> bool {
         let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
-        self.build_manifest.objects.get(&file_path.clone()).is_some()
+        self.build_manifest.linkable_files.get(&file_path.clone()).is_some()
     }
 
     pub(crate) fn source_code_changed(&mut self, build_dir: String) -> bool {
@@ -515,7 +518,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         output_file
     }
 
-    pub(crate) fn save_object_file(&mut self, build_dir: String) {
+    pub(crate) fn save_linkable_file(&mut self, build_dir: String) {
         let rng = rand::rng();
         let random_hex: String = rng.sample_iter(&Alphanumeric).take(30).map(char::from).collect();
         let output_file = format!("{}/{}/{}.o", build_dir, OBJECTS_FILENAME, random_hex);
@@ -523,16 +526,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
 
-        // remove previous object_file
-        if let Some(obj_file) = self.build_manifest.objects.get(&file_path.clone()) {
+        // remove previous byte_code file if exists
+        if let Some(obj_file) = self.build_manifest.linkable_files.get(&file_path.clone()) {
             if fs::exists(obj_file).unwrap() {
                 let _ = fs::remove_file(obj_file).unwrap();
             }
         }
 
-        // generate new object_file
-        self.generate_object_file_internal(output_file.clone());
-        self.build_manifest.objects.insert(file_path.clone(), output_file);
+        // generate byte_code file
+        self.run_llvm_assembler(output_file.clone());
+        self.build_manifest
+            .linkable_files
+            .insert(file_path.clone(), output_file);
         self.build_manifest.save_file(build_dir);
     }
 }
