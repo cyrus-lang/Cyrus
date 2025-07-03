@@ -84,6 +84,7 @@ pub struct UnnamedStructValueField {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnnamedStructType {
     pub fields: Vec<UnnamedStructTypeField>,
+    pub packed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -29,6 +29,7 @@ pub struct StructMetadata<'a> {
     pub fields: Vec<Field>,
     pub methods: Vec<(FuncDecl, FunctionValue<'a>)>,
     pub storage_class: StorageClass,
+    pub packed: bool
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +42,7 @@ pub struct UnnamedStructTypeMetadata<'a> {
 pub struct UnnamedStructValueMetadata<'a> {
     pub struct_type: StructType<'a>,
     pub fields: Vec<(String, InternalType<'a>)>,
+    pub packed: bool
 }
 
 pub type StructTable<'a> = HashMap<String, InternalStructType<'a>>;
@@ -156,6 +158,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             methods: Vec::new(),
             inherits: struct_statement.inherits.clone(),
             storage_class: struct_statement.storage_class.clone(),
+            packed: struct_statement.packed
         };
 
         let internal_struct_type = InternalStructType {
@@ -167,7 +170,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .insert(struct_statement.name.clone(), internal_struct_type.clone());
 
         let field_types = self.build_struct_field_types(struct_statement.name.clone(), struct_statement.fields.clone());
-        opaque_struct.set_body(&field_types, false);
+        opaque_struct.set_body(&field_types, struct_statement.packed);
 
         let struct_methods = self.build_struct_methods(
             internal_struct_type,
@@ -733,7 +736,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             })
             .collect();
 
-        let struct_type = self.context.struct_type(&field_types, false);
+        let struct_type = self.context.struct_type(&field_types, unnamed_struct.packed);
         let unnamed_struct_metadata = UnnamedStructTypeMetadata {
             struct_type,
             fields: unnamed_struct
@@ -818,7 +821,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             )
             .collect();
 
-        let struct_type = self.context.struct_type(&field_types, false);
+        let struct_type = self.context.struct_type(&field_types, unnamed_struct_value.packed);
         let struct_alloca = self.builder.build_alloca(struct_type, "alloca").unwrap();
 
         for (idx, (_, field_value)) in field_values.iter().enumerate() {

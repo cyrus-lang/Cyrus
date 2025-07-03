@@ -63,7 +63,7 @@ impl<'a> Parser<'a> {
 
         let parsed_kind = match current.kind.clone() {
             token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
-            TokenKind::Struct => self.parse_struct_type(),
+            TokenKind::Struct | TokenKind::Bits => self.parse_struct_type(),
             TokenKind::Const => {
                 self.next_token(); // consume const
                 let inner_type = self.parse_base_type_token()?;
@@ -189,7 +189,24 @@ impl<'a> Parser<'a> {
     pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParseError> {
         let struct_start = self.current_token.span.start;
 
-        self.expect_current(TokenKind::Struct)?;
+        let packed = {
+            if self.current_token_is(TokenKind::Bits) {
+                self.next_token();
+                true
+            } else if self.current_token_is(TokenKind::Struct) {
+                self.next_token();
+                false
+            } else {
+                return Err(CompileTimeError {
+                    location: self.current_token.loc.clone(),
+                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                    file_name: Some(self.lexer.file_name.clone()),
+                    source_content: Box::new(self.lexer.input.clone()),
+                    verbose: None,
+                    caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                });
+            }
+        };
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<UnnamedStructTypeField> = Vec::new();
@@ -249,6 +266,6 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType { fields }))
+        Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType { fields, packed }))
     }
 }

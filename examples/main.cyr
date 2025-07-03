@@ -6,10 +6,9 @@ bits Ipv4Header {
     protocol: uint8;
     src_ip: uint32;
     dest_ip: uint32;
-
 }
 
 fn main() {
-   #person = bits { name = "Hello" };
+   #person: Ipv4Header;
    
 }
