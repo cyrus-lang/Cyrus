@@ -1,23 +1,24 @@
+use crate::LoopBlockRefs;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
 use crate::values::InternalValue;
-use crate::{CodeGenLLVM, InternalType};
+use crate::{CodeGenLLVM, InternalType, build_loop_statement};
 use ast::ast::{
     Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, FuncVariadicParams, Identifier, ModuleSegment,
     Return, StorageClass, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
-use inkwell::AddressSpace;
 use inkwell::intrinsics::Intrinsic;
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
 use inkwell::types::{AsTypeRef, BasicTypeEnum, FunctionType};
 use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
+use inkwell::{AddressSpace, IntPredicate};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::{DerefMut, Index};
+use std::ops::{Deref, DerefMut, Index};
 use std::process::exit;
 use std::rc::Rc;
 
@@ -245,10 +246,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         identifier: Identifier,
         type_specifier: TypeSpecifier,
+        func_params: FuncParams,
+        func_value: FunctionValue<'ctx>,
         loc: Location,
         span_end: usize,
     ) {
-        let module = self.module.borrow_mut();
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         let element_type = match self
             .build_type(type_specifier, loc.clone(), span_end)
@@ -272,12 +274,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let va_start_intrinsic = Intrinsic::find("llvm.va_start").unwrap();
         let va_start_func = va_start_intrinsic
-            .get_declaration(&module, &[BasicTypeEnum::PointerType(ptr_type)])
+            .get_declaration(
+                &*Rc::clone(&self.module).borrow_mut(),
+                &[BasicTypeEnum::PointerType(ptr_type)],
+            )
             .unwrap();
 
         let va_end_intrinsic = Intrinsic::find("llvm.va_end").unwrap();
         let va_end_func = va_end_intrinsic
-            .get_declaration(&module, &[BasicTypeEnum::PointerType(ptr_type)])
+            .get_declaration(
+                &*Rc::clone(&self.module).borrow_mut(),
+                &[BasicTypeEnum::PointerType(ptr_type)],
+            )
             .unwrap();
 
         let va_list = self.builder.build_alloca(element_type.clone(), "va_list").unwrap();
@@ -285,7 +293,66 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .build_call(va_start_func, &[BasicMetadataValueEnum::PointerValue(va_list)], "call")
             .unwrap();
 
-        let va_arg = self.builder.build_va_arg(va_list, element_type, "va_arg").unwrap();
+        let static_params_length = func_params.list.len();
+        let va_args_count = func_value
+            .get_nth_param(static_params_length.try_into().unwrap())
+            .unwrap()
+            .into_int_value();
+
+        let vargs_array_ptr = self
+            .builder
+            .build_array_alloca(element_type, va_args_count, "vargs_array_ptr")
+            .unwrap();
+
+        let i32_type = self.context.i32_type();
+        let index_ptr = self.builder.build_alloca(i32_type, "vargs.idx").unwrap();
+        self.builder
+            .build_store(index_ptr, self.build_integer_literal(0))
+            .unwrap();
+
+        build_loop_statement!(
+            self,
+            scope,
+            {
+                let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+
+                self.builder
+                    .build_int_compare(IntPredicate::SLE, index_value.into_int_value(), va_args_count, "icmp")
+                    .unwrap()
+            },
+            {
+                let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+                let va_arg = self.builder.build_va_arg(va_list, element_type, "va_arg").unwrap();
+                let gep = unsafe {
+                    self.builder
+                        .build_in_bounds_gep(
+                            i32_type,
+                            vargs_array_ptr,
+                            &[
+                                // self.build_integer_literal(0)
+                                index_value.into_int_value(),
+                            ],
+                            "vargs_array.gep",
+                        )
+                        .unwrap()
+                };
+                self.builder.build_store(gep, va_arg).unwrap();
+            },
+            {
+                let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+                let incremented_index = self
+                    .builder
+                    .build_int_add(
+                        index_value.into_int_value(),
+                        self.build_integer_literal(1),
+                        "vargs.idx.increment",
+                    )
+                    .unwrap();
+                self.builder.build_store(index_ptr, incremented_index).unwrap();
+            },
+            loc,
+            span_end
+        );
 
         // let type_ref = self.build_type(type_specifier, identifier.loc.clone(), identifier.span.end);
         // let vargs_ptr = self.builder.build_alloca(type_ref.as_type_ref(), &identifier.name).unwrap();
@@ -377,6 +444,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         Rc::clone(&scope),
                         identifier,
                         type_specifier,
+                        func_def.params.clone(),
+                        func_value.clone(),
                         func_def.loc.clone(),
                         func_def.span.end,
                     );
@@ -564,13 +633,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
         }
 
+        let va_args_count = arguments.len() - static_params_length;
+
         if let Some(func_variadic_params) = params.variadic {
             match func_variadic_params {
                 FuncVariadicParams::Typed(_, type_specifier) => {
                     let variadic_element_type = self.build_type(type_specifier, loc.clone(), span_end);
 
                     // add va_args_count before building the variadic arguments
-                    let va_args_count = arguments.len() - static_params_length;
                     final_arguments.push(BasicMetadataValueEnum::IntValue(
                         self.build_integer_literal(va_args_count.try_into().unwrap()),
                     ));
@@ -585,7 +655,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 level: DiagLevel::Error,
                                 kind: DiagKind::Custom(format!(
                                     "Argument at index {} for function '{}' is not compatible with type '{}' for implicit casting.",
-                                    static_params_length + idx, func_name, variadic_element_type
+                                    static_params_length + idx,
+                                    func_name,
+                                    variadic_element_type
                                 )),
                                 location: Some(DiagLoc {
                                     file: self.file_path.clone(),
@@ -603,7 +675,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         );
                     }
                 }
-                FuncVariadicParams::UntypedCStyle => todo!(),
+                FuncVariadicParams::UntypedCStyle => {
+                    for arg in arguments[static_params_length..].iter().as_slice() {
+                        let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
+                        let rvalue = self.internal_value_as_rvalue(lvalue, loc.clone(), span_end);
+                        final_arguments.push(rvalue.to_basic_metadata());
+                    }
+                }
             }
         }
 

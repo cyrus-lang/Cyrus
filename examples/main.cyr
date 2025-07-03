@@ -5,5 +5,5 @@ fn sum(static: int, vargs: ...int) {
 }
 
 fn main() {
-    sum(1, 2, 3);
+    // sum(1, 2, 3);
 }
