@@ -1,8 +1,20 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
+use inkwell::llvm_sys::core::LLVMCreateFunctionPassManagerForModule;
+use inkwell::llvm_sys::core::LLVMCreatePassManager;
+use inkwell::llvm_sys::core::LLVMDisposePassManager;
+use inkwell::llvm_sys::core::LLVMFinalizeFunctionPassManager;
+use inkwell::llvm_sys::core::LLVMGetFirstFunction;
+use inkwell::llvm_sys::core::LLVMInitializeFunctionPassManager;
+use inkwell::llvm_sys::core::LLVMRunFunctionPassManager;
+use inkwell::llvm_sys::core::LLVMRunPassManager;
+use inkwell::llvm_sys::prelude::LLVMValueRef;
+use inkwell::passes::PassBuilderOptions;
 use inkwell::passes::PassManager;
+use inkwell::passes::PassManagerSubType;
 use inkwell::targets::FileType;
+use inkwell::values::AsValueRef;
 use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;
@@ -276,10 +288,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn optimize(&self) {
-        let fpm = PassManager::create(self.module.borrow_mut().deref_mut());
+    pub(crate) fn run_passes(&self) {
+        let mut module = self.module.borrow_mut();
+        let fpm = PassManager::create(module.deref_mut());
         self.target_machine.add_analysis_passes(&fpm);
         fpm.initialize();
+
+        let passes: &[&str] = &["instcombine", "reassociate", "gvn", "simplifycfg", "mem2reg"];
+
+        module
+            .run_passes(
+                passes.join(",").as_str(),
+                &self.target_machine,
+                PassBuilderOptions::create(),
+            )
+            .unwrap();
+
         fpm.finalize();
     }
 
@@ -327,90 +351,81 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn generate_object_file_internal(&self, output_path: String) {
-        if let Err(err) = self.target_machine.write_to_file(
-            &self.module.borrow_mut().deref_mut(),
-            FileType::Object,
-            Path::new(&output_path),
-        ) {
+        let temp_dir = env::temp_dir();
+        let temp_ll_file_path = temp_dir.join("module.ll");
+        let temp_opt_ll_file_path = temp_dir.join("module.opt.ll");
+
+        if let Some(parent) = temp_ll_file_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Failed to create temporary directory: {}", e)),
+                    location: None,
+                });
+                exit(1);
+            }
+        }
+
+        let result: Result<(), String> = (|| {
+            self.module
+                .borrow()
+                .print_to_file(&temp_ll_file_path)
+                .map_err(|err| format!("Failed to print LLVM IR to temporary file: {}", err))?;
+
+            let opt_command = Command::new("opt")
+                .arg("-O2")
+                .arg("-S")
+                .arg(&temp_ll_file_path)
+                .arg("-o")
+                .arg(&temp_opt_ll_file_path)
+                .output()
+                .map_err(|e| format!("Failed to execute opt command: {}", e))?;
+
+            if !opt_command.status.success() {
+                return Err(format!(
+                    "opt command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
+                    opt_command.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&opt_command.stdout),
+                    String::from_utf8_lossy(&opt_command.stderr)
+                ));
+            }
+
+            // Step 3: Call llc on the optimized IR
+            let llc_command = Command::new("llc")
+                .arg("-filetype=obj")
+                .arg(&temp_opt_ll_file_path)
+                .arg("-o")
+                .arg(&output_path)
+                .output()
+                .map_err(|e| format!("Failed to execute llc command: {}", e))?;
+
+            if !llc_command.status.success() {
+                return Err(format!(
+                    "llc command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
+                    llc_command.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&llc_command.stdout),
+                    String::from_utf8_lossy(&llc_command.stderr)
+                ));
+            }
+
+            Ok(())
+        })();
+
+        if let Err(err) = result {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!("Failed to generate object file: {}", err.to_string())),
+                kind: DiagKind::Custom(err),
                 location: None,
             });
             exit(1);
         }
+
+        for path in [&temp_ll_file_path, &temp_opt_ll_file_path] {
+            if let Err(e) = fs::remove_file(path) {
+                eprintln!("Warning: Failed to remove temporary file {:?}: {}", path, e);
+            }
+        }
     }
-
-    // pub(crate) fn generate_object_file_internal(&self, output_path: String) {
-    //     let temp_dir = env::temp_dir();
-    //     let temp_ll_file_path = temp_dir.join("module.ll");
-    //     if let Some(parent) = temp_ll_file_path.parent() {
-    //         if let Err(e) = fs::create_dir_all(parent) {
-    //             display_single_diag(Diag {
-    //                 level: DiagLevel::Error,
-    //                 kind: DiagKind::Custom(format!("Failed to create temporary directory: {}", e)),
-    //                 location: None,
-    //             });
-    //             exit(1);
-    //         }
-    //     }
-
-    //     let mut temp_file_created = false;
-
-    //     let result: Result<(), String> = (|| {
-    //         if let Err(err) = self.module.borrow().print_to_file(temp_ll_file_path.clone()) {
-    //             return Err(format!("Failed to print LLVM IR to temporary file: {}", err));
-    //         }
-    //         temp_file_created = true;
-    //         println!("LLVM IR written to temporary file: {:?}", temp_ll_file_path);
-
-    //         // FIXME Assuming 'llc' is available in the PATH
-    //         let llc_command_name = "llc";
-
-    //         let mut command = Command::new(llc_command_name);
-    //         command
-    //             .arg("-filetype=obj")
-    //             .arg(&temp_ll_file_path)
-    //             .arg("-o")
-    //             .arg(&output_path);
-
-    //         println!("Executing command: {:?} {:?}", llc_command_name, command.get_args());
-
-    //         let output = command
-    //             .output()
-    //             .map_err(|e| format!("Failed to execute llc command: {}", e))?;
-
-    //         if !output.status.success() {
-    //             let stderr = String::from_utf8_lossy(&output.stderr);
-    //             let stdout = String::from_utf8_lossy(&output.stdout);
-    //             return Err(format!(
-    //                 "llc command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
-    //                 output.status.code().unwrap_or(-1),
-    //                 stdout,
-    //                 stderr
-    //             ));
-    //         }
-
-    //         println!("Successfully generated object file at: {}", output_path);
-    //         Ok(())
-    //     })();
-
-    //     if let Err(err) = result {
-    //         display_single_diag(Diag {
-    //             level: DiagLevel::Error,
-    //             kind: DiagKind::Custom(err),
-    //             location: None,
-    //         });
-    //         exit(1);
-    //     }
-
-    //     if let Err(e) = fs::remove_file(&temp_ll_file_path) {
-    //         eprintln!(
-    //             "Warning: Failed to remove temporary LLVM IR file {:?}: {}",
-    //             temp_ll_file_path, e
-    //         );
-    //     }
-    // }
 
     pub(crate) fn ensure_build_manifest(&mut self, build_dir: String) {
         if !fs::exists(format!("{}/{}", build_dir, MANIFEST_FILENAME)).unwrap() {
