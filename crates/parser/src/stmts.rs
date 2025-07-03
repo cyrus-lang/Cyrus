@@ -17,15 +17,21 @@ impl<'a> Parser<'a> {
             if self.current_token_is(TokenKind::Function) {
                 return self.parse_func(Some(storage_class));
             } else if self.current_token_is(TokenKind::Struct) {
-                return self.parse_struct(Some(storage_class));
-            } else if self.current_token_is(TokenKind::Enum) {
+                return self.parse_struct(Some(storage_class), false);
+            } else if self.current_token_is(TokenKind::Bits) {
+                return self.parse_struct(Some(storage_class), true);
+            } 
+            else if self.current_token_is(TokenKind::Enum) {
                 return self.parse_enum(Some(storage_class));
             }
         } else if self.current_token_is(TokenKind::Function) {
             return self.parse_func(None);
         } else if self.current_token_is(TokenKind::Struct) {
-            return self.parse_struct(None);
-        } else if self.current_token_is(TokenKind::Enum) {
+            return self.parse_struct(None, false);
+        } else if self.current_token_is(TokenKind::Bits) {
+            return self.parse_struct(None, true);
+        } 
+        else if self.current_token_is(TokenKind::Enum) {
             return self.parse_enum(None);
         }
 
@@ -160,7 +166,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_struct(&mut self, storage_class: Option<StorageClass>) -> Result<Statement, ParseError> {
+    pub fn parse_struct(&mut self, storage_class: Option<StorageClass>, packed: bool) -> Result<Statement, ParseError> {
         let loc = self.current_token.loc.clone();
         let struct_start = self.current_token.span.start.clone();
 
@@ -297,6 +303,7 @@ impl<'a> Parser<'a> {
             inherits,
             fields,
             methods,
+            packed,
             loc,
             span: Span {
                 start: struct_start,

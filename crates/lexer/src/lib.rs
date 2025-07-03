@@ -737,6 +737,7 @@ impl Lexer {
             "fn" => TokenKind::Function,
             "match" => TokenKind::Match,
             "struct" => TokenKind::Struct,
+            "bits" => TokenKind::Bits,
             "import" => TokenKind::Import,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,

@@ -1,18 +1,14 @@
 extern fn printf(format: const char*, ...);
 
-fn sum(static: int, vargs: ...int) {
-    #value = vargs[0];
-
-    // foreach (item in vargs) {
-    //     printf("%d\n", item);
-    // }
+bits Ipv4Header {
+    version_ihl: uint8;
+    ttl: uint8;
+    protocol: uint8;
+    src_ip: uint32;
+    dest_ip: uint32;
 }
 
 fn main() {
-    printf("Hello Cyrus!\n");
-    sum(1, 2, 3, 4, 5);
-    //  ^
-    //  static 
-    //     ^
-    //     vargs
+   #person: Ipv4Header;
+   
 }
