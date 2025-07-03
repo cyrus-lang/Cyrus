@@ -64,6 +64,7 @@ pub enum TokenKind {
     Break,
     Continue,
     Struct,
+    Bits,
     Import,
     SizeOf,
     // Types
@@ -163,6 +164,7 @@ impl fmt::Display for TokenKind {
             Self::Function => write!(f, "fn"),
             Self::Match => write!(f, "match"),
             Self::Struct => write!(f, "struct"),
+            Self::Bits => write!(f, "bits"),
             Self::Import => write!(f, "import"),
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),

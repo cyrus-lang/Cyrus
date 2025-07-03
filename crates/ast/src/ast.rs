@@ -67,6 +67,7 @@ pub struct AddressOf {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnnamedStructValue {
     pub fields: Vec<UnnamedStructValueField>,
+    pub packed: bool,
     pub loc: Location,
     pub span: Span,
 }
@@ -323,6 +324,7 @@ pub struct Struct {
     pub fields: Vec<Field>,
     pub methods: Vec<FuncDef>,
     pub storage_class: StorageClass,
+    pub packed: bool,
     pub loc: Location,
     pub span: Span,
 }

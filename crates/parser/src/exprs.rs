@@ -54,7 +54,7 @@ impl<'a> Parser<'a> {
         let loc = self.current_token.loc.clone();
 
         let expr = match &self.current_token.clone().kind {
-            TokenKind::Struct => self.parse_unnamed_struct_value()?,
+            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value()?,
             TokenKind::Identifier { .. } => {
                 let module_import = self.parse_module_import()?;
 
@@ -808,7 +808,24 @@ impl<'a> Parser<'a> {
     pub fn parse_unnamed_struct_value(&mut self) -> Result<Expression, ParseError> {
         let struct_start = self.current_token.span.start;
 
-        self.expect_current(TokenKind::Struct)?;
+        let packed = {
+            if self.current_token_is(TokenKind::Struct) {
+                self.next_token(); // consume struct
+                false
+            } else if self.current_token_is(TokenKind::Bits) {
+                self.next_token(); // consume bits
+                true
+            } else {
+                return Err(CompileTimeError {
+                    location: self.current_token.loc.clone(),
+                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                    file_name: Some(self.lexer.file_name.clone()),
+                    source_content: Box::new(self.lexer.input.clone()),
+                    verbose: None,
+                    caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                });
+            }
+        };
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut fields: Vec<UnnamedStructValueField> = Vec::new();
@@ -887,6 +904,7 @@ impl<'a> Parser<'a> {
 
         Ok(Expression::UnnamedStructValue(UnnamedStructValue {
             fields,
+            packed,
             loc: self.current_token.loc.clone(),
             span: Span::new(struct_start, self.current_token.span.end),
         }))
