@@ -1,7 +1,7 @@
 use crate::LoopBlockRefs;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
-use crate::types::{InternalArrayType, InternalIntType};
+use crate::types::{InternalArrayPtrType, InternalArrayType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType, build_loop_statement};
 use ast::ast::{
@@ -10,19 +10,15 @@ use ast::ast::{
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
-use inkwell::intrinsics::Intrinsic;
-use inkwell::llvm_sys::core::{
-    LLVMAddFunction, LLVMFunctionType, LLVMGetIntrinsicDeclaration, LLVMGetIntrinsicID, LLVMIntrinsicGetName,
-};
-use inkwell::llvm_sys::prelude::{LLVMTypeRef, LLVMValueRef};
+use inkwell::llvm_sys::core::LLVMFunctionType;
+use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
-use inkwell::types::{AnyTypeEnum, AsTypeRef, BasicType, BasicTypeEnum, FunctionType};
+use inkwell::types::{AsTypeRef, BasicType, FunctionType};
 use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
 use inkwell::{AddressSpace, IntPredicate};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ffi::CString;
-use std::ops::{Deref, DerefMut, Index};
+use std::ops::{DerefMut, Index};
 use std::process::exit;
 use std::rc::Rc;
 
@@ -255,101 +251,103 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) {
-        let ptr_type = self.context.ptr_type(AddressSpace::default());
-        let element_basic_type = self
-            .build_type(type_specifier, loc.clone(), span_end)
-            .to_basic_type(ptr_type)
-            .unwrap(); // FIXME
+        // TODO
+        // The feature will be implemented after making Slices.
 
-        let va_start_func = self.intrinsic_va_start_function();
-        let va_end_func = self.intrinsic_va_end_function();
+        // let ptr_type = self.context.ptr_type(AddressSpace::default());
+        // let element_type = self.build_type(type_specifier, loc.clone(), span_end);
+        // let element_basic_type = element_type.to_basic_type(ptr_type).unwrap(); // FIXME
 
-        let va_list = self
-            .builder
-            .build_alloca(element_basic_type.clone(), "va_list")
-            .unwrap();
-        self.builder
-            .build_call(va_start_func, &[BasicMetadataValueEnum::PointerValue(va_list)], "call")
-            .unwrap();
+        // let va_start_func = self.intrinsic_va_start_function();
+        // let va_end_func = self.intrinsic_va_end_function();
 
-        let static_params_length = func_params.list.len();
-        let va_args_count = func_value
-            .get_nth_param(static_params_length.try_into().unwrap())
-            .unwrap()
-            .into_int_value();
+        // let va_list = self
+        //     .builder
+        //     .build_alloca(element_basic_type.clone(), "va_list")
+        //     .unwrap();
+        // self.builder
+        //     .build_call(va_start_func, &[BasicMetadataValueEnum::PointerValue(va_list)], "call")
+        //     .unwrap();
 
-        let vargs_array_ptr = self
-            .builder
-            .build_array_alloca(element_basic_type, va_args_count, "vargs_array_ptr")
-            .unwrap();
+        // let static_params_length = func_params.list.len();
+        // let va_args_count = func_value
+        //     .get_nth_param(static_params_length.try_into().unwrap())
+        //     .unwrap()
+        //     .into_int_value();
 
-        let i32_type = self.context.i32_type();
-        let index_ptr = self.builder.build_alloca(i32_type, "vargs.idx").unwrap();
-        self.builder
-            .build_store(index_ptr, self.build_integer_literal(0))
-            .unwrap();
+        // let vargs_array_ptr = self
+        //     .builder
+        //     .build_array_alloca(element_basic_type, va_args_count, "vargs_array_ptr")
+        //     .unwrap();
 
-        build_loop_statement!(
-            self,
-            scope,
-            {
-                let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+        // let i32_type = self.context.i32_type();
+        // let index_ptr = self.builder.build_alloca(i32_type, "vargs.idx").unwrap();
+        // self.builder
+        //     .build_store(index_ptr, self.build_integer_literal(0))
+        //     .unwrap();
 
-                self.builder
-                    .build_int_compare(IntPredicate::SLE, index_value.into_int_value(), va_args_count, "icmp")
-                    .unwrap()
-            },
-            {
-                let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
-                let va_arg = self
-                    .builder
-                    .build_va_arg(va_list, element_basic_type, "va_arg")
-                    .unwrap();
-                let gep = unsafe {
-                    self.builder
-                        .build_in_bounds_gep(
-                            i32_type,
-                            vargs_array_ptr,
-                            &[
-                                // self.build_integer_literal(0)
-                                index_value.into_int_value(),
-                            ],
-                            "vargs_array.gep",
-                        )
-                        .unwrap()
-                };
-                self.builder.build_store(gep, va_arg).unwrap();
-            },
-            {
-                let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
-                let incremented_index = self
-                    .builder
-                    .build_int_add(
-                        index_value.into_int_value(),
-                        self.build_integer_literal(1),
-                        "vargs.idx.increment",
-                    )
-                    .unwrap();
-                self.builder.build_store(index_ptr, incremented_index).unwrap();
-            },
-            loc,
-            span_end
-        );
+        // build_loop_statement!(
+        //     self,
+        //     scope,
+        //     {
+        //         let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+
+        //         self.builder
+        //             .build_int_compare(IntPredicate::SLE, index_value.into_int_value(), va_args_count, "icmp")
+        //             .unwrap()
+        //     },
+        //     {
+        //         let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+        //         let va_arg = self
+        //             .builder
+        //             .build_va_arg(va_list, element_basic_type, "va_arg")
+        //             .unwrap();
+        //         let gep = unsafe {
+        //             self.builder
+        //                 .build_in_bounds_gep(
+        //                     i32_type,
+        //                     vargs_array_ptr,
+        //                     &[
+        //                         // self.build_integer_literal(0)
+        //                         index_value.into_int_value(),
+        //                     ],
+        //                     "vargs_array.gep",
+        //                 )
+        //                 .unwrap()
+        //         };
+        //         self.builder.build_store(gep, va_arg).unwrap();
+        //     },
+        //     {
+        //         let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+        //         let incremented_index = self
+        //             .builder
+        //             .build_int_add(
+        //                 index_value.into_int_value(),
+        //                 self.build_integer_literal(1),
+        //                 "vargs.idx.increment",
+        //             )
+        //             .unwrap();
+        //         self.builder.build_store(index_ptr, incremented_index).unwrap();
+        //     },
+        //     loc,
+        //     span_end
+        // );
 
         // scope.borrow_mut().insert(
         //     identifier.name.clone(),
         //     ScopeRecord {
         //         ptr: vargs_array_ptr,
-        //         ty: InternalType::IntType(InternalIntType {
-        //             type_str: "int32".to_string(),
-        //             int_type: i32_type,
+        //         ty: InternalType::ArrayPtrType(InternalArrayPtrType {
+        //             type_str: format!("{}[]", element_type.to_string()),
+        //             inner_type: Box::new(element_type),
+        //             ptr_type: vargs_array_ptr.get_type(),
         //         }),
         //     },
         // );
 
-        self.builder
-            .build_call(va_end_func, &[BasicMetadataValueEnum::PointerValue(va_list)], "call")
-            .unwrap();
+        // self.builder
+        //     .build_call(va_end_func, &[BasicMetadataValueEnum::PointerValue(va_list)], "call")
+        //     .unwrap();
     }
 
     pub(crate) fn build_func_def(

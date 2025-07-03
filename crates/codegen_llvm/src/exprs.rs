@@ -984,6 +984,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::BoolType(internal_bool_type) => internal_bool_type.bool_type.size_of(),
             InternalType::IntType(internal_int_type) => internal_int_type.int_type.size_of(),
             InternalType::FloatType(internal_float_type) => internal_float_type.float_type.size_of(),
+            InternalType::ArrayPtrType(internal_array_ptr_type) => internal_array_ptr_type.ptr_type.size_of(),
             InternalType::StructType(internal_struct_type) => {
                 match internal_struct_type.struct_metadata.struct_type.size_of() {
                     Some(size) => size,

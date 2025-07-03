@@ -41,7 +41,15 @@ pub(crate) enum InternalType<'a> {
     PointerType(Box<InternalPointerType<'a>>),
     Lvalue(Box<InternalLvalueType<'a>>),
     ArrayType(InternalArrayType<'a>),
+    ArrayPtrType(InternalArrayPtrType<'a>),
     ConstType(InternalConstType<'a>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct InternalArrayPtrType<'a> {
+    pub type_str: String,
+    pub inner_type: Box<InternalType<'a>>,
+    pub ptr_type: PointerType<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -173,6 +181,7 @@ impl<'a> fmt::Display for InternalType<'a> {
             InternalType::ConstType(internal_const_type) => {
                 write!(f, "const {}", internal_const_type.inner_type)
             }
+            InternalType::ArrayPtrType(internal_array_ptr_type) => write!(f, "{}", internal_array_ptr_type.type_str),
         }
     }
 }
@@ -194,6 +203,11 @@ impl<'a> InternalType<'a> {
                 type_str,
                 inner_type: internal_array_type.inner_type.clone(),
                 array_type: internal_array_type.array_type.array_type(size),
+            })),
+            InternalType::ArrayPtrType(internal_array_ptr_type) => Ok(InternalType::ArrayType(InternalArrayType {
+                type_str,
+                inner_type: internal_array_ptr_type.inner_type.clone(),
+                array_type: internal_array_ptr_type.ptr_type.array_type(size),
             })),
             InternalType::StructType(internal_struct_type) => Ok(InternalType::ArrayType(InternalArrayType {
                 type_str,
@@ -256,6 +270,10 @@ impl<'a> InternalType<'a> {
             InternalType::ArrayType(internal_array_type) => Ok(InternalValue::ArrayValue(
                 value.into_array_value(),
                 InternalType::ArrayType(internal_array_type.clone()),
+            )),
+            InternalType::ArrayPtrType(internal_array_ptr_type) => Ok(InternalValue::ArrayPtrValue(
+                value.into_pointer_value(),
+                InternalType::ArrayPtrType(internal_array_ptr_type.clone()),
             )),
             InternalType::StructType(internal_struct_type) => Ok(InternalValue::StructValue(
                 value.into_struct_value(),
@@ -356,6 +374,7 @@ impl<'a> InternalType<'a> {
             InternalType::UnnamedStruct(t) => Ok(t.unnamed_struct_metadata.struct_type.as_basic_type_enum()),
             InternalType::ConstType(t) => t.inner_type.to_basic_type(ptr_type),
             InternalType::VoidType(_) => Err("InternalVoidType cannot be convert to basic llvm type."),
+            InternalType::ArrayPtrType(t) => Ok(t.ptr_type.as_basic_type_enum()),
         }
     }
 
@@ -373,6 +392,7 @@ impl<'a> InternalType<'a> {
             InternalType::BoolType(t) => t.bool_type.as_type_ref(),
             InternalType::UnnamedStruct(t) => t.unnamed_struct_metadata.struct_type.as_type_ref(),
             InternalType::VoidType(t) => AnyType::as_any_type_enum(&t.void_type).as_type_ref(),
+            InternalType::ArrayPtrType(t) => t.ptr_type.as_type_ref(),
         }
     }
 }

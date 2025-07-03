@@ -1,7 +1,11 @@
 extern fn printf(format: const char*, ...);
 
 fn sum(static: int, vargs: ...int) {
-    // vargs;
+    #value = vargs[0];
+
+    // foreach (item in vargs) {
+    //     printf("%d\n", item);
+    // }
 }
 
 fn main() {
