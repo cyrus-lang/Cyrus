@@ -26,6 +26,78 @@ pub struct TerminatedBlockMetadata<'a> {
     pub terminated_with_return: bool,
 }
 
+/// A macro to build the LLVM IR for a loop structure.
+///
+/// This macro abstracts the common logic for creating loop-related basic blocks
+/// (`cond`, `body`, `end`), handling the loop condition, iterating over the body's
+/// statements, and optionally building an increment expression.
+///
+/// # Arguments
+///
+/// * `$self`: The mutable compiler state instance.
+/// * `$scope`: The current variable scope (`ScopeRef`).
+/// * `$condition`: The `BasicMetadataValueEnum` to be evaluated as the loop's condition.
+/// * `$body`: An iterable of statements that form the loop's body.
+/// * `$increment`: An `Option<Expression>` for the loop's increment step.
+/// * `$loc`: The source code location for error reporting.
+/// * `$span_end`: The end of the source code span for error reporting.
+#[macro_export]
+macro_rules! build_loop_statement {
+    (
+        $self:expr,
+        $scope:expr,
+        $condition:tt,
+        $body:tt,
+        $increment:tt,
+        $loc:expr,
+        $span_end:expr
+    ) => {{
+        let current_block = $self.get_current_block("for statement", $loc.clone(), $span_end);
+        let current_func = $self.get_current_func("for statement", $loc.clone(), $span_end);
+
+        let cond_block = $self.context.append_basic_block(current_func, "loop.cond");
+        let body_block = $self.context.append_basic_block(current_func, "loop.body");
+        let end_block = $self.context.append_basic_block(current_func, "loop.end");
+
+        let previous_loop_ref = $self.current_loop_ref.clone();
+        $self.current_loop_ref = Some(LoopBlockRefs { cond_block, end_block });
+
+        $self.builder.position_at_end(current_block);
+        $self.builder.build_unconditional_branch(cond_block).unwrap();
+        $self.mark_block_terminated(current_block, false);
+
+        $self.builder.position_at_end(cond_block);
+
+        let condition_value = $condition;
+
+        $self
+            .builder
+            .build_conditional_branch(condition_value, body_block, end_block)
+            .unwrap();
+        $self.mark_block_terminated(cond_block, false);
+
+        $self.current_block_ref = Some(body_block);
+        $self.builder.position_at_end(body_block);
+
+        $body
+
+        let after_body_block = $self.get_current_block("for statement", $loc.clone(), $span_end);
+
+        if !$self.is_block_terminated(after_body_block) {
+            $self.builder.position_at_end(after_body_block);
+
+            $increment
+
+            $self.builder.build_unconditional_branch(cond_block).unwrap();
+            $self.mark_block_terminated(after_body_block, false);
+        }
+
+        $self.current_block_ref = Some(end_block);
+        $self.builder.position_at_end(end_block);
+        $self.current_loop_ref = previous_loop_ref;
+    }};
+}
+
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_statements(&mut self, scope: ScopeRef<'ctx>, stmts: Vec<Statement>) {
         for stmt in stmts {
@@ -68,6 +140,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         func_def.loc.clone(),
                         func_def.span.end,
                         func_def.params.list.clone(),
+                        func_def.params.variadic.clone(),
                     );
 
                     self.build_func_def(func_def.clone(), param_types, false);
@@ -79,6 +152,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_decl.loc.clone(),
                     func_decl.span.end,
                     func_decl.params.list.clone(),
+                    func_decl.params.variadic.clone(),
                 );
 
                 self.build_func_decl(func_decl, param_types);
@@ -223,62 +297,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_infinite_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
-        let always_true_condition = Expression::Literal(Literal::Bool(true));
-
-        let current_block = self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
-        let current_func = self.get_current_func("for statement", for_statement.loc.clone(), for_statement.span.end);
-
-        let cond_block = self.context.append_basic_block(current_func, "loop.cond");
-        let body_block = self.context.append_basic_block(current_func, "loop.body");
-        let end_block = self.context.append_basic_block(current_func, "loop.end");
-
-        // track current_loop
-        let previous_loop_ref = self.current_loop_ref.clone();
-        self.current_loop_ref = Some(LoopBlockRefs { cond_block, end_block });
-
-        self.builder.position_at_end(current_block);
-        self.builder.build_unconditional_branch(cond_block).unwrap();
-        self.mark_block_terminated(current_block, false);
-
-        self.builder.position_at_end(cond_block);
-        let condition = self.build_cond(
+        let always_true_condition = self.build_cond(
             Rc::clone(&scope),
-            always_true_condition,
+            Expression::Literal(Literal::Bool(true)),
             for_statement.loc.clone(),
             for_statement.span.end,
         );
-        self.builder
-            .build_conditional_branch(condition, body_block, end_block)
-            .unwrap();
-        self.mark_block_terminated(cond_block, false);
 
-        self.current_block_ref = Some(body_block);
-        self.builder.position_at_end(body_block);
+        build_loop_statement!(
+            self,
+            scope,
+            always_true_condition,
+            {
+                for stmt in for_statement.body.exprs {
+                    let current_block =
+                        self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
+                    if self.is_block_terminated(current_block) {
+                        break;
+                    }
 
-        for stmt in for_statement.body.exprs {
-            let current_block =
-                self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
-            if self.is_block_terminated(current_block) {
-                break;
-            }
-
-            self.build_statement(Rc::clone(&scope), stmt.clone());
-        }
-
-        let after_body_block =
-            self.get_current_block("for statement", for_statement.loc.clone(), for_statement.span.end);
-
-        if !self.is_block_terminated(after_body_block) {
-            self.builder.position_at_end(after_body_block);
-            self.builder.build_unconditional_branch(cond_block).unwrap();
-            self.mark_block_terminated(after_body_block, false);
-        }
-
-        self.current_block_ref = Some(end_block);
-        self.builder.position_at_end(end_block);
-
-        // clear current_loop
-        self.current_loop_ref = previous_loop_ref;
+                    self.build_statement(Rc::clone(&scope), stmt.clone());
+                }
+            },
+            {},
+            for_statement.loc,
+            for_statement.span.end
+        );
     }
 
     pub(crate) fn build_conditional_for_statement(
@@ -290,59 +334,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) {
-        let current_block = self.get_current_block("for statement", loc.clone(), span_end);
-        let current_func = self.get_current_func("for statement", loc.clone(), span_end);
+        build_loop_statement!(
+            self,
+            scope,
+            { self.build_cond(Rc::clone(&scope), condition, loc.clone(), span_end) },
+            {
+                for stmt in body.exprs {
+                    let current_block = self.get_current_block("for statement", loc.clone(), span_end);
+                    if self.is_block_terminated(current_block) {
+                        break;
+                    }
 
-        let cond_block = self.context.append_basic_block(current_func, "loop.cond");
-        let body_block = self.context.append_basic_block(current_func, "loop.body");
-        let end_block = self.context.append_basic_block(current_func, "loop.end");
-
-        // track current_loop
-        let previous_loop_ref = self.current_loop_ref.clone();
-        self.current_loop_ref = Some(LoopBlockRefs { cond_block, end_block });
-
-        self.builder.position_at_end(current_block);
-        self.builder.build_unconditional_branch(cond_block).unwrap();
-        self.mark_block_terminated(current_block, false);
-
-        self.builder.position_at_end(cond_block);
-        let condition = self.build_cond(Rc::clone(&scope), condition, loc.clone(), span_end);
-        self.builder
-            .build_conditional_branch(condition, body_block, end_block)
-            .unwrap();
-        self.mark_block_terminated(cond_block, false);
-
-        self.current_block_ref = Some(body_block);
-        self.builder.position_at_end(body_block);
-
-        for stmt in body.exprs {
-            let current_block = self.get_current_block("for statement", loc.clone(), span_end);
-            if self.is_block_terminated(current_block) {
-                break;
-            }
-
-            self.build_statement(Rc::clone(&scope), stmt.clone());
-        }
-
-        let after_body_block = self.get_current_block("for statement", loc.clone(), span_end);
-
-        if !self.is_block_terminated(after_body_block) {
-            self.builder.position_at_end(after_body_block);
-
-            // build increment expression
-            if let Some(increment) = increment {
-                self.build_expr(Rc::clone(&scope), increment);
-            }
-
-            self.builder.build_unconditional_branch(cond_block).unwrap();
-            self.mark_block_terminated(after_body_block, false);
-        }
-
-        self.current_block_ref = Some(end_block);
-        self.builder.position_at_end(end_block);
-
-        // clear current_loop
-        self.current_loop_ref = previous_loop_ref;
+                    self.build_statement(Rc::clone(&scope), stmt.clone());
+                }
+            },
+            {
+                if let Some(increment_expr) = increment {
+                    self.build_expr(Rc::clone(&scope), increment_expr);
+                }
+            },
+            loc,
+            span_end
+        );
     }
 
     pub(crate) fn build_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {

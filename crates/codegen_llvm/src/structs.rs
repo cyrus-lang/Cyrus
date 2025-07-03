@@ -199,6 +199,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 func_def.loc.clone(),
                 func_def.span.end,
                 func_def.params.list.clone(),
+                func_def.params.variadic.clone(),
             );
 
             func_param_types.insert(
@@ -520,7 +521,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 arguments.append(&mut self.build_arguments(
                     Rc::clone(&scope),
                     method_call.arguments.clone(),
-                    Some(func_params_without_this_modifier),
+                    func_params_without_this_modifier,
                     func_decl.renamed_as.clone().unwrap_or(func_decl.name.clone()),
                     method_call.loc.clone(),
                     method_call.span.end,

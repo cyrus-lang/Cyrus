@@ -1,6 +1,7 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
+use inkwell::passes::PassBuilderOptions;
 use inkwell::passes::PassManager;
 use inkwell::targets::FileType;
 use rand::Rng;
@@ -15,6 +16,7 @@ use std::io::Read;
 use std::io::Write;
 use std::ops::DerefMut;
 use std::path::Path;
+use std::process::Command;
 use std::process::Stdio;
 use std::process::exit;
 use utils::fs::absolute_to_relative;
@@ -81,7 +83,8 @@ impl BuildManifest {
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn execute_linker(&self, output_path: String, object_files: Vec<String>, extra_args: Vec<String>) {
         // TODO Consider to make linker dynamic through Project.toml and CLI Program.
-        let linker = "cc";
+        // or "gcc" depending on your system and requirements
+        let linker = "clang";
 
         let mut linker_command = std::process::Command::new(linker);
         linker_command.arg("-o").arg(output_path);
@@ -275,10 +278,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn optimize(&self) {
-        let fpm = PassManager::create(self.module.borrow_mut().deref_mut());
+    pub(crate) fn run_passes(&self) {
+        let mut module = self.module.borrow_mut();
+        let fpm = PassManager::create(module.deref_mut());
         self.target_machine.add_analysis_passes(&fpm);
         fpm.initialize();
+
+        let passes: &[&str] = &["instcombine", "reassociate", "gvn", "simplifycfg", "mem2reg"];
+
+        module
+            .run_passes(
+                passes.join(",").as_str(),
+                &self.target_machine,
+                PassBuilderOptions::create(),
+            )
+            .unwrap();
+
         fpm.finalize();
     }
 
@@ -289,6 +304,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 main_func.loc.clone(),
                 main_func.span.end,
                 main_func.params.list.clone(),
+                None,
             );
 
             self.build_func_def(main_func, func_param_types, true);
@@ -325,17 +341,79 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn generate_object_file_internal(&self, output_path: String) {
-        if let Err(err) = self.target_machine.write_to_file(
-            &self.module.borrow_mut().deref_mut(),
-            FileType::Object,
-            Path::new(&output_path),
-        ) {
+        let temp_dir = env::temp_dir();
+        let temp_ll_file_path = temp_dir.join("module.ll");
+        let temp_bc_file_path = temp_dir.join("module.bc");
+
+        if let Some(parent) = temp_ll_file_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Failed to create temporary directory: {}", e)),
+                    location: None,
+                });
+                exit(1);
+            }
+        }
+
+        let result: Result<(), String> = (|| {
+            self.module
+                .borrow()
+                .print_to_file(&temp_ll_file_path)
+                .map_err(|err| format!("Failed to print LLVM IR to temporary file: {}", err))?;
+
+            // Step 1: use llvm-as to convert IR (.ll) to bytecode (.bc)
+            let llvm_as_command = Command::new("llvm-as")
+                .arg(&temp_ll_file_path)
+                .arg("-o")
+                .arg(&temp_bc_file_path) // Output to the bytecode path
+                .output()
+                .map_err(|e| format!("Failed to execute llvm-as command: {}", e))?;
+
+            if !llvm_as_command.status.success() {
+                return Err(format!(
+                    "llvm-as command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
+                    llvm_as_command.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&llvm_as_command.stdout),
+                    String::from_utf8_lossy(&llvm_as_command.stderr)
+                ));
+            }
+
+            // Step 2: Call llc on the bytecode (.bc) to generate a native object file (.o)
+            let llc_command = Command::new("llc")
+                .arg("-filetype=obj") // Specify output type as object file
+                .arg(&temp_bc_file_path) // Input is the bytecode file
+                .arg("-o")
+                .arg(&output_path) // Output directly to the specified output_path
+                .output()
+                .map_err(|e| format!("Failed to execute llc command: {}", e))?;
+
+            if !llc_command.status.success() {
+                return Err(format!(
+                    "llc command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
+                    llc_command.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&llc_command.stdout),
+                    String::from_utf8_lossy(&llc_command.stderr)
+                ));
+            }
+
+            Ok(())
+        })();
+
+        if let Err(err) = result {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!("Failed to generate object file: {}", err.to_string())),
+                kind: DiagKind::Custom(err),
                 location: None,
             });
             exit(1);
+        }
+
+        // clean up temporary files: the .ll and the .bc file
+        for path in [&temp_ll_file_path, &temp_bc_file_path] {
+            if let Err(e) = fs::remove_file(path) {
+                eprintln!("Warning: Failed to remove temporary file {:?}: {}", path, e);
+            }
         }
     }
 
@@ -435,14 +513,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
 
-        // remove previous object_file
+        // remove previous object file if exists
         if let Some(obj_file) = self.build_manifest.objects.get(&file_path.clone()) {
             if fs::exists(obj_file).unwrap() {
                 let _ = fs::remove_file(obj_file).unwrap();
             }
         }
 
-        // generate new object_file
+        // generate object file
         self.generate_object_file_internal(output_file.clone());
         self.build_manifest.objects.insert(file_path.clone(), output_file);
         self.build_manifest.save_file(build_dir);

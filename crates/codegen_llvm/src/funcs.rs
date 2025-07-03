@@ -1,17 +1,21 @@
+use crate::LoopBlockRefs;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
+use crate::types::{InternalArrayPtrType, InternalArrayType};
 use crate::values::InternalValue;
-use crate::{CodeGenLLVM, InternalType};
+use crate::{CodeGenLLVM, InternalType, build_loop_statement};
 use ast::ast::{
-    Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, ModuleSegment, Return, StorageClass, TypeSpecifier,
+    Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, FuncVariadicParams, Identifier, ModuleSegment,
+    Return, StorageClass, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
-use inkwell::types::FunctionType;
+use inkwell::types::{AsTypeRef, BasicType, FunctionType};
 use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
+use inkwell::{AddressSpace, IntPredicate};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{DerefMut, Index};
@@ -45,8 +49,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_loc: Location,
         span_end: usize,
         params: Vec<FuncParam>,
+        variadic: Option<FuncVariadicParams>,
     ) -> Vec<LLVMTypeRef> {
-        params
+        let mut params: Vec<LLVMTypeRef> = params
             .iter()
             .map(|param| {
                 if let Some(type_specifier) = &param.ty {
@@ -85,7 +90,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
             })
-            .collect()
+            .collect();
+
+        if let Some(func_variadic_params) = variadic {
+            if let FuncVariadicParams::Typed(..) = func_variadic_params {
+                // add a hidden va_args count parameter
+                let va_args_count_type = self.context.i32_type();
+                params.push(va_args_count_type.as_type_ref());
+            }
+        }
+
+        params
     }
 
     pub(crate) fn build_func_decl(
@@ -137,7 +152,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_ptr
     }
 
-    fn build_func_def_local_params(
+    fn build_func_define_local_params(
         &mut self,
         scope: ScopeRef<'ctx>,
         func_value: FunctionValue<'ctx>,
@@ -176,21 +191,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 }
-            } else {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!(
-                        "Unmatched parameter for function '{}' when adding params to the scope.",
-                        &func_def.name
-                    )),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: func_def.loc.line,
-                        column: func_def.loc.column,
-                        length: func_def.span.end,
-                    }),
-                });
-                exit(1);
             }
         }
     }
@@ -241,6 +241,115 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn build_func_vargs(
+        &mut self,
+        scope: ScopeRef<'ctx>,
+        identifier: Identifier,
+        type_specifier: TypeSpecifier,
+        func_params: FuncParams,
+        func_value: FunctionValue<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) {
+        // TODO
+        // The feature will be implemented after making Slices.
+
+        // let ptr_type = self.context.ptr_type(AddressSpace::default());
+        // let element_type = self.build_type(type_specifier, loc.clone(), span_end);
+        // let element_basic_type = element_type.to_basic_type(ptr_type).unwrap(); // FIXME
+
+        // let va_start_func = self.intrinsic_va_start_function();
+        // let va_end_func = self.intrinsic_va_end_function();
+
+        // let va_list = self
+        //     .builder
+        //     .build_alloca(element_basic_type.clone(), "va_list")
+        //     .unwrap();
+        // self.builder
+        //     .build_call(va_start_func, &[BasicMetadataValueEnum::PointerValue(va_list)], "call")
+        //     .unwrap();
+
+        // let static_params_length = func_params.list.len();
+        // let va_args_count = func_value
+        //     .get_nth_param(static_params_length.try_into().unwrap())
+        //     .unwrap()
+        //     .into_int_value();
+
+        // let vargs_array_ptr = self
+        //     .builder
+        //     .build_array_alloca(element_basic_type, va_args_count, "vargs_array_ptr")
+        //     .unwrap();
+
+        // let i32_type = self.context.i32_type();
+        // let index_ptr = self.builder.build_alloca(i32_type, "vargs.idx").unwrap();
+        // self.builder
+        //     .build_store(index_ptr, self.build_integer_literal(0))
+        //     .unwrap();
+
+        // build_loop_statement!(
+        //     self,
+        //     scope,
+        //     {
+        //         let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+
+        //         self.builder
+        //             .build_int_compare(IntPredicate::SLE, index_value.into_int_value(), va_args_count, "icmp")
+        //             .unwrap()
+        //     },
+        //     {
+        //         let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+        //         let va_arg = self
+        //             .builder
+        //             .build_va_arg(va_list, element_basic_type, "va_arg")
+        //             .unwrap();
+        //         let gep = unsafe {
+        //             self.builder
+        //                 .build_in_bounds_gep(
+        //                     i32_type,
+        //                     vargs_array_ptr,
+        //                     &[
+        //                         // self.build_integer_literal(0)
+        //                         index_value.into_int_value(),
+        //                     ],
+        //                     "vargs_array.gep",
+        //                 )
+        //                 .unwrap()
+        //         };
+        //         self.builder.build_store(gep, va_arg).unwrap();
+        //     },
+        //     {
+        //         let index_value = self.builder.build_load(i32_type, index_ptr, "vargs.idx").unwrap();
+        //         let incremented_index = self
+        //             .builder
+        //             .build_int_add(
+        //                 index_value.into_int_value(),
+        //                 self.build_integer_literal(1),
+        //                 "vargs.idx.increment",
+        //             )
+        //             .unwrap();
+        //         self.builder.build_store(index_ptr, incremented_index).unwrap();
+        //     },
+        //     loc,
+        //     span_end
+        // );
+
+        // scope.borrow_mut().insert(
+        //     identifier.name.clone(),
+        //     ScopeRecord {
+        //         ptr: vargs_array_ptr,
+        //         ty: InternalType::ArrayPtrType(InternalArrayPtrType {
+        //             type_str: format!("{}[]", element_type.to_string()),
+        //             inner_type: Box::new(element_type),
+        //             ptr_type: vargs_array_ptr.get_type(),
+        //         }),
+        //     },
+        // );
+
+        // self.builder
+        //     .build_call(va_end_func, &[BasicMetadataValueEnum::PointerValue(va_list)], "call")
+        //     .unwrap();
+    }
+
     pub(crate) fn build_func_def(
         &mut self,
         func_def: FuncDef,
@@ -250,7 +359,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.validate_func_storage_class(func_def.clone(), is_entry_point);
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         let func_decl = self.transform_to_func_decl(func_def.clone());
-        let is_var_args = func_def.params.variadic.is_some();
+
+        let is_variadic = func_def.params.variadic.is_some();
 
         let return_type = self.build_type(
             func_def.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
@@ -267,7 +377,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 return_type.as_type_ref(),
                 func_param_types.as_mut_ptr(),
                 func_param_types.len() as u32,
-                is_var_args as i32,
+                is_variadic as i32,
             ))
         };
 
@@ -308,7 +418,40 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder.position_at_end(entry_block);
         self.current_block_ref = Some(entry_block);
 
-        self.build_func_def_local_params(Rc::clone(&scope), func_value, func_def.clone());
+        self.build_func_define_local_params(Rc::clone(&scope), func_value, func_def.clone());
+        match func_def.params.variadic.clone() {
+            Some(variadic_type) => match variadic_type {
+                FuncVariadicParams::Typed(identifier, type_specifier) => {
+                    self.build_func_vargs(
+                        Rc::clone(&scope),
+                        identifier,
+                        type_specifier,
+                        func_def.params.clone(),
+                        func_value.clone(),
+                        func_def.loc.clone(),
+                        func_def.span.end,
+                    );
+                }
+                FuncVariadicParams::UntypedCStyle => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "C-style variadic arguments not supported in function definition. Consider to add a type annotation for the variadic parameter in function '{}'.",
+                            &func_def.name
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: func_def.loc.line,
+                            column: func_def.loc.column,
+                            length: func_def.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
+            None => {}
+        }
+
         self.build_statements(Rc::clone(&scope), func_def.body.exprs);
 
         let current_block = self.get_current_block("func_def statement", func_def.loc.clone(), func_def.span.end);
@@ -415,67 +558,116 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &mut self,
         scope: ScopeRef<'ctx>,
         arguments: Vec<Expression>,
-        params: Option<FuncParams>,
+        params: FuncParams,
         func_name: String,
         loc: Location,
         span_end: usize,
     ) -> Vec<BasicMetadataValueEnum<'ctx>> {
-        arguments
-            .iter()
-            .enumerate()
-            .map(|(idx, arg)| {
-                let expr = self.build_expr(Rc::clone(&scope), arg.clone());
-                let rvalue = self.internal_value_as_rvalue(expr, loc.clone(), span_end);
+        let mut final_arguments: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
+        let static_params_length = params.list.len();
 
-                if let Some(params) = &params {
-                    // checked before through check_func_args_count_mismatch
-                    if let Some(param) = params.list.get(idx) {
-                        if let Some(target_type_specifier) = &param.ty {
-                            let target_type =
-                                self.build_type(target_type_specifier.clone(), param.loc.clone(), param.span.end);
+        for (idx, arg) in arguments[0..static_params_length].iter().enumerate() {
+            let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
+            let rvalue = self.internal_value_as_rvalue(lvalue, loc.clone(), span_end);
 
-                            if !self.compatible_types(target_type.clone(), rvalue.get_type(self.string_type.clone())) {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::Custom(
-                                        format!("Argument at index {} for function '{}' is not compatible with type '{}' for implicit casting.",
-                                            idx,
-                                            func_name,
-                                            target_type
-                                        )
-                                    ),
-                                    location: Some(DiagLoc {
-                                        file: self.file_path.clone(),
-                                        line: loc.line,
-                                        column: loc.column,
-                                        length: span_end,
-                                    }),
-                                });
-                                exit(1);
-                            }
+            let param = params.list.get(idx).unwrap();
+            let param_type_specifier = match param.ty {
+                Some(ref ty) => ty,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(
+                            "Cannot build function param without having an explicit type annotation for it."
+                                .to_string(),
+                        ),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: param.loc.line,
+                            column: param.loc.column,
+                            length: param.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
 
-                            self.implicit_cast(rvalue, target_type, param.loc.clone(), param.span.end).into()
-                        } else {
+            let param_internal_type = self.build_type(param_type_specifier.clone(), param.loc.clone(), param.span.end);
+            if !self.compatible_types(param_internal_type.clone(), rvalue.get_type(self.string_type.clone())) {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Argument at index {} for function '{}' is not compatible with type '{}' for implicit casting.",
+                        idx, func_name, param_internal_type
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+
+            final_arguments.push(
+                self.implicit_cast(rvalue, param_internal_type, param.loc.clone(), param.span.end)
+                    .into(),
+            );
+        }
+
+        let va_args_count = arguments.len() - static_params_length;
+
+        if let Some(func_variadic_params) = params.variadic {
+            match func_variadic_params {
+                FuncVariadicParams::Typed(_, type_specifier) => {
+                    let variadic_element_type = self.build_type(type_specifier, loc.clone(), span_end);
+
+                    // add va_args_count before building the variadic arguments
+                    final_arguments.push(BasicMetadataValueEnum::IntValue(
+                        self.build_integer_literal(va_args_count.try_into().unwrap()),
+                    ));
+
+                    for (idx, arg) in arguments[static_params_length..].iter().enumerate() {
+                        let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
+                        let rvalue = self.internal_value_as_rvalue(lvalue, loc.clone(), span_end);
+
+                        let argument_type = rvalue.get_type(self.string_type.clone());
+                        if !self.compatible_types(argument_type, variadic_element_type.clone()) {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
-                                kind: DiagKind::Custom("Cannot build untyped function param as argument.".to_string()),
+                                kind: DiagKind::Custom(format!(
+                                    "Argument at index {} for function '{}' is not compatible with type '{}' for implicit casting.",
+                                    static_params_length + idx,
+                                    func_name,
+                                    variadic_element_type
+                                )),
                                 location: Some(DiagLoc {
                                     file: self.file_path.clone(),
-                                    line: param.loc.line,
-                                    column: param.loc.column,
-                                    length: param.span.end,
+                                    line: loc.line,
+                                    column: loc.column,
+                                    length: span_end,
                                 }),
                             });
                             exit(1);
                         }
-                    } else {
-                        rvalue.to_basic_metadata()
+
+                        final_arguments.push(
+                            self.implicit_cast(rvalue, variadic_element_type.clone(), loc.clone(), span_end)
+                                .into(),
+                        );
                     }
-                } else {
-                    rvalue.to_basic_metadata()
                 }
-            })
-            .collect()
+                FuncVariadicParams::UntypedCStyle => {
+                    for arg in arguments[static_params_length..].iter().as_slice() {
+                        let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
+                        let rvalue = self.internal_value_as_rvalue(lvalue, loc.clone(), span_end);
+                        final_arguments.push(rvalue.to_basic_metadata());
+                    }
+                }
+            }
+        }
+
+        final_arguments
     }
 
     pub(crate) fn check_func_args_count_mismatch(
@@ -638,7 +830,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let arguments = &self.build_arguments(
             Rc::clone(&scope),
             func_call.arguments.clone(),
-            Some(func_metadata.func_decl.params.clone()),
+            func_metadata.func_decl.params.clone(),
             func_metadata
                 .func_decl
                 .renamed_as

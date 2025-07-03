@@ -42,6 +42,7 @@ mod structs;
 mod tests;
 mod types;
 mod values;
+mod intrinsics;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -129,6 +130,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub fn target_machine(module: Rc<RefCell<Module>>) -> TargetMachine {
         let module = module.borrow_mut();
+
         Target::initialize_native(&InitializationConfig::default()).unwrap();
         let target_triple = TargetMachine::get_default_triple();
         let cpu = TargetMachine::get_host_cpu_name().to_string();
@@ -166,7 +168,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.ensure_build_manifest(self.final_build_dir.clone());
 
         self.build_entry_point();
-        self.optimize();
+
+        match self.output_kind {
+            OutputKind::LlvmIr(_) => {}
+            _ => {
+                self.run_passes();
+            }
+        }
         if !self.compiler_invoked_single {
             self.rebuild_dependent_modules();
             if self.source_code_changed(self.final_build_dir.clone()) || !self.object_file_exists() {

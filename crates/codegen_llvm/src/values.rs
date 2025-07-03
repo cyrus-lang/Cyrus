@@ -21,6 +21,7 @@ pub(crate) enum InternalValue<'a> {
     IntValue(IntValue<'a>, InternalType<'a>),
     FloatValue(FloatValue<'a>, InternalType<'a>),
     ArrayValue(ArrayValue<'a>, InternalType<'a>),
+    ArrayPtrValue(PointerValue<'a>, InternalType<'a>),
     StructValue(StructValue<'a>, InternalType<'a>),
     UnnamedStructValue(StructValue<'a>, InternalType<'a>),
     VectorValue(VectorValue<'a>, InternalType<'a>),
@@ -58,6 +59,7 @@ impl<'a> InternalValue<'a> {
             InternalValue::StringValue(..) => false,
             InternalValue::Lvalue(..) => false,
             InternalValue::PointerValue(..) => false,
+            InternalValue::ArrayPtrValue(..) => false,
             InternalValue::ModuleValue(..) => unreachable!(),
             InternalValue::FunctionValue(..) => unreachable!(),
             InternalValue::ArrayValue(array_value, ..) => array_value.is_const(),
@@ -77,6 +79,7 @@ impl<'a> InternalValue<'a> {
             InternalValue::VectorValue(v, ..) => BasicMetadataValueEnum::VectorValue(*v),
             InternalValue::StringValue(v) => BasicMetadataValueEnum::StructValue(v.struct_value),
             InternalValue::PointerValue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
+            InternalValue::ArrayPtrValue(v, ..) => BasicMetadataValueEnum::PointerValue(*v),
             InternalValue::Lvalue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
             InternalValue::ModuleValue(_) => {
                 display_single_diag(Diag {
@@ -132,6 +135,7 @@ impl<'a> InternalValue<'a> {
                 exit(1);
             }
             InternalValue::UnnamedStructValue(_, internal_type) => internal_type.clone(),
+            InternalValue::ArrayPtrValue(_, ty) => ty.clone(),
         }
     }
 }
@@ -183,6 +187,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ptr: internal_pointer_type.ptr_type.const_zero(),
                 pointee_ty: internal_pointer_type.pointee_ty,
             }),
+            InternalType::ArrayPtrType(internal_pointer_type) => InternalValue::ArrayPtrValue(
+                internal_pointer_type.ptr_type.const_zero(),
+                *internal_pointer_type.inner_type,
+            ),
             InternalType::ConstType(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -252,6 +260,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::ArrayType(internal_array_type) => {
                 InternalValue::ArrayValue(value.into_array_value(), InternalType::ArrayType(internal_array_type))
             }
+            InternalType::ArrayPtrType(internal_array_ptr_type) => InternalValue::ArrayPtrValue(
+                value.into_pointer_value(),
+                InternalType::ArrayPtrType(internal_array_ptr_type),
+            ),
             InternalType::StructType(internal_struct_type) => InternalValue::StructValue(
                 value.into_struct_value(),
                 InternalType::StructType(internal_struct_type),
@@ -371,6 +383,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
+            InternalValue::ArrayPtrValue(pointer_value, internal_type) => {
+                let ptr_type = self.context.ptr_type(AddressSpace::default());
+
+                let basic_type = match internal_type.to_basic_type(ptr_type) {
+                    Ok(basic_type) => basic_type,
+                    Err(err) => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(err.to_string()),
+                            location: None,
+                        });
+                        exit(1);
+                    }
+                };
+
+                let value = self.builder.build_load(basic_type, pointer_value, "load").unwrap();
+
+                internal_type.into_internal_value(value).unwrap_or_else(|_| {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Failed to convert loaded value to InternalValue.".to_string()),
+                        location: None,
+                    });
+                    exit(1);
+                })
+            }
         }
     }
 
@@ -383,10 +421,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
-                self.builder.build_int_add(left, right, "add").unwrap(),
-                left_ty,
-            )),
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
+                InternalValue::BoolValue(self.builder.build_int_add(left, right, "add").unwrap(), left_ty),
+            ),
             (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
                 let right = self
                     .builder
@@ -426,10 +463,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
-                self.builder.build_int_sub(left, right, "sub").unwrap(),
-                left_ty,
-            )),
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
+                InternalValue::BoolValue(self.builder.build_int_sub(left, right, "sub").unwrap(), left_ty),
+            ),
             (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
                 let right = self
                     .builder
@@ -471,10 +507,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
-                self.builder.build_int_mul(left, right, "mul").unwrap(),
-                left_ty,
-            )),
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
+                InternalValue::BoolValue(self.builder.build_int_mul(left, right, "mul").unwrap(), left_ty),
+            ),
             (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
                 let right = self
                     .builder
@@ -514,10 +549,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
-                self.builder.build_int_signed_div(left, right, "div").unwrap(),
-                left_ty,
-            )),
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
+                InternalValue::BoolValue(self.builder.build_int_signed_div(left, right, "div").unwrap(), left_ty),
+            ),
             (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
                 let right = self
                     .builder
@@ -557,10 +591,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
-                self.builder.build_int_signed_rem(left, right, "rem").unwrap(),
-                left_ty,
-            )),
+            (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
+                InternalValue::BoolValue(self.builder.build_int_signed_rem(left, right, "rem").unwrap(), left_ty),
+            ),
             (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
                 let right = self
                     .builder
