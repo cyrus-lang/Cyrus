@@ -1,4 +1,4 @@
-use crate::ast::Literal;
+use crate::ast::{Literal, LiteralKind};
 use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -68,6 +68,9 @@ pub enum TokenKind {
     Import,
     SizeOf,
     // Types
+    UIntPtr,
+    IntPtr,
+    SizeT,
     Int,
     Int8,
     Int16,
@@ -104,6 +107,9 @@ pub enum TokenKind {
 }
 
 pub const PRIMITIVE_TYPES: &[TokenKind] = &[
+    TokenKind::UIntPtr,
+    TokenKind::IntPtr,
+    TokenKind::SizeT,
     TokenKind::Int,
     TokenKind::Int8,
     TokenKind::Int16,
@@ -176,6 +182,9 @@ impl fmt::Display for TokenKind {
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
             Self::Null => write!(f, "null"),
+            Self::UIntPtr => write!(f, "uintptr"),
+            Self::IntPtr => write!(f, "intptr"),
+            Self::SizeT => write!(f, "size_t"),
             Self::Int => write!(f, "int"),
             Self::Int8 => write!(f, "int8"),
             Self::Int16 => write!(f, "int16"),
@@ -203,13 +212,13 @@ impl fmt::Display for TokenKind {
             Self::Public => write!(f, "public"),
             Self::Const => write!(f, "const"),
             Self::SizeOf => write!(f, "sizeof"),
-            Self::Literal(literal) => match literal {
-                Literal::Integer(v) => write!(f, "{}", v),
-                Literal::Float(v) => write!(f, "{}", v),
-                Literal::String(v) => write!(f, "{}", v),
-                Literal::Char(v) => write!(f, "{}", v),
-                Literal::Bool(v) => write!(f, "{}", v),
-                Literal::Null => write!(f, "null"),
+            Self::Literal(literal) => match &literal.kind {
+                LiteralKind::Integer(v) => write!(f, "{}", v),
+                LiteralKind::Float(v) => write!(f, "{}", v),
+                LiteralKind::String(v) => write!(f, "{}", v),
+                LiteralKind::Char(v) => write!(f, "{}", v),
+                LiteralKind::Bool(v) => write!(f, "{}", v),
+                LiteralKind::Null => write!(f, "null"),
             },
             Self::String => write!(f, "string"),
             // ETC

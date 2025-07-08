@@ -182,7 +182,14 @@ pub struct ModuleImport {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Literal {
+pub struct Literal {
+    pub kind: LiteralKind,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum LiteralKind {
     Integer(i64),
     Float(f64),
     Bool(bool),

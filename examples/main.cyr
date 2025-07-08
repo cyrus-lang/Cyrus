@@ -1,14 +1,7 @@
 extern fn printf(format: const char*, ...);
 
-bits Ipv4Header {
-    version_ihl: uint8;
-    ttl: uint8;
-    protocol: uint8;
-    src_ip: uint32;
-    dest_ip: uint32;
-}
-
 fn main() {
-   #person: Ipv4Header;
-   
+    #a: uint = -10;
+    
+    printf("value: %d\n", a);
 }

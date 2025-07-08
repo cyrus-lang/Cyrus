@@ -4,7 +4,7 @@ use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use ast::ast::{
-    BlockStatement, Break, Continue, Expression, For, Foreach, If, Literal, Statement, TypeSpecifier, Variable,
+    BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement, TypeSpecifier, Variable,
 };
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
@@ -297,12 +297,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_infinite_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
-        let always_true_condition = self.build_cond(
-            Rc::clone(&scope),
-            Expression::Literal(Literal::Bool(true)),
-            for_statement.loc.clone(),
-            for_statement.span.end,
-        );
+        let always_true_condition = self.build_index_value(1);
 
         build_loop_statement!(
             self,
@@ -417,7 +412,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        let array_length = self.build_integer_literal(internal_array_type.array_type.len().into());
+        let array_length = self.build_index_value(internal_array_type.array_type.len().try_into().unwrap());
 
         let current_block = self.get_current_block("for statement", foreach.loc.clone(), foreach.span.end);
         let current_func = self.get_current_func("for statement", foreach.loc.clone(), foreach.span.end);
@@ -427,7 +422,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .build_alloca(self.context.i32_type(), "foreach.index")
             .unwrap();
         self.builder
-            .build_store(index_alloca, self.build_integer_literal(0))
+            .build_store(index_alloca, self.build_index_value(0))
             .unwrap();
 
         let cond_block = self.context.append_basic_block(current_func, "loop.cond");
@@ -518,6 +513,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     ptr: index_alloca,
                     ty: InternalType::IntType(InternalIntType {
                         type_str: "int32".to_string(),
+                        int_kind: TokenKind::Int32,
                         int_type: self.context.i32_type(),
                     }),
                 },
@@ -539,7 +535,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.builder.position_at_end(after_body_block);
 
             // increment
-            let one_value = self.build_integer_literal(1);
+            let one_value = self.context.i32_type().const_int(1, false);
 
             self.builder
                 .build_store(

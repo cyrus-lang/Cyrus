@@ -4,7 +4,7 @@ use crate::{
     types::{InternalIntType, InternalType},
     values::{InternalValue, Lvalue},
 };
-use ast::token::Location;
+use ast::token::{Location, TokenKind};
 use inkwell::{
     AddressSpace,
     types::{BasicMetadataTypeEnum},
@@ -42,7 +42,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        let array_length_int_value = self.build_integer_literal(array_length.into());
+        let array_length_int_value = self.build_index_value(array_length.try_into().unwrap());
 
         let current_block = self.get_current_block("runtime check bounds", loc.clone(), span_end);
         let current_func = self.get_current_func("runtime check bounds", loc.clone(), span_end);
@@ -70,6 +70,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             index,
             InternalType::IntType(InternalIntType {
                 type_str: "uint32".to_string(),
+                int_kind: TokenKind::UInt32,
                 int_type: array_length_int_value.get_type(),
             }),
             loc,
@@ -152,7 +153,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.current_block_ref = Some(success_block);
 
         let ordered_indexes: Vec<IntValue<'ctx>> =
-            vec![self.build_integer_literal(0), index_implicit_casted.into_int_value()];
+            vec![self.build_index_value(0), index_implicit_casted.into_int_value()];
         let gep = unsafe {
             self.builder
                 .build_in_bounds_gep(pointee_basic_ty, pointer, &ordered_indexes, "gep")

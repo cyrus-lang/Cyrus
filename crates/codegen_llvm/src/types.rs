@@ -74,6 +74,7 @@ pub struct InternalBoolType<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct InternalIntType<'a> {
     pub type_str: String,
+    pub int_kind: TokenKind,
     pub int_type: IntType<'a>,
 }
 
@@ -540,34 +541,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
             }
-            token_kind @ TokenKind::Int | token_kind @ TokenKind::UInt => {
+            token_kind @ TokenKind::UIntPtr | token_kind @ TokenKind::IntPtr | token_kind @ TokenKind::SizeT => {
                 let data_layout = self.target_machine.get_target_data();
                 InternalType::IntType(InternalIntType {
                     type_str: token_kind.to_string(),
+                    int_kind: token_kind,
                     int_type: self.context.ptr_sized_int_type(&data_layout, None),
                 })
             }
+            token_kind @ TokenKind::Int | token_kind @ TokenKind::UInt => InternalType::IntType(InternalIntType {
+                type_str: token_kind.to_string(),
+                int_kind: token_kind,
+                int_type: self.context.i32_type(),
+            }),
             token_kind @ TokenKind::Int8 | token_kind @ TokenKind::UInt8 | token_kind @ TokenKind::Char => {
                 InternalType::IntType(InternalIntType {
                     type_str: token_kind.to_string(),
+                    int_kind: token_kind,
                     int_type: self.context.i8_type(),
                 })
             }
             token_kind @ TokenKind::Int16 | token_kind @ TokenKind::UInt16 => InternalType::IntType(InternalIntType {
                 type_str: token_kind.to_string(),
+                int_kind: token_kind,
                 int_type: self.context.i16_type(),
             }),
             token_kind @ TokenKind::Int32 | token_kind @ TokenKind::UInt32 => InternalType::IntType(InternalIntType {
                 type_str: token_kind.to_string(),
+                int_kind: token_kind,
                 int_type: self.context.i32_type(),
             }),
             token_kind @ TokenKind::Int64 | token_kind @ TokenKind::UInt64 => InternalType::IntType(InternalIntType {
                 type_str: token_kind.to_string(),
+                int_kind: token_kind,
                 int_type: self.context.i64_type(),
             }),
             token_kind @ TokenKind::Int128 | token_kind @ TokenKind::UInt128 => {
                 InternalType::IntType(InternalIntType {
                     type_str: token_kind.to_string(),
+                    int_kind: token_kind,
                     int_type: self.context.i128_type(),
                 })
             }
