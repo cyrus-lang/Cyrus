@@ -1,7 +1,14 @@
 extern fn printf(format: const char*, ...);
 
 fn main() {
-    #a: uint = -10;
+    #a = 10;
+    #value: void* = &a;
+    #intptr_value = (uintptr) value;
+
+    printf("value: %x\n", intptr_value);
+
+    #pointer = (int*) intptr_value;
+    *pointer = 200;
     
-    printf("value: %d\n", a);
+    printf("value: %d\n", *pointer);
 }

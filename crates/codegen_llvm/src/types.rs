@@ -407,6 +407,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalType::FloatType(_), InternalType::IntType(_)) => true,
             (InternalType::IntType(_), InternalType::FloatType(_)) => true,
             (InternalType::PointerType(_), InternalType::PointerType(_)) => true,
+            (InternalType::IntType(_), InternalType::PointerType(_))
+            | (InternalType::PointerType(_), InternalType::IntType(_)) => true,
             (InternalType::StructType(struct_metadata1), InternalType::StructType(struct_metadata2)) => {
                 struct_metadata1.struct_metadata.struct_type == struct_metadata2.struct_metadata.struct_type
                     && struct_metadata1.struct_metadata.fields.len() == struct_metadata2.struct_metadata.fields.len()

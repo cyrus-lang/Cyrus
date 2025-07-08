@@ -791,10 +791,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> InternalValue<'ctx> {
         match internal_value.clone() {
             InternalValue::IntValue(int_value, _) => match target_type {
+                InternalType::PointerType(internal_pointer_type) => {
+                    let pointer = self
+                        .builder
+                        .build_int_to_ptr(int_value, internal_pointer_type.ptr_type, "inttoptr")
+                        .unwrap();
+                    
+                    InternalValue::PointerValue(TypedPointerValue {
+                        type_str: format!("{}*", internal_pointer_type.pointee_ty.to_string()),
+                        ptr: pointer,
+                        pointee_ty: internal_pointer_type.pointee_ty,
+                    })
+                }
                 InternalType::IntType(internal_int_type) => {
                     let is_signed = self.is_integer_signed(internal_int_type.int_kind.clone());
-                    dbg!(is_signed);
-                    
+
                     InternalValue::IntValue(
                         self.builder
                             .build_int_cast_sign_flag(int_value, internal_int_type.int_type, is_signed, "cast")
@@ -856,6 +867,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             },
             InternalValue::PointerValue(pointer_value) => match target_type {
+                InternalType::IntType(internal_int_type) => {
+                    let intptr = self
+                        .builder
+                        .build_ptr_to_int(pointer_value.ptr, internal_int_type.int_type, "ptrtoint")
+                        .unwrap();
+                    InternalValue::IntValue(intptr, InternalType::IntType(internal_int_type))
+                }
                 InternalType::StringType(_) => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
