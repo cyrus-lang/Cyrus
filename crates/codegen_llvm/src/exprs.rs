@@ -9,7 +9,7 @@ use crate::{
 };
 use ast::{
     ast::*,
-    token::{Location, TokenKind},
+    token::{Location, Token, TokenKind},
 };
 use inkwell::{
     AddressSpace,
@@ -523,8 +523,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         for (idx, value) in values.iter().enumerate() {
             let mut ordered_indexes: Vec<IntValue<'ctx>> = Vec::new();
-            ordered_indexes.push(self.build_integer_literal(0)); // first index is always 0
-            ordered_indexes.push(self.build_integer_literal(idx.try_into().unwrap())); // add item index
+            ordered_indexes.push(self.build_index_value(0)); // first index is always 0
+            ordered_indexes.push(self.build_index_value(idx)); // add item index
             let element_pointer = unsafe {
                 self.builder
                     .build_in_bounds_gep(array_type, array_alloca, &ordered_indexes, "gep")
@@ -583,7 +583,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         if let InternalType::ArrayType(internal_array_type) = pointee_ty.clone() {
             let ptr_type = self.context.ptr_type(AddressSpace::default());
             let mut ordered_indexes: Vec<IntValue> = Vec::new();
-            ordered_indexes.push(self.build_integer_literal(0)); // first index is always 0
+            ordered_indexes.push(self.build_index_value(0)); // first index is always 0
 
             let index_expr = self.build_expr(Rc::clone(&scope), *array_index.index);
             if let InternalValue::IntValue(index_int_value, index_int_value_type) =
@@ -667,20 +667,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_literal(&self, literal: Literal) -> InternalValue<'ctx> {
-        // FIXME ad location for Literal
-
-        match literal {
-            Literal::Integer(integer_literal) => {
-                let value = self.build_integer_literal(integer_literal);
-                InternalValue::IntValue(
-                    value,
-                    InternalType::IntType(InternalIntType {
-                        type_str: "int32".to_string(),
-                        int_type: value.get_type(),
-                    }),
-                )
-            }
-            Literal::Float(float_literal) => {
+        match literal.kind {
+            LiteralKind::Integer(integer_literal) => self.build_integer_literal(
+                integer_literal,
+                Token {
+                    kind: TokenKind::Int32,
+                    span: literal.span.clone(),
+                    loc: literal.loc.clone(),
+                },
+            ),
+            LiteralKind::Float(float_literal) => {
                 let value = self.build_float_literal(float_literal);
                 InternalValue::FloatValue(
                     value,
@@ -690,7 +686,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 )
             }
-            Literal::Bool(bool_literal) => {
+            LiteralKind::Bool(bool_literal) => {
                 let value = self.build_bool_literal(bool_literal);
                 InternalValue::BoolValue(
                     value,
@@ -700,23 +696,68 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 )
             }
-            Literal::Char(char_literal) => {
+            LiteralKind::Char(char_literal) => {
                 let value = self.build_char_literal(char_literal);
                 InternalValue::IntValue(
                     value,
                     InternalType::IntType(InternalIntType {
                         type_str: "char".to_string(),
+                        int_kind: TokenKind::Char,
                         int_type: value.get_type(),
                     }),
                 )
             }
-            Literal::String(string_literal) => self.build_string_literal(string_literal, Location::default(), 0),
-            Literal::Null => InternalValue::PointerValue(self.build_null()),
+            LiteralKind::String(string_literal, prefix) => match prefix {
+                Some(prefix) => match prefix {
+                    StringPrefix::C => self.build_c_style_string(string_literal, Location::default(), 0),
+                    StringPrefix::B => self.build_byte_string(string_literal, Location::default(), 0),
+                },
+                None => self.build_string_literal(string_literal, Location::default(), 0),
+            },
+            LiteralKind::Null => InternalValue::PointerValue(self.build_null()),
         }
     }
 
-    pub(crate) fn build_integer_literal(&self, value: i64) -> IntValue<'ctx> {
-        self.context.i32_type().const_int(value.try_into().unwrap(), true)
+    pub(crate) fn build_index_value(&self, index_value: usize) -> IntValue<'ctx> {
+        let data_layout = self.target_machine.get_target_data();
+        let ptr_sized_int_type = self.context.ptr_sized_int_type(&data_layout, None);
+        ptr_sized_int_type.const_int(index_value.try_into().unwrap(), false)
+    }
+
+    pub(crate) fn is_integer_signed(&self, token_kind: TokenKind) -> bool {
+        match token_kind {
+            TokenKind::IntPtr
+            | TokenKind::Int
+            | TokenKind::Int8
+            | TokenKind::Int16
+            | TokenKind::Int32
+            | TokenKind::Int64
+            | TokenKind::Int128 => return true,
+            TokenKind::UIntPtr
+            | TokenKind::SizeT
+            | TokenKind::UInt
+            | TokenKind::UInt8
+            | TokenKind::UInt16
+            | TokenKind::UInt32
+            | TokenKind::UInt64
+            | TokenKind::UInt128 => return false,
+            _ => {
+                panic!("Given TypeToken is not a type of integer kind.");
+            }
+        }
+    }
+
+    pub(crate) fn build_integer_literal(&self, value: i64, token: Token) -> InternalValue<'ctx> {
+        let sign_extend = self.is_integer_signed(token.kind.clone());
+        let internal_type = self.build_type_token(token.clone(), token.loc);
+        InternalValue::IntValue(
+            internal_type
+                .to_basic_type(self.context.ptr_type(AddressSpace::default()))
+                .unwrap()
+                .into_int_type()
+                .const_int(value.try_into().unwrap(), sign_extend),
+            internal_type,
+        )
     }
 
     pub(crate) fn build_float_literal(&self, value: f64) -> FloatValue<'ctx> {
@@ -736,6 +777,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ptr_type,
                 pointee_ty: InternalType::IntType(InternalIntType {
                     type_str: "null".to_string(),
+                    int_kind: TokenKind::Int32,
                     int_type: self.context.i32_type(),
                 }),
             })),
@@ -755,12 +797,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> InternalValue<'ctx> {
         match internal_value.clone() {
             InternalValue::IntValue(int_value, _) => match target_type {
-                InternalType::IntType(internal_int_type) => InternalValue::IntValue(
-                    self.builder
-                        .build_int_cast(int_value, internal_int_type.int_type, "cast")
-                        .unwrap(),
-                    InternalType::IntType(internal_int_type),
-                ),
+                InternalType::PointerType(internal_pointer_type) => {
+                    let pointer = self
+                        .builder
+                        .build_int_to_ptr(int_value, internal_pointer_type.ptr_type, "inttoptr")
+                        .unwrap();
+
+                    InternalValue::PointerValue(TypedPointerValue {
+                        type_str: format!("{}*", internal_pointer_type.pointee_ty.to_string()),
+                        ptr: pointer,
+                        pointee_ty: internal_pointer_type.pointee_ty,
+                    })
+                }
+                InternalType::IntType(internal_int_type) => {
+                    let is_signed = self.is_integer_signed(internal_int_type.int_kind.clone());
+
+                    InternalValue::IntValue(
+                        self.builder
+                            .build_int_cast_sign_flag(int_value, internal_int_type.int_type, is_signed, "cast")
+                            .unwrap(),
+                        InternalType::IntType(internal_int_type),
+                    )
+                }
                 InternalType::FloatType(internal_float_type) => InternalValue::FloatValue(
                     self.builder
                         .build_signed_int_to_float(int_value, internal_float_type.float_type, "cast")
@@ -815,6 +873,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             },
             InternalValue::PointerValue(pointer_value) => match target_type {
+                InternalType::IntType(internal_int_type) => {
+                    let intptr = self
+                        .builder
+                        .build_ptr_to_int(pointer_value.ptr, internal_int_type.int_type, "ptrtoint")
+                        .unwrap();
+                    InternalValue::IntValue(intptr, InternalType::IntType(internal_int_type))
+                }
                 InternalType::StringType(_) => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -937,7 +1002,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
-                    "Cannot assign value of type '{}' to lvalue of type '{}'.",
+                    "Cannot cast value of type '{}' to lvalue of type '{}'.",
                     internal_value.get_type(self.string_type.clone()),
                     target_type
                 )),
@@ -1042,7 +1107,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             },
             InternalType::StringType(string_type) => string_type.struct_type.size_of().unwrap(),
-            InternalType::VoidType(_) => self.build_integer_literal(0),
+            InternalType::VoidType(_) => self.build_index_value(0),
             InternalType::PointerType(internal_pointer_type) => internal_pointer_type.ptr_type.size_of(),
             InternalType::ConstType(internal_const_type) => {
                 self.build_sizeof_operator_internal(*internal_const_type.inner_type, loc, span_end)
@@ -1082,6 +1147,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             size_int_value,
             InternalType::IntType(InternalIntType {
                 type_str: "size_t".to_string(),
+                int_kind: TokenKind::SizeT,
                 int_type: size_int_value.get_type(),
             }),
         )
@@ -1104,13 +1170,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 unary_expression.span.end,
             ),
             TokenKind::Minus => match operand_internal_value {
-                InternalValue::IntValue(int_value, _) => InternalValue::IntValue(
-                    self.builder.build_int_neg(int_value, "prefix_iminus").unwrap(),
-                    InternalType::IntType(InternalIntType {
-                        type_str: operand_internal_value.get_type(self.string_type.clone()).to_string(),
-                        int_type: int_value.get_type(),
-                    }),
-                ),
+                InternalValue::IntValue(int_value, _) => {
+                    let operand_internal_type = operand_internal_value.get_type(self.string_type.clone());
+                    InternalValue::IntValue(
+                        self.builder.build_int_neg(int_value, "prefix_iminus").unwrap(),
+                        InternalType::IntType(InternalIntType {
+                            type_str: operand_internal_type.to_string(),
+                            int_kind: match operand_internal_type {
+                                InternalType::IntType(internal_int_type) => internal_int_type.int_kind,
+                                _ => unreachable!(),
+                            },
+                            int_type: int_value.get_type(),
+                        }),
+                    )
+                }
                 InternalValue::FloatValue(float_value, _) => InternalValue::FloatValue(
                     self.builder.build_float_neg(float_value, "prefix_fminus").unwrap(),
                     InternalType::FloatType(InternalFloatType {
@@ -1197,13 +1270,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> InternalValue<'ctx> {
         let operand_internal_value = self.build_module_import(Rc::clone(&scope), unary_operator.module_import);
 
-        let int_one_value = self.build_integer_literal(1);
+        let int_one_value = self.build_index_value(1);
         let int_one = self
             .implicit_cast(
                 InternalValue::IntValue(
                     int_one_value,
                     InternalType::IntType(InternalIntType {
                         type_str: operand_internal_value.get_type(self.string_type.clone()).to_string(),
+                        int_kind: TokenKind::Int32,
                         int_type: int_one_value.get_type(),
                     }),
                 ),
@@ -1252,6 +1326,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             rvalue.clone(),
                             InternalType::IntType(InternalIntType {
                                 type_str: "int32".to_string(),
+                                int_kind: TokenKind::Int32,
                                 int_type: rvalue.get_type(),
                             }),
                         ),
@@ -1260,6 +1335,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         rvalue,
                         InternalType::IntType(InternalIntType {
                             type_str: "int32".to_string(),
+                            int_kind: TokenKind::Int32,
                             int_type: rvalue.get_type(),
                         }),
                     )
@@ -1272,6 +1348,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             rvalue.clone(),
                             InternalType::IntType(InternalIntType {
                                 type_str: "int32".to_string(),
+                                int_kind: TokenKind::Int32,
                                 int_type: rvalue.get_type(),
                             }),
                         ),
@@ -1280,6 +1357,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         rvalue,
                         InternalType::IntType(InternalIntType {
                             type_str: "int32".to_string(),
+                            int_kind: TokenKind::Int32,
                             int_type: rvalue.get_type(),
                         }),
                     )
@@ -1295,6 +1373,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             rvalue.clone(),
                             InternalType::IntType(InternalIntType {
                                 type_str: "int32".to_string(),
+                                int_kind: TokenKind::Int32,
                                 int_type: rvalue.get_type(),
                             }),
                         ),
@@ -1303,6 +1382,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         int_value,
                         InternalType::IntType(InternalIntType {
                             type_str: "int32".to_string(),
+                            int_kind: TokenKind::Int32,
                             int_type: rvalue.get_type(),
                         }),
                     );
@@ -1318,6 +1398,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             rvalue.clone(),
                             InternalType::IntType(InternalIntType {
                                 type_str: "int32".to_string(),
+                                int_kind: TokenKind::Int32,
                                 int_type: rvalue.get_type(),
                             }),
                         ),
@@ -1326,6 +1407,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         int_value,
                         InternalType::IntType(InternalIntType {
                             type_str: "int32".to_string(),
+                            int_kind: TokenKind::Int32,
                             int_type: rvalue.get_type(),
                         }),
                     );

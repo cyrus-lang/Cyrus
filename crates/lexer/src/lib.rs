@@ -1,5 +1,5 @@
 use ::diag::errors::CompileTimeError;
-use ast::ast::Literal;
+use ast::ast::{Literal, LiteralKind, StringPrefix};
 use ast::token::*;
 use diag::{LexicalErrorType, lexer_invalid_char_error};
 use std::{fmt::Debug, process::exit};
@@ -7,7 +7,6 @@ use utils::escaping::escape_string;
 
 mod diag;
 mod format;
-mod tests;
 
 #[derive(Debug, Clone)]
 pub struct Lexer {
@@ -201,7 +200,7 @@ impl Lexer {
                 };
             }
             '#' => TokenKind::Hashtag,
-            '"' => return self.read_string(),
+            '"' => return self.read_string(None),
             '\'' => return self.read_char_literal(),
             '=' => {
                 if self.peek_char() == '=' {
@@ -349,7 +348,15 @@ impl Lexer {
             }
             ';' => TokenKind::Semicolon,
             _ => {
-                if self.ch.is_alphabetic() || self.ch == '_' {
+                if self.ch == 'c' && self.peek_char() == '"' {
+                    self.read_char();
+                    return self.read_string(Some(StringPrefix::C));
+                }
+                if self.ch == 'b' && self.peek_char() == '"' {
+                    self.read_char();
+                    return self.read_string(Some(StringPrefix::B));
+                }
+                else if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_identifier();
                 } else if self.is_numeric(self.ch) {
                     return self.read_number();
@@ -421,7 +428,11 @@ impl Lexer {
 
         if let Some(value) = final_char {
             Token {
-                kind: TokenKind::Literal(Literal::Char(value)),
+                kind: TokenKind::Literal(Literal {
+                    kind: LiteralKind::Char(value),
+                    loc: Location::new(self.line, self.column),
+                    span: span.clone(),
+                }),
                 span,
                 loc: Location::new(self.line, self.column),
             }
@@ -442,7 +453,7 @@ impl Lexer {
         }
     }
 
-    fn read_string(&mut self) -> Token {
+    fn read_string(&mut self, prefix: Option<StringPrefix>) -> Token {
         let start: usize = self.pos + 1;
 
         let mut final_string = String::new();
@@ -482,7 +493,11 @@ impl Lexer {
         let span = Span { start: start - 1, end };
 
         Token {
-            kind: TokenKind::Literal(Literal::String(escape_string(&final_string))),
+            kind: TokenKind::Literal(Literal {
+                kind: LiteralKind::String(escape_string(&final_string), prefix),
+                span: span.clone(),
+                loc: Location::new(self.line, self.column),
+            }),
             span,
             loc: Location::new(self.line, self.column),
         }
@@ -529,7 +544,11 @@ impl Lexer {
             }
 
             match i64::from_str_radix(&number[2..], 16) {
-                Ok(value) => TokenKind::Literal(Literal::Integer(value)),
+                Ok(value) => TokenKind::Literal(Literal {
+                    kind: LiteralKind::Integer(value),
+                    loc: Location::new(self.line, self.column),
+                    span: Span::new(start, self.column),
+                }),
                 Err(_) => {
                     CompileTimeError {
                         location: Location {
@@ -593,7 +612,11 @@ impl Lexer {
 
             if is_float {
                 match number.parse::<f64>() {
-                    Ok(value) => TokenKind::Literal(Literal::Float(value)),
+                    Ok(value) => TokenKind::Literal(Literal {
+                        kind: LiteralKind::Float(value),
+                        loc: Location::new(self.line, self.column),
+                        span: Span::new(start, self.column),
+                    }),
                     Err(_) => {
                         CompileTimeError {
                             location: Location {
@@ -612,7 +635,11 @@ impl Lexer {
                 }
             } else {
                 match number.parse::<i64>() {
-                    Ok(value) => TokenKind::Literal(Literal::Integer(value)),
+                    Ok(value) => TokenKind::Literal(Literal {
+                        kind: LiteralKind::Integer(value),
+                        loc: Location::new(self.line, self.column),
+                        span: Span::new(start, self.column),
+                    }),
                     Err(_) => {
                         CompileTimeError {
                             location: Location {
@@ -750,6 +777,9 @@ impl Lexer {
             "false" => TokenKind::False,
             "null" => TokenKind::Null,
             "as" => TokenKind::As,
+            "uintptr" => TokenKind::UIntPtr,
+            "intptr" => TokenKind::IntPtr,
+            "size_t" => TokenKind::SizeT,
             "int" => TokenKind::Int,
             "int8" => TokenKind::Int8,
             "int16" => TokenKind::Int16,

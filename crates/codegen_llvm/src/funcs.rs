@@ -1,9 +1,7 @@
-use crate::LoopBlockRefs;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{Scope, ScopeRecord, ScopeRef};
-use crate::types::{InternalArrayPtrType, InternalArrayType};
 use crate::values::InternalValue;
-use crate::{CodeGenLLVM, InternalType, build_loop_statement};
+use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
     Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, FuncVariadicParams, Identifier, ModuleSegment,
     Return, StorageClass, TypeSpecifier,
@@ -13,9 +11,8 @@ use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
-use inkwell::types::{AsTypeRef, BasicType, FunctionType};
+use inkwell::types::{AsTypeRef, FunctionType};
 use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
-use inkwell::{AddressSpace, IntPredicate};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{DerefMut, Index};
@@ -241,6 +238,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    #[allow(unused)]
     pub(crate) fn build_func_vargs(
         &mut self,
         scope: ScopeRef<'ctx>,
@@ -624,7 +622,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     // add va_args_count before building the variadic arguments
                     final_arguments.push(BasicMetadataValueEnum::IntValue(
-                        self.build_integer_literal(va_args_count.try_into().unwrap()),
+                        self.context
+                            .i32_type()
+                            .const_int(va_args_count.try_into().unwrap(), false),
                     ));
 
                     for (idx, arg) in arguments[static_params_length..].iter().enumerate() {

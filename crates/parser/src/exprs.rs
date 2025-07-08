@@ -100,7 +100,11 @@ impl<'a> Parser<'a> {
                     loc,
                 })
             }
-            TokenKind::Null => Expression::Literal(Literal::Null),
+            TokenKind::Null => Expression::Literal(Literal {
+                kind: LiteralKind::Null,
+                span: Span::new(start, self.current_token.span.end),
+                loc: loc.clone(),
+            }),
             token_kind @ TokenKind::Increment | token_kind @ TokenKind::Decrement => {
                 let unary_operator_type = match token_kind {
                     TokenKind::Increment => UnaryOperatorType::PreIncrement,
@@ -152,7 +156,11 @@ impl<'a> Parser<'a> {
                     _ => panic!(),
                 };
 
-                Expression::Literal(Literal::Bool(value))
+                Expression::Literal(Literal {
+                    kind: LiteralKind::Bool(value),
+                    span: Span::new(start, self.current_token.span.end),
+                    loc: loc.clone(),
+                })
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
             TokenKind::Minus | TokenKind::Bang | TokenKind::SizeOf => {
@@ -765,9 +773,11 @@ impl<'a> Parser<'a> {
                 if let TypeSpecifier::Array(inner_type_specifier, ..) = data_type.clone() {
                     elements.push(Expression::Array(Array {
                         data_type: TypeSpecifier::Array(ArrayTypeSpecifier {
-                            size: ArrayCapacity::Fixed(TokenKind::Literal(Literal::Integer(
-                                untyped_array.len().try_into().unwrap(),
-                            ))),
+                            size: ArrayCapacity::Fixed(TokenKind::Literal(Literal {
+                                kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap()),
+                                span: Span::new(untyped_array_start, self.current_token.span.end),
+                                loc: loc.clone(),
+                            })),
                             element_type: inner_type_specifier.element_type,
                         }),
                         elements: untyped_array,
