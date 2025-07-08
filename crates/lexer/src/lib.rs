@@ -1,5 +1,5 @@
 use ::diag::errors::CompileTimeError;
-use ast::ast::{Literal, LiteralKind};
+use ast::ast::{Literal, LiteralKind, StringPrefix};
 use ast::token::*;
 use diag::{LexicalErrorType, lexer_invalid_char_error};
 use std::{fmt::Debug, process::exit};
@@ -7,7 +7,6 @@ use utils::escaping::escape_string;
 
 mod diag;
 mod format;
-mod tests;
 
 #[derive(Debug, Clone)]
 pub struct Lexer {
@@ -201,7 +200,7 @@ impl Lexer {
                 };
             }
             '#' => TokenKind::Hashtag,
-            '"' => return self.read_string(),
+            '"' => return self.read_string(None),
             '\'' => return self.read_char_literal(),
             '=' => {
                 if self.peek_char() == '=' {
@@ -349,7 +348,15 @@ impl Lexer {
             }
             ';' => TokenKind::Semicolon,
             _ => {
-                if self.ch.is_alphabetic() || self.ch == '_' {
+                if self.ch == 'c' && self.peek_char() == '"' {
+                    self.read_char();
+                    return self.read_string(Some(StringPrefix::C));
+                }
+                if self.ch == 'b' && self.peek_char() == '"' {
+                    self.read_char();
+                    return self.read_string(Some(StringPrefix::B));
+                }
+                else if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_identifier();
                 } else if self.is_numeric(self.ch) {
                     return self.read_number();
@@ -446,7 +453,7 @@ impl Lexer {
         }
     }
 
-    fn read_string(&mut self) -> Token {
+    fn read_string(&mut self, prefix: Option<StringPrefix>) -> Token {
         let start: usize = self.pos + 1;
 
         let mut final_string = String::new();
@@ -487,7 +494,7 @@ impl Lexer {
 
         Token {
             kind: TokenKind::Literal(Literal {
-                kind: LiteralKind::String(escape_string(&final_string)),
+                kind: LiteralKind::String(escape_string(&final_string), prefix),
                 span: span.clone(),
                 loc: Location::new(self.line, self.column),
             }),

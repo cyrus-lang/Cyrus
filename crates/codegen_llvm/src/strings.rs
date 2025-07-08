@@ -3,16 +3,90 @@ use std::process::exit;
 use crate::{
     CodeGenLLVM, InternalType, InternalValue, StringValue,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    types::{InternalStringType, InternalVoidType},
+    types::{InternalArrayType, InternalConstType, InternalIntType, InternalStringType, InternalVoidType},
     values::TypedPointerValue,
 };
-use ast::token::Location;
+use ast::token::{Location, TokenKind};
 use inkwell::{
-    context::Context, values::{GlobalValue, IntValue, PointerValue}, AddressSpace
+    AddressSpace,
+    context::Context,
+    values::{GlobalValue, IntValue, PointerValue},
 };
 use utils::escaping::unescape_string;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn build_byte_string(&self, value: String, loc: Location, span_end: usize) -> InternalValue<'ctx> {
+        let make_unescaped_string =
+            || -> Result<String, utils::escaping::UnescapeError> { unescape_string(&unescape_string(&value)?) };
+
+        let unescaped_string = match make_unescaped_string() {
+            Ok(v) => v,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err.to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let const_str = self.context.const_string(unescaped_string.as_bytes(), true);
+        InternalValue::ArrayValue(
+            const_str,
+            InternalType::ArrayType(InternalArrayType {
+                type_str: format!("char[{}]", unescaped_string.len()),
+                inner_type: Box::new(InternalType::IntType(InternalIntType {
+                    type_str: "char".to_string(),
+                    int_kind: TokenKind::Char,
+                    int_type: self.context.i8_type(),
+                })),
+                array_type: const_str.get_type(),
+            }),
+        )
+    }
+
+    pub(crate) fn build_c_style_string(&self, value: String, loc: Location, span_end: usize) -> InternalValue<'ctx> {
+        let make_unescaped_string =
+            || -> Result<String, utils::escaping::UnescapeError> { unescape_string(&unescape_string(&value)?) };
+
+        let unescaped_string = match make_unescaped_string() {
+            Ok(v) => v,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err.to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let global_str = self.build_global_str(unescaped_string);
+
+        InternalValue::PointerValue(TypedPointerValue {
+            type_str: "const char*".to_string(),
+            ptr: global_str.as_pointer_value(),
+            pointee_ty: InternalType::ConstType(InternalConstType {
+                type_str: "char".to_string(),
+                inner_type: Box::new(InternalType::VoidType(InternalVoidType {
+                    type_str: "char".to_string(),
+                    void_type: self.context.void_type(),
+                })),
+            }),
+        })
+    }
+
     pub(crate) fn build_global_str(&self, value: String) -> GlobalValue<'ctx> {
         let const_str = self.context.const_string(value.as_bytes(), true);
         let global_str = self.module.borrow_mut().add_global(const_str.get_type(), None, ".str");

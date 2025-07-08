@@ -707,7 +707,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 )
             }
-            LiteralKind::String(string_literal) => self.build_string_literal(string_literal, Location::default(), 0),
+            LiteralKind::String(string_literal, prefix) => match prefix {
+                Some(prefix) => match prefix {
+                    StringPrefix::C => self.build_c_style_string(string_literal, Location::default(), 0),
+                    StringPrefix::B => self.build_byte_string(string_literal, Location::default(), 0),
+                },
+                None => self.build_string_literal(string_literal, Location::default(), 0),
+            },
             LiteralKind::Null => InternalValue::PointerValue(self.build_null()),
         }
     }
@@ -796,7 +802,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         .builder
                         .build_int_to_ptr(int_value, internal_pointer_type.ptr_type, "inttoptr")
                         .unwrap();
-                    
+
                     InternalValue::PointerValue(TypedPointerValue {
                         type_str: format!("{}*", internal_pointer_type.pointee_ty.to_string()),
                         ptr: pointer,

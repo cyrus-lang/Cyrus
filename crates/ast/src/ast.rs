@@ -193,9 +193,15 @@ pub enum LiteralKind {
     Integer(i64),
     Float(f64),
     Bool(bool),
-    String(String),
+    String(String, Option<StringPrefix>),
     Char(char),
     Null,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum StringPrefix {
+    C, // C-style string which is const char*
+    B, // Bytes string
 }
 
 #[derive(Debug, Clone, PartialEq)]

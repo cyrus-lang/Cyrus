@@ -18,7 +18,15 @@ impl fmt::Display for Literal {
         match &self.kind {
             LiteralKind::Integer(integer) => write!(f, "{}", integer),
             LiteralKind::Bool(bool) => write!(f, "{}", bool),
-            LiteralKind::String(string_type) => write!(f, "\"{}\"", string_type),
+            LiteralKind::String(string_type, prefix) => {
+                if let Some(prefix) = prefix {
+                    match prefix {
+                        StringPrefix::C => write!(f, "c"),
+                        StringPrefix::B => write!(f, "b"),
+                    };
+                } 
+                write!(f, "\"{}\"", string_type)
+            }
             LiteralKind::Float(float) => write!(f, "{}", float),
             LiteralKind::Char(ch) => write!(f, "{}", ch),
             LiteralKind::Null => write!(f, "null"),

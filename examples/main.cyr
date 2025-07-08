@@ -1,8 +1,9 @@
 extern fn printf(format: const char*, ...);
 
 fn main() {
-    #a: uint32 = 10;
-    #b: int32 = -3;
+    #barr = b"Hello World\n";
 
-    printf("value: %d\n", a > b);
+    foreach (item in barr) {
+        printf("value: %c", item);
+    }
 }

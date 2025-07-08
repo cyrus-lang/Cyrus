@@ -1,4 +1,4 @@
-use crate::ast::{Literal, LiteralKind};
+use crate::ast::Literal;
 use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -212,15 +212,8 @@ impl fmt::Display for TokenKind {
             Self::Public => write!(f, "public"),
             Self::Const => write!(f, "const"),
             Self::SizeOf => write!(f, "sizeof"),
-            Self::Literal(literal) => match &literal.kind {
-                LiteralKind::Integer(v) => write!(f, "{}", v),
-                LiteralKind::Float(v) => write!(f, "{}", v),
-                LiteralKind::String(v) => write!(f, "{}", v),
-                LiteralKind::Char(v) => write!(f, "{}", v),
-                LiteralKind::Bool(v) => write!(f, "{}", v),
-                LiteralKind::Null => write!(f, "null"),
-            },
             Self::String => write!(f, "string"),
+            Self::Literal(literal) => write!(f, "{}", literal),
             // ETC
             Self::Illegal => write!(f, "ILLEGAL"),
             Self::EOF => write!(f, "EOF"),

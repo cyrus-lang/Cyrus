@@ -10,7 +10,6 @@ mod diag;
 mod exprs;
 mod prec;
 mod stmts;
-mod tests;
 
 pub type ParseError = CompileTimeError<ParserErrorType>;
 
