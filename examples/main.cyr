@@ -1,14 +1,8 @@
 extern fn printf(format: const char*, ...);
 
 fn main() {
-    #a = 10;
-    #value: void* = &a;
-    #intptr_value = (uintptr) value;
+    #a: uint32 = 10;
+    #b: int32 = -3;
 
-    printf("value: %x\n", intptr_value);
-
-    #pointer = (int*) intptr_value;
-    *pointer = 200;
-    
-    printf("value: %d\n", *pointer);
+    printf("value: %d\n", a > b);
 }

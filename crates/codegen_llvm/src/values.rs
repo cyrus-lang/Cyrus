@@ -412,6 +412,27 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    fn int_to_float_cast(
+        &self,
+        value: inkwell::values::IntValue<'ctx>,
+        value_ty: InternalType,
+        target_float_ty: inkwell::types::FloatType<'ctx>,
+    ) -> inkwell::values::FloatValue<'ctx> {
+        if let InternalType::IntType(internal_int_type) = value_ty {
+            if self.is_integer_signed(internal_int_type.int_kind) {
+                self.builder
+                    .build_signed_int_to_float(value, target_float_ty, "cast")
+                    .unwrap()
+            } else {
+                self.builder
+                    .build_unsigned_int_to_float(value, target_float_ty, "cast")
+                    .unwrap()
+            }
+        } else {
+            unreachable!()
+        }
+    }
+
     pub(crate) fn bin_op_add<'a>(
         &self,
         left_value: InternalValue<'a>,
@@ -424,21 +445,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
                 InternalValue::BoolValue(self.builder.build_int_add(left, right, "add").unwrap(), left_ty),
             ),
-            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
-                let right = self
-                    .builder
-                    .build_signed_int_to_float(right, left.get_type(), "cast")
-                    .unwrap();
+            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, right_ty)) => {
+                let right = self.int_to_float_cast(right, right_ty, left.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_add(left, right, "add").unwrap(),
                     left_ty,
                 ))
             }
-            (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, right_ty)) => {
-                let left = self
-                    .builder
-                    .build_signed_int_to_float(left, right.get_type(), "cast")
-                    .unwrap();
+            (InternalValue::IntValue(left, left_ty), InternalValue::FloatValue(right, right_ty)) => {
+                let left = self.int_to_float_cast(left, left_ty, right.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_add(left, right, "add").unwrap(),
                     right_ty,
@@ -466,23 +481,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
                 InternalValue::BoolValue(self.builder.build_int_sub(left, right, "sub").unwrap(), left_ty),
             ),
-            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
-                let right = self
-                    .builder
-                    .build_signed_int_to_float(right, left.get_type(), "cast")
-                    .unwrap();
-
+            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, right_ty)) => {
+                let right = self.int_to_float_cast(right, right_ty, left.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_sub(left, right, "sub").unwrap(),
                     left_ty,
                 ))
             }
-            (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, right_ty)) => {
-                let left = self
-                    .builder
-                    .build_signed_int_to_float(left, right.get_type(), "cast")
-                    .unwrap();
-
+            (InternalValue::IntValue(left, left_ty), InternalValue::FloatValue(right, right_ty)) => {
+                let left = self.int_to_float_cast(left, left_ty, right.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_sub(left, right, "sub").unwrap(),
                     right_ty,
@@ -510,21 +517,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
                 InternalValue::BoolValue(self.builder.build_int_mul(left, right, "mul").unwrap(), left_ty),
             ),
-            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
-                let right = self
-                    .builder
-                    .build_signed_int_to_float(right, left.get_type(), "cast")
-                    .unwrap();
+            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, right_ty)) => {
+                let right = self.int_to_float_cast(right, right_ty, left.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_mul(left, right, "mul").unwrap(),
                     left_ty,
                 ))
             }
-            (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, right_ty)) => {
-                let left = self
-                    .builder
-                    .build_signed_int_to_float(left, right.get_type(), "cast")
-                    .unwrap();
+            (InternalValue::IntValue(left, left_ty), InternalValue::FloatValue(right, right_ty)) => {
+                let left = self.int_to_float_cast(left, left_ty, right.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_mul(left, right, "mul").unwrap(),
                     right_ty,
@@ -552,21 +553,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
                 InternalValue::BoolValue(self.builder.build_int_signed_div(left, right, "div").unwrap(), left_ty),
             ),
-            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
-                let right = self
-                    .builder
-                    .build_signed_int_to_float(right, left.get_type(), "cast")
-                    .unwrap();
+            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, right_ty)) => {
+                let right = self.int_to_float_cast(right, right_ty, left.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_div(left, right, "div").unwrap(),
                     left_ty,
                 ))
             }
-            (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, right_ty)) => {
-                let left = self
-                    .builder
-                    .build_signed_int_to_float(left, right.get_type(), "cast")
-                    .unwrap();
+            (InternalValue::IntValue(left, left_ty), InternalValue::FloatValue(right, right_ty)) => {
+                let left = self.int_to_float_cast(left, left_ty, right.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_div(left, right, "div").unwrap(),
                     right_ty,
@@ -594,21 +589,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalValue::IntValue(left, left_ty), InternalValue::IntValue(right, _)) => Ok(
                 InternalValue::BoolValue(self.builder.build_int_signed_rem(left, right, "rem").unwrap(), left_ty),
             ),
-            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, _)) => {
-                let right = self
-                    .builder
-                    .build_signed_int_to_float(right, left.get_type(), "cast")
-                    .unwrap();
+            (InternalValue::FloatValue(left, left_ty), InternalValue::IntValue(right, right_ty)) => {
+                let right = self.int_to_float_cast(right, right_ty, left.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_rem(left, right, "rem").unwrap(),
                     left_ty,
                 ))
             }
-            (InternalValue::IntValue(left, _), InternalValue::FloatValue(right, right_ty)) => {
-                let left = self
-                    .builder
-                    .build_signed_int_to_float(left, right.get_type(), "cast")
-                    .unwrap();
+            (InternalValue::IntValue(left, left_ty), InternalValue::FloatValue(right, right_ty)) => {
+                let left = self.int_to_float_cast(left, left_ty, right.get_type());
                 Ok(InternalValue::FloatValue(
                     self.builder.build_float_rem(left, right, "rem").unwrap(),
                     right_ty,
@@ -705,6 +694,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    // ANCHOR
+    // FIXME Refactor signed/unsigned comparisons
+
     pub(crate) fn bin_op_le<'a>(
         &self,
         left_value: InternalValue<'a>,
@@ -714,7 +706,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => {
+                Ok(InternalValue::BoolValue(
                 self.builder
                     .build_int_compare(IntPredicate::SLE, left, right, "cmp_le")
                     .unwrap(),
@@ -722,7 +715,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     type_str: "bool".to_string(),
                     bool_type: self.context.bool_type(),
                 }),
-            )),
+            ))
+            },
             (InternalValue::FloatValue(left, _), InternalValue::IntValue(right, _)) => {
                 let right = self
                     .builder
