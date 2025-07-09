@@ -25,10 +25,10 @@ use utils::fs::ensure_output_dir;
 use utils::fs::executable_extension;
 use utils::generate_random_hex::generate_random_hex;
 
-const SOURCES_DIR_PATH: &str = "build/sources";
-const OBJECTS_FILENAME: &str = "build/obj";
+const SOURCES_DIR_PATH: &str = "sources";
+const OBJECTS_FILENAME: &str = "obj";
 const MANIFEST_FILENAME: &str = "manifest.json";
-const OUTPUT_FILENAME: &str = "build/output";
+const OUTPUT_FILENAME: &str = "output";
 
 #[derive(Debug, Clone)]
 pub enum OutputKind {
@@ -195,6 +195,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    fn get_sanitized_project_name(&self, file_path: &str) -> String {
+        let project_name = if let Some(file_name) = &self.opts.project_name {
+            file_name.clone()
+        } else {
+            file_path.to_string()
+        };
+
+        Path::new(&project_name)
+            .file_stem()
+            .unwrap_or_else(|| {
+                eprintln!("Warning: Could not determine file stem for project name. Using a default.");
+                std::ffi::OsStr::new("default")
+            })
+            .to_str()
+            .unwrap_or_else(|| {
+                eprintln!("Warning: Project name contains invalid Unicode. Using a default.");
+                "default"
+            })
+            .replace('.', "_")
+            .replace('-', "_")
+            .replace('/', "")
+            .to_string()
+    }
+
     pub fn generate_executable_file(&self, output_path: Option<String>) {
         let object_files: Vec<String> = self.build_manifest.objects.values().cloned().collect();
 
@@ -213,21 +237,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                ensure_output_dir(Path::new(OUTPUT_FILENAME));
-                format!("{}/{}", OUTPUT_FILENAME, {
-                    if let Some(file_name) = &self.opts.project_name {
-                        file_name.clone()
-                    } else {
-                        Path::new(&self.file_path)
-                            .file_stem()
-                            .unwrap()
-                            .to_str()
-                            .unwrap()
-                            .replace(".", "_")
-                            .replace("/", "")
-                            .to_string()
-                    }
-                })
+                let executable_output_dir = format!("{}/{}", self.final_build_dir.clone(), OUTPUT_FILENAME);
+                ensure_output_dir(Path::new(&executable_output_dir));
+                let sanitized_project_name = self.get_sanitized_project_name(&self.file_path);
+                format!("{}/{}", executable_output_dir, sanitized_project_name)
             }
         };
 
@@ -460,7 +473,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn source_code_changed(&mut self, build_dir: String) -> bool {
-        let output_dir = SOURCES_DIR_PATH.to_string();
+        let output_dir = format!("{}/{}", self.final_build_dir.clone(), SOURCES_DIR_PATH);
         let current_hash = self.hash_source_code();
         let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
@@ -498,6 +511,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let rng = rand::rng();
         let random_hex: String = rng.sample_iter(&Alphanumeric).take(30).map(char::from).collect();
         let output_file = format!("{}/{}", output_dir, random_hex);
+
         File::create_new(output_file.clone())
             .unwrap()
             .write(hash_str.as_bytes())

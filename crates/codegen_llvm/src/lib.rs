@@ -1,3 +1,4 @@
+use crate::opts::BuildDir;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 use ast::ast::*;
 use ast::token::Location;
@@ -32,6 +33,7 @@ mod enums;
 mod exprs;
 mod funcs;
 mod internals;
+mod intrinsics;
 mod modules;
 pub mod opts;
 mod runtime;
@@ -42,7 +44,6 @@ mod structs;
 mod tests;
 mod types;
 mod values;
-mod intrinsics;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -90,11 +91,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let final_build_dir = {
             match opts.build_dir.clone() {
-                opts::BuildDir::Default => {
+                BuildDir::Default => {
                     // specify a tmp directory to be used as build_dir
                     env::temp_dir().to_str().unwrap().to_string()
                 }
-                opts::BuildDir::Provided(path) => path,
+                BuildDir::Provided(path) => path,
             }
         };
 

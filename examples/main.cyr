@@ -1,9 +1,5 @@
 extern fn printf(format: const char*, ...);
 
 fn main() {
-    #barr = b"Hello World\n";
-
-    foreach (item in barr) {
-        printf("value: %c", item);
-    }
+    
 }
