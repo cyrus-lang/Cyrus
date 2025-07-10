@@ -19,16 +19,21 @@ impl fmt::Display for Literal {
             LiteralKind::Integer(integer) => write!(f, "{}", integer),
             LiteralKind::Bool(bool) => write!(f, "{}", bool),
             LiteralKind::String(string_type, prefix) => {
-                if let Some(prefix) = prefix {
-                    match prefix {
-                        StringPrefix::C => write!(f, "c"),
-                        StringPrefix::B => write!(f, "b"),
-                    };
-                } 
-                write!(f, "\"{}\"", string_type)
-            }
+                        if let Some(prefix) = prefix {
+                            match prefix {
+                                StringPrefix::C => write!(f, "c")?,
+                                StringPrefix::B => write!(f, "b")?,
+                                StringPrefix::B64 => write!(f, "b64")?,
+                                StringPrefix::X => write!(f, "x")?,
+                            };
+                        }
+                        write!(f, "\"{}\"", string_type)
+                    }
             LiteralKind::Float(float) => write!(f, "{}", float),
             LiteralKind::Char(ch) => write!(f, "{}", ch),
+            LiteralKind::Base64String(bs) => write!(f, "{}", bs),
+            LiteralKind::HexString(hs) => write!(f, "{}", hs),
+            LiteralKind::OctalString(os) => write!(f, "{}", os),
             LiteralKind::Null => write!(f, "null"),
         }
     }

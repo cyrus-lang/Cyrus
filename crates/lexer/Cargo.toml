@@ -8,6 +8,9 @@ ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
 diag = { path = "../diag", version = "*" }
 unicode-segmentation = "1.9.0"
+hex = "*"
+base64 = "*"
+
 
 [lib]
 name = "lexer"

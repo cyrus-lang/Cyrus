@@ -5,6 +5,9 @@ use diag::{LexicalErrorType, lexer_invalid_char_error};
 use std::{fmt::Debug, process::exit};
 use utils::escaping::escape_string;
 
+use base64::{engine::general_purpose, Engine as _};
+use hex;
+
 mod diag;
 mod format;
 
@@ -348,15 +351,24 @@ impl Lexer {
             }
             ';' => TokenKind::Semicolon,
             _ => {
-                if self.ch == 'c' && self.peek_char() == '"' {
-                    self.read_char();
-                    return self.read_string(Some(StringPrefix::C));
+                if self.input[self.pos..].starts_with("b64\"") {
+                    self.read_char(); // 'b'
+                    self.read_char(); // '6'
+                    self.read_char(); // '4'
+                    return self.read_string(Some(StringPrefix::B64));
                 }
-                if self.ch == 'b' && self.peek_char() == '"' {
-                    self.read_char();
+                if self.input[self.pos..].starts_with("x\"") {
+                    self.read_char(); // 'x'
+                    return self.read_string(Some(StringPrefix::X));
+                }
+                 if self.input[self.pos..].starts_with("b\"") {
+                    self.read_char(); // 'b'
                     return self.read_string(Some(StringPrefix::B));
                 }
-                else if self.ch.is_alphabetic() || self.ch == '_' {
+                if self.input[self.pos..].starts_with("c\"") {
+                    self.read_char(); // 'c'
+                    return self.read_string(Some(StringPrefix::C));
+                } else if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_identifier();
                 } else if self.is_numeric(self.ch) {
                     return self.read_number();
@@ -455,19 +467,16 @@ impl Lexer {
 
     fn read_string(&mut self, prefix: Option<StringPrefix>) -> Token {
         let start: usize = self.pos + 1;
+        let start_loc = Location::new(self.line, self.column);
 
-        let mut final_string = String::new();
+        // Consume opening quote
+        self.read_char();
 
+        let mut content = String::new();
         loop {
-            self.read_char();
-
             if self.ch == '"' {
                 break;
-            }
-
-            final_string.push(self.ch);
-
-            if self.is_eof() {
+            } else if self.is_eof() {
                 CompileTimeError {
                     location: Location {
                         line: self.line,
@@ -482,40 +491,111 @@ impl Lexer {
                 .print();
                 exit(1);
             }
-        }
 
-        if self.ch == '"' {
-            // consume the ending double quote
+            content.push(self.ch);
             self.read_char();
         }
 
-        let end = self.pos;
-        let span = Span { start: start - 1, end };
+        let final_string = match &prefix {
+            Some(StringPrefix::X) => {
+                let cleaned = content.replace(|c: char| c.is_whitespace(), "");
+                match hex::decode(&cleaned) {
+                    Ok(bytes) => match String::from_utf8(bytes) {
+                        Ok(bytes) => String::from_utf8(bytes.into()).unwrap_or_default(),
+                        Err(e) => {CompileTimeError {
+                            location: Location::new(self.line, self.column),
+                            source_content: Box::new(self.input.clone()),
+                            etype: LexicalErrorType::InvalidIntegerLiteral, // InvalidHexString
+                            verbose: Some(format!("Invalid UTF-8 sequence: {}", e)),
+                            caret: Some(Span::new(start, self.pos)),
+                            file_name: Some(self.file_name.clone()),
+                        }
+                        .print();
+                        exit(1);
+                        }
+                    },
+                    Err(e) => {
+                        CompileTimeError {
+                            location: Location::new(self.line, self.column),
+                            source_content: Box::new(self.input.clone()),
+                            etype: LexicalErrorType::InvalidIntegerLiteral, // InvalidHexString
+                            verbose: Some(format!("Hex decode error: {}", e)),
+                            caret: Some(Span::new(start, self.pos)),
+                            file_name: Some(self.file_name.clone()),
+                        }
+                        .print();
+                        exit(1);
+                    }
+                }
+            },
+            Some(StringPrefix::B64) => {
+                match general_purpose::STANDARD.decode(&content) {
+                    Ok(bytes) => match String::from_utf8(bytes) {
+                        Ok(bytes) => String::from_utf8(bytes.into()).unwrap_or_default(),
+                        Err(e) => {
+                            CompileTimeError {
+                                location: Location::new(self.line, self.column),
+                                source_content: Box::new(self.input.clone()),
+                                etype: LexicalErrorType::InvalidIntegerLiteral, // InvalidBase64String
+                                verbose: Some(format!("Invalid UTF-8 sequence: {}", e)),
+                                caret: Some(Span::new(start, self.pos)),
+                                file_name: Some(self.file_name.clone()),
+                            }
+                            .print();
+                            exit(1);
+                        }
+                    },
+                    Err(e) => {
+                        CompileTimeError {
+                            location: Location::new(self.line, self.column),
+                            source_content: Box::new(self.input.clone()),
+                            etype: LexicalErrorType::InvalidIntegerLiteral, // InvalidBase64String
+                            verbose: Some(format!("Base64 decode error: {}", e)),
+                            caret: Some(Span::new(start, self.pos)),
+                            file_name: Some(self.file_name.clone()),
+                        }
+                        .print();
+                        exit(1);
+                    }
+                }
+            },
+            _ => escape_string(&content),
+        };
+
+        // Consume closing quote
+        self.read_char();
+
+        let span = Span { start: start, end: self.pos };
 
         Token {
             kind: TokenKind::Literal(Literal {
-                kind: LiteralKind::String(escape_string(&final_string), prefix),
+                kind: LiteralKind::String(final_string, prefix),
                 span: span.clone(),
-                loc: Location::new(self.line, self.column),
+                loc: start_loc.clone(),
             }),
             span,
-            loc: Location::new(self.line, self.column),
+            loc: start_loc,
         }
     }
 
     fn read_identifier(&mut self) -> Token {
         let start = self.pos;
+        let mut ident = String::new();
 
-        let mut final_identifier = String::new();
+        // First character must be alphabetic or underscore
+        if self.ch.is_alphabetic() || self.ch == '_' {
+            ident.push(self.ch);
+            self.read_char();
+        }
 
+        // Subsequent characters can be alphanumeric or underscore
         while self.ch.is_alphanumeric() || self.ch == '_' {
-            final_identifier.push(self.ch);
+            ident.push(self.ch);
             self.read_char();
         }
 
         let end = self.pos;
-
-        let token_kind = self.lookup_identifier(final_identifier);
+        let token_kind = self.lookup_identifier(ident);
 
         Token {
             kind: token_kind,
@@ -530,43 +610,182 @@ impl Lexer {
         let mut is_float = false;
 
         // hexadecimal literals
-        let token_kind = if self.ch == '0' && (self.peek_char().to_ascii_lowercase() == 'x') {
-            number.push('0');
-            self.read_char(); // consume '0'
-            number.push(self.ch);
-            self.read_char(); // consume 'x' or 'X'
+        let token_kind = if self.ch == '0' {
+            match self.peek_char().to_ascii_lowercase() {
+                'x' => {
+                    // Hexadecimal literal (0x...)
+                    number.push('0');
+                    self.read_char(); // consume '0'
+                    number.push(self.ch); // 'x'
+                    self.read_char(); // consume 'x'
 
-            while self.ch.is_ascii_hexdigit() || self.ch == '_' {
-                if self.ch != '_' {
-                    number.push(self.ch);
-                }
-                self.read_char();
-            }
-
-            match i64::from_str_radix(&number[2..], 16) {
-                Ok(value) => TokenKind::Literal(Literal {
-                    kind: LiteralKind::Integer(value),
-                    loc: Location::new(self.line, self.column),
-                    span: Span::new(start, self.column),
-                }),
-                Err(_) => {
-                    CompileTimeError {
-                        location: Location {
-                            line: self.line,
-                            column: self.column,
-                        },
-                        source_content: Box::new(self.input.clone()),
-                        etype: LexicalErrorType::InvalidIntegerLiteral,
-                        verbose: None,
-                        caret: Some(Span::new(start, self.column + 1)),
-                        file_name: Some(self.file_name.clone()),
+                    while self.ch.is_ascii_hexdigit() || self.ch == '_' {
+                        if self.ch != '_' {
+                            number.push(self.ch);
+                        }
+                        self.read_char();
                     }
-                    .print();
-                    exit(1);
+
+                    match i64::from_str_radix(&number[2..], 16) {
+                        Ok(value) => TokenKind::Literal(Literal {
+                            kind: LiteralKind::Integer(value),
+                            loc: Location::new(self.line, self.column),
+                            span: Span::new(start, self.pos),
+                        }),
+                        Err(_) => {
+                            CompileTimeError {
+                                location: Location {
+                                    line: self.line, column: self.column,
+                                },
+                                source_content: Box::new(self.input.clone()),
+                                etype: LexicalErrorType::InvalidIntegerLiteral,
+                                verbose: None,
+                                caret: Some(Span::new(start, self.pos)),
+                                file_name: Some(self.file_name.clone()),
+                            }
+                            .print();
+                            exit(1);
+                        }
+                    }
+                }
+                'o' => {
+                    // Octal literal (0o...)
+                    number.push('0');
+                    self.read_char(); // consume '0'
+                    number.push(self.ch); // 'o'
+                    self.read_char(); // consume 'o'
+
+                    while self.ch.is_digit(8) || self.ch == '_' {
+                        if self.ch != '_' {
+                            number.push(self.ch);
+                        }
+                        self.read_char();
+                    }
+
+                    match i64::from_str_radix(&number[2..], 8) {
+                        Ok(value) => TokenKind::Literal(Literal {
+                            kind: LiteralKind::OctalString(value),
+                            loc: Location::new(self.line, self.column),
+                            span: Span::new(start, self.pos),
+                        }),
+                        Err(_) => {
+                            CompileTimeError {
+                                location: Location {
+                                    line: self.line,
+                                    column: self.column,
+                                },
+                                source_content: Box::new(self.input.clone()),
+                                etype: LexicalErrorType::InvalidIntegerLiteral,
+                                verbose: None,
+                                caret: Some(Span::new(start, self.pos)),
+                                file_name: Some(self.file_name.clone()),
+                            }
+                            .print();
+                            exit(1);
+                        }
+                    }
+                }
+                _ => {
+                    // Regular number starting with 0 (could be decimal or float)
+                    number.push(self.ch);
+                    self.read_char();
+
+                    // Continue with decimal parsing
+                    while self.ch.is_ascii_digit() || self.ch == '_' {
+                        if self.ch != '_' {
+                            number.push(self.ch);
+                        }
+                        self.read_char();
+                    }
+
+                    // Check for decimal point
+                    if self.ch == '.' && self.peek_char().is_ascii_digit() {
+                        is_float = true;
+                        number.push(self.ch);
+                        self.read_char();
+
+                        while self.ch.is_ascii_digit() || self.ch == '_' {
+                            if self.ch != '_' {
+                                number.push(self.ch);
+                            }
+                            self.read_char();
+                        }
+                    }
+
+                    // Check for exponent
+                    if self.ch == 'e' || self.ch == 'E' {
+                        is_float = true;
+                        number.push(self.ch);
+                        self.read_char();
+
+                        if self.ch == '+' || self.ch == '-' {
+                            number.push(self.ch);
+                            self.read_char();
+                        }
+
+                        while self.ch.is_ascii_digit() {
+                            number.push(self.ch);
+                            self.read_char();
+                        }
+                    }
+
+                    // Check for type suffix
+                    if matches!(self.ch, 'f' | 'F' | 'l' | 'L') {
+                        number.push(self.ch);
+                        self.read_char();
+                    }
+
+                    if is_float {
+                        match number.parse::<f64>() {
+                            Ok(value) => TokenKind::Literal(Literal {
+                                kind: LiteralKind::Float(value),
+                                loc: Location::new(self.line, self.column),
+                                span: Span::new(start, self.pos),
+                            }),
+                            Err(_) => {
+                                CompileTimeError {
+                                    location: Location {
+                                        line: self.line,
+                                        column: self.column,
+                                    },
+                                    source_content: Box::new(self.input.clone()),
+                                    etype: LexicalErrorType::InvalidFloatLiteral,
+                                    verbose: None,
+                                    caret: Some(Span::new(start, self.pos)),
+                                    file_name: Some(self.file_name.clone()),
+                                }
+                                .print();
+                                exit(1);
+                            }
+                        }
+                    } else {
+                        match number.parse::<i64>() {
+                            Ok(value) => TokenKind::Literal(Literal {
+                                kind: LiteralKind::Integer(value),
+                                loc: Location::new(self.line, self.column),
+                                span: Span::new(start, self.pos),
+                            }),
+                            Err(_) => {
+                                CompileTimeError {
+                                    location: Location {
+                                        line: self.line,
+                                        column: self.column,
+                                    },
+                                    source_content: Box::new(self.input.clone()),
+                                    etype: LexicalErrorType::InvalidIntegerLiteral,
+                                    verbose: None,
+                                    caret: Some(Span::new(start, self.pos)),
+                                    file_name: Some(self.file_name.clone()),
+                                }
+                                .print();
+                                exit(1);
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            // Match leading digits (optional)
+        }  else {
+            // Regular decimal number not starting with 0
             while self.ch.is_ascii_digit() || self.ch == '_' {
                 if self.ch != '_' {
                     number.push(self.ch);
@@ -574,7 +793,7 @@ impl Lexer {
                 self.read_char();
             }
 
-            // Decimal point and fractional part
+            // Check for decimal point
             if self.ch == '.' && self.peek_char().is_ascii_digit() {
                 is_float = true;
                 number.push(self.ch);
@@ -588,7 +807,7 @@ impl Lexer {
                 }
             }
 
-            // Exponent part (e.g., e+10, E-5)
+            // Check for exponent
             if self.ch == 'e' || self.ch == 'E' {
                 is_float = true;
                 number.push(self.ch);
@@ -605,6 +824,7 @@ impl Lexer {
                 }
             }
 
+            // Check for type suffix
             if matches!(self.ch, 'f' | 'F' | 'l' | 'L') {
                 number.push(self.ch);
                 self.read_char();
@@ -615,7 +835,7 @@ impl Lexer {
                     Ok(value) => TokenKind::Literal(Literal {
                         kind: LiteralKind::Float(value),
                         loc: Location::new(self.line, self.column),
-                        span: Span::new(start, self.column),
+                        span: Span::new(start, self.pos),
                     }),
                     Err(_) => {
                         CompileTimeError {
