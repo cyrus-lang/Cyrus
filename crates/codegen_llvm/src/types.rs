@@ -2,6 +2,7 @@ use crate::CodeGenLLVM;
 use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
+use crate::modules::DefinitionLookupResult;
 use crate::structs::StructMetadata;
 use crate::structs::UnnamedStructTypeMetadata;
 use crate::values::Lvalue;
@@ -9,6 +10,7 @@ use crate::values::TypedPointerValue;
 use ast::ast::ArrayCapacity;
 use ast::ast::ArrayTypeSpecifier;
 use ast::ast::ModuleImport;
+use ast::ast::ModulePath;
 use ast::ast::ModuleSegment;
 use ast::ast::TypeSpecifier;
 use ast::token::*;
@@ -455,34 +457,44 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> DefinedType<'ctx> {
-        if module_import.segments.len() == 1 {
-            let first_segment = module_import.segments[0].clone();
-            
-            todo!();
-            // FIXME
-            // let ast::ast::ModuleSegment::SubModule(identifier) = first_segment;
+        let module_id = self.build_module_id(ModulePath {
+            alias: None,
+            segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
+            loc: Location::default(),
+            span: Span::default(),
+        });
 
-            // match self.struct_table.get(&identifier.name.clone()) {
-            //     Some(internal_struct_type) => DefinedType::Struct(internal_struct_type.clone()),
-            //     None => {
-            //         // TODO Lookup in typedef table
+        let module_metadata = match self.find_imported_module(module_id.clone()) {
+            Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::ModuleNotFound(module_id),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
-            //         display_single_diag(Diag {
-            //             level: DiagLevel::Error,
-            //             kind: DiagKind::UndefinedDataType(identifier.name),
-            //             location: Some(DiagLoc {
-            //                 file: self.file_path.clone(),
-            //                 line: loc.line,
-            //                 column: loc.column,
-            //                 length: span_end,
-            //             }),
-            //         });
-            //         exit(1);
-            //     }
-            // }
-        } else {
-            // TODO
-            todo!("Implement module import for find_type");
+        let name = match module_import.segments.last().unwrap() {
+            ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+            ModuleSegment::Single(_) => unreachable!(), // singles never achieve at this point
+        };
+
+        match self.lookup_from_module_metadata(name, module_metadata, loc, span_end) {
+            DefinitionLookupResult::Func(func_metadata) => {
+                // TODO Implement func_type as data type
+                // FIXME
+                panic!("Cannot use function as a data type.");
+            },
+            DefinitionLookupResult::Struct(internal_struct_type) => {
+                DefinedType::Struct(internal_struct_type)
+            },
         }
     }
 

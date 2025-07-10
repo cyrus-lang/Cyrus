@@ -102,6 +102,40 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn lookup_from_module_metadata(
+        &self,
+        name: String,
+        module_metadata: ModuleMetadata<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> DefinitionLookupResult<'ctx> {
+        match match module_metadata.func_table.get(&name) {
+            Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
+            None => match module_metadata.struct_table.get(&name) {
+                Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
+                None => None,
+            },
+        } {
+            Some(lookup_result) => lookup_result,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Couldn't find anything with '{}' identifier in module '{}'.",
+                        name, module_metadata.identifier
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+    }
+
     pub(crate) fn find_imported_module(&self, module_id: String) -> Option<ImportedModuleMetadata<'ctx>> {
         self.imported_modules
             .iter()
@@ -334,47 +368,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) {
-        let sub_codegen_rc = match self.find_imported_module(module_id.clone()) {
-            Some(imported_module_metadata) => imported_module_metadata.sub_codegen,
+        // REVIEW
+        let (sub_codegen_rc, module_metadata) = match self.find_imported_module(module_id.clone()) {
+            Some(imported_module_metadata) => (
+                imported_module_metadata.sub_codegen,
+                imported_module_metadata.metadata.clone(),
+            ),
             None => panic!("Couldn't lookup imported module in codegen."),
         };
 
         let sub_codegen = sub_codegen_rc.borrow_mut();
         for single in module_segment_singles {
-            let definition_lookup_result = match sub_codegen.func_table.get(&single.identifier.name) {
-                Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
-                None => match sub_codegen.struct_table.get(&single.identifier.name) {
-                    Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
-                    None => None,
-                },
-            };
+            let lookup_result = self.lookup_from_module_metadata(
+                single.identifier.name,
+                module_metadata.clone(),
+                loc.clone(),
+                span_end,
+            );
 
-            match definition_lookup_result {
-                Some(lookup_result) => match lookup_result {
-                    DefinitionLookupResult::Func(mut func_metadata) => {
-                        func_metadata.imported_from = Some(module_path.clone());
-                        let (func_name, func_metadata) =
-                            self.build_decl_imported_func(module_id.clone(), func_metadata);
-                        self.func_table.insert(func_name, func_metadata);
-                    }
-                    DefinitionLookupResult::Struct(internal_struct_type) => todo!(),
-                },
-                None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(format!(
-                            "Couldn't find anything with '{}' identifier in module '{}'.",
-                            single.identifier.clone(),
-                            module_id
-                        )),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
+            match lookup_result {
+                DefinitionLookupResult::Func(mut func_metadata) => {
+                    func_metadata.imported_from = Some(module_path.clone());
+                    let (func_name, func_metadata) = self.build_decl_imported_func(module_id.clone(), func_metadata);
+                    self.func_table.insert(func_name, func_metadata);
+                }
+                DefinitionLookupResult::Struct(internal_struct_type) => {
+                    let struct_name = {
+                        match internal_struct_type
+                            .struct_metadata
+                            .struct_name
+                            .segments
+                            .last()
+                            .unwrap()
+                        {
+                            ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+                            ModuleSegment::Single(_) => unreachable!(),
+                        }
+                    };
+                    dbg!(struct_name.clone());
+                    self.struct_table.insert(struct_name, internal_struct_type.clone());
                 }
             }
         }
@@ -426,14 +458,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         imported_funcs
     }
 
-    // TODO Implement import struct methods
     fn build_imported_structs(&self, struct_table: StructTable<'ctx>) -> HashMap<String, InternalStructType<'ctx>> {
         let mut imported_structs: HashMap<String, InternalStructType> = HashMap::new();
-
         for (_, (struct_name, metadata)) in struct_table.iter().enumerate() {
             imported_structs.insert(struct_name.clone(), metadata.clone());
         }
-
         imported_structs
     }
 
