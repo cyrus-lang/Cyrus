@@ -122,7 +122,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Statement::FuncDef(func_def) => {
                 if func_def.name == "main" {
-                    // entry_point gonna be evaluated in the final step of code generation
+                    // entry_point gonna be compile in the final step of code generation
                     // that is why here we store it in the context
                     if self.entry_point.is_some() {
                         display_single_diag(Diag {

@@ -380,7 +380,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let actual_func_name = func_decl.name.clone();
+        let module_id = self.module.borrow().get_name().to_str().unwrap().to_string();
+        let actual_func_name = if self.is_current_module_entry_point() {
+            func_decl.name.clone()
+        } else {
+            self.generate_abi_name(module_id, func_decl.name.clone())
+        };
 
         let func_linkage: Option<Linkage> = if !is_entry_point {
             Some(self.build_func_linkage(func_def.storage_class.clone()))
@@ -749,7 +754,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 InternalValue::ModuleValue(module_metadata) => {
                     if let Expression::ModuleImport(module_import) = *func_call.operand.clone() {
                         let module_import_str = module_segments_as_string(module_import.segments.clone());
-                        let ModuleSegment::SubModule(func_name) = module_import.segments.last().unwrap();
+                        let func_name = match module_import.segments.last().unwrap() {
+                            ModuleSegment::SubModule(identifier) => identifier.clone(),
+                            ModuleSegment::Single(_) => unreachable!(),
+                        };
 
                         match module_metadata.func_table.get(&func_name.name) {
                             Some(func_metadata) => {

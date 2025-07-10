@@ -457,26 +457,29 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> DefinedType<'ctx> {
         if module_import.segments.len() == 1 {
             let first_segment = module_import.segments[0].clone();
-            let ast::ast::ModuleSegment::SubModule(identifier) = first_segment;
+            
+            todo!();
+            // FIXME
+            // let ast::ast::ModuleSegment::SubModule(identifier) = first_segment;
 
-            match self.struct_table.get(&identifier.name.clone()) {
-                Some(internal_struct_type) => DefinedType::Struct(internal_struct_type.clone()),
-                None => {
-                    // TODO Lookup in typedef table
+            // match self.struct_table.get(&identifier.name.clone()) {
+            //     Some(internal_struct_type) => DefinedType::Struct(internal_struct_type.clone()),
+            //     None => {
+            //         // TODO Lookup in typedef table
 
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::UndefinedDataType(identifier.name),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
-                }
-            }
+            //         display_single_diag(Diag {
+            //             level: DiagLevel::Error,
+            //             kind: DiagKind::UndefinedDataType(identifier.name),
+            //             location: Some(DiagLoc {
+            //                 file: self.file_path.clone(),
+            //                 line: loc.line,
+            //                 column: loc.column,
+            //                 length: span_end,
+            //             }),
+            //         });
+            //         exit(1);
+            //     }
+            // }
         } else {
             // TODO
             todo!("Implement module import for find_type");

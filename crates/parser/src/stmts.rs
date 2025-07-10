@@ -371,11 +371,31 @@ impl<'a> Parser<'a> {
                 if self.current_token_is(TokenKind::LeftBrace) {
                     self.next_token();
 
-                    let mut singles: Vec<Identifier> = Vec::new();
+                    let mut singles: Vec<ModuleSegmentSingle> = Vec::new();
 
                     while !self.current_token_is(TokenKind::RightBrace) {
-                        singles.push(self.parse_identifier()?);
+                        // enable aliasing features for a single
+                        let first_identifier = self.parse_identifier()?;
                         self.next_token();
+
+                        if self.current_token_is(TokenKind::Colon) {
+                            self.next_token(); // consume colon
+
+                            let second_identifier = self.parse_identifier()?;
+                            self.next_token();
+
+                            let renamed_single = ModuleSegmentSingle {
+                                name: second_identifier,
+                                renamed: Some(first_identifier),
+                            };
+                            singles.push(renamed_single);
+                        } else {
+                            let single = ModuleSegmentSingle {
+                                name: first_identifier,
+                                renamed: None,
+                            };
+                            singles.push(single);
+                        }
 
                         if !self.current_token_is(TokenKind::RightBrace) {
                             self.expect_current(TokenKind::Comma)?;

@@ -45,7 +45,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.loaded_modules.iter().find(|m| m.identifier == module_id).cloned()
     }
 
-    fn build_import_module_path(&mut self, mut segments: Vec<ModuleSegment>, loc: Location, span_end: usize) -> String {
+    fn build_import_module_path(&mut self, segments: Vec<ModuleSegment>, loc: Location, span_end: usize) -> String {
         let sources = &self.opts.sources_dir;
         let segments_str = module_segments_as_string(segments.clone());
 
@@ -67,6 +67,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             if segments.len() - 1 > idx {
                                 let next_segment_identifier = match &segments[idx + 1] {
                                     ModuleSegment::SubModule(identifier) => identifier,
+                                    ModuleSegment::Single(module_segment_singles) => {
+                                        dbg!(module_segment_singles.clone());
+                                        todo!()
+                                    }
                                 };
 
                                 display_single_diag(Diag {
@@ -107,6 +111,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         },
                     }
                 }
+                ModuleSegment::Single(module_segment_singles) => {
+                    todo!();
+                }
             }
         }
 
@@ -131,11 +138,29 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_module_id(&self, module_path: ModulePath) -> String {
-        module_path.alias.unwrap_or({
-            match module_path.segments.last().unwrap() {
-                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+        match module_path.segments.last().unwrap() {
+            ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
+            ModuleSegment::Single(_) => {
+                if module_path.alias.is_some() {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(
+                            "Cannot rename imported module when you considered to import singles.".to_string(),
+                        ),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: module_path.loc.line,
+                            column: module_path.loc.column,
+                            length: module_path.span.end,
+                        }),
+                    });
+                    exit(1);
+                } else {
+                    // import singles are handled in a different manner.
+                    unreachable!();
+                }
             }
-        })
+        }
     }
 
     fn check_import_twice(&self, module_id: String, module_path: ModulePath) {
@@ -235,7 +260,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                 // function naming collisions fix happens here
                 new_metadata.func_decl.renamed_as = Some(metadata.func_decl.name.clone());
-                new_metadata.func_decl.name = self.generate_abi_name(module_id.clone(), new_metadata.func_decl.name.clone());
+                new_metadata.func_decl.name =
+                    self.generate_abi_name(module_id.clone(), new_metadata.func_decl.name.clone());
 
                 let param_types = self.build_func_params(
                     metadata.func_decl.name.clone(),

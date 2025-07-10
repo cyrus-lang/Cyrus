@@ -8,7 +8,7 @@ use funcs::FuncTable;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::{Module};
+use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::values::{FunctionValue, PointerValue};
@@ -253,5 +253,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         }
+    }
+
+    pub(crate) fn is_current_module_entry_point(&self) -> bool {
+        self.file_path == self.entry_point_path
     }
 }

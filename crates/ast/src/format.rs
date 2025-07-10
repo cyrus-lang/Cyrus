@@ -69,7 +69,12 @@ impl fmt::Display for ModuleSegment {
             ModuleSegment::Single(singles) => {
                 write!(f, "{{")?;
                 for (idx, item) in singles.iter().enumerate() {
-                    write!(f, "{}", item)?;
+                    if let Some(renamed) = &item.renamed {
+                        write!(f, "{}: ", renamed)?;
+                    }
+
+                    write!(f, "{}", item.name)?;
+
                     if !(singles.len() - 1 == idx) {
                         write!(f, ",")?;
                     }
