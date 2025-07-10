@@ -3,8 +3,7 @@ use crate::scope::{Scope, ScopeRecord, ScopeRef};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
-    Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, FuncVariadicParams, Identifier, ModuleSegment,
-    Return, StorageClass, TypeSpecifier,
+    Expression, FuncCall, FuncDecl, FuncDef, FuncParam, FuncParams, FuncVariadicParams, Identifier, ModulePath, ModuleSegment, Return, StorageClass, TypeSpecifier
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
@@ -24,6 +23,7 @@ pub struct FuncMetadata<'a> {
     pub ptr: FunctionValue<'a>,
     pub func_decl: FuncDecl,
     pub return_type: InternalType<'a>,
+    pub imported_from: Option<ModulePath>
 }
 
 pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
@@ -109,6 +109,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &mut self,
         func_decl: FuncDecl,
         mut func_param_types: Vec<LLVMTypeRef>,
+        insert_to_func_table: bool,
     ) -> FunctionValue<'ctx> {
         let is_var_args = func_decl.params.variadic.is_some();
 
@@ -138,14 +139,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .deref_mut()
             .add_function(&func_decl.name, fn_type, Some(func_linkage));
 
-        self.func_table.insert(
-            func_decl.get_usable_name(),
-            FuncMetadata {
-                func_decl: func_decl.clone(),
-                ptr: func_ptr,
-                return_type,
-            },
-        );
+        if insert_to_func_table {
+            self.func_table.insert(
+                func_decl.get_usable_name(),
+                FuncMetadata {
+                    func_decl: func_decl.clone(),
+                    ptr: func_ptr,
+                    return_type,
+                    imported_from: None
+                },
+            );
+        }
 
         func_ptr
     }
@@ -405,6 +409,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 func_decl,
                 ptr: func_value,
                 return_type: return_type.clone(),
+                imported_from: None
             },
         );
 

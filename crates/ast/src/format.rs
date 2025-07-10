@@ -73,7 +73,7 @@ impl fmt::Display for ModuleSegment {
                         write!(f, "{}: ", renamed)?;
                     }
 
-                    write!(f, "{}", item.name)?;
+                    write!(f, "{}", item.identifier)?;
 
                     if !(singles.len() - 1 == idx) {
                         write!(f, ",")?;

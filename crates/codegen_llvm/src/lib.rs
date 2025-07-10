@@ -1,3 +1,4 @@
+use crate::modules::ImportedModuleMetadata;
 use crate::opts::BuildDir;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 use ast::ast::*;
@@ -13,7 +14,6 @@ use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::values::{FunctionValue, PointerValue};
 use inkwell::{AddressSpace, OptimizationLevel};
-use modules::ModuleMetadata;
 use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
@@ -59,18 +59,18 @@ pub struct CodeGenLLVM<'ctx> {
     reporter: DiagReporter,
     entry_point: Option<FuncDef>,
     entry_point_path: String,
-    func_table: FuncTable<'ctx>,
-    struct_table: StructTable<'ctx>,
     compiler_invoked_single: bool,
     current_func_ref: Option<FunctionValue<'ctx>>,
     current_block_ref: Option<BasicBlock<'ctx>>,
     terminated_blocks: Vec<TerminatedBlockMetadata<'ctx>>,
     current_loop_ref: Option<LoopBlockRefs<'ctx>>,
-    string_type: InternalStringType<'ctx>,
-    loaded_modules: Vec<ModuleMetadata<'ctx>>,
     dependent_modules: HashMap<String, Vec<String>>,
     output_kind: OutputKind,
     final_build_dir: String,
+    string_type: InternalStringType<'ctx>,
+    func_table: FuncTable<'ctx>,
+    struct_table: StructTable<'ctx>,
+    imported_modules: Vec<ImportedModuleMetadata<'ctx>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -121,7 +121,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             string_type: CodeGenLLVM::build_string_type(context),
             module: module.clone(),
             module_name: module_name.clone(),
-            loaded_modules: Vec::new(),
+            imported_modules: Vec::new(),
             dependent_modules: HashMap::new(),
             output_kind,
         };

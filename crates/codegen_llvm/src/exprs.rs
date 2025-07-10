@@ -176,9 +176,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         span: module_import.span.clone(),
                     });
 
-                    match self.find_loaded_module(module_id.clone()) {
-                        Some(metadata) => {
-                            return InternalValue::ModuleValue(metadata);
+                    match self.find_imported_module(module_id.clone()) {
+                        Some(imported_module_metadata) => {
+                            return InternalValue::ModuleValue(imported_module_metadata.metadata.clone());
                         }
                         None => {
                             display_single_diag(Diag {

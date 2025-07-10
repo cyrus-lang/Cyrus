@@ -16,41 +16,106 @@ use std::{cell::RefCell, collections::HashMap, path::Path, process::exit, rc::Rc
 use utils::fs::find_file_from_sources;
 
 #[derive(Debug, Clone)]
-pub struct ModuleMetadata<'ctx> {
+pub struct ModuleMetadata<'a> {
     pub identifier: String,
     pub file_path: String,
-    pub module: Rc<RefCell<Module<'ctx>>>,
-    pub func_table: HashMap<String, FuncMetadata<'ctx>>,
-    pub struct_table: HashMap<String, InternalStructType<'ctx>>,
+    pub module: Rc<RefCell<Module<'a>>>,
+    pub func_table: HashMap<String, FuncMetadata<'a>>,
+    pub struct_table: HashMap<String, InternalStructType<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum DefinitionLookupResult<'a> {
+    Func(FuncMetadata<'a>),
+    Struct(InternalStructType<'a>),
+}
+
+#[derive(Clone)]
+pub(crate) struct ImportedModuleMetadata<'a> {
+    pub metadata: ModuleMetadata<'a>,
+    pub sub_codegen: Rc<RefCell<CodeGenLLVM<'a>>>,
+}
+
+#[derive(Clone)]
+pub(crate) struct GeneratedModuleImportPath {
+    file_path: String,
+    module_path: ModulePath,
+    singles: Option<Vec<ModuleSegmentSingle>>,
+    loc: Location,
+    span_end: usize,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn rebuild_dependent_modules(&mut self) {
-        if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
-            for file_path in module_deps {
-                // skip for rebuilding entry_point module
-                let module_metadata = self
-                    .loaded_modules
-                    .iter()
-                    .find(|m| *m.file_path == *file_path)
-                    .cloned()
-                    .expect("Failed to get a loaded module by it's file path.");
-
-                dbg!(module_metadata.identifier.clone());
+    pub(crate) fn build_module_id(&self, module_path: ModulePath) -> String {
+        match module_path.segments.last().unwrap() {
+            ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
+            ModuleSegment::Single(_) => {
+                if module_path.alias.is_some() {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(
+                            "Cannot rename imported module when you considered to import singles.".to_string(),
+                        ),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: module_path.loc.line,
+                            column: module_path.loc.column,
+                            length: module_path.span.end,
+                        }),
+                    });
+                    exit(1);
+                } else {
+                    match module_path.segments.iter().nth_back(1).unwrap() {
+                        ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
+                        ModuleSegment::Single(_) => unreachable!(),
+                    }
+                }
             }
         }
     }
 
-    pub(crate) fn find_loaded_module(&self, module_id: String) -> Option<ModuleMetadata<'ctx>> {
-        self.loaded_modules.iter().find(|m| m.identifier == module_id).cloned()
+    fn error_if_module_already_loaded(&self, module_id: String, module_path: ModulePath) {
+        if let Some(_) = self.find_imported_module(module_id.clone()) {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Cannot import module '{}' twice.",
+                    module_segments_as_string(module_path.segments)
+                )),
+                location: None,
+            });
+            exit(1);
+        }
     }
 
-    fn build_import_singles(&self, module_segment_singles: Vec<ModuleSegmentSingle>) {
-        println!("implement module_segment_singles\n");
-        // for single in  module_segment_singles {}
+    pub(crate) fn rebuild_dependent_modules(&mut self) {
+        if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
+            for file_path in module_deps {
+                // skip for rebuilding entry_point module
+                let imported_module_metadata = self
+                    .imported_modules
+                    .iter()
+                    .find(|m| *m.metadata.file_path == *file_path)
+                    .cloned()
+                    .expect("Failed to get a loaded module by it's file path.");
+            }
+        }
     }
 
-    fn build_import_module_path(&mut self, segments: Vec<ModuleSegment>, loc: Location, span_end: usize) -> String {
+    pub(crate) fn find_imported_module(&self, module_id: String) -> Option<ImportedModuleMetadata<'ctx>> {
+        self.imported_modules
+            .iter()
+            .find(|m| m.metadata.identifier == module_id)
+            .cloned()
+    }
+
+    fn build_import_module_path(
+        &mut self,
+        module_path: ModulePath,
+        segments: Vec<ModuleSegment>,
+        loc: Location,
+        span_end: usize,
+    ) -> GeneratedModuleImportPath {
         let sources = &self.opts.sources_dir;
         let segments_str = module_segments_as_string(segments.clone());
 
@@ -113,9 +178,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         },
                     }
                 }
-                ModuleSegment::Single(module_segment_singles) => {
-                    self.build_import_singles(module_segment_singles.clone());
-                    return self.build_import_module_path(segments[0..(segments.len() - 1)].to_vec(), loc, span_end);
+                ModuleSegment::Single(module_segment_single) => {
+                    let file_path = self
+                        .build_import_module_path(
+                            module_path.clone(),
+                            segments[0..(segments.len() - 1)].to_vec(),
+                            loc.clone(),
+                            span_end,
+                        )
+                        .file_path;
+
+                    return GeneratedModuleImportPath {
+                        file_path,
+                        module_path: module_path.clone(),
+                        singles: Some(module_segment_single.clone()),
+                        loc: loc.clone(),
+                        span_end,
+                    };
                 }
             }
         }
@@ -137,78 +216,47 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        module_file_path
-    }
-
-    pub(crate) fn build_module_id(&self, module_path: ModulePath) -> String {
-        match module_path.segments.last().unwrap() {
-            ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
-            ModuleSegment::Single(_) => {
-                if module_path.alias.is_some() {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(
-                            "Cannot rename imported module when you considered to import singles.".to_string(),
-                        ),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: module_path.loc.line,
-                            column: module_path.loc.column,
-                            length: module_path.span.end,
-                        }),
-                    });
-                    exit(1);
-                } else {
-                    match module_path.segments.iter().nth_back(1).unwrap() {
-                        ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
-                        ModuleSegment::Single(_) => unreachable!(),
-                    }
-                }
-            }
-        }
-    }
-
-    fn error_if_module_already_loaded(&self, module_id: String, module_path: ModulePath) {
-        if let Some(_) = self.find_loaded_module(module_id.clone()) {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!(
-                    "Cannot import module '{}' twice.",
-                    module_segments_as_string(module_path.segments)
-                )),
-                location: None,
-            });
-            exit(1);
+        GeneratedModuleImportPath {
+            file_path: module_file_path,
+            module_path,
+            singles: None,
+            loc,
+            span_end,
         }
     }
 
     pub(crate) fn build_import(&mut self, import: Import) {
         for module_path in import.paths.clone() {
             let module_id = self.build_module_id(module_path.clone());
-            let file_path =
-                self.build_import_module_path(module_path.segments.clone(), import.loc.clone(), import.span.end);
+
+            let generated_module_import_path = self.build_import_module_path(
+                module_path.clone(),
+                module_path.segments.clone(),
+                import.loc.clone(),
+                import.span.end,
+            );
 
             self.error_if_module_already_loaded(module_id.clone(), module_path);
-            self.build_imported_module(file_path.clone(), module_id);
+            self.build_imported_module(module_id, generated_module_import_path);
         }
     }
 
-    fn build_imported_module(&mut self, file_path: String, module_id: String) -> ModuleMetadata<'ctx> {
+    fn build_imported_module(&mut self, module_id: String, generated_module_import_path: GeneratedModuleImportPath) {
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_id)));
         let sub_builder = self.context.create_builder();
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&sub_module));
-        let program = parser::parse_program(file_path.clone()).0;
+        let program = parser::parse_program(generated_module_import_path.file_path.clone()).0;
 
-        let mut sub_codegen = CodeGenLLVM {
+        let sub_codegen = Rc::new(RefCell::new(CodeGenLLVM {
             program,
             opts: self.opts.clone(),
-            context: self.context,
+            context: &self.context,
             module: Rc::clone(&sub_module),
             module_name: module_id.clone(),
             builder: sub_builder,
             target_machine,
             build_manifest: BuildManifest::default(),
-            file_path: file_path.clone(),
+            file_path: generated_module_import_path.file_path.clone(),
             reporter: self.reporter.clone(),
             entry_point: None,
             entry_point_path: self.entry_point_path.clone(),
@@ -219,34 +267,150 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_block_ref: None,
             terminated_blocks: Vec::new(),
             string_type: self.string_type.clone(),
-            loaded_modules: Vec::new(),
+            imported_modules: Vec::new(),
             dependent_modules: HashMap::new(),
             output_kind: self.output_kind.clone(),
             final_build_dir: self.final_build_dir.clone(),
             current_loop_ref: None,
-        };
+        }));
+
+        let mut sub_codegen_ref = sub_codegen.borrow_mut();
 
         // preventing entry_point of being in dependent_modules
         if self.file_path != self.entry_point_path {
-            sub_codegen
-                .dependent_modules
-                .insert(file_path.clone(), vec![self.file_path.clone()]);
+            sub_codegen_ref.dependent_modules.insert(
+                generated_module_import_path.file_path.clone(),
+                vec![self.file_path.clone()],
+            );
         }
 
-        sub_codegen.compile();
-        self.build_manifest = sub_codegen.build_manifest.clone();
+        sub_codegen_ref.compile();
+        self.build_manifest = sub_codegen_ref.build_manifest.clone();
 
-        let module_metadata = ModuleMetadata {
-            module: Rc::clone(&sub_module),
-            func_table: self.build_imported_funcs(sub_codegen.func_table, module_id.clone()),
-            struct_table: self.build_imported_structs(sub_codegen.struct_table),
-            identifier: module_id,
-            file_path,
+        if let Some(module_segment_singles) = generated_module_import_path.singles.clone() {
+            let module_metadata = ModuleMetadata {
+                module: Rc::clone(&sub_module),
+                func_table: sub_codegen_ref.func_table.clone(),
+                struct_table: sub_codegen_ref.struct_table.clone(),
+                identifier: module_id.clone(),
+                file_path: generated_module_import_path.file_path,
+            };
+
+            self.imported_modules.push(ImportedModuleMetadata {
+                metadata: module_metadata.clone(),
+                sub_codegen: Rc::clone(&sub_codegen),
+            });
+
+            drop(sub_codegen_ref);
+
+            self.build_module_import_singles(
+                module_id.clone(),
+                module_segment_singles,
+                generated_module_import_path.module_path.clone(),
+                generated_module_import_path.loc.clone(),
+                generated_module_import_path.span_end,
+            );
+        } else {
+            let module_metadata = ModuleMetadata {
+                module: Rc::clone(&sub_module),
+                func_table: self.build_imported_funcs(sub_codegen_ref.func_table.clone(), module_id.clone()),
+                struct_table: self.build_imported_structs(sub_codegen_ref.struct_table.clone()),
+                identifier: module_id.clone(),
+                file_path: generated_module_import_path.file_path,
+            };
+
+            self.imported_modules.push(ImportedModuleMetadata {
+                metadata: module_metadata.clone(),
+                sub_codegen: Rc::clone(&sub_codegen),
+            });
+        }
+    }
+
+    pub(crate) fn build_module_import_singles(
+        &mut self,
+        module_id: String,
+        module_segment_singles: Vec<ModuleSegmentSingle>,
+        module_path: ModulePath,
+        loc: Location,
+        span_end: usize,
+    ) {
+        let sub_codegen_rc = match self.find_imported_module(module_id.clone()) {
+            Some(imported_module_metadata) => imported_module_metadata.sub_codegen,
+            None => panic!("Couldn't lookup imported module in codegen."),
         };
 
-        self.loaded_modules.push(module_metadata.clone());
+        let sub_codegen = sub_codegen_rc.borrow_mut();
+        for single in module_segment_singles {
+            let definition_lookup_result = match sub_codegen.func_table.get(&single.identifier.name) {
+                Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
+                None => match sub_codegen.struct_table.get(&single.identifier.name) {
+                    Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
+                    None => None,
+                },
+            };
 
-        module_metadata
+            match definition_lookup_result {
+                Some(lookup_result) => match lookup_result {
+                    DefinitionLookupResult::Func(mut func_metadata) => {
+                        func_metadata.imported_from = Some(module_path.clone());
+                        let (func_name, func_metadata) =
+                            self.build_decl_imported_func(module_id.clone(), func_metadata);
+                        self.func_table.insert(func_name, func_metadata);
+                    }
+                    DefinitionLookupResult::Struct(internal_struct_type) => todo!(),
+                },
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Couldn't find anything with '{}' identifier in module '{}'.",
+                            single.identifier.clone(),
+                            module_id
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            }
+        }
+    }
+
+    fn build_decl_imported_func(
+        &mut self,
+        module_id: String,
+        metadata: FuncMetadata<'ctx>,
+    ) -> (String, FuncMetadata<'ctx>) {
+        if metadata.func_decl.storage_class == StorageClass::Public
+            || metadata.func_decl.storage_class == StorageClass::PublicExtern
+            || metadata.func_decl.storage_class == StorageClass::PublicInline
+        {
+            let mut new_metadata = metadata.clone();
+
+            // function naming collisions fix happens here
+            new_metadata.func_decl.renamed_as = Some(metadata.func_decl.name.clone());
+            new_metadata.func_decl.name =
+                self.generate_abi_name(module_id.clone(), new_metadata.func_decl.name.clone());
+
+            let param_types = self.build_func_params(
+                metadata.func_decl.name.clone(),
+                metadata.func_decl.loc.clone(),
+                metadata.func_decl.span.end,
+                metadata.func_decl.params.list.clone(),
+                metadata.func_decl.params.variadic.clone(),
+            );
+
+            let func_value = self.build_func_decl(new_metadata.func_decl.clone(), param_types, false);
+            new_metadata.ptr = func_value;
+
+            (new_metadata.func_decl.get_usable_name(), new_metadata)
+        } else {
+            (metadata.func_decl.get_usable_name(), metadata.clone())
+        }
     }
 
     fn build_imported_funcs(
@@ -255,36 +419,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module_id: String,
     ) -> HashMap<String, FuncMetadata<'ctx>> {
         let mut imported_funcs: HashMap<String, FuncMetadata> = HashMap::new();
-
         for (_, (_, metadata)) in func_table.iter().enumerate() {
-            if metadata.func_decl.storage_class == StorageClass::Public
-                || metadata.func_decl.storage_class == StorageClass::PublicExtern
-                || metadata.func_decl.storage_class == StorageClass::PublicInline
-            {
-                let mut new_metadata = metadata.clone();
-
-                // function naming collisions fix happens here
-                new_metadata.func_decl.renamed_as = Some(metadata.func_decl.name.clone());
-                new_metadata.func_decl.name =
-                    self.generate_abi_name(module_id.clone(), new_metadata.func_decl.name.clone());
-
-                let param_types = self.build_func_params(
-                    metadata.func_decl.name.clone(),
-                    metadata.func_decl.loc.clone(),
-                    metadata.func_decl.span.end,
-                    metadata.func_decl.params.list.clone(),
-                    metadata.func_decl.params.variadic.clone(),
-                );
-
-                let func_value = self.build_func_decl(new_metadata.func_decl.clone(), param_types);
-                new_metadata.ptr = func_value;
-
-                imported_funcs.insert(new_metadata.func_decl.get_usable_name(), new_metadata);
-            } else {
-                imported_funcs.insert(metadata.func_decl.get_usable_name(), metadata.clone());
-            }
+            let (func_name, func_metadata) = self.build_decl_imported_func(module_id.clone(), metadata.clone());
+            imported_funcs.insert(func_name, func_metadata);
         }
-
         imported_funcs
     }
 

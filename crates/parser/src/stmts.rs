@@ -372,13 +372,13 @@ impl<'a> Parser<'a> {
                     self.next_token();
 
                     let renamed_single = ModuleSegmentSingle {
-                        name: second_identifier,
+                        identifier: second_identifier,
                         renamed: Some(first_identifier),
                     };
                     singles.push(renamed_single);
                 } else {
                     let single = ModuleSegmentSingle {
-                        name: first_identifier,
+                        identifier: first_identifier,
                         renamed: None,
                     };
                     singles.push(single);

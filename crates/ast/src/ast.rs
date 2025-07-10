@@ -315,7 +315,7 @@ pub struct Return {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModuleSegmentSingle {
-    pub name: Identifier,
+    pub identifier: Identifier,
     pub renamed: Option<Identifier>,
 }
 
