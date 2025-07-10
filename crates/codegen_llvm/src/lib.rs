@@ -99,7 +99,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        let mut codegen_llvm = CodeGenLLVM {
+        let codegen_llvm = CodeGenLLVM {
             final_build_dir,
             opts,
             context,

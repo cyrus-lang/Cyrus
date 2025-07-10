@@ -375,11 +375,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let actual_func_name = if !is_entry_point {
-            format!("{}.{}", self.module_name, func_def.name.clone())
-        } else {
-            func_decl.name.clone()
-        };
+        let actual_func_name = func_decl.name.clone();
 
         let func_linkage: Option<Linkage> = if !is_entry_point {
             Some(self.build_func_linkage(func_def.storage_class.clone()))

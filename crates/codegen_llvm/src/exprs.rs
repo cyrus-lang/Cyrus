@@ -167,19 +167,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
                 None => {
-                    let module_identifier = self.build_module_identifier(ModulePath {
+                    let module_id = self.build_module_id(ModulePath {
                         alias: None,
                         segments: module_import.segments[0..module_import.segments.len() - 1].to_vec(),
                     });
 
-                    match self.find_loaded_module(module_identifier.clone()) {
+                    match self.find_loaded_module(module_id.clone()) {
                         Some(metadata) => {
                             return InternalValue::ModuleValue(metadata);
                         }
                         None => {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
-                                kind: DiagKind::Custom(format!("Module '{}' not found.", module_identifier)),
+                                kind: DiagKind::Custom(format!("Module '{}' not found.", module_id)),
                                 location: Some(DiagLoc {
                                     file: self.file_path.clone(),
                                     line: module_import.loc.line,

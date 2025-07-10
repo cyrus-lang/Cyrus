@@ -41,11 +41,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn find_loaded_module(&self, module_identifier: String) -> Option<ModuleMetadata<'ctx>> {
-        self.loaded_modules
-            .iter()
-            .find(|m| m.identifier == module_identifier)
-            .cloned()
+    pub(crate) fn find_loaded_module(&self, module_id: String) -> Option<ModuleMetadata<'ctx>> {
+        self.loaded_modules.iter().find(|m| m.identifier == module_id).cloned()
     }
 
     fn build_import_module_path(&mut self, mut segments: Vec<ModuleSegment>, loc: Location, span_end: usize) -> String {
@@ -133,7 +130,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module_file_path
     }
 
-    pub(crate) fn build_module_identifier(&self, module_path: ModulePath) -> String {
+    pub(crate) fn build_module_id(&self, module_path: ModulePath) -> String {
         module_path.alias.unwrap_or({
             match module_path.segments.last().unwrap() {
                 ModuleSegment::SubModule(identifier) => identifier.name.clone(),
@@ -141,8 +138,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         })
     }
 
-    fn check_import_twice(&self, module_identifier: String, module_path: ModulePath) {
-        if let Some(_) = self.find_loaded_module(module_identifier.clone()) {
+    fn check_import_twice(&self, module_id: String, module_path: ModulePath) {
+        if let Some(_) = self.find_loaded_module(module_id.clone()) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
@@ -157,17 +154,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_import(&mut self, import: Import) {
         for module_path in import.paths.clone() {
-            let module_identifier = self.build_module_identifier(module_path.clone());
+            let module_id = self.build_module_id(module_path.clone());
             let file_path =
                 self.build_import_module_path(module_path.segments.clone(), import.loc.clone(), import.span.end);
 
-            self.check_import_twice(module_identifier.clone(), module_path);
-            self.build_imported_module(file_path.clone(), module_identifier);
+            self.check_import_twice(module_id.clone(), module_path);
+            self.build_imported_module(file_path.clone(), module_id);
         }
     }
 
-    fn build_imported_module(&mut self, file_path: String, module_identifier: String) -> ModuleMetadata<'ctx> {
-        let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_identifier)));
+    fn build_imported_module(&mut self, file_path: String, module_id: String) -> ModuleMetadata<'ctx> {
+        let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_id)));
         let sub_builder = self.context.create_builder();
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&sub_module));
         let program = parser::parse_program(file_path.clone()).0;
@@ -177,7 +174,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             opts: self.opts.clone(),
             context: self.context,
             module: Rc::clone(&sub_module),
-            module_name: module_identifier.clone(),
+            module_name: module_id.clone(),
             builder: sub_builder,
             target_machine,
             build_manifest: BuildManifest::default(),
@@ -211,9 +208,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let module_metadata = ModuleMetadata {
             module: Rc::clone(&sub_module),
-            func_table: self.build_imported_funcs(sub_codegen.func_table),
+            func_table: self.build_imported_funcs(sub_codegen.func_table, module_id.clone()),
             struct_table: self.build_imported_structs(sub_codegen.struct_table),
-            identifier: module_identifier,
+            identifier: module_id,
             file_path,
         };
 
@@ -222,7 +219,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module_metadata
     }
 
-    fn build_imported_funcs(&mut self, func_table: FuncTable<'ctx>) -> HashMap<String, FuncMetadata<'ctx>> {
+    fn build_imported_funcs(
+        &mut self,
+        func_table: FuncTable<'ctx>,
+        module_id: String,
+    ) -> HashMap<String, FuncMetadata<'ctx>> {
         let mut imported_funcs: HashMap<String, FuncMetadata> = HashMap::new();
 
         for (_, (_, metadata)) in func_table.iter().enumerate() {
@@ -232,6 +233,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             {
                 let mut new_metadata = metadata.clone();
 
+                // function naming collisions fix happens here
+                new_metadata.func_decl.renamed_as = Some(metadata.func_decl.name.clone());
+                new_metadata.func_decl.name = self.generate_abi_name(module_id.clone(), new_metadata.func_decl.name.clone());
+
                 let param_types = self.build_func_params(
                     metadata.func_decl.name.clone(),
                     metadata.func_decl.loc.clone(),
@@ -239,10 +244,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     metadata.func_decl.params.list.clone(),
                     metadata.func_decl.params.variadic.clone(),
                 );
+
                 let func_value = self.build_func_decl(new_metadata.func_decl.clone(), param_types);
                 new_metadata.ptr = func_value;
 
-                imported_funcs.insert(metadata.func_decl.get_usable_name(), new_metadata);
+                imported_funcs.insert(new_metadata.func_decl.get_usable_name(), new_metadata);
             } else {
                 imported_funcs.insert(metadata.func_decl.get_usable_name(), metadata.clone());
             }
@@ -260,5 +266,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         imported_structs
+    }
+
+    pub(crate) fn generate_abi_name(&self, module_id: String, name: String) -> String {
+        format!("{}_{}", module_id, name)
     }
 }
