@@ -195,6 +195,9 @@ pub enum LiteralKind {
     Bool(bool),
     String(String, Option<StringPrefix>),
     Char(char),
+    OctalString(i64),
+    Base64String(String),
+    HexString(String),
     Null,
 }
 
@@ -202,6 +205,8 @@ pub enum LiteralKind {
 pub enum StringPrefix {
     C, // C-style string which is const char*
     B, // Bytes string
+    B64,
+    X, // Hex string (e.g. x"48656C6C6F")
 }
 
 #[derive(Debug, Clone, PartialEq)]
