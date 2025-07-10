@@ -499,47 +499,68 @@ impl Lexer {
         let final_string = match &prefix {
             Some(StringPrefix::X) => {
                 let cleaned = content.replace(|c: char| c.is_whitespace(), "");
-                match hex::decode(cleaned) {
-                    Ok(bytes) => String::from_utf8(bytes).unwrap_or_default(),
-                    Err(_) => { /* مدیریت خطا برای هگز نامعتبر */ exit(1); }
+                match hex::decode(&cleaned) {
+                    Ok(bytes) => match String::from_utf8(bytes) {
+                        Ok(bytes) => String::from_utf8(bytes.into()).unwrap_or_default(),
+                        Err(e) => {CompileTimeError {
+                            location: Location::new(self.line, self.column),
+                            source_content: Box::new(self.input.clone()),
+                            etype: LexicalErrorType::InvalidIntegerLiteral, // InvalidHexString
+                            verbose: Some(format!("Invalid UTF-8 sequence: {}", e)),
+                            caret: Some(Span::new(start, self.pos)),
+                            file_name: Some(self.file_name.clone()),
+                        }
+                        .print();
+                        exit(1);
+                        }
+                    },
+                    Err(e) => {
+                        CompileTimeError {
+                            location: Location::new(self.line, self.column),
+                            source_content: Box::new(self.input.clone()),
+                            etype: LexicalErrorType::InvalidIntegerLiteral, // InvalidHexString
+                            verbose: Some(format!("Hex decode error: {}", e)),
+                            caret: Some(Span::new(start, self.pos)),
+                            file_name: Some(self.file_name.clone()),
+                        }
+                        .print();
+                        exit(1);
+                    }
                 }
             },
             Some(StringPrefix::B64) => {
                 match general_purpose::STANDARD.decode(&content) {
-                    Ok(bytes) => String::from_utf8(bytes).unwrap_or_default(),
-                    Err(_) => { /* مدیریت خطا برای Base64 نامعتبر */ exit(1); }
+                    Ok(bytes) => match String::from_utf8(bytes) {
+                        Ok(bytes) => String::from_utf8(bytes.into()).unwrap_or_default(),
+                        Err(e) => {
+                            CompileTimeError {
+                                location: Location::new(self.line, self.column),
+                                source_content: Box::new(self.input.clone()),
+                                etype: LexicalErrorType::InvalidIntegerLiteral, // InvalidBase64String
+                                verbose: Some(format!("Invalid UTF-8 sequence: {}", e)),
+                                caret: Some(Span::new(start, self.pos)),
+                                file_name: Some(self.file_name.clone()),
+                            }
+                            .print();
+                            exit(1);
+                        }
+                    },
+                    Err(e) => {
+                        CompileTimeError {
+                            location: Location::new(self.line, self.column),
+                            source_content: Box::new(self.input.clone()),
+                            etype: LexicalErrorType::InvalidIntegerLiteral, // InvalidBase64String
+                            verbose: Some(format!("Base64 decode error: {}", e)),
+                            caret: Some(Span::new(start, self.pos)),
+                            file_name: Some(self.file_name.clone()),
+                        }
+                        .print();
+                        exit(1);
+                    }
                 }
             },
-            _ => escape_string(&content), // رفتار عادی برای بقیه رشته‌ها
+            _ => escape_string(&content),
         };
-
-
-        // Check for b64 and x prefixes
-        // if let Some(ref prefix) = prefix {
-        //     match prefix {
-        //         StringPrefix::B if self.peek_char() == '6' && self.peek_ahead(2) == '4' => {
-        //             self.read_char(); // 'b'
-        //             self.read_char(); // '6'
-        //             self.read_char(); // '4'
-        //             return self.read_base64_string();
-        //         }
-        //         StringPrefix::X => return self.read_hex_string(),
-        //         _ => {} // Normal 'b' or 'c' prefix
-        //     }
-        // }
-
-        // let start_pos = self.pos + 1;
-        // let start_loc = Location::new(self.line, self.column);
-        // let mut content = String::new();
-
-
-
-        // while self.ch != '"' {
-
-        // }
-
-        // content.push(self.ch);
-        // self.read_char();
 
         // Consume closing quote
         self.read_char();
