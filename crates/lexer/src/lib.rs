@@ -559,17 +559,22 @@ impl Lexer {
 
     fn read_identifier(&mut self) -> Token {
         let start = self.pos;
+        let mut ident = String::new();
 
-        let mut final_identifier = String::new();
+        // First character must be alphabetic or underscore
+        if self.ch.is_alphabetic() || self.ch == '_' {
+            ident.push(self.ch);
+            self.read_char();
+        }
 
+        // Subsequent characters can be alphanumeric or underscore
         while self.ch.is_alphanumeric() || self.ch == '_' {
-            final_identifier.push(self.ch);
+            ident.push(self.ch);
             self.read_char();
         }
 
         let end = self.pos;
-
-        let token_kind = self.lookup_identifier(final_identifier);
+        let token_kind = self.lookup_identifier(ident);
 
         Token {
             kind: token_kind,

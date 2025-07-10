@@ -5,7 +5,7 @@ fn main() {
 
     #a = 0o770;
     #s = b64"SGVsbG8gV29ybGQh";
-    // #s hello_world_hex = x"4865 6c6c 6f20 776f 726c 6421";
+    #hello_world_hex = x"4865 6c6c 6f20 776f 726c 6421";
 
     foreach (item in barr) {
         printf("value: %c", item);
