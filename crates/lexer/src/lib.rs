@@ -858,122 +858,6 @@ impl Lexer {
             span: Span { start, end: self.pos },
             loc: Location::new(self.line, self.column),
         }
-
-        // if self.ch == '0' && self.peek_char().to_ascii_lowercase() == 'o' {
-        //     let mut number_str = String::new();
-        //     self.read_char(); // '0'
-        //     self.read_char(); // 'o'
-
-        //     while ('0'..='7').contains(&self.ch) || self.ch == '_' {
-        //         if self.ch != '_' { number_str.push(self.ch); }
-        //         self.read_char();
-        //     }
-
-        //     return match i64::from_str_radix(&number_str, 8) {
-        //         Ok(val) => Token {
-        //             kind: TokenKind::Literal(
-        //                 Literal {
-        //                     kind: LiteralKind::Integer(val),
-        //                     loc: loc.clone(),
-        //                     span: Span::new(start, self.pos)}
-        //                 ),
-        //             span: Span::new(start, self.pos),
-        //             loc,
-        //         },
-        //         Err(_) => { /* error Octal */ exit(1); }
-        //     };
-        // }
-
-    }
-
-    fn read_base64_string(&mut self) -> Token {
-        let start = self.pos;
-
-        // Consume 'b64"' prefix
-        self.read_char(); // 'b'
-        self.read_char(); // '6'
-        self.read_char(); // '4'
-        self.read_char(); // '"'
-
-        let mut content = String::new();
-
-        while self.ch != '"' && !self.is_eof() {
-            content.push(self.ch);
-            self.read_char();
-        }
-
-        if self.is_eof() {
-            CompileTimeError {
-                location: Location {
-                    line: self.line,
-                    column: self.column,
-                },
-                source_content: Box::new(self.input.clone()),
-                etype: LexicalErrorType::UnterminatedStringLiteral,
-                verbose: None,
-                caret: Some(Span::new(start, self.pos)),
-                file_name: Some(self.file_name.clone()),
-            }
-            .print();
-            exit(1);
-        }
-
-        self.read_char(); // consume closing quote
-
-        Token {
-            kind: TokenKind::Literal(Literal {
-                kind: LiteralKind::Base64String(content),
-                loc: Location::new(self.line, self.column),
-                span: Span::new(start, self.pos),
-            }),
-            span: Span::new(start, self.pos),
-            loc: Location::new(self.line, self.column),
-        }
-    }
-
-    fn read_hex_string(&mut self) -> Token {
-        let start = self.pos;
-
-        // Consume 'x"' prefix
-        self.read_char(); // 'x'
-        self.read_char(); // '"'
-
-        let mut content = String::new();
-
-        while self.ch != '"' && !self.is_eof() {
-            if !self.ch.is_whitespace() { // Skip whitespace
-                content.push(self.ch);
-            }
-            self.read_char();
-        }
-
-        if self.is_eof() {
-            CompileTimeError {
-                location: Location {
-                    line: self.line,
-                    column: self.column,
-                },
-                source_content: Box::new(self.input.clone()),
-                etype: LexicalErrorType::UnterminatedStringLiteral,
-                verbose: None,
-                caret: Some(Span::new(start, self.pos)),
-                file_name: Some(self.file_name.clone()),
-            }
-            .print();
-            exit(1);
-        }
-
-        self.read_char(); // consume closing quote
-
-        Token {
-            kind: TokenKind::Literal(Literal {
-                kind: LiteralKind::HexString(content),
-                loc: Location::new(self.line, self.column),
-                span: Span::new(start, self.pos),
-            }),
-            span: Span::new(start, self.pos),
-            loc: Location::new(self.line, self.column),
-        }
     }
 
     fn is_numeric(&self, ch: char) -> bool {
@@ -1003,14 +887,6 @@ impl Lexer {
             | '\u{2028}' // LINE SEPARATOR
             | '\u{2029}' // PARAGRAPH SEPARATOR
         )
-    }
-
-    fn peek_ahead(&self, n: usize) -> char {
-        let mut chars = self.input[self.next_pos..].chars();
-        for _ in 0..n-1 {
-            chars.next();
-        }
-        chars.next().unwrap_or('\0')
     }
 
     fn skip_whitespace(&mut self) {
