@@ -354,6 +354,51 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_import_module_path(&mut self, module_path: ModulePath) -> Result<ModulePath, ParseError> {
+        if self.current_token_is(TokenKind::LeftBrace) {
+            self.next_token();
+
+            let mut singles: Vec<ModuleSegmentSingle> = Vec::new();
+
+            while !self.current_token_is(TokenKind::RightBrace) {
+                // enable aliasing features for a single
+                let first_identifier = self.parse_identifier()?;
+                self.next_token();
+
+                if self.current_token_is(TokenKind::Colon) {
+                    self.next_token(); // consume colon
+
+                    let second_identifier = self.parse_identifier()?;
+                    self.next_token();
+
+                    let renamed_single = ModuleSegmentSingle {
+                        name: second_identifier,
+                        renamed: Some(first_identifier),
+                    };
+                    singles.push(renamed_single);
+                } else {
+                    let single = ModuleSegmentSingle {
+                        name: first_identifier,
+                        renamed: None,
+                    };
+                    singles.push(single);
+                }
+
+                if !self.current_token_is(TokenKind::RightBrace) {
+                    self.expect_current(TokenKind::Comma)?;
+                }
+            }
+
+            self.expect_current(TokenKind::RightBrace)?;
+
+            let mut updated_module_path = module_path.clone();
+            updated_module_path.segments.push(ModuleSegment::Single(singles));
+            Ok(updated_module_path)
+        } else {
+            Ok(module_path)
+        }
+    }
+
     pub fn parse_import(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
@@ -367,45 +412,7 @@ impl<'a> Parser<'a> {
 
             loop {
                 let mut module_path = self.parse_module_path()?;
-
-                if self.current_token_is(TokenKind::LeftBrace) {
-                    self.next_token();
-
-                    let mut singles: Vec<ModuleSegmentSingle> = Vec::new();
-
-                    while !self.current_token_is(TokenKind::RightBrace) {
-                        // enable aliasing features for a single
-                        let first_identifier = self.parse_identifier()?;
-                        self.next_token();
-
-                        if self.current_token_is(TokenKind::Colon) {
-                            self.next_token(); // consume colon
-
-                            let second_identifier = self.parse_identifier()?;
-                            self.next_token();
-
-                            let renamed_single = ModuleSegmentSingle {
-                                name: second_identifier,
-                                renamed: Some(first_identifier),
-                            };
-                            singles.push(renamed_single);
-                        } else {
-                            let single = ModuleSegmentSingle {
-                                name: first_identifier,
-                                renamed: None,
-                            };
-                            singles.push(single);
-                        }
-
-                        if !self.current_token_is(TokenKind::RightBrace) {
-                            self.expect_current(TokenKind::Comma)?;
-                        }
-                    }
-
-                    self.expect_current(TokenKind::RightBrace)?;
-                    module_path.segments.push(ModuleSegment::Single(singles));
-                }
-
+                module_path = self.parse_import_module_path(module_path.clone())?;
                 paths.push(module_path);
 
                 match self.current_token.kind {
@@ -436,7 +443,9 @@ impl<'a> Parser<'a> {
 
             self.expect_current(TokenKind::RightParen)?;
         } else {
-            paths = vec![self.parse_module_path()?];
+            let mut module_path = self.parse_module_path()?;
+            module_path = self.parse_import_module_path(module_path.clone())?;
+            paths = vec![module_path];
         }
 
         return Ok(Statement::Import(Import {

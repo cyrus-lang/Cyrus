@@ -7,7 +7,7 @@ use crate::{
     types::InternalStructType,
 };
 use ast::{
-    ast::{Import, ModulePath, ModuleSegment, StorageClass},
+    ast::{Import, ModulePath, ModuleSegment, ModuleSegmentSingle, StorageClass},
     format::module_segments_as_string,
     token::Location,
 };
@@ -45,6 +45,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.loaded_modules.iter().find(|m| m.identifier == module_id).cloned()
     }
 
+    fn build_import_singles(&self, module_segment_singles: Vec<ModuleSegmentSingle>) {
+        println!("implement module_segment_singles\n");
+        // for single in  module_segment_singles {}
+    }
+
     fn build_import_module_path(&mut self, segments: Vec<ModuleSegment>, loc: Location, span_end: usize) -> String {
         let sources = &self.opts.sources_dir;
         let segments_str = module_segments_as_string(segments.clone());
@@ -65,29 +70,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             module_file_path = new_module_file_path.to_str().unwrap().to_string();
 
                             if segments.len() - 1 > idx {
-                                let next_segment_identifier = match &segments[idx + 1] {
-                                    ModuleSegment::SubModule(identifier) => identifier,
-                                    ModuleSegment::Single(module_segment_singles) => {
-                                        dbg!(module_segment_singles.clone());
-                                        todo!()
+                                match &segments[idx + 1] {
+                                    ModuleSegment::SubModule(next_segment_identifier) => {
+                                        display_single_diag(Diag {
+                                            level: DiagLevel::Error,
+                                            kind: DiagKind::Custom(format!(
+                                                "Module '{}' is already found as a module but you trying to import '{}' from that module.",
+                                                module_segments_as_string(segments[..(idx + 1)].to_vec()),
+                                                next_segment_identifier.name.clone()
+                                            )),
+                                            location: Some(DiagLoc {
+                                                file: self.file_path.clone(),
+                                                line: loc.line,
+                                                column: loc.column,
+                                                length: span_end,
+                                            }),
+                                        });
+                                        exit(1);
                                     }
-                                };
-
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::Custom(format!(
-                                        "Module '{}' is already found as a module but you trying to import '{}' from that module.",
-                                        module_segments_as_string(segments[..(idx + 1)].to_vec()),
-                                        next_segment_identifier.name.clone()
-                                    )),
-                                    location: Some(DiagLoc {
-                                        file: self.file_path.clone(),
-                                        line: loc.line,
-                                        column: loc.column,
-                                        length: span_end,
-                                    }),
-                                });
-                                exit(1);
+                                    ModuleSegment::Single(_) => {}
+                                }
                             }
                         }
                         None => match find_file_from_sources(directory_path, sources.clone()) {
@@ -112,7 +114,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
                 ModuleSegment::Single(module_segment_singles) => {
-                    todo!();
+                    self.build_import_singles(module_segment_singles.clone());
+                    return self.build_import_module_path(segments[0..(segments.len() - 1)].to_vec(), loc, span_end);
                 }
             }
         }
@@ -156,14 +159,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 } else {
-                    // import singles are handled in a different manner.
-                    unreachable!();
+                    match module_path.segments.iter().nth_back(1).unwrap() {
+                        ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
+                        ModuleSegment::Single(_) => unreachable!(),
+                    }
                 }
             }
         }
     }
 
-    fn check_import_twice(&self, module_id: String, module_path: ModulePath) {
+    fn error_if_module_already_loaded(&self, module_id: String, module_path: ModulePath) {
         if let Some(_) = self.find_loaded_module(module_id.clone()) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -183,7 +188,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let file_path =
                 self.build_import_module_path(module_path.segments.clone(), import.loc.clone(), import.span.end);
 
-            self.check_import_twice(module_id.clone(), module_path);
+            self.error_if_module_already_loaded(module_id.clone(), module_path);
             self.build_imported_module(file_path.clone(), module_id);
         }
     }
