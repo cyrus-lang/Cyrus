@@ -490,7 +490,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .struct_metadata
             .methods
             .iter()
-            .find(|method| method.0.renamed_as.clone().unwrap() == method_call.method_name.name);
+            .find(|method| method.0.get_usable_name() == method_call.method_name.name);
 
         match method_metadata {
             Some((func_decl, func_value)) => {
@@ -525,7 +525,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     Rc::clone(&scope),
                     method_call.arguments.clone(),
                     func_params_without_this_modifier,
-                    func_decl.renamed_as.clone().unwrap_or(func_decl.name.clone()),
+                    func_decl.get_usable_name(),
                     method_call.loc.clone(),
                     method_call.span.end,
                 ));

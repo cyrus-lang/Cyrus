@@ -134,11 +134,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .add_function(&func_decl.name, fn_type, Some(func_linkage));
 
         self.func_table.insert(
-            if let Some(renamed_as) = func_decl.renamed_as.clone() {
-                renamed_as
-            } else {
-                func_decl.name.clone()
-            },
+            func_decl.get_usable_name(),
             FuncMetadata {
                 func_decl: func_decl.clone(),
                 ptr: func_ptr,
@@ -398,11 +394,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .add_function(&actual_func_name, fn_type, func_linkage);
 
         self.func_table.insert(
-            if let Some(renamed_as) = func_decl.renamed_as.clone() {
-                renamed_as
-            } else {
-                func_decl.name.clone()
-            },
+            func_decl.get_usable_name(),
             FuncMetadata {
                 func_decl,
                 ptr: func_value,
@@ -493,11 +485,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "The function '{}' with void return type is not allowed to have a return statement.",
-                        &func_metadata
-                            .func_decl
-                            .renamed_as
-                            .clone()
-                            .unwrap_or(func_metadata.func_decl.name.clone())
+                        &func_metadata.func_decl.get_usable_name()
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -512,11 +500,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "Function '{}' must return a value of type '{}'.",
-                        &func_metadata
-                            .func_decl
-                            .renamed_as
-                            .clone()
-                            .unwrap_or(func_metadata.func_decl.name.clone()),
+                        &func_metadata.func_decl.get_usable_name(),
                         func_metadata.return_type
                     )),
                     location: Some(DiagLoc {
@@ -831,11 +815,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Rc::clone(&scope),
             func_call.arguments.clone(),
             func_metadata.func_decl.params.clone(),
-            func_metadata
-                .func_decl
-                .renamed_as
-                .clone()
-                .unwrap_or(func_metadata.func_decl.name.clone()),
+            func_metadata.func_decl.get_usable_name(),
             func_call.loc.clone(),
             func_call.span.end,
         );

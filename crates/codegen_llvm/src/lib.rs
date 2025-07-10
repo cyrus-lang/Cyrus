@@ -8,7 +8,7 @@ use funcs::FuncTable;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::Module;
+use inkwell::module::{Module};
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::values::{FunctionValue, PointerValue};
@@ -99,7 +99,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        let codegen_llvm = CodeGenLLVM {
+        let mut codegen_llvm = CodeGenLLVM {
             final_build_dir,
             opts,
             context,
@@ -143,7 +143,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 &cpu,
                 &features,
                 OptimizationLevel::Default,
-                RelocMode::Default,
+                RelocMode::PIC,
                 CodeModel::Default,
             )
             .unwrap();
@@ -157,6 +157,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn compile(&mut self) {
+        self.enable_module_flags();
+
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         self.build_statements(Rc::clone(&scope), self.program.body.clone());
 

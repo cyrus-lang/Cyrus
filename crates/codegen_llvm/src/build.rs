@@ -1,6 +1,7 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
+use inkwell::module::FlagBehavior;
 use inkwell::passes::PassBuilderOptions;
 use inkwell::passes::PassManager;
 use inkwell::targets::FileType;
@@ -81,12 +82,21 @@ impl BuildManifest {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn enable_module_flags(&mut self) {
+        let module_ref = self.module.borrow_mut();
+
+        let pic_level = self.context.i32_type().const_int(2, false);
+        module_ref.add_basic_value_flag("PIC Level", FlagBehavior::Error, pic_level);
+
+        let pie_level = self.context.i32_type().const_int(2, false);
+        module_ref.add_basic_value_flag("PIE Level", FlagBehavior::Error, pie_level);
+    }
+
     pub(crate) fn execute_linker(&self, output_path: String, object_files: Vec<String>, extra_args: Vec<String>) {
-        // TODO Consider to make linker dynamic through Project.toml and CLI Program.
-        // or "gcc" depending on your system and requirements
         let linker = "clang";
 
         let mut linker_command = std::process::Command::new(linker);
+        linker_command.arg("-fPIE");
         linker_command.arg("-o").arg(output_path);
 
         for path in object_files {
@@ -321,14 +331,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
 
             self.build_func_def(main_func, func_param_types, true);
-        } else {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::NoEntryPointDetected,
-                location: None,
-            });
-            exit(1);
-        }
+        } 
+        // FIXME 
+        // else {
+        //     dbg!(self.entry_point_path.clone());
+        //     self.file_path.clone();
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::NoEntryPointDetected,
+        //         location: None,
+        //     });
+        //     exit(1);
+        // }
     }
 
     pub fn execute(&mut self) {
@@ -375,11 +389,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .print_to_file(&temp_ll_file_path)
                 .map_err(|err| format!("Failed to print LLVM IR to temporary file: {}", err))?;
 
-            // Step 1: use llvm-as to convert IR (.ll) to bytecode (.bc)
             let llvm_as_command = Command::new("llvm-as")
                 .arg(&temp_ll_file_path)
                 .arg("-o")
-                .arg(&temp_bc_file_path) // Output to the bytecode path
+                .arg(&temp_bc_file_path)
                 .output()
                 .map_err(|e| format!("Failed to execute llvm-as command: {}", e))?;
 
@@ -392,12 +405,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ));
             }
 
-            // Step 2: Call llc on the bytecode (.bc) to generate a native object file (.o)
             let llc_command = Command::new("llc")
-                .arg("-filetype=obj") // Specify output type as object file
-                .arg(&temp_bc_file_path) // Input is the bytecode file
+                .arg("-filetype=obj") 
+                .arg(&temp_bc_file_path) 
                 .arg("-o")
-                .arg(&output_path) // Output directly to the specified output_path
+                .arg(&output_path)
                 .output()
                 .map_err(|e| format!("Failed to execute llc command: {}", e))?;
 

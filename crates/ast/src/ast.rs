@@ -425,6 +425,15 @@ pub struct FuncDecl {
     pub loc: Location,
 }
 
+impl FuncDecl {
+    pub fn get_usable_name(&self) -> String {
+        match &self.renamed_as {
+            Some(name) => name.clone(),
+            None => self.name.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum StorageClass {
     Extern,

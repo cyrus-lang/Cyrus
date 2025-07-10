@@ -12,7 +12,7 @@ use ast::{
     token::Location,
 };
 use inkwell::module::Module;
-use std::{cell::RefCell, collections::HashMap, process::exit, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, path::Path, process::exit, rc::Rc};
 use utils::fs::find_file_from_sources;
 
 #[derive(Debug, Clone)]
@@ -52,46 +52,49 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let sources = &self.opts.sources_dir;
         let segments_str = module_segments_as_string(segments.clone());
 
-        let mut begging_path = {
-            match segments.clone().first().unwrap() {
-                ModuleSegment::SubModule(identifier) => {
-                    segments.remove(0);
-                    let file_name = identifier.name.clone();
-                    match find_file_from_sources(file_name, sources.clone()) {
-                        Some(path) => path,
-                        None => {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::ModuleNotFound(segments_str.clone()),
-                                location: Some(DiagLoc {
-                                    file: self.file_path.clone(),
-                                    line: loc.line,
-                                    column: loc.column,
-                                    length: span_end,
-                                }),
-                            });
-                            exit(1);
-                        }
-                    }
-                }
-            }
-        };
+        let mut module_file_path = String::new();
 
-        for module_path in segments {
-            match module_path {
+        for (idx, module_segment) in segments.iter().enumerate() {
+            match module_segment {
                 ModuleSegment::SubModule(identifier) => {
-                    // check current identifier that, it's a sub_module or a thing that must be imported from latest module
-                    let temp_path = format!("{}/{}", begging_path.to_str().unwrap(), identifier.name.clone());
-                    match find_file_from_sources(temp_path.clone(), sources.clone()) {
-                        Some(new_begging_path) => {
-                            begging_path = new_begging_path;
+                    // once consider identifier as sub_module (directory) and if it's not found in any of the sources
+                    // in the second stage consider identifier as a module (file) and try to determine that path exists.
+                    let directory_path = format!("{}{}", module_file_path, identifier.name.clone());
+                    let source_file_path = format!("{}{}.cyr", module_file_path, identifier.name.clone());
+
+                    // source file has higher priority to a directory
+                    match find_file_from_sources(source_file_path, sources.clone()) {
+                        Some(new_module_file_path) => {
+                            module_file_path = new_module_file_path.to_str().unwrap().to_string();
+
+                            if segments.len() - 1 > idx {
+                                let next_segment_identifier = match &segments[idx + 1] {
+                                    ModuleSegment::SubModule(identifier) => identifier,
+                                };
+
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(format!(
+                                        "Module '{}' is already found as a module but you trying to import '{}' from that module.",
+                                        module_segments_as_string(segments[..(idx + 1)].to_vec()),
+                                        next_segment_identifier.name.clone()
+                                    )),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: loc.line,
+                                        column: loc.column,
+                                        length: span_end,
+                                    }),
+                                });
+                                exit(1);
+                            }
                         }
-                        None => {
-                            if let Some(new_begging_path) =
-                                find_file_from_sources(format!("{}.cyr", temp_path), sources.clone())
-                            {
-                                begging_path = new_begging_path;
-                            } else {
+                        None => match find_file_from_sources(directory_path, sources.clone()) {
+                            Some(new_module_file_path) => {
+                                module_file_path.push_str(new_module_file_path.to_str().unwrap());
+                                module_file_path.push_str("/");
+                            }
+                            None => {
                                 display_single_diag(Diag {
                                     level: DiagLevel::Error,
                                     kind: DiagKind::ModuleNotFound(segments_str.clone()),
@@ -104,13 +107,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 });
                                 exit(1);
                             }
-                        }
+                        },
                     }
                 }
             }
         }
 
-        if begging_path.is_dir() {
+        if Path::new(&module_file_path).is_dir() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
@@ -127,7 +130,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        begging_path.to_str().unwrap().to_string()
+        module_file_path
     }
 
     pub(crate) fn build_module_identifier(&self, module_path: ModulePath) -> String {
@@ -154,9 +157,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_import(&mut self, import: Import) {
         for module_path in import.paths.clone() {
+            let module_identifier = self.build_module_identifier(module_path.clone());
             let file_path =
                 self.build_import_module_path(module_path.segments.clone(), import.loc.clone(), import.span.end);
-            let module_identifier = self.build_module_identifier(module_path.clone());
+
             self.check_import_twice(module_identifier.clone(), module_path);
             self.build_imported_module(file_path.clone(), module_identifier);
         }
@@ -238,9 +242,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let func_value = self.build_func_decl(new_metadata.func_decl.clone(), param_types);
                 new_metadata.ptr = func_value;
 
-                imported_funcs.insert(metadata.func_decl.renamed_as.clone().unwrap(), new_metadata);
+                imported_funcs.insert(metadata.func_decl.get_usable_name(), new_metadata);
             } else {
-                imported_funcs.insert(metadata.func_decl.renamed_as.clone().unwrap(), metadata.clone());
+                imported_funcs.insert(metadata.func_decl.get_usable_name(), metadata.clone());
             }
         }
 
