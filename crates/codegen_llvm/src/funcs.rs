@@ -100,6 +100,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         params
     }
 
+    // ANCHOR
+    // pub(crate) fn check_func_previous_decl(&self, func_name: String) {
+    //     self.func_table.
+    // }
+
     pub(crate) fn build_func_decl(
         &mut self,
         func_decl: FuncDecl,

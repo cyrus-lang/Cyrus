@@ -389,6 +389,8 @@ impl<'a> Parser<'a> {
         let mut module_path = ModulePath {
             alias: None,
             segments: Vec::new(),
+            loc: loc.clone(),
+            span: Span::default(),
         };
 
         while !self.current_token_is(TokenKind::Semicolon) {
@@ -428,14 +430,7 @@ impl<'a> Parser<'a> {
                     } else if self.current_token_is(TokenKind::Semicolon) {
                         return Ok(module_path);
                     } else {
-                        return Err(CompileTimeError {
-                            location: loc.clone(),
-                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                            file_name: Some(self.lexer.file_name.clone()),
-                            source_content: Box::new(self.lexer.input.clone()),
-                            verbose: None,
-                            caret: Some(Span::new(start, self.current_token.span.end)),
-                        });
+                        break;
                     }
                 }
                 TokenKind::DoubleColon => {
@@ -454,6 +449,8 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+
+        module_path.span = Span::new(start, self.current_token.span.end);
 
         Ok(module_path)
     }

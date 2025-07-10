@@ -316,12 +316,15 @@ pub struct Return {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModuleSegment {
     SubModule(Identifier),
+    Single(Vec<Identifier>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModulePath {
     pub alias: Option<String>,
     pub segments: Vec<ModuleSegment>,
+    pub loc: Location,
+    pub span: Span
 }
 
 #[derive(Debug, Clone, PartialEq)]

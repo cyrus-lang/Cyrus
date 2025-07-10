@@ -20,8 +20,7 @@ impl<'a> Parser<'a> {
                 return self.parse_struct(Some(storage_class), false);
             } else if self.current_token_is(TokenKind::Bits) {
                 return self.parse_struct(Some(storage_class), true);
-            } 
-            else if self.current_token_is(TokenKind::Enum) {
+            } else if self.current_token_is(TokenKind::Enum) {
                 return self.parse_enum(Some(storage_class));
             }
         } else if self.current_token_is(TokenKind::Function) {
@@ -30,8 +29,7 @@ impl<'a> Parser<'a> {
             return self.parse_struct(None, false);
         } else if self.current_token_is(TokenKind::Bits) {
             return self.parse_struct(None, true);
-        } 
-        else if self.current_token_is(TokenKind::Enum) {
+        } else if self.current_token_is(TokenKind::Enum) {
             return self.parse_enum(None);
         }
 
@@ -367,21 +365,56 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::LeftParen) {
             self.expect_current(TokenKind::LeftParen)?;
 
-            while !self.current_token_is(TokenKind::RightParen) {
-                paths.push(self.parse_module_path()?);
-                self.next_token();
+            loop {
+                let mut module_path = self.parse_module_path()?;
+
+                if self.current_token_is(TokenKind::LeftBrace) {
+                    self.next_token();
+
+                    let mut singles: Vec<Identifier> = Vec::new();
+
+                    while !self.current_token_is(TokenKind::RightBrace) {
+                        singles.push(self.parse_identifier()?);
+                        self.next_token();
+
+                        if !self.current_token_is(TokenKind::RightBrace) {
+                            self.expect_current(TokenKind::Comma)?;
+                        }
+                    }
+
+                    self.expect_current(TokenKind::RightBrace)?;
+                    module_path.segments.push(ModuleSegment::Single(singles));
+                }
+
+                paths.push(module_path);
+
+                match self.current_token.kind {
+                    TokenKind::RightParen => {
+                        break;
+                    }
+                    TokenKind::Comma => {
+                        self.next_token();
+
+                        if self.current_token_is(TokenKind::RightParen) {
+                            break;
+                        } else {
+                            continue;
+                        }
+                    }
+                    _ => {
+                        return Err(CompileTimeError {
+                            location: self.current_token.loc.clone(),
+                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                            file_name: Some(self.lexer.file_name.clone()),
+                            source_content: Box::new(self.lexer.input.clone()),
+                            verbose: None,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
+                        });
+                    }
+                }
             }
 
-            if !self.current_token_is(TokenKind::RightParen) {
-                return Err(CompileTimeError {
-                    location: loc,
-                    etype: ParserErrorType::MissingClosingParen,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: None,
-                    caret: Some(Span::new(start, self.current_token.span.end)),
-                });
-            }
+            self.expect_current(TokenKind::RightParen)?;
         } else {
             paths = vec![self.parse_module_path()?];
         }

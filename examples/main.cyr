@@ -1,5 +1,15 @@
-extern fn printf(format: const char*, ...);
+import (
+	greeting::hello{say_hello, aaa},
+	another::sub_module{stuff1, stuff2},
+);
+
+// extern fn printf(format: const char*, ...);
+
+
+public fn taha() {}
+public fn taha() {}
 
 fn main() {
-    
-}
+	hello::greeting();
+	// hello::abcd();
+} 
