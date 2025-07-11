@@ -50,7 +50,7 @@ pub struct CodeGenLLVM<'ctx> {
     opts: Options,
     context: &'ctx Context,
     module: Rc<RefCell<Module<'ctx>>>,
-    module_name: String,
+    module_id: String,
     builder: Builder<'ctx>,
     target_machine: TargetMachine,
     build_manifest: BuildManifest,
@@ -84,8 +84,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         output_kind: OutputKind,
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
-        let module_name = file_stem(&file_name).unwrap_or(&file_name).to_string();
-        let module = Rc::new(RefCell::new(context.create_module(&module_name.clone())));
+        let module_id = file_stem(&file_name).unwrap_or(&file_name).to_string();
+        let module = Rc::new(RefCell::new(context.create_module(&module_id.clone())));
         let builder = context.create_builder();
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&module));
 
@@ -120,7 +120,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_loop_ref: None,
             string_type: CodeGenLLVM::build_string_type(context),
             module: module.clone(),
-            module_name: module_name.clone(),
+            module_id: module_id.clone(),
             imported_modules: Vec::new(),
             dependent_modules: HashMap::new(),
             output_kind,

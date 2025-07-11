@@ -29,7 +29,7 @@ pub struct StructMetadata<'a> {
     pub fields: Vec<Field>,
     pub methods: Vec<(FuncDecl, FunctionValue<'a>)>,
     pub storage_class: StorageClass,
-    pub packed: bool
+    pub packed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,7 +42,7 @@ pub struct UnnamedStructTypeMetadata<'a> {
 pub struct UnnamedStructValueMetadata<'a> {
     pub struct_type: StructType<'a>,
     pub fields: Vec<(String, InternalType<'a>)>,
-    pub packed: bool
+    pub packed: bool,
 }
 
 pub type StructTable<'a> = HashMap<String, InternalStructType<'a>>;
@@ -141,7 +141,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let opaque_struct = self
             .context
-            .opaque_struct_type(&format!("{}::{}", self.module_name, struct_statement.name));
+            .opaque_struct_type(&format!("{}::{}", self.module_id, struct_statement.name));
 
         let struct_metadata = StructMetadata {
             struct_name: ModuleImport {
@@ -158,7 +158,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             methods: Vec::new(),
             inherits: struct_statement.inherits.clone(),
             storage_class: struct_statement.storage_class.clone(),
-            packed: struct_statement.packed
+            packed: struct_statement.packed,
         };
 
         let internal_struct_type = InternalStructType {
@@ -193,7 +193,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         for mut func_def in methods {
             let method_name = func_def.name.clone();
-            let method_underlying_name = format!("{}.{}", struct_name.clone(), method_name);
+            let method_underlying_name =
+                self.generate_abi_name(self.module_id.clone(), format!("{}_{}", struct_name.clone(), method_name));
             func_def.name = method_underlying_name.clone();
 
             // this_modifier

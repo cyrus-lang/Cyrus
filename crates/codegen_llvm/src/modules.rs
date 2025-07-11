@@ -301,7 +301,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             opts: self.opts.clone(),
             context: &self.context,
             module: Rc::clone(&sub_module),
-            module_name: module_id.clone(),
+            module_id: module_id.clone(),
             builder: sub_builder,
             target_machine,
             build_manifest: BuildManifest::default(),
@@ -383,16 +383,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) {
-        // REVIEW
-        let (sub_codegen_rc, module_metadata) = match self.find_imported_module(module_id.clone()) {
-            Some(imported_module_metadata) => (
-                imported_module_metadata.sub_codegen,
-                imported_module_metadata.metadata.clone(),
-            ),
+        let module_metadata = match self.find_imported_module(module_id.clone()) {
+            Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
             None => panic!("Couldn't lookup imported module in codegen."),
         };
 
-        let sub_codegen = sub_codegen_rc.borrow_mut();
         for single in module_segment_singles {
             let lookup_result = self.lookup_from_module_metadata(
                 single.identifier.name,
@@ -408,6 +403,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.func_table.insert(func_name, func_metadata);
                 }
                 DefinitionLookupResult::Struct(internal_struct_type) => {
+                    // FIXME Write a usable function for importing structs
+
                     let struct_name = {
                         match internal_struct_type
                             .struct_metadata
@@ -420,7 +417,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             ModuleSegment::Single(_) => unreachable!(),
                         }
                     };
-                    
+
                     self.struct_table.insert(struct_name, internal_struct_type.clone());
                 }
             }
@@ -476,6 +473,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn build_imported_structs(&self, struct_table: StructTable<'ctx>) -> HashMap<String, InternalStructType<'ctx>> {
         let mut imported_structs: HashMap<String, InternalStructType> = HashMap::new();
         for (_, (struct_name, metadata)) in struct_table.iter().enumerate() {
+            // TODO Import struct methods
             imported_structs.insert(struct_name.clone(), metadata.clone());
         }
         imported_structs
