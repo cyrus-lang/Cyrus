@@ -47,7 +47,9 @@ pub(crate) struct GeneratedModuleImportPath {
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_module_id(&self, module_path: ModulePath) -> String {
-        match module_path.segments.last().unwrap() {
+        let last_segment = module_path.segments.last().unwrap();
+
+        match last_segment {
             ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
             ModuleSegment::Single(_) => {
                 if module_path.alias.is_some() {
@@ -99,6 +101,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .cloned()
                     .expect("Failed to get a loaded module by it's file path.");
             }
+        }
+    }
+
+    pub(crate) fn lookup_definition(&self, name: String) -> Option<DefinitionLookupResult<'ctx>> {
+        match match self.func_table.get(&name) {
+            Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
+            None => match self.struct_table.get(&name) {
+                Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
+                None => None,
+            },
+        } {
+            Some(lookup_result) => Some(lookup_result),
+            None => None,
         }
     }
 
@@ -405,7 +420,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             ModuleSegment::Single(_) => unreachable!(),
                         }
                     };
-                    dbg!(struct_name.clone());
+                    
                     self.struct_table.insert(struct_name, internal_struct_type.clone());
                 }
             }

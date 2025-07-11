@@ -3,6 +3,7 @@ use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
 use crate::modules::DefinitionLookupResult;
+use crate::modules::ModuleMetadata;
 use crate::structs::StructMetadata;
 use crate::structs::UnnamedStructTypeMetadata;
 use crate::values::Lvalue;
@@ -29,6 +30,7 @@ use inkwell::types::VectorType;
 use inkwell::types::VoidType;
 use std::fmt;
 use std::process::exit;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum InternalType<'a> {
@@ -457,44 +459,72 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> DefinedType<'ctx> {
-        let module_id = self.build_module_id(ModulePath {
-            alias: None,
-            segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
-            loc: Location::default(),
-            span: Span::default(),
-        });
+        if module_import.segments.len() == 1 {
+            let name = match module_import.segments.last().unwrap() {
+                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+                ModuleSegment::Single(_) => unreachable!(),
+            };
 
-        let module_metadata = match self.find_imported_module(module_id.clone()) {
-            Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
-            None => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::ModuleNotFound(module_id),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
+            match self.lookup_definition(name.clone()) {
+                Some(definition_lookup_result) => match definition_lookup_result {
+                    DefinitionLookupResult::Func(_) => {
+                        // FIXME
+                        panic!("Cannot use function as a data type.");
+                    }
+                    DefinitionLookupResult::Struct(internal_struct_type) => DefinedType::Struct(internal_struct_type),
+                },
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::UndefinedDataType(name),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
             }
-        };
+        } else {
+            let module_id = self.build_module_id(ModulePath {
+                alias: None,
+                segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
+                loc: Location::default(),
+                span: Span::default(),
+            });
 
-        let name = match module_import.segments.last().unwrap() {
-            ModuleSegment::SubModule(identifier) => identifier.name.clone(),
-            ModuleSegment::Single(_) => unreachable!(), // singles never achieve at this point
-        };
+            let module_metadata = match self.find_imported_module(module_id.clone()) {
+                Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::ModuleNotFound(module_id),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
 
-        match self.lookup_from_module_metadata(name, module_metadata, loc, span_end) {
-            DefinitionLookupResult::Func(func_metadata) => {
+            let name = match module_import.segments.last().unwrap() {
+                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+                ModuleSegment::Single(_) => unreachable!(), // singles never achieve at this point
+            };
+
+            match self.lookup_from_module_metadata(name, module_metadata, loc, span_end) {
                 // TODO Implement func_type as data type
-                // FIXME
-                panic!("Cannot use function as a data type.");
-            },
-            DefinitionLookupResult::Struct(internal_struct_type) => {
-                DefinedType::Struct(internal_struct_type)
-            },
+                DefinitionLookupResult::Func(func_metadata) => {
+                    // FIXME
+                    panic!("Cannot use function as a data type.");
+                }
+                DefinitionLookupResult::Struct(internal_struct_type) => DefinedType::Struct(internal_struct_type),
+            }
         }
     }
 
