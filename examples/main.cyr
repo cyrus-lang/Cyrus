@@ -1,0 +1,12 @@
+struct Person {
+    name: string;
+    age: int16;
+    
+    fn to_string(self, name: string) {
+
+    }
+}
+
+fn main() {
+
+}

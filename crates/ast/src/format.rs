@@ -21,8 +21,8 @@ impl fmt::Display for Literal {
             LiteralKind::String(string_type, prefix) => {
                 if let Some(prefix) = prefix {
                     match prefix {
-                        StringPrefix::C => write!(f, "c"),
-                        StringPrefix::B => write!(f, "b"),
+                        StringPrefix::C => write!(f, "c")?,
+                        StringPrefix::B => write!(f, "b")?,
                     };
                 }
                 write!(f, "\"{}\"", string_type)

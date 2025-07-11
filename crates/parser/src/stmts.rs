@@ -465,7 +465,8 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::LeftParen)?;
 
         let mut variadic: Option<FuncVariadicParams> = None;
-        let mut list: Vec<FuncParam> = Vec::new();
+        let mut list: Vec<FuncParamKind> = Vec::new();
+        let mut self_modifier_count: u32 = 0;
 
         while self.current_token.kind != TokenKind::RightParen {
             match self.current_token.kind.clone() {
@@ -486,76 +487,79 @@ impl<'a> Parser<'a> {
                     variadic = Some(FuncVariadicParams::UntypedCStyle);
                     break;
                 }
+                TokenKind::Ampersand => {
+                    self.next_token(); // ampersand
+                    let identifier = self.parse_identifier()?;
+                    self.next_token(); // consume identifier
+
+                    if &identifier.name != "self" {
+                        return Err(CompileTimeError {
+                            location: loc,
+                            etype: ParserErrorType::ExpectedSelfModifier(identifier.name),
+                            file_name: Some(self.lexer.file_name.clone()),
+                            source_content: Box::new(self.lexer.input.clone()),
+                            verbose: None,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
+                        });
+                    }
+
+                    self_modifier_count += 1;
+                    list.push(FuncParamKind::SelfModifier(SelfModifier::Referenced));
+                }
                 TokenKind::Identifier { name } => {
                     let param_loc = self.current_token.loc.clone();
+                    let start = self.current_token.span.start;
                     let identifier = self.parse_identifier()?;
                     self.next_token(); // consume the identifier
 
-                    let start = self.current_token.span.start;
+                    if identifier.name == "self" {
+                        self_modifier_count += 1;
+                        list.push(FuncParamKind::SelfModifier(SelfModifier::Referenced));
+                    } else {
+                        // get the var type
 
-                    // get the var type
+                        let mut var_type: Option<TypeSpecifier> = None;
+                        if self.current_token_is(TokenKind::Colon) {
+                            self.next_token(); // consume the colon
 
-                    let mut var_type: Option<TypeSpecifier> = None;
-                    if self.current_token_is(TokenKind::Colon) {
-                        self.next_token(); // consume the colon
+                            if self.current_token_is(TokenKind::TripleDot) {
+                                self.next_token(); // consume triple dot
 
-                        if self.current_token_is(TokenKind::TripleDot) {
-                            self.next_token(); // consume triple dot
+                                let variadic_data_type = self.parse_type_specifier()?;
+                                self.next_token();
 
-                            let variadic_data_type = self.parse_type_specifier()?;
-                            self.next_token();
-
-                            variadic = Some(FuncVariadicParams::Typed(identifier, variadic_data_type));
-                            continue;
-                        } else {
-                            var_type = Some(self.parse_type_specifier()?);
-                            self.next_token();
+                                variadic = Some(FuncVariadicParams::Typed(identifier, variadic_data_type));
+                                continue;
+                            } else {
+                                var_type = Some(self.parse_type_specifier()?);
+                                self.next_token();
+                            }
                         }
-                    }
 
-                    let mut default_value: Option<Expression> = None;
+                        let mut default_value: Option<Expression> = None;
 
-                    if self.current_token_is(TokenKind::Assign) {
-                        self.next_token(); // consume the assign
+                        if self.current_token_is(TokenKind::Assign) {
+                            self.next_token(); // consume the assign
 
-                        default_value = Some(self.parse_expression(Precedence::Lowest)?.0);
+                            default_value = Some(self.parse_expression(Precedence::Lowest)?.0);
 
-                        self.next_token(); // consume the expression
-                    }
-
-                    list.push(FuncParam {
-                        identifier: Identifier {
-                            name: name,
-                            span: self.current_token.span.clone(),
-                            loc: param_loc.clone(),
-                        },
-                        ty: var_type,
-                        default_value: default_value,
-                        span: Span {
-                            start: start,
-                            end: self.current_token.span.end,
-                        },
-                        loc: param_loc,
-                    });
-
-                    // after reading
-                    match &self.current_token.kind {
-                        TokenKind::Comma => {
-                            self.next_token();
+                            self.next_token(); // consume the expression
                         }
-                        TokenKind::RightParen => {
-                            break;
-                        }
-                        _ => {
-                            return Err(CompileTimeError {
-                                location: loc,
-                                etype: ParserErrorType::MissingComma,
-                                file_name: Some(self.lexer.file_name.clone()),
-                                source_content: Box::new(self.lexer.input.clone()),
-                                verbose: None,
-                                caret: Some(Span::new(start, self.current_token.span.end)),
-                            });
-                        }
+
+                        list.push(FuncParamKind::FuncParam(FuncParam {
+                            identifier: Identifier {
+                                name: name,
+                                span: self.current_token.span.clone(),
+                                loc: param_loc.clone(),
+                            },
+                            ty: var_type,
+                            default_value: default_value,
+                            span: Span {
+                                start: start,
+                                end: self.current_token.span.end,
+                            },
+                            loc: param_loc,
+                        }));
                     }
                 }
                 _ => {
@@ -569,6 +573,37 @@ impl<'a> Parser<'a> {
                     });
                 }
             }
+
+            // after reading
+            match &self.current_token.kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                }
+                TokenKind::RightParen => {
+                    break;
+                }
+                _ => {
+                    return Err(CompileTimeError {
+                        location: loc,
+                        etype: ParserErrorType::MissingComma,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        verbose: None,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
+                    });
+                }
+            }
+        }
+
+        if self_modifier_count > 1 {
+            return Err(CompileTimeError {
+                location: loc,
+                etype: ParserErrorType::SeveralSelfModifierDefinition,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: Some(Span::new(start, self.current_token.span.end)),
+            });
         }
 
         self.expect_current(TokenKind::RightParen)?;

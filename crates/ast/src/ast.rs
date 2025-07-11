@@ -478,6 +478,18 @@ pub struct Assignment {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum SelfModifier {
+    Copied,
+    Referenced,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FuncParamKind {
+    FuncParam(FuncParam),
+    SelfModifier(SelfModifier),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncParam {
     pub identifier: Identifier,
     pub ty: Option<TypeSpecifier>,
@@ -488,7 +500,7 @@ pub struct FuncParam {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncParams {
-    pub list: Vec<FuncParam>,
+    pub list: Vec<FuncParamKind>,
     pub variadic: Option<FuncVariadicParams>,
 }
 
