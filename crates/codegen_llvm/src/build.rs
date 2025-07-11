@@ -90,12 +90,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let pie_level = self.context.i32_type().const_int(2, false);
         module_ref.add_basic_value_flag("PIE Level", FlagBehavior::Error, pie_level);
+
+        let uwtable_value = self.context.i32_type().const_int(2, false);
+        module_ref.add_basic_value_flag("uwtable", FlagBehavior::Error, uwtable_value);
     }
 
     pub(crate) fn execute_linker(&self, output_path: String, object_files: Vec<String>, extra_args: Vec<String>) {
         let linker = "clang";
 
         let mut linker_command = std::process::Command::new(linker);
+        linker_command.arg("-v");
         linker_command.arg("-fPIE");
         linker_command.arg("-o").arg(output_path);
 
@@ -331,8 +335,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
 
             self.build_func_def(main_func, func_param_types, true);
-        } 
-        // FIXME 
+        }
+        // FIXME
         // else {
         //     dbg!(self.entry_point_path.clone());
         //     self.file_path.clone();
@@ -406,8 +410,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
 
             let llc_command = Command::new("llc")
-                .arg("-filetype=obj") 
-                .arg(&temp_bc_file_path) 
+                .arg("-filetype=obj")
+                .arg("--relocation-model=pic")
+                .arg(&temp_bc_file_path)
                 .arg("-o")
                 .arg(&output_path)
                 .output()
