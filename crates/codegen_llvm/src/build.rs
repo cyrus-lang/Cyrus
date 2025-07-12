@@ -1,3 +1,5 @@
+use crate::scope::Scope;
+use crate::scope::ScopeRef;
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
@@ -9,6 +11,7 @@ use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -20,6 +23,7 @@ use std::path::Path;
 use std::process::Command;
 use std::process::Stdio;
 use std::process::exit;
+use std::rc::Rc;
 use utils::fs::absolute_to_relative;
 use utils::fs::dylib_extension;
 use utils::fs::ensure_output_dir;
@@ -334,7 +338,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None,
             );
 
-            self.build_func_def(main_func, func_param_types, true);
+            let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+            self.build_func_def(scope, main_func, func_param_types, true);
         }
         // FIXME
         // else {

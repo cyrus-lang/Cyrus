@@ -1,25 +1,28 @@
 use crate::{
     CodeGenLLVM, InternalType, InternalValue,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    scope::ScopeRef,
+    funcs::FuncMetadata,
+    scope::{Scope, ScopeRecord, ScopeRef},
     types::{DefinedType, InternalLvalueType, InternalStructType, InternalUnnamedStructType},
     values::Lvalue,
 };
 use ast::{
     ast::{
-        Field, FieldAccess, FuncDecl, FuncDef, FuncParam, Identifier, MethodCall, ModuleImport, ModuleSegment,
-        StorageClass, Struct, StructInit, TypeSpecifier, UnnamedStructType, UnnamedStructValue,
+        Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams, Identifier, MethodCall, ModuleImport,
+        ModuleSegment, SelfModifier, StorageClass, Struct, StructInit, TypeSpecifier, UnnamedStructType,
+        UnnamedStructValue,
     },
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
 };
 use inkwell::{
     AddressSpace,
-    llvm_sys::prelude::LLVMTypeRef,
-    types::{BasicTypeEnum, StructType},
-    values::{AggregateValueEnum, BasicValueEnum, FunctionValue, PointerValue},
+    llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
+    module::Linkage,
+    types::{BasicType, BasicTypeEnum, FunctionType, StructType},
+    values::{AggregateValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
-use std::{collections::HashMap, process::exit, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, ops::DerefMut, process::exit, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructMetadata<'a> {
@@ -183,6 +186,247 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         internal_struct_type.struct_metadata.struct_type = opaque_struct;
     }
 
+    fn build_self_modifier_local_alloca(
+        &self,
+        scope: ScopeRef<'ctx>,
+        self_modifier_type_specifier: TypeSpecifier,
+        self_modifier_type: BasicTypeEnum<'ctx>,
+        func_first_param: BasicValueEnum<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) {
+        let alloca = self.builder.build_alloca(self_modifier_type, "alloca").unwrap();
+        self.builder.build_store(alloca, func_first_param).unwrap();
+        scope.borrow_mut().insert(
+            "self".to_string(),
+            ScopeRecord {
+                ptr: alloca,
+                ty: self.build_type(self_modifier_type_specifier, loc.clone(), span_end),
+            },
+        );
+    }
+
+    fn validate_method_storage_class(&self, func_def: FuncDef) {
+        if func_def.storage_class == StorageClass::Extern {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(
+                    "Extern storage class specifier is not permitted in method definitions.".to_string(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_def.loc.line,
+                    column: func_def.loc.column,
+                    length: func_def.span.end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
+    pub(crate) fn build_method_def(
+        &mut self,
+        mut func_def: FuncDef,
+        struct_name: String,
+        internal_struct_type: InternalStructType<'ctx>,
+    ) -> (FunctionValue<'ctx>, FuncDecl) {
+        let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+        self.validate_method_storage_class(func_def.clone());
+        let mut func_decl = self.transform_to_func_decl(func_def.clone());
+        let is_variadic = func_def.params.variadic.is_some();
+
+        let return_type = self.build_type(
+            func_def.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
+                kind: TokenKind::Void,
+                span: Span::default(),
+                loc: Location::default(),
+            })),
+            func_def.loc.clone(),
+            func_def.span.end,
+        );
+
+        let mut params_list = func_def.params.list.clone();
+        let mut self_modifier_type: Option<LLVMTypeRef> = None;
+        let mut self_modifier_param_clone: Option<SelfModifier> = None;
+        let mut self_modifier_type_specifier: Option<TypeSpecifier> = None;
+
+        if let FuncParamKind::SelfModifier(self_modifier) = params_list.clone().first().unwrap() {
+            self_modifier_param_clone = Some(self_modifier.clone());
+            params_list.remove(0);
+            func_def.params.list.remove(0);
+
+            match self_modifier {
+                SelfModifier::Copied => {
+                    self_modifier_type = Some(
+                        InternalType::StructType(InternalStructType {
+                            type_str: internal_struct_type.type_str.clone(),
+                            struct_metadata: internal_struct_type.struct_metadata.clone(),
+                        })
+                        .as_type_ref(),
+                    );
+
+                    self_modifier_type_specifier = Some(TypeSpecifier::Identifier(Identifier {
+                        name: struct_name.clone(),
+                        loc: func_def.loc.clone(),
+                        span: func_def.span.clone(),
+                    }));
+                }
+                SelfModifier::Referenced => {
+                    self_modifier_type = Some(
+                        InternalType::Lvalue(Box::new(InternalLvalueType {
+                            ptr_type: self.context.ptr_type(AddressSpace::default()),
+                            pointee_ty: InternalType::StructType(InternalStructType {
+                                type_str: internal_struct_type.type_str.clone(),
+                                struct_metadata: internal_struct_type.struct_metadata.clone(),
+                            }),
+                        }))
+                        .as_type_ref(),
+                    );
+
+                    self_modifier_type_specifier = Some(TypeSpecifier::Dereference(Box::new(
+                        TypeSpecifier::Identifier(Identifier {
+                            name: struct_name.clone(),
+                            loc: func_def.loc.clone(),
+                            span: func_def.span.clone(),
+                        }),
+                    )));
+                }
+            };
+        }
+
+        let mut func_param_types: Vec<LLVMTypeRef> = self.build_func_params(
+            func_def.name.clone(),
+            func_def.loc.clone(),
+            func_def.span.end,
+            params_list,
+            func_def.params.variadic.clone(),
+        );
+
+        if let Some(self_modifier_type) = self_modifier_type {
+            func_param_types.insert(0, self_modifier_type);
+        }
+
+        let fn_type = unsafe {
+            FunctionType::new(LLVMFunctionType(
+                return_type.as_type_ref(),
+                func_param_types.as_mut_ptr(),
+                func_param_types.len() as u32,
+                is_variadic as i32,
+            ))
+        };
+
+        let method_name = func_def.name.clone();
+        let method_underlying_name = self.generate_abi_name(
+            self.module_id.clone(),
+            format!("{}_{}", struct_name.clone(), method_name),
+        );
+
+        let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.storage_class.clone()));
+
+        let func_value =
+            self.module
+                .borrow_mut()
+                .deref_mut()
+                .add_function(&method_underlying_name, fn_type, func_linkage);
+
+        self.func_table.insert(
+            func_decl.get_usable_name(),
+            FuncMetadata {
+                func_decl: func_decl.clone(),
+                ptr: func_value,
+                return_type: return_type.clone(),
+                imported_from: None,
+                is_method: true,
+            },
+        );
+
+        self.current_func_ref = Some(func_value);
+
+        let entry_block = self.context.append_basic_block(func_value, "entry");
+        self.builder.position_at_end(entry_block);
+        self.current_block_ref = Some(entry_block);
+
+        if let Some(self_modifier_type) = self_modifier_type {
+            let func_first_param = func_value.get_first_param().unwrap();
+            self.build_self_modifier_local_alloca(
+                Rc::clone(&scope),
+                self_modifier_type_specifier.unwrap(),
+                unsafe { BasicTypeEnum::new(self_modifier_type) },
+                func_first_param,
+                func_def.loc.clone(),
+                func_def.span.end,
+            );
+        }
+
+        // self.build_func_define_local_params(Rc::clone(&scope), func_value, func_def.clone());
+
+        if self_modifier_type.is_some() {
+            func_decl
+                .params
+                .list
+                .insert(0, FuncParamKind::SelfModifier(self_modifier_param_clone.unwrap()));
+        }
+
+        match func_def.params.variadic.clone() {
+            Some(variadic_type) => match variadic_type {
+                FuncVariadicParams::Typed(identifier, type_specifier) => {
+                    self.build_func_vargs(
+                        Rc::clone(&scope),
+                        identifier,
+                        type_specifier,
+                        func_def.params.clone(),
+                        func_value.clone(),
+                        func_def.loc.clone(),
+                        func_def.span.end,
+                    );
+                }
+                FuncVariadicParams::UntypedCStyle => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "C-style variadic arguments not supported in method definition. Consider to add a type annotation for the variadic parameter in method '{}'.",
+                            &func_def.name
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: func_def.loc.line,
+                            column: func_def.loc.column,
+                            length: func_def.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
+            None => {}
+        }
+
+        self.build_statements(Rc::clone(&scope), func_def.body.exprs);
+
+        let current_block = self.get_current_block("method_def statement", func_def.loc.clone(), func_def.span.end);
+
+        if !self.is_block_terminated(current_block) && return_type.is_void_type() {
+            self.builder.build_return(None).unwrap();
+        } else if !self.is_block_terminated(current_block) {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "The method '{}' is missing a return statement.",
+                    &func_def.name
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_def.loc.line,
+                    column: func_def.loc.column,
+                    length: func_def.span.end,
+                }),
+            });
+            exit(1);
+        }
+
+        func_value.verify(true);
+        return (func_value, func_decl);
+    }
+
     pub(crate) fn build_struct_methods(
         &mut self,
         internal_struct_type: InternalStructType<'ctx>,
@@ -190,68 +434,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         methods: Vec<FuncDef>,
     ) -> Vec<(FuncDecl, FunctionValue<'ctx>)> {
         let mut struct_methods: Vec<(FuncDecl, FunctionValue<'ctx>)> = Vec::new();
-
-        for mut func_def in methods {
-            let method_name = func_def.name.clone();
-            let method_underlying_name =
-                self.generate_abi_name(self.module_id.clone(), format!("{}_{}", struct_name.clone(), method_name));
-            func_def.name = method_underlying_name.clone();
-
-            // this_modifier
-            let mut func_param_types: Vec<LLVMTypeRef> = self.build_func_params(
-                func_def.name.clone(),
-                func_def.loc.clone(),
-                func_def.span.end,
-                func_def.params.list.clone(),
-                func_def.params.variadic.clone(),
-            );
-
-            func_param_types.insert(
-                0,
-                InternalType::Lvalue(Box::new(InternalLvalueType {
-                    ptr_type: self.context.ptr_type(AddressSpace::default()),
-                    pointee_ty: InternalType::StructType(InternalStructType {
-                        type_str: internal_struct_type.type_str.clone(),
-                        struct_metadata: internal_struct_type.struct_metadata.clone(),
-                    }),
-                }))
-                .as_type_ref(),
-            );
-
-            let this_modifier = FuncParam {
-                identifier: Identifier {
-                    name: "this".to_string(),
-                    loc: func_def.loc.clone(),
-                    span: func_def.span.clone(),
-                },
-                ty: Some(TypeSpecifier::Dereference(Box::new(TypeSpecifier::Identifier(
-                    Identifier {
-                        name: struct_name.clone(),
-                        loc: func_def.loc.clone(),
-                        span: func_def.span.clone(),
-                    },
-                )))),
-                default_value: None,
-                loc: func_def.loc.clone(),
-                span: func_def.span.clone(),
-            };
-            func_def.params.list.insert(0, this_modifier);
-
-            let func_value = self.build_func_def(func_def.clone(), func_param_types, false);
-
-            let func_decl = FuncDecl {
-                name: method_underlying_name,
-                params: func_def.params,
-                return_type: func_def.return_type,
-                storage_class: func_def.storage_class,
-                renamed_as: Some(method_name),
-                span: func_def.span.clone(),
-                loc: func_def.loc.clone(),
-            };
+        for func_def in methods {
+            let (func_value, func_decl) =
+                self.build_method_def(func_def, struct_name.clone(), internal_struct_type.clone());
 
             struct_methods.push((func_decl, func_value))
         }
-
         struct_methods
     }
 
@@ -516,16 +704,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                // set this_modifier value as first argument
-                let mut arguments: Vec<inkwell::values::BasicMetadataValueEnum<'_>> = vec![operand.to_basic_metadata()];
+                let mut arguments: Vec<BasicMetadataValueEnum<'_>> = Vec::new();
+                let mut pure_func_params = func_decl.params.clone();
 
-                let mut func_params_without_this_modifier = func_decl.params.clone();
-                func_params_without_this_modifier.list.remove(0);
+                // pass self modifier value if exists
+                let mut call_args_count = method_call.arguments.len();
+
+                if let Some(first_param) = func_decl.params.list.first() {
+                    if let FuncParamKind::SelfModifier(self_modifier) = first_param {
+                        match self_modifier {
+                            SelfModifier::Copied => {
+                                arguments.push(operand_rvalue.to_basic_metadata());
+                            }
+                            SelfModifier::Referenced => {
+                                arguments.push(operand.to_basic_metadata());
+                            }
+                        }
+                    }
+                    call_args_count += 1;
+                    pure_func_params.list.remove(0); // remove self_modifier from normal params
+                }
 
                 arguments.append(&mut self.build_arguments(
                     Rc::clone(&scope),
                     method_call.arguments.clone(),
-                    func_params_without_this_modifier,
+                    pure_func_params,
                     func_decl.get_usable_name(),
                     method_call.loc.clone(),
                     method_call.span.end,
@@ -534,7 +737,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.check_method_args_count_mismatch(
                     func_decl.name.clone(),
                     func_decl.clone(),
-                    method_call.arguments.len() + 1,
+                    call_args_count,
                     method_call.loc.clone(),
                     method_call.span.end,
                 );

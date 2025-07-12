@@ -448,9 +448,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 metadata.func_decl.params.variadic.clone(),
             );
 
-            let func_value = self.build_func_decl(new_metadata.func_decl.clone(), param_types, false);
-            new_metadata.ptr = func_value;
+            let func_value =
+                self.build_func_decl(new_metadata.func_decl.clone(), param_types, false, metadata.is_method);
 
+            new_metadata.ptr = func_value;
             (new_metadata.func_decl.get_usable_name(), new_metadata)
         } else {
             (metadata.func_decl.get_usable_name(), metadata.clone())

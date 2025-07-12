@@ -514,7 +514,7 @@ impl<'a> Parser<'a> {
 
                     if identifier.name == "self" {
                         self_modifier_count += 1;
-                        list.push(FuncParamKind::SelfModifier(SelfModifier::Referenced));
+                        list.push(FuncParamKind::SelfModifier(SelfModifier::Copied));
                     } else {
                         // get the var type
 

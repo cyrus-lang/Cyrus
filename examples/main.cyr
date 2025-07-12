@@ -1,12 +1,16 @@
+extern fn printf(format: const char*, ...);
+
 struct Person {
     name: string;
     age: int16;
     
-    fn to_string(self, name: string) {
-
+    public fn to_string(self) {
+        self.name;
+        // printf("Name: %s, Age: %d\n", self->name, self->age);
     }
 }
 
 fn main() {
-
+    #person = Person { name: "Taha", age: 18 };
+    person.to_string();
 }
