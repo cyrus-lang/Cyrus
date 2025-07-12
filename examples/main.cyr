@@ -10,13 +10,14 @@ struct Person {
         printf("Extra: %s\n", extra);
     }
 
-    public fn static_method() {
+    public fn static_method(v: int) {
 		printf("Static Method Called!\n");
+		printf("    %d\n", v);
 	}
 }
 
 fn main() {
     #person = Person { name: "Taha", age: 18 };
     person.to_string("something...");
-    Person.static_method();
+    Person.static_method(10);
 }

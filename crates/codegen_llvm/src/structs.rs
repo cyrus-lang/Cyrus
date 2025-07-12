@@ -711,24 +711,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                let mut arguments = self.build_arguments(
-                    Rc::clone(&scope),
-                    method_call.arguments.clone(),
-                    func_decl.params.clone(),
+                self.check_method_args_count_mismatch(
+                    func_decl.name.clone(),
+                    func_decl.clone(),
                     method_call.arguments.len(),
-                    func_decl.get_usable_name(),
                     method_call.loc.clone(),
                     method_call.span.end,
                 );
 
-                // FIXME
-                // self.check_method_args_count_mismatch(
-                //     func_decl.name.clone(),
-                //     func_decl.clone(),
-                //     method_call.arguments.len(),
-                //     method_call.loc.clone(),
-                //     method_call.span.end,
-                // );
+                let arguments = self.build_arguments(
+                    Rc::clone(&scope),
+                    method_call.arguments.clone(),
+                    func_decl.params.clone(),
+                    func_decl.params.list.len(),
+                    func_decl.get_usable_name(),
+                    method_call.loc.clone(),
+                    method_call.span.end,
+                );
 
                 let call_site_value = self.builder.build_call(*func_value, &arguments, "call").unwrap();
                 let return_type = self.build_type(
@@ -890,6 +889,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     pure_func_params.list.remove(0); // remove self_modifier from normal params
                 }
 
+                self.check_method_args_count_mismatch(
+                    func_decl.name.clone(),
+                    func_decl.clone(),
+                    // plus one to count self modifier
+                    method_call.arguments.len() + 1, 
+                    method_call.loc.clone(),
+                    method_call.span.end,
+                );
+
                 arguments.append(&mut self.build_arguments(
                     Rc::clone(&scope),
                     method_call.arguments.clone(),
@@ -899,15 +907,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     method_call.loc.clone(),
                     method_call.span.end,
                 ));
-
-                // FIXME
-                // self.check_method_args_count_mismatch(
-                //     func_decl.name.clone(),
-                //     func_decl.clone(),
-                //     method_call.arguments.len(),
-                //     method_call.loc.clone(),
-                //     method_call.span.end,
-                // );
 
                 let call_site_value = self.builder.build_call(*func_value, &arguments, "call").unwrap();
                 let return_type = self.build_type(

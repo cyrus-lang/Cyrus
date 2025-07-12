@@ -1,5 +1,5 @@
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
-use crate::scope::{Scope, ScopeRecord, ScopeRef};
+use crate::scope::{ScopeRecord, ScopeRef};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
@@ -867,20 +867,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
+        self.check_func_args_count_mismatch(
+            func_metadata.func_decl.name.clone(),
+            func_metadata.func_decl.clone(),
+            func_call.arguments.len(),
+            func_call.loc.clone(),
+            func_call.span.end,
+        );
+
         let arguments = &self.build_arguments(
             Rc::clone(&scope),
             func_call.arguments.clone(),
             func_metadata.func_decl.params.clone(),
             func_metadata.func_decl.params.list.len(),
             func_metadata.func_decl.get_usable_name(),
-            func_call.loc.clone(),
-            func_call.span.end,
-        );
-
-        self.check_func_args_count_mismatch(
-            func_metadata.func_decl.name.clone(),
-            func_metadata.func_decl.clone(),
-            func_call.arguments.len(),
             func_call.loc.clone(),
             func_call.span.end,
         );
