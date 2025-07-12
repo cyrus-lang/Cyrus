@@ -55,7 +55,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let param = match param_kind {
                     FuncParamKind::FuncParam(func_param) => func_param,
                     FuncParamKind::SelfModifier(_) => {
-                        panic!("An unexpected self modifier found in the middle of the func params.")
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Non-method functions cannot have a self modifier.".to_string()),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: func_loc.line,
+                                column: func_loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
                     }
                 };
 

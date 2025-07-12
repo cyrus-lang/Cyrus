@@ -341,18 +341,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
             self.build_func_def(scope, main_func, func_param_types, true);
+        } else if self.is_current_module_entry_point() && self.entry_point.is_none() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::NoEntryPointDetected,
+                location: None,
+            });
+            exit(1);
         }
-        // FIXME
-        // else {
-        //     dbg!(self.entry_point_path.clone());
-        //     self.file_path.clone();
-        //     display_single_diag(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: DiagKind::NoEntryPointDetected,
-        //         location: None,
-        //     });
-        //     exit(1);
-        // }
     }
 
     pub fn execute(&mut self) {

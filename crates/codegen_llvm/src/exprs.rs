@@ -1,6 +1,7 @@
 use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    modules::DefinitionLookupResult,
     types::{
         InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalPointerType, InternalType,
         InternalVoidType,

@@ -2,14 +2,15 @@ use crate::{
     CodeGenLLVM, InternalType, InternalValue,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     funcs::FuncMetadata,
+    modules::DefinitionLookupResult,
     scope::{Scope, ScopeRecord, ScopeRef},
     types::{DefinedType, InternalLvalueType, InternalStructType, InternalUnnamedStructType},
     values::Lvalue,
 };
 use ast::{
     ast::{
-        Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams, Identifier, MethodCall, ModuleImport,
-        ModuleSegment, SelfModifier, StorageClass, Struct, StructInit, TypeSpecifier, UnnamedStructType,
+        Expression, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams, Identifier, MethodCall,
+        ModuleImport, ModuleSegment, SelfModifier, StorageClass, Struct, StructInit, TypeSpecifier, UnnamedStructType,
         UnnamedStructValue,
     },
     format::module_segments_as_string,
@@ -30,7 +31,7 @@ pub struct StructMetadata<'a> {
     pub struct_type: StructType<'a>,
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
-    pub methods: Vec<(FuncDecl, FunctionValue<'a>)>,
+    pub methods: Vec<(FuncDecl, FunctionValue<'a>, bool)>,
     pub storage_class: StorageClass,
     pub packed: bool,
 }
@@ -229,10 +230,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         mut func_def: FuncDef,
         struct_name: String,
         internal_struct_type: InternalStructType<'ctx>,
-    ) -> (FunctionValue<'ctx>, FuncDecl) {
+    ) -> (FunctionValue<'ctx>, FuncDecl, bool) {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         self.validate_method_storage_class(func_def.clone());
-        let mut func_decl = self.transform_to_func_decl(func_def.clone());
+        let func_decl = self.transform_to_func_decl(func_def.clone());
         let is_variadic = func_def.params.variadic.is_some();
 
         let return_type = self.build_type(
@@ -245,60 +246,60 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_def.span.end,
         );
 
-        let mut params_list = func_def.params.list.clone();
+        let mut func_params_list = func_def.params.list.clone();
         let mut self_modifier_type: Option<LLVMTypeRef> = None;
-        let mut self_modifier_param_clone: Option<SelfModifier> = None;
         let mut self_modifier_type_specifier: Option<TypeSpecifier> = None;
 
-        if let FuncParamKind::SelfModifier(self_modifier) = params_list.clone().first().unwrap() {
-            self_modifier_param_clone = Some(self_modifier.clone());
-            params_list.remove(0);
-            func_def.params.list.remove(0);
+        if let Some(params_list) = func_params_list.clone().first() {
+            if let FuncParamKind::SelfModifier(self_modifier) = params_list {
+                func_params_list.remove(0);
+                func_def.params.list.remove(0);
 
-            match self_modifier {
-                SelfModifier::Copied => {
-                    self_modifier_type = Some(
-                        InternalType::StructType(InternalStructType {
-                            type_str: internal_struct_type.type_str.clone(),
-                            struct_metadata: internal_struct_type.struct_metadata.clone(),
-                        })
-                        .as_type_ref(),
-                    );
-
-                    self_modifier_type_specifier = Some(TypeSpecifier::Identifier(Identifier {
-                        name: struct_name.clone(),
-                        loc: func_def.loc.clone(),
-                        span: func_def.span.clone(),
-                    }));
-                }
-                SelfModifier::Referenced => {
-                    self_modifier_type = Some(
-                        InternalType::Lvalue(Box::new(InternalLvalueType {
-                            ptr_type: self.context.ptr_type(AddressSpace::default()),
-                            pointee_ty: InternalType::StructType(InternalStructType {
+                match self_modifier {
+                    SelfModifier::Copied => {
+                        self_modifier_type = Some(
+                            InternalType::StructType(InternalStructType {
                                 type_str: internal_struct_type.type_str.clone(),
                                 struct_metadata: internal_struct_type.struct_metadata.clone(),
-                            }),
-                        }))
-                        .as_type_ref(),
-                    );
+                            })
+                            .as_type_ref(),
+                        );
 
-                    self_modifier_type_specifier = Some(TypeSpecifier::Dereference(Box::new(
-                        TypeSpecifier::Identifier(Identifier {
+                        self_modifier_type_specifier = Some(TypeSpecifier::Identifier(Identifier {
                             name: struct_name.clone(),
                             loc: func_def.loc.clone(),
                             span: func_def.span.clone(),
-                        }),
-                    )));
-                }
-            };
+                        }));
+                    }
+                    SelfModifier::Referenced => {
+                        self_modifier_type = Some(
+                            InternalType::Lvalue(Box::new(InternalLvalueType {
+                                ptr_type: self.context.ptr_type(AddressSpace::default()),
+                                pointee_ty: InternalType::StructType(InternalStructType {
+                                    type_str: internal_struct_type.type_str.clone(),
+                                    struct_metadata: internal_struct_type.struct_metadata.clone(),
+                                }),
+                            }))
+                            .as_type_ref(),
+                        );
+
+                        self_modifier_type_specifier = Some(TypeSpecifier::Dereference(Box::new(
+                            TypeSpecifier::Identifier(Identifier {
+                                name: struct_name.clone(),
+                                loc: func_def.loc.clone(),
+                                span: func_def.span.clone(),
+                            }),
+                        )));
+                    }
+                };
+            }
         }
 
         let mut func_param_types: Vec<LLVMTypeRef> = self.build_func_params(
             func_def.name.clone(),
             func_def.loc.clone(),
             func_def.span.end,
-            params_list,
+            func_params_list,
             func_def.params.variadic.clone(),
         );
 
@@ -422,7 +423,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         func_value.verify(true);
-        return (func_value, func_decl);
+        return (func_value, func_decl, self_modifier_type.is_none());
     }
 
     pub(crate) fn build_struct_methods(
@@ -430,13 +431,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         internal_struct_type: InternalStructType<'ctx>,
         struct_name: String,
         methods: Vec<FuncDef>,
-    ) -> Vec<(FuncDecl, FunctionValue<'ctx>)> {
-        let mut struct_methods: Vec<(FuncDecl, FunctionValue<'ctx>)> = Vec::new();
+    ) -> Vec<(FuncDecl, FunctionValue<'ctx>, bool)> {
+        let mut struct_methods: Vec<(FuncDecl, FunctionValue<'ctx>, bool)> = Vec::new();
         for func_def in methods {
-            let (func_value, func_decl) =
+            let (func_value, func_decl, is_static_method) =
                 self.build_method_def(func_def, struct_name.clone(), internal_struct_type.clone());
 
-            struct_methods.push((func_decl, func_value))
+            struct_methods.push((func_decl, func_value, is_static_method))
         }
         struct_methods
     }
@@ -620,6 +621,137 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_method_call(&mut self, scope: ScopeRef<'ctx>, method_call: MethodCall) -> InternalValue<'ctx> {
+        match *method_call.operand.clone() {
+            Expression::Identifier(identifier) => match self.lookup_definition(identifier.name) {
+                Some(definition_lookup_result) => match definition_lookup_result {
+                    DefinitionLookupResult::Struct(internal_struct_type) => {
+                        self.build_static_method_call(scope, method_call, internal_struct_type)
+                    }
+                    DefinitionLookupResult::Func(_) => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Cannot build method call on a function value.".to_string()),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: identifier.loc.line,
+                                column: identifier.loc.column,
+                                length: identifier.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                },
+                None => self.build_instance_method_call(Rc::clone(&scope), method_call),
+            },
+            Expression::ModuleImport(module_import) => {
+                match self.find_defined_type(module_import, method_call.loc.clone(), method_call.span.end) {
+                    DefinedType::Struct(internal_struct_type) => {
+                        self.build_static_method_call(scope, method_call, internal_struct_type)
+                    }
+                }
+            }
+            _ => self.build_instance_method_call(Rc::clone(&scope), method_call),
+        }
+    }
+
+    pub(crate) fn build_static_method_call(
+        &mut self,
+        scope: ScopeRef<'ctx>,
+        method_call: MethodCall,
+        internal_struct_type: InternalStructType<'ctx>,
+    ) -> InternalValue<'ctx> {
+        let method_metadata = internal_struct_type
+            .struct_metadata
+            .methods
+            .iter()
+            .find(|method| method.0.get_usable_name() == method_call.method_name.name);
+
+        match method_metadata {
+            Some((func_decl, func_value, is_static_method)) => {
+                assert_eq!(*is_static_method, true);
+
+                let func_basic_blocks = func_value.get_basic_blocks();
+                let current_block =
+                    self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
+
+                if !func_basic_blocks.contains(&current_block) && func_decl.storage_class != StorageClass::Public {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Method '{}' is defined internally for the struct and cannot be called directly from outside. It is intended for internal use only.",
+                            method_call.method_name.name.clone()
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: method_call.method_name.loc.line,
+                            column: method_call.method_name.loc.column,
+                            length: method_call.method_name.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
+                let mut arguments = self.build_arguments(
+                    Rc::clone(&scope),
+                    method_call.arguments.clone(),
+                    func_decl.params.clone(),
+                    method_call.arguments.len(),
+                    func_decl.get_usable_name(),
+                    method_call.loc.clone(),
+                    method_call.span.end,
+                );
+
+                // FIXME
+                // self.check_method_args_count_mismatch(
+                //     func_decl.name.clone(),
+                //     func_decl.clone(),
+                //     method_call.arguments.len(),
+                //     method_call.loc.clone(),
+                //     method_call.span.end,
+                // );
+
+                let call_site_value = self.builder.build_call(*func_value, &arguments, "call").unwrap();
+                let return_type = self.build_type(
+                    func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
+                        kind: TokenKind::Void,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    })),
+                    method_call.loc.clone(),
+                    method_call.span.end,
+                );
+
+                if let Some(value) = call_site_value.try_as_basic_value().left() {
+                    self.new_internal_value(value, return_type)
+                } else {
+                    InternalValue::PointerValue(self.build_null())
+                }
+            }
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Static method '{}' not defined for struct '{}'.",
+                        method_call.method_name.name.clone(),
+                        module_segments_as_string(internal_struct_type.struct_metadata.struct_name.segments)
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: method_call.method_name.loc.line,
+                        column: method_call.method_name.loc.column,
+                        length: method_call.method_name.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+    }
+
+    pub(crate) fn build_instance_method_call(
+        &mut self,
+        scope: ScopeRef<'ctx>,
+        method_call: MethodCall,
+    ) -> InternalValue<'ctx> {
         let mut operand = self.build_expr(Rc::clone(&scope), *method_call.operand.clone());
         let mut operand_rvalue =
             self.internal_value_as_rvalue(operand.clone(), method_call.loc.clone(), method_call.span.end);
@@ -680,7 +812,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .find(|method| method.0.get_usable_name() == method_call.method_name.name);
 
         match method_metadata {
-            Some((func_decl, func_value)) => {
+            Some((func_decl, func_value, is_static_method)) => {
+                dbg!(is_static_method);
+                if *is_static_method {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Cannot call static method '{}' from an object instance. Call it directly instead.",
+                            method_call.method_name.name.clone()
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: method_call.method_name.loc.line,
+                            column: method_call.method_name.loc.column,
+                            length: method_call.method_name.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
                 let func_basic_blocks = func_value.get_basic_blocks();
                 let current_block =
                     self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
@@ -731,6 +881,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     method_call.span.end,
                 ));
 
+                // FIXME
                 // self.check_method_args_count_mismatch(
                 //     func_decl.name.clone(),
                 //     func_decl.clone(),
