@@ -4,13 +4,14 @@ struct Person {
     name: string;
     age: int16;
     
-    public fn to_string(self) {
-        self.name;
-        // printf("Name: %s, Age: %d\n", self->name, self->age);
+    public fn to_string(self, extra: string) {
+        printf("Name: %s\n", self.name);
+        printf("Age: %d\n", self.age);
+        printf("Extra: %s\n", extra);
     }
 }
 
 fn main() {
     #person = Person { name: "Taha", age: 18 };
-    person.to_string();
+    person.to_string("something...");
 }

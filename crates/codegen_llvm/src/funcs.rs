@@ -169,10 +169,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         func_value: FunctionValue<'ctx>,
         func_def: FuncDef,
+        includes_self_modifier: bool,
     ) {
         let mut scope_borrowed = scope.borrow_mut();
+        let func_params_iterator = func_value
+            .get_param_iter()
+            .skip(if includes_self_modifier { 1 } else { 0 });
 
-        for (idx, param) in func_value.get_param_iter().enumerate() {
+        for (idx, param) in func_params_iterator.enumerate() {
             let param_ptr = self.builder.build_alloca(param.get_type(), "param").unwrap();
             self.builder.build_store(param_ptr, param).unwrap();
 
@@ -441,7 +445,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder.position_at_end(entry_block);
         self.current_block_ref = Some(entry_block);
 
-        self.build_func_define_local_params(Rc::clone(&scope), func_value, func_def.clone());
+        self.build_func_define_local_params(Rc::clone(&scope), func_value, func_def.clone(), false);
         match func_def.params.variadic.clone() {
             Some(variadic_type) => match variadic_type {
                 FuncVariadicParams::Typed(identifier, type_specifier) => {
@@ -574,12 +578,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         arguments: Vec<Expression>,
         params: FuncParams,
+        static_params_length: usize,
         func_name: String,
         loc: Location,
         span_end: usize,
     ) -> Vec<BasicMetadataValueEnum<'ctx>> {
         let mut final_arguments: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
-        let static_params_length = params.list.len();
 
         for (idx, arg) in arguments[0..static_params_length].iter().enumerate() {
             let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
@@ -857,6 +861,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Rc::clone(&scope),
             func_call.arguments.clone(),
             func_metadata.func_decl.params.clone(),
+            func_metadata.func_decl.params.list.len(),
             func_metadata.func_decl.get_usable_name(),
             func_call.loc.clone(),
             func_call.span.end,

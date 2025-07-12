@@ -358,14 +358,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
         }
 
-        // self.build_func_define_local_params(Rc::clone(&scope), func_value, func_def.clone());
-
-        if self_modifier_type.is_some() {
-            func_decl
-                .params
-                .list
-                .insert(0, FuncParamKind::SelfModifier(self_modifier_param_clone.unwrap()));
-        }
+        self.build_func_define_local_params(
+            Rc::clone(&scope),
+            func_value,
+            func_def.clone(),
+            self_modifier_type.is_some(),
+        );
 
         match func_def.params.variadic.clone() {
             Some(variadic_type) => match variadic_type {
@@ -708,8 +706,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let mut pure_func_params = func_decl.params.clone();
 
                 // pass self modifier value if exists
-                let mut call_args_count = method_call.arguments.len();
-
                 if let Some(first_param) = func_decl.params.list.first() {
                     if let FuncParamKind::SelfModifier(self_modifier) = first_param {
                         match self_modifier {
@@ -721,7 +717,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             }
                         }
                     }
-                    call_args_count += 1;
+
                     pure_func_params.list.remove(0); // remove self_modifier from normal params
                 }
 
@@ -729,18 +725,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     Rc::clone(&scope),
                     method_call.arguments.clone(),
                     pure_func_params,
+                    method_call.arguments.len(),
                     func_decl.get_usable_name(),
                     method_call.loc.clone(),
                     method_call.span.end,
                 ));
 
-                self.check_method_args_count_mismatch(
-                    func_decl.name.clone(),
-                    func_decl.clone(),
-                    call_args_count,
-                    method_call.loc.clone(),
-                    method_call.span.end,
-                );
+                // self.check_method_args_count_mismatch(
+                //     func_decl.name.clone(),
+                //     func_decl.clone(),
+                //     method_call.arguments.len(),
+                //     method_call.loc.clone(),
+                //     method_call.span.end,
+                // );
 
                 let call_site_value = self.builder.build_call(*func_value, &arguments, "call").unwrap();
                 let return_type = self.build_type(

@@ -1,8 +1,8 @@
-use crate::scope::Scope;
-use crate::scope::ScopeRef;
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
+use crate::scope::Scope;
+use crate::scope::ScopeRef;
 use inkwell::module::FlagBehavior;
 use inkwell::passes::PassBuilderOptions;
 use inkwell::passes::PassManager;
@@ -133,7 +133,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         if let BuildDir::Default = self.opts.build_dir {
-            fs::remove_dir_all(format!("{}/{}", self.final_build_dir.clone(), "build")).unwrap();
+            fs::remove_dir_all(format!("{}/{}", self.final_build_dir.clone(), OBJECTS_FILENAME)).unwrap();
+            fs::remove_dir_all(format!("{}/{}", self.final_build_dir.clone(), SOURCES_DIR_PATH)).unwrap();
             fs::remove_file(format!("{}/{}", self.final_build_dir.clone(), MANIFEST_FILENAME)).unwrap();
         }
     }
