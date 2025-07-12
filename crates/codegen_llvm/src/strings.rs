@@ -1,5 +1,3 @@
-use std::process::exit;
-
 use crate::{
     CodeGenLLVM, InternalType, InternalValue, StringValue,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
@@ -10,8 +8,10 @@ use ast::token::{Location, TokenKind};
 use inkwell::{
     AddressSpace,
     context::Context,
+    module::Linkage,
     values::{GlobalValue, IntValue, PointerValue},
 };
+use std::process::exit;
 use utils::escaping::unescape_string;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -89,11 +89,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_global_str(&self, value: String) -> GlobalValue<'ctx> {
         let const_str = self.context.const_string(value.as_bytes(), true);
-        let global_str = self.module.borrow_mut().add_global(const_str.get_type(), None, ".str");
+        let module_ref = self.module.borrow_mut(); // Borrow mutably
+        let global_str = module_ref.add_global(const_str.get_type(), None, ".str");
         global_str.set_initializer(&const_str);
         global_str.set_constant(true);
+        global_str.set_unnamed_addr(true);
+        global_str.set_linkage(Linkage::Private);
+        global_str.set_alignment(1);
+
         global_str
     }
+
+    // pub(crate) fn build_global_str(&self, value: String) -> GlobalValue<'ctx> {
+    //     let const_str = self.context.const_string(value.as_bytes(), true);
+    //     let global_str = self.module.borrow_mut().add_global(const_str.get_type(), None, ".str");
+    //     global_str.set_initializer(&const_str);
+    //     global_str.set_constant(true);
+    //     global_str.set_unnamed_addr(true);
+    //     global_str.set_linkage(Linkage::Private);
+    //     global_str
+    // }
 
     pub(crate) fn build_string_literal(&self, value: String, loc: Location, span_end: usize) -> InternalValue<'ctx> {
         let make_unescaped_string =
@@ -120,6 +135,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let global_str = self.module.borrow_mut().add_global(const_str.get_type(), None, ".str");
         global_str.set_initializer(&const_str);
         global_str.set_constant(true);
+        global_str.set_unnamed_addr(true);
+        global_str.set_linkage(Linkage::Private);
 
         let buffer_size = self
             .context

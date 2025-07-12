@@ -68,6 +68,17 @@ impl Options {
                     return Err("'optimize' key in 'Project.toml' must be one of o1, o2, o3 or none.".to_string());
                 }
             };
+
+            let build_dir = match table.get("build_dir").and_then(|v| v.as_str()) {
+                Some(build_dir) => BuildDir::Provided(build_dir.to_string()),
+                None => BuildDir::Default,
+            };
+
+            options.build_dir = build_dir;
+
+            // TODO Get `Target Platform` with `cpu` keyword.
+            // TODO Get `Compiler Version` with `version` keyword.
+            // TODO Get `Input Sources` with `sources` keyword.
         }
 
         if let Some(value) = file_toml.get("dependencies") {

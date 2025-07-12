@@ -1,6 +1,7 @@
 use crate::{
     CodeGenLLVM, ScopeRef,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    modules::DefinitionLookupResult,
     types::{
         InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalPointerType, InternalType,
         InternalVoidType,
@@ -113,6 +114,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.build_deref_internal(internal_value, dereference.loc, dereference.span.end)
     }
 
+    // REVIEW !!!
     pub(crate) fn build_module_import(
         &self,
         scope: ScopeRef<'ctx>,
@@ -127,6 +129,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let first_segment = {
             match module_import.segments.first().unwrap() {
                 ModuleSegment::SubModule(sub_module) => sub_module,
+                ModuleSegment::Single(_) => unreachable!(),
             }
         };
 
@@ -167,19 +170,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
                 None => {
-                    let module_identifier = self.build_module_identifier(ModulePath {
+                    let module_id = self.build_module_id(ModulePath {
                         alias: None,
                         segments: module_import.segments[0..module_import.segments.len() - 1].to_vec(),
+                        loc: module_import.loc.clone(),
+                        span: module_import.span.clone(),
                     });
 
-                    match self.find_loaded_module(module_identifier.clone()) {
-                        Some(metadata) => {
-                            return InternalValue::ModuleValue(metadata);
+                    match self.find_imported_module(module_id.clone()) {
+                        Some(imported_module_metadata) => {
+                            return InternalValue::ModuleValue(imported_module_metadata.metadata.clone());
                         }
                         None => {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
-                                kind: DiagKind::Custom(format!("Module '{}' not found.", module_identifier)),
+                                kind: DiagKind::Custom(format!("Module '{}' not found.", module_id)),
                                 location: Some(DiagLoc {
                                     file: self.file_path.clone(),
                                     line: module_import.loc.line,
@@ -230,7 +235,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_load_lvalue(&self, scope: ScopeRef<'ctx>, module_import: ModuleImport) -> InternalValue<'ctx> {
         let first_segment = module_import.segments.first().unwrap();
-        let ModuleSegment::SubModule(identifier) = first_segment;
+        let identifier = match first_segment {
+            ModuleSegment::SubModule(identifier) => identifier.clone(),
+            ModuleSegment::Single(_) => unreachable!(),
+        };
 
         // If the module import has only one segment, we try to find the identifier in the current scope.
         // If not found, we check if it's an imported module.

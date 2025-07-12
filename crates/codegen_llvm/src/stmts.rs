@@ -1,5 +1,5 @@
 use crate::diag::*;
-use crate::scope::ScopeRecord;
+use crate::scope::{Scope, ScopeRecord};
 use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, scope::ScopeRef};
@@ -122,7 +122,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             Statement::FuncDef(func_def) => {
                 if func_def.name == "main" {
-                    // entry_point gonna be evaluated in the final step of code generation
+                    // entry_point gonna be compile in the final step of code generation
                     // that is why here we store it in the context
                     if self.entry_point.is_some() {
                         display_single_diag(Diag {
@@ -143,7 +143,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         func_def.params.variadic.clone(),
                     );
 
-                    self.build_func_def(func_def.clone(), param_types, false);
+                    let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+                    self.build_func_def(scope, func_def.clone(), param_types, false);
                 }
             }
             Statement::FuncDecl(func_decl) => {
@@ -155,7 +156,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_decl.params.variadic.clone(),
                 );
 
-                self.build_func_decl(func_decl, param_types);
+                self.build_func_decl(func_decl, param_types, true, false);
             }
             Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),
             Statement::For(for_statement) => self.build_for_statement(

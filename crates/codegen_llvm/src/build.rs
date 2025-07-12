@@ -1,6 +1,9 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
+use crate::scope::Scope;
+use crate::scope::ScopeRef;
+use inkwell::module::FlagBehavior;
 use inkwell::passes::PassBuilderOptions;
 use inkwell::passes::PassManager;
 use inkwell::targets::FileType;
@@ -8,6 +11,7 @@ use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -19,16 +23,17 @@ use std::path::Path;
 use std::process::Command;
 use std::process::Stdio;
 use std::process::exit;
+use std::rc::Rc;
 use utils::fs::absolute_to_relative;
 use utils::fs::dylib_extension;
 use utils::fs::ensure_output_dir;
 use utils::fs::executable_extension;
 use utils::generate_random_hex::generate_random_hex;
 
-const SOURCES_DIR_PATH: &str = "build/sources";
-const OBJECTS_FILENAME: &str = "build/obj";
+const SOURCES_DIR_PATH: &str = "sources";
+const OBJECTS_FILENAME: &str = "obj";
 const MANIFEST_FILENAME: &str = "manifest.json";
-const OUTPUT_FILENAME: &str = "build/output";
+const OUTPUT_FILENAME: &str = "output";
 
 #[derive(Debug, Clone)]
 pub enum OutputKind {
@@ -81,12 +86,25 @@ impl BuildManifest {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn enable_module_flags(&mut self) {
+        let module_ref = self.module.borrow_mut();
+
+        let pic_level = self.context.i32_type().const_int(2, false);
+        module_ref.add_basic_value_flag("PIC Level", FlagBehavior::Error, pic_level);
+
+        let pie_level = self.context.i32_type().const_int(2, false);
+        module_ref.add_basic_value_flag("PIE Level", FlagBehavior::Error, pie_level);
+
+        let uwtable_value = self.context.i32_type().const_int(2, false);
+        module_ref.add_basic_value_flag("uwtable", FlagBehavior::Error, uwtable_value);
+    }
+
     pub(crate) fn execute_linker(&self, output_path: String, object_files: Vec<String>, extra_args: Vec<String>) {
-        // TODO Consider to make linker dynamic through Project.toml and CLI Program.
-        // or "gcc" depending on your system and requirements
         let linker = "clang";
 
         let mut linker_command = std::process::Command::new(linker);
+        linker_command.arg("-v");
+        linker_command.arg("-fPIE");
         linker_command.arg("-o").arg(output_path);
 
         for path in object_files {
@@ -115,7 +133,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         if let BuildDir::Default = self.opts.build_dir {
-            fs::remove_dir_all(format!("{}/{}", self.final_build_dir.clone(), "build")).unwrap();
+            fs::remove_dir_all(format!("{}/{}", self.final_build_dir.clone(), OBJECTS_FILENAME)).unwrap();
+            fs::remove_dir_all(format!("{}/{}", self.final_build_dir.clone(), SOURCES_DIR_PATH)).unwrap();
             fs::remove_file(format!("{}/{}", self.final_build_dir.clone(), MANIFEST_FILENAME)).unwrap();
         }
     }
@@ -195,6 +214,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    fn get_sanitized_project_name(&self, file_path: &str) -> String {
+        let project_name = if let Some(file_name) = &self.opts.project_name {
+            file_name.clone()
+        } else {
+            file_path.to_string()
+        };
+
+        Path::new(&project_name)
+            .file_stem()
+            .unwrap_or_else(|| {
+                eprintln!("Warning: Could not determine file stem for project name. Using a default.");
+                std::ffi::OsStr::new("default")
+            })
+            .to_str()
+            .unwrap_or_else(|| {
+                eprintln!("Warning: Project name contains invalid Unicode. Using a default.");
+                "default"
+            })
+            .replace('.', "_")
+            .replace('-', "_")
+            .replace('/', "")
+            .to_string()
+    }
+
     pub fn generate_executable_file(&self, output_path: Option<String>) {
         let object_files: Vec<String> = self.build_manifest.objects.values().cloned().collect();
 
@@ -213,21 +256,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                ensure_output_dir(Path::new(OUTPUT_FILENAME));
-                format!("{}/{}", OUTPUT_FILENAME, {
-                    if let Some(file_name) = &self.opts.project_name {
-                        file_name.clone()
-                    } else {
-                        Path::new(&self.file_path)
-                            .file_stem()
-                            .unwrap()
-                            .to_str()
-                            .unwrap()
-                            .replace(".", "_")
-                            .replace("/", "")
-                            .to_string()
-                    }
-                })
+                let executable_output_dir = format!("{}/{}", self.final_build_dir.clone(), OUTPUT_FILENAME);
+                ensure_output_dir(Path::new(&executable_output_dir));
+                let sanitized_project_name = self.get_sanitized_project_name(&self.file_path);
+                format!("{}/{}", executable_output_dir, sanitized_project_name)
             }
         };
 
@@ -307,8 +339,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None,
             );
 
-            self.build_func_def(main_func, func_param_types, true);
-        } else {
+            let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+            self.build_func_def(scope, main_func, func_param_types, true);
+        } else if self.is_current_module_entry_point() && self.entry_point.is_none() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::NoEntryPointDetected,
@@ -362,11 +395,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .print_to_file(&temp_ll_file_path)
                 .map_err(|err| format!("Failed to print LLVM IR to temporary file: {}", err))?;
 
-            // Step 1: use llvm-as to convert IR (.ll) to bytecode (.bc)
             let llvm_as_command = Command::new("llvm-as")
                 .arg(&temp_ll_file_path)
                 .arg("-o")
-                .arg(&temp_bc_file_path) // Output to the bytecode path
+                .arg(&temp_bc_file_path)
                 .output()
                 .map_err(|e| format!("Failed to execute llvm-as command: {}", e))?;
 
@@ -379,12 +411,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ));
             }
 
-            // Step 2: Call llc on the bytecode (.bc) to generate a native object file (.o)
             let llc_command = Command::new("llc")
-                .arg("-filetype=obj") // Specify output type as object file
-                .arg(&temp_bc_file_path) // Input is the bytecode file
+                .arg("-filetype=obj")
+                .arg("--relocation-model=pic")
+                .arg(&temp_bc_file_path)
                 .arg("-o")
-                .arg(&output_path) // Output directly to the specified output_path
+                .arg(&output_path)
                 .output()
                 .map_err(|e| format!("Failed to execute llc command: {}", e))?;
 
@@ -460,7 +492,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn source_code_changed(&mut self, build_dir: String) -> bool {
-        let output_dir = SOURCES_DIR_PATH.to_string();
+        let output_dir = format!("{}/{}", self.final_build_dir.clone(), SOURCES_DIR_PATH);
         let current_hash = self.hash_source_code();
         let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
@@ -498,6 +530,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let rng = rand::rng();
         let random_hex: String = rng.sample_iter(&Alphanumeric).take(30).map(char::from).collect();
         let output_file = format!("{}/{}", output_dir, random_hex);
+
         File::create_new(output_file.clone())
             .unwrap()
             .write(hash_str.as_bytes())

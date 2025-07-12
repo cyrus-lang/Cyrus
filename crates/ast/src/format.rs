@@ -21,10 +21,10 @@ impl fmt::Display for Literal {
             LiteralKind::String(string_type, prefix) => {
                 if let Some(prefix) = prefix {
                     match prefix {
-                        StringPrefix::C => write!(f, "c"),
-                        StringPrefix::B => write!(f, "b"),
+                        StringPrefix::C => write!(f, "c")?,
+                        StringPrefix::B => write!(f, "b")?,
                     };
-                } 
+                }
                 write!(f, "\"{}\"", string_type)
             }
             LiteralKind::Float(float) => write!(f, "{}", float),
@@ -66,6 +66,21 @@ impl fmt::Display for ModuleSegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ModuleSegment::SubModule(identifier) => write!(f, "{}", identifier.name),
+            ModuleSegment::Single(singles) => {
+                write!(f, "{{")?;
+                for (idx, item) in singles.iter().enumerate() {
+                    if let Some(renamed) = &item.renamed {
+                        write!(f, "{}: ", renamed)?;
+                    }
+
+                    write!(f, "{}", item.identifier)?;
+
+                    if !(singles.len() - 1 == idx) {
+                        write!(f, ",")?;
+                    }
+                }
+                write!(f, "}}")
+            }
         }
     }
 }

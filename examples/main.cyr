@@ -1,9 +1,22 @@
 extern fn printf(format: const char*, ...);
 
-fn main() {
-    #barr = b"Hello World\n";
-
-    foreach (item in barr) {
-        printf("value: %c", item);
+struct Person {
+    name: string;
+    age: int16;
+    
+    public fn to_string(self, extra: string) {
+        printf("Name: %s\n", self.name);
+        printf("Age: %d\n", self.age);
+        printf("Extra: %s\n", extra);
     }
+
+    public fn static_method() {
+		printf("Static Method Called!\n");
+	}
+}
+
+fn main() {
+    #person = Person { name: "Taha", age: 18 };
+    person.to_string("something...");
+    Person.static_method();
 }

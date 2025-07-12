@@ -3,7 +3,6 @@ name = "cyrus-lang"
 version = "0.0.1"
 edition = "2024"
 resolver = "2"
-build = "./build.rs"
 
 [workspace]
 members = [

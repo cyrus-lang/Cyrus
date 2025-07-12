@@ -314,14 +314,23 @@ pub struct Return {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ModuleSegmentSingle {
+    pub identifier: Identifier,
+    pub renamed: Option<Identifier>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ModuleSegment {
     SubModule(Identifier),
+    Single(Vec<ModuleSegmentSingle>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModulePath {
     pub alias: Option<String>,
     pub segments: Vec<ModuleSegment>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -425,6 +434,15 @@ pub struct FuncDecl {
     pub loc: Location,
 }
 
+impl FuncDecl {
+    pub fn get_usable_name(&self) -> String {
+        match &self.renamed_as {
+            Some(name) => name.clone(),
+            None => self.name.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum StorageClass {
     Extern,
@@ -460,6 +478,18 @@ pub struct Assignment {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum SelfModifier {
+    Copied,
+    Referenced,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FuncParamKind {
+    FuncParam(FuncParam),
+    SelfModifier(SelfModifier),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncParam {
     pub identifier: Identifier,
     pub ty: Option<TypeSpecifier>,
@@ -470,7 +500,7 @@ pub struct FuncParam {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncParams {
-    pub list: Vec<FuncParam>,
+    pub list: Vec<FuncParamKind>,
     pub variadic: Option<FuncVariadicParams>,
 }
 
