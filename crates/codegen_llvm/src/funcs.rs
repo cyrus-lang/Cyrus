@@ -758,13 +758,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) {
-        if func_decl.params.variadic.is_none() && func_decl.params.list.len() != arguments_length {
+        let param_count = func_decl.params.list.len();
+        let expected_count = if param_count > 0 { param_count - 1 } else { 0 };
+        if func_decl.params.variadic.is_none() && param_count != arguments_length {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
                     func_name.clone(),
                     arguments_length.try_into().unwrap(),
-                    (func_decl.params.list.len() - 1).try_into().unwrap(),
+                    expected_count.try_into().unwrap(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -774,13 +776,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }),
             });
             exit(1);
-        } else if func_decl.params.variadic.is_some() && arguments_length < func_decl.params.list.len() {
+        } else if func_decl.params.variadic.is_some() && arguments_length < param_count {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::FuncCallArgumentCountMismatch(
                     func_name.clone(),
                     arguments_length.try_into().unwrap(),
-                    (func_decl.params.list.len() - 1).try_into().unwrap(),
+                    expected_count.try_into().unwrap(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),

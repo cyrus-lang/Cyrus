@@ -844,7 +844,6 @@ impl<'a> Parser<'a> {
         }; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
-        // self.expect_current(token_kind)
         let params = self.parse_func_params()?;
 
         let mut return_type: Option<TypeSpecifier> = None;

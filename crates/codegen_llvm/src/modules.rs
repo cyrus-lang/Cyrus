@@ -7,12 +7,16 @@ use crate::{
     types::InternalStructType,
 };
 use ast::{
-    ast::{Import, ModulePath, ModuleSegment, ModuleSegmentSingle, StorageClass},
+    ast::{FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, StorageClass, TypeSpecifier},
     format::module_segments_as_string,
-    token::Location,
+    token::{Location, Span, Token, TokenKind},
 };
-use inkwell::module::Module;
-use std::{cell::RefCell, collections::HashMap, path::Path, process::exit, rc::Rc};
+use inkwell::{
+    llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
+    module::Module,
+    types::FunctionType,
+};
+use std::{cell::RefCell, collections::HashMap, ops::DerefMut, path::Path, process::exit, rc::Rc};
 use utils::fs::find_file_from_sources;
 
 #[derive(Debug, Clone)]
@@ -360,10 +364,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 generated_module_import_path.span_end,
             );
         } else {
+            let imported_funcs = self.build_imported_funcs(sub_codegen_ref.func_table.clone(), module_id.clone());
+            let imported_structs = self.build_imported_structs(
+                generated_module_import_path.module_path,
+                module_id.clone(),
+                sub_codegen_ref.struct_table.clone(),
+            );
+
             let module_metadata = ModuleMetadata {
                 module: Rc::clone(&sub_module),
-                func_table: self.build_imported_funcs(sub_codegen_ref.func_table.clone(), module_id.clone()),
-                struct_table: self.build_imported_structs(sub_codegen_ref.struct_table.clone()),
+                func_table: imported_funcs,
+                struct_table: imported_structs,
                 identifier: module_id.clone(),
                 file_path: generated_module_import_path.file_path,
             };
@@ -399,12 +410,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match lookup_result {
                 DefinitionLookupResult::Func(mut func_metadata) => {
                     func_metadata.imported_from = Some(module_path.clone());
-                    let (func_name, func_metadata) = self.build_decl_imported_func(module_id.clone(), func_metadata);
+                    func_metadata.func_decl.renamed_as = Some(func_metadata.func_decl.name.clone());
+                    func_metadata.func_decl.name =
+                        self.generate_abi_name(module_id.clone(), func_metadata.func_decl.name);
+                    let (func_name, func_metadata) = self.build_decl_imported_func(func_metadata);
                     self.func_table.insert(func_name, func_metadata);
                 }
                 DefinitionLookupResult::Struct(internal_struct_type) => {
-                    // FIXME Write a usable function for importing structs
-
                     let struct_name = {
                         match internal_struct_type
                             .struct_metadata
@@ -418,16 +430,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }
                     };
 
-                    self.struct_table.insert(struct_name, internal_struct_type.clone());
+                    let new_internal_struct_type = self.build_decl_imported_struct_methods(
+                        module_path.clone(),
+                        module_id.clone(),
+                        internal_struct_type.clone(),
+                    );
+                    self.struct_table.insert(struct_name, new_internal_struct_type.clone());
                 }
             }
         }
     }
 
-    fn build_decl_imported_func(
+    fn build_decl_imported_instance_method(
         &mut self,
-        module_id: String,
         metadata: FuncMetadata<'ctx>,
+        self_modifier_type: LLVMTypeRef,
     ) -> (String, FuncMetadata<'ctx>) {
         if metadata.func_decl.storage_class == StorageClass::Public
             || metadata.func_decl.storage_class == StorageClass::PublicExtern
@@ -435,10 +452,61 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         {
             let mut new_metadata = metadata.clone();
 
-            // function naming collisions fix happens here
-            new_metadata.func_decl.renamed_as = Some(metadata.func_decl.name.clone());
-            new_metadata.func_decl.name =
-                self.generate_abi_name(module_id.clone(), new_metadata.func_decl.name.clone());
+            let mut param_types = self.build_func_params(
+                metadata.func_decl.name.clone(),
+                metadata.func_decl.loc.clone(),
+                metadata.func_decl.span.end,
+                metadata.func_decl.params.list.clone(),
+                metadata.func_decl.params.variadic.clone(),
+            );
+
+            param_types.insert(0, self_modifier_type);
+
+            let is_var_args = metadata.func_decl.params.variadic.is_some();
+
+            let return_type = self.build_type(
+                metadata
+                    .func_decl
+                    .return_type
+                    .clone()
+                    .unwrap_or(TypeSpecifier::TypeToken(Token {
+                        kind: TokenKind::Void,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    })),
+                metadata.func_decl.loc.clone(),
+                metadata.func_decl.span.end,
+            );
+
+            let fn_type = unsafe {
+                FunctionType::new(LLVMFunctionType(
+                    return_type.as_type_ref(),
+                    param_types.as_mut_ptr(),
+                    param_types.len() as u32,
+                    is_var_args as i32,
+                ))
+            };
+
+            let func_linkage = self.build_func_linkage(metadata.func_decl.storage_class.clone());
+            let func_value = self.module.borrow_mut().deref_mut().add_function(
+                &metadata.func_decl.name,
+                fn_type,
+                Some(func_linkage),
+            );
+
+            new_metadata.ptr = func_value;
+            (new_metadata.func_decl.get_usable_name(), new_metadata)
+        } else {
+            (metadata.func_decl.get_usable_name(), metadata.clone())
+        }
+    }
+
+    fn build_decl_imported_func(&mut self, metadata: FuncMetadata<'ctx>) -> (String, FuncMetadata<'ctx>) {
+        if metadata.func_decl.storage_class == StorageClass::Public
+            || metadata.func_decl.storage_class == StorageClass::PublicExtern
+            || metadata.func_decl.storage_class == StorageClass::PublicInline
+        {
+            let mut new_metadata = metadata.clone();
 
             let param_types = self.build_func_params(
                 metadata.func_decl.name.clone(),
@@ -464,23 +532,148 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module_id: String,
     ) -> HashMap<String, FuncMetadata<'ctx>> {
         let mut imported_funcs: HashMap<String, FuncMetadata> = HashMap::new();
-        for (_, (_, metadata)) in func_table.iter().enumerate() {
-            let (func_name, func_metadata) = self.build_decl_imported_func(module_id.clone(), metadata.clone());
+        for mut metadata in func_table.values().cloned() {
+            metadata.func_decl.renamed_as = Some(metadata.func_decl.name.clone());
+            metadata.func_decl.name = self.generate_abi_name(module_id.clone(), metadata.func_decl.name.clone());
+            let (func_name, func_metadata) = self.build_decl_imported_func(metadata.clone());
             imported_funcs.insert(func_name, func_metadata);
         }
         imported_funcs
     }
 
-    fn build_imported_structs(&self, struct_table: StructTable<'ctx>) -> HashMap<String, InternalStructType<'ctx>> {
+    fn build_decl_imported_struct_methods(
+        &mut self,
+        imported_from: ModulePath,
+        imported_module_id: String,
+        internal_struct_type: InternalStructType<'ctx>,
+    ) -> InternalStructType<'ctx> {
+        let mut final_internal_struct_type = internal_struct_type.clone();
+
+        for (idx, (mut method_decl, method_value, is_static_method)) in internal_struct_type
+            .clone()
+            .struct_metadata
+            .methods
+            .iter()
+            .cloned()
+            .enumerate()
+        {
+            let return_type = self.build_type(
+                method_decl
+                    .return_type
+                    .clone()
+                    .unwrap_or(TypeSpecifier::TypeToken(Token {
+                        kind: TokenKind::Void,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    })),
+                method_decl.loc.clone(),
+                method_decl.span.end,
+            );
+
+            let struct_name = match internal_struct_type
+                .struct_metadata
+                .struct_name
+                .segments
+                .last()
+                .unwrap()
+            {
+                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+                ModuleSegment::Single(_) => unreachable!(),
+            };
+
+            method_decl.name = self.generate_method_abi_name(
+                imported_module_id.clone(),
+                struct_name.clone(),
+                method_decl.name.clone(),
+            );
+
+            if is_static_method {
+                let (_, func_metadata) = self.build_decl_imported_func(FuncMetadata {
+                    func_decl: method_decl.clone(),
+                    ptr: method_value,
+                    is_method: true,
+                    imported_from: Some(imported_from.clone()),
+                    return_type,
+                });
+
+                final_internal_struct_type.struct_metadata.methods[idx] = (
+                    func_metadata.func_decl.clone(),
+                    func_metadata.ptr,
+                    is_static_method.clone(),
+                );
+            } else {
+                let self_modifier = match method_decl.params.list.clone().first().unwrap() {
+                    ast::ast::FuncParamKind::SelfModifier(self_modifier) => {
+                        method_decl.params.list.remove(0);
+                        self_modifier.clone()
+                    }
+                    ast::ast::FuncParamKind::FuncParam(_) => unreachable!(),
+                };
+
+                let (self_modifier_type, _) = self.build_self_modifier_param(
+                    &self_modifier,
+                    &struct_name,
+                    &internal_struct_type,
+                    &method_decl.loc,
+                    &method_decl.span,
+                );
+
+                let (_, mut func_metadata) = self.build_decl_imported_instance_method(
+                    FuncMetadata {
+                        func_decl: method_decl.clone(),
+                        ptr: method_value,
+                        is_method: true,
+                        imported_from: Some(imported_from.clone()),
+                        return_type,
+                    },
+                    self_modifier_type,
+                );
+
+                func_metadata
+                    .func_decl
+                    .params
+                    .list
+                    .insert(0, FuncParamKind::SelfModifier(self_modifier));
+                final_internal_struct_type.struct_metadata.methods[idx] = (
+                    func_metadata.func_decl.clone(),
+                    func_metadata.ptr,
+                    is_static_method.clone(),
+                );
+            }
+        }
+
+        final_internal_struct_type
+    }
+
+    fn build_imported_structs(
+        &mut self,
+        imported_from: ModulePath,
+        imported_module_id: String,
+        struct_table: StructTable<'ctx>,
+    ) -> HashMap<String, InternalStructType<'ctx>> {
         let mut imported_structs: HashMap<String, InternalStructType> = HashMap::new();
-        for (_, (struct_name, metadata)) in struct_table.iter().enumerate() {
-            // TODO Import struct methods
-            imported_structs.insert(struct_name.clone(), metadata.clone());
+        for (_, (struct_name, internal_struct_type)) in struct_table.iter().enumerate() {
+            let new_internal_struct_type = self.build_decl_imported_struct_methods(
+                imported_from.clone(),
+                imported_module_id.clone(),
+                internal_struct_type.clone(),
+            );
+
+            imported_structs.insert(struct_name.clone(), new_internal_struct_type);
         }
         imported_structs
     }
 
     pub(crate) fn generate_abi_name(&self, module_id: String, name: String) -> String {
         format!("{}_{}", module_id, name)
+    }
+
+    pub(crate) fn generate_method_abi_name(
+        &self,
+        module_id: String,
+        struct_name: String,
+        method_name: String,
+    ) -> String {
+        format!("{}_{}_{}", module_id, struct_name, method_name)
     }
 }

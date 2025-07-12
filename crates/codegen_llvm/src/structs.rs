@@ -20,7 +20,7 @@ use inkwell::{
     AddressSpace,
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
     module::Linkage,
-    types::{BasicType, BasicTypeEnum, FunctionType, StructType},
+    types::{BasicTypeEnum, FunctionType, StructType},
     values::{AggregateValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
 use std::{cell::RefCell, collections::HashMap, ops::DerefMut, process::exit, rc::Rc};
@@ -145,7 +145,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let opaque_struct = self
             .context
-            .opaque_struct_type(&format!("{}::{}", self.module_id, struct_statement.name));
+            .opaque_struct_type(&self.generate_abi_name(self.module_id.clone(), struct_statement.name.clone()));
 
         let struct_metadata = StructMetadata {
             struct_name: ModuleImport {
@@ -225,6 +225,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn build_self_modifier_param(
+        &self,
+        self_modifier: &SelfModifier,
+        struct_name: &str,
+        internal_struct_type: &InternalStructType<'ctx>,
+        func_loc: &Location,
+        func_span: &Span,
+    ) -> (LLVMTypeRef, TypeSpecifier) {
+        match self_modifier {
+            SelfModifier::Copied => (
+                InternalType::StructType(InternalStructType {
+                    type_str: internal_struct_type.type_str.clone(),
+                    struct_metadata: internal_struct_type.struct_metadata.clone(),
+                })
+                .as_type_ref(),
+                TypeSpecifier::Identifier(Identifier {
+                    name: struct_name.to_string(),
+                    loc: func_loc.clone(),
+                    span: func_span.clone(),
+                }),
+            ),
+            SelfModifier::Referenced => (
+                InternalType::Lvalue(Box::new(InternalLvalueType {
+                    ptr_type: self.context.ptr_type(AddressSpace::default()),
+                    pointee_ty: InternalType::StructType(InternalStructType {
+                        type_str: internal_struct_type.type_str.clone(),
+                        struct_metadata: internal_struct_type.struct_metadata.clone(),
+                    }),
+                }))
+                .as_type_ref(),
+                TypeSpecifier::Dereference(Box::new(TypeSpecifier::Identifier(Identifier {
+                    name: struct_name.to_string(),
+                    loc: func_loc.clone(),
+                    span: func_span.clone(),
+                }))),
+            ),
+        }
+    }
+
     pub(crate) fn build_method_def(
         &mut self,
         mut func_def: FuncDef,
@@ -255,43 +294,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 func_params_list.remove(0);
                 func_def.params.list.remove(0);
 
-                match self_modifier {
-                    SelfModifier::Copied => {
-                        self_modifier_type = Some(
-                            InternalType::StructType(InternalStructType {
-                                type_str: internal_struct_type.type_str.clone(),
-                                struct_metadata: internal_struct_type.struct_metadata.clone(),
-                            })
-                            .as_type_ref(),
-                        );
-
-                        self_modifier_type_specifier = Some(TypeSpecifier::Identifier(Identifier {
-                            name: struct_name.clone(),
-                            loc: func_def.loc.clone(),
-                            span: func_def.span.clone(),
-                        }));
-                    }
-                    SelfModifier::Referenced => {
-                        self_modifier_type = Some(
-                            InternalType::Lvalue(Box::new(InternalLvalueType {
-                                ptr_type: self.context.ptr_type(AddressSpace::default()),
-                                pointee_ty: InternalType::StructType(InternalStructType {
-                                    type_str: internal_struct_type.type_str.clone(),
-                                    struct_metadata: internal_struct_type.struct_metadata.clone(),
-                                }),
-                            }))
-                            .as_type_ref(),
-                        );
-
-                        self_modifier_type_specifier = Some(TypeSpecifier::Dereference(Box::new(
-                            TypeSpecifier::Identifier(Identifier {
-                                name: struct_name.clone(),
-                                loc: func_def.loc.clone(),
-                                span: func_def.span.clone(),
-                            }),
-                        )));
-                    }
-                };
+                let (ty, spec) = self.build_self_modifier_param(
+                    self_modifier,
+                    &struct_name,
+                    &internal_struct_type,
+                    &func_def.loc,
+                    &func_def.span,
+                );
+                self_modifier_type = Some(ty);
+                self_modifier_type_specifier = Some(spec);
             }
         }
 
@@ -317,10 +328,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let method_name = func_def.name.clone();
-        let method_underlying_name = self.generate_abi_name(
-            self.module_id.clone(),
-            format!("{}_{}", struct_name.clone(), method_name),
-        );
+        let method_underlying_name =
+            self.generate_method_abi_name(self.module_id.clone(), struct_name.clone(), method_name);
 
         let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.storage_class.clone()));
 
@@ -329,17 +338,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .borrow_mut()
                 .deref_mut()
                 .add_function(&method_underlying_name, fn_type, func_linkage);
-
-        self.func_table.insert(
-            func_decl.get_usable_name(),
-            FuncMetadata {
-                func_decl: func_decl.clone(),
-                ptr: func_value,
-                return_type: return_type.clone(),
-                imported_from: None,
-                is_method: true,
-            },
-        );
 
         self.current_func_ref = Some(func_value);
 
@@ -893,7 +891,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_decl.name.clone(),
                     func_decl.clone(),
                     // plus one to count self modifier
-                    method_call.arguments.len() + 1, 
+                    method_call.arguments.len() + 1,
                     method_call.loc.clone(),
                     method_call.span.end,
                 );
