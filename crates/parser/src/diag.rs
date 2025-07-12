@@ -17,6 +17,8 @@ pub enum ParserErrorType {
     MissingComma,
     IncompleteConditionalForLoop,
     InvalidUntypedArrayConstructor,
+    ExpectedSelfModifier(String),
+    SeveralSelfModifierDefinition,
 }
 
 impl fmt::Display for ParserErrorType {
@@ -35,6 +37,8 @@ impl fmt::Display for ParserErrorType {
             ParserErrorType::MissingComma => write!(f, "MissingComma"),
             ParserErrorType::IncompleteConditionalForLoop => write!(f, "IncompleteConditionalForLoop"),
             ParserErrorType::InvalidUntypedArrayConstructor => write!(f, "InvalidUntypedArrayConstructor"),
+            ParserErrorType::ExpectedSelfModifier(_) => write!(f, "ExpectedSelfModifier"),
+            ParserErrorType::SeveralSelfModifierDefinition => write!(f, "SeveralSelfModifierDefinition"),
         }
     }
 }
@@ -69,6 +73,12 @@ impl CompileTypeErrorType for ParserErrorType {
             }
             ParserErrorType::InvalidUntypedArrayConstructor => {
                 "If untyped array constructor would not have an item, consider to remove it.".to_string()
+            }
+            ParserErrorType::SeveralSelfModifierDefinition => {
+                "Cannot define self modifier several times in a function.".to_string()
+            }
+            ParserErrorType::ExpectedSelfModifier(name) => {
+                format!("Self modifier identifier must be 'self' not '{}'.", name)
             }
         }
     }

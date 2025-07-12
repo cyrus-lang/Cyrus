@@ -20,8 +20,7 @@ impl<'a> Parser<'a> {
                 return self.parse_struct(Some(storage_class), false);
             } else if self.current_token_is(TokenKind::Bits) {
                 return self.parse_struct(Some(storage_class), true);
-            } 
-            else if self.current_token_is(TokenKind::Enum) {
+            } else if self.current_token_is(TokenKind::Enum) {
                 return self.parse_enum(Some(storage_class));
             }
         } else if self.current_token_is(TokenKind::Function) {
@@ -30,8 +29,7 @@ impl<'a> Parser<'a> {
             return self.parse_struct(None, false);
         } else if self.current_token_is(TokenKind::Bits) {
             return self.parse_struct(None, true);
-        } 
-        else if self.current_token_is(TokenKind::Enum) {
+        } else if self.current_token_is(TokenKind::Enum) {
             return self.parse_enum(None);
         }
 
@@ -356,6 +354,51 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn parse_import_module_path(&mut self, module_path: ModulePath) -> Result<ModulePath, ParseError> {
+        if self.current_token_is(TokenKind::LeftBrace) {
+            self.next_token();
+
+            let mut singles: Vec<ModuleSegmentSingle> = Vec::new();
+
+            while !self.current_token_is(TokenKind::RightBrace) {
+                // enable aliasing features for a single
+                let first_identifier = self.parse_identifier()?;
+                self.next_token();
+
+                if self.current_token_is(TokenKind::Colon) {
+                    self.next_token(); // consume colon
+
+                    let second_identifier = self.parse_identifier()?;
+                    self.next_token();
+
+                    let renamed_single = ModuleSegmentSingle {
+                        identifier: second_identifier,
+                        renamed: Some(first_identifier),
+                    };
+                    singles.push(renamed_single);
+                } else {
+                    let single = ModuleSegmentSingle {
+                        identifier: first_identifier,
+                        renamed: None,
+                    };
+                    singles.push(single);
+                }
+
+                if !self.current_token_is(TokenKind::RightBrace) {
+                    self.expect_current(TokenKind::Comma)?;
+                }
+            }
+
+            self.expect_current(TokenKind::RightBrace)?;
+
+            let mut updated_module_path = module_path.clone();
+            updated_module_path.segments.push(ModuleSegment::Single(singles));
+            Ok(updated_module_path)
+        } else {
+            Ok(module_path)
+        }
+    }
+
     pub fn parse_import(&mut self) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
@@ -367,23 +410,42 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::LeftParen) {
             self.expect_current(TokenKind::LeftParen)?;
 
-            while !self.current_token_is(TokenKind::RightParen) {
-                paths.push(self.parse_module_path()?);
-                self.next_token();
+            loop {
+                let mut module_path = self.parse_module_path()?;
+                module_path = self.parse_import_module_path(module_path.clone())?;
+                paths.push(module_path);
+
+                match self.current_token.kind {
+                    TokenKind::RightParen => {
+                        break;
+                    }
+                    TokenKind::Comma => {
+                        self.next_token();
+
+                        if self.current_token_is(TokenKind::RightParen) {
+                            break;
+                        } else {
+                            continue;
+                        }
+                    }
+                    _ => {
+                        return Err(CompileTimeError {
+                            location: self.current_token.loc.clone(),
+                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                            file_name: Some(self.lexer.file_name.clone()),
+                            source_content: Box::new(self.lexer.input.clone()),
+                            verbose: None,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
+                        });
+                    }
+                }
             }
 
-            if !self.current_token_is(TokenKind::RightParen) {
-                return Err(CompileTimeError {
-                    location: loc,
-                    etype: ParserErrorType::MissingClosingParen,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: None,
-                    caret: Some(Span::new(start, self.current_token.span.end)),
-                });
-            }
+            self.expect_current(TokenKind::RightParen)?;
         } else {
-            paths = vec![self.parse_module_path()?];
+            let mut module_path = self.parse_module_path()?;
+            module_path = self.parse_import_module_path(module_path.clone())?;
+            paths = vec![module_path];
         }
 
         return Ok(Statement::Import(Import {
@@ -403,7 +465,8 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenKind::LeftParen)?;
 
         let mut variadic: Option<FuncVariadicParams> = None;
-        let mut list: Vec<FuncParam> = Vec::new();
+        let mut list: Vec<FuncParamKind> = Vec::new();
+        let mut self_modifier_count: u32 = 0;
 
         while self.current_token.kind != TokenKind::RightParen {
             match self.current_token.kind.clone() {
@@ -424,76 +487,79 @@ impl<'a> Parser<'a> {
                     variadic = Some(FuncVariadicParams::UntypedCStyle);
                     break;
                 }
+                TokenKind::Ampersand => {
+                    self.next_token(); // ampersand
+                    let identifier = self.parse_identifier()?;
+                    self.next_token(); // consume identifier
+
+                    if &identifier.name != "self" {
+                        return Err(CompileTimeError {
+                            location: loc,
+                            etype: ParserErrorType::ExpectedSelfModifier(identifier.name),
+                            file_name: Some(self.lexer.file_name.clone()),
+                            source_content: Box::new(self.lexer.input.clone()),
+                            verbose: None,
+                            caret: Some(Span::new(start, self.current_token.span.end)),
+                        });
+                    }
+
+                    self_modifier_count += 1;
+                    list.push(FuncParamKind::SelfModifier(SelfModifier::Referenced));
+                }
                 TokenKind::Identifier { name } => {
                     let param_loc = self.current_token.loc.clone();
+                    let start = self.current_token.span.start;
                     let identifier = self.parse_identifier()?;
                     self.next_token(); // consume the identifier
 
-                    let start = self.current_token.span.start;
+                    if identifier.name == "self" {
+                        self_modifier_count += 1;
+                        list.push(FuncParamKind::SelfModifier(SelfModifier::Copied));
+                    } else {
+                        // get the var type
 
-                    // get the var type
+                        let mut var_type: Option<TypeSpecifier> = None;
+                        if self.current_token_is(TokenKind::Colon) {
+                            self.next_token(); // consume the colon
 
-                    let mut var_type: Option<TypeSpecifier> = None;
-                    if self.current_token_is(TokenKind::Colon) {
-                        self.next_token(); // consume the colon
+                            if self.current_token_is(TokenKind::TripleDot) {
+                                self.next_token(); // consume triple dot
 
-                        if self.current_token_is(TokenKind::TripleDot) {
-                            self.next_token(); // consume triple dot
+                                let variadic_data_type = self.parse_type_specifier()?;
+                                self.next_token();
 
-                            let variadic_data_type = self.parse_type_specifier()?;
-                            self.next_token();
-
-                            variadic = Some(FuncVariadicParams::Typed(identifier, variadic_data_type));
-                            continue;
-                        } else {
-                            var_type = Some(self.parse_type_specifier()?);
-                            self.next_token();
+                                variadic = Some(FuncVariadicParams::Typed(identifier, variadic_data_type));
+                                continue;
+                            } else {
+                                var_type = Some(self.parse_type_specifier()?);
+                                self.next_token();
+                            }
                         }
-                    }
 
-                    let mut default_value: Option<Expression> = None;
+                        let mut default_value: Option<Expression> = None;
 
-                    if self.current_token_is(TokenKind::Assign) {
-                        self.next_token(); // consume the assign
+                        if self.current_token_is(TokenKind::Assign) {
+                            self.next_token(); // consume the assign
 
-                        default_value = Some(self.parse_expression(Precedence::Lowest)?.0);
+                            default_value = Some(self.parse_expression(Precedence::Lowest)?.0);
 
-                        self.next_token(); // consume the expression
-                    }
-
-                    list.push(FuncParam {
-                        identifier: Identifier {
-                            name: name,
-                            span: self.current_token.span.clone(),
-                            loc: param_loc.clone(),
-                        },
-                        ty: var_type,
-                        default_value: default_value,
-                        span: Span {
-                            start: start,
-                            end: self.current_token.span.end,
-                        },
-                        loc: param_loc,
-                    });
-
-                    // after reading
-                    match &self.current_token.kind {
-                        TokenKind::Comma => {
-                            self.next_token();
+                            self.next_token(); // consume the expression
                         }
-                        TokenKind::RightParen => {
-                            break;
-                        }
-                        _ => {
-                            return Err(CompileTimeError {
-                                location: loc,
-                                etype: ParserErrorType::MissingComma,
-                                file_name: Some(self.lexer.file_name.clone()),
-                                source_content: Box::new(self.lexer.input.clone()),
-                                verbose: None,
-                                caret: Some(Span::new(start, self.current_token.span.end)),
-                            });
-                        }
+
+                        list.push(FuncParamKind::FuncParam(FuncParam {
+                            identifier: Identifier {
+                                name: name,
+                                span: self.current_token.span.clone(),
+                                loc: param_loc.clone(),
+                            },
+                            ty: var_type,
+                            default_value: default_value,
+                            span: Span {
+                                start: start,
+                                end: self.current_token.span.end,
+                            },
+                            loc: param_loc,
+                        }));
                     }
                 }
                 _ => {
@@ -507,6 +573,37 @@ impl<'a> Parser<'a> {
                     });
                 }
             }
+
+            // after reading
+            match &self.current_token.kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                }
+                TokenKind::RightParen => {
+                    break;
+                }
+                _ => {
+                    return Err(CompileTimeError {
+                        location: loc,
+                        etype: ParserErrorType::MissingComma,
+                        file_name: Some(self.lexer.file_name.clone()),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        verbose: None,
+                        caret: Some(Span::new(start, self.current_token.span.end)),
+                    });
+                }
+            }
+        }
+
+        if self_modifier_count > 1 {
+            return Err(CompileTimeError {
+                location: loc,
+                etype: ParserErrorType::SeveralSelfModifierDefinition,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: Some(Span::new(start, self.current_token.span.end)),
+            });
         }
 
         self.expect_current(TokenKind::RightParen)?;
@@ -747,7 +844,6 @@ impl<'a> Parser<'a> {
         }; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
-        // self.expect_current(token_kind)
         let params = self.parse_func_params()?;
 
         let mut return_type: Option<TypeSpecifier> = None;
