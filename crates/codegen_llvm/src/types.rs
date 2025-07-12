@@ -458,7 +458,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module_import: ModuleImport,
         loc: Location,
         span_end: usize,
-    ) -> DefinedType<'ctx> {
+    ) -> Option<DefinedType<'ctx>> {
         if module_import.segments.len() == 1 {
             let name = match module_import.segments.last().unwrap() {
                 ModuleSegment::SubModule(identifier) => identifier.name.clone(),
@@ -471,20 +471,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         // FIXME
                         panic!("Cannot use function as a data type.");
                     }
-                    DefinitionLookupResult::Struct(internal_struct_type) => DefinedType::Struct(internal_struct_type),
+                    DefinitionLookupResult::Struct(internal_struct_type) => {
+                        Some(DefinedType::Struct(internal_struct_type))
+                    }
                 },
                 None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::UndefinedDataType(name),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
+                    return None;
                 }
             }
         } else {
@@ -498,17 +490,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let module_metadata = match self.find_imported_module(module_id.clone()) {
                 Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
                 None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::ModuleNotFound(module_id),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
+                    return None;
                 }
             };
 
@@ -523,7 +505,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     // FIXME
                     panic!("Cannot use function as a data type.");
                 }
-                DefinitionLookupResult::Struct(internal_struct_type) => DefinedType::Struct(internal_struct_type),
+                DefinitionLookupResult::Struct(internal_struct_type) => Some(DefinedType::Struct(internal_struct_type)),
             }
         }
     }
@@ -539,8 +521,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 type_str: type_specifier.to_string(),
                 inner_type: Box::new(self.build_type(*inner_type_specifier.clone(), loc, span_end)),
             }),
-            TypeSpecifier::Identifier(identifier) => self
-                .find_defined_type(
+            TypeSpecifier::Identifier(identifier) => {
+                match self.find_defined_type(
                     ModuleImport {
                         segments: vec![ModuleSegment::SubModule(identifier.clone())],
                         span: identifier.span.clone(),
@@ -548,8 +530,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     },
                     loc,
                     span_end,
-                )
-                .into_internal_type(),
+                ) {
+                    Some(defined_type) => defined_type.into_internal_type(),
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::UndefinedDataType(identifier.name),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: identifier.loc.line,
+                                column: identifier.loc.column,
+                                length: identifier.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            }
             TypeSpecifier::ModuleImport(module_import) => todo!(),
             TypeSpecifier::Dereference(inner_type_specifier) => {
                 let pointee_ty = self.build_type(*inner_type_specifier, loc.clone(), span_end);

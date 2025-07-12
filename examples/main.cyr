@@ -17,7 +17,6 @@ struct Person {
 
 fn main() {
     #person = Person { name: "Taha", age: 18 };
-    // person.to_string("something...");
-
+    person.to_string("something...");
     Person.static_method();
 }

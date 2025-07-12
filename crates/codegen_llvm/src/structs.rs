@@ -443,11 +443,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_struct_init(&mut self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> InternalValue<'ctx> {
-        let defined_type = self.find_defined_type(
+        let defined_type = match self.find_defined_type(
             struct_init.struct_name.clone(),
             struct_init.loc.clone(),
             struct_init.span.end,
-        );
+        ) {
+            Some(defined_type) => defined_type,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::UndefinedDataType(module_segments_as_string(
+                        struct_init.struct_name.segments.clone(),
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: struct_init.loc.line,
+                        column: struct_init.loc.column,
+                        length: struct_init.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
         let internal_struct_type = match defined_type {
             DefinedType::Struct(internal_struct_type) => internal_struct_type,
@@ -644,10 +661,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None => self.build_instance_method_call(Rc::clone(&scope), method_call),
             },
             Expression::ModuleImport(module_import) => {
-                match self.find_defined_type(module_import, method_call.loc.clone(), method_call.span.end) {
-                    DefinedType::Struct(internal_struct_type) => {
-                        self.build_static_method_call(scope, method_call, internal_struct_type)
-                    }
+                match self.find_defined_type(module_import.clone(), method_call.loc.clone(), method_call.span.end) {
+                    Some(defined_type) => match defined_type {
+                        DefinedType::Struct(internal_struct_type) => {
+                            self.build_static_method_call(scope, method_call, internal_struct_type)
+                        }
+                    },
+                    None => self.build_instance_method_call(Rc::clone(&scope), method_call),
                 }
             }
             _ => self.build_instance_method_call(Rc::clone(&scope), method_call),
@@ -813,7 +833,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         match method_metadata {
             Some((func_decl, func_value, is_static_method)) => {
-                dbg!(is_static_method);
                 if *is_static_method {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
