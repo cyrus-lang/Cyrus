@@ -1,10 +1,11 @@
 extern fn printf(format: const char*, ...): int32;
 extern fn fprintf(stream: void*, format: const char*, ...): int32;
 
-PI = 3;
-extern stdout: void*;
+// PI = 3;
+
+stdout: void*;
 
 fn main() {
-    printf("value: %d\n", PI);
+    // printf("value: %d\n", PI);
     fprintf(stdout, "Hello World\n");
 }

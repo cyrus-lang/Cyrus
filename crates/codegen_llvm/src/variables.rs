@@ -4,6 +4,7 @@ use ast::{
 };
 use inkwell::{
     AddressSpace,
+    module::Linkage,
     values::{AnyValue, BasicValueEnum, GlobalValue},
 };
 
@@ -26,6 +27,17 @@ pub struct GlobalVariableMetadata<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    fn build_global_variable_linkage(&self, access_specifier: AccessSpecifier) -> Linkage {
+        match access_specifier {
+            AccessSpecifier::Extern => Linkage::External,
+            AccessSpecifier::Public => Linkage::External,
+            AccessSpecifier::Internal => Linkage::Common,
+            AccessSpecifier::PublicExtern => Linkage::Appending,
+            AccessSpecifier::Inline => unreachable!(),
+            AccessSpecifier::PublicInline => unreachable!(),
+        }
+    }
+
     pub(crate) fn build_global_variable(&mut self, global_variable: GlobalVariable) {
         let initializer_value = match global_variable.expr {
             Some(expression) => {
@@ -39,7 +51,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     | expr @ Expression::ModuleImport(..)
                     | expr @ Expression::Array(..) => {
                         let fake_scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-                        Some(self.build_expr(fake_scope, expr))
+                        self.build_expr(fake_scope, expr)
                     }
 
                     _ => {
@@ -60,14 +72,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
             }
-            None => None,
+            None => {
+                let internal_type = self.build_type(
+                    global_variable.type_specifier.clone().unwrap(),
+                    global_variable.loc.clone(),
+                    global_variable.span.end,
+                );
+                self.build_zero_initialized_internal_value(
+                    internal_type,
+                    global_variable.loc.clone(),
+                    global_variable.span.end,
+                )
+            }
         };
 
         let variable_type: InternalType<'ctx>;
         if let Some(type_specifier) = global_variable.type_specifier {
             variable_type = self.build_type(type_specifier, global_variable.loc.clone(), global_variable.span.end);
         } else {
-            variable_type = initializer_value.clone().unwrap().get_type(self.string_type.clone())
+            variable_type = initializer_value.clone().get_type(self.string_type.clone())
         }
 
         let ptr_type = self.context.ptr_type(AddressSpace::default());
@@ -90,19 +113,34 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        let linkage = self.build_func_linkage(global_variable.access_specifier.clone());
+        if matches!(
+            global_variable.access_specifier,
+            AccessSpecifier::Inline | AccessSpecifier::PublicInline
+        ) {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom("Cannot declare an inline global variable.".to_string()),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: global_variable.loc.line,
+                    column: global_variable.loc.column,
+                    length: global_variable.span.end,
+                }),
+            });
+            exit(1);
+        }
+
+        let linkage = self.build_global_variable_linkage(global_variable.access_specifier.clone());
+
+        let initialzier_basic_value: BasicValueEnum<'ctx> = initializer_value
+            .to_basic_metadata()
+            .as_any_value_enum()
+            .try_into()
+            .unwrap();
 
         let global_value = module.add_global(variable_basic_type, None, &global_variable.identifier.name);
         global_value.set_linkage(linkage);
-
-        if let Some(initializer_value) = initializer_value {
-            let initialzier_basic_value: BasicValueEnum<'ctx> = initializer_value
-                .to_basic_metadata()
-                .as_any_value_enum()
-                .try_into()
-                .unwrap();
-            global_value.set_initializer(&initialzier_basic_value);
-        }
+        global_value.set_initializer(&initialzier_basic_value);
 
         self.global_variables_table.insert(
             global_variable.identifier.name.clone(),
