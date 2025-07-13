@@ -19,16 +19,16 @@ impl fmt::Display for Literal {
             LiteralKind::Integer(integer) => write!(f, "{}", integer),
             LiteralKind::Bool(bool) => write!(f, "{}", bool),
             LiteralKind::String(string_type, prefix) => {
-                        if let Some(prefix) = prefix {
-                            match prefix {
-                                StringPrefix::C => write!(f, "c")?,
-                                StringPrefix::B => write!(f, "b")?,
-                                StringPrefix::Base64 => write!(f, "b64")?,
-                                StringPrefix::Hexadecimal => write!(f, "x")?,
-                            };
-                        }
-                        write!(f, "\"{}\"", string_type)
-                    }
+                if let Some(prefix) = prefix {
+                    match prefix {
+                        StringPrefix::C => write!(f, "c")?,
+                        StringPrefix::B => write!(f, "b")?,
+                        StringPrefix::Base64 => write!(f, "b64")?,
+                        StringPrefix::Hexadecimal => write!(f, "x")?,
+                    };
+                }
+                write!(f, "\"{}\"", string_type)
+            }
             LiteralKind::Float(float) => write!(f, "{}", float),
             LiteralKind::Char(ch) => write!(f, "{}", ch),
             LiteralKind::Base64String(bs) => write!(f, "{}", bs),
@@ -71,6 +71,21 @@ impl fmt::Display for ModuleSegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ModuleSegment::SubModule(identifier) => write!(f, "{}", identifier.name),
+            ModuleSegment::Single(singles) => {
+                write!(f, "{{")?;
+                for (idx, item) in singles.iter().enumerate() {
+                    if let Some(renamed) = &item.renamed {
+                        write!(f, "{}: ", renamed)?;
+                    }
+
+                    write!(f, "{}", item.identifier)?;
+
+                    if !(singles.len() - 1 == idx) {
+                        write!(f, ",")?;
+                    }
+                }
+                write!(f, "}}")
+            }
         }
     }
 }

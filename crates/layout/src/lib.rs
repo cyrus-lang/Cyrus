@@ -50,8 +50,8 @@ pub fn create_project(project_name: String) -> Result<(), String> {
                 "[project]
 name = \"{}\"
 version = \"0.0.1\"
-type = \"exec\"
-authors = [ \"<John Doe> john_doe@mail.com\"]
+type = \"executable\"
+authors = [\"<John Doe> john_doe@mail.com\"]
 
 [dependencies]
 libraries = []
@@ -62,6 +62,7 @@ cpu = \"generic\"
 optimize = \"o1\"
 sources = [\"src/*\"]
 version = \"{}\"
+build_dir = \"./build\"
 ",
                 pure_project_name,
                 cyrus_version()

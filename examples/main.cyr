@@ -1,7 +1,15 @@
-extern fn printf(format: const char*, ...);
+extern fn printf(format: const char*, ...): int32;
+extern fn fprintf(stream: void*, format: const char*, ...): int32;
 
-fn main() {
-    #barr = b"Hello World\n";
+type FILE = void*;
+
+extern stdout: FILE;
+extern stderr: FILE;
+extern stdin: FILE;
+
+struct _string {
+    data: const char*;
+    length: int32;
 
     #a = 0o770;
     #s = b64"SGVsbG8gV29ybGQh";
@@ -10,4 +18,12 @@ fn main() {
     foreach (item in barr) {
         printf("value: %c", item);
     }
+}
+
+type String = _string;
+
+fn main() {
+    #str: String;
+    str.new();
+    // String.new();
 }

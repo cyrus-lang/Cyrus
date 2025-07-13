@@ -99,7 +99,7 @@ pub struct UnnamedStructTypeField {
 pub struct Enum {
     pub name: Identifier,
     pub variants: Vec<EnumField>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub loc: Location,
 }
 
@@ -289,6 +289,27 @@ pub enum Statement {
     Enum(Enum),
     Break(Break),
     Continue(Continue),
+    Typedef(Typedef),
+    GlobalVariable(GlobalVariable),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GlobalVariable {
+    pub access_specifier: AccessSpecifier,
+    pub identifier: Identifier,
+    pub type_specifier: Option<TypeSpecifier>,
+    pub expr: Option<Expression>,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Typedef {
+    pub access_specifier: AccessSpecifier,
+    pub identifier: Identifier,
+    pub type_specifier: TypeSpecifier,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -319,14 +340,23 @@ pub struct Return {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ModuleSegmentSingle {
+    pub identifier: Identifier,
+    pub renamed: Option<Identifier>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ModuleSegment {
     SubModule(Identifier),
+    Single(Vec<ModuleSegmentSingle>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModulePath {
     pub alias: Option<String>,
     pub segments: Vec<ModuleSegment>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -342,7 +372,7 @@ pub struct Struct {
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub methods: Vec<FuncDef>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub packed: bool,
     pub loc: Location,
     pub span: Span,
@@ -414,7 +444,7 @@ pub struct FuncDef {
     pub params: FuncParams,
     pub body: Box<BlockStatement>,
     pub return_type: Option<TypeSpecifier>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub span: Span,
     pub loc: Location,
 }
@@ -424,14 +454,23 @@ pub struct FuncDecl {
     pub name: String,
     pub params: FuncParams,
     pub return_type: Option<TypeSpecifier>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub renamed_as: Option<String>,
     pub span: Span,
     pub loc: Location,
 }
 
+impl FuncDecl {
+    pub fn get_usable_name(&self) -> String {
+        match &self.renamed_as {
+            Some(name) => name.clone(),
+            None => self.name.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum StorageClass {
+pub enum AccessSpecifier {
     Extern,
     Public,
     Internal,
@@ -465,6 +504,18 @@ pub struct Assignment {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum SelfModifier {
+    Copied,
+    Referenced,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FuncParamKind {
+    FuncParam(FuncParam),
+    SelfModifier(SelfModifier),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncParam {
     pub identifier: Identifier,
     pub ty: Option<TypeSpecifier>,
@@ -475,7 +526,7 @@ pub struct FuncParam {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncParams {
-    pub list: Vec<FuncParam>,
+    pub list: Vec<FuncParamKind>,
     pub variadic: Option<FuncVariadicParams>,
 }
 

@@ -1,4 +1,8 @@
+use crate::modules::ImportedModuleMetadata;
+use crate::opts::BuildDir;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
+use crate::types::TypedefTable;
+use crate::variables::GlobalVariablesTable;
 use ast::ast::*;
 use ast::token::Location;
 use build::{BuildManifest, OutputKind};
@@ -12,7 +16,6 @@ use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::values::{FunctionValue, PointerValue};
 use inkwell::{AddressSpace, OptimizationLevel};
-use modules::ModuleMetadata;
 use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
@@ -32,6 +35,7 @@ mod enums;
 mod exprs;
 mod funcs;
 mod internals;
+mod intrinsics;
 mod modules;
 pub mod opts;
 mod runtime;
@@ -42,14 +46,14 @@ mod structs;
 mod tests;
 mod types;
 mod values;
-mod intrinsics;
+mod variables;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
     opts: Options,
     context: &'ctx Context,
     module: Rc<RefCell<Module<'ctx>>>,
-    module_name: String,
+    module_id: String,
     builder: Builder<'ctx>,
     target_machine: TargetMachine,
     build_manifest: BuildManifest,
@@ -58,18 +62,20 @@ pub struct CodeGenLLVM<'ctx> {
     reporter: DiagReporter,
     entry_point: Option<FuncDef>,
     entry_point_path: String,
-    func_table: FuncTable<'ctx>,
-    struct_table: StructTable<'ctx>,
     compiler_invoked_single: bool,
     current_func_ref: Option<FunctionValue<'ctx>>,
     current_block_ref: Option<BasicBlock<'ctx>>,
     terminated_blocks: Vec<TerminatedBlockMetadata<'ctx>>,
     current_loop_ref: Option<LoopBlockRefs<'ctx>>,
-    string_type: InternalStringType<'ctx>,
-    loaded_modules: Vec<ModuleMetadata<'ctx>>,
     dependent_modules: HashMap<String, Vec<String>>,
     output_kind: OutputKind,
     final_build_dir: String,
+    string_type: InternalStringType<'ctx>,
+    func_table: FuncTable<'ctx>,
+    struct_table: StructTable<'ctx>,
+    global_variables_table: GlobalVariablesTable<'ctx>,
+    typedef_table: TypedefTable<'ctx>,
+    imported_modules: Vec<ImportedModuleMetadata<'ctx>>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -83,18 +89,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         output_kind: OutputKind,
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
-        let module_name = file_stem(&file_name).unwrap_or(&file_name).to_string();
-        let module = Rc::new(RefCell::new(context.create_module(&module_name.clone())));
+        let module_id = file_stem(&file_name).unwrap_or(&file_name).to_string();
+        let module = Rc::new(RefCell::new(context.create_module(&module_id.clone())));
         let builder = context.create_builder();
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&module));
 
         let final_build_dir = {
             match opts.build_dir.clone() {
-                opts::BuildDir::Default => {
+                BuildDir::Default => {
                     // specify a tmp directory to be used as build_dir
                     env::temp_dir().to_str().unwrap().to_string()
                 }
-                opts::BuildDir::Provided(path) => path,
+                BuildDir::Provided(path) => path,
             }
         };
 
@@ -111,6 +117,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             entry_point_path: file_path.clone(),
             func_table: FuncTable::new(),
             struct_table: StructTable::new(),
+            typedef_table: TypedefTable::new(),
+            global_variables_table: GlobalVariablesTable::new(),
             build_manifest: BuildManifest::default(),
             compiler_invoked_single,
             current_func_ref: None,
@@ -119,8 +127,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_loop_ref: None,
             string_type: CodeGenLLVM::build_string_type(context),
             module: module.clone(),
-            module_name: module_name.clone(),
-            loaded_modules: Vec::new(),
+            module_id: module_id.clone(),
+            imported_modules: Vec::new(),
             dependent_modules: HashMap::new(),
             output_kind,
         };
@@ -142,7 +150,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 &cpu,
                 &features,
                 OptimizationLevel::Default,
-                RelocMode::Default,
+                RelocMode::PIC,
                 CodeModel::Default,
             )
             .unwrap();
@@ -156,6 +164,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub fn compile(&mut self) {
+        self.enable_module_flags();
+
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         self.build_statements(Rc::clone(&scope), self.program.body.clone());
 
@@ -250,5 +260,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         }
+    }
+
+    pub(crate) fn is_current_module_entry_point(&self) -> bool {
+        self.file_path == self.entry_point_path
     }
 }

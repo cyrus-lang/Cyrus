@@ -2,15 +2,19 @@ use crate::CodeGenLLVM;
 use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
+use crate::modules::DefinitionLookupResult;
 use crate::structs::StructMetadata;
 use crate::structs::UnnamedStructTypeMetadata;
 use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
+use ast::ast::AccessSpecifier;
 use ast::ast::ArrayCapacity;
 use ast::ast::ArrayTypeSpecifier;
 use ast::ast::ModuleImport;
+use ast::ast::ModulePath;
 use ast::ast::ModuleSegment;
 use ast::ast::TypeSpecifier;
+use ast::ast::Typedef;
 use ast::token::*;
 use inkwell::AddressSpace;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
@@ -25,8 +29,17 @@ use inkwell::types::PointerType;
 use inkwell::types::StructType;
 use inkwell::types::VectorType;
 use inkwell::types::VoidType;
+use std::collections::HashMap;
 use std::fmt;
 use std::process::exit;
+
+pub type TypedefTable<'a> = HashMap<String, TypedefMetadata<'a>>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedefMetadata<'a> {
+    pub internal_type: InternalType<'a>,
+    pub access_specifier: AccessSpecifier,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum InternalType<'a> {
@@ -129,13 +142,14 @@ pub(crate) struct InternalStringType<'a> {
 #[derive(Debug, Clone)]
 pub(crate) enum DefinedType<'a> {
     Struct(InternalStructType<'a>),
-    // Typedef(...),
+    Typedef(TypedefMetadata<'a>),
 }
 
 impl<'a> DefinedType<'a> {
     pub fn into_internal_type(&self) -> InternalType<'a> {
         match self {
             DefinedType::Struct(internal_struct_type) => InternalType::StructType(internal_struct_type.clone()),
+            DefinedType::Typedef(typedef_metadata) => typedef_metadata.internal_type.clone(),
         }
     }
 }
@@ -399,6 +413,29 @@ impl<'a> InternalType<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn build_typedef(&mut self, typedef: Typedef) {
+        // FIXME Check naming collision before inserting
+
+        let internal_type = self.build_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end);
+        self.typedef_table.insert(
+            typedef.identifier.name,
+            TypedefMetadata {
+                internal_type,
+                access_specifier: typedef.access_specifier.clone(),
+            },
+        );
+    }
+
+    pub(crate) fn typedef_as_struct_type(
+        &self,
+        typedef_metadata: TypedefMetadata<'ctx>,
+    ) -> Option<InternalStructType<'ctx>> {
+        match typedef_metadata.internal_type {
+            InternalType::StructType(internal_struct_type) => Some(internal_struct_type),
+            _ => None,
+        }
+    }
+
     pub(crate) fn compatible_types(&self, lvalue_type: InternalType<'ctx>, rvalue_type: InternalType<'ctx>) -> bool {
         match (lvalue_type, rvalue_type) {
             (InternalType::BoolType(_), InternalType::BoolType(_)) => true,
@@ -454,32 +491,57 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module_import: ModuleImport,
         loc: Location,
         span_end: usize,
-    ) -> DefinedType<'ctx> {
+    ) -> Option<DefinedType<'ctx>> {
         if module_import.segments.len() == 1 {
-            let first_segment = module_import.segments[0].clone();
-            let ast::ast::ModuleSegment::SubModule(identifier) = first_segment;
+            let name = match module_import.segments.last().unwrap() {
+                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+                ModuleSegment::Single(_) => unreachable!(),
+            };
 
-            match self.struct_table.get(&identifier.name.clone()) {
-                Some(internal_struct_type) => DefinedType::Struct(internal_struct_type.clone()),
+            match self.lookup_definition(name.clone()) {
+                Some(definition_lookup_result) => match definition_lookup_result {
+                    DefinitionLookupResult::Func(_) => {
+                        // FIXME
+                        panic!("Cannot use function as a data type.");
+                    }
+                    DefinitionLookupResult::Struct(internal_struct_type) => {
+                        Some(DefinedType::Struct(internal_struct_type))
+                    }
+                    DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
+                },
                 None => {
-                    // TODO Lookup in typedef table
-
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::UndefinedDataType(identifier.name),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
+                    return None;
                 }
             }
         } else {
-            // TODO
-            todo!("Implement module import for find_type");
+            let module_id = self.build_module_id(ModulePath {
+                alias: None,
+                segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
+                loc: Location::default(),
+                span: Span::default(),
+            });
+
+            let module_metadata = match self.find_imported_module(module_id.clone()) {
+                Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
+                None => {
+                    return None;
+                }
+            };
+
+            let name = match module_import.segments.last().unwrap() {
+                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+                ModuleSegment::Single(_) => unreachable!(), // singles never achieve at this point
+            };
+
+            match self.lookup_from_module_metadata(name, module_metadata, loc, span_end) {
+                // TODO Implement func_type as data type
+                DefinitionLookupResult::Func(_) => {
+                    // FIXME
+                    panic!("Cannot use function as a data type.");
+                }
+                DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
+                DefinitionLookupResult::Struct(internal_struct_type) => Some(DefinedType::Struct(internal_struct_type)),
+            }
         }
     }
 
@@ -494,8 +556,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 type_str: type_specifier.to_string(),
                 inner_type: Box::new(self.build_type(*inner_type_specifier.clone(), loc, span_end)),
             }),
-            TypeSpecifier::Identifier(identifier) => self
-                .find_defined_type(
+            TypeSpecifier::Identifier(identifier) => {
+                match self.find_defined_type(
                     ModuleImport {
                         segments: vec![ModuleSegment::SubModule(identifier.clone())],
                         span: identifier.span.clone(),
@@ -503,8 +565,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     },
                     loc,
                     span_end,
-                )
-                .into_internal_type(),
+                ) {
+                    Some(defined_type) => defined_type.into_internal_type(),
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::UndefinedDataType(identifier.name),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: identifier.loc.line,
+                                column: identifier.loc.column,
+                                length: identifier.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            }
             TypeSpecifier::ModuleImport(module_import) => todo!(),
             TypeSpecifier::Dereference(inner_type_specifier) => {
                 let pointee_ty = self.build_type(*inner_type_specifier, loc.clone(), span_end);
