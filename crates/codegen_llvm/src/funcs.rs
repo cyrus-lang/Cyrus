@@ -4,7 +4,7 @@ use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
     Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams, Identifier, ModulePath,
-    ModuleSegment, Return, StorageClass, TypeSpecifier,
+    ModuleSegment, Return, AccessSpecifier, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
@@ -30,14 +30,14 @@ pub struct FuncMetadata<'a> {
 pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_func_linkage(&self, storage_class: StorageClass) -> Linkage {
-        match storage_class {
-            StorageClass::Extern => Linkage::External,
-            StorageClass::Public => Linkage::External,
-            StorageClass::Internal => Linkage::Private,
-            StorageClass::Inline => Linkage::Internal,
-            StorageClass::PublicInline => Linkage::LinkOnceODR,
-            StorageClass::PublicExtern => Linkage::Appending,
+    pub(crate) fn build_func_linkage(&self, access_specifier: AccessSpecifier) -> Linkage {
+        match access_specifier {
+            AccessSpecifier::Extern => Linkage::External,
+            AccessSpecifier::Public => Linkage::External,
+            AccessSpecifier::Internal => Linkage::Private,
+            AccessSpecifier::Inline => Linkage::Internal,
+            AccessSpecifier::PublicInline => Linkage::LinkOnceODR,
+            AccessSpecifier::PublicExtern => Linkage::Appending,
         }
     }
 
@@ -151,7 +151,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let func_linkage = self.build_func_linkage(func_decl.storage_class.clone());
+        let func_linkage = self.build_func_linkage(func_decl.access_specifier.clone());
         let func_ptr = self
             .module
             .borrow_mut()
@@ -239,7 +239,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             name: func_def.name.clone(),
             params: func_def.params.clone(),
             return_type: func_def.return_type.clone(),
-            storage_class: func_def.storage_class.clone(),
+            access_specifier: func_def.access_specifier.clone(),
             renamed_as: Some(func_def.name.clone()),
             span: func_def.span.clone(),
             loc: func_def.loc.clone(),
@@ -247,11 +247,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn validate_func_storage_class(&self, func_def: FuncDef, is_entry_point: bool) {
-        if is_entry_point && !matches!(func_def.storage_class, StorageClass::Internal) {
+        if is_entry_point && !matches!(func_def.access_specifier, AccessSpecifier::Internal) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(
-                    "Module entry point cannot be declared with non-internal storage_class.".to_string(),
+                    "Module entry point cannot be declared with non-internal access_specifier.".to_string(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -263,7 +263,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        if func_def.storage_class == StorageClass::Extern {
+        if func_def.access_specifier == AccessSpecifier::Extern {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(
@@ -427,7 +427,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let func_linkage: Option<Linkage> = if !is_entry_point {
-            Some(self.build_func_linkage(func_def.storage_class.clone()))
+            Some(self.build_func_linkage(func_def.access_specifier.clone()))
         } else {
             None
         };
@@ -810,9 +810,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                         match module_metadata.func_table.get(&func_name.name) {
                             Some(func_metadata) => {
-                                if !(func_metadata.func_decl.storage_class == StorageClass::Public
-                                    || func_metadata.func_decl.storage_class == StorageClass::PublicExtern
-                                    || func_metadata.func_decl.storage_class == StorageClass::PublicInline)
+                                if !(func_metadata.func_decl.access_specifier == AccessSpecifier::Public
+                                    || func_metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
+                                    || func_metadata.func_decl.access_specifier == AccessSpecifier::PublicInline)
                                 {
                                     display_single_diag(Diag {
                                         level: DiagLevel::Error,

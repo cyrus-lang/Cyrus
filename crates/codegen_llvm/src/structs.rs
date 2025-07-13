@@ -1,7 +1,6 @@
 use crate::{
     CodeGenLLVM, InternalType, InternalValue,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    funcs::FuncMetadata,
     modules::DefinitionLookupResult,
     scope::{Scope, ScopeRecord, ScopeRef},
     types::{DefinedType, InternalLvalueType, InternalStructType, InternalUnnamedStructType},
@@ -9,9 +8,9 @@ use crate::{
 };
 use ast::{
     ast::{
-        Expression, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams, Identifier, MethodCall,
-        ModuleImport, ModuleSegment, SelfModifier, StorageClass, Struct, StructInit, TypeSpecifier, UnnamedStructType,
-        UnnamedStructValue,
+        AccessSpecifier, Expression, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
+        Identifier, MethodCall, ModuleImport, ModuleSegment, SelfModifier, Struct, StructInit, TypeSpecifier,
+        UnnamedStructType, UnnamedStructValue,
     },
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
@@ -32,7 +31,7 @@ pub struct StructMetadata<'a> {
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub methods: Vec<(FuncDecl, FunctionValue<'a>, bool)>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub packed: bool,
 }
 
@@ -127,8 +126,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_global_struct(&mut self, struct_statement: Struct) {
         if !matches!(
-            struct_statement.storage_class,
-            StorageClass::Public | StorageClass::Internal
+            struct_statement.access_specifier,
+            AccessSpecifier::Public | AccessSpecifier::Internal
         ) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -161,7 +160,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             fields: struct_statement.fields.clone(),
             methods: Vec::new(),
             inherits: struct_statement.inherits.clone(),
-            storage_class: struct_statement.storage_class.clone(),
+            access_specifier: struct_statement.access_specifier.clone(),
             packed: struct_statement.packed,
         };
 
@@ -208,7 +207,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn validate_method_storage_class(&self, func_def: FuncDef) {
-        if func_def.storage_class == StorageClass::Extern {
+        if func_def.access_specifier == AccessSpecifier::Extern {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(
@@ -331,7 +330,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let method_underlying_name =
             self.generate_method_abi_name(self.module_id.clone(), struct_name.clone(), method_name);
 
-        let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.storage_class.clone()));
+        let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.access_specifier.clone()));
 
         let func_value =
             self.module
@@ -466,6 +465,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let internal_struct_type = match defined_type {
             DefinedType::Struct(internal_struct_type) => internal_struct_type,
+            DefinedType::Typedef(typedef_metadata) => match self.typedef_as_struct_type(typedef_metadata) {
+                Some(internal_struct_type) => internal_struct_type,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Cannot build struct init from a non-struct type.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: struct_init.loc.line,
+                            column: struct_init.loc.column,
+                            length: struct_init.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
         };
 
         if internal_struct_type.struct_metadata.fields.len() != struct_init.field_inits.len() {
@@ -642,6 +657,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     DefinitionLookupResult::Struct(internal_struct_type) => {
                         self.build_static_method_call(scope, method_call, internal_struct_type)
                     }
+                    DefinitionLookupResult::Typedef(typedef_metadata) => {
+                        match self.typedef_as_struct_type(typedef_metadata) {
+                            Some(internal_struct_type) => {
+                                self.build_static_method_call(scope, method_call, internal_struct_type)
+                            }
+                            None => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(
+                                        "Cannot build method call on a non-struct value.".to_string(),
+                                    ),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: method_call.loc.line,
+                                        column: method_call.loc.column,
+                                        length: method_call.span.end,
+                                    }),
+                                });
+                                exit(1);
+                            }
+                        }
+                    }
                     DefinitionLookupResult::Func(_) => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
@@ -664,6 +701,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         DefinedType::Struct(internal_struct_type) => {
                             self.build_static_method_call(scope, method_call, internal_struct_type)
                         }
+                        DefinedType::Typedef(typedef_metadata) => match self.typedef_as_struct_type(typedef_metadata) {
+                            Some(internal_struct_type) => {
+                                self.build_static_method_call(scope, method_call, internal_struct_type)
+                            }
+                            None => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(
+                                        "Cannot build method call on a non-struct value.".to_string(),
+                                    ),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: method_call.loc.line,
+                                        column: method_call.loc.column,
+                                        length: method_call.span.end,
+                                    }),
+                                });
+                                exit(1);
+                            }
+                        },
                     },
                     None => self.build_instance_method_call(Rc::clone(&scope), method_call),
                 }
@@ -686,13 +743,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         match method_metadata {
             Some((func_decl, func_value, is_static_method)) => {
-                assert_eq!(*is_static_method, true);
+                if !*is_static_method {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(
+                            "Non-static method cannot be called without an instance of the object.".to_string(),
+                        ),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: method_call.method_name.loc.line,
+                            column: method_call.method_name.loc.column,
+                            length: method_call.method_name.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
 
                 let func_basic_blocks = func_value.get_basic_blocks();
                 let current_block =
                     self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-                if !func_basic_blocks.contains(&current_block) && func_decl.storage_class != StorageClass::Public {
+                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public
+                {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
@@ -851,7 +923,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let current_block =
                     self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-                if !func_basic_blocks.contains(&current_block) && func_decl.storage_class != StorageClass::Public {
+                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public
+                {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(

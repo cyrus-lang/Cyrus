@@ -99,7 +99,7 @@ pub struct UnnamedStructTypeField {
 pub struct Enum {
     pub name: Identifier,
     pub variants: Vec<EnumField>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub loc: Location,
 }
 
@@ -284,6 +284,27 @@ pub enum Statement {
     Enum(Enum),
     Break(Break),
     Continue(Continue),
+    Typedef(Typedef),
+    GlobalVariable(GlobalVariable),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GlobalVariable {
+    pub access_specifier: AccessSpecifier,
+    pub identifier: Identifier,
+    pub type_specifier: Option<TypeSpecifier>,
+    pub expr: Option<Expression>,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Typedef {
+    pub access_specifier: AccessSpecifier,
+    pub identifier: Identifier,
+    pub type_specifier: TypeSpecifier,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -346,7 +367,7 @@ pub struct Struct {
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub methods: Vec<FuncDef>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub packed: bool,
     pub loc: Location,
     pub span: Span,
@@ -418,7 +439,7 @@ pub struct FuncDef {
     pub params: FuncParams,
     pub body: Box<BlockStatement>,
     pub return_type: Option<TypeSpecifier>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub span: Span,
     pub loc: Location,
 }
@@ -428,7 +449,7 @@ pub struct FuncDecl {
     pub name: String,
     pub params: FuncParams,
     pub return_type: Option<TypeSpecifier>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub renamed_as: Option<String>,
     pub span: Span,
     pub loc: Location,
@@ -444,7 +465,7 @@ impl FuncDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum StorageClass {
+pub enum AccessSpecifier {
     Extern,
     Public,
     Internal,

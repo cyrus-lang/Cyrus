@@ -55,6 +55,7 @@ pub enum TokenKind {
     Or,
     // Keywords
     Function,
+    Typedef,
     Match,
     If,
     Else,
@@ -167,6 +168,7 @@ impl fmt::Display for TokenKind {
             Self::Semicolon => write!(f, ";"),
             Self::Colon => write!(f, ":"),
             // Keywords
+            Self::Typedef => write!(f, "type"),
             Self::Function => write!(f, "fn"),
             Self::Match => write!(f, "match"),
             Self::Struct => write!(f, "struct"),

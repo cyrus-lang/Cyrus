@@ -4,10 +4,12 @@ use crate::{
     diag::*,
     funcs::{FuncMetadata, FuncTable},
     structs::StructTable,
-    types::InternalStructType,
+    types::{InternalStructType, TypedefMetadata},
 };
 use ast::{
-    ast::{FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, StorageClass, TypeSpecifier},
+    ast::{
+        AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, TypeSpecifier, Typedef,
+    },
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
 };
@@ -32,6 +34,7 @@ pub struct ModuleMetadata<'a> {
 pub enum DefinitionLookupResult<'a> {
     Func(FuncMetadata<'a>),
     Struct(InternalStructType<'a>),
+    Typedef(TypedefMetadata<'a>),
 }
 
 #[derive(Clone)]
@@ -88,12 +91,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     "Cannot import module '{}' twice.",
                     module_segments_as_string(module_path.segments)
                 )),
-                location: None,
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: module_path.loc.line,
+                    column: module_path.loc.column,
+                    length: module_path.span.end,
+                }),
             });
             exit(1);
         }
     }
 
+    // FIXME I don't even know this works or not :/
     pub(crate) fn rebuild_dependent_modules(&mut self) {
         if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
             for file_path in module_deps {
@@ -113,7 +122,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
             None => match self.struct_table.get(&name) {
                 Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
-                None => None,
+                None => match self.typedef_table.get(&name) {
+                    Some(typedef_metadata) => Some(DefinitionLookupResult::Typedef(typedef_metadata.clone())),
+                    None => None,
+                },
             },
         } {
             Some(lookup_result) => Some(lookup_result),
@@ -315,6 +327,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             entry_point_path: self.entry_point_path.clone(),
             func_table: HashMap::new(),
             struct_table: HashMap::new(),
+            typedef_table: HashMap::new(),
+            global_variables_table: HashMap::new(),
             compiler_invoked_single: self.compiler_invoked_single,
             current_func_ref: None,
             current_block_ref: None,
@@ -401,7 +415,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         for single in module_segment_singles {
             let lookup_result = self.lookup_from_module_metadata(
-                single.identifier.name,
+                single.identifier.name.clone(),
                 module_metadata.clone(),
                 loc.clone(),
                 span_end,
@@ -437,6 +451,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     );
                     self.struct_table.insert(struct_name, new_internal_struct_type.clone());
                 }
+                DefinitionLookupResult::Typedef(typedef_metadata) => {
+                    self.typedef_table
+                        .insert(single.identifier.name, typedef_metadata.clone());
+                }
             }
         }
     }
@@ -446,9 +464,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         metadata: FuncMetadata<'ctx>,
         self_modifier_type: LLVMTypeRef,
     ) -> (String, FuncMetadata<'ctx>) {
-        if metadata.func_decl.storage_class == StorageClass::Public
-            || metadata.func_decl.storage_class == StorageClass::PublicExtern
-            || metadata.func_decl.storage_class == StorageClass::PublicInline
+        if metadata.func_decl.access_specifier == AccessSpecifier::Public
+            || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
+            || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
         {
             let mut new_metadata = metadata.clone();
 
@@ -487,7 +505,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ))
             };
 
-            let func_linkage = self.build_func_linkage(metadata.func_decl.storage_class.clone());
+            let func_linkage = self.build_func_linkage(metadata.func_decl.access_specifier.clone());
             let func_value = self.module.borrow_mut().deref_mut().add_function(
                 &metadata.func_decl.name,
                 fn_type,
@@ -502,9 +520,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn build_decl_imported_func(&mut self, metadata: FuncMetadata<'ctx>) -> (String, FuncMetadata<'ctx>) {
-        if metadata.func_decl.storage_class == StorageClass::Public
-            || metadata.func_decl.storage_class == StorageClass::PublicExtern
-            || metadata.func_decl.storage_class == StorageClass::PublicInline
+        if metadata.func_decl.access_specifier == AccessSpecifier::Public
+            || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
+            || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
         {
             let mut new_metadata = metadata.clone();
 

@@ -4,12 +4,13 @@ use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use ast::ast::{
-    BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement, TypeSpecifier, Variable,
+    BlockStatement, Break, Continue, Expression, For, Foreach, GlobalVariable, If, Statement, TypeSpecifier, Variable,
 };
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
-use inkwell::values::{AnyValue, BasicValueEnum, FunctionValue};
+use inkwell::types::BasicTypeEnum;
+use inkwell::values::{AnyValue, BasicValue, BasicValueEnum, FunctionValue};
 use std::cell::RefCell;
 use std::process::exit;
 use std::rc::Rc;
@@ -117,6 +118,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_expr(Rc::clone(&scope), expression);
             }
             Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
+            Statement::Typedef(typedef) => self.build_typedef(typedef),
+            Statement::GlobalVariable(global_variable) => self.build_global_variable(global_variable),
             Statement::Return(statement) => {
                 self.build_return(Rc::clone(&scope), statement);
             }
@@ -668,161 +671,5 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.builder.position_at_end(end_block);
         self.current_block_ref = Some(end_block);
-    }
-
-    pub(crate) fn build_variable(&mut self, scope: ScopeRef<'ctx>, variable: Variable) {
-        match variable.ty {
-            Some(type_specifier) => {
-                if let TypeSpecifier::TypeToken(type_token) = type_specifier.clone() {
-                    if type_token.kind == TokenKind::Void {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom("Cannot declare a variable with 'void' type.".to_string()),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: variable.loc.line,
-                                column: variable.loc.column,
-                                length: variable.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                }
-
-                let (ptr, var_internal_type) = self.build_alloca(
-                    type_specifier.clone(),
-                    variable.name.clone(),
-                    variable.loc.clone(),
-                    variable.span.end,
-                );
-
-                if let Some(expr) = variable.expr {
-                    let expr = self.build_expr(Rc::clone(&scope), expr);
-                    let rvalue = self.internal_value_as_rvalue(expr, variable.loc.clone(), variable.span.end);
-
-                    if !self.compatible_types(var_internal_type.clone(), rvalue.get_type(self.string_type.clone())) {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(format!(
-                                "Cannot assign value of type '{}' to lvalue of type '{}'.",
-                                rvalue.get_type(self.string_type.clone()),
-                                var_internal_type,
-                            )),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: variable.loc.line,
-                                column: variable.loc.column,
-                                length: variable.span.end,
-                            }),
-                        });
-                        exit(1);
-                    };
-
-                    let final_rvalue = self.implicit_cast(
-                        rvalue,
-                        self.build_type(type_specifier, variable.loc.clone(), variable.span.end),
-                        variable.loc.clone(),
-                        variable.span.end,
-                    );
-
-                    self.builder.build_store(ptr, final_rvalue).unwrap();
-                } else if var_internal_type.is_const_type() && variable.expr.is_none() {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(format!(
-                            "Variable '{}' is declared as constant but has no initializer.",
-                            variable.name
-                        )),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: variable.loc.line,
-                            column: variable.loc.column,
-                            length: variable.span.end,
-                        }),
-                    });
-                    exit(1);
-                } else {
-                    let zero_init = self.build_zero_initialized_internal_value(
-                        var_internal_type.clone(),
-                        variable.loc.clone(),
-                        variable.span.end,
-                    );
-                    let final_rvalue: BasicValueEnum =
-                        zero_init.to_basic_metadata().as_any_value_enum().try_into().unwrap();
-                    self.builder.build_store(ptr, final_rvalue).unwrap();
-                }
-
-                let mut scope_borrow = scope.borrow_mut();
-
-                if scope_borrow.get(variable.name.clone()).is_some() {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(format!(
-                            "Variable '{}' would shadow a previous declaration.",
-                            variable.name
-                        )),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: variable.loc.line,
-                            column: variable.loc.column,
-                            length: variable.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
-
-                scope_borrow.insert(
-                    variable.name.clone(),
-                    ScopeRecord {
-                        ptr,
-                        ty: var_internal_type,
-                    },
-                );
-            }
-            None => {
-                if let Some(expr) = variable.expr {
-                    let expr = self.build_expr(Rc::clone(&scope), expr);
-                    let rvalue = self.internal_value_as_rvalue(expr, variable.loc.clone(), variable.span.end);
-                    let var_internal_type = rvalue.get_type(self.string_type.clone());
-
-                    let var_basic_type =
-                        match var_internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default())) {
-                            Ok(basic_type) => basic_type,
-                            Err(err) => {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::Custom(err.to_string()),
-                                    location: Some(DiagLoc {
-                                        file: self.file_path.clone(),
-                                        line: variable.loc.line,
-                                        column: variable.loc.column,
-                                        length: variable.span.end,
-                                    }),
-                                });
-                                exit(1);
-                            }
-                        };
-
-                    let ptr = self.builder.build_alloca(var_basic_type, &variable.name).unwrap();
-
-                    self.build_store(ptr, rvalue);
-
-                    scope.borrow_mut().insert(
-                        variable.name,
-                        ScopeRecord {
-                            ptr,
-                            ty: var_internal_type,
-                        },
-                    );
-                } else {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::TypeAnnotationRequired,
-                        location: None,
-                    });
-                    exit(1);
-                }
-            }
-        }
     }
 }

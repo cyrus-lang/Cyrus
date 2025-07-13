@@ -3,17 +3,18 @@ use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
 use crate::modules::DefinitionLookupResult;
-use crate::modules::ModuleMetadata;
 use crate::structs::StructMetadata;
 use crate::structs::UnnamedStructTypeMetadata;
 use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
+use ast::ast::AccessSpecifier;
 use ast::ast::ArrayCapacity;
 use ast::ast::ArrayTypeSpecifier;
 use ast::ast::ModuleImport;
 use ast::ast::ModulePath;
 use ast::ast::ModuleSegment;
 use ast::ast::TypeSpecifier;
+use ast::ast::Typedef;
 use ast::token::*;
 use inkwell::AddressSpace;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
@@ -28,9 +29,17 @@ use inkwell::types::PointerType;
 use inkwell::types::StructType;
 use inkwell::types::VectorType;
 use inkwell::types::VoidType;
+use std::collections::HashMap;
 use std::fmt;
 use std::process::exit;
-use std::rc::Rc;
+
+pub type TypedefTable<'a> = HashMap<String, TypedefMetadata<'a>>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedefMetadata<'a> {
+    pub internal_type: InternalType<'a>,
+    pub access_specifier: AccessSpecifier,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum InternalType<'a> {
@@ -133,13 +142,14 @@ pub(crate) struct InternalStringType<'a> {
 #[derive(Debug, Clone)]
 pub(crate) enum DefinedType<'a> {
     Struct(InternalStructType<'a>),
-    // Typedef(...),
+    Typedef(TypedefMetadata<'a>),
 }
 
 impl<'a> DefinedType<'a> {
     pub fn into_internal_type(&self) -> InternalType<'a> {
         match self {
             DefinedType::Struct(internal_struct_type) => InternalType::StructType(internal_struct_type.clone()),
+            DefinedType::Typedef(typedef_metadata) => typedef_metadata.internal_type.clone(),
         }
     }
 }
@@ -403,6 +413,29 @@ impl<'a> InternalType<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn build_typedef(&mut self, typedef: Typedef) {
+        // FIXME Check naming collision before inserting
+
+        let internal_type = self.build_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end);
+        self.typedef_table.insert(
+            typedef.identifier.name,
+            TypedefMetadata {
+                internal_type,
+                access_specifier: typedef.access_specifier.clone(),
+            },
+        );
+    }
+
+    pub(crate) fn typedef_as_struct_type(
+        &self,
+        typedef_metadata: TypedefMetadata<'ctx>,
+    ) -> Option<InternalStructType<'ctx>> {
+        match typedef_metadata.internal_type {
+            InternalType::StructType(internal_struct_type) => Some(internal_struct_type),
+            _ => None,
+        }
+    }
+
     pub(crate) fn compatible_types(&self, lvalue_type: InternalType<'ctx>, rvalue_type: InternalType<'ctx>) -> bool {
         match (lvalue_type, rvalue_type) {
             (InternalType::BoolType(_), InternalType::BoolType(_)) => true,
@@ -474,6 +507,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     DefinitionLookupResult::Struct(internal_struct_type) => {
                         Some(DefinedType::Struct(internal_struct_type))
                     }
+                    DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
                 },
                 None => {
                     return None;
@@ -501,10 +535,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             match self.lookup_from_module_metadata(name, module_metadata, loc, span_end) {
                 // TODO Implement func_type as data type
-                DefinitionLookupResult::Func(func_metadata) => {
+                DefinitionLookupResult::Func(_) => {
                     // FIXME
                     panic!("Cannot use function as a data type.");
                 }
+                DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
                 DefinitionLookupResult::Struct(internal_struct_type) => Some(DefinedType::Struct(internal_struct_type)),
             }
         }

@@ -12,16 +12,20 @@ impl<'a> Parser<'a> {
             || self.current_token_is(TokenKind::Inline)
             || self.current_token_is(TokenKind::Public)
         {
-            let storage_class = self.parse_storage_class(self.current_token.clone())?;
+            let access_specifier = self.parse_access_specifier(self.current_token.clone())?;
 
             if self.current_token_is(TokenKind::Function) {
-                return self.parse_func(Some(storage_class));
+                return self.parse_func(Some(access_specifier));
             } else if self.current_token_is(TokenKind::Struct) {
-                return self.parse_struct(Some(storage_class), false);
+                return self.parse_struct(Some(access_specifier), false);
             } else if self.current_token_is(TokenKind::Bits) {
-                return self.parse_struct(Some(storage_class), true);
+                return self.parse_struct(Some(access_specifier), true);
             } else if self.current_token_is(TokenKind::Enum) {
-                return self.parse_enum(Some(storage_class));
+                return self.parse_enum(Some(access_specifier));
+            } else if self.current_token_is(TokenKind::Typedef) {
+                return self.parse_typedef(Some(access_specifier));
+            } else if let TokenKind::Identifier { .. } = self.current_token.kind.clone() {
+                return self.parse_global_variable(Some(access_specifier));
             }
         } else if self.current_token_is(TokenKind::Function) {
             return self.parse_func(None);
@@ -31,6 +35,12 @@ impl<'a> Parser<'a> {
             return self.parse_struct(None, true);
         } else if self.current_token_is(TokenKind::Enum) {
             return self.parse_enum(None);
+        } else if self.current_token_is(TokenKind::Typedef) {
+            return self.parse_typedef(None);
+        } else if let TokenKind::Identifier { .. } = self.current_token.kind.clone() {
+            if self.peek_token_is(TokenKind::Colon) || self.peek_token_is(TokenKind::Assign) {
+                return self.parse_global_variable(None);
+            }
         }
 
         match self.current_token.kind {
@@ -112,9 +122,9 @@ impl<'a> Parser<'a> {
         return Ok(EnumField::Variant(variant_name, variant_fields));
     }
 
-    pub fn parse_enum(&mut self, storage_class: Option<StorageClass>) -> Result<Statement, ParseError> {
+    pub fn parse_enum(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParseError> {
         let loc = self.current_token.loc.clone();
-        let storage_class = storage_class.unwrap_or(StorageClass::Inline);
+        let access_specifier = access_specifier.unwrap_or(AccessSpecifier::Inline);
 
         self.next_token(); // parse enum keyword
 
@@ -129,7 +139,7 @@ impl<'a> Parser<'a> {
             return Ok(Statement::Enum(Enum {
                 name: enum_name,
                 variants: enum_fields,
-                storage_class,
+                access_specifier,
                 loc,
             }));
         }
@@ -159,16 +169,20 @@ impl<'a> Parser<'a> {
         Ok(Statement::Enum(Enum {
             name: enum_name,
             variants: enum_fields,
-            storage_class,
+            access_specifier,
             loc,
         }))
     }
 
-    pub fn parse_struct(&mut self, storage_class: Option<StorageClass>, packed: bool) -> Result<Statement, ParseError> {
+    pub fn parse_struct(
+        &mut self,
+        access_specifier: Option<AccessSpecifier>,
+        packed: bool,
+    ) -> Result<Statement, ParseError> {
         let loc = self.current_token.loc.clone();
         let struct_start = self.current_token.span.start.clone();
 
-        let storage_class = storage_class.unwrap_or(StorageClass::Internal);
+        let access_specifier = access_specifier.unwrap_or(AccessSpecifier::Internal);
         self.next_token(); // consume struct token
 
         let struct_name = self.parse_identifier()?.name;
@@ -242,8 +256,8 @@ impl<'a> Parser<'a> {
                     });
                 }
                 TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
-                    let storage_class = self.parse_storage_class(self.current_token.clone())?;
-                    if let Statement::FuncDef(method) = self.parse_func(Some(storage_class))? {
+                    let access_specifier = self.parse_access_specifier(self.current_token.clone())?;
+                    if let Statement::FuncDef(method) = self.parse_func(Some(access_specifier))? {
                         self.next_token(); // consume right brace
                         methods.push(method);
                     } else {
@@ -296,7 +310,7 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Statement::Struct(Struct {
-            storage_class,
+            access_specifier,
             name: struct_name,
             inherits,
             fields,
@@ -821,11 +835,11 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_func(&mut self, storage_class: Option<StorageClass>) -> Result<Statement, ParseError> {
+    pub fn parse_func(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParseError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
-        let storage_class = storage_class.unwrap_or(StorageClass::Internal);
+        let access_specifier = access_specifier.unwrap_or(AccessSpecifier::Internal);
 
         self.next_token(); // consume the fn token
 
@@ -873,7 +887,7 @@ impl<'a> Parser<'a> {
                 name: func_name,
                 params,
                 return_type,
-                storage_class,
+                access_specifier,
                 renamed_as: None,
                 span: Span {
                     start,
@@ -918,7 +932,7 @@ impl<'a> Parser<'a> {
                 name: func_name,
                 params,
                 return_type,
-                storage_class,
+                access_specifier,
                 renamed_as: Some(renamed_as),
                 span: Span {
                     start,
@@ -936,7 +950,7 @@ impl<'a> Parser<'a> {
             params,
             body,
             return_type,
-            storage_class,
+            access_specifier,
             span: Span { start, end },
             loc,
         }));
@@ -1027,6 +1041,62 @@ impl<'a> Parser<'a> {
             span: Span { start, end },
             loc,
         })
+    }
+
+    pub fn parse_global_variable(
+        &mut self,
+        access_specifier: Option<AccessSpecifier>,
+    ) -> Result<Statement, ParseError> {
+        let loc = self.current_token.loc.clone();
+        let start = self.current_token.span.start;
+        let identifier = self.parse_identifier()?;
+        self.next_token();
+
+        let mut type_specifier: Option<TypeSpecifier> = None;
+        if self.current_token_is(TokenKind::Colon) {
+            self.next_token();
+            type_specifier = Some(self.parse_type_specifier()?);
+            self.next_token();
+        }
+
+        let expr = {
+            if self.current_token_is(TokenKind::Assign) {
+                self.next_token();
+                let expr = Some(self.parse_expression(Precedence::Lowest)?.0);
+                self.next_token();
+                expr
+            } else {
+                None
+            }
+        };
+    
+        Ok(Statement::GlobalVariable(GlobalVariable {
+            access_specifier: access_specifier.unwrap_or(AccessSpecifier::Internal),
+            identifier,
+            type_specifier,
+            expr,
+            loc,
+            span: Span::new(start, self.current_token.span.end),
+        }))
+    }
+
+    pub fn parse_typedef(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParseError> {
+        let loc = self.current_token.loc.clone();
+        let start = self.current_token.span.start;
+
+        self.next_token();
+        let identifier = self.parse_identifier()?;
+        self.next_token();
+        self.expect_current(TokenKind::Assign)?;
+        let type_specifier = self.parse_type_specifier()?;
+        self.next_token();
+        Ok(Statement::Typedef(Typedef {
+            access_specifier: access_specifier.unwrap_or(AccessSpecifier::Internal),
+            identifier,
+            type_specifier,
+            loc,
+            span: Span::new(start, self.current_token.span.end),
+        }))
     }
 
     pub fn parse_if(&mut self) -> Result<Statement, ParseError> {
