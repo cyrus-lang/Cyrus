@@ -7,7 +7,7 @@ use crate::{
     types::InternalStructType,
 };
 use ast::{
-    ast::{FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, StorageClass, TypeSpecifier},
+    ast::{FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, AccessSpecifier, TypeSpecifier},
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
 };
@@ -88,12 +88,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     "Cannot import module '{}' twice.",
                     module_segments_as_string(module_path.segments)
                 )),
-                location: None,
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: module_path.loc.line,
+                    column: module_path.loc.column,
+                    length: module_path.span.end,
+                }),
             });
             exit(1);
         }
     }
 
+    // FIXME I don't even know this works or not :/
     pub(crate) fn rebuild_dependent_modules(&mut self) {
         if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
             for file_path in module_deps {
@@ -446,9 +452,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         metadata: FuncMetadata<'ctx>,
         self_modifier_type: LLVMTypeRef,
     ) -> (String, FuncMetadata<'ctx>) {
-        if metadata.func_decl.storage_class == StorageClass::Public
-            || metadata.func_decl.storage_class == StorageClass::PublicExtern
-            || metadata.func_decl.storage_class == StorageClass::PublicInline
+        if metadata.func_decl.access_specifier == AccessSpecifier::Public
+            || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
+            || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
         {
             let mut new_metadata = metadata.clone();
 
@@ -487,7 +493,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ))
             };
 
-            let func_linkage = self.build_func_linkage(metadata.func_decl.storage_class.clone());
+            let func_linkage = self.build_func_linkage(metadata.func_decl.access_specifier.clone());
             let func_value = self.module.borrow_mut().deref_mut().add_function(
                 &metadata.func_decl.name,
                 fn_type,
@@ -502,9 +508,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn build_decl_imported_func(&mut self, metadata: FuncMetadata<'ctx>) -> (String, FuncMetadata<'ctx>) {
-        if metadata.func_decl.storage_class == StorageClass::Public
-            || metadata.func_decl.storage_class == StorageClass::PublicExtern
-            || metadata.func_decl.storage_class == StorageClass::PublicInline
+        if metadata.func_decl.access_specifier == AccessSpecifier::Public
+            || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
+            || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
         {
             let mut new_metadata = metadata.clone();
 

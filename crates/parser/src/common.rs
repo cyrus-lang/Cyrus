@@ -152,24 +152,24 @@ impl<'a> Parser<'a> {
         Ok(index)
     }
 
-    pub fn parse_storage_class(&mut self, token: Token) -> Result<StorageClass, ParseError> {
-        let storage_class = {
+    pub fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, ParseError> {
+        let access_specifier = {
             if self.current_token_is(TokenKind::Inline) {
                 self.next_token();
-                StorageClass::Inline
+                AccessSpecifier::Inline
             } else if self.current_token_is(TokenKind::Extern) {
                 self.next_token();
-                StorageClass::Extern
+                AccessSpecifier::Extern
             } else if self.current_token_is(TokenKind::Public) {
                 self.next_token();
                 if self.current_token_is(TokenKind::Inline) {
                     self.next_token();
-                    StorageClass::PublicInline
+                    AccessSpecifier::PublicInline
                 } else if self.current_token_is(TokenKind::Extern) {
                     self.next_token();
-                    StorageClass::PublicExtern
+                    AccessSpecifier::PublicExtern
                 } else {
-                    StorageClass::Public
+                    AccessSpecifier::Public
                 }
             } else {
                 return Err(CompileTimeError {
@@ -183,7 +183,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        Ok(storage_class)
+        Ok(access_specifier)
     }
 
     pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParseError> {

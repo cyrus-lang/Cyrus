@@ -761,6 +761,7 @@ impl Lexer {
 
     fn lookup_identifier(&mut self, ident: String) -> TokenKind {
         match ident.as_str() {
+            "type" => TokenKind::Typedef,
             "fn" => TokenKind::Function,
             "match" => TokenKind::Match,
             "struct" => TokenKind::Struct,

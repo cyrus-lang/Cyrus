@@ -10,7 +10,7 @@ use crate::{
 use ast::{
     ast::{
         Expression, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams, Identifier, MethodCall,
-        ModuleImport, ModuleSegment, SelfModifier, StorageClass, Struct, StructInit, TypeSpecifier, UnnamedStructType,
+        ModuleImport, ModuleSegment, SelfModifier, AccessSpecifier, Struct, StructInit, TypeSpecifier, UnnamedStructType,
         UnnamedStructValue,
     },
     format::module_segments_as_string,
@@ -32,7 +32,7 @@ pub struct StructMetadata<'a> {
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub methods: Vec<(FuncDecl, FunctionValue<'a>, bool)>,
-    pub storage_class: StorageClass,
+    pub access_specifier: AccessSpecifier,
     pub packed: bool,
 }
 
@@ -127,8 +127,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_global_struct(&mut self, struct_statement: Struct) {
         if !matches!(
-            struct_statement.storage_class,
-            StorageClass::Public | StorageClass::Internal
+            struct_statement.access_specifier,
+            AccessSpecifier::Public | AccessSpecifier::Internal
         ) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -161,7 +161,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             fields: struct_statement.fields.clone(),
             methods: Vec::new(),
             inherits: struct_statement.inherits.clone(),
-            storage_class: struct_statement.storage_class.clone(),
+            access_specifier: struct_statement.access_specifier.clone(),
             packed: struct_statement.packed,
         };
 
@@ -208,7 +208,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn validate_method_storage_class(&self, func_def: FuncDef) {
-        if func_def.storage_class == StorageClass::Extern {
+        if func_def.access_specifier == AccessSpecifier::Extern {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(
@@ -331,7 +331,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let method_underlying_name =
             self.generate_method_abi_name(self.module_id.clone(), struct_name.clone(), method_name);
 
-        let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.storage_class.clone()));
+        let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.access_specifier.clone()));
 
         let func_value =
             self.module
@@ -692,7 +692,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let current_block =
                     self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-                if !func_basic_blocks.contains(&current_block) && func_decl.storage_class != StorageClass::Public {
+                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
@@ -851,7 +851,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let current_block =
                     self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-                if !func_basic_blocks.contains(&current_block) && func_decl.storage_class != StorageClass::Public {
+                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
