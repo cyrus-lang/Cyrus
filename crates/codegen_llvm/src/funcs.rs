@@ -3,8 +3,8 @@ use crate::scope::{ScopeRecord, ScopeRef};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
-    Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams, Identifier, ModulePath,
-    ModuleSegment, Return, AccessSpecifier, TypeSpecifier,
+    AccessSpecifier, Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams,
+    Identifier, ModulePath, ModuleSegment, Return, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
@@ -37,7 +37,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             AccessSpecifier::Internal => Linkage::Private,
             AccessSpecifier::Inline => Linkage::Internal,
             AccessSpecifier::PublicInline => Linkage::LinkOnceODR,
-            AccessSpecifier::PublicExtern => Linkage::Appending,
+            AccessSpecifier::PublicExtern => Linkage::External,
         }
     }
 
@@ -150,6 +150,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 is_var_args as i32,
             ))
         };
+
+        if matches!(
+            func_decl.access_specifier,
+            AccessSpecifier::Inline | AccessSpecifier::PublicInline
+        ) {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Cannot declare function '{}' with 'inline' access specifier..",
+                    func_decl.get_usable_name()
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_decl.loc.line,
+                    column: func_decl.loc.column,
+                    length: func_decl.span.end,
+                }),
+            });
+            exit(1);
+        }
 
         let func_linkage = self.build_func_linkage(func_decl.access_specifier.clone());
         let func_ptr = self

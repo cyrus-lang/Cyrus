@@ -13,6 +13,8 @@ pub struct Options {
     pub libraries: Vec<String>,
     pub sources_dir: Vec<String>,
     pub build_dir: BuildDir,
+    pub quiet: bool,
+    pub stdlib_path: Option<String>
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -35,6 +37,8 @@ impl Options {
             cyrus_version: None,
             project_version: None,
             sources_dir: vec!["./".to_string()],
+            quiet: false,
+            stdlib_path: None,
         }
     }
 

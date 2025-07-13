@@ -1,27 +1,9 @@
-extern fn printf(format: const char*, ...): int32;
-extern fn fprintf(stream: void*, format: const char*, ...): int32;
+// import std::libc;
 
-type FILE = void*;
+// public extern fn printf(format: const char*, ...): int32;
 
-extern stdout: FILE;
-extern stderr: FILE;
-extern stdin: FILE;
-
-struct _string {
-    data: const char*;
-    length: int32;
-
-    public fn new(&self) {
-        // return _string { data: null, length: 0 };
-        // return 0;
-        printf("String Initialized!\n");
-    }
-}
-
-type String = _string;
 
 fn main() {
-    #str: String;
-    str.new();
-    // String.new();
+    // printf("Hello World!\n");
+    // libc::printf("Hello World!\n");
 }

@@ -40,6 +40,7 @@ pub enum DefinitionLookupResult<'a> {
 #[derive(Clone)]
 pub(crate) struct ImportedModuleMetadata<'a> {
     pub metadata: ModuleMetadata<'a>,
+    #[allow(unused)]
     pub sub_codegen: Rc<RefCell<CodeGenLLVM<'a>>>,
 }
 
@@ -174,15 +175,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .cloned()
     }
 
+    fn build_stdlib_modules_path(&self) -> String {
+        self.opts.stdlib_path.clone().unwrap_or("default".to_string())
+    }
+
     fn build_import_module_path(
         &mut self,
         module_path: ModulePath,
-        segments: Vec<ModuleSegment>,
+        mut segments: Vec<ModuleSegment>,
         loc: Location,
         span_end: usize,
     ) -> GeneratedModuleImportPath {
-        let sources = &self.opts.sources_dir;
+        let sources;
+
         let segments_str = module_segments_as_string(segments.clone());
+        let first_segment = segments.first().unwrap();
+        match first_segment {
+            ModuleSegment::SubModule(identifier) => {
+                if identifier.name == "std" {
+                    segments.remove(0);
+                    sources = vec![self.build_stdlib_modules_path()];
+                } else {
+                    sources = self.opts.sources_dir.clone();
+                }
+            },
+            ModuleSegment::Single(_) => unreachable!(),
+        }
 
         let mut module_file_path = String::new();
 
@@ -300,7 +318,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 import.loc.clone(),
                 import.span.end,
             );
-
+            
             self.error_if_module_already_loaded(module_id.clone(), module_path);
             self.build_imported_module(module_id, generated_module_import_path);
         }

@@ -195,11 +195,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         self.generate_output();
-        tui_compiled(self.file_path.clone());
+
+        if !self.opts.quiet {
+            tui_compiled(self.file_path.clone());
+        }
     }
 
     pub fn compilation_process_finished(&self) {
-        tui_compile_finished();
+        if !self.opts.quiet {
+            tui_compile_finished();
+        }
     }
 
     pub(crate) fn build_alloca(
