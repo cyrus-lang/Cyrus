@@ -1,9 +1,9 @@
 extern fn printf(format: const char*, ...);
 
-public type Str = char*;
+// public type Str = char*;
 
 PI: float64 = 3.14;
 
 fn main() {
-	
+    // printf("value: %f", PI)
 }

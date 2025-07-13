@@ -4,12 +4,13 @@ use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, scope::ScopeRef};
 use ast::ast::{
-    BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement, TypeSpecifier, Variable,
+    BlockStatement, Break, Continue, Expression, For, Foreach, GlobalVariable, If, Statement, TypeSpecifier, Variable,
 };
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
-use inkwell::values::{AnyValue, BasicValueEnum, FunctionValue};
+use inkwell::types::BasicTypeEnum;
+use inkwell::values::{AnyValue, BasicValue, BasicValueEnum, FunctionValue};
 use std::cell::RefCell;
 use std::process::exit;
 use std::rc::Rc;
@@ -117,6 +118,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_expr(Rc::clone(&scope), expression);
             }
             Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
+            Statement::Typedef(typedef) => todo!(),
+            Statement::GlobalVariable(global_variable) => self.build_global_variable(global_variable),
             Statement::Return(statement) => {
                 self.build_return(Rc::clone(&scope), statement);
             }
@@ -668,6 +671,78 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.builder.position_at_end(end_block);
         self.current_block_ref = Some(end_block);
+    }
+
+    pub(crate) fn build_global_variable(&mut self, global_variable: GlobalVariable) {
+        let internal_value = match *global_variable.expr {
+            // Expression::Cast(cast) => self.build_cast_expression(scope, cast),
+            // Expression::Identifier(identifier) => todo!(), // Distinct runtime and comptime values
+            expr @ Expression::Literal(..)
+            | expr @ Expression::Prefix(..)
+            | expr @ Expression::Infix(..)
+            | expr @ Expression::UnaryOperator(..)
+            | expr @ Expression::ModuleImport(..)
+            | expr @ Expression::Array(..) => {
+                let fake_scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+                self.build_expr(fake_scope, expr)
+            }
+
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(
+                        "Invalid initializer for global variable. Global variables must be initialized with a compile-time constant expression."
+                            .to_string(),
+                    ),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: global_variable.loc.line,
+                        column: global_variable.loc.column,
+                        length: global_variable.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let variable_type: InternalType<'ctx>;
+        if let Some(type_specifier) = global_variable.type_specifier {
+            variable_type = self.build_type(type_specifier, global_variable.loc.clone(), global_variable.span.end);
+        } else {
+            variable_type = internal_value.get_type(self.string_type.clone())
+        }
+
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let module = self.module.borrow_mut();
+
+        let variable_basic_type = match variable_type.to_basic_type(ptr_type) {
+            Ok(basic_type) => basic_type,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err.to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: global_variable.loc.line,
+                        column: global_variable.loc.column,
+                        length: global_variable.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let linkage = self.build_func_linkage(global_variable.access_specifier);
+
+        let initialzier_basic_value: BasicValueEnum<'ctx> = internal_value
+            .to_basic_metadata()
+            .as_any_value_enum()
+            .try_into()
+            .unwrap();
+
+        let global_value = module.add_global(variable_basic_type, None, &global_variable.identifier.name);
+        global_value.set_initializer(&initialzier_basic_value);
+        global_value.set_linkage(linkage);
     }
 
     pub(crate) fn build_variable(&mut self, scope: ScopeRef<'ctx>, variable: Variable) {
