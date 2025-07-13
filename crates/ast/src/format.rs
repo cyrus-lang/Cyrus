@@ -23,8 +23,8 @@ impl fmt::Display for Literal {
                             match prefix {
                                 StringPrefix::C => write!(f, "c")?,
                                 StringPrefix::B => write!(f, "b")?,
-                                StringPrefix::B64 => write!(f, "b64")?,
-                                StringPrefix::X => write!(f, "x")?,
+                                StringPrefix::Base64 => write!(f, "b64")?,
+                                StringPrefix::Hexadecimal => write!(f, "x")?,
                             };
                         }
                         write!(f, "\"{}\"", string_type)

@@ -355,11 +355,11 @@ impl Lexer {
                     self.read_char(); // 'b'
                     self.read_char(); // '6'
                     self.read_char(); // '4'
-                    return self.read_string(Some(StringPrefix::B64));
+                    return self.read_string(Some(StringPrefix::Base64));
                 }
                 if self.input[self.pos..].starts_with("x\"") {
                     self.read_char(); // 'x'
-                    return self.read_string(Some(StringPrefix::X));
+                    return self.read_string(Some(StringPrefix::Hexadecimal));
                 }
                  if self.input[self.pos..].starts_with("b\"") {
                     self.read_char(); // 'b'
@@ -497,7 +497,7 @@ impl Lexer {
         }
 
         let final_string = match &prefix {
-            Some(StringPrefix::X) => {
+            Some(StringPrefix::Hexadecimal) => {
                 let cleaned = content.replace(|c: char| c.is_whitespace(), "");
                 match hex::decode(&cleaned) {
                     Ok(bytes) => match String::from_utf8(bytes) {
@@ -528,7 +528,7 @@ impl Lexer {
                     }
                 }
             },
-            Some(StringPrefix::B64) => {
+            Some(StringPrefix::Base64) => {
                 match general_purpose::STANDARD.decode(&content) {
                     Ok(bytes) => match String::from_utf8(bytes) {
                         Ok(bytes) => String::from_utf8(bytes.into()).unwrap_or_default(),

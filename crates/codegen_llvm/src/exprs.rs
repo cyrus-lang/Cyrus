@@ -711,10 +711,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 Some(prefix) => match prefix {
                     StringPrefix::C => self.build_c_style_string(string_literal, Location::default(), 0),
                     StringPrefix::B => self.build_byte_string(string_literal, Location::default(), 0),
+                    StringPrefix::Base64 => todo!(),
+                    StringPrefix::Hexadecimal => todo!(),
                 },
                 None => self.build_string_literal(string_literal, Location::default(), 0),
             },
             LiteralKind::Null => InternalValue::PointerValue(self.build_null()),
+            LiteralKind::OctalString(_) => todo!(),
+            LiteralKind::Base64String(_) => todo!(),
+            LiteralKind::HexString(_) => todo!(),
         }
     }
 

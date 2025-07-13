@@ -203,10 +203,10 @@ pub enum LiteralKind {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum StringPrefix {
-    C, // C-style string which is const char*
-    B, // Bytes string
-    B64,
-    X, // Hex string (e.g. x"48656C6C6F")
+    C,              // C-style string which is const char*
+    B,              // Bytes string
+    Base64,         // Base64 string
+    Hexadecimal,    // Hex string (e.g. x"48656C6C6F")
 }
 
 #[derive(Debug, Clone, PartialEq)]
