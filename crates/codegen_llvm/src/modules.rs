@@ -4,10 +4,12 @@ use crate::{
     diag::*,
     funcs::{FuncMetadata, FuncTable},
     structs::StructTable,
-    types::InternalStructType,
+    types::{InternalStructType, TypedefMetadata},
 };
 use ast::{
-    ast::{AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, TypeSpecifier},
+    ast::{
+        AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, TypeSpecifier, Typedef,
+    },
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
 };
@@ -32,6 +34,7 @@ pub struct ModuleMetadata<'a> {
 pub enum DefinitionLookupResult<'a> {
     Func(FuncMetadata<'a>),
     Struct(InternalStructType<'a>),
+    Typedef(TypedefMetadata<'a>),
 }
 
 #[derive(Clone)]
@@ -119,7 +122,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
             None => match self.struct_table.get(&name) {
                 Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
-                None => None,
+                None => match self.typedef_table.get(&name) {
+                    Some(typedef_metadata) => Some(DefinitionLookupResult::Typedef(typedef_metadata.clone())),
+                    None => None,
+                },
             },
         } {
             Some(lookup_result) => Some(lookup_result),
@@ -321,6 +327,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             entry_point_path: self.entry_point_path.clone(),
             func_table: HashMap::new(),
             struct_table: HashMap::new(),
+            typedef_table: HashMap::new(),
             global_variables_table: HashMap::new(),
             compiler_invoked_single: self.compiler_invoked_single,
             current_func_ref: None,
@@ -408,7 +415,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         for single in module_segment_singles {
             let lookup_result = self.lookup_from_module_metadata(
-                single.identifier.name,
+                single.identifier.name.clone(),
                 module_metadata.clone(),
                 loc.clone(),
                 span_end,
@@ -443,6 +450,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         internal_struct_type.clone(),
                     );
                     self.struct_table.insert(struct_name, new_internal_struct_type.clone());
+                }
+                DefinitionLookupResult::Typedef(typedef_metadata) => {
+                    self.typedef_table
+                        .insert(single.identifier.name, typedef_metadata.clone());
                 }
             }
         }

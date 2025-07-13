@@ -9,9 +9,9 @@ use crate::{
 };
 use ast::{
     ast::{
-        Expression, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams, Identifier, MethodCall,
-        ModuleImport, ModuleSegment, SelfModifier, AccessSpecifier, Struct, StructInit, TypeSpecifier, UnnamedStructType,
-        UnnamedStructValue,
+        AccessSpecifier, Expression, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
+        Identifier, MethodCall, ModuleImport, ModuleSegment, SelfModifier, Struct, StructInit, TypeSpecifier,
+        UnnamedStructType, UnnamedStructValue,
     },
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
@@ -466,6 +466,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let internal_struct_type = match defined_type {
             DefinedType::Struct(internal_struct_type) => internal_struct_type,
+            DefinedType::Typedef(typedef_metadata) => todo!(),
         };
 
         if internal_struct_type.struct_metadata.fields.len() != struct_init.field_inits.len() {
@@ -642,6 +643,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     DefinitionLookupResult::Struct(internal_struct_type) => {
                         self.build_static_method_call(scope, method_call, internal_struct_type)
                     }
+                    DefinitionLookupResult::Typedef(typedef_metadata) => todo!(),
                     DefinitionLookupResult::Func(_) => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
@@ -664,6 +666,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         DefinedType::Struct(internal_struct_type) => {
                             self.build_static_method_call(scope, method_call, internal_struct_type)
                         }
+                        DefinedType::Typedef(typedef_metadata) => todo!(),
                     },
                     None => self.build_instance_method_call(Rc::clone(&scope), method_call),
                 }
@@ -692,7 +695,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let current_block =
                     self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public {
+                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public
+                {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
@@ -851,7 +855,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let current_block =
                     self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public {
+                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public
+                {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(

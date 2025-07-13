@@ -118,7 +118,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_expr(Rc::clone(&scope), expression);
             }
             Statement::Variable(variable) => self.build_variable(Rc::clone(&scope), variable),
-            Statement::Typedef(typedef) => todo!(),
+            Statement::Typedef(typedef) => self.build_typedef(typedef),
             Statement::GlobalVariable(global_variable) => self.build_global_variable(global_variable),
             Statement::Return(statement) => {
                 self.build_return(Rc::clone(&scope), statement);

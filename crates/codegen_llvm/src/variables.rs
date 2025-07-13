@@ -29,10 +29,10 @@ pub struct GlobalVariableMetadata<'a> {
 impl<'ctx> CodeGenLLVM<'ctx> {
     fn build_global_variable_linkage(&self, access_specifier: AccessSpecifier) -> Linkage {
         match access_specifier {
-            AccessSpecifier::Extern => Linkage::External,
+            AccessSpecifier::PublicExtern => Linkage::Common,
+            AccessSpecifier::Extern => Linkage::Common,
             AccessSpecifier::Public => Linkage::External,
-            AccessSpecifier::Internal => Linkage::Common,
-            AccessSpecifier::PublicExtern => Linkage::Appending,
+            AccessSpecifier::Internal => Linkage::Private,
             AccessSpecifier::Inline => unreachable!(),
             AccessSpecifier::PublicInline => unreachable!(),
         }
