@@ -426,6 +426,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
     }
 
+    pub(crate) fn typedef_as_struct_type(
+        &self,
+        typedef_metadata: TypedefMetadata<'ctx>,
+    ) -> Option<InternalStructType<'ctx>> {
+        match typedef_metadata.internal_type {
+            InternalType::StructType(internal_struct_type) => Some(internal_struct_type),
+            _ => None,
+        }
+    }
+
     pub(crate) fn compatible_types(&self, lvalue_type: InternalType<'ctx>, rvalue_type: InternalType<'ctx>) -> bool {
         match (lvalue_type, rvalue_type) {
             (InternalType::BoolType(_), InternalType::BoolType(_)) => true,

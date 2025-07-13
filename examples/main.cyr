@@ -7,7 +7,19 @@ extern stdout: FILE;
 extern stderr: FILE;
 extern stdin: FILE;
 
+struct _string {
+    data: const char*;
+    length: int32;
+
+    public fn new() {
+        // return _string { data: null, length: 0 };
+        // return 0;
+        printf("String Initialized!\n");
+    }
+}
+
+type String = _string;
+
 fn main() {
-    fprintf(stderr, "Program Error!\n");
-    fprintf(stdout, "Hello World!\n");
+    String.new();
 }

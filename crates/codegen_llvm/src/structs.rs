@@ -1,7 +1,6 @@
 use crate::{
     CodeGenLLVM, InternalType, InternalValue,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    funcs::FuncMetadata,
     modules::DefinitionLookupResult,
     scope::{Scope, ScopeRecord, ScopeRef},
     types::{DefinedType, InternalLvalueType, InternalStructType, InternalUnnamedStructType},
@@ -466,7 +465,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let internal_struct_type = match defined_type {
             DefinedType::Struct(internal_struct_type) => internal_struct_type,
-            DefinedType::Typedef(typedef_metadata) => todo!(),
+            DefinedType::Typedef(typedef_metadata) => match self.typedef_as_struct_type(typedef_metadata) {
+                Some(internal_struct_type) => internal_struct_type,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Cannot build struct init from a non-struct type.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: struct_init.loc.line,
+                            column: struct_init.loc.column,
+                            length: struct_init.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
         };
 
         if internal_struct_type.struct_metadata.fields.len() != struct_init.field_inits.len() {
@@ -643,7 +657,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     DefinitionLookupResult::Struct(internal_struct_type) => {
                         self.build_static_method_call(scope, method_call, internal_struct_type)
                     }
-                    DefinitionLookupResult::Typedef(typedef_metadata) => todo!(),
+                    DefinitionLookupResult::Typedef(typedef_metadata) => {
+                        match self.typedef_as_struct_type(typedef_metadata) {
+                            Some(internal_struct_type) => {
+                                self.build_static_method_call(scope, method_call, internal_struct_type)
+                            }
+                            None => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(
+                                        "Cannot build method call on a non-struct value.".to_string(),
+                                    ),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: method_call.loc.line,
+                                        column: method_call.loc.column,
+                                        length: method_call.span.end,
+                                    }),
+                                });
+                                exit(1);
+                            }
+                        }
+                    }
                     DefinitionLookupResult::Func(_) => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
@@ -666,7 +701,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         DefinedType::Struct(internal_struct_type) => {
                             self.build_static_method_call(scope, method_call, internal_struct_type)
                         }
-                        DefinedType::Typedef(typedef_metadata) => todo!(),
+                        DefinedType::Typedef(typedef_metadata) => match self.typedef_as_struct_type(typedef_metadata) {
+                            Some(internal_struct_type) => {
+                                self.build_static_method_call(scope, method_call, internal_struct_type)
+                            }
+                            None => {
+                                display_single_diag(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: DiagKind::Custom(
+                                        "Cannot build method call on a non-struct value.".to_string(),
+                                    ),
+                                    location: Some(DiagLoc {
+                                        file: self.file_path.clone(),
+                                        line: method_call.loc.line,
+                                        column: method_call.loc.column,
+                                        length: method_call.span.end,
+                                    }),
+                                });
+                                exit(1);
+                            }
+                        },
                     },
                     None => self.build_instance_method_call(Rc::clone(&scope), method_call),
                 }
