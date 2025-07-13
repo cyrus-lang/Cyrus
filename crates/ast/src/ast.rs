@@ -293,7 +293,7 @@ pub struct GlobalVariable {
     pub access_specifier: AccessSpecifier,
     pub identifier: Identifier,
     pub type_specifier: Option<TypeSpecifier>,
-    pub expr: Box<Expression>,
+    pub expr: Option<Expression>,
     pub loc: Location,
     pub span: Span,
 }

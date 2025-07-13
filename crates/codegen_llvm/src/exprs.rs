@@ -1,12 +1,7 @@
 use crate::{
-    CodeGenLLVM, ScopeRef,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    modules::DefinitionLookupResult,
-    types::{
-        InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalPointerType, InternalType,
-        InternalVoidType,
-    },
-    values::{InternalValue, Lvalue, TypedPointerValue},
+    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, modules::DefinitionLookupResult, types::{
+        InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalLvalueType, InternalPointerType, InternalType, InternalVoidType
+    }, values::{InternalValue, Lvalue, TypedPointerValue}, CodeGenLLVM, ScopeRef
 };
 use ast::{
     ast::*,
@@ -234,8 +229,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_load_lvalue(&self, scope: ScopeRef<'ctx>, module_import: ModuleImport) -> InternalValue<'ctx> {
-        let first_segment = module_import.segments.first().unwrap();
-        let identifier = match first_segment {
+        let identifier = match module_import.segments.first().unwrap() {
             ModuleSegment::SubModule(identifier) => identifier.clone(),
             ModuleSegment::Single(_) => unreachable!(),
         };
@@ -255,7 +249,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             // local function
             else if let Some(func_metadata) = self.func_table.get(&identifier.name.clone()) {
                 return InternalValue::FunctionValue(func_metadata.clone());
-            } else {
+            } 
+            else if let Some(global_variable_metadata) = self.global_variables_table.get(&identifier.name.clone()) {
+                let global_value_ptr = global_variable_metadata.global_value.as_pointer_value();
+                let global_value_ptr_type = global_value_ptr.get_type();
+                return InternalValue::Lvalue(Lvalue {
+                    ptr: global_value_ptr,
+                    pointee_ty: InternalType::Lvalue(Box::new(InternalLvalueType {
+                        ptr_type: global_value_ptr_type,
+                        pointee_ty: global_variable_metadata.variable_type.clone(),
+                    })),
+                });
+            }
+            else {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),

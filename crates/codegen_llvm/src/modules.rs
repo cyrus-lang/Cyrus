@@ -7,7 +7,7 @@ use crate::{
     types::InternalStructType,
 };
 use ast::{
-    ast::{FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, AccessSpecifier, TypeSpecifier},
+    ast::{AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, TypeSpecifier},
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
 };
@@ -321,6 +321,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             entry_point_path: self.entry_point_path.clone(),
             func_table: HashMap::new(),
             struct_table: HashMap::new(),
+            global_variables_table: HashMap::new(),
             compiler_invoked_single: self.compiler_invoked_single,
             current_func_ref: None,
             current_block_ref: None,

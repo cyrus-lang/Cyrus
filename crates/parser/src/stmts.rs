@@ -38,7 +38,9 @@ impl<'a> Parser<'a> {
         } else if self.current_token_is(TokenKind::Typedef) {
             return self.parse_typedef(None);
         } else if let TokenKind::Identifier { .. } = self.current_token.kind.clone() {
-            return self.parse_global_variable(None);
+            if self.peek_token_is(TokenKind::Colon) || self.peek_token_is(TokenKind::Assign) {
+                return self.parse_global_variable(None);
+            }
         }
 
         match self.current_token.kind {
@@ -1057,15 +1059,22 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        self.expect_current(TokenKind::Assign)?;
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
-        self.next_token();
-
+        let expr = {
+            if self.current_token_is(TokenKind::Assign) {
+                self.next_token();
+                let expr = Some(self.parse_expression(Precedence::Lowest)?.0);
+                self.next_token();
+                expr
+            } else {
+                None
+            }
+        };
+    
         Ok(Statement::GlobalVariable(GlobalVariable {
             access_specifier: access_specifier.unwrap_or(AccessSpecifier::Internal),
             identifier,
             type_specifier,
-            expr: Box::new(expr),
+            expr,
             loc,
             span: Span::new(start, self.current_token.span.end),
         }))

@@ -1,6 +1,7 @@
 use crate::modules::ImportedModuleMetadata;
 use crate::opts::BuildDir;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
+use crate::variables::GlobalVariablesTable;
 use ast::ast::*;
 use ast::token::Location;
 use build::{BuildManifest, OutputKind};
@@ -44,6 +45,7 @@ mod structs;
 mod tests;
 mod types;
 mod values;
+mod variables;
 
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
@@ -70,6 +72,7 @@ pub struct CodeGenLLVM<'ctx> {
     string_type: InternalStringType<'ctx>,
     func_table: FuncTable<'ctx>,
     struct_table: StructTable<'ctx>,
+    global_variables_table: GlobalVariablesTable<'ctx>,
     imported_modules: Vec<ImportedModuleMetadata<'ctx>>,
 }
 
@@ -112,6 +115,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             entry_point_path: file_path.clone(),
             func_table: FuncTable::new(),
             struct_table: StructTable::new(),
+            global_variables_table: GlobalVariablesTable::new(),
             build_manifest: BuildManifest::default(),
             compiler_invoked_single,
             current_func_ref: None,
