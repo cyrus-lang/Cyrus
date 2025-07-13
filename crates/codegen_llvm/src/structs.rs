@@ -743,7 +743,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         match method_metadata {
             Some((func_decl, func_value, is_static_method)) => {
-                assert_eq!(*is_static_method, true);
+                if !*is_static_method {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(
+                            "Non-static method cannot be called without an instance of the object.".to_string(),
+                        ),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: method_call.method_name.loc.line,
+                            column: method_call.method_name.loc.column,
+                            length: method_call.method_name.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
 
                 let func_basic_blocks = func_value.get_basic_blocks();
                 let current_block =

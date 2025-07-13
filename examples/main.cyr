@@ -11,7 +11,7 @@ struct _string {
     data: const char*;
     length: int32;
 
-    public fn new() {
+    public fn new(&self) {
         // return _string { data: null, length: 0 };
         // return 0;
         printf("String Initialized!\n");
@@ -21,5 +21,7 @@ struct _string {
 type String = _string;
 
 fn main() {
-    String.new();
+    #str: String;
+    str.new();
+    // String.new();
 }
