@@ -1,1 +1,1 @@
-extern fn printf(fmt: string, ...string): void;
+public extern fn printf(format: string, ...string): int32;

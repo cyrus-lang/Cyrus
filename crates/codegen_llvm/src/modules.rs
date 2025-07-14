@@ -176,7 +176,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn build_stdlib_modules_path(&self) -> String {
-        self.opts.stdlib_path.clone().unwrap_or("default".to_string())
+        dbg!(self.opts.stdlib_path.clone());
+
+        self.opts.stdlib_path.clone().unwrap()
     }
 
     fn build_import_module_path(

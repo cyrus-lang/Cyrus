@@ -88,7 +88,7 @@ struct CompilerOptions {
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> codegen_llvm::opts::Options {
         codegen_llvm::opts::Options {
-            opt_level: self.optimize.as_integer(),
+            opt_level: Some(self.optimize.as_integer()),
             cpu: self.cpu.to_string(),
             library_path: self.library_path.clone(),
             libraries: self.libraries.clone(),
@@ -184,13 +184,13 @@ enum Commands {
     #[clap(about = "Lexical analysis only.", display_order = 8)]
     LexOnly { file_path: String },
 
-    #[clap(about = "Display program tree.", display_order = 8)]
+    #[clap(about = "Display program tree.", display_order = 9)]
     ParseOnly { file_path: String },
 
-    #[clap(about = "Check program correctness syntactically.", display_order = 8)]
+    #[clap(about = "Check program correctness syntactically.", display_order = 10)]
     SyntacticOnly { file_path: String },
 
-    #[clap(about = "Print version information", display_order = 99)]
+    #[clap(about = "Print version information", display_order = 11)]
     Version,
 }
 
@@ -305,6 +305,10 @@ macro_rules! init_compiler {
                             }
                         }
                     };
+
+                    dbg!($opts.clone().stdlib_path.clone());
+                    dbg!(options.clone().stdlib_path.clone());
+                    options.override_options($opts);
 
                     let (program, file_name) = parse_program(main_file_path.clone());
                     let codegen_llvm = match CodeGenLLVM::new(
@@ -530,7 +534,7 @@ fn syntactic_only_command(file_path: String) {
     match CyrusParser::new(&mut lexer).parse() {
         Ok(_) => {
             println!("Program is correct grammatically.");
-        },
+        }
         Err(errors) => {
             for err in errors {
                 err.print();
