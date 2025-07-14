@@ -8,7 +8,8 @@ use crate::{
 };
 use ast::{
     ast::{
-        AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, TypeSpecifier, Typedef,
+        AccessSpecifier, FuncParamKind, Identifier, Import, ModulePath, ModuleSegment, ModuleSegmentSingle,
+        TypeSpecifier, Typedef,
     },
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
@@ -18,8 +19,8 @@ use inkwell::{
     module::Module,
     types::FunctionType,
 };
-use std::{cell::RefCell, collections::HashMap, ops::DerefMut, path::Path, process::exit, rc::Rc};
-use utils::fs::find_file_from_sources;
+use std::{cell::RefCell, collections::HashMap, env, ops::DerefMut, path::Path, process::exit, rc::Rc};
+use utils::fs::{absolute_to_relative, find_file_from_sources, relative_to_absolute};
 
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'a> {
@@ -176,8 +177,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn build_stdlib_modules_path(&self) -> String {
-        dbg!(self.opts.stdlib_path.clone());
-
+        // TODO Check env to get the cyrus_stdlib_path
         self.opts.stdlib_path.clone().unwrap()
     }
 
@@ -197,10 +197,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 if identifier.name == "std" {
                     segments.remove(0);
                     sources = vec![self.build_stdlib_modules_path()];
+                    // segments.insert(
+                    //     0,
+                    //     ModuleSegment::SubModule(Identifier {
+                    //         name: "std".to_string(),
+                    //         span: Span::default(),
+                    //         loc: Location::default(),
+                    //     }),
+                    // );
                 } else {
                     sources = self.opts.sources_dir.clone();
                 }
-            },
+            }
             ModuleSegment::Single(_) => unreachable!(),
         }
 
@@ -320,7 +328,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 import.loc.clone(),
                 import.span.end,
             );
-            
+
             self.error_if_module_already_loaded(module_id.clone(), module_path);
             self.build_imported_module(module_id, generated_module_import_path);
         }
@@ -330,7 +338,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_id)));
         let sub_builder = self.context.create_builder();
         let target_machine = CodeGenLLVM::target_machine(Rc::clone(&sub_module));
-        let program = parser::parse_program(generated_module_import_path.file_path.clone()).0;
+        let base_dir = env::current_dir().unwrap().to_str().unwrap().to_string();
+        let file_path = relative_to_absolute(generated_module_import_path.file_path.clone(), base_dir).unwrap();
+        let program = parser::parse_program(file_path.clone()).0;
 
         let sub_codegen = Rc::new(RefCell::new(CodeGenLLVM {
             program,
@@ -341,7 +351,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             builder: sub_builder,
             target_machine,
             build_manifest: BuildManifest::default(),
-            file_path: generated_module_import_path.file_path.clone(),
+            file_path: file_path,
             reporter: self.reporter.clone(),
             entry_point: None,
             entry_point_path: self.entry_point_path.clone(),
@@ -571,8 +581,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> HashMap<String, FuncMetadata<'ctx>> {
         let mut imported_funcs: HashMap<String, FuncMetadata> = HashMap::new();
         for mut metadata in func_table.values().cloned() {
-            metadata.func_decl.renamed_as = Some(metadata.func_decl.name.clone());
-            metadata.func_decl.name = self.generate_abi_name(module_id.clone(), metadata.func_decl.name.clone());
+            dbg!(metadata.func_decl.name.clone());
             let (func_name, func_metadata) = self.build_decl_imported_func(metadata.clone());
             imported_funcs.insert(func_name, func_metadata);
         }

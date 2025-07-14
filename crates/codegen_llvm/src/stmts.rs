@@ -147,10 +147,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     );
 
                     let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-                    self.build_func_def(scope, func_def.clone(), param_types, false);
+                    let func_abi_name = self.generate_abi_name(self.module_id.clone(), func_def.name);
+                    self.build_func_def(scope, func_def.clone(), param_types, func_abi_name, false);
                 }
             }
-            Statement::FuncDecl(func_decl) => {
+            Statement::FuncDecl(mut func_decl) => {
                 let param_types = self.build_func_params(
                     func_decl.name.clone(),
                     func_decl.loc.clone(),
@@ -159,6 +160,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_decl.params.variadic.clone(),
                 );
 
+                func_decl.renamed_as = Some(func_decl.name.clone());
+                func_decl.name = self.generate_abi_name(self.module_id.clone(), func_decl.name);
                 self.build_func_decl(func_decl, param_types, true, false);
             }
             Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),

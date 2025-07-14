@@ -42,8 +42,8 @@ impl Options {
         }
     }
 
-    pub fn override_options(&self, instance: Self) -> Self {
-        Self {
+    pub fn override_options(&mut self, instance: Self) {
+        *self = Self {
             project_type: instance.project_type.or(self.project_type.clone()),
             project_name: instance.project_name.or(self.project_name.clone()),
             project_version: instance.project_version.or(self.project_version.clone()),
@@ -51,16 +51,28 @@ impl Options {
             authors: instance.authors.or(self.authors.clone()),
             opt_level: instance.opt_level,
             cpu: instance.cpu.clone(),
-            library_path: instance.library_path.clone(),
-            libraries: instance.libraries.clone(),
+            library_path: {
+                let mut library_paths = self.library_path.clone();
+                library_paths.extend(instance.library_path);
+                library_paths
+            },
+            libraries: {
+                let mut libraries = self.libraries.clone();
+                libraries.extend(instance.libraries);
+                libraries
+            },
             build_dir: match instance.build_dir.clone() {
                 BuildDir::Provided(provided) => BuildDir::Provided(provided),
                 BuildDir::Default => self.build_dir.clone(),
             },
-            sources_dir: instance.sources_dir.clone(),
+            sources_dir: {
+                let mut sources = self.sources_dir.clone();
+                sources.extend(instance.sources_dir);
+                sources
+            },
             quiet: instance.quiet || self.quiet,
             stdlib_path: instance.stdlib_path.or(self.stdlib_path.clone()),
-        }
+        };
     }
 
     pub fn read_toml(file_path: String) -> Result<Options, String> {

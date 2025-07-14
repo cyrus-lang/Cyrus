@@ -51,10 +51,17 @@ pub fn ensure_output_dir(output_dir: &Path) {
 pub fn absolute_to_relative(absolute_path: String, base_dir: String) -> Option<String> {
     let abs_path = Path::new(&absolute_path).canonicalize().ok()?;
     let base_path = Path::new(&base_dir).canonicalize().ok()?;
-
     let relative_path = abs_path.strip_prefix(base_path).ok()?;
-
     Some(relative_path.to_string_lossy().replace('\\', "/"))
+}
+
+/// Converts a relative path to an absolute path based on the given base directory.
+/// Returns `None` if the resulting path cannot be canonicalized (e.g., it doesn't exist or is invalid).
+pub fn relative_to_absolute(relative_path: String, base_dir: String) -> Option<String> {
+    let base_path = Path::new(&base_dir);
+    let combined_path = base_path.join(&relative_path);
+    let absolute_path = combined_path.canonicalize().ok()?;
+    Some(absolute_path.to_string_lossy().replace('\\', "/"))
 }
 
 /// Tries to find `file_name` in any of the given `sources` directories.

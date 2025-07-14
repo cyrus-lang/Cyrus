@@ -1,9 +1,11 @@
-// import std::libc;
+// import std::libc{printf};
+import std::math;
 
 // public extern fn printf(format: const char*, ...): int32;
 
 
 fn main() {
+    math::sqrt(4.0);
     // printf("Hello World!\n");
     // libc::printf("Hello World!\n");
 }

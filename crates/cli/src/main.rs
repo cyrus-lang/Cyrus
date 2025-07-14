@@ -88,8 +88,13 @@ struct CompilerOptions {
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> codegen_llvm::opts::Options {
         codegen_llvm::opts::Options {
-            opt_level: Some(self.optimize.as_integer()),
-            cpu: self.cpu.to_string(),
+            opt_level: match self.optimize {
+                OptimizeLevel::None => None,
+                OptimizeLevel::O1 => Some(1),
+                OptimizeLevel::O2 => Some(2),
+                OptimizeLevel::O3 => Some(3),
+            },
+            cpu: Some(self.cpu.to_string()),
             library_path: self.library_path.clone(),
             libraries: self.libraries.clone(),
             sources_dir: self.sources_dir.clone(),
@@ -306,8 +311,6 @@ macro_rules! init_compiler {
                         }
                     };
 
-                    dbg!($opts.clone().stdlib_path.clone());
-                    dbg!(options.clone().stdlib_path.clone());
                     options.override_options($opts);
 
                     let (program, file_name) = parse_program(main_file_path.clone());

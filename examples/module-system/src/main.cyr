@@ -1,5 +1,6 @@
-import std::io;
+// import std::libc;
+import users::index;
 
 fn main() {
-	// printf("Hello World");
+	// libc::printf("Hello World");
 }

@@ -415,6 +415,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         func_def: FuncDef,
         mut func_param_types: Vec<LLVMTypeRef>,
+        func_abi_name: String,
         is_entry_point: bool,
     ) -> FunctionValue<'ctx> {
         self.validate_func_storage_class(func_def.clone(), is_entry_point);
@@ -443,7 +444,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let actual_func_name = if self.is_current_module_entry_point() {
             func_decl.name.clone()
         } else {
-            self.generate_abi_name(self.module_id.clone(), func_decl.name.clone())
+            func_abi_name
         };
 
         let func_linkage: Option<Linkage> = if !is_entry_point {
