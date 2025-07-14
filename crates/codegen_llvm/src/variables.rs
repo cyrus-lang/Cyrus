@@ -27,7 +27,7 @@ pub struct GlobalVariableMetadata<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    fn build_global_variable_linkage(&self, access_specifier: AccessSpecifier) -> Linkage {
+    pub(crate) fn build_global_variable_linkage(&self, access_specifier: AccessSpecifier) -> Linkage {
         match access_specifier {
             AccessSpecifier::PublicExtern => Linkage::Common,
             AccessSpecifier::Extern => Linkage::Common,

@@ -371,7 +371,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot load ModuleValue as an rvalue.".to_string()),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
                 });
                 exit(1);
             }
@@ -379,7 +384,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot load FunctionValue as an rvalue.".to_string()),
-                    location: None,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
                 });
                 exit(1);
             }
@@ -392,7 +402,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(err.to_string()),
-                            location: None,
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
                         });
                         exit(1);
                     }
@@ -404,7 +419,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom("Failed to convert loaded value to InternalValue.".to_string()),
-                        location: None,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
                     });
                     exit(1);
                 })
@@ -706,8 +726,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         'a: 'ctx,
     {
         match (left_value, right_value) {
-            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => {
-                Ok(InternalValue::BoolValue(
+            (InternalValue::IntValue(left, _), InternalValue::IntValue(right, _)) => Ok(InternalValue::BoolValue(
                 self.builder
                     .build_int_compare(IntPredicate::SLE, left, right, "cmp_le")
                     .unwrap(),
@@ -715,8 +734,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     type_str: "bool".to_string(),
                     bool_type: self.context.bool_type(),
                 }),
-            ))
-            },
+            )),
             (InternalValue::FloatValue(left, _), InternalValue::IntValue(right, _)) => {
                 let right = self
                     .builder

@@ -692,6 +692,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         });
                         exit(1);
                     }
+                    DefinitionLookupResult::GlobalVariable(global_variable_metadata) => todo!(),
                 },
                 None => self.build_instance_method_call(Rc::clone(&scope), method_call),
             },

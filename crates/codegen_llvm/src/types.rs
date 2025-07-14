@@ -15,6 +15,7 @@ use ast::ast::ModulePath;
 use ast::ast::ModuleSegment;
 use ast::ast::TypeSpecifier;
 use ast::ast::Typedef;
+use ast::format::module_segments_as_string;
 use ast::token::*;
 use inkwell::AddressSpace;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
@@ -508,6 +509,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         Some(DefinedType::Struct(internal_struct_type))
                     }
                     DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
+                    DefinitionLookupResult::GlobalVariable(_) => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Cannot use a global variable as a type specifier.".to_string()),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
                 },
                 None => {
                     return None;
@@ -533,14 +547,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ModuleSegment::Single(_) => unreachable!(), // singles never achieve at this point
             };
 
-            match self.lookup_from_module_metadata(name, module_metadata, loc, span_end) {
-                // TODO Implement func_type as data type
+            match self.lookup_from_module_metadata(name, module_metadata, loc.clone(), span_end) {
                 DefinitionLookupResult::Func(_) => {
                     // FIXME
                     panic!("Cannot use function as a data type.");
                 }
                 DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
                 DefinitionLookupResult::Struct(internal_struct_type) => Some(DefinedType::Struct(internal_struct_type)),
+                DefinitionLookupResult::GlobalVariable(global_variable_metadata) => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Cannot use a global variable as a type specifier.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
             }
         }
     }
@@ -582,7 +608,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
             }
-            TypeSpecifier::ModuleImport(module_import) => todo!(),
+            TypeSpecifier::ModuleImport(module_import) => {
+                match self.find_defined_type(module_import.clone(), loc.clone(), span_end) {
+                    Some(defined_type) => defined_type.into_internal_type(),
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::UndefinedDataType(module_segments_as_string(module_import.segments)),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            }
             TypeSpecifier::Dereference(inner_type_specifier) => {
                 let pointee_ty = self.build_type(*inner_type_specifier, loc.clone(), span_end);
                 InternalType::PointerType(Box::new(InternalPointerType {

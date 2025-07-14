@@ -114,10 +114,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             linker_command.arg(path);
         }
 
-
-        // dbg!(linker_command);
-        // todo!();
-
         match linker_command.output() {
             Ok(output) => {
                 if !output.status.success() {
