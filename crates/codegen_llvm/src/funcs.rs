@@ -415,11 +415,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         func_def: FuncDef,
         mut func_param_types: Vec<LLVMTypeRef>,
-        func_abi_name: String,
         is_entry_point: bool,
     ) -> FunctionValue<'ctx> {
         self.validate_func_storage_class(func_def.clone(), is_entry_point);
-        let func_decl = self.transform_to_func_decl(func_def.clone());
+        let mut func_decl = self.transform_to_func_decl(func_def.clone());
         let is_variadic = func_def.params.variadic.is_some();
 
         let return_type = self.build_type(
@@ -441,11 +440,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
+        let func_abi_name = self.generate_abi_name(self.module_id.clone(), func_def.name.clone());
         let actual_func_name = if self.is_current_module_entry_point() {
             func_decl.name.clone()
         } else {
             func_abi_name
         };
+
+        func_decl.renamed_as = Some(func_decl.name.clone());
+        func_decl.name = actual_func_name.clone();
 
         let func_linkage: Option<Linkage> = if !is_entry_point {
             Some(self.build_func_linkage(func_def.access_specifier.clone()))

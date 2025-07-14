@@ -197,6 +197,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 if identifier.name == "std" {
                     segments.remove(0);
                     sources = vec![self.build_stdlib_modules_path()];
+                    // FIXME Import single from stdlib isn't working.
                     // segments.insert(
                     //     0,
                     //     ModuleSegment::SubModule(Identifier {
@@ -581,7 +582,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> HashMap<String, FuncMetadata<'ctx>> {
         let mut imported_funcs: HashMap<String, FuncMetadata> = HashMap::new();
         for mut metadata in func_table.values().cloned() {
-            dbg!(metadata.func_decl.name.clone());
             let (func_name, func_metadata) = self.build_decl_imported_func(metadata.clone());
             imported_funcs.insert(func_name, func_metadata);
         }

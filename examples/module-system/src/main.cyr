@@ -1,6 +1,6 @@
-// import std::libc;
-import users::index;
+import std::libc;
 
 fn main() {
-	// libc::printf("Hello World");
+	// libc::sample_func();
+	libc::printf("Hello World");
 }

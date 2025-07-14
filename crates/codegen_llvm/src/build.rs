@@ -103,7 +103,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let linker = "clang";
 
         let mut linker_command = std::process::Command::new(linker);
-        linker_command.arg("-v");
         linker_command.arg("-fPIE");
         linker_command.arg("-o").arg(output_path);
 
@@ -114,6 +113,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         for path in extra_args {
             linker_command.arg(path);
         }
+
+
+        // dbg!(linker_command);
+        // todo!();
 
         match linker_command.output() {
             Ok(output) => {
@@ -342,7 +345,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
 
             let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-            self.build_func_def(scope, main_func, func_param_types, "main".to_string(), true);
+            self.build_func_def(scope, main_func, func_param_types, true);
         } else if self.is_current_module_entry_point() && self.entry_point.is_none() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
