@@ -1,2 +1,0 @@
-extern fn malloc(size: u64): *void;
-extern fn free(ptr: *void);

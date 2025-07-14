@@ -1,8 +1,8 @@
 import std::libc;
 
-extern fn fprintf(stream: libc::FILE, format: const char*, ...): int32;
+extern func fprintf(stream: libc::FILE, format: const char*, ...): int32;
 
-fn main() {
+func main() {
 	#name: char* = "Taha";
 	fprintf(libc::stdout, "Hello, %s\n", name);
 }

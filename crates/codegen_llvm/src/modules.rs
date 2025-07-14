@@ -109,17 +109,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     // FIXME I don't even know this works or not :/
     pub(crate) fn rebuild_dependent_modules(&mut self) {
-        if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
-            for file_path in module_deps {
-                // skip for rebuilding entry_point module
-                let imported_module_metadata = self
-                    .imported_modules
-                    .iter()
-                    .find(|m| *m.metadata.file_path == *file_path)
-                    .cloned()
-                    .expect("Failed to get a loaded module by it's file path.");
-            }
-        }
+        // if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
+        //     for file_path in module_deps {
+        // skip for rebuilding entry_point module
+        // let imported_module_metadata = self
+        //     .imported_modules
+        //     .iter()
+        //     .find(|m| *m.metadata.file_path == *file_path)
+        //     .cloned()
+        //     .expect("Failed to get a loaded module by it's file path.");
+        //     }
+        // }
     }
 
     pub(crate) fn lookup_definition(&self, name: String) -> Option<DefinitionLookupResult<'ctx>> {
@@ -188,8 +188,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn build_stdlib_modules_path(&self) -> String {
-        // TODO Check env to get the cyrus_stdlib_path
-        self.opts.stdlib_path.clone().unwrap()
+        match self.opts.stdlib_path.clone() {
+            Some(stdlib_path) => stdlib_path,
+            None => match env::var("CYRUS_STDLIB_PATH") {
+                Ok(stdlib_path) => stdlib_path,
+                Err(_) => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Standard library path not defined anywhere. You can set it with 'CYRUS_STDLIB_PATH' environment variable or '--stdlib' command line argument.".to_string()),
+                        location: None,
+                    });
+                    exit(1);
+                }
+            },
+        }
     }
 
     fn build_import_module_path(

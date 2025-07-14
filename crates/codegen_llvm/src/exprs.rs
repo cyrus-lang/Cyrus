@@ -9,15 +9,14 @@ use crate::{
 };
 use ast::{
     ast::*,
-    format::module_segments_as_string,
     token::{Location, Token, TokenKind},
 };
 use inkwell::{
     AddressSpace,
     types::{BasicType, BasicTypeEnum},
-    values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue},
 };
-use std::{ops::Deref, process::exit, rc::Rc};
+use std::{process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&mut self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
