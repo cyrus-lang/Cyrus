@@ -7,12 +7,14 @@ pub struct Options {
     pub project_version: Option<String>,
     pub cyrus_version: Option<String>,
     pub authors: Option<Vec<String>>,
-    pub cpu: String,
-    pub opt_level: i32,
+    pub cpu: Option<String>,
+    pub opt_level: Option<i32>,
     pub library_path: Vec<String>,
     pub libraries: Vec<String>,
     pub sources_dir: Vec<String>,
     pub build_dir: BuildDir,
+    pub quiet: bool,
+    pub stdlib_path: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -27,15 +29,50 @@ impl Options {
             project_type: None,
             project_name: None,
             authors: None,
-            opt_level: 0,
-            cpu: String::new(),
+            opt_level: None,
+            cpu: None,
             library_path: Vec::new(),
             libraries: Vec::new(),
             build_dir: BuildDir::Default,
             cyrus_version: None,
             project_version: None,
             sources_dir: vec!["./".to_string()],
+            quiet: false,
+            stdlib_path: None,
         }
+    }
+
+    pub fn override_options(&mut self, instance: Self) {
+        *self = Self {
+            project_type: instance.project_type.or(self.project_type.clone()),
+            project_name: instance.project_name.or(self.project_name.clone()),
+            project_version: instance.project_version.or(self.project_version.clone()),
+            cyrus_version: instance.cyrus_version.or(self.cyrus_version.clone()),
+            authors: instance.authors.or(self.authors.clone()),
+            opt_level: instance.opt_level,
+            cpu: instance.cpu.clone(),
+            library_path: {
+                let mut library_paths = self.library_path.clone();
+                library_paths.extend(instance.library_path);
+                library_paths
+            },
+            libraries: {
+                let mut libraries = self.libraries.clone();
+                libraries.extend(instance.libraries);
+                libraries
+            },
+            build_dir: match instance.build_dir.clone() {
+                BuildDir::Provided(provided) => BuildDir::Provided(provided),
+                BuildDir::Default => self.build_dir.clone(),
+            },
+            sources_dir: {
+                let mut sources = self.sources_dir.clone();
+                sources.extend(instance.sources_dir);
+                sources
+            },
+            quiet: instance.quiet || self.quiet,
+            stdlib_path: instance.stdlib_path.or(self.stdlib_path.clone()),
+        };
     }
 
     pub fn read_toml(file_path: String) -> Result<Options, String> {
@@ -60,10 +97,10 @@ impl Options {
                 .unwrap();
 
             options.opt_level = match optimize.as_str() {
-                "none" => 0,
-                "o1" => 1,
-                "o2" => 2,
-                "o3" => 3,
+                "none" => Some(0),
+                "o1" => Some(1),
+                "o2" => Some(2),
+                "o3" => Some(3),
                 _ => {
                     return Err("'optimize' key in 'Project.toml' must be one of o1, o2, o3 or none.".to_string());
                 }

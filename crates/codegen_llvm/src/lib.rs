@@ -25,7 +25,7 @@ use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
 use types::{InternalStringType, InternalType};
-use utils::fs::file_stem;
+use utils::fs::{file_stem, relative_to_absolute};
 use utils::tui::{tui_compile_finished, tui_compiled};
 use values::{InternalValue, StringValue};
 
@@ -35,7 +35,6 @@ mod enums;
 mod exprs;
 mod funcs;
 mod internals;
-mod intrinsics;
 mod modules;
 pub mod opts;
 mod runtime;
@@ -43,7 +42,6 @@ mod scope;
 mod stmts;
 mod strings;
 mod structs;
-mod tests;
 mod types;
 mod values;
 mod variables;
@@ -103,6 +101,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 BuildDir::Provided(path) => path,
             }
         };
+
+        let base_dir = env::current_dir().unwrap().to_str().unwrap().to_string();
+        let file_path = relative_to_absolute(file_path.clone(), base_dir).unwrap();
 
         let codegen_llvm = CodeGenLLVM {
             final_build_dir,
@@ -195,11 +196,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         self.generate_output();
-        tui_compiled(self.file_path.clone());
+
+        if !self.opts.quiet {
+            tui_compiled(self.file_path.clone());
+        }
     }
 
     pub fn compilation_process_finished(&self) {
-        tui_compile_finished();
+        if !self.opts.quiet {
+            tui_compile_finished();
+        }
     }
 
     pub(crate) fn build_alloca(

@@ -3,8 +3,8 @@ use crate::scope::{ScopeRecord, ScopeRef};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
-    Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams, Identifier, ModulePath,
-    ModuleSegment, Return, AccessSpecifier, TypeSpecifier,
+    AccessSpecifier, Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams,
+    Identifier, ModulePath, ModuleSegment, Return, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
@@ -37,7 +37,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             AccessSpecifier::Internal => Linkage::Private,
             AccessSpecifier::Inline => Linkage::Internal,
             AccessSpecifier::PublicInline => Linkage::LinkOnceODR,
-            AccessSpecifier::PublicExtern => Linkage::Appending,
+            AccessSpecifier::PublicExtern => Linkage::External,
         }
     }
 
@@ -150,6 +150,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 is_var_args as i32,
             ))
         };
+
+        if matches!(
+            func_decl.access_specifier,
+            AccessSpecifier::Inline | AccessSpecifier::PublicInline
+        ) {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Cannot declare function '{}' with 'inline' access specifier..",
+                    func_decl.get_usable_name()
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: func_decl.loc.line,
+                    column: func_decl.loc.column,
+                    length: func_decl.span.end,
+                }),
+            });
+            exit(1);
+        }
 
         let func_linkage = self.build_func_linkage(func_decl.access_specifier.clone());
         let func_ptr = self
@@ -398,7 +418,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         is_entry_point: bool,
     ) -> FunctionValue<'ctx> {
         self.validate_func_storage_class(func_def.clone(), is_entry_point);
-        let func_decl = self.transform_to_func_decl(func_def.clone());
+        let mut func_decl = self.transform_to_func_decl(func_def.clone());
         let is_variadic = func_def.params.variadic.is_some();
 
         let return_type = self.build_type(
@@ -420,11 +440,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
+        let func_abi_name = self.generate_abi_name(self.module_id.clone(), func_def.name.clone());
         let actual_func_name = if self.is_current_module_entry_point() {
             func_decl.name.clone()
         } else {
-            self.generate_abi_name(self.module_id.clone(), func_decl.name.clone())
+            func_abi_name
         };
+
+        func_decl.renamed_as = Some(func_decl.name.clone());
+        func_decl.name = actual_func_name.clone();
 
         let func_linkage: Option<Linkage> = if !is_entry_point {
             Some(self.build_func_linkage(func_def.access_specifier.clone()))

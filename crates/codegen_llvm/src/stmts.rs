@@ -150,7 +150,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     self.build_func_def(scope, func_def.clone(), param_types, false);
                 }
             }
-            Statement::FuncDecl(func_decl) => {
+            Statement::FuncDecl(mut func_decl) => {
                 let param_types = self.build_func_params(
                     func_decl.name.clone(),
                     func_decl.loc.clone(),

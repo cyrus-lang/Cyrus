@@ -1,10 +1,12 @@
-use ::parser::parse_program;
+use ::parser::{Parser as CyrusParser, parse_program};
+use ast::token::TokenKind;
 use clap::*;
 use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::build::OutputKind;
 use codegen_llvm::diag::*;
 use codegen_llvm::opts::BuildDir;
-use utils::fs::get_directory_of_file;
+use lexer::Lexer;
+use utils::fs::{get_directory_of_file, read_file};
 
 const PROJECT_FILE_PATH: &str = "Project.toml";
 
@@ -72,18 +74,27 @@ struct CompilerOptions {
     #[clap(
         long = "build-dir",
         value_name = "PATH",
-        help = "Specifies the directory where build artifacts will be stored.
-This includes compiled binaries, intermediate files, and other outputs 
-generated during the build process. If not provided, a tmp directory will be used."
+        help = "Specifies the directory where build artifacts will be stored."
     )]
     build_dir: Option<String>,
+
+    #[clap(long, short = 'q', help = "Suppress unnecessary output messages")]
+    quiet: bool,
+
+    #[clap(long, help = "Set cyrus standard library path")]
+    stdlib: Option<String>,
 }
 
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> codegen_llvm::opts::Options {
         codegen_llvm::opts::Options {
-            opt_level: self.optimize.as_integer(),
-            cpu: self.cpu.to_string(),
+            opt_level: match self.optimize {
+                OptimizeLevel::None => None,
+                OptimizeLevel::O1 => Some(1),
+                OptimizeLevel::O2 => Some(2),
+                OptimizeLevel::O3 => Some(3),
+            },
+            cpu: Some(self.cpu.to_string()),
             library_path: self.library_path.clone(),
             libraries: self.libraries.clone(),
             sources_dir: self.sources_dir.clone(),
@@ -98,6 +109,8 @@ impl CompilerOptions {
                     None => BuildDir::Default,
                 }
             },
+            quiet: self.quiet,
+            stdlib_path: self.stdlib.clone(),
         }
     }
 }
@@ -173,7 +186,16 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Print version information", display_order = 8)]
+    #[clap(about = "Lexical analysis only.", display_order = 8)]
+    LexOnly { file_path: String },
+
+    #[clap(about = "Display program tree.", display_order = 9)]
+    ParseOnly { file_path: String },
+
+    #[clap(about = "Check program correctness syntactically.", display_order = 10)]
+    SyntacticOnly { file_path: String },
+
+    #[clap(about = "Print version information", display_order = 11)]
     Version,
 }
 
@@ -288,6 +310,8 @@ macro_rules! init_compiler {
                             }
                         }
                     };
+
+                    options.override_options($opts);
 
                     let (program, file_name) = parse_program(main_file_path.clone());
                     let codegen_llvm = match CodeGenLLVM::new(
@@ -469,6 +493,55 @@ pub fn main() {
         }
         Commands::Version => {
             println!("Cyrus {}", version)
+        }
+        Commands::LexOnly { file_path } => lex_only_command(file_path),
+        Commands::ParseOnly { file_path } => parse_only_command(file_path),
+        Commands::SyntacticOnly { file_path } => syntactic_only_command(file_path),
+    }
+}
+
+fn lex_only_command(file_path: String) {
+    let (file_content, file_name) = read_file(file_path.clone());
+    let mut lexer = Lexer::new(file_content, file_name);
+    loop {
+        let token = lexer.next_token();
+        if token.kind == TokenKind::EOF {
+            break;
+        }
+
+        println!(
+            "{:?} Span({}, {}) Line({}) Column({})",
+            token.kind, token.span.start, token.span.end, token.loc.line, token.loc.column
+        );
+    }
+}
+
+fn parse_only_command(file_path: String) {
+    let (file_content, file_name) = read_file(file_path.clone());
+    let mut lexer = Lexer::new(file_content, file_name);
+
+    match CyrusParser::new(&mut lexer).parse() {
+        Ok(result) => println!("{:#?}", result),
+        Err(errors) => {
+            for err in errors {
+                err.print();
+            }
+        }
+    }
+}
+
+fn syntactic_only_command(file_path: String) {
+    let (file_content, file_name) = read_file(file_path.clone());
+    let mut lexer = Lexer::new(file_content, file_name);
+
+    match CyrusParser::new(&mut lexer).parse() {
+        Ok(_) => {
+            println!("Program is correct grammatically.");
+        }
+        Err(errors) => {
+            for err in errors {
+                err.print();
+            }
         }
     }
 }

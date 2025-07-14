@@ -24,7 +24,7 @@ path = "./crates/cli/src/main.rs"
 codegen_llvm = { path = "./crates/codegen_llvm", version = "*" }
 layout = { path = "./crates/layout", version = "*" }
 parser = { path = "./crates/parser", version = "*" }
-clap = { version = "4.5.34", features = ["derive"] }
+clap = { version = "4.5.41", features = ["derive"] }
 lexer = { path = "./crates/lexer", version = "*" }
 utils = { path = "./crates/utils", version = "*" }
 ast = { path = "./crates/ast", version = "*" }

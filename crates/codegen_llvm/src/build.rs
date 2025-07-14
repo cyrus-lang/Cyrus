@@ -103,7 +103,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let linker = "clang";
 
         let mut linker_command = std::process::Command::new(linker);
-        linker_command.arg("-v");
         linker_command.arg("-fPIE");
         linker_command.arg("-o").arg(output_path);
 
@@ -148,8 +147,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let wd = env::current_dir().unwrap();
         file_name = file_name.replace(wd.to_str().unwrap(), "");
         file_name = file_name
-            .trim_start_matches('/') // remove leading slash
-            .replace('/', "_") // replace slashes with underscores
+            .trim_start_matches('/')
+            .replace('/', "_")
+            .replace('-', "_")
+            .replace('.', "")
             .to_string();
         file_name
     }
@@ -487,20 +488,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn object_file_exists(&mut self) -> bool {
         let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
-        let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
-        self.build_manifest.objects.get(&file_path.clone()).is_some()
+        self.build_manifest.objects.get(&self.file_path.clone()).is_some()
     }
 
     pub(crate) fn source_code_changed(&mut self, build_dir: String) -> bool {
         let output_dir = format!("{}/{}", self.final_build_dir.clone(), SOURCES_DIR_PATH);
         let current_hash = self.hash_source_code();
-        let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
-        let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
+
         if let Some(hash_file_path) = self
             .build_manifest
             .read_file(build_dir.clone())
             .sources
-            .get(&file_path.clone())
+            .get(&self.file_path.clone())
         {
             match File::open(hash_file_path.clone()) {
                 Ok(mut file) => {
@@ -511,16 +510,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 Err(_) => {
                     // saved hash does not exist in sources directory
                     // let's remove it from BuildManifest and create a new one
-                    self.build_manifest.sources.remove(&file_path.clone());
+                    self.build_manifest.sources.remove(&self.file_path.clone());
                     let output_file = self.save_source_hash(output_dir, current_hash);
-                    self.build_manifest.sources.insert(file_path.clone(), output_file);
+                    self.build_manifest.sources.insert(self.file_path.clone(), output_file);
                     self.build_manifest.save_file(build_dir);
                     true
                 }
             }
         } else {
             let output_file = self.save_source_hash(output_dir, current_hash);
-            self.build_manifest.sources.insert(file_path.clone(), output_file);
+            self.build_manifest.sources.insert(self.file_path.clone(), output_file);
             self.build_manifest.save_file(build_dir);
             true
         }
@@ -543,11 +542,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let random_hex: String = rng.sample_iter(&Alphanumeric).take(30).map(char::from).collect();
         let output_file = format!("{}/{}/{}.o", build_dir, OBJECTS_FILENAME, random_hex);
 
-        let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
-        let file_path = absolute_to_relative(self.file_path.clone(), wd).unwrap();
-
         // remove previous object file if exists
-        if let Some(obj_file) = self.build_manifest.objects.get(&file_path.clone()) {
+        if let Some(obj_file) = self.build_manifest.objects.get(&self.file_path.clone()) {
             if fs::exists(obj_file).unwrap() {
                 let _ = fs::remove_file(obj_file).unwrap();
             }
@@ -555,7 +551,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         // generate object file
         self.generate_object_file_internal(output_file.clone());
-        self.build_manifest.objects.insert(file_path.clone(), output_file);
+        self.build_manifest.objects.insert(self.file_path.clone(), output_file);
         self.build_manifest.save_file(build_dir);
     }
 }

@@ -1,7 +1,11 @@
 use crate::{
-    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, modules::DefinitionLookupResult, types::{
-        InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalLvalueType, InternalPointerType, InternalType, InternalVoidType
-    }, values::{InternalValue, Lvalue, TypedPointerValue}, CodeGenLLVM, ScopeRef
+    CodeGenLLVM, ScopeRef,
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    types::{
+        InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalLvalueType,
+        InternalPointerType, InternalType, InternalVoidType,
+    },
+    values::{InternalValue, Lvalue, TypedPointerValue},
 };
 use ast::{
     ast::*,
@@ -10,16 +14,16 @@ use ast::{
 use inkwell::{
     AddressSpace,
     types::{BasicType, BasicTypeEnum},
-    values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
+    values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue},
 };
-use std::{ops::Deref, process::exit, rc::Rc};
+use std::{process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&mut self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
         match expr {
             Expression::FieldAccess(field_access) => self.build_field_access(Rc::clone(&scope), field_access),
             Expression::MethodCall(method_call) => self.build_method_call(Rc::clone(&scope), method_call),
-            Expression::Identifier(identifier) => self.build_load_lvalue(
+            Expression::Identifier(identifier) => self.build_lvalue(
                 Rc::clone(&scope),
                 ModuleImport {
                     segments: vec![ModuleSegment::SubModule(identifier.clone())],
@@ -109,126 +113,80 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.build_deref_internal(internal_value, dereference.loc, dereference.span.end)
     }
 
-    // REVIEW !!!
     pub(crate) fn build_module_import(
         &self,
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> InternalValue<'ctx> {
         if module_import.segments.len() == 1 {
-            return self.build_load_lvalue(Rc::clone(&scope), module_import);
+            return self.build_lvalue(Rc::clone(&scope), module_import);
         }
 
-        let record: (PointerValue<'ctx>, InternalType<'ctx>);
+        let full_module_id = self.build_module_id(ModulePath {
+            alias: None,
+            segments: module_import.segments.clone(),
+            loc: module_import.loc.clone(),
+            span: module_import.span.clone(),
+        });
 
-        let first_segment = {
-            match module_import.segments.first().unwrap() {
+        let last_segment = {
+            match module_import.segments.last().unwrap() {
                 ModuleSegment::SubModule(sub_module) => sub_module,
                 ModuleSegment::Single(_) => unreachable!(),
             }
         };
 
-        let binding = {
-            match scope.borrow().get(first_segment.name.clone()) {
-                Some(record) => {
-                    if module_import.segments.len() >= 2 {
-                        // FIXME
-                        // let chains: Vec<Either<FuncCall, FieldAccess>> = module_import.segments
-                        //     [1..module_import.segments.len()]
-                        //     .iter()
-                        //     .map(|s| match s {
-                        //         ModuleSegment::SubModule(identifier) => Either::Right(FieldAccess {
-                        //             identifier: identifier.clone(),
-                        //             span: identifier.span.clone(),
-                        //             loc: identifier.loc.clone(),
-                        //         }),
-                        //     })
-                        //     .collect();
+        match match self.find_imported_module(full_module_id.clone()) {
+            Some(module_metadata) => {
+                return InternalValue::ModuleValue(module_metadata.metadata.clone());
+            }
+            None => {
+                let module_id = self.build_module_id(ModulePath {
+                    alias: None,
+                    segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
+                    loc: module_import.loc.clone(),
+                    span: module_import.span.clone(),
+                });
 
-                        // let result = self.build_field_access_or_method_call(
-                        //     Rc::clone(&scope),
-                        //     FieldAccessOrMethodCall {
-                        //         expr: Box::new(Expression::ModuleImport(ModuleImport {
-                        //             segments: vec![ModuleSegment::SubModule(first_segment.clone())],
-                        //             span: module_import.span.clone(),
-                        //             loc: module_import.loc.clone(),
-                        //         })),
-                        //         chains,
-                        //     },
-                        // );
-
-                        // return (result.clone(), result.get_type(self.string_type.clone()));
-
-                        todo!();
-                    } else {
-                        record
-                    }
-                }
-                None => {
-                    let module_id = self.build_module_id(ModulePath {
-                        alias: None,
-                        segments: module_import.segments[0..module_import.segments.len() - 1].to_vec(),
-                        loc: module_import.loc.clone(),
-                        span: module_import.span.clone(),
-                    });
-
-                    match self.find_imported_module(module_id.clone()) {
-                        Some(imported_module_metadata) => {
-                            return InternalValue::ModuleValue(imported_module_metadata.metadata.clone());
-                        }
-                        None => {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom(format!("Module '{}' not found.", module_id)),
-                                location: Some(DiagLoc {
-                                    file: self.file_path.clone(),
-                                    line: module_import.loc.line,
-                                    column: module_import.loc.column,
-                                    length: module_import.span.end,
-                                }),
-                            });
-                            exit(1);
+                match self.find_imported_module(module_id.clone()) {
+                    Some(module_metadata) => {
+                        match module_metadata.metadata.global_variables_table.get(&last_segment.name) {
+                            Some(global_variable_metadata) => {
+                                let global_value_ptr = global_variable_metadata.global_value.as_pointer_value();
+                                let global_value_ptr_type = global_value_ptr.get_type();
+                                return InternalValue::Lvalue(Lvalue {
+                                    ptr: global_value_ptr,
+                                    pointee_ty: InternalType::Lvalue(Box::new(InternalLvalueType {
+                                        ptr_type: global_value_ptr_type,
+                                        pointee_ty: global_variable_metadata.variable_type.clone(),
+                                    })),
+                                });
+                            }
+                            None => None,
                         }
                     }
+                    None => None,
                 }
             }
-        };
-
-        let scope_record = binding.borrow_mut().deref().clone();
-        record = (scope_record.ptr.clone(), scope_record.ty.clone());
-
-        self.build_load_internal(record.0, record.1, module_import.loc.clone(), module_import.span.end)
-    }
-
-    pub(crate) fn build_load_internal(
-        &self,
-        ptr: PointerValue<'ctx>,
-        pointee_ty: InternalType<'ctx>,
-        loc: Location,
-        span_end: usize,
-    ) -> InternalValue<'ctx> {
-        let ptr_type = self.context.ptr_type(AddressSpace::default());
-        let basic_type = match pointee_ty.to_basic_type(ptr_type) {
-            Ok(basic_type) => basic_type,
-            Err(err) => {
+        } {
+            Some(internal_value) => internal_value,
+            None => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom(err.to_string()),
+                    kind: DiagKind::ModuleNotFound(full_module_id),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
+                        line: module_import.loc.line,
+                        column: module_import.loc.column,
+                        length: module_import.span.end,
                     }),
                 });
                 exit(1);
             }
-        };
-        let loaded_value = self.builder.build_load(basic_type, ptr, "load").unwrap();
-        self.new_internal_value(loaded_value, pointee_ty)
+        }
     }
 
-    pub(crate) fn build_load_lvalue(&self, scope: ScopeRef<'ctx>, module_import: ModuleImport) -> InternalValue<'ctx> {
+    pub(crate) fn build_lvalue(&self, scope: ScopeRef<'ctx>, module_import: ModuleImport) -> InternalValue<'ctx> {
         let identifier = match module_import.segments.first().unwrap() {
             ModuleSegment::SubModule(identifier) => identifier.clone(),
             ModuleSegment::Single(_) => unreachable!(),
@@ -249,8 +207,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             // local function
             else if let Some(func_metadata) = self.func_table.get(&identifier.name.clone()) {
                 return InternalValue::FunctionValue(func_metadata.clone());
-            } 
-            else if let Some(global_variable_metadata) = self.global_variables_table.get(&identifier.name.clone()) {
+            } else if let Some(global_variable_metadata) = self.global_variables_table.get(&identifier.name.clone()) {
                 let global_value_ptr = global_variable_metadata.global_value.as_pointer_value();
                 let global_value_ptr_type = global_value_ptr.get_type();
                 return InternalValue::Lvalue(Lvalue {
@@ -260,8 +217,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         pointee_ty: global_variable_metadata.variable_type.clone(),
                     })),
                 });
-            }
-            else {
+            } else {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),
@@ -316,12 +272,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 };
+
                 let final_rvalue = self.implicit_cast(
                     rvalue,
                     typed_pointer_value.pointee_ty,
                     assignment.loc.clone(),
                     assignment.span.end,
                 );
+
                 self.builder.build_store(typed_pointer_value.ptr, final_rvalue).unwrap();
             }
             InternalValue::Lvalue(lvalue) => {

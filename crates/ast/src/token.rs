@@ -169,7 +169,7 @@ impl fmt::Display for TokenKind {
             Self::Colon => write!(f, ":"),
             // Keywords
             Self::Typedef => write!(f, "type"),
-            Self::Function => write!(f, "fn"),
+            Self::Function => write!(f, "func"),
             Self::Match => write!(f, "match"),
             Self::Struct => write!(f, "struct"),
             Self::Bits => write!(f, "bits"),
