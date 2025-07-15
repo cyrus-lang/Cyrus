@@ -1,7 +1,20 @@
 import std::libc;
 
+public struct Logger {
+	group_name: string;
+
+    public func new(group_name: string): Logger { 
+		return Logger { group_name: group_name };
+	}
+
+	public func logf(self, format: string) {
+		// libc::fprintf(libc::stdout, "[%s] %s\n", (char*)self.group_name, (char*)format);
+	}
+}
+
 func main() {
-	#name: char* = "Taha";
-	// libc::printf("Hello, %s\n", name);
-	libc::fprintf(libc::stdout, "name: %s\n", name);
+	#logger = Logger.new("services.example");
+	libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
+
+	logger.logf("Cyrus is on fire!");
 }

@@ -1,5 +1,11 @@
 use crate::{
-    build::BuildManifest, diag::*, funcs::{FuncMetadata, FuncTable}, structs::StructTable, types::{InternalStructType, InternalType, TypedefMetadata, TypedefTable}, variables::{GlobalVariableMetadata, GlobalVariablesTable}, CodeGenLLVM
+    CodeGenLLVM,
+    build::BuildManifest,
+    diag::*,
+    funcs::{FuncMetadata, FuncTable},
+    structs::StructTable,
+    types::{InternalStructType, InternalType, TypedefMetadata, TypedefTable},
+    variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
 use ast::{
     ast::{AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, TypeSpecifier},
@@ -726,7 +732,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> InternalStructType<'ctx> {
         let mut final_internal_struct_type = internal_struct_type.clone();
 
-        for (idx, (mut method_decl, method_value, is_static_method)) in internal_struct_type
+        for (idx, (mut method_decl, method_value, method_params_metadata, is_static_method)) in internal_struct_type
             .clone()
             .struct_metadata
             .methods
@@ -785,6 +791,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 final_internal_struct_type.struct_metadata.methods[idx] = (
                     func_metadata.func_decl.clone(),
                     func_metadata.ptr,
+                    method_params_metadata,
                     is_static_method.clone(),
                 );
             } else {
@@ -825,6 +832,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 final_internal_struct_type.struct_metadata.methods[idx] = (
                     func_metadata.func_decl.clone(),
                     func_metadata.ptr,
+                    method_params_metadata,
                     is_static_method.clone(),
                 );
             }

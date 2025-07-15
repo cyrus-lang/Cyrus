@@ -29,7 +29,7 @@ pub struct FuncMetadata<'a> {
     pub is_method: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncParamsMetadata<'a> {
     pub param_types: Vec<InternalType<'a>>,
     pub variadic_arguments: Option<(FuncVariadicParams, InternalType<'a>)>,
@@ -129,14 +129,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     ));
                 }
                 FuncVariadicParams::UntypedCStyle => {
-                     variadic_arguments = Some((
+                    variadic_arguments = Some((
                         func_variadic_params.clone(),
                         InternalType::VoidType(InternalVoidType {
                             type_str: "void".to_string(),
                             void_type: self.context.void_type(),
                         }),
                     ));
-                },
+                }
             }
         }
 
@@ -504,7 +504,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.func_table.insert(
             func_decl.get_usable_name(),
             FuncMetadata {
-                func_decl,
+                func_decl: func_decl.clone(),
                 ptr: func_value,
                 return_type: return_type.clone(),
                 imported_from: None,
@@ -513,7 +513,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             },
         );
 
-        self.current_func_ref = Some(func_value);
+        self.current_func_ref = Some(FuncMetadata {
+            ptr: func_value.clone(),
+            func_decl: func_decl.clone(),
+            return_type: return_type.clone(),
+            imported_from: None,
+            params_metadata: params_metadata.clone(),
+            is_method: false,
+        });
 
         let entry_block = self.context.append_basic_block(func_value, "entry");
         self.builder.position_at_end(entry_block);
@@ -582,21 +589,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_return(&mut self, scope: ScopeRef<'ctx>, statement: Return) {
         let current_block = self.get_current_block("return statement", statement.loc.clone(), statement.span.end);
-        let current_func = self.get_current_func("return statement", statement.loc.clone(), statement.span.end);
+        let current_func_metadata =
+            self.get_current_func("return statement", statement.loc.clone(), statement.span.end);
 
         let return_type = {
-            let func_metadata = self.func_table.values().find(|f| f.ptr == current_func).unwrap();
-
             if self.is_block_terminated(current_block) {
                 return;
             }
 
-            if func_metadata.return_type.is_void_type() {
+            if current_func_metadata.return_type.is_void_type() {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "The function '{}' with void return type is not allowed to have a return statement.",
-                        &func_metadata.func_decl.get_usable_name()
+                        &current_func_metadata.func_decl.get_usable_name()
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -606,13 +612,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }),
                 });
                 exit(1);
-            } else if !func_metadata.return_type.is_void_type() && statement.argument.is_none() {
+            } else if !current_func_metadata.return_type.is_void_type() && statement.argument.is_none() {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "Function '{}' must return a value of type '{}'.",
-                        &func_metadata.func_decl.get_usable_name(),
-                        func_metadata.return_type
+                        &current_func_metadata.func_decl.get_usable_name(),
+                        current_func_metadata.return_type
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -624,7 +630,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
 
-            func_metadata.return_type.clone()
+            current_func_metadata.return_type.clone()
         };
 
         match statement.argument {
@@ -652,18 +658,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         arguments: Vec<Expression>,
         params_metadata: FuncParamsMetadata<'ctx>,
+        starting_point: usize,
+        static_params_length: usize, 
         func_name: String,
         loc: Location,
         span_end: usize,
     ) -> Vec<BasicMetadataValueEnum<'ctx>> {
         let mut final_arguments: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
-        let static_params_length = params_metadata.param_types.len();
 
-        for (idx, arg) in arguments[0..static_params_length].iter().enumerate() {
+        for (idx, arg) in arguments[starting_point..static_params_length].iter().enumerate() {
             let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
             let rvalue = self.internal_value_as_rvalue(lvalue, loc.clone(), span_end);
 
-            // let param_internal_type = self.build_type(param_type_specifier.clone(), param.loc.clone(), param.span.end);
             let param_internal_type = match params_metadata.param_types.get(idx) {
                 Some(internal_type) => internal_type.clone(),
                 None => todo!(),
@@ -674,7 +680,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "Argument at index {} for function '{}' is not compatible with type '{}' for implicit casting.",
-                        idx, func_name, param_internal_type
+                        starting_point + idx, func_name, param_internal_type
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -692,7 +698,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
         }
 
-        let vargs_count = arguments.len() - static_params_length;
+        let vargs_count = arguments.len() - static_params_length + starting_point;
 
         if let Some((func_variadic_params, variadic_element_type)) = params_metadata.variadic_arguments {
             match func_variadic_params {
@@ -790,51 +796,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn check_method_args_count_mismatch(
-        &self,
-        func_name: String,
-        func_decl: FuncDecl,
-        arguments_length: usize,
-        loc: Location,
-        span_end: usize,
-    ) {
-        let param_count = func_decl.params.list.len();
-        let expected_count = if param_count > 0 { param_count - 1 } else { 0 };
-        if func_decl.params.variadic.is_none() && param_count != arguments_length {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncCallArgumentCountMismatch(
-                    func_name.clone(),
-                    arguments_length.try_into().unwrap(),
-                    expected_count.try_into().unwrap(),
-                ),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        } else if func_decl.params.variadic.is_some() && arguments_length < param_count {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::FuncCallArgumentCountMismatch(
-                    func_name.clone(),
-                    arguments_length.try_into().unwrap(),
-                    expected_count.try_into().unwrap(),
-                ),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        }
-    }
-
     pub(crate) fn build_func_call(&mut self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> InternalValue<'ctx> {
         let expr = self.build_expr(Rc::clone(&scope), *func_call.operand.clone());
 
@@ -917,10 +878,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_call.span.end,
         );
 
+        let static_params_length = func_metadata.params_metadata.param_types.len().clone();
+
         let arguments = &self.build_arguments(
             Rc::clone(&scope),
             func_call.arguments.clone(),
             func_metadata.params_metadata.clone(),
+            0,
+            static_params_length,
             func_metadata.func_decl.get_usable_name(),
             func_call.loc.clone(),
             func_call.span.end,
