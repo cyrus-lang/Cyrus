@@ -3,7 +3,7 @@ import std::libc;
 public struct Logger {
 	group_name: char*;
 
-    public func new(group_name: char*): Logger { 
+    public func new(group_name: char*) Logger { 
 		libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
 		return Logger { group_name: group_name };
 	}
