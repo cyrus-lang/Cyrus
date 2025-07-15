@@ -1,5 +1,6 @@
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
 use crate::scope::{ScopeRecord, ScopeRef};
+use crate::types::{InternalIntType, InternalVoidType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
@@ -11,7 +12,7 @@ use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
-use inkwell::types::{AsTypeRef, FunctionType};
+use inkwell::types::FunctionType;
 use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
 use std::collections::HashMap;
 use std::ops::DerefMut;
@@ -24,7 +25,14 @@ pub struct FuncMetadata<'a> {
     pub func_decl: FuncDecl,
     pub return_type: InternalType<'a>,
     pub imported_from: Option<ModulePath>,
+    pub params_metadata: FuncParamsMetadata<'a>,
     pub is_method: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncParamsMetadata<'a> {
+    pub param_types: Vec<InternalType<'a>>,
+    pub variadic_arguments: Option<(FuncVariadicParams, InternalType<'a>)>,
 }
 
 pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
@@ -48,53 +56,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         span_end: usize,
         params: Vec<FuncParamKind>,
         variadic: Option<FuncVariadicParams>,
-    ) -> Vec<LLVMTypeRef> {
-        let mut params: Vec<LLVMTypeRef> = params
-            .iter()
-            .map(|param_kind| {
-                let param = match param_kind {
-                    FuncParamKind::FuncParam(func_param) => func_param,
-                    FuncParamKind::SelfModifier(_) => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom("Non-method functions cannot have a self modifier.".to_string()),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: func_loc.line,
-                                column: func_loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                };
+    ) -> FuncParamsMetadata<'ctx> {
+        let mut param_types: Vec<InternalType<'ctx>> = Vec::new();
 
-                if let Some(type_specifier) = &param.ty {
-                    if let TypeSpecifier::TypeToken(type_token) = type_specifier.clone() {
-                        if type_token.kind == TokenKind::Void {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom("Cannot declare a func param with 'void' type.".to_string()),
-                                location: Some(DiagLoc {
-                                    file: self.file_path.clone(),
-                                    line: param.loc.line,
-                                    column: param.loc.column,
-                                    length: param.span.end,
-                                }),
-                            });
-                            exit(1);
-                        }
-                    }
-
-                    self.build_type(type_specifier.clone(), func_loc.clone(), span_end)
-                        .as_type_ref()
-                } else {
+        for param_kind in params {
+            let param = match param_kind {
+                FuncParamKind::FuncParam(func_param) => func_param,
+                FuncParamKind::SelfModifier(_) => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::TypeAnnotationRequiredForParam(
-                            param.identifier.name.clone(),
-                            func_name.clone(),
-                        ),
+                        kind: DiagKind::Custom("Functions cannot have a self modifier.".to_string()),
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: func_loc.line,
@@ -104,18 +75,75 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 }
-            })
-            .collect();
+            };
 
-        if let Some(func_variadic_params) = variadic {
-            if let FuncVariadicParams::Typed(..) = func_variadic_params {
-                // add a hidden va_args count parameter
-                let va_args_count_type = self.context.i32_type();
-                params.push(va_args_count_type.as_type_ref());
+            if let Some(type_specifier) = &param.ty {
+                if let TypeSpecifier::TypeToken(type_token) = type_specifier.clone() {
+                    if type_token.kind == TokenKind::Void {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Cannot declare a func param with 'void' type.".to_string()),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: param.loc.line,
+                                column: param.loc.column,
+                                length: param.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+
+                param_types.push(self.build_type(type_specifier.clone(), func_loc.clone(), span_end));
+            } else {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::TypeAnnotationRequiredForParam(param.identifier.name.clone(), func_name.clone()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: func_loc.line,
+                        column: func_loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
             }
         }
 
-        params
+        let mut variadic_arguments: Option<(FuncVariadicParams, InternalType<'ctx>)> = None;
+
+        if let Some(func_variadic_params) = variadic {
+            match func_variadic_params.clone() {
+                FuncVariadicParams::Typed(.., type_specifier) => {
+                    // add a hidden va_args count parameter
+                    let vargs_count_type = self.context.i32_type();
+                    param_types.push(InternalType::IntType(InternalIntType {
+                        type_str: "int32".to_string(),
+                        int_kind: TokenKind::Int32,
+                        int_type: vargs_count_type,
+                    }));
+
+                    variadic_arguments = Some((
+                        func_variadic_params.clone(),
+                        self.build_type(type_specifier, func_loc.clone(), span_end),
+                    ));
+                }
+                FuncVariadicParams::UntypedCStyle => {
+                     variadic_arguments = Some((
+                        func_variadic_params.clone(),
+                        InternalType::VoidType(InternalVoidType {
+                            type_str: "void".to_string(),
+                            void_type: self.context.void_type(),
+                        }),
+                    ));
+                },
+            }
+        }
+
+        FuncParamsMetadata {
+            param_types,
+            variadic_arguments,
+        }
     }
 
     // ANCHOR
@@ -126,11 +154,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_func_decl(
         &mut self,
         func_decl: FuncDecl,
-        mut func_param_types: Vec<LLVMTypeRef>,
+        params_metadata: FuncParamsMetadata<'ctx>,
         insert_to_func_table: bool,
         is_method: bool,
     ) -> FunctionValue<'ctx> {
-        let is_var_args = func_decl.params.variadic.is_some();
+        let param_types = params_metadata.param_types.clone();
+        let is_var_args = params_metadata.variadic_arguments.is_some();
 
         let return_type = self.build_type(
             func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
@@ -142,11 +171,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_decl.span.end,
         );
 
-        let fn_type = unsafe {
+        let func_type = unsafe {
             FunctionType::new(LLVMFunctionType(
                 return_type.as_type_ref(),
-                func_param_types.as_mut_ptr(),
-                func_param_types.len() as u32,
+                param_types
+                    .iter()
+                    .map(|p| p.as_type_ref())
+                    .collect::<Vec<LLVMTypeRef>>()
+                    .as_mut_ptr(),
+                param_types.len() as u32,
                 is_var_args as i32,
             ))
         };
@@ -172,11 +205,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         let func_linkage = self.build_func_linkage(func_decl.access_specifier.clone());
-        let func_ptr = self
-            .module
-            .borrow_mut()
-            .deref_mut()
-            .add_function(&func_decl.name, fn_type, Some(func_linkage));
+        let func_ptr =
+            self.module
+                .borrow_mut()
+                .deref_mut()
+                .add_function(&func_decl.name, func_type, Some(func_linkage));
 
         if insert_to_func_table {
             self.func_table.insert(
@@ -186,6 +219,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     ptr: func_ptr,
                     return_type,
                     imported_from: None,
+                    params_metadata: params_metadata.clone(),
                     is_method,
                 },
             );
@@ -414,9 +448,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &mut self,
         scope: ScopeRef<'ctx>,
         func_def: FuncDef,
-        mut func_param_types: Vec<LLVMTypeRef>,
+        params_metadata: FuncParamsMetadata<'ctx>,
         is_entry_point: bool,
     ) -> FunctionValue<'ctx> {
+        let param_types = params_metadata.param_types.clone();
         self.validate_func_storage_class(func_def.clone(), is_entry_point);
         let mut func_decl = self.transform_to_func_decl(func_def.clone());
         let is_variadic = func_def.params.variadic.is_some();
@@ -431,11 +466,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_def.span.end,
         );
 
-        let fn_type = unsafe {
+        let func_type = unsafe {
             FunctionType::new(LLVMFunctionType(
                 return_type.as_type_ref(),
-                func_param_types.as_mut_ptr(),
-                func_param_types.len() as u32,
+                param_types
+                    .iter()
+                    .map(|p| p.as_type_ref())
+                    .collect::<Vec<LLVMTypeRef>>()
+                    .as_mut_ptr(),
+                param_types.len() as u32,
                 is_variadic as i32,
             ))
         };
@@ -460,7 +499,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .module
             .borrow_mut()
             .deref_mut()
-            .add_function(&actual_func_name, fn_type, func_linkage);
+            .add_function(&actual_func_name, func_type, func_linkage);
 
         self.func_table.insert(
             func_decl.get_usable_name(),
@@ -469,6 +508,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ptr: func_value,
                 return_type: return_type.clone(),
                 imported_from: None,
+                params_metadata: params_metadata.clone(),
                 is_method: false,
             },
         );
@@ -611,46 +651,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &mut self,
         scope: ScopeRef<'ctx>,
         arguments: Vec<Expression>,
-        params: FuncParams,
-        static_params_length: usize,
+        params_metadata: FuncParamsMetadata<'ctx>,
         func_name: String,
         loc: Location,
         span_end: usize,
     ) -> Vec<BasicMetadataValueEnum<'ctx>> {
         let mut final_arguments: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
+        let static_params_length = params_metadata.param_types.len();
 
         for (idx, arg) in arguments[0..static_params_length].iter().enumerate() {
             let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
             let rvalue = self.internal_value_as_rvalue(lvalue, loc.clone(), span_end);
 
-            let param = match params.list.get(idx).unwrap() {
-                FuncParamKind::FuncParam(func_param) => func_param,
-                FuncParamKind::SelfModifier(_) => {
-                    panic!("An unexpected self modifier found in the middle of the func params.");
-                }
+            // let param_internal_type = self.build_type(param_type_specifier.clone(), param.loc.clone(), param.span.end);
+            let param_internal_type = match params_metadata.param_types.get(idx) {
+                Some(internal_type) => internal_type.clone(),
+                None => todo!(),
             };
 
-            let param_type_specifier = match param.ty {
-                Some(ref ty) => ty,
-                None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(
-                            "Cannot build function param without having an explicit type annotation for it."
-                                .to_string(),
-                        ),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: param.loc.line,
-                            column: param.loc.column,
-                            length: param.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
-            };
-
-            let param_internal_type = self.build_type(param_type_specifier.clone(), param.loc.clone(), param.span.end);
             if !self.compatible_types(param_internal_type.clone(), rvalue.get_type(self.string_type.clone())) {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -669,23 +687,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
 
             final_arguments.push(
-                self.implicit_cast(rvalue, param_internal_type, param.loc.clone(), param.span.end)
+                self.implicit_cast(rvalue, param_internal_type, loc.clone(), span_end)
                     .into(),
             );
         }
 
-        let va_args_count = arguments.len() - static_params_length;
+        let vargs_count = arguments.len() - static_params_length;
 
-        if let Some(func_variadic_params) = params.variadic {
+        if let Some((func_variadic_params, variadic_element_type)) = params_metadata.variadic_arguments {
             match func_variadic_params {
-                FuncVariadicParams::Typed(_, type_specifier) => {
-                    let variadic_element_type = self.build_type(type_specifier, loc.clone(), span_end);
-
-                    // add va_args_count before building the variadic arguments
+                FuncVariadicParams::Typed(..) => {
+                    // add vargs_count before building the variadic arguments
                     final_arguments.push(BasicMetadataValueEnum::IntValue(
                         self.context
                             .i32_type()
-                            .const_int(va_args_count.try_into().unwrap(), false),
+                            .const_int(vargs_count.try_into().unwrap(), false),
                     ));
 
                     for (idx, arg) in arguments[static_params_length..].iter().enumerate() {
@@ -904,8 +920,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let arguments = &self.build_arguments(
             Rc::clone(&scope),
             func_call.arguments.clone(),
-            func_metadata.func_decl.params.clone(),
-            func_metadata.func_decl.params.list.len(),
+            func_metadata.params_metadata.clone(),
             func_metadata.func_decl.get_usable_name(),
             func_call.loc.clone(),
             func_call.span.end,

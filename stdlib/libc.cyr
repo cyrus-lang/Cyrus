@@ -5,4 +5,4 @@ public extern stderr: FILE;
 public extern stdin: FILE;
 
 public extern func printf(format: const char*, ...): int32;
-// public extern func fprintf(stream: FILE, format: const char*, ...): int32;
+public extern func fprintf(stream: FILE, format: const char*, ...): int32;
