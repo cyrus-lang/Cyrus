@@ -1,0 +1,30 @@
+import std::libc;
+
+public struct Logger {
+	group_name: string;
+
+    public func new(group_name: string): Logger* { 
+		#instance = Logger { group_name: group_name };
+ 		return &instance;
+	}
+
+	public func printf(&self, format: string) {
+		libc::fprintf(libc::stdout, "[%s] %s\n", self->group_name, (char *)format);
+	}
+}
+
+func main() {
+	#logger = Logger.new("services.example");
+
+	if (logger == null) {
+		libc::fprintf(libc::stderr, "Logger initialization failed.\n");
+		libc::exit(1);
+	}
+
+	libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
+
+	logger->printf("Cyrus is on fire!");
+
+	// #name: char* = "Taha";
+	// libc::fprintf(libc::stdout, "name: %s\n", name);
+}

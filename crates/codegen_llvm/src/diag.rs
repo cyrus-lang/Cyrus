@@ -22,6 +22,7 @@ pub enum DiagKind {
     InvalidWildcard,
     ModuleNotFound(String),
     FuncCallArgumentCountMismatch(String, i32, i32),
+    MethodCallArgumentCountMismatch(String, i32, i32),
     TypeAnnotationRequiredForParam(String, String),
     LenCalledWithInvalidInput,
     SizeOfOperatorOnUnsizedObject,
@@ -74,6 +75,10 @@ impl fmt::Display for DiagKind {
             ),
             DiagKind::FuncCallArgumentCountMismatch(func_name, current, expected) => &format!(
                 "Expected {} arguments for function '{}', but got {}.",
+                expected, func_name, current
+            ),
+            DiagKind::MethodCallArgumentCountMismatch(func_name, current, expected) => &format!(
+                "Expected {} arguments for method '{}', but got {}.",
                 expected, func_name, current
             ),
             DiagKind::LenCalledWithInvalidInput => "Cannot get length of non-string or non-array value.",

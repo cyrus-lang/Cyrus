@@ -1,3 +1,4 @@
+use crate::funcs::FuncMetadata;
 use crate::modules::ImportedModuleMetadata;
 use crate::opts::BuildDir;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
@@ -61,7 +62,7 @@ pub struct CodeGenLLVM<'ctx> {
     entry_point: Option<FuncDef>,
     entry_point_path: String,
     compiler_invoked_single: bool,
-    current_func_ref: Option<FunctionValue<'ctx>>,
+    current_func_ref: Option<FuncMetadata<'ctx>>,
     current_block_ref: Option<BasicBlock<'ctx>>,
     terminated_blocks: Vec<TerminatedBlockMetadata<'ctx>>,
     current_loop_ref: Option<LoopBlockRefs<'ctx>>,
