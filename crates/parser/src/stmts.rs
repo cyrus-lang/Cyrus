@@ -860,23 +860,12 @@ impl<'a> Parser<'a> {
 
         let params = self.parse_func_params()?;
 
-        let mut return_type: Option<TypeSpecifier> = None;
+        let return_type: Option<TypeSpecifier>;
 
         // parse return type
-        if self.current_token_is(TokenKind::Colon) {
-            self.next_token(); // consume colon
-
-            if self.current_token_is(TokenKind::LeftBrace) {
-                return Err(CompileTimeError {
-                    location: loc,
-                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: Some(String::from("Return type required before closing brace '{'")),
-                    caret: Some(Span::new(start, self.current_token.span.end)),
-                });
-            }
-
+        if self.current_token_is(TokenKind::LeftBrace) {
+            return_type = None;
+        } else {
             return_type = Some(self.parse_type_specifier()?);
             self.next_token();
         }
@@ -1069,7 +1058,7 @@ impl<'a> Parser<'a> {
                 None
             }
         };
-    
+
         Ok(Statement::GlobalVariable(GlobalVariable {
             access_specifier: access_specifier.unwrap_or(AccessSpecifier::Internal),
             identifier,

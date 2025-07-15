@@ -1,11 +1,9 @@
-// import std::libc{printf};
-import std::math;
+import std::libc;
 
-// public extern fn printf(format: const char*, ...): int32;
+func sum(x: int32, y: int32) int32 {
+    return x + y;
+}
 
-
-fn main() {
-    math::sqrt(4.0);
-    // printf("Hello World!\n");
-    // libc::printf("Hello World!\n");
+func main() {
+    libc::printf("Sum of 5 and 10 is: %d\n", sum(5, 10));    
 }
