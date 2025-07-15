@@ -1,11 +1,5 @@
 use crate::{
-    CodeGenLLVM,
-    build::BuildManifest,
-    diag::*,
-    funcs::{FuncMetadata, FuncTable},
-    structs::StructTable,
-    types::{InternalStructType, TypedefMetadata, TypedefTable},
-    variables::{GlobalVariableMetadata, GlobalVariablesTable},
+    build::BuildManifest, diag::*, funcs::{FuncMetadata, FuncTable}, structs::StructTable, types::{InternalStructType, InternalType, TypedefMetadata, TypedefTable}, variables::{GlobalVariableMetadata, GlobalVariablesTable}, CodeGenLLVM
 };
 use ast::{
     ast::{AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, TypeSpecifier},
@@ -600,15 +594,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn build_decl_imported_instance_method(
         &mut self,
         metadata: FuncMetadata<'ctx>,
-        self_modifier_type: LLVMTypeRef,
+        self_modifier_type: InternalType<'ctx>,
     ) -> (String, FuncMetadata<'ctx>) {
+        let param_types = metadata.params_metadata.param_types.clone();
+
         if metadata.func_decl.access_specifier == AccessSpecifier::Public
             || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
             || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
         {
             let mut new_metadata = metadata.clone();
 
-            let mut param_types = self.build_func_params(
+            let mut params_metadata = self.build_func_params(
                 metadata.func_decl.name.clone(),
                 metadata.func_decl.loc.clone(),
                 metadata.func_decl.span.end,
@@ -616,7 +612,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 metadata.func_decl.params.variadic.clone(),
             );
 
-            param_types.insert(0, self_modifier_type);
+            params_metadata.param_types.insert(0, self_modifier_type);
 
             let is_var_args = metadata.func_decl.params.variadic.is_some();
 
@@ -637,7 +633,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let fn_type = unsafe {
                 FunctionType::new(LLVMFunctionType(
                     return_type.as_type_ref(),
-                    param_types.as_mut_ptr(),
+                    param_types
+                        .iter()
+                        .map(|p| p.as_type_ref())
+                        .collect::<Vec<LLVMTypeRef>>()
+                        .as_mut_ptr(),
                     param_types.len() as u32,
                     is_var_args as i32,
                 ))
@@ -657,25 +657,50 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // FIXME Alter build_func_decl with a custom declaration.
     fn build_decl_imported_func(&mut self, metadata: FuncMetadata<'ctx>) -> (String, FuncMetadata<'ctx>) {
+        let param_types = metadata.params_metadata.param_types.clone();
+
         if metadata.func_decl.access_specifier == AccessSpecifier::Public
             || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
             || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
         {
             let mut new_metadata = metadata.clone();
+            let is_variadic = new_metadata.func_decl.params.variadic.is_some();
 
-            let param_types = self.build_func_params(
-                metadata.func_decl.name.clone(),
-                metadata.func_decl.loc.clone(),
-                metadata.func_decl.span.end,
-                metadata.func_decl.params.list.clone(),
-                metadata.func_decl.params.variadic.clone(),
+            let return_type = self.build_type(
+                new_metadata
+                    .func_decl
+                    .return_type
+                    .clone()
+                    .unwrap_or(TypeSpecifier::TypeToken(Token {
+                        kind: TokenKind::Void,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    })),
+                new_metadata.func_decl.loc.clone(),
+                new_metadata.func_decl.span.end,
             );
 
-            // FIXME Bullshit!!!
-            let func_value =
-                self.build_func_decl(new_metadata.func_decl.clone(), param_types, false, metadata.is_method);
+            let func_type = unsafe {
+                FunctionType::new(LLVMFunctionType(
+                    return_type.as_type_ref(),
+                    param_types
+                        .iter()
+                        .map(|p| p.as_type_ref())
+                        .collect::<Vec<LLVMTypeRef>>()
+                        .as_mut_ptr(),
+                    param_types.len() as u32,
+                    is_variadic as i32,
+                ))
+            };
+
+            let func_linkage = self.build_func_linkage(new_metadata.func_decl.access_specifier.clone());
+
+            let func_value = self.module.borrow_mut().deref_mut().add_function(
+                &new_metadata.func_decl.name,
+                func_type,
+                Some(func_linkage),
+            );
 
             new_metadata.ptr = func_value;
             (new_metadata.func_decl.get_usable_name(), new_metadata)
@@ -722,6 +747,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 method_decl.span.end,
             );
 
+            let params_metadata = self.build_func_params(
+                method_decl.get_usable_name(),
+                method_decl.loc.clone(),
+                method_decl.span.end,
+                method_decl.params.list.clone(),
+                method_decl.params.variadic.clone(),
+            );
+
             let struct_name = match internal_struct_type
                 .struct_metadata
                 .struct_name
@@ -745,6 +778,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     ptr: method_value,
                     is_method: true,
                     imported_from: Some(imported_from.clone()),
+                    params_metadata,
                     return_type,
                 });
 
@@ -776,6 +810,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         ptr: method_value,
                         is_method: true,
                         imported_from: Some(imported_from.clone()),
+                        params_metadata,
                         return_type,
                     },
                     self_modifier_type,
@@ -786,6 +821,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .params
                     .list
                     .insert(0, FuncParamKind::SelfModifier(self_modifier));
+
                 final_internal_struct_type.struct_metadata.methods[idx] = (
                     func_metadata.func_decl.clone(),
                     func_metadata.ptr,

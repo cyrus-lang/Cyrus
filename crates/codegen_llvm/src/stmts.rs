@@ -3,14 +3,11 @@ use crate::scope::{Scope, ScopeRecord};
 use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use ast::ast::{
-    BlockStatement, Break, Continue, Expression, For, Foreach, GlobalVariable, If, Statement, TypeSpecifier, Variable,
-};
+use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement};
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
-use inkwell::types::BasicTypeEnum;
-use inkwell::values::{AnyValue, BasicValue, BasicValueEnum, FunctionValue};
+use inkwell::values::FunctionValue;
 use std::cell::RefCell;
 use std::process::exit;
 use std::rc::Rc;
@@ -138,7 +135,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     self.entry_point = Some(func_def);
                 } else {
-                    let param_types: Vec<*mut inkwell::llvm_sys::LLVMType> = self.build_func_params(
+                    let params_metadata = self.build_func_params(
                         func_def.name.clone(),
                         func_def.loc.clone(),
                         func_def.span.end,
@@ -147,10 +144,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     );
 
                     let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-                    self.build_func_def(scope, func_def.clone(), param_types, false);
+                    self.build_func_def(scope, func_def.clone(), params_metadata, false);
                 }
             }
-            Statement::FuncDecl(mut func_decl) => {
+            Statement::FuncDecl(func_decl) => {
                 let param_types = self.build_func_params(
                     func_decl.name.clone(),
                     func_decl.loc.clone(),

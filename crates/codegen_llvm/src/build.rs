@@ -332,7 +332,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_entry_point(&mut self) {
         if let Some(main_func) = self.entry_point.clone() {
-            let func_param_types: Vec<*mut inkwell::llvm_sys::LLVMType> = self.build_func_params(
+            let params_metadata = self.build_func_params(
                 main_func.name.clone(),
                 main_func.loc.clone(),
                 main_func.span.end,
@@ -341,7 +341,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
 
             let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-            self.build_func_def(scope, main_func, func_param_types, true);
+            self.build_func_def(scope, main_func, params_metadata, true);
         } else if self.is_current_module_entry_point() && self.entry_point.is_none() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -487,7 +487,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn object_file_exists(&mut self) -> bool {
-        let wd = std::env::current_dir().unwrap().to_str().unwrap().to_string();
         self.build_manifest.objects.get(&self.file_path.clone()).is_some()
     }
 

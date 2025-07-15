@@ -162,7 +162,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                     })),
                                 });
                             }
-                            None => None,
+                            None => {
+                                return InternalValue::ModuleValue(module_metadata.metadata.clone());
+                            }
                         }
                     }
                     None => None,
