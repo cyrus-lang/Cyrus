@@ -215,38 +215,39 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let segments_str = module_segments_as_string(segments.clone());
         let first_segment = segments.first().unwrap();
+
+        let mut module_file_path = String::new();
+        let import_from_std;
+
         match first_segment {
             ModuleSegment::SubModule(identifier) => {
                 if identifier.name == "std" {
                     segments.remove(0);
                     sources = vec![self.build_stdlib_modules_path()];
-                    // FIXME Import single from stdlib isn't working.
-                    // segments.insert(
-                    //     0,
-                    //     ModuleSegment::SubModule(Identifier {
-                    //         name: "std".to_string(),
-                    //         span: Span::default(),
-                    //         loc: Location::default(),
-                    //     }),
-                    // );
+                    import_from_std = true;
                 } else {
                     sources = self.opts.sources_dir.clone();
+                    import_from_std = false;
                 }
             }
             ModuleSegment::Single(_) => unreachable!(),
         }
 
-        let mut module_file_path = String::new();
-
         for (idx, module_segment) in segments.iter().enumerate() {
             match module_segment {
                 ModuleSegment::SubModule(identifier) => {
+                    if identifier.name == "std" {
+                        continue;
+                    }
+
                     // once consider identifier as sub_module (directory) and if it's not found in any of the sources
                     // in the second stage consider identifier as a module (file) and try to determine that path exists.
+
                     let directory_path = format!("{}{}", module_file_path, identifier.name.clone());
                     let source_file_path = format!("{}{}.cyr", module_file_path, identifier.name.clone());
 
                     // source file has higher priority to a directory
+
                     match find_file_from_sources(source_file_path, sources.clone()) {
                         Some(new_module_file_path) => {
                             module_file_path = new_module_file_path.to_str().unwrap().to_string();
@@ -270,7 +271,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                         });
                                         exit(1);
                                     }
-                                    ModuleSegment::Single(_) => {}
+                                    ModuleSegment::Single(module_segment_singles) => {
+                                        return GeneratedModuleImportPath {
+                                            file_path: module_file_path.clone(),
+                                            module_path: module_path.clone(),
+                                            singles: Some(module_segment_singles.clone()),
+                                            loc: loc.clone(),
+                                            span_end,
+                                        };
+                                    }
                                 }
                             }
                         }
@@ -282,7 +291,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             None => {
                                 display_single_diag(Diag {
                                     level: DiagLevel::Error,
-                                    kind: DiagKind::ModuleNotFound(segments_str.clone()),
+                                    kind: DiagKind::ModuleNotFound(if import_from_std {
+                                        format!("std::{}", segments_str.clone())
+                                    } else {
+                                        segments_str.clone()
+                                    }),
                                     location: Some(DiagLoc {
                                         file: self.file_path.clone(),
                                         line: loc.line,
@@ -295,7 +308,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         },
                     }
                 }
-                ModuleSegment::Single(module_segment_single) => {
+                ModuleSegment::Single(module_segment_singles) => {
                     let file_path = self
                         .build_import_module_path(
                             module_path.clone(),
@@ -308,7 +321,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     return GeneratedModuleImportPath {
                         file_path,
                         module_path: module_path.clone(),
-                        singles: Some(module_segment_single.clone()),
+                        singles: Some(module_segment_singles.clone()),
                         loc: loc.clone(),
                         span_end,
                     };
@@ -473,7 +486,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) {
         let module_metadata = match self.find_imported_module(module_id.clone()) {
             Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
-            None => panic!("Couldn't lookup imported module in codegen."),
+            None => panic!("Couldn't lookup imported module in codegen context."),
         };
 
         for single in module_segment_singles {
@@ -487,9 +500,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match lookup_result {
                 DefinitionLookupResult::Func(mut func_metadata) => {
                     func_metadata.imported_from = Some(module_path.clone());
-                    func_metadata.func_decl.renamed_as = Some(func_metadata.func_decl.name.clone());
-                    func_metadata.func_decl.name =
-                        self.generate_abi_name(module_id.clone(), func_metadata.func_decl.name);
                     let (func_name, func_metadata) = self.build_decl_imported_func(func_metadata);
                     self.func_table.insert(func_name, func_metadata);
                 }
