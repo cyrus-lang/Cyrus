@@ -26,6 +26,7 @@ pub enum DiagKind {
     TypeAnnotationRequiredForParam(String, String),
     LenCalledWithInvalidInput,
     SizeOfOperatorOnUnsizedObject,
+    CannotUseModuleImportIfImportsSingles,
     Custom(String),
 }
 
@@ -88,6 +89,7 @@ impl fmt::Display for DiagKind {
             DiagKind::SizeOfOperatorOnUnsizedObject => {
                 "Cannot determine complete sizeof with flexible member at compile time."
             }
+            DiagKind::CannotUseModuleImportIfImportsSingles => "Cannot use module import if it imports singles.",
         };
         write!(f, "{}", msg)
     }

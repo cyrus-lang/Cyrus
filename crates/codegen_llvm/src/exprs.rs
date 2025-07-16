@@ -150,6 +150,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                 match self.find_imported_module(module_id.clone()) {
                     Some(module_metadata) => {
+                        if module_metadata.metadata.imports_single {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::CannotUseModuleImportIfImportsSingles,
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: module_import.loc.line,
+                                    column: module_import.loc.column,
+                                    length: module_import.span.end,
+                                }),
+                            });
+                            exit(1);
+                        }
+
                         match module_metadata.metadata.global_variables_table.get(&last_segment.name) {
                             Some(global_variable_metadata) => {
                                 let global_value_ptr = global_variable_metadata.global_value.as_pointer_value();

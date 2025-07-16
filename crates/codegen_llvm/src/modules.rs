@@ -31,6 +31,7 @@ pub struct ModuleMetadata<'a> {
     pub struct_table: HashMap<String, InternalStructType<'a>>,
     pub global_variables_table: GlobalVariablesTable<'a>,
     pub typedef_table: TypedefTable<'a>,
+    pub imports_single: bool
 }
 
 #[derive(Debug, Clone)]
@@ -430,6 +431,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 typedef_table: sub_codegen_ref.typedef_table.clone(),
                 identifier: module_id.clone(),
                 file_path: generated_module_import_path.file_path,
+                imports_single: true
             };
 
             self.imported_modules.push(ImportedModuleMetadata {
@@ -467,6 +469,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 typedef_table: sub_codegen_ref.typedef_table.clone(),
                 identifier: module_id.clone(),
                 file_path: generated_module_import_path.file_path,
+                imports_single: true
             };
 
             self.imported_modules.push(ImportedModuleMetadata {
