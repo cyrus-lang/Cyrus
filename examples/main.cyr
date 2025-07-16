@@ -1,9 +1,8 @@
-import std::libc;
-
-func sum(x: int32, y: int32) int32 {
-    return x + y;
-}
+import std::libc{printf, sample};
+// import std::libc::abi;
 
 func main() {
-    libc::printf("Sum of 5 and 10 is: %d\n", sum(5, 10));    
+    printf("Hello, World!\n");
+    sample();
+    // #a: c_bool;
 }
