@@ -560,12 +560,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let mut struct_value = internal_struct_type.struct_metadata.struct_type.get_undef();
 
         for field_init in struct_init.field_inits {
-            let field_idx = internal_struct_type
+            let field_idx = match internal_struct_type
                 .struct_metadata
                 .fields
                 .iter()
-                .position(|field| field.name == field_init.name)
-                .unwrap();
+                .position(|field| field.name == field_init.name.clone())
+            {
+                Some(field_idx) => field_idx,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Field '{}' not found in struct '{}'.",
+                            field_init.name,
+                            module_segments_as_string(struct_init.struct_name.segments)
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: struct_init.loc.line,
+                            column: struct_init.loc.column,
+                            length: struct_init.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
 
             let field = internal_struct_type.struct_metadata.fields.get(field_idx).unwrap();
 
@@ -578,7 +597,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
-                        "Error: Field {} of struct '{}' expects a value of type '{}', but received '{}'.",
+                        "Field {} of struct '{}' expects a value of type '{}', but received '{}'.",
                         field_idx,
                         module_segments_as_string(struct_init.struct_name.segments),
                         field_type,
@@ -702,31 +721,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     },
                 ),
             _ => unreachable!(),
-        }
-    }
-
-    fn retrieve_method_params_metadata(
-        &self,
-        struct_methods: Vec<(FuncDecl, FunctionValue<'ctx>, FuncParamsMetadata<'ctx>, bool)>,
-        method_name: String,
-        loc: Location,
-        span_end: usize,
-    ) -> FuncParamsMetadata<'ctx> {
-        match struct_methods.iter().find(|m| m.0.get_usable_name() == method_name) {
-            Some((_, _, params_metadata, _)) => params_metadata.clone(),
-            None => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!("Method '{}' not found in struct methods.", method_name)),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
         }
     }
 
@@ -896,22 +890,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_call(struct_method_metadata.method_value, &arguments, "call")
                     .unwrap();
-                let return_type = self.build_type(
-                    struct_method_metadata
-                        .method_decl
-                        .return_type
-                        .clone()
-                        .unwrap_or(TypeSpecifier::TypeToken(Token {
-                            kind: TokenKind::Void,
-                            span: Span::default(),
-                            loc: Location::default(),
-                        })),
-                    method_call.loc.clone(),
-                    method_call.span.end,
-                );
 
                 if let Some(value) = call_site_value.try_as_basic_value().left() {
-                    self.new_internal_value(value, return_type)
+                    self.new_internal_value(value, struct_method_metadata.return_type.clone())
                 } else {
                     InternalValue::PointerValue(self.build_null())
                 }
@@ -1133,22 +1114,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .builder
                     .build_call(method_metadata.method_value, &arguments, "call")
                     .unwrap();
-                let return_type = self.build_type(
-                    method_metadata
-                        .method_decl
-                        .return_type
-                        .clone()
-                        .unwrap_or(TypeSpecifier::TypeToken(Token {
-                            kind: TokenKind::Void,
-                            span: Span::default(),
-                            loc: Location::default(),
-                        })),
-                    method_call.loc.clone(),
-                    method_call.span.end,
-                );
 
                 if let Some(value) = call_site_value.try_as_basic_value().left() {
-                    self.new_internal_value(value, return_type)
+                    self.new_internal_value(value, method_metadata.return_type.clone())
                 } else {
                     InternalValue::PointerValue(self.build_null())
                 }
