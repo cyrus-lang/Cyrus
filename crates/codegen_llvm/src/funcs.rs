@@ -56,6 +56,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         span_end: usize,
         params: Vec<FuncParamKind>,
         variadic: Option<FuncVariadicParams>,
+        is_instance_method: bool,
     ) -> FuncParamsMetadata<'ctx> {
         let mut param_types: Vec<InternalType<'ctx>> = Vec::new();
 
@@ -63,17 +64,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let param = match param_kind {
                 FuncParamKind::FuncParam(func_param) => func_param,
                 FuncParamKind::SelfModifier(_) => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Functions cannot have a self modifier.".to_string()),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: func_loc.line,
-                            column: func_loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
+                    if !is_instance_method {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Functions cannot have a self modifier.".to_string()),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: func_loc.line,
+                                column: func_loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                    continue;
                 }
             };
 
@@ -659,7 +663,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         arguments: Vec<Expression>,
         params_metadata: FuncParamsMetadata<'ctx>,
         starting_point: usize,
-        static_params_length: usize, 
+        static_params_length: usize,
         func_name: String,
         loc: Location,
         span_end: usize,
@@ -680,7 +684,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "Argument at index {} for function '{}' is not compatible with type '{}' for implicit casting.",
-                        starting_point + idx, func_name, param_internal_type
+                        starting_point + idx,
+                        func_name,
+                        param_internal_type
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),

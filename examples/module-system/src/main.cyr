@@ -1,25 +1,11 @@
-import std::libc;
-
-public struct Logger {
-	group_name: char*;
-
-    public func new(group_name: char*): Logger { 
-		libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
-		return Logger { group_name: group_name };
-	}
-
-	public func logf(self, format: char*) {
-		libc::fprintf(libc::stdout, "[info][%s] %s\n", self.group_name, format);
-	}
-
-	public func errorf(self, format: char*) {
-		libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
-	}
-}
+import logger{Person};
 
 func main() {
-	#logger = Logger.new("services.example");
+	// #person = Person { name: c"Taha" };
+	
+	// logger::Logger.new("services.example");
+	// #a = logger::Person { name: c"Taha" };
 
-	logger.logf("Cyrus is on fire!");
-	logger.errorf("This is known as an error.");
+	// logger.logf("Cyrus is on fire!");
+	// logger.errorf("This is known as an error.");
 }
