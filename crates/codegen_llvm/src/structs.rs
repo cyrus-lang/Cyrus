@@ -31,9 +31,19 @@ pub struct StructMetadata<'a> {
     pub struct_type: StructType<'a>,
     pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
-    pub methods: Vec<(FuncDecl, FunctionValue<'a>, FuncParamsMetadata<'a>, bool)>,
+    pub methods: Vec<StructMethodMetadata<'a>>,
     pub access_specifier: AccessSpecifier,
     pub packed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructMethodMetadata<'a> {
+    pub method_decl: FuncDecl,
+    pub method_value: FunctionValue<'a>,
+    pub method_params_metadata: FuncParamsMetadata<'a>,
+    pub is_static_method: bool,
+    pub return_type: InternalType<'a>,
+    pub self_modifier_type: Option<(InternalType<'a>, SelfModifier)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -269,7 +279,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         mut func_def: FuncDef,
         struct_name: String,
         internal_struct_type: InternalStructType<'ctx>,
-    ) -> (FunctionValue<'ctx>, FuncDecl, FuncParamsMetadata<'ctx>, bool) {
+    ) -> StructMethodMetadata<'ctx> {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         self.validate_method_storage_class(func_def.clone());
         let func_decl = self.transform_to_func_decl(func_def.clone());
@@ -288,9 +298,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let mut func_params_list = func_def.params.list.clone();
         let mut self_modifier_type: Option<InternalType<'ctx>> = None;
         let mut self_modifier_type_specifier: Option<TypeSpecifier> = None;
+        let mut self_modifier_kind: Option<SelfModifier> = None;
 
         if let Some(params_list) = func_params_list.clone().first() {
             if let FuncParamKind::SelfModifier(self_modifier) = params_list {
+                self_modifier_kind = Some(self_modifier.clone());
                 func_params_list.remove(0);
                 func_def.params.list.remove(0);
 
@@ -312,6 +324,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_def.span.end,
             func_params_list,
             func_def.params.variadic.clone(),
+            self_modifier_type.is_some(),
         );
 
         if let Some(self_modifier_type) = self_modifier_type.clone() {
@@ -376,9 +389,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         exit(1);
                     }
                 };
+
             self.build_self_modifier_local_alloca(
                 Rc::clone(&scope),
-                self_modifier_type_specifier.unwrap(),
+                self_modifier_type_specifier.clone().unwrap(),
                 self_modifier_basic_type,
                 func_first_param,
                 func_def.loc.clone(),
@@ -450,22 +464,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         func_value.verify(true);
-        return (func_value, func_decl, params_metadata, self_modifier_type.is_none());
+
+        StructMethodMetadata {
+            method_decl: func_decl,
+            method_value: func_value,
+            method_params_metadata: params_metadata,
+            is_static_method: self_modifier_type.is_none(),
+            return_type,
+            self_modifier_type: if self_modifier_type.is_some() && self_modifier_kind.is_some() {
+                Some((self_modifier_type.unwrap(), self_modifier_kind.unwrap()))
+            } else {
+                None
+            },
+        }
     }
 
     pub(crate) fn build_struct_methods(
         &mut self,
         struct_name: String,
         methods: Vec<FuncDef>,
-    ) -> Vec<(FuncDecl, FunctionValue<'ctx>, FuncParamsMetadata<'ctx>, bool)> {
+    ) -> Vec<StructMethodMetadata<'ctx>> {
         let internal_struct_type = self.struct_table.get(&struct_name).cloned().unwrap();
 
-        let mut struct_methods: Vec<(FuncDecl, FunctionValue<'ctx>, FuncParamsMetadata<'ctx>, bool)> = Vec::new();
+        let mut struct_methods: Vec<StructMethodMetadata<'ctx>> = Vec::new();
         for func_def in methods {
-            let (func_value, func_decl, func_params_metadata, is_static_method) =
-                self.build_method_def(func_def, struct_name.clone(), internal_struct_type.clone());
-
-            struct_methods.push((func_decl, func_value, func_params_metadata, is_static_method))
+            let method_metadata = self.build_method_def(func_def, struct_name.clone(), internal_struct_type.clone());
+            struct_methods.push(method_metadata);
         }
         struct_methods
     }
@@ -803,11 +827,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .struct_metadata
             .methods
             .iter()
-            .find(|method| method.0.get_usable_name() == method_call.method_name.name);
+            .find(|method| method.method_decl.get_usable_name() == method_call.method_name.name);
 
         match method_metadata {
-            Some((func_decl, func_value, params_metadata, is_static_method)) => {
-                if !*is_static_method {
+            Some(struct_method_metadata) => {
+                if !struct_method_metadata.is_static_method {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(
@@ -823,11 +847,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                let func_basic_blocks = func_value.get_basic_blocks();
+                let func_basic_blocks = struct_method_metadata.method_value.get_basic_blocks();
                 let current_block =
                     self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public
+                if !func_basic_blocks.contains(&current_block)
+                    && struct_method_metadata.method_decl.access_specifier != AccessSpecifier::Public
                 {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -847,33 +872,40 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                 // static methods args count checking are the same as the funcs
                 self.check_func_args_count_mismatch(
-                    func_decl.name.clone(),
-                    func_decl.clone(),
+                    struct_method_metadata.method_decl.name.clone(),
+                    struct_method_metadata.method_decl.clone(),
                     method_call.arguments.len(),
                     method_call.loc.clone(),
                     method_call.span.end,
                 );
 
-                let static_params_length = params_metadata.param_types.len();
+                let static_params_length = struct_method_metadata.method_params_metadata.param_types.len();
 
                 let arguments = self.build_arguments(
                     Rc::clone(&scope),
                     method_call.arguments.clone(),
-                    params_metadata.clone(),
+                    struct_method_metadata.method_params_metadata.clone(),
                     0,
                     static_params_length,
-                    func_decl.get_usable_name(),
+                    struct_method_metadata.method_decl.get_usable_name(),
                     method_call.loc.clone(),
                     method_call.span.end,
                 );
 
-                let call_site_value = self.builder.build_call(*func_value, &arguments, "call").unwrap();
+                let call_site_value = self
+                    .builder
+                    .build_call(struct_method_metadata.method_value, &arguments, "call")
+                    .unwrap();
                 let return_type = self.build_type(
-                    func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
-                        kind: TokenKind::Void,
-                        span: Span::default(),
-                        loc: Location::default(),
-                    })),
+                    struct_method_metadata
+                        .method_decl
+                        .return_type
+                        .clone()
+                        .unwrap_or(TypeSpecifier::TypeToken(Token {
+                            kind: TokenKind::Void,
+                            span: Span::default(),
+                            loc: Location::default(),
+                        })),
                     method_call.loc.clone(),
                     method_call.span.end,
                 );
@@ -1008,15 +1040,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         // let's find the method from struct_metadata
-        let method_metadata = internal_struct_type
+        let method_metadata_opt = internal_struct_type
             .struct_metadata
             .methods
             .iter()
-            .find(|method| method.0.get_usable_name() == method_call.method_name.name);
+            .find(|method| method.method_decl.get_usable_name() == method_call.method_name.name);
 
-        match method_metadata.cloned() {
-            Some((func_decl, func_value, mut params_metadata, is_static_method)) => {
-                if is_static_method {
+        match method_metadata_opt.cloned() {
+            Some(mut method_metadata) => {
+                if method_metadata.is_static_method {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
@@ -1033,11 +1065,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                let func_basic_blocks = func_value.get_basic_blocks();
+                let func_basic_blocks = method_metadata.method_value.get_basic_blocks();
                 let current_block =
                     self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-                if !func_basic_blocks.contains(&current_block) && func_decl.access_specifier != AccessSpecifier::Public
+                if !func_basic_blocks.contains(&current_block)
+                    && method_metadata.method_decl.access_specifier != AccessSpecifier::Public
                 {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
@@ -1058,7 +1091,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let mut arguments: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
 
                 // pass self modifier value if exists
-                if let Some(first_param) = func_decl.params.list.first() {
+                if let Some(first_param) = method_metadata.method_decl.params.list.first() {
                     if let FuncParamKind::SelfModifier(self_modifier) = first_param {
                         match self_modifier {
                             SelfModifier::Copied => {
@@ -1070,39 +1103,46 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }
                     }
 
-                    params_metadata.param_types.remove(0); // remove self_modifier from normal params
+                    method_metadata.method_params_metadata.param_types.remove(0); // remove self_modifier from normal params
                 }
 
                 self.check_instance_method_args_count_mismatch(
-                    func_decl.name.clone(),
-                    func_decl.clone(),
+                    method_metadata.method_decl.name.clone(),
+                    method_metadata.method_decl.clone(),
                     // include self modifier which is added manually from the arguments count
                     method_call.arguments.len(),
                     method_call.loc.clone(),
                     method_call.span.end,
                 );
 
-                let static_params_length = params_metadata.param_types.len() - 1;
+                let static_params_length = method_metadata.method_params_metadata.param_types.len() - 1;
 
                 arguments.append(&mut self.build_arguments(
                     Rc::clone(&scope),
                     method_call.arguments.clone(),
-                    params_metadata.clone(),
+                    method_metadata.method_params_metadata.clone(),
                     // exclude self modifier
                     static_params_length,
                     1,
-                    func_decl.get_usable_name(),
+                    method_metadata.method_decl.get_usable_name(),
                     method_call.loc.clone(),
                     method_call.span.end,
                 ));
 
-                let call_site_value = self.builder.build_call(func_value, &arguments, "call").unwrap();
+                let call_site_value = self
+                    .builder
+                    .build_call(method_metadata.method_value, &arguments, "call")
+                    .unwrap();
                 let return_type = self.build_type(
-                    func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
-                        kind: TokenKind::Void,
-                        span: Span::default(),
-                        loc: Location::default(),
-                    })),
+                    method_metadata
+                        .method_decl
+                        .return_type
+                        .clone()
+                        .unwrap_or(TypeSpecifier::TypeToken(Token {
+                            kind: TokenKind::Void,
+                            span: Span::default(),
+                            loc: Location::default(),
+                        })),
                     method_call.loc.clone(),
                     method_call.span.end,
                 );

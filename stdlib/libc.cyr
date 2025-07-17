@@ -1,19 +1,9 @@
-// Data Types
-
-public type c_size_t = size_t;
-public type c_char = char;
-// public type c_signed_char = ichar;
-// public type c_unsigned_char = uchar;
-public type c_bool = bool;
-public type c_void = void;
-
+// Stdlib 
 public type c_file = void*;
 
 public extern stdout: c_file;
 public extern stderr: c_file;
 public extern stdin: c_file;
-
-// Stdlib 
 
 public extern func printf(format: const char*, ...) int32;
 public extern func fprintf(stream: c_file, format: const char*, ...) int32;

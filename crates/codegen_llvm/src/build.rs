@@ -338,6 +338,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 main_func.span.end,
                 main_func.params.list.clone(),
                 None,
+                false
             );
 
             let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));

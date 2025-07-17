@@ -1,0 +1,8 @@
+// public type c_signed_char = ichar;
+// public type c_unsigned_char = uchar;
+public type c_char = char;
+public type c_bool = bool;
+public type c_void = void;
+public type c_size_t = size_t;
+
+

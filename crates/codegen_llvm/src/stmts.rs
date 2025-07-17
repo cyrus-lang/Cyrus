@@ -8,7 +8,6 @@ use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, St
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
-use inkwell::values::FunctionValue;
 use std::cell::RefCell;
 use std::process::exit;
 use std::rc::Rc;
@@ -142,6 +141,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         func_def.span.end,
                         func_def.params.list.clone(),
                         func_def.params.variadic.clone(),
+                        false
                     );
 
                     let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
@@ -155,6 +155,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_decl.span.end,
                     func_decl.params.list.clone(),
                     func_decl.params.variadic.clone(),
+                    false
                 );
 
                 self.build_func_decl(func_decl, param_types, true, false);

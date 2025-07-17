@@ -243,9 +243,32 @@ impl fmt::Display for ModuleImport {
 }
 
 pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
-    segments
-        .iter()
-        .map(|p| p.to_string())
-        .collect::<Vec<String>>()
-        .join("::")
+    let mut format = String::new();
+
+    for (idx, item) in segments.iter().enumerate() {
+        match item {
+            ModuleSegment::SubModule(identifier) => {
+                format.push_str(&identifier.name);
+                if idx != segments.len() - 1 {
+                    format.push_str("::");
+                }
+            }
+            ModuleSegment::Single(module_segment_singles) => {
+                format.push('{');
+                for (jdx, single) in module_segment_singles.iter().enumerate() {
+                    if let Some(renamed) = &single.renamed {
+                        format.push_str(&format!("{}:", renamed.name));
+                    }
+                    format.push_str(&single.identifier.name);
+                    if jdx != module_segment_singles.len() - 1 {
+                        format.push(',');
+                        format.push(' ');
+                    }
+                }
+                format.push('}');
+            }
+        }
+    }
+
+    format
 }

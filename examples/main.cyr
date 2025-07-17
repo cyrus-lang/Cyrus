@@ -1,8 +1,7 @@
-import std::libc{printf};
-// import std::libc::abi;
+// import std::libc{printf, c_bool};
+import std::libc;
+import std::libc::abi{c_void};
 
 func main() {
-    printf("Hello, World!\n");
-    printf("AAA\n");
-    // #a: c_bool;
+    // #a: abi::c_void*;
 }
