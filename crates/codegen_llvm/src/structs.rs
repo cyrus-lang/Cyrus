@@ -1091,24 +1091,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     method_metadata.method_decl.name.clone(),
                     method_metadata.method_decl.clone(),
                     // include self modifier which is added manually from the arguments count
-                    method_call.arguments.len(),
+                    method_call.arguments.len() + 1,
                     method_call.loc.clone(),
                     method_call.span.end,
                 );
 
-                let static_params_length = method_metadata.method_params_metadata.param_types.len() - 1;
+                let static_params_length = method_metadata.method_params_metadata.param_types.len();
 
-                arguments.append(&mut self.build_arguments(
-                    Rc::clone(&scope),
-                    method_call.arguments.clone(),
-                    method_metadata.method_params_metadata.clone(),
-                    // exclude self modifier
-                    static_params_length,
-                    1,
-                    method_metadata.method_decl.get_usable_name(),
-                    method_call.loc.clone(),
-                    method_call.span.end,
-                ));
+                if static_params_length >= 1 {
+                    arguments.append(&mut self.build_arguments(
+                        Rc::clone(&scope),
+                        method_call.arguments.clone(),
+                        method_metadata.method_params_metadata.clone(),
+                        // exclude self modifier
+                        1,
+                        static_params_length,
+                        method_metadata.method_decl.get_usable_name(),
+                        method_call.loc.clone(),
+                        method_call.span.end,
+                    ));
+                }
 
                 let call_site_value = self
                     .builder

@@ -1,23 +1,31 @@
-import std::libc;
+extern func printf(format: const char*, ...) void;
 
-public struct Logger {
-	group_name: char*;
+public struct Person {
+    name: char*;
+    age: uint32;
 
-    public func new(group_name: char*) Logger { 
-		libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
-		return Logger { group_name: group_name };
-	}
-
-	public func logf(self, format: char*) {
-		libc::fprintf(libc::stdout, "[info][%s] %s\n", self.group_name, format);
-	}
-
-	public func errorf(self, format: char*) {
-		libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
-	}
+    public func display(&self) {
+        printf("display\n");
+    }
 }
 
-public func new_logger() Logger {
-    libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
-    return Logger { group_name: c"simple_group" };
-}
+// public struct Logger {
+// 	group_name: char*;
+
+//     public func new(group_name: char*) Logger { 
+// 		libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
+// 		return Logger { group_name: group_name };
+// 	}
+
+// 	public func logf(self, format: char*) {
+// 		libc::fprintf(libc::stdout, "[info][%s] %s\n", self.group_name, format);
+// 	}
+
+// 	public func errorf(self, format: char*) {
+// 		libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
+// 	}
+
+//     public func greeting(self, name: char*) {
+//         libc::fprintf(libc::stdout, "Hello, %s!\n", name);
+//     }
+// }
