@@ -290,38 +290,35 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        let lookup_file =
-            |idx: usize, file_path: String, codegen_file_path: String| -> Option<GeneratedModuleImportPath> {
-                if let Some(found_path) = find_file_from_sources(file_path, sources.clone()) {
-                    if idx == segments.len() - 1 {
-                        // last segment is a file
-                        Some(GeneratedModuleImportPath {
-                            file_path: found_path.to_str().unwrap().to_string(),
-                            module_path: module_path.clone(),
-                            singles: None,
-                            loc: loc.clone(),
-                            span_end,
-                        })
-                    } else {
-                        if (segments.len() - 1) - idx == 1 {
-                            // last segment is import single
-                            let next_segment = segments[idx + 1].clone();
-                            match next_segment {
-                                ModuleSegment::SubModule(_) => None,
-                                ModuleSegment::Single(module_segment_singles) => {
-                                    dbg!("import single trace 2");
-                                    Some(handle_import_single(idx + 1, module_segment_singles))
-                                }
-                            }
-                        } else {
-                            dbg!("import single trace 1");
-                            None
-                        }
-                    }
+        let lookup_file = |idx: usize, file_path: String| -> Option<GeneratedModuleImportPath> {
+            if let Some(found_path) = find_file_from_sources(file_path, sources.clone()) {
+                if idx == segments.len() - 1 {
+                    // last segment is a file
+                    Some(GeneratedModuleImportPath {
+                        file_path: found_path.to_str().unwrap().to_string(),
+                        module_path: module_path.clone(),
+                        singles: None,
+                        loc: loc.clone(),
+                        span_end,
+                    })
                 } else {
-                    None
+                    if (segments.len() - 1) - idx == 1 {
+                        // last segment is import single
+                        let next_segment = segments[idx + 1].clone();
+                        match next_segment {
+                            ModuleSegment::SubModule(_) => None,
+                            ModuleSegment::Single(module_segment_singles) => {
+                                Some(handle_import_single(idx + 1, module_segment_singles))
+                            }
+                        }
+                    } else {
+                        None
+                    }
                 }
-            };
+            } else {
+                None
+            }
+        };
 
         // Traverse all segments
         for idx in 0..segments.len() {
@@ -331,7 +328,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     let dir_path = format!("{}{}", module_file_path, identifier.name);
                     let file_path = format!("{}{}.cyr", module_file_path, identifier.name);
 
-                    match lookup_file(idx, file_path, self.file_path.clone()) {
+                    match lookup_file(idx, file_path) {
                         Some(generated_module_import_path) => {
                             return generated_module_import_path;
                         }
@@ -378,165 +375,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // fn build_import_module_path(
-    //     &mut self,
-    //     module_path: ModulePath,
-    //     mut segments: Vec<ModuleSegment>,
-    //     loc: Location,
-    //     span_end: usize,
-    // ) -> GeneratedModuleImportPath {
-    //     let sources;
-
-    //     let segments_str = module_segments_as_string(segments.clone());
-    //     let first_segment = segments.first().unwrap();
-
-    //     let mut module_file_path = String::new();
-    //     let import_from_std;
-
-    //     match first_segment {
-    //         ModuleSegment::SubModule(identifier) => {
-    //             if identifier.name == "std" {
-    //                 segments.remove(0);
-    //                 sources = vec![self.build_stdlib_modules_path()];
-    //                 import_from_std = true;
-    //             } else {
-    //                 sources = self.opts.sources_dir.clone();
-    //                 import_from_std = false;
-    //             }
-    //         }
-    //         ModuleSegment::Single(_) => unreachable!(),
-    //     }
-
-    //     for (idx, module_segment) in segments.iter().enumerate() {
-    //         match module_segment {
-    //             ModuleSegment::SubModule(identifier) => {
-    //                 if identifier.name == "std" {
-    //                     continue;
-    //                 }
-
-    //                 // once consider identifier as sub_module (directory) and if it's not found in any of the sources
-    //                 // in the second stage consider identifier as a module (file) and try to determine that path exists.
-
-    //                 let directory_path = format!("{}{}", module_file_path, identifier.name.clone());
-    //                 let source_file_path = format!("{}{}.cyr", module_file_path, identifier.name.clone());
-
-    //                 // source file has higher priority to a directory
-
-    //                 match find_file_from_sources(directory_path.clone(), sources.clone()) {
-    //                     Some(new_module_file_path) => {
-    //                         if idx == segments.len() - 1 {
-    //                             match find_file_from_sources(source_file_path.clone(), sources.clone()) {
-    //                                 Some(new_module_file_path) => {
-    //                                     module_file_path = new_module_file_path.to_str().unwrap().to_string();
-    //                                     todo!();
-    //                                     return GeneratedModuleImportPath {
-    //                                         file_path: module_file_path.clone(),
-    //                                         module_path,
-    //                                         singles: None,
-    //                                         loc,
-    //                                         span_end,
-    //                                     };
-    //                                 }
-    //                                 None => {
-    //                                     module_file_path.push_str(new_module_file_path.to_str().unwrap());
-    //                                     module_file_path.push_str("/");
-    //                                 }
-    //                             }
-    //                         } else {
-    //                             module_file_path.push_str(new_module_file_path.to_str().unwrap());
-    //                             module_file_path.push_str("/");
-    //                         }
-    //                     }
-    //                     None => {
-    //                         if import_from_std && Path::new(&source_file_path).is_file() {
-    //                             todo!();
-    //                             return GeneratedModuleImportPath {
-    //                                 file_path: source_file_path.clone(),
-    //                                 module_path,
-    //                                 singles: None,
-    //                                 loc,
-    //                                 span_end,
-    //                             };
-    //                         } else {
-    //                             match find_file_from_sources(source_file_path, sources.clone()) {
-    //                                 Some(new_module_file_path) => {
-    //                                     module_file_path = new_module_file_path.to_str().unwrap().to_string();
-    //                                     dbg!(module_file_path.clone());
-    //                                     dbg!(segments[idx + 1].clone());
-    //                                     todo!();
-    //                                     return GeneratedModuleImportPath {
-    //                                         file_path: module_file_path.clone(),
-    //                                         module_path,
-    //                                         singles: None,
-    //                                         loc,
-    //                                         span_end,
-    //                                     };
-    //                                 }
-    //                                 None => {
-    //                                     display_single_diag(Diag {
-    //                                         level: DiagLevel::Error,
-    //                                         kind: DiagKind::ModuleNotFound(segments_str.clone()),
-    //                                         location: Some(DiagLoc {
-    //                                             file: self.file_path.clone(),
-    //                                             line: loc.line,
-    //                                             column: loc.column,
-    //                                             length: span_end,
-    //                                         }),
-    //                                     });
-    //                                     exit(1);
-    //                                 }
-    //                             }
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //             ModuleSegment::Single(module_segment_singles) => {
-    //                 let file_path = self
-    //                     .build_import_module_path(
-    //                         module_path.clone(),
-    //                         segments[0..(segments.len() - 1)].to_vec(),
-    //                         loc.clone(),
-    //                         span_end,
-    //                     )
-    //                     .file_path;
-
-    //                 return GeneratedModuleImportPath {
-    //                     file_path,
-    //                     module_path: module_path.clone(),
-    //                     singles: Some(module_segment_singles.clone()),
-    //                     loc: loc.clone(),
-    //                     span_end,
-    //                 };
-    //             }
-    //         }
-    //     }
-
-    //     if Path::new(&module_file_path).is_dir() {
-    //         display_single_diag(Diag {
-    //             level: DiagLevel::Error,
-    //             kind: DiagKind::Custom(format!(
-    //                 "Import module '{}' as directory is not allowed.",
-    //                 segments_str.clone()
-    //             )),
-    //             location: Some(DiagLoc {
-    //                 file: self.file_path.clone(),
-    //                 line: loc.line,
-    //                 column: loc.column,
-    //                 length: span_end,
-    //             }),
-    //         });
-    //         exit(1);
-    //     }
-
-    //     GeneratedModuleImportPath {
-    //         file_path: module_file_path,
-    //         module_path,
-    //         singles: None,
-    //         loc,
-    //         span_end,
-    //     }
-    // }
-
     pub(crate) fn build_import(&mut self, import: Import) {
         for module_path in import.paths.clone() {
             let module_id = self.build_module_id(module_path.clone());
@@ -547,8 +385,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 import.loc.clone(),
                 import.span.end,
             );
-
-            dbg!(generated_module_import_path.file_path.clone());
 
             self.error_if_module_already_loaded(module_id.clone(), module_path);
             self.build_imported_module(module_id, generated_module_import_path);
@@ -605,7 +441,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         sub_codegen_ref.compile();
         self.build_manifest = sub_codegen_ref.build_manifest.clone();
 
-        dbg!(generated_module_import_path.singles.clone());
         if let Some(module_segment_singles) = generated_module_import_path.singles.clone() {
             let module_metadata = ModuleMetadata {
                 module: Rc::clone(&sub_module),

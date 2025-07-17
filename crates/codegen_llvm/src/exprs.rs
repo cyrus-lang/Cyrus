@@ -8,8 +8,7 @@ use crate::{
     values::{InternalValue, Lvalue, TypedPointerValue},
 };
 use ast::{
-    ast::*,
-    token::{Location, Token, TokenKind},
+    ast::*, format::module_segments_as_string, token::{Location, Token, TokenKind}
 };
 use inkwell::{
     AddressSpace,

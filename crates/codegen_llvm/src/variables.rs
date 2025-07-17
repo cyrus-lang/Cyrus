@@ -40,22 +40,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_global_variable(&mut self, global_variable: GlobalVariable) {
         let initializer_value = match global_variable.expr {
-            Some(expression) => {
-                match expression {
-                    // Expression::Cast(cast) => self.build_cast_expression(scope, cast),
-                    // Expression::Identifier(identifier) => todo!(), // Distinct runtime and comptime values
-                    expr @ Expression::Literal(..)
-                    | expr @ Expression::Prefix(..)
-                    | expr @ Expression::Infix(..)
-                    | expr @ Expression::UnaryOperator(..)
-                    | expr @ Expression::ModuleImport(..)
-                    | expr @ Expression::Array(..) => {
-                        let fake_scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-                        self.build_expr(fake_scope, expr)
-                    }
-
-                    _ => {
-                        display_single_diag(Diag {
+            Some(expression) => match expression {
+                expr @ Expression::Literal(..)
+                | expr @ Expression::Prefix(..)
+                | expr @ Expression::Infix(..)
+                | expr @ Expression::UnaryOperator(..)
+                | expr @ Expression::ModuleImport(..)
+                | expr @ Expression::Array(..) => {
+                    let fake_scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+                    self.build_expr(fake_scope, expr)
+                }
+                _ => {
+                    display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(
                         "Invalid initializer for global variable. Global variables must be initialized with a compile-time constant expression."
@@ -68,10 +64,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         length: global_variable.span.end,
                     }),
                 });
-                        exit(1);
-                    }
+                    exit(1);
                 }
-            }
+            },
             None => {
                 let internal_type = self.build_type(
                     global_variable.type_specifier.clone().unwrap(),
