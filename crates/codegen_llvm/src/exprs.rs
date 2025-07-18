@@ -9,7 +9,6 @@ use crate::{
 };
 use ast::{
     ast::*,
-    format::module_segments_as_string,
     token::{Location, Token, TokenKind},
 };
 use inkwell::{
@@ -1040,7 +1039,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::FloatType(internal_float_type) => internal_float_type.float_type.size_of(),
             InternalType::ArrayPtrType(internal_array_ptr_type) => internal_array_ptr_type.ptr_type.size_of(),
             InternalType::StructType(internal_struct_type) => {
-                match internal_struct_type.struct_metadata.struct_type.size_of() {
+                match internal_struct_type.struct_type.size_of() {
                     Some(size) => size,
                     None => {
                         display_single_diag(Diag {

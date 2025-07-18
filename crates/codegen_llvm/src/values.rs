@@ -167,7 +167,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 InternalType::ArrayType(internal_array_type),
             ),
             InternalType::StructType(internal_struct_type) => InternalValue::StructValue(
-                internal_struct_type.struct_metadata.struct_type.const_zero(),
+                internal_struct_type.struct_type.const_zero(),
                 InternalType::StructType(internal_struct_type),
             ),
             InternalType::UnnamedStruct(internal_unnamed_struct_type) => InternalValue::UnnamedStructValue(

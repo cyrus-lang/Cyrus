@@ -1,15 +1,17 @@
+use crate::structs::StructMetadata;
 use crate::CodeGenLLVM;
 use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
 use crate::modules::DefinitionLookupResult;
-use crate::structs::StructMetadata;
+use crate::structs::StructMethodMetadata;
 use crate::structs::UnnamedStructTypeMetadata;
 use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
 use ast::ast::AccessSpecifier;
 use ast::ast::ArrayCapacity;
 use ast::ast::ArrayTypeSpecifier;
+use ast::ast::Field;
 use ast::ast::ModuleImport;
 use ast::ast::ModulePath;
 use ast::ast::ModuleSegment;
@@ -101,7 +103,11 @@ pub struct InternalFloatType<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct InternalStructType<'a> {
     pub type_str: String,
-    pub struct_metadata: StructMetadata<'a>,
+    pub struct_name: ModuleImport,
+    pub struct_type: StructType<'a>,
+    pub fields: Vec<Field>,
+    pub methods: Vec<StructMethodMetadata<'a>>,
+    pub definition_id: u64
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -142,14 +148,21 @@ pub(crate) struct InternalStringType<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) enum DefinedType<'a> {
-    Struct(InternalStructType<'a>),
+    Struct(StructMetadata<'a>),
     Typedef(TypedefMetadata<'a>),
 }
 
 impl<'a> DefinedType<'a> {
     pub fn into_internal_type(&self) -> InternalType<'a> {
         match self {
-            DefinedType::Struct(internal_struct_type) => InternalType::StructType(internal_struct_type.clone()),
+            DefinedType::Struct(struct_metadata) => InternalType::StructType(InternalStructType {
+                type_str: module_segments_as_string(struct_metadata.struct_name.segments.clone()),
+                struct_name: struct_metadata.struct_name.clone(),
+                struct_type: struct_metadata.struct_type.clone(),
+                methods: struct_metadata.methods.clone(),
+                fields: struct_metadata.fields.clone(),
+                definition_id: struct_metadata.definition_id
+            }),
             DefinedType::Typedef(typedef_metadata) => typedef_metadata.internal_type.clone(),
         }
     }
@@ -228,7 +241,7 @@ impl<'a> InternalType<'a> {
             InternalType::StructType(internal_struct_type) => Ok(InternalType::ArrayType(InternalArrayType {
                 type_str,
                 inner_type: Box::new(InternalType::StructType(internal_struct_type.clone())),
-                array_type: internal_struct_type.struct_metadata.struct_type.array_type(size),
+                array_type: internal_struct_type.struct_type.array_type(size),
             })),
             InternalType::VectorType(internal_vector_type) => Ok(InternalType::ArrayType(InternalArrayType {
                 type_str,
@@ -381,7 +394,7 @@ impl<'a> InternalType<'a> {
             InternalType::IntType(t) => Ok(t.int_type.as_basic_type_enum()),
             InternalType::FloatType(t) => Ok(t.float_type.as_basic_type_enum()),
             InternalType::ArrayType(t) => Ok(t.array_type.as_basic_type_enum()),
-            InternalType::StructType(t) => Ok(t.struct_metadata.struct_type.as_basic_type_enum()),
+            InternalType::StructType(t) => Ok(t.struct_type.as_basic_type_enum()),
             InternalType::VectorType(t) => Ok(t.vector_type.as_basic_type_enum()),
             InternalType::PointerType(t) => Ok(t.ptr_type.as_basic_type_enum()),
             InternalType::Lvalue(t) => Ok(t.ptr_type.as_basic_type_enum()),
@@ -399,7 +412,7 @@ impl<'a> InternalType<'a> {
             InternalType::IntType(t) => t.int_type.as_type_ref(),
             InternalType::FloatType(t) => t.float_type.as_type_ref(),
             InternalType::ArrayType(t) => t.array_type.as_type_ref(),
-            InternalType::StructType(t) => t.struct_metadata.struct_type.as_type_ref(),
+            InternalType::StructType(t) => t.struct_type.as_type_ref(),
             InternalType::VectorType(t) => t.vector_type.as_type_ref(),
             InternalType::PointerType(t) => t.ptr_type.as_type_ref(),
             InternalType::Lvalue(t) => t.ptr_type.as_type_ref(),
@@ -448,8 +461,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalType::IntType(_), InternalType::PointerType(_))
             | (InternalType::PointerType(_), InternalType::IntType(_)) => true,
             (InternalType::StructType(struct_metadata1), InternalType::StructType(struct_metadata2)) => {
-                struct_metadata1.struct_metadata.struct_type == struct_metadata2.struct_metadata.struct_type
-                    && struct_metadata1.struct_metadata.fields.len() == struct_metadata2.struct_metadata.fields.len()
+                struct_metadata1.struct_type == struct_metadata2.struct_type
+                    && struct_metadata1.struct_type.count_fields() == struct_metadata2.struct_type.count_fields()
             }
             (
                 InternalType::UnnamedStruct(unnamed_struct_metadata1),
@@ -505,9 +518,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         // FIXME
                         panic!("Cannot use function as a data type.");
                     }
-                    DefinitionLookupResult::Struct(internal_struct_type) => {
-                        Some(DefinedType::Struct(internal_struct_type))
-                    }
+                    DefinitionLookupResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
                     DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
                     DefinitionLookupResult::GlobalVariable(_) => {
                         display_single_diag(Diag {
@@ -553,8 +564,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     panic!("Cannot use function as a data type.");
                 }
                 DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
-                DefinitionLookupResult::Struct(internal_struct_type) => Some(DefinedType::Struct(internal_struct_type)),
-                DefinitionLookupResult::GlobalVariable(global_variable_metadata) => {
+                DefinitionLookupResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
+                DefinitionLookupResult::GlobalVariable(_) => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom("Cannot use a global variable as a type specifier.".to_string()),
