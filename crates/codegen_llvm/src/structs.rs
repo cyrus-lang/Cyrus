@@ -495,48 +495,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_struct_init(&mut self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> InternalValue<'ctx> {
-        let defined_type = match self.find_defined_type(
+        let internal_struct_type = self.lookup_struct(
             struct_init.struct_name.clone(),
             struct_init.loc.clone(),
             struct_init.span.end,
-        ) {
-            Some(defined_type) => defined_type,
-            None => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::UndefinedDataType(module_segments_as_string(
-                        struct_init.struct_name.segments.clone(),
-                    )),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: struct_init.loc.line,
-                        column: struct_init.loc.column,
-                        length: struct_init.span.end,
-                    }),
-                });
-                exit(1);
-            }
-        };
-
-        let internal_struct_type = match defined_type {
-            DefinedType::Struct(internal_struct_type) => internal_struct_type,
-            DefinedType::Typedef(typedef_metadata) => match self.typedef_as_struct_type(typedef_metadata) {
-                Some(internal_struct_type) => internal_struct_type,
-                None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Cannot build struct init from a non-struct type.".to_string()),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: struct_init.loc.line,
-                            column: struct_init.loc.column,
-                            length: struct_init.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
-            },
-        };
+        );
 
         if internal_struct_type.struct_metadata.fields.len() != struct_init.field_inits.len() {
             display_single_diag(Diag {
@@ -768,11 +731,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                     DefinitionLookupResult::GlobalVariable(global_variable_metadata) => todo!(),
                 },
-                None => {
-                    // FIXME
-                    todo!();
-                    // self.build_instance_method_call(Rc::clone(&scope), method_call)
-                }
+                None => self.build_instance_method_call(Rc::clone(&scope), method_call),
             },
             Expression::ModuleImport(module_import) => {
                 match self.find_defined_type(module_import.clone(), method_call.loc.clone(), method_call.span.end) {
@@ -804,10 +763,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     None => self.build_instance_method_call(Rc::clone(&scope), method_call),
                 }
             }
-            _ => {
-                panic!();
-                // self.build_instance_method_call(Rc::clone(&scope), method_call)
-            }
+            _ => self.build_instance_method_call(Rc::clone(&scope), method_call),
         }
     }
 
@@ -963,6 +919,48 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn lookup_struct(
+        &self,
+        struct_name: ModuleImport,
+        loc: Location,
+        span_end: usize,
+    ) -> InternalStructType<'ctx> {
+        match self.find_defined_type(struct_name.clone(), loc.clone(), span_end) {
+            Some(defined_type) => match defined_type {
+                DefinedType::Struct(internal_struct_type) => internal_struct_type,
+                DefinedType::Typedef(typedef_metadata) => match typedef_metadata.internal_type.clone() {
+                    InternalType::StructType(internal_struct_type) => internal_struct_type,
+                    _ => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom("Cannot build method call on non-struct value.".to_string()),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                },
+            },
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Couldn't find internal_struct_type anywhere.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+    }
+
     pub(crate) fn build_instance_method_call(
         &mut self,
         scope: ScopeRef<'ctx>,
@@ -994,7 +992,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let internal_struct_type = match operand_rvalue.clone() {
             InternalValue::StructValue(_, internal_type) => match internal_type {
-                InternalType::StructType(internal_struct_type) => internal_struct_type,
+                InternalType::StructType(internal_struct_type) => {
+                    // NOTE You gotta know that internal_struct_type does not have any idea about
+                    // struct methods, it means it's methods are empty. That's why we fetch it's metadata from struct_table.
+
+                    self.lookup_struct(
+                        internal_struct_type.struct_metadata.struct_name.clone(),
+                        method_call.loc.clone(),
+                        method_call.span.end,
+                    )
+                }
                 _ => unreachable!(),
             },
             InternalValue::PointerValue(_) => {

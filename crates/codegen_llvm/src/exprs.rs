@@ -8,7 +8,9 @@ use crate::{
     values::{InternalValue, Lvalue, TypedPointerValue},
 };
 use ast::{
-    ast::*, format::module_segments_as_string, token::{Location, Token, TokenKind}
+    ast::*,
+    format::module_segments_as_string,
+    token::{Location, Token, TokenKind},
 };
 use inkwell::{
     AddressSpace,
@@ -219,7 +221,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     pointee_ty: record.ty.clone(),
                 });
             }
-            // local function
+            // function
             else if let Some(func_metadata) = self.func_table.get(&identifier.name.clone()) {
                 return InternalValue::FunctionValue(func_metadata.clone());
             } else if let Some(global_variable_metadata) = self.global_variables_table.get(&identifier.name.clone()) {

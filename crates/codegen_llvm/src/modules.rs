@@ -543,7 +543,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         module_path.clone(),
                         module_id.clone(),
                         internal_struct_type.clone(),
-                    );
+                    );  
+
                     self.struct_table.insert(struct_name, new_internal_struct_type.clone());
                 }
                 DefinitionLookupResult::Typedef(typedef_metadata) => {

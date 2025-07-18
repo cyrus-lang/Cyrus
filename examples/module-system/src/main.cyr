@@ -1,17 +1,6 @@
-import logger;
+import logger{Logger};
 
 func main() {
-	#person = logger::Person {
-		name: "Taha",
-		age: 18
-	};
-
-	person.display();
-
-	// libc::printf("group_name: %s\n", logger_instance.group_name);
-
-	// #logger_instance = logger::Logger.new("services.example");
-
-	// logger_instance.logf("Cyrus is on fire!");
-	// logger_instance.errorf("This is known as an error.");
+	#logger = Logger.new("services.example");
+	logger.errorf("errrr");
 }
