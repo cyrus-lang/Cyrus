@@ -3,14 +3,14 @@ use crate::{
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
-    structs::{StructMethodMetadata, StructTable},
-    types::{InternalStructType, InternalType, TypedefMetadata, TypedefTable},
+    structs::{StructMetadata, StructMethodMetadata, StructTable},
+    types::{InternalType, TypedefMetadata, TypedefTable},
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
 use ast::{
-    ast::{AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, TypeSpecifier},
+    ast::{AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle},
     format::module_segments_as_string,
-    token::{Location, Span, Token, TokenKind},
+    token::Location,
 };
 use inkwell::{
     AddressSpace,
@@ -27,8 +27,8 @@ pub struct ModuleMetadata<'a> {
     pub identifier: String,
     pub file_path: String,
     pub module: Rc<RefCell<Module<'a>>>,
-    pub func_table: HashMap<String, FuncMetadata<'a>>,
-    pub struct_table: HashMap<String, InternalStructType<'a>>,
+    pub func_table: FuncTable<'a>,
+    pub struct_table: StructTable<'a>,
     pub global_variables_table: GlobalVariablesTable<'a>,
     pub typedef_table: TypedefTable<'a>,
     pub imports_single: bool,
@@ -37,7 +37,7 @@ pub struct ModuleMetadata<'a> {
 #[derive(Debug, Clone)]
 pub enum DefinitionLookupResult<'a> {
     Func(FuncMetadata<'a>),
-    Struct(InternalStructType<'a>),
+    Struct(StructMetadata<'a>),
     Typedef(TypedefMetadata<'a>),
     GlobalVariable(GlobalVariableMetadata<'a>),
 }
@@ -525,27 +525,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     let (func_name, func_metadata) = self.build_decl_imported_func(func_metadata);
                     self.func_table.insert(func_name, func_metadata);
                 }
-                DefinitionLookupResult::Struct(internal_struct_type) => {
+                DefinitionLookupResult::Struct(struct_metadata) => {
                     let struct_name = {
-                        match internal_struct_type
-                            .struct_metadata
-                            .struct_name
-                            .segments
-                            .last()
-                            .unwrap()
-                        {
+                        match struct_metadata.struct_name.segments.last().unwrap() {
                             ModuleSegment::SubModule(identifier) => identifier.name.clone(),
                             ModuleSegment::Single(_) => unreachable!(),
                         }
                     };
 
-                    let new_internal_struct_type = self.build_decl_imported_struct_methods(
+                    let new_struct_metadata = self.build_decl_imported_struct_methods(
                         module_path.clone(),
                         module_id.clone(),
-                        internal_struct_type.clone(),
-                    );  
+                        struct_metadata.clone(),
+                    );
 
-                    self.struct_table.insert(struct_name, new_internal_struct_type.clone());
+                    self.struct_table.insert(struct_name, new_struct_metadata.clone());
                 }
                 DefinitionLookupResult::Typedef(typedef_metadata) => {
                     self.typedef_table
@@ -725,25 +719,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &mut self,
         imported_from: ModulePath,
         imported_module_id: String,
-        internal_struct_type: InternalStructType<'ctx>,
-    ) -> InternalStructType<'ctx> {
-        let mut final_internal_struct_type = internal_struct_type.clone();
+        struct_metadata: StructMetadata<'ctx>,
+    ) -> StructMetadata<'ctx> {
+        let mut final_internal_struct_type = struct_metadata.clone();
 
-        for (idx, mut struct_method_metadata) in internal_struct_type
-            .clone()
-            .struct_metadata
-            .methods
-            .iter()
-            .cloned()
-            .enumerate()
-        {
-            let struct_name = match internal_struct_type
-                .struct_metadata
-                .struct_name
-                .segments
-                .last()
-                .unwrap()
-            {
+        for (idx, mut struct_method_metadata) in struct_metadata.methods.iter().cloned().enumerate() {
+            let struct_name = match struct_metadata.struct_name.segments.last().unwrap() {
                 ModuleSegment::SubModule(identifier) => identifier.name.clone(),
                 ModuleSegment::Single(_) => unreachable!(),
             };
@@ -764,7 +745,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     return_type: struct_method_metadata.return_type.clone(),
                 });
 
-                final_internal_struct_type.struct_metadata.methods[idx] = StructMethodMetadata {
+                final_internal_struct_type.methods[idx] = StructMethodMetadata {
                     method_decl: func_metadata.func_decl.clone(),
                     method_value: func_metadata.ptr,
                     method_params_metadata: struct_method_metadata.method_params_metadata,
@@ -794,7 +775,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .list
                     .insert(0, FuncParamKind::SelfModifier(self_modifier_kind));
 
-                final_internal_struct_type.struct_metadata.methods[idx] = StructMethodMetadata {
+                final_internal_struct_type.methods[idx] = StructMethodMetadata {
                     method_decl: func_metadata.func_decl,
                     method_value: func_metadata.ptr,
                     method_params_metadata: struct_method_metadata.method_params_metadata,
@@ -813,16 +794,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         imported_from: ModulePath,
         imported_module_id: String,
         struct_table: StructTable<'ctx>,
-    ) -> HashMap<String, InternalStructType<'ctx>> {
-        let mut imported_structs: HashMap<String, InternalStructType> = HashMap::new();
-        for (_, (struct_name, internal_struct_type)) in struct_table.iter().enumerate() {
-            let new_internal_struct_type = self.build_decl_imported_struct_methods(
+    ) -> StructTable<'ctx> {
+        let mut imported_structs = StructTable::new();
+        for (_, (struct_name, struct_metadata)) in struct_table.iter().enumerate() {
+            let new_struct_metadata = self.build_decl_imported_struct_methods(
                 imported_from.clone(),
                 imported_module_id.clone(),
-                internal_struct_type.clone(),
+                struct_metadata.clone(),
             );
 
-            imported_structs.insert(struct_name.clone(), new_internal_struct_type);
+            imported_structs.insert(struct_name.clone(), new_struct_metadata);
         }
         imported_structs
     }

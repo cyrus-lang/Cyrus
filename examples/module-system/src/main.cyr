@@ -1,6 +1,7 @@
-import logger{Logger};
+import logger;
 
 func main() {
-	#logger = Logger.new("services.example");
-	logger.errorf("errrr");
+	// #logger = logger::Logger { group_name: "aa" };
+	#logger = logger::Logger.new("services.example");
+	logger.greeting("Taha");
 }

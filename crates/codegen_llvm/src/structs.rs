@@ -5,7 +5,6 @@ use crate::{
     modules::DefinitionLookupResult,
     scope::{Scope, ScopeRecord, ScopeRef},
     types::{DefinedType, InternalLvalueType, InternalStructType, InternalUnnamedStructType},
-    values::Lvalue,
 };
 use ast::{
     ast::{
@@ -23,17 +22,36 @@ use inkwell::{
     types::{BasicTypeEnum, FunctionType, StructType},
     values::{AggregateValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
+use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, ops::DerefMut, process::exit, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructMetadata<'a> {
     pub struct_name: ModuleImport,
     pub struct_type: StructType<'a>,
-    pub inherits: Vec<Identifier>,
     pub fields: Vec<Field>,
     pub methods: Vec<StructMethodMetadata<'a>>,
     pub access_specifier: AccessSpecifier,
     pub packed: bool,
+    pub definition_id: u64,
+}
+
+impl<'a> StructMetadata<'a> {
+    pub fn to_internal_struct_type(&self) -> InternalStructType<'a> {
+        InternalStructType {
+            type_str: module_segments_as_string(self.struct_name.segments.clone()),
+            struct_name: self.struct_name.clone(),
+            struct_type: self.struct_type.clone(),
+            fields: self.fields.clone(),
+            methods: self.methods.clone(),
+            definition_id: self.definition_id,
+        }
+    }
+}
+
+pub fn generate_struct_definition_id() -> u64 {
+    let mut rng = rand::rng();
+    rng.random::<u64>()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,7 +77,7 @@ pub struct UnnamedStructValueMetadata<'a> {
     pub packed: bool,
 }
 
-pub type StructTable<'a> = HashMap<String, InternalStructType<'a>>;
+pub type StructTable<'a> = HashMap<String, StructMetadata<'a>>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn is_struct_using_uncompleted_type(
@@ -170,18 +188,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             struct_type: opaque_struct,
             fields: struct_statement.fields.clone(),
             methods: Vec::new(),
-            inherits: struct_statement.inherits.clone(),
             access_specifier: struct_statement.access_specifier.clone(),
             packed: struct_statement.packed,
-        };
-
-        let internal_struct_type = InternalStructType {
-            type_str: struct_statement.name.clone(),
-            struct_metadata: struct_metadata.clone(),
+            definition_id: generate_struct_definition_id(),
         };
 
         self.struct_table
-            .insert(struct_statement.name.clone(), internal_struct_type.clone());
+            .insert(struct_statement.name.clone(), struct_metadata.clone());
 
         let field_types = self.build_struct_field_types(struct_statement.name.clone(), struct_statement.fields.clone());
         opaque_struct.set_body(&field_types, struct_statement.packed);
@@ -190,13 +203,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         {
             let internal_struct_type = self.struct_table.get_mut(&struct_statement.name.clone()).unwrap();
-            internal_struct_type.struct_metadata.struct_type = completed_struct_type;
+            internal_struct_type.struct_type = completed_struct_type;
         }
 
         let struct_methods = self.build_struct_methods(struct_statement.name.clone(), struct_statement.methods.clone());
 
         let internal_struct_type = self.struct_table.get_mut(&struct_statement.name.clone()).unwrap();
-        internal_struct_type.struct_metadata.methods = struct_methods;
+        internal_struct_type.methods = struct_methods;
     }
 
     fn build_self_modifier_local_alloca(
@@ -241,15 +254,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         self_modifier: &SelfModifier,
         struct_name: &str,
-        internal_struct_type: &InternalStructType<'ctx>,
+        struct_metadata: &StructMetadata<'ctx>,
         func_loc: &Location,
         func_span: &Span,
     ) -> (InternalType<'ctx>, TypeSpecifier) {
         match self_modifier {
             SelfModifier::Copied => (
                 InternalType::StructType(InternalStructType {
-                    type_str: internal_struct_type.type_str.clone(),
-                    struct_metadata: internal_struct_type.struct_metadata.clone(),
+                    type_str: "self".to_string(),
+                    struct_name: struct_metadata.struct_name.clone(),
+                    struct_type: struct_metadata.struct_type.clone(),
+                    fields: struct_metadata.fields.clone(),
+                    methods: struct_metadata.methods.clone(),
+                    definition_id: struct_metadata.definition_id.clone(),
                 }),
                 TypeSpecifier::Identifier(Identifier {
                     name: struct_name.to_string(),
@@ -261,8 +278,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 InternalType::Lvalue(Box::new(InternalLvalueType {
                     ptr_type: self.context.ptr_type(AddressSpace::default()),
                     pointee_ty: InternalType::StructType(InternalStructType {
-                        type_str: internal_struct_type.type_str.clone(),
-                        struct_metadata: internal_struct_type.struct_metadata.clone(),
+                        type_str: "&self".to_string(),
+                        struct_name: struct_metadata.struct_name.clone(),
+                        struct_type: struct_metadata.struct_type.clone(),
+                        fields: struct_metadata.fields.clone(),
+                        methods: struct_metadata.methods.clone(),
+                        definition_id: struct_metadata.definition_id.clone(),
                     }),
                 })),
                 TypeSpecifier::Dereference(Box::new(TypeSpecifier::Identifier(Identifier {
@@ -278,7 +299,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &mut self,
         mut func_def: FuncDef,
         struct_name: String,
-        internal_struct_type: InternalStructType<'ctx>,
+        struct_metadata: StructMetadata<'ctx>,
     ) -> StructMethodMetadata<'ctx> {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         self.validate_method_storage_class(func_def.clone());
@@ -309,7 +330,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let (ty, spec) = self.build_self_modifier_param(
                     self_modifier,
                     &struct_name,
-                    &internal_struct_type,
+                    &struct_metadata,
                     &func_def.loc,
                     &func_def.span,
                 );
@@ -484,30 +505,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         struct_name: String,
         methods: Vec<FuncDef>,
     ) -> Vec<StructMethodMetadata<'ctx>> {
-        let internal_struct_type = self.struct_table.get(&struct_name).cloned().unwrap();
+        let struct_metadata = self.struct_table.get(&struct_name).cloned().unwrap();
 
         let mut struct_methods: Vec<StructMethodMetadata<'ctx>> = Vec::new();
         for func_def in methods {
-            let method_metadata = self.build_method_def(func_def, struct_name.clone(), internal_struct_type.clone());
+            let method_metadata = self.build_method_def(func_def, struct_name.clone(), struct_metadata.clone());
             struct_methods.push(method_metadata);
         }
         struct_methods
     }
 
     pub(crate) fn build_struct_init(&mut self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> InternalValue<'ctx> {
-        let internal_struct_type = self.lookup_struct(
+        let struct_metadata = self.lookup_struct(
             struct_init.struct_name.clone(),
             struct_init.loc.clone(),
             struct_init.span.end,
         );
 
-        if internal_struct_type.struct_metadata.fields.len() != struct_init.field_inits.len() {
+        // let struct_metadata =
+
+        if struct_metadata.fields.len() != struct_init.field_inits.len() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
                     "Struct '{}' has {} fields, but {} fields were provided.",
                     struct_init.struct_name.to_string(),
-                    internal_struct_type.struct_metadata.fields.len(),
+                    struct_metadata.fields.len(),
                     struct_init.field_inits.len()
                 )),
                 location: Some(DiagLoc {
@@ -520,11 +543,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        let mut struct_value = internal_struct_type.struct_metadata.struct_type.get_undef();
+        let mut struct_value = struct_metadata.struct_type.get_undef();
 
         for field_init in struct_init.field_inits {
-            let field_idx = match internal_struct_type
-                .struct_metadata
+            let field_idx = match struct_metadata
                 .fields
                 .iter()
                 .position(|field| field.name == field_init.name.clone())
@@ -549,7 +571,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             };
 
-            let field = internal_struct_type.struct_metadata.fields.get(field_idx).unwrap();
+            let field = struct_metadata.fields.get(field_idx).unwrap();
 
             let field_type = self.build_type(field.ty.clone(), field.loc.clone(), field.span.end);
 
@@ -591,9 +613,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .into_struct_value();
         }
 
-        InternalValue::StructValue(struct_value, InternalType::StructType(internal_struct_type.clone()))
+        InternalValue::StructValue(
+            struct_value,
+            InternalType::StructType(struct_metadata.to_internal_struct_type()),
+        )
     }
 
+    // FIXME
     pub(crate) fn build_struct_field_access(
         &self,
         pointer: PointerValue<'ctx>,
@@ -602,102 +628,105 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> InternalValue<'ctx> {
-        match struct_internal_type {
-            InternalType::StructType(internal_struct_type) => {
-                match internal_struct_type
-                    .struct_metadata
-                    .fields
-                    .iter()
-                    .enumerate()
-                    .find(|(_, f)| f.name == field_name)
-                {
-                    Some((field_idx, field)) => {
-                        let field_ptr = self
-                            .builder
-                            .build_struct_gep(
-                                internal_struct_type.struct_metadata.struct_type,
-                                pointer,
-                                field_idx.try_into().unwrap(),
-                                "gep",
-                            )
-                            .unwrap();
+        todo!();
 
-                        InternalValue::Lvalue(Lvalue {
-                            ptr: field_ptr,
-                            pointee_ty: self.build_type(field.ty.clone(), field.loc.clone(), field.span.end),
-                        })
-                    }
-                    None => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(format!(
-                                "Struct '{}' has not field named '{}'.",
-                                module_segments_as_string(internal_struct_type.struct_metadata.struct_name.segments),
-                                field_name
-                            )),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                }
-            }
-            InternalType::UnnamedStruct(internal_unnamed_struct_type) => internal_unnamed_struct_type
-                .unnamed_struct_metadata
-                .fields
-                .iter()
-                .enumerate()
-                .find(|(_, f)| f.0 == field_name)
-                .map_or_else(
-                    || {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(format!("Unnamed struct has not field named '{}'.", field_name)),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    },
-                    |(field_idx, (_, field_type))| {
-                        let field_ptr = self
-                            .builder
-                            .build_struct_gep(
-                                internal_unnamed_struct_type.unnamed_struct_metadata.struct_type,
-                                pointer,
-                                field_idx.try_into().unwrap(),
-                                "gep",
-                            )
-                            .unwrap();
+        // match struct_internal_type {
+        //     InternalType::StructType(internal_struct_type) => {
+        //         let struct_metadata = internal_struct_type.struct_metadata.clone();
 
-                        InternalValue::Lvalue(Lvalue {
-                            ptr: field_ptr,
-                            pointee_ty: field_type.clone(),
-                        })
-                    },
-                ),
-            _ => unreachable!(),
-        }
+        //         match struct_metadata
+        //             .fields
+        //             .iter()
+        //             .enumerate()
+        //             .find(|(_, f)| f.name == field_name)
+        //         {
+        //             Some((field_idx, field)) => {
+        //                 let field_ptr = self
+        //                     .builder
+        //                     .build_struct_gep(
+        //                         struct_metadata.struct_type,
+        //                         pointer,
+        //                         field_idx.try_into().unwrap(),
+        //                         "gep",
+        //                     )
+        //                     .unwrap();
+
+        //                 InternalValue::Lvalue(Lvalue {
+        //                     ptr: field_ptr,
+        //                     pointee_ty: self.build_type(field.ty.clone(), field.loc.clone(), field.span.end),
+        //                 })
+        //             }
+        //             None => {
+        //                 display_single_diag(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: DiagKind::Custom(format!(
+        //                         "Struct '{}' has not field named '{}'.",
+        //                         module_segments_as_string(struct_metadata.struct_name.segments),
+        //                         field_name
+        //                     )),
+        //                     location: Some(DiagLoc {
+        //                         file: self.file_path.clone(),
+        //                         line: loc.line,
+        //                         column: loc.column,
+        //                         length: span_end,
+        //                     }),
+        //                 });
+        //                 exit(1);
+        //             }
+        //         }
+        //     }
+        //     InternalType::UnnamedStruct(internal_unnamed_struct_type) => internal_unnamed_struct_type
+        //         .unnamed_struct_metadata
+        //         .fields
+        //         .iter()
+        //         .enumerate()
+        //         .find(|(_, f)| f.0 == field_name)
+        //         .map_or_else(
+        //             || {
+        //                 display_single_diag(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: DiagKind::Custom(format!("Unnamed struct has not field named '{}'.", field_name)),
+        //                     location: Some(DiagLoc {
+        //                         file: self.file_path.clone(),
+        //                         line: loc.line,
+        //                         column: loc.column,
+        //                         length: span_end,
+        //                     }),
+        //                 });
+        //                 exit(1);
+        //             },
+        //             |(field_idx, (_, field_type))| {
+        //                 let field_ptr = self
+        //                     .builder
+        //                     .build_struct_gep(
+        //                         internal_unnamed_struct_type.unnamed_struct_metadata.struct_type,
+        //                         pointer,
+        //                         field_idx.try_into().unwrap(),
+        //                         "gep",
+        //                     )
+        //                     .unwrap();
+
+        //                 InternalValue::Lvalue(Lvalue {
+        //                     ptr: field_ptr,
+        //                     pointee_ty: field_type.clone(),
+        //                 })
+        //             },
+        //         ),
+        //     _ => unreachable!(),
+        // }
     }
 
     pub(crate) fn build_method_call(&mut self, scope: ScopeRef<'ctx>, method_call: MethodCall) -> InternalValue<'ctx> {
         match *method_call.operand.clone() {
             Expression::Identifier(identifier) => match self.lookup_definition(identifier.name.clone()) {
                 Some(definition_lookup_result) => match definition_lookup_result {
-                    DefinitionLookupResult::Struct(internal_struct_type) => {
-                        self.build_static_method_call(scope, method_call, internal_struct_type)
+                    DefinitionLookupResult::Struct(struct_metadata) => {
+                        self.build_static_method_call(scope, method_call, struct_metadata.to_internal_struct_type())
                     }
                     DefinitionLookupResult::Typedef(typedef_metadata) => {
                         match self.typedef_as_struct_type(typedef_metadata) {
                             Some(internal_struct_type) => {
-                                self.build_static_method_call(scope, method_call, internal_struct_type)
+                                self.build_static_method_call(scope, method_call, internal_struct_type.clone())
                             }
                             None => {
                                 display_single_diag(Diag {
@@ -729,19 +758,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         });
                         exit(1);
                     }
-                    DefinitionLookupResult::GlobalVariable(global_variable_metadata) => todo!(),
+                    DefinitionLookupResult::GlobalVariable(_) => todo!(),
                 },
                 None => self.build_instance_method_call(Rc::clone(&scope), method_call),
             },
             Expression::ModuleImport(module_import) => {
                 match self.find_defined_type(module_import.clone(), method_call.loc.clone(), method_call.span.end) {
                     Some(defined_type) => match defined_type {
-                        DefinedType::Struct(internal_struct_type) => {
-                            self.build_static_method_call(scope, method_call, internal_struct_type)
-                        }
+                        DefinedType::Struct(struct_metadata) => self.build_static_method_call(
+                            scope,
+                            method_call,
+                            InternalStructType {
+                                type_str: module_segments_as_string(struct_metadata.struct_name.segments.clone()),
+                                struct_name: struct_metadata.struct_name.clone(),
+                                struct_type: struct_metadata.struct_type.clone(),
+                                fields: struct_metadata.fields.clone(),
+                                methods: struct_metadata.methods.clone(),
+                                definition_id: struct_metadata.definition_id.clone(),
+                            },
+                        ),
                         DefinedType::Typedef(typedef_metadata) => match self.typedef_as_struct_type(typedef_metadata) {
                             Some(internal_struct_type) => {
-                                self.build_static_method_call(scope, method_call, internal_struct_type)
+                                self.build_static_method_call(scope, method_call, internal_struct_type.clone())
                             }
                             None => {
                                 display_single_diag(Diag {
@@ -774,7 +812,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         internal_struct_type: InternalStructType<'ctx>,
     ) -> InternalValue<'ctx> {
         let method_metadata = internal_struct_type
-            .struct_metadata
             .methods
             .iter()
             .find(|method| method.method_decl.get_usable_name() == method_call.method_name.name);
@@ -859,7 +896,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     kind: DiagKind::Custom(format!(
                         "Static method '{}' not defined for struct '{}'.",
                         method_call.method_name.name.clone(),
-                        module_segments_as_string(internal_struct_type.struct_metadata.struct_name.segments)
+                        module_segments_as_string(internal_struct_type.struct_name.segments)
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -919,17 +956,65 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn lookup_struct_by_definition_id(
+        &self,
+        definition_id: u64,
+        struct_name: String,
+        loc: Location,
+        span_end: usize,
+    ) -> StructMetadata<'ctx> {
+        // TODO add typedef table support
+        match self.struct_table.iter().find(|(_, v)| v.definition_id == definition_id) {
+            Some((_, struct_metadata)) => struct_metadata.clone(),
+            None => {
+                let mut final_struct_metadata: Option<StructMetadata<'ctx>> = None;
+                for imported_module in self.imported_modules.clone() {
+                    match imported_module
+                        .metadata
+                        .struct_table
+                        .iter()
+                        .find(|v| v.1.definition_id == definition_id)
+                    {
+                        Some((_, struct_metadata)) => final_struct_metadata = Some(struct_metadata.clone()),
+                        None => todo!(),
+                    }
+                }
+                match final_struct_metadata {
+                    Some(struct_metadata) => struct_metadata,
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(format!("Struct '{}' not found anywhere.", struct_name)),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            }
+        }
+    }
+
     pub(crate) fn lookup_struct(
         &self,
         struct_name: ModuleImport,
         loc: Location,
         span_end: usize,
-    ) -> InternalStructType<'ctx> {
-        match self.find_defined_type(struct_name.clone(), loc.clone(), span_end) {
+    ) -> StructMetadata<'ctx> {
+        let mut struct_metadata = match self.find_defined_type(struct_name.clone(), loc.clone(), span_end) {
             Some(defined_type) => match defined_type {
-                DefinedType::Struct(internal_struct_type) => internal_struct_type,
+                DefinedType::Struct(struct_metadata) => struct_metadata,
                 DefinedType::Typedef(typedef_metadata) => match typedef_metadata.internal_type.clone() {
-                    InternalType::StructType(internal_struct_type) => internal_struct_type,
+                    InternalType::StructType(internal_struct_type) => self.lookup_struct_by_definition_id(
+                        internal_struct_type.definition_id,
+                        module_segments_as_string(internal_struct_type.struct_name.segments),
+                        loc,
+                        span_end,
+                    ),
                     _ => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
@@ -958,7 +1043,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
-        }
+        };
+
+        struct_metadata.struct_name = struct_name;
+        struct_metadata
     }
 
     pub(crate) fn build_instance_method_call(
@@ -990,18 +1078,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.internal_value_as_rvalue(operand.clone(), method_call.loc.clone(), method_call.span.end);
         }
 
-        let internal_struct_type = match operand_rvalue.clone() {
+        let struct_metadata = match operand_rvalue.clone() {
             InternalValue::StructValue(_, internal_type) => match internal_type {
-                InternalType::StructType(internal_struct_type) => {
-                    // NOTE You gotta know that internal_struct_type does not have any idea about
-                    // struct methods, it means it's methods are empty. That's why we fetch it's metadata from struct_table.
-
-                    self.lookup_struct(
-                        internal_struct_type.struct_metadata.struct_name.clone(),
-                        method_call.loc.clone(),
-                        method_call.span.end,
-                    )
-                }
+                InternalType::StructType(internal_struct_type) => self.lookup_struct_by_definition_id(
+                    internal_struct_type.definition_id,
+                    module_segments_as_string(internal_struct_type.struct_name.segments.clone()),
+                    method_call.loc.clone(),
+                    method_call.span.end,
+                ),
                 _ => unreachable!(),
             },
             InternalValue::PointerValue(_) => {
@@ -1028,8 +1112,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         // let's find the method from struct_metadata
-        let method_metadata_opt = internal_struct_type
-            .struct_metadata
+        let method_metadata_opt = struct_metadata
             .methods
             .iter()
             .find(|method| method.method_decl.get_usable_name() == method_call.method_name.name);
@@ -1111,7 +1194,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         method_call.arguments.clone(),
                         method_metadata.method_params_metadata.clone(),
                         // exclude self modifier
-                        1,
+                        0,
                         static_params_length,
                         method_metadata.method_decl.get_usable_name(),
                         method_call.loc.clone(),
@@ -1136,7 +1219,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     kind: DiagKind::Custom(format!(
                         "Method '{}' not defined for struct '{}'.",
                         method_call.method_name.name.clone(),
-                        module_segments_as_string(internal_struct_type.struct_metadata.struct_name.segments)
+                        module_segments_as_string(struct_metadata.struct_name.segments)
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -1150,6 +1233,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    // FIXME
     pub(crate) fn build_field_access(
         &mut self,
         scope: ScopeRef<'ctx>,
