@@ -576,7 +576,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let field_expr = self.build_expr(Rc::clone(&scope), field_init.value.clone());
             let field_rvalue = self.internal_value_as_rvalue(field_expr, field.loc.clone(), field.span.end);
 
-            if !self.compatible_types(field_type.clone(), field_rvalue.get_type(self.string_type.clone())) {
+            if !self.compatible_types(field_type.clone(), field_rvalue.get_type(self.context.i8_type())) {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
@@ -584,7 +584,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         field_idx,
                         module_segments_as_string(struct_init.struct_name.segments),
                         field_type,
-                        field_rvalue.get_type(self.string_type.clone())
+                        field_rvalue.get_type(self.context.i8_type())
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -1059,7 +1059,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.internal_value_as_rvalue(operand.clone(), method_call.loc.clone(), method_call.span.end);
 
         if method_call.is_fat_arrow {
-            if !operand_rvalue.get_type(self.string_type.clone()).is_pointer_type() {
+            if !operand_rvalue.get_type(self.context.i8_type()).is_pointer_type() {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot build fat arrow on non-pointer values.".to_string()),
@@ -1166,10 +1166,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     if let FuncParamKind::SelfModifier(self_modifier) = first_param {
                         match self_modifier {
                             SelfModifier::Copied => {
-                                arguments.push(operand_rvalue.to_basic_metadata());
+                                arguments.push(self.internal_value_to_basic_metadata(operand_rvalue));
                             }
                             SelfModifier::Referenced => {
-                                arguments.push(operand.to_basic_metadata());
+                                arguments.push(self.internal_value_to_basic_metadata(operand));
                             }
                         }
                     }
@@ -1233,7 +1233,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // FIXME
     pub(crate) fn build_field_access(
         &mut self,
         scope: ScopeRef<'ctx>,
@@ -1245,7 +1244,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let rvalue =
                 self.internal_value_as_rvalue(internal_value.clone(), field_access.loc.clone(), field_access.span.end);
 
-            if !rvalue.get_type(self.string_type.clone()).is_pointer_type() {
+            if !rvalue.get_type(self.context.i8_type()).is_pointer_type() {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot build fat arrow on non-pointer values.".to_string()),
@@ -1272,7 +1271,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(format!(
                                 "Expected InternalValue::PointerValue or InternalValue::Lvalue for struct field access but got '{}'.",
-                                internal_value.get_type(self.string_type.clone())
+                                internal_value.get_type(self.context.i8_type())
                             )),
                             location: Some(DiagLoc {
                                 file: self.file_path.clone(),
@@ -1430,15 +1429,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             if let Some(field_type_specifier) = field.field_type.clone() {
                 field_type = self.build_type(field_type_specifier, field.loc.clone(), field.span.end);
             } else {
-                field_type = field_value.get_type(self.string_type.clone());
+                field_type = field_value.get_type(self.context.i8_type());
             }
 
-            if !self.compatible_types(field_type.clone(), field_value.get_type(self.string_type.clone())) {
+            if !self.compatible_types(field_type.clone(), field_value.get_type(self.context.i8_type())) {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "Rvalue with type '{}' is not compatible with field type '{}' for field '{}'.",
-                        field_value.get_type(self.string_type.clone()),
+                        field_value.get_type(self.context.i8_type()),
                         field_type,
                         field.field_name
                     )),
@@ -1463,7 +1462,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         let field_types: Vec<BasicTypeEnum<'ctx>> = field_values
             .iter()
-            .map(|f| f.1.get_type(self.string_type.clone()).to_basic_type(ptr_type).unwrap())
+            .map(|f| f.1.get_type(self.context.i8_type()).to_basic_type(ptr_type).unwrap())
             .collect();
 
         let struct_type = self.context.struct_type(&field_types, unnamed_struct_value.packed);
@@ -1475,7 +1474,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .build_struct_gep(struct_type, struct_alloca, idx.try_into().unwrap(), "gep")
                 .unwrap();
 
-            let field_basic_value: BasicValueEnum<'ctx> = field_value.to_basic_metadata().try_into().unwrap();
+            let field_basic_value: BasicValueEnum<'ctx> =
+                self.internal_value_to_basic_metadata(field_value.clone()).try_into().unwrap();
             self.builder.build_store(field_gep, field_basic_value).unwrap();
         }
 
@@ -1490,10 +1490,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             fields: field_values
                 .iter()
                 .map(|(field_name, field_value)| {
-                    (
-                        field_name.clone(),
-                        field_value.get_type(self.string_type.clone()).clone(),
-                    )
+                    (field_name.clone(), field_value.get_type(self.context.i8_type()).clone())
                 })
                 .collect(),
         };

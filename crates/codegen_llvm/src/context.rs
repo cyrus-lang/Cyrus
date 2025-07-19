@@ -25,10 +25,10 @@ use std::env;
 use std::process::exit;
 use std::rc::Rc;
 use structs::StructTable;
-use types::{InternalStringType, InternalType};
+use types::InternalType;
 use utils::fs::{file_stem, relative_to_absolute};
 use utils::tui::{tui_compile_finished, tui_compiled};
-use values::{InternalValue, StringValue};
+use values::InternalValue;
 
 pub mod build;
 pub mod diag;
@@ -69,7 +69,6 @@ pub struct CodeGenLLVM<'ctx> {
     dependent_modules: HashMap<String, Vec<String>>,
     output_kind: OutputKind,
     final_build_dir: String,
-    string_type: InternalStringType<'ctx>,
     func_table: FuncTable<'ctx>,
     struct_table: StructTable<'ctx>,
     global_variables_table: GlobalVariablesTable<'ctx>,
@@ -133,7 +132,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_block_ref: None,
             terminated_blocks: Vec::new(),
             current_loop_ref: None,
-            string_type: CodeGenLLVM::build_string_type(context),
             module: module.clone(),
             module_id: module_id.clone(),
             imported_modules: Vec::new(),
@@ -182,6 +180,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         cpu: Option<String>,
         target_triple_opt: Option<String>,
     ) -> TargetMachine {
+        Target::initialize_all(&InitializationConfig::default());
+
         let module = module.borrow_mut();
 
         let cpu = if let Some(cpu) = cpu {
@@ -190,7 +190,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TargetMachine::get_host_cpu_name().to_string()
         };
         let features = TargetMachine::get_host_cpu_features().to_string();
-        Target::initialize_native(&InitializationConfig::default()).unwrap();
 
         let target_triple = if let Some(target_triple_str) = target_triple_opt {
             TargetTriple::create(&target_triple_str)
@@ -220,7 +219,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        module.set_triple(&target_triple);
+        module.set_triple(&target_machine.get_triple());
         module.set_data_layout(&target_machine.get_target_data().get_data_layout());
         target_machine
     }

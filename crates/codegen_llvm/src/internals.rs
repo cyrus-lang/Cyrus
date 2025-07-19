@@ -29,13 +29,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::FloatValue(float_value, internal_type) => todo!(),
             InternalValue::ArrayValue(array_value, internal_type) => todo!(),
             InternalValue::VectorValue(vector_value, internal_type) => todo!(),
-            InternalValue::StringValue(string_value) => todo!(),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "No any internal method found for value of type '{}'.",
-                        internal_value.get_type(self.string_type.clone())
+                        internal_value.get_type(self.context.i8_type())
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
@@ -55,14 +54,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> InternalValue<'ctx> {
-        if int_value.is_const() {
-            let bool_value = int_value.get_zero_extended_constant().unwrap();
-            let bool_value_str = if bool_value == 1 { "true" } else { "false" };
-            self.build_string_literal(bool_value_str.to_string(), loc, span_end)
-        } else {
-            // TODO Implement bool to string formatter internal function.
-            unimplemented!();
-        }
+        todo!();
+        // if int_value.is_const() {
+        //     let bool_value = int_value.get_zero_extended_constant().unwrap();
+        //     let bool_value_str = if bool_value == 1 { "true" } else { "false" };
+        //     self.build_string_literal(bool_value_str.to_string(), loc, span_end)
+        // } else {
+        //     // TODO Implement bool to string formatter internal function.
+        //     unimplemented!();
+        // }
     }
 
     fn undefined_internal_method_error(

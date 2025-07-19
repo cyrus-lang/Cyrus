@@ -9,7 +9,8 @@ use ast::ast::{
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
-use inkwell::llvm_sys::core::LLVMFunctionType;
+use inkwell::attributes::{Attribute, AttributeLoc};
+use inkwell::llvm_sys::core::{LLVMFunctionType, LLVMGetEnumAttributeKindForName};
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
 use inkwell::types::FunctionType;
@@ -38,6 +39,36 @@ pub struct FuncParamsMetadata<'a> {
 pub type FuncTable<'a> = HashMap<String, FuncMetadata<'a>>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn add_function_attributes(&self, func: FunctionValue) {
+        let attr_kind_id = |kind: &str| Attribute::get_named_enum_kind_id(kind);
+
+        func.add_attribute(
+            AttributeLoc::Function,
+            self.context.create_enum_attribute(attr_kind_id("uwtable"), 2),
+        );
+        func.add_attribute(
+            AttributeLoc::Function,
+            self.context.create_enum_attribute(attr_kind_id("ssp"), 0),
+        );
+        func.add_attribute(
+            AttributeLoc::Function,
+            self.context.create_enum_attribute(attr_kind_id("nounwind"), 0),
+        );
+
+        func.add_attribute(
+            AttributeLoc::Function,
+            self.context.create_string_attribute("frame-pointer", "all"),
+        );
+        func.add_attribute(
+            AttributeLoc::Function,
+            self.context.create_string_attribute("no-trapping-math", "true"),
+        );
+        func.add_attribute(
+            AttributeLoc::Function,
+            self.context.create_string_attribute("stack-protector-buffer-size", "8"),
+        );
+    }
+
     pub(crate) fn build_func_linkage(&self, access_specifier: AccessSpecifier) -> Linkage {
         match access_specifier {
             AccessSpecifier::Extern => Linkage::External,
@@ -209,18 +240,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         let func_linkage = self.build_func_linkage(func_decl.access_specifier.clone());
-        let func_ptr =
+        let func_value =
             self.module
                 .borrow_mut()
                 .deref_mut()
                 .add_function(&func_decl.name, func_type, Some(func_linkage));
 
+        self.add_function_attributes(func_value);
+        
         if insert_to_func_table {
             self.func_table.insert(
                 func_decl.get_usable_name(),
                 FuncMetadata {
                     func_decl: func_decl.clone(),
-                    ptr: func_ptr,
+                    ptr: func_value,
                     return_type,
                     imported_from: None,
                     params_metadata: params_metadata.clone(),
@@ -229,7 +262,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
         }
 
-        func_ptr
+        func_value
     }
 
     pub(crate) fn build_func_define_local_params(
@@ -505,6 +538,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .deref_mut()
             .add_function(&actual_func_name, func_type, func_linkage);
 
+        self.add_function_attributes(func_value);
+
         self.func_table.insert(
             func_decl.get_usable_name(),
             FuncMetadata {
@@ -679,7 +714,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None => todo!(),
             };
 
-            if !self.compatible_types(param_internal_type.clone(), rvalue.get_type(self.string_type.clone())) {
+            if !self.compatible_types(param_internal_type.clone(), rvalue.get_type(self.context.i8_type())) {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
@@ -720,7 +755,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
                         let rvalue = self.internal_value_as_rvalue(lvalue, loc.clone(), span_end);
 
-                        let argument_type = rvalue.get_type(self.string_type.clone());
+                        let argument_type = rvalue.get_type(self.context.i8_type());
                         if !self.compatible_types(argument_type, variadic_element_type.clone()) {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
@@ -750,7 +785,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     for arg in arguments[static_params_length..].iter().as_slice() {
                         let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
                         let rvalue = self.internal_value_as_rvalue(lvalue, loc.clone(), span_end);
-                        final_arguments.push(rvalue.to_basic_metadata());
+                        final_arguments.push(self.internal_value_to_basic_metadata(rvalue));
                     }
                 }
             }

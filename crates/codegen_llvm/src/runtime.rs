@@ -96,7 +96,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let panic_msg = self.build_global_str(format!(
             "panic: Index out of bounds!\nAttempted to access index %d in an array of size {}.",
             array_length
-        ));
+        ), Location::default(), 0).0;
 
         let module = self.module.borrow_mut();
 
