@@ -1,9 +1,9 @@
-use crate::structs::StructMetadata;
 use crate::CodeGenLLVM;
 use crate::InternalValue;
 use crate::StringValue;
 use crate::diag::*;
 use crate::modules::DefinitionLookupResult;
+use crate::structs::StructMetadata;
 use crate::structs::StructMethodMetadata;
 use crate::structs::UnnamedStructTypeMetadata;
 use crate::values::Lvalue;
@@ -107,7 +107,7 @@ pub struct InternalStructType<'a> {
     pub struct_type: StructType<'a>,
     pub fields: Vec<Field>,
     pub methods: Vec<StructMethodMetadata<'a>>,
-    pub definition_id: u64
+    pub definition_id: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -161,7 +161,7 @@ impl<'a> DefinedType<'a> {
                 struct_type: struct_metadata.struct_type.clone(),
                 methods: struct_metadata.methods.clone(),
                 fields: struct_metadata.fields.clone(),
-                definition_id: struct_metadata.definition_id
+                definition_id: struct_metadata.definition_id,
             }),
             DefinedType::Typedef(typedef_metadata) => typedef_metadata.internal_type.clone(),
         }
@@ -329,9 +329,7 @@ impl<'a> InternalType<'a> {
                 struct_value: value.into_struct_value(),
             })),
             InternalType::ConstType(internal_const_type) => internal_const_type.inner_type.into_internal_value(value),
-            InternalType::VoidType(_) => {
-                panic!() // FIXME How we can convert void into internal_type? |:
-            }
+            InternalType::VoidType(_) => unreachable!(),
         }
     }
 

@@ -1,7 +1,14 @@
 import logger;
+import std::libc;
 
 func main() {
-	// #logger = logger::Logger { group_name: "aa" };
-	#logger = logger::Logger.new("services.example");
-	logger.greeting("Taha");
+	#a = struct { name = "Taha" };
+
+	libc::printf("name: %s\n", a.name);
+
+	// #logger = logger::MyLogger.new("services.example");
+	// libc::printf("Group Name: %s\n", logger.group_name);
+	// logger.greeting("Taha");
+	// logger.logf("We believe in it.");
+	// logger.errorf("No problem remains tho.");
 }

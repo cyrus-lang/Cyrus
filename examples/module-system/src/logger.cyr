@@ -9,6 +9,8 @@ public struct Person {
     }
 }
 
+// public type MyLogger = Logger;
+
 public struct Logger {
 	group_name: char*;
 
@@ -17,13 +19,13 @@ public struct Logger {
 		return Logger { group_name: group_name };
 	}
 
-	// public func logf(self, format: char*) {
-	// 	libc::fprintf(libc::stdout, "[info][%s] %s\n", self.group_name, format);
-	// }
+	public func logf(self, format: char*) {
+		libc::fprintf(libc::stdout, "[info][%s] %s\n", self.group_name, format);
+	}
 
-	// public func errorf(self, format: char*) {
-	// 	libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
-	// }
+	public func errorf(self, format: char*) {
+		libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
+	}
 
     public func greeting(self, name: char*) {
         libc::fprintf(libc::stdout, "Hello, %s!\n", name);
