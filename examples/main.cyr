@@ -1,7 +1,5 @@
-// import std::libc{printf, c_bool};
-import std::libc;
-import std::libc::abi{c_void};
+extern func printf(format: const char*, ...) void;
 
 func main() {
-    // #a: abi::c_void*;
+    
 }
