@@ -11,20 +11,6 @@ use utils::fs::{get_directory_of_file, read_file};
 const PROJECT_FILE_PATH: &str = "Project.toml";
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum CpuValue {
-    None,
-    // TODO
-}
-
-impl std::fmt::Display for CpuValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CpuValue::None => write!(f, "none"),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum OptimizeLevel {
     None,
     O1,
@@ -45,19 +31,26 @@ impl std::fmt::Display for OptimizeLevel {
 
 #[derive(Parser, Debug, Clone)]
 struct CompilerOptions {
-    #[clap(long, value_enum, default_value_t = CpuValue::None, help = "Set CPU name")]
-    cpu: CpuValue,
+    #[clap(long, default_value_t = String::new(),
+        help = "Specify the target triple (e.g., x86_64-pc-linux-gnu, aarch64-apple-darwin). Defaults to host triple if not specified."
+    )]
+    target_triple: String,
 
-    #[clap(long, value_enum, default_value_t = OptimizeLevel::None, help = "Set optimization level")]
+    #[clap(long, default_value_t = String::new(),
+        help = "Specify the target CPU name (e.g., skylake, broadwell, generic). Defaults to host CPU if not specified."
+    )]
+    cpu: String,
+
+    #[clap(long, value_enum, default_value_t = OptimizeLevel::None, help = "Set optimization level.")]
     optimize: OptimizeLevel,
 
-    #[clap(long, value_name = "LIBRARY_PATH", help = "Add a library search path")]
+    #[clap(long, value_name = "LIBRARY_PATH", help = "Add a library search path.")]
     library_path: Vec<String>,
 
-    #[clap(long = "library", value_name = "LIB", help = "Link a library")]
+    #[clap(long = "library", value_name = "LIB", help = "Link a library.")]
     libraries: Vec<String>,
 
-    #[clap(long = "sources", value_name = "SOURCES", help = "Source files")]
+    #[clap(long = "sources", value_name = "SOURCES", help = "Source files.")]
     sources_dir: Vec<String>,
 
     #[clap(
@@ -67,22 +60,22 @@ struct CompilerOptions {
     )]
     build_dir: Option<String>,
 
-    #[clap(long, short = 'q', help = "Suppress unnecessary output messages")]
+    #[clap(long, short = 'q', help = "Suppress unnecessary output messages.")]
     quiet: bool,
 
-    #[clap(long, help = "Set cyrus standard library path")]
+    #[clap(long, help = "Set cyrus standard library path.")]
     stdlib: Option<String>,
 
-    #[clap(long = "target-machine", help = "Display Target Machine information")]
+    #[clap(long = "target-machine", help = "Display Target Machine information.")]
     display_target_machine: bool,
 
     #[clap(long, value_enum, default_value_t = RelocModeOptions::Default,
-    help = "Set the relocation model for code generation"
+    help = "Set the relocation model for code generation."
     )]
     reloc_mode: RelocModeOptions,
 
     #[clap(long, value_enum, default_value_t = CodeModelOptions::Default,
-    help = "Set the code model for code generation"
+    help = "Set the code model for code generation."
     )]
     code_model: CodeModelOptions,
 }
@@ -96,7 +89,6 @@ impl CompilerOptions {
                 OptimizeLevel::O2 => Some(2),
                 OptimizeLevel::O3 => Some(3),
             },
-            cpu: Some(self.cpu.to_string()),
             library_path: self.library_path.clone(),
             libraries: self.libraries.clone(),
             sources_dir: self.sources_dir.clone(),
@@ -116,6 +108,20 @@ impl CompilerOptions {
             display_target_machine: self.display_target_machine,
             reloc_mode: self.reloc_mode.clone(),
             code_model: self.code_model.clone(),
+            target_triple: {
+                if self.target_triple.trim() == "" {
+                    None
+                } else {
+                    Some(self.target_triple.clone())
+                }
+            },
+            cpu: {
+                if self.cpu.trim() == "" {
+                    None
+                } else {
+                    Some(self.cpu.to_string())
+                }
+            },
         }
     }
 }

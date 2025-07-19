@@ -1,12 +1,15 @@
 use crate::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
+use crate::opts::CodeModelOptions;
+use crate::opts::RelocModeOptions;
 use crate::scope::Scope;
 use crate::scope::ScopeRef;
 use inkwell::module::FlagBehavior;
 use inkwell::passes::PassBuilderOptions;
 use inkwell::passes::PassManager;
 use inkwell::targets::FileType;
+use inkwell::targets::RelocMode;
 use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;
@@ -24,7 +27,6 @@ use std::process::Command;
 use std::process::Stdio;
 use std::process::exit;
 use std::rc::Rc;
-use utils::fs::absolute_to_relative;
 use utils::fs::dylib_extension;
 use utils::fs::ensure_output_dir;
 use utils::fs::executable_extension;
@@ -89,30 +91,41 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn enable_module_flags(&mut self) {
         let module_ref = self.module.borrow_mut();
 
-        let pic_level = self.context.i32_type().const_int(2, false);
-        module_ref.add_basic_value_flag("PIC Level", FlagBehavior::Error, pic_level);
+        if matches!(
+            self.opts.reloc_mode,
+            RelocModeOptions::PIC | RelocModeOptions::DynamicNoPic
+        ) {
+            let pic_level = self.context.i32_type().const_int(2, false);
+            module_ref.add_basic_value_flag("PIC Level", FlagBehavior::Error, pic_level);
 
-        let pie_level = self.context.i32_type().const_int(2, false);
-        module_ref.add_basic_value_flag("PIE Level", FlagBehavior::Error, pie_level);
+            let pie_level = self.context.i32_type().const_int(2, false);
+            module_ref.add_basic_value_flag("PIE Level", FlagBehavior::Error, pie_level);
+        }
 
-        let uwtable_value = self.context.i32_type().const_int(2, false);
-        module_ref.add_basic_value_flag("uwtable", FlagBehavior::Error, uwtable_value);
+        if !self.opts.code_model == CodeModelOptions::Kernel {
+            // Unwind tables (uwtable) are not supported in 'kernel' code model.
+            // Kernel code typically disables exception handling and stack unwinding.
+            // Enabling uwtable may cause linker errors or generate invalid metadata.
+            let uwtable_value = self.context.i32_type().const_int(2, false);
+            module_ref.add_basic_value_flag("uwtable", FlagBehavior::Error, uwtable_value);
+        }
     }
 
     pub(crate) fn execute_linker(&self, output_path: String, object_files: Vec<String>, extra_args: Vec<String>) {
         let linker = "clang";
 
         let mut linker_command = std::process::Command::new(linker);
-        linker_command.arg("-fPIE");
+        // FIXME Remove
+        // linker_command.arg("-fPIE");
         linker_command.arg("-o").arg(output_path);
 
-        for path in object_files {
+        object_files.iter().for_each(|path| {
             linker_command.arg(path);
-        }
+        });
 
-        for path in extra_args {
+        extra_args.iter().for_each(|path| {
             linker_command.arg(path);
-        }
+        });
 
         match linker_command.output() {
             Ok(output) => {
@@ -338,7 +351,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 main_func.span.end,
                 main_func.params.list.clone(),
                 None,
-                false
+                false,
             );
 
             let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
@@ -375,6 +388,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
     }
 
+    pub(crate) fn apply_llc_flags(&self) -> Vec<String> {
+        let mut flags: Vec<String> = Vec::new();
+        if let Some(reloc_mode_str) = self.opts.reloc_mode.to_linker_reloc_mode() {
+            flags.push(reloc_mode_str);
+        }
+        if let Some(target_triple_str) = &self.opts.target_triple {
+            flags.push(format!("--mtriple={}", target_triple_str));
+        }
+        if let Some(cpu_str) = &self.opts.cpu {
+            flags.push(format!("--mcpu={}", cpu_str));
+        }
+        if let Some(code_model_str) = self.opts.code_model.to_linker_code_model() {
+            flags.push(code_model_str);
+        }
+        flags
+    }
+
     pub(crate) fn generate_object_file_internal(&self, output_path: String) {
         let temp_dir = env::temp_dir();
         let temp_ll_file_path = temp_dir.join("module.ll");
@@ -397,37 +427,43 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .print_to_file(&temp_ll_file_path)
                 .map_err(|err| format!("Failed to print LLVM IR to temporary file: {}", err))?;
 
-            let llvm_as_command = Command::new("llvm-as")
-                .arg(&temp_ll_file_path)
-                .arg("-o")
-                .arg(&temp_bc_file_path)
+            let mut llvm_as_command = Command::new("llvm-as");
+            llvm_as_command.arg(&temp_ll_file_path);
+            llvm_as_command.arg("-o");
+            llvm_as_command.arg(&temp_bc_file_path);
+
+            let llvm_as_command_output = llvm_as_command
                 .output()
                 .map_err(|e| format!("Failed to execute llvm-as command: {}", e))?;
 
-            if !llvm_as_command.status.success() {
+            if !llvm_as_command_output.status.success() {
                 return Err(format!(
                     "llvm-as command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
-                    llvm_as_command.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&llvm_as_command.stdout),
-                    String::from_utf8_lossy(&llvm_as_command.stderr)
+                    llvm_as_command_output.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&llvm_as_command_output.stdout),
+                    String::from_utf8_lossy(&llvm_as_command_output.stderr)
                 ));
             }
 
-            let llc_command = Command::new("llc")
-                .arg("-filetype=obj")
-                .arg("--relocation-model=pic")
-                .arg(&temp_bc_file_path)
-                .arg("-o")
-                .arg(&output_path)
+            let mut llc_command = Command::new("llc");
+            self.apply_llc_flags().iter().for_each(|flag| {
+                llc_command.arg(flag.clone());
+            });
+            llc_command.arg("-filetype=obj");
+            llc_command.arg(&temp_bc_file_path);
+            llc_command.arg("-o");
+            llc_command.arg(&output_path);
+
+            let llc_command_output = llc_command
                 .output()
                 .map_err(|e| format!("Failed to execute llc command: {}", e))?;
 
-            if !llc_command.status.success() {
+            if !llc_command_output.status.success() {
                 return Err(format!(
                     "llc command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
-                    llc_command.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&llc_command.stdout),
-                    String::from_utf8_lossy(&llc_command.stderr)
+                    llc_command_output.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&llc_command_output.stdout),
+                    String::from_utf8_lossy(&llc_command_output.stderr)
                 ));
             }
 

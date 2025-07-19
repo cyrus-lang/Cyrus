@@ -1,10 +1,10 @@
-import logger;
-import std::libc;
+// import logger;
+// import std::libc;
 
 func main() {
-	#a = struct { name = "Taha" };
+	// #a = struct { name = "Taha" };
 
-	libc::printf("name: %s\n", a.name);
+	// libc::printf("name: %s\n", a.name);
 
 	// #logger = logger::MyLogger.new("services.example");
 	// libc::printf("Group Name: %s\n", logger.group_name);

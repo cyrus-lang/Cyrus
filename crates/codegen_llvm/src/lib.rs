@@ -14,7 +14,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
-use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
+use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple};
 use inkwell::values::PointerValue;
 use inkwell::{AddressSpace, OptimizationLevel};
 use opts::Options;
@@ -95,6 +95,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Rc::clone(&module),
             opts.reloc_mode.to_llvm_reloc_mode(),
             opts.code_model.to_llvm_code_model(),
+            opts.cpu.clone(),
+            opts.target_triple.clone(),
         );
 
         let final_build_dir = {
@@ -177,24 +179,47 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module: Rc<RefCell<Module>>,
         reloc_mode: RelocMode,
         code_model: CodeModel,
+        cpu: Option<String>,
+        target_triple_opt: Option<String>,
     ) -> TargetMachine {
         let module = module.borrow_mut();
 
-        Target::initialize_native(&InitializationConfig::default()).unwrap();
-        let target_triple = TargetMachine::get_default_triple();
-        let cpu = TargetMachine::get_host_cpu_name().to_string();
+        let cpu = if let Some(cpu) = cpu {
+            cpu
+        } else {
+            TargetMachine::get_host_cpu_name().to_string()
+        };
         let features = TargetMachine::get_host_cpu_features().to_string();
+        Target::initialize_native(&InitializationConfig::default()).unwrap();
+
+        let target_triple = if let Some(target_triple_str) = target_triple_opt {
+            TargetTriple::create(&target_triple_str)
+        } else {
+            TargetMachine::get_default_triple()
+        };
+
         let target = Target::from_triple(&target_triple).unwrap();
-        let target_machine = target
-            .create_target_machine(
-                &target_triple,
-                &cpu,
-                &features,
-                OptimizationLevel::Default,
-                reloc_mode,
-                code_model,
-            )
-            .unwrap();
+        let target_machine = match target.create_target_machine(
+            &target_triple,
+            &cpu,
+            &features,
+            OptimizationLevel::Default,
+            reloc_mode,
+            code_model,
+        ) {
+            Some(target_machine) => target_machine,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Failed to create LLVM Target Machine with given target_triple, cpu, features.",
+                    )),
+                    location: None,
+                });
+                exit(1);
+            }
+        };
+
         module.set_triple(&target_triple);
         module.set_data_layout(&target_machine.get_target_data().get_data_layout());
         target_machine

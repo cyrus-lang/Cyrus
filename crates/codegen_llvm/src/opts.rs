@@ -15,6 +15,7 @@ pub enum RelocModeOptions {
 #[derive(Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum CodeModelOptions {
     Default,
+    Tiny,
     Small,
     Kernel,
     Medium,
@@ -28,7 +29,6 @@ pub struct Options {
     pub project_version: Option<String>,
     pub cyrus_version: Option<String>,
     pub authors: Option<Vec<String>>,
-    pub cpu: Option<String>,
     pub opt_level: Option<i32>,
     pub library_path: Vec<String>,
     pub libraries: Vec<String>,
@@ -39,6 +39,8 @@ pub struct Options {
     pub display_target_machine: bool,
     pub reloc_mode: RelocModeOptions,
     pub code_model: CodeModelOptions,
+    pub cpu: Option<String>,
+    pub target_triple: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -54,7 +56,6 @@ impl Options {
             project_name: None,
             authors: None,
             opt_level: None,
-            cpu: None,
             library_path: Vec::new(),
             libraries: Vec::new(),
             build_dir: BuildDir::Default,
@@ -66,6 +67,8 @@ impl Options {
             display_target_machine: false,
             reloc_mode: RelocModeOptions::Default,
             code_model: CodeModelOptions::Default,
+            target_triple: None,
+            cpu: None,
         }
     }
 
@@ -108,6 +111,7 @@ impl Options {
                 CodeModelOptions::Default => self.code_model.clone(),
                 code_model @ _ => code_model,
             },
+            target_triple: instance.target_triple.or(self.target_triple.clone()),
         };
     }
 
@@ -149,7 +153,6 @@ impl Options {
 
             options.build_dir = build_dir;
 
-            // TODO Get `Target Platform` with `cpu` keyword.
             // TODO Get `Compiler Version` with `version` keyword.
             // TODO Get `Input Sources` with `sources` keyword.
         }
@@ -200,6 +203,7 @@ impl fmt::Display for CodeModelOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CodeModelOptions::Default => write!(f, "default"),
+            CodeModelOptions::Tiny => write!(f, "tiny"),
             CodeModelOptions::Small => write!(f, "small"),
             CodeModelOptions::Kernel => write!(f, "kernel"),
             CodeModelOptions::Medium => write!(f, "medium"),
@@ -228,16 +232,43 @@ impl RelocModeOptions {
             RelocModeOptions::DynamicNoPic => RelocMode::DynamicNoPic,
         }
     }
+
+    pub fn to_linker_reloc_mode(&self) -> Option<String> {
+        match match self {
+            RelocModeOptions::Default => None,
+            RelocModeOptions::Static => Some("static"),
+            RelocModeOptions::PIC => Some("pic"),
+            RelocModeOptions::DynamicNoPic => Some("dynamic-no-pic"),
+        } {
+            Some(v) => Some(format!("--relocation-model={}", v)),
+            None => None,
+        }
+    }
 }
 
 impl CodeModelOptions {
     pub fn to_llvm_code_model(&self) -> CodeModel {
         match self {
             CodeModelOptions::Default => CodeModel::Default,
+            CodeModelOptions::Tiny => CodeModel::Default,
             CodeModelOptions::Small => CodeModel::Small,
             CodeModelOptions::Kernel => CodeModel::Kernel,
             CodeModelOptions::Medium => CodeModel::Medium,
             CodeModelOptions::Large => CodeModel::Large,
+        }
+    }
+
+    pub fn to_linker_code_model(&self) -> Option<String> {
+        match match self {
+            CodeModelOptions::Default => None,
+            CodeModelOptions::Tiny => Some("tiny"),
+            CodeModelOptions::Small => Some("small"),
+            CodeModelOptions::Kernel => Some("kernel"),
+            CodeModelOptions::Medium => Some("medium"),
+            CodeModelOptions::Large => Some("large"),
+        } {
+            Some(v) => Some(format!("--code-model={}", v)),
+            None => None,
         }
     }
 }
