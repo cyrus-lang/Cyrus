@@ -1,5 +1,6 @@
 extern func printf(format: const char*, ...) void;
 
 func main() {
+    #a: string;
     printf("Taha\n");
 }
