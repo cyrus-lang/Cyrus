@@ -12,9 +12,7 @@ use ast::{
     token::{Location, Token, TokenKind},
 };
 use inkwell::{
-    AddressSpace,
-    types::{BasicType, BasicTypeEnum},
-    values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue},
+    types::{BasicType, BasicTypeEnum}, values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue}, AddressSpace
 };
 use std::{process::exit, rc::Rc};
 
@@ -1038,24 +1036,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::IntType(internal_int_type) => internal_int_type.int_type.size_of(),
             InternalType::FloatType(internal_float_type) => internal_float_type.float_type.size_of(),
             InternalType::ArrayPtrType(internal_array_ptr_type) => internal_array_ptr_type.ptr_type.size_of(),
-            InternalType::StructType(internal_struct_type) => {
-                match internal_struct_type.struct_type.size_of() {
-                    Some(size) => size,
-                    None => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::SizeOfOperatorOnUnsizedObject,
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
+            InternalType::StructType(internal_struct_type) => match internal_struct_type.struct_type.size_of() {
+                Some(size) => size,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::SizeOfOperatorOnUnsizedObject,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
                 }
-            }
+            },
             InternalType::UnnamedStruct(internal_unnamed_struct_type) => {
                 match internal_unnamed_struct_type
                     .unnamed_struct_metadata
@@ -1537,6 +1533,66 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             _ => {
                 unreachable!()
             }
+        }
+    }
+
+    pub(crate) fn build_alloca(
+        &self,
+        var_type: TypeSpecifier,
+        var_name: String,
+        loc: Location,
+        span_end: usize,
+    ) -> (PointerValue<'ctx>, InternalType<'ctx>) {
+        let internal_type = self.build_type(var_type.clone(), loc.clone(), span_end);
+        let basic_type = match internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default())) {
+            Ok(basic_type) => basic_type,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err.to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let alloca = self.builder.build_alloca(basic_type, &var_name).unwrap();
+        (alloca, internal_type)
+    }
+
+    pub(crate) fn build_store(&self, ptr: PointerValue, value: InternalValue<'ctx>) {
+        let result = match value {
+            InternalValue::BoolValue(bool_value, _) => self.builder.build_store(ptr, bool_value),
+            InternalValue::IntValue(int_value, _) => self.builder.build_store(ptr, int_value),
+            InternalValue::FloatValue(float_value, _) => self.builder.build_store(ptr, float_value),
+            InternalValue::ArrayValue(array_value, _) => self.builder.build_store(ptr, array_value),
+            InternalValue::VectorValue(vector_value, _) => self.builder.build_store(ptr, vector_value),
+            InternalValue::StructValue(struct_value, _) => self.builder.build_store(ptr, struct_value),
+            InternalValue::UnnamedStructValue(struct_value, _) => self.builder.build_store(ptr, struct_value),
+            InternalValue::StringValue(string_value) => self.builder.build_store(ptr, string_value.struct_value),
+            InternalValue::PointerValue(pointer_value) => self.builder.build_store(ptr, pointer_value.ptr),
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(String::from("Cannot store non-basic value in pointer.")),
+                    location: None,
+                });
+                exit(1);
+            }
+        };
+
+        if let Err(err) = result {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!("Cannot store value in pointer:\n{}", err.to_string())),
+                location: None,
+            });
+            exit(1);
         }
     }
 }

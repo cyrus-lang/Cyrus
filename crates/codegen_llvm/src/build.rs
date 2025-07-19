@@ -102,7 +102,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             module_ref.add_basic_value_flag("PIE Level", FlagBehavior::Error, pie_level);
         }
 
-        if !self.opts.code_model == CodeModelOptions::Kernel {
+        if self.opts.code_model != CodeModelOptions::Kernel {
             // Unwind tables (uwtable) are not supported in 'kernel' code model.
             // Kernel code typically disables exception handling and stack unwinding.
             // Enabling uwtable may cause linker errors or generate invalid metadata.
