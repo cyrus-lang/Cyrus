@@ -242,6 +242,26 @@ impl fmt::Display for ModuleImport {
     }
 }
 
+impl fmt::Display for UnnamedStructValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.packed {
+            write!(f, "bits")?;
+        } else {
+            write!(f, "struct")?;
+        }
+        write!(f, " {{ ")?;
+        for field in self.fields.clone() {
+            write!(f, "{}", field.field_name.name)?;
+            if let Some(field_type) = field.field_type {
+                write!(f, ": {}", field_type)?;
+            }
+            
+            write!(f, " = {}", *field.field_value)?;
+        }
+        write!(f, " }}")
+    }
+}
+
 pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
     let mut format = String::new();
 
