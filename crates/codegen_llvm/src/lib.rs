@@ -15,7 +15,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::values::{FunctionValue, PointerValue};
+use inkwell::values::PointerValue;
 use inkwell::{AddressSpace, OptimizationLevel};
 use opts::Options;
 use scope::{Scope, ScopeRef};
@@ -91,7 +91,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let module_id = file_stem(&file_name).unwrap_or(&file_name).to_string();
         let module = Rc::new(RefCell::new(context.create_module(&module_id.clone())));
         let builder = context.create_builder();
-        let target_machine = CodeGenLLVM::target_machine(Rc::clone(&module));
+        let target_machine = CodeGenLLVM::setup_target_machine(
+            Rc::clone(&module),
+            opts.reloc_mode.to_llvm_reloc_mode(),
+            opts.code_model.to_llvm_code_model(),
+        );
 
         let final_build_dir = {
             match opts.build_dir.clone() {
@@ -135,10 +139,45 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             output_kind,
         };
 
+        if codegen_llvm.opts.display_target_machine {
+            codegen_llvm.display_target_machine_information();
+        }
         Ok(codegen_llvm)
     }
 
-    pub fn target_machine(module: Rc<RefCell<Module>>) -> TargetMachine {
+    fn display_target_machine_information(&self) {
+        if !self.opts.quiet {
+            println!("Target Triple: {}", self.target_machine.get_triple().to_string());
+            println!("CPU Name: {}", self.target_machine.get_cpu().to_string());
+            println!(
+                "Data Layout: {}",
+                self.target_machine
+                    .get_target_data()
+                    .get_data_layout()
+                    .as_str()
+                    .to_str()
+                    .unwrap()
+            );
+            println!("Pointer Size: {}-bit", {
+                self.target_machine.get_target_data().get_pointer_byte_size(None) * 8
+            });
+            println!("Optimization Level: {}", {
+                if let Some(opt_level) = self.opts.opt_level {
+                    format!("O{}", opt_level)
+                } else {
+                    "Default".to_string()
+                }
+            });
+            println!("Relocation Mode: {}", self.opts.reloc_mode);
+            println!("Code Model: {}", self.opts.code_model);
+        }
+    }
+
+    pub fn setup_target_machine(
+        module: Rc<RefCell<Module>>,
+        reloc_mode: RelocMode,
+        code_model: CodeModel,
+    ) -> TargetMachine {
         let module = module.borrow_mut();
 
         Target::initialize_native(&InitializationConfig::default()).unwrap();
@@ -152,8 +191,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 &cpu,
                 &features,
                 OptimizationLevel::Default,
-                RelocMode::PIC,
-                CodeModel::Default,
+                reloc_mode,
+                code_model,
             )
             .unwrap();
         module.set_triple(&target_triple);
@@ -188,7 +227,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         }
         if !self.compiler_invoked_single {
-            self.rebuild_dependent_modules();
             if self.source_code_changed(self.final_build_dir.clone()) || !self.object_file_exists() {
                 self.save_object_file(self.final_build_dir.clone());
             }

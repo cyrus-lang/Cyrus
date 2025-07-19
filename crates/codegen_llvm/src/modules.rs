@@ -15,7 +15,7 @@ use ast::{
 use inkwell::{
     AddressSpace,
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
-    module::{Linkage, Module},
+    module::Linkage,
     types::FunctionType,
     values::{AnyValue, BasicValueEnum, GlobalValue},
 };
@@ -25,8 +25,6 @@ use utils::fs::{find_file_from_sources, relative_to_absolute};
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'a> {
     pub identifier: String,
-    pub file_path: String,
-    pub module: Rc<RefCell<Module<'a>>>,
     pub func_table: FuncTable<'a>,
     pub struct_table: StructTable<'a>,
     pub global_variables_table: GlobalVariablesTable<'a>,
@@ -394,7 +392,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn build_imported_module(&mut self, module_id: String, generated_module_import_path: GeneratedModuleImportPath) {
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_id)));
         let sub_builder = self.context.create_builder();
-        let target_machine = CodeGenLLVM::target_machine(Rc::clone(&sub_module));
+        let target_machine = CodeGenLLVM::setup_target_machine(
+            Rc::clone(&sub_module),
+            self.opts.reloc_mode.to_llvm_reloc_mode(),
+            self.opts.code_model.to_llvm_code_model(),
+        );
         let base_dir = env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = relative_to_absolute(generated_module_import_path.file_path.clone(), base_dir).unwrap();
         let program = parser::parse_program(file_path.clone()).0;
@@ -443,13 +445,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         if let Some(module_segment_singles) = generated_module_import_path.singles.clone() {
             let module_metadata = ModuleMetadata {
-                module: Rc::clone(&sub_module),
                 func_table: sub_codegen_ref.func_table.clone(),
                 struct_table: sub_codegen_ref.struct_table.clone(),
                 global_variables_table: sub_codegen_ref.global_variables_table.clone(),
                 typedef_table: sub_codegen_ref.typedef_table.clone(),
                 identifier: module_id.clone(),
-                file_path: generated_module_import_path.file_path,
                 imports_single: true,
             };
 
@@ -481,13 +481,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
 
             let module_metadata = ModuleMetadata {
-                module: Rc::clone(&sub_module),
                 func_table: imported_funcs,
                 struct_table: imported_structs,
                 global_variables_table: imported_global_variables,
                 typedef_table: sub_codegen_ref.typedef_table.clone(),
                 identifier: module_id.clone(),
-                file_path: generated_module_import_path.file_path,
                 imports_single: false,
             };
 
