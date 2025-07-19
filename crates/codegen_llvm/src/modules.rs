@@ -3,19 +3,19 @@ use crate::{
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
-    structs::StructTable,
-    types::{InternalStructType, TypedefMetadata, TypedefTable},
+    structs::{StructMetadata, StructMethodMetadata, StructTable},
+    types::{InternalType, TypedefMetadata, TypedefTable},
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
 use ast::{
-    ast::{AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle, TypeSpecifier},
+    ast::{AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle},
     format::module_segments_as_string,
-    token::{Location, Span, Token, TokenKind},
+    token::Location,
 };
 use inkwell::{
     AddressSpace,
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
-    module::{Linkage, Module},
+    module::Linkage,
     types::FunctionType,
     values::{AnyValue, BasicValueEnum, GlobalValue},
 };
@@ -25,18 +25,17 @@ use utils::fs::{find_file_from_sources, relative_to_absolute};
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'a> {
     pub identifier: String,
-    pub file_path: String,
-    pub module: Rc<RefCell<Module<'a>>>,
-    pub func_table: HashMap<String, FuncMetadata<'a>>,
-    pub struct_table: HashMap<String, InternalStructType<'a>>,
+    pub func_table: FuncTable<'a>,
+    pub struct_table: StructTable<'a>,
     pub global_variables_table: GlobalVariablesTable<'a>,
     pub typedef_table: TypedefTable<'a>,
+    pub imports_single: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum DefinitionLookupResult<'a> {
     Func(FuncMetadata<'a>),
-    Struct(InternalStructType<'a>),
+    Struct(StructMetadata<'a>),
     Typedef(TypedefMetadata<'a>),
     GlobalVariable(GlobalVariableMetadata<'a>),
 }
@@ -205,123 +204,155 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn build_import_module_path(
-        &mut self,
+        &self,
         module_path: ModulePath,
         mut segments: Vec<ModuleSegment>,
         loc: Location,
         span_end: usize,
     ) -> GeneratedModuleImportPath {
-        let sources;
+        let module_name = module_segments_as_string(segments.clone());
 
-        let segments_str = module_segments_as_string(segments.clone());
-        let first_segment = segments.first().unwrap();
-        match first_segment {
-            ModuleSegment::SubModule(identifier) => {
-                if identifier.name == "std" {
-                    segments.remove(0);
-                    sources = vec![self.build_stdlib_modules_path()];
-                    // FIXME Import single from stdlib isn't working.
-                    // segments.insert(
-                    //     0,
-                    //     ModuleSegment::SubModule(Identifier {
-                    //         name: "std".to_string(),
-                    //         span: Span::default(),
-                    //         loc: Location::default(),
-                    //     }),
-                    // );
-                } else {
-                    sources = self.opts.sources_dir.clone();
-                }
-            }
-            ModuleSegment::Single(_) => unreachable!(),
+        // Remove "std" segment if present and switch source path accordingly
+        let mut sources = self.opts.sources_dir.clone();
+        if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.name == "std") {
+            segments.remove(0);
+            sources.insert(0, self.build_stdlib_modules_path());
         }
 
         let mut module_file_path = String::new();
 
-        for (idx, module_segment) in segments.iter().enumerate() {
-            match module_segment {
-                ModuleSegment::SubModule(identifier) => {
-                    // once consider identifier as sub_module (directory) and if it's not found in any of the sources
-                    // in the second stage consider identifier as a module (file) and try to determine that path exists.
-                    let directory_path = format!("{}{}", module_file_path, identifier.name.clone());
-                    let source_file_path = format!("{}{}.cyr", module_file_path, identifier.name.clone());
-
-                    // source file has higher priority to a directory
-                    match find_file_from_sources(source_file_path, sources.clone()) {
-                        Some(new_module_file_path) => {
-                            module_file_path = new_module_file_path.to_str().unwrap().to_string();
-
-                            if segments.len() - 1 > idx {
-                                match &segments[idx + 1] {
-                                    ModuleSegment::SubModule(next_segment_identifier) => {
-                                        display_single_diag(Diag {
-                                            level: DiagLevel::Error,
-                                            kind: DiagKind::Custom(format!(
-                                                "Module '{}' is already found as a module but you trying to import '{}' from that module.",
-                                                module_segments_as_string(segments[..(idx + 1)].to_vec()),
-                                                next_segment_identifier.name.clone()
-                                            )),
-                                            location: Some(DiagLoc {
-                                                file: self.file_path.clone(),
-                                                line: loc.line,
-                                                column: loc.column,
-                                                length: span_end,
-                                            }),
-                                        });
-                                        exit(1);
-                                    }
-                                    ModuleSegment::Single(_) => {}
-                                }
-                            }
-                        }
-                        None => match find_file_from_sources(directory_path, sources.clone()) {
-                            Some(new_module_file_path) => {
-                                module_file_path.push_str(new_module_file_path.to_str().unwrap());
-                                module_file_path.push_str("/");
-                            }
-                            None => {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::ModuleNotFound(segments_str.clone()),
-                                    location: Some(DiagLoc {
-                                        file: self.file_path.clone(),
-                                        line: loc.line,
-                                        column: loc.column,
-                                        length: span_end,
-                                    }),
-                                });
-                                exit(1);
-                            }
-                        },
-                    }
+        let lookup_dir_and_develop_module_file_path =
+            |mut module_file_path: String, dir_path: String, codegen_file_path: String| -> String {
+                if let Some(found_path) = find_file_from_sources(dir_path, sources.clone()) {
+                    module_file_path.push_str(found_path.to_str().unwrap());
+                    module_file_path.push('/');
+                    module_file_path
+                } else {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::ModuleNotFound(module_name.clone()),
+                        location: Some(DiagLoc {
+                            file: codegen_file_path,
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
                 }
-                ModuleSegment::Single(module_segment_single) => {
-                    let file_path = self
-                        .build_import_module_path(
-                            module_path.clone(),
-                            segments[0..(segments.len() - 1)].to_vec(),
-                            loc.clone(),
-                            span_end,
-                        )
-                        .file_path;
+            };
 
-                    return GeneratedModuleImportPath {
-                        file_path,
+        let handle_import_single = |idx: usize,
+                                    module_segment_singles: Vec<ModuleSegmentSingle>|
+         -> GeneratedModuleImportPath {
+            if idx != segments.len() - 1 {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Single segment must be the last in import path.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+
+            // Build path from all previous segments
+            let base_path =
+                self.build_import_module_path(module_path.clone(), segments[0..idx].to_vec(), loc.clone(), span_end);
+
+            if !Path::new(&base_path.file_path).is_file() {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(
+                        "Cannot use `::` to access from a directory. Expected a module file.".to_string(),
+                    ),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+
+            GeneratedModuleImportPath {
+                file_path: base_path.file_path,
+                module_path: module_path.clone(),
+                singles: Some(module_segment_singles.clone()),
+                loc: loc.clone(),
+                span_end,
+            }
+        };
+
+        let lookup_file = |idx: usize, file_path: String| -> Option<GeneratedModuleImportPath> {
+            if let Some(found_path) = find_file_from_sources(file_path, sources.clone()) {
+                if idx == segments.len() - 1 {
+                    // last segment is a file
+                    Some(GeneratedModuleImportPath {
+                        file_path: found_path.to_str().unwrap().to_string(),
                         module_path: module_path.clone(),
-                        singles: Some(module_segment_single.clone()),
+                        singles: None,
                         loc: loc.clone(),
                         span_end,
-                    };
+                    })
+                } else {
+                    if (segments.len() - 1) - idx == 1 {
+                        // last segment is import single
+                        let next_segment = segments[idx + 1].clone();
+                        match next_segment {
+                            ModuleSegment::SubModule(_) => None,
+                            ModuleSegment::Single(module_segment_singles) => {
+                                Some(handle_import_single(idx + 1, module_segment_singles))
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        };
+
+        // Traverse all segments
+        for idx in 0..segments.len() {
+            let segment = &segments[idx];
+            match segment {
+                ModuleSegment::SubModule(identifier) => {
+                    let dir_path = format!("{}{}", module_file_path, identifier.name);
+                    let file_path = format!("{}{}.cyr", module_file_path, identifier.name);
+
+                    match lookup_file(idx, file_path) {
+                        Some(generated_module_import_path) => {
+                            return generated_module_import_path;
+                        }
+                        None => {
+                            module_file_path = lookup_dir_and_develop_module_file_path(
+                                module_file_path.clone(),
+                                dir_path,
+                                self.file_path.clone(),
+                            );
+                        }
+                    }
+                }
+
+                ModuleSegment::Single(singles) => {
+                    return handle_import_single(idx, singles.clone());
                 }
             }
         }
 
+        // Reached end, check if final path is a valid directory (not allowed)
         if Path::new(&module_file_path).is_dir() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
-                    "Import module '{}' as directory is not allowed.",
-                    segments_str.clone()
+                    "Importing module `{}` as a directory is not allowed.",
+                    module_name
                 )),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -361,7 +392,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn build_imported_module(&mut self, module_id: String, generated_module_import_path: GeneratedModuleImportPath) {
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_id)));
         let sub_builder = self.context.create_builder();
-        let target_machine = CodeGenLLVM::target_machine(Rc::clone(&sub_module));
+        let target_machine = CodeGenLLVM::setup_target_machine(
+            Rc::clone(&sub_module),
+            self.opts.reloc_mode.to_llvm_reloc_mode(),
+            self.opts.code_model.to_llvm_code_model(),
+        );
         let base_dir = env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = relative_to_absolute(generated_module_import_path.file_path.clone(), base_dir).unwrap();
         let program = parser::parse_program(file_path.clone()).0;
@@ -410,13 +445,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         if let Some(module_segment_singles) = generated_module_import_path.singles.clone() {
             let module_metadata = ModuleMetadata {
-                module: Rc::clone(&sub_module),
                 func_table: sub_codegen_ref.func_table.clone(),
                 struct_table: sub_codegen_ref.struct_table.clone(),
                 global_variables_table: sub_codegen_ref.global_variables_table.clone(),
                 typedef_table: sub_codegen_ref.typedef_table.clone(),
                 identifier: module_id.clone(),
-                file_path: generated_module_import_path.file_path,
+                imports_single: true,
             };
 
             self.imported_modules.push(ImportedModuleMetadata {
@@ -447,13 +481,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
 
             let module_metadata = ModuleMetadata {
-                module: Rc::clone(&sub_module),
                 func_table: imported_funcs,
                 struct_table: imported_structs,
                 global_variables_table: imported_global_variables,
                 typedef_table: sub_codegen_ref.typedef_table.clone(),
                 identifier: module_id.clone(),
-                file_path: generated_module_import_path.file_path,
+                imports_single: false,
             };
 
             self.imported_modules.push(ImportedModuleMetadata {
@@ -473,7 +506,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) {
         let module_metadata = match self.find_imported_module(module_id.clone()) {
             Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
-            None => panic!("Couldn't lookup imported module in codegen."),
+            None => panic!("Couldn't lookup imported module in codegen context."),
         };
 
         for single in module_segment_singles {
@@ -487,32 +520,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             match lookup_result {
                 DefinitionLookupResult::Func(mut func_metadata) => {
                     func_metadata.imported_from = Some(module_path.clone());
-                    func_metadata.func_decl.renamed_as = Some(func_metadata.func_decl.name.clone());
-                    func_metadata.func_decl.name =
-                        self.generate_abi_name(module_id.clone(), func_metadata.func_decl.name);
                     let (func_name, func_metadata) = self.build_decl_imported_func(func_metadata);
                     self.func_table.insert(func_name, func_metadata);
                 }
-                DefinitionLookupResult::Struct(internal_struct_type) => {
+                DefinitionLookupResult::Struct(struct_metadata) => {
                     let struct_name = {
-                        match internal_struct_type
-                            .struct_metadata
-                            .struct_name
-                            .segments
-                            .last()
-                            .unwrap()
-                        {
+                        match struct_metadata.struct_name.segments.last().unwrap() {
                             ModuleSegment::SubModule(identifier) => identifier.name.clone(),
                             ModuleSegment::Single(_) => unreachable!(),
                         }
                     };
 
-                    let new_internal_struct_type = self.build_decl_imported_struct_methods(
+                    let new_struct_metadata = self.build_decl_imported_struct_methods(
                         module_path.clone(),
                         module_id.clone(),
-                        internal_struct_type.clone(),
+                        struct_metadata.clone(),
                     );
-                    self.struct_table.insert(struct_name, new_internal_struct_type.clone());
+
+                    self.struct_table.insert(struct_name, new_struct_metadata.clone());
                 }
                 DefinitionLookupResult::Typedef(typedef_metadata) => {
                     self.typedef_table
@@ -600,44 +625,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn build_decl_imported_instance_method(
         &mut self,
         metadata: FuncMetadata<'ctx>,
-        self_modifier_type: LLVMTypeRef,
+        self_modifier_type: InternalType<'ctx>,
     ) -> (String, FuncMetadata<'ctx>) {
+        let param_types = metadata.params_metadata.param_types.clone();
+
         if metadata.func_decl.access_specifier == AccessSpecifier::Public
             || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
             || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
         {
             let mut new_metadata = metadata.clone();
 
-            let mut param_types = self.build_func_params(
-                metadata.func_decl.name.clone(),
-                metadata.func_decl.loc.clone(),
-                metadata.func_decl.span.end,
-                metadata.func_decl.params.list.clone(),
-                metadata.func_decl.params.variadic.clone(),
-            );
-
-            param_types.insert(0, self_modifier_type);
+            new_metadata.params_metadata.param_types.insert(0, self_modifier_type);
 
             let is_var_args = metadata.func_decl.params.variadic.is_some();
 
-            let return_type = self.build_type(
-                metadata
-                    .func_decl
-                    .return_type
-                    .clone()
-                    .unwrap_or(TypeSpecifier::TypeToken(Token {
-                        kind: TokenKind::Void,
-                        span: Span::default(),
-                        loc: Location::default(),
-                    })),
-                metadata.func_decl.loc.clone(),
-                metadata.func_decl.span.end,
-            );
-
             let fn_type = unsafe {
                 FunctionType::new(LLVMFunctionType(
-                    return_type.as_type_ref(),
-                    param_types.as_mut_ptr(),
+                    new_metadata.return_type.as_type_ref(),
+                    param_types
+                        .iter()
+                        .map(|p| p.as_type_ref())
+                        .collect::<Vec<LLVMTypeRef>>()
+                        .as_mut_ptr(),
                     param_types.len() as u32,
                     is_var_args as i32,
                 ))
@@ -657,25 +666,36 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // FIXME Alter build_func_decl with a custom declaration.
     fn build_decl_imported_func(&mut self, metadata: FuncMetadata<'ctx>) -> (String, FuncMetadata<'ctx>) {
+        let param_types = metadata.params_metadata.param_types.clone();
+
         if metadata.func_decl.access_specifier == AccessSpecifier::Public
             || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
             || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
         {
             let mut new_metadata = metadata.clone();
+            let is_variadic = new_metadata.func_decl.params.variadic.is_some();
 
-            let param_types = self.build_func_params(
-                metadata.func_decl.name.clone(),
-                metadata.func_decl.loc.clone(),
-                metadata.func_decl.span.end,
-                metadata.func_decl.params.list.clone(),
-                metadata.func_decl.params.variadic.clone(),
+            let func_type = unsafe {
+                FunctionType::new(LLVMFunctionType(
+                    metadata.return_type.as_type_ref(),
+                    param_types
+                        .iter()
+                        .map(|p| p.as_type_ref())
+                        .collect::<Vec<LLVMTypeRef>>()
+                        .as_mut_ptr(),
+                    param_types.len() as u32,
+                    is_variadic as i32,
+                ))
+            };
+
+            let func_linkage = self.build_func_linkage(new_metadata.func_decl.access_specifier.clone());
+
+            let func_value = self.module.borrow_mut().deref_mut().add_function(
+                &new_metadata.func_decl.name,
+                func_type,
+                Some(func_linkage),
             );
-
-            // FIXME Bullshit!!!
-            let func_value =
-                self.build_func_decl(new_metadata.func_decl.clone(), param_types, false, metadata.is_method);
 
             new_metadata.ptr = func_value;
             (new_metadata.func_decl.get_usable_name(), new_metadata)
@@ -697,86 +717,52 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &mut self,
         imported_from: ModulePath,
         imported_module_id: String,
-        internal_struct_type: InternalStructType<'ctx>,
-    ) -> InternalStructType<'ctx> {
-        let mut final_internal_struct_type = internal_struct_type.clone();
+        struct_metadata: StructMetadata<'ctx>,
+    ) -> StructMetadata<'ctx> {
+        let mut final_internal_struct_type = struct_metadata.clone();
 
-        for (idx, (mut method_decl, method_value, is_static_method)) in internal_struct_type
-            .clone()
-            .struct_metadata
-            .methods
-            .iter()
-            .cloned()
-            .enumerate()
-        {
-            let return_type = self.build_type(
-                method_decl
-                    .return_type
-                    .clone()
-                    .unwrap_or(TypeSpecifier::TypeToken(Token {
-                        kind: TokenKind::Void,
-                        span: Span::default(),
-                        loc: Location::default(),
-                    })),
-                method_decl.loc.clone(),
-                method_decl.span.end,
-            );
-
-            let struct_name = match internal_struct_type
-                .struct_metadata
-                .struct_name
-                .segments
-                .last()
-                .unwrap()
-            {
+        for (idx, mut struct_method_metadata) in struct_metadata.methods.iter().cloned().enumerate() {
+            let struct_name = match struct_metadata.struct_name.segments.last().unwrap() {
                 ModuleSegment::SubModule(identifier) => identifier.name.clone(),
                 ModuleSegment::Single(_) => unreachable!(),
             };
 
-            method_decl.name = self.generate_method_abi_name(
+            struct_method_metadata.method_decl.name = self.generate_method_abi_name(
                 imported_module_id.clone(),
                 struct_name.clone(),
-                method_decl.name.clone(),
+                struct_method_metadata.method_decl.name.clone(),
             );
 
-            if is_static_method {
+            if struct_method_metadata.is_static_method {
                 let (_, func_metadata) = self.build_decl_imported_func(FuncMetadata {
-                    func_decl: method_decl.clone(),
-                    ptr: method_value,
+                    func_decl: struct_method_metadata.method_decl.clone(),
+                    ptr: struct_method_metadata.method_value,
                     is_method: true,
                     imported_from: Some(imported_from.clone()),
-                    return_type,
+                    params_metadata: struct_method_metadata.method_params_metadata.clone(),
+                    return_type: struct_method_metadata.return_type.clone(),
                 });
 
-                final_internal_struct_type.struct_metadata.methods[idx] = (
-                    func_metadata.func_decl.clone(),
-                    func_metadata.ptr,
-                    is_static_method.clone(),
-                );
-            } else {
-                let self_modifier = match method_decl.params.list.clone().first().unwrap() {
-                    ast::ast::FuncParamKind::SelfModifier(self_modifier) => {
-                        method_decl.params.list.remove(0);
-                        self_modifier.clone()
-                    }
-                    ast::ast::FuncParamKind::FuncParam(_) => unreachable!(),
+                final_internal_struct_type.methods[idx] = StructMethodMetadata {
+                    method_decl: func_metadata.func_decl.clone(),
+                    method_value: func_metadata.ptr,
+                    method_params_metadata: struct_method_metadata.method_params_metadata,
+                    is_static_method: struct_method_metadata.is_static_method.clone(),
+                    return_type: struct_method_metadata.return_type.clone(),
+                    self_modifier_type: struct_method_metadata.self_modifier_type.clone(),
                 };
-
-                let (self_modifier_type, _) = self.build_self_modifier_param(
-                    &self_modifier,
-                    &struct_name,
-                    &internal_struct_type,
-                    &method_decl.loc,
-                    &method_decl.span,
-                );
+            } else {
+                let (self_modifier_type, self_modifier_kind) =
+                    struct_method_metadata.self_modifier_type.clone().unwrap();
 
                 let (_, mut func_metadata) = self.build_decl_imported_instance_method(
                     FuncMetadata {
-                        func_decl: method_decl.clone(),
-                        ptr: method_value,
+                        func_decl: struct_method_metadata.method_decl.clone(),
+                        ptr: struct_method_metadata.method_value,
                         is_method: true,
                         imported_from: Some(imported_from.clone()),
-                        return_type,
+                        params_metadata: struct_method_metadata.method_params_metadata.clone(),
+                        return_type: struct_method_metadata.return_type.clone(),
                     },
                     self_modifier_type,
                 );
@@ -785,12 +771,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .func_decl
                     .params
                     .list
-                    .insert(0, FuncParamKind::SelfModifier(self_modifier));
-                final_internal_struct_type.struct_metadata.methods[idx] = (
-                    func_metadata.func_decl.clone(),
-                    func_metadata.ptr,
-                    is_static_method.clone(),
-                );
+                    .insert(0, FuncParamKind::SelfModifier(self_modifier_kind));
+
+                final_internal_struct_type.methods[idx] = StructMethodMetadata {
+                    method_decl: func_metadata.func_decl,
+                    method_value: func_metadata.ptr,
+                    method_params_metadata: struct_method_metadata.method_params_metadata,
+                    is_static_method: struct_method_metadata.is_static_method,
+                    return_type: struct_method_metadata.return_type,
+                    self_modifier_type: struct_method_metadata.self_modifier_type.clone(),
+                };
             }
         }
 
@@ -802,16 +792,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         imported_from: ModulePath,
         imported_module_id: String,
         struct_table: StructTable<'ctx>,
-    ) -> HashMap<String, InternalStructType<'ctx>> {
-        let mut imported_structs: HashMap<String, InternalStructType> = HashMap::new();
-        for (_, (struct_name, internal_struct_type)) in struct_table.iter().enumerate() {
-            let new_internal_struct_type = self.build_decl_imported_struct_methods(
+    ) -> StructTable<'ctx> {
+        let mut imported_structs = StructTable::new();
+        for (_, (struct_name, struct_metadata)) in struct_table.iter().enumerate() {
+            let new_struct_metadata = self.build_decl_imported_struct_methods(
                 imported_from.clone(),
                 imported_module_id.clone(),
-                internal_struct_type.clone(),
+                struct_metadata.clone(),
             );
 
-            imported_structs.insert(struct_name.clone(), new_internal_struct_type);
+            imported_structs.insert(struct_name.clone(), new_struct_metadata);
         }
         imported_structs
     }

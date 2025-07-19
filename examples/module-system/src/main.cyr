@@ -1,8 +1,14 @@
+import logger;
 import std::libc;
 
-extern func fprintf(stream: libc::FILE, format: const char*, ...): int32;
-
 func main() {
-	#name: char* = "Taha";
-	fprintf(libc::stdout, "Hello, %s\n", name);
+	#a = struct { name = "Taha" };
+
+	libc::printf("name: %s\n", a.name);
+
+	// #logger = logger::MyLogger.new("services.example");
+	// libc::printf("Group Name: %s\n", logger.group_name);
+	// logger.greeting("Taha");
+	// logger.logf("We believe in it.");
+	// logger.errorf("No problem remains tho.");
 }

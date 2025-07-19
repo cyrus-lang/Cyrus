@@ -4,7 +4,7 @@ use clap::*;
 use codegen_llvm::CodeGenLLVM;
 use codegen_llvm::build::OutputKind;
 use codegen_llvm::diag::*;
-use codegen_llvm::opts::BuildDir;
+use codegen_llvm::opts::{BuildDir, CodeModelOptions, RelocModeOptions};
 use lexer::Lexer;
 use utils::fs::{get_directory_of_file, read_file};
 
@@ -30,17 +30,6 @@ enum OptimizeLevel {
     O1,
     O2,
     O3,
-}
-
-impl OptimizeLevel {
-    pub fn as_integer(&self) -> i32 {
-        match self {
-            OptimizeLevel::None => 0,
-            OptimizeLevel::O1 => 1,
-            OptimizeLevel::O2 => 2,
-            OptimizeLevel::O3 => 3,
-        }
-    }
 }
 
 impl std::fmt::Display for OptimizeLevel {
@@ -83,6 +72,19 @@ struct CompilerOptions {
 
     #[clap(long, help = "Set cyrus standard library path")]
     stdlib: Option<String>,
+
+    #[clap(long = "target-machine", help = "Display Target Machine information")]
+    display_target_machine: bool,
+
+    #[clap(long, value_enum, default_value_t = RelocModeOptions::Default,
+    help = "Set the relocation model for code generation"
+    )]
+    reloc_mode: RelocModeOptions,
+
+    #[clap(long, value_enum, default_value_t = CodeModelOptions::Default,
+    help = "Set the code model for code generation"
+    )]
+    code_model: CodeModelOptions,
 }
 
 impl CompilerOptions {
@@ -111,6 +113,9 @@ impl CompilerOptions {
             },
             quiet: self.quiet,
             stdlib_path: self.stdlib.clone(),
+            display_target_machine: self.display_target_machine,
+            reloc_mode: self.reloc_mode.clone(),
+            code_model: self.code_model.clone(),
         }
     }
 }

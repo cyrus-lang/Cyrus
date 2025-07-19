@@ -150,6 +150,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                 match self.find_imported_module(module_id.clone()) {
                     Some(module_metadata) => {
+                        if module_metadata.metadata.imports_single {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::CannotUseModuleImportIfImportsSingles,
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: module_import.loc.line,
+                                    column: module_import.loc.column,
+                                    length: module_import.span.end,
+                                }),
+                            });
+                            exit(1);
+                        }
+
                         match module_metadata.metadata.global_variables_table.get(&last_segment.name) {
                             Some(global_variable_metadata) => {
                                 let global_value_ptr = global_variable_metadata.global_value.as_pointer_value();
@@ -162,7 +176,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                     })),
                                 });
                             }
-                            None => None,
+                            None => {
+                                return InternalValue::ModuleValue(module_metadata.metadata.clone());
+                            }
                         }
                     }
                     None => None,
@@ -204,7 +220,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     pointee_ty: record.ty.clone(),
                 });
             }
-            // local function
+            // function
             else if let Some(func_metadata) = self.func_table.get(&identifier.name.clone()) {
                 return InternalValue::FunctionValue(func_metadata.clone());
             } else if let Some(global_variable_metadata) = self.global_variables_table.get(&identifier.name.clone()) {
@@ -1023,7 +1039,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalType::FloatType(internal_float_type) => internal_float_type.float_type.size_of(),
             InternalType::ArrayPtrType(internal_array_ptr_type) => internal_array_ptr_type.ptr_type.size_of(),
             InternalType::StructType(internal_struct_type) => {
-                match internal_struct_type.struct_metadata.struct_type.size_of() {
+                match internal_struct_type.struct_type.size_of() {
                     Some(size) => size,
                     None => {
                         display_single_diag(Diag {

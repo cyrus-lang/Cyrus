@@ -22,9 +22,11 @@ pub enum DiagKind {
     InvalidWildcard,
     ModuleNotFound(String),
     FuncCallArgumentCountMismatch(String, i32, i32),
+    MethodCallArgumentCountMismatch(String, i32, i32),
     TypeAnnotationRequiredForParam(String, String),
     LenCalledWithInvalidInput,
     SizeOfOperatorOnUnsizedObject,
+    CannotUseModuleImportIfImportsSingles,
     Custom(String),
 }
 
@@ -76,6 +78,10 @@ impl fmt::Display for DiagKind {
                 "Expected {} arguments for function '{}', but got {}.",
                 expected, func_name, current
             ),
+            DiagKind::MethodCallArgumentCountMismatch(func_name, current, expected) => &format!(
+                "Expected {} arguments for method '{}', but got {}.",
+                expected, func_name, current
+            ),
             DiagKind::LenCalledWithInvalidInput => "Cannot get length of non-string or non-array value.",
             DiagKind::UndefinedDataType(type_name) => {
                 &format!("The data type '{}' is not defined in this module.", type_name)
@@ -83,6 +89,7 @@ impl fmt::Display for DiagKind {
             DiagKind::SizeOfOperatorOnUnsizedObject => {
                 "Cannot determine complete sizeof with flexible member at compile time."
             }
+            DiagKind::CannotUseModuleImportIfImportsSingles => "Cannot use module import if it imports singles.",
         };
         write!(f, "{}", msg)
     }

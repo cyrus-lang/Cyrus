@@ -242,10 +242,53 @@ impl fmt::Display for ModuleImport {
     }
 }
 
+impl fmt::Display for UnnamedStructValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.packed {
+            write!(f, "bits")?;
+        } else {
+            write!(f, "struct")?;
+        }
+        write!(f, " {{ ")?;
+        for field in self.fields.clone() {
+            write!(f, "{}", field.field_name.name)?;
+            if let Some(field_type) = field.field_type {
+                write!(f, ": {}", field_type)?;
+            }
+            
+            write!(f, " = {}", *field.field_value)?;
+        }
+        write!(f, " }}")
+    }
+}
+
 pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
-    segments
-        .iter()
-        .map(|p| p.to_string())
-        .collect::<Vec<String>>()
-        .join("::")
+    let mut format = String::new();
+
+    for (idx, item) in segments.iter().enumerate() {
+        match item {
+            ModuleSegment::SubModule(identifier) => {
+                format.push_str(&identifier.name);
+                if idx != segments.len() - 1 {
+                    format.push_str("::");
+                }
+            }
+            ModuleSegment::Single(module_segment_singles) => {
+                format.push('{');
+                for (jdx, single) in module_segment_singles.iter().enumerate() {
+                    if let Some(renamed) = &single.renamed {
+                        format.push_str(&format!("{}:", renamed.name));
+                    }
+                    format.push_str(&single.identifier.name);
+                    if jdx != module_segment_singles.len() - 1 {
+                        format.push(',');
+                        format.push(' ');
+                    }
+                }
+                format.push('}');
+            }
+        }
+    }
+
+    format
 }

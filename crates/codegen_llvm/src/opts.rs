@@ -1,4 +1,25 @@
+use core::fmt;
+
+use clap::ValueEnum;
+use inkwell::targets::{CodeModel, RelocMode};
 use serde::Deserialize;
+
+#[derive(Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum RelocModeOptions {
+    Default,
+    Static,
+    PIC,
+    DynamicNoPic,
+}
+
+#[derive(Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum CodeModelOptions {
+    Default,
+    Small,
+    Kernel,
+    Medium,
+    Large,
+}
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Options {
@@ -15,6 +36,9 @@ pub struct Options {
     pub build_dir: BuildDir,
     pub quiet: bool,
     pub stdlib_path: Option<String>,
+    pub display_target_machine: bool,
+    pub reloc_mode: RelocModeOptions,
+    pub code_model: CodeModelOptions,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -39,6 +63,9 @@ impl Options {
             sources_dir: vec!["./".to_string()],
             quiet: false,
             stdlib_path: None,
+            display_target_machine: false,
+            reloc_mode: RelocModeOptions::Default,
+            code_model: CodeModelOptions::Default,
         }
     }
 
@@ -72,6 +99,15 @@ impl Options {
             },
             quiet: instance.quiet || self.quiet,
             stdlib_path: instance.stdlib_path.or(self.stdlib_path.clone()),
+            display_target_machine: instance.display_target_machine || self.display_target_machine,
+            reloc_mode: match instance.reloc_mode {
+                RelocModeOptions::Default => self.reloc_mode.clone(),
+                reloc_mode @ _ => reloc_mode,
+            },
+            code_model: match instance.code_model {
+                CodeModelOptions::Default => self.code_model.clone(),
+                code_model @ _ => code_model,
+            },
         };
     }
 
@@ -157,5 +193,51 @@ impl Options {
         }
 
         Ok(options)
+    }
+}
+
+impl fmt::Display for CodeModelOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CodeModelOptions::Default => write!(f, "default"),
+            CodeModelOptions::Small => write!(f, "small"),
+            CodeModelOptions::Kernel => write!(f, "kernel"),
+            CodeModelOptions::Medium => write!(f, "medium"),
+            CodeModelOptions::Large => write!(f, "large"),
+        }
+    }
+}
+
+impl fmt::Display for RelocModeOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RelocModeOptions::Default => write!(f, "default"),
+            RelocModeOptions::Static => write!(f, "static"),
+            RelocModeOptions::PIC => write!(f, "PIC"),
+            RelocModeOptions::DynamicNoPic => write!(f, "DynamicNoPic"),
+        }
+    }
+}
+
+impl RelocModeOptions {
+    pub fn to_llvm_reloc_mode(&self) -> RelocMode {
+        match self {
+            RelocModeOptions::Default => RelocMode::Default,
+            RelocModeOptions::Static => RelocMode::Static,
+            RelocModeOptions::PIC => RelocMode::PIC,
+            RelocModeOptions::DynamicNoPic => RelocMode::DynamicNoPic,
+        }
+    }
+}
+
+impl CodeModelOptions {
+    pub fn to_llvm_code_model(&self) -> CodeModel {
+        match self {
+            CodeModelOptions::Default => CodeModel::Default,
+            CodeModelOptions::Small => CodeModel::Small,
+            CodeModelOptions::Kernel => CodeModel::Kernel,
+            CodeModelOptions::Medium => CodeModel::Medium,
+            CodeModelOptions::Large => CodeModel::Large,
+        }
     }
 }

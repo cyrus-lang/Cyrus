@@ -1,16 +1,13 @@
 use crate::diag::*;
+use crate::funcs::FuncMetadata;
 use crate::scope::{Scope, ScopeRecord};
 use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, scope::ScopeRef};
-use ast::ast::{
-    BlockStatement, Break, Continue, Expression, For, Foreach, GlobalVariable, If, Statement, TypeSpecifier, Variable,
-};
+use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement};
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
-use inkwell::types::BasicTypeEnum;
-use inkwell::values::{AnyValue, BasicValue, BasicValueEnum, FunctionValue};
 use std::cell::RefCell;
 use std::process::exit;
 use std::rc::Rc;
@@ -54,7 +51,7 @@ macro_rules! build_loop_statement {
         $span_end:expr
     ) => {{
         let current_block = $self.get_current_block("for statement", $loc.clone(), $span_end);
-        let current_func = $self.get_current_func("for statement", $loc.clone(), $span_end);
+        let current_func = $self.get_current_func("for statement", $loc.clone(), $span_end).ptr;
 
         let cond_block = $self.context.append_basic_block(current_func, "loop.cond");
         let body_block = $self.context.append_basic_block(current_func, "loop.body");
@@ -138,25 +135,27 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                     self.entry_point = Some(func_def);
                 } else {
-                    let param_types: Vec<*mut inkwell::llvm_sys::LLVMType> = self.build_func_params(
+                    let params_metadata = self.build_func_params(
                         func_def.name.clone(),
                         func_def.loc.clone(),
                         func_def.span.end,
                         func_def.params.list.clone(),
                         func_def.params.variadic.clone(),
+                        false
                     );
 
                     let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-                    self.build_func_def(scope, func_def.clone(), param_types, false);
+                    self.build_func_def(scope, func_def.clone(), params_metadata, false);
                 }
             }
-            Statement::FuncDecl(mut func_decl) => {
+            Statement::FuncDecl(func_decl) => {
                 let param_types = self.build_func_params(
                     func_decl.name.clone(),
                     func_decl.loc.clone(),
                     func_decl.span.end,
                     func_decl.params.list.clone(),
                     func_decl.params.variadic.clone(),
+                    false
                 );
 
                 self.build_func_decl(func_decl, param_types, true, false);
@@ -226,9 +225,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn get_current_func(&self, stmt_name: &'ctx str, loc: Location, span_end: usize) -> FunctionValue<'ctx> {
-        match self.current_func_ref {
-            Some(bb) => bb,
+    pub(crate) fn get_current_func(&self, stmt_name: &'ctx str, loc: Location, span_end: usize) -> FuncMetadata<'ctx> {
+        match &self.current_func_ref {
+            Some(func_metadata) => func_metadata.clone(),
             None => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -419,7 +418,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let array_length = self.build_index_value(internal_array_type.array_type.len().try_into().unwrap());
 
         let current_block = self.get_current_block("for statement", foreach.loc.clone(), foreach.span.end);
-        let current_func = self.get_current_func("for statement", foreach.loc.clone(), foreach.span.end);
+        let current_func = self
+            .get_current_func("for statement", foreach.loc.clone(), foreach.span.end).ptr;
 
         let index_alloca = self
             .builder
@@ -563,7 +563,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_if(&mut self, scope: ScopeRef<'ctx>, if_statement: If) {
         let current_block = self.get_current_block("for statement", if_statement.loc.clone(), if_statement.span.end);
-        let current_func = self.get_current_func("for statement", if_statement.loc.clone(), if_statement.span.end);
+        let current_func = self
+            .get_current_func("for statement", if_statement.loc.clone(), if_statement.span.end)
+            .ptr;
 
         let then_block = self.context.append_basic_block(current_func, "if.then");
         let else_block = self.context.append_basic_block(current_func, "if.else");

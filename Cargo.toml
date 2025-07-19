@@ -13,7 +13,7 @@ members = [
     "crates/utils",
     "crates/cli",
     "crates/layout", 
-    "crates/diag",
+    "crates/diag"
 ]
 
 [[bin]]
@@ -32,4 +32,4 @@ colorized = "1.0.0"
 toml = "0.8.20"
 
 [profile.dev]
-codegen-units = 256
+codegen-units = 512
