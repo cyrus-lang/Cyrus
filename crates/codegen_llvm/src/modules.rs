@@ -396,6 +396,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Rc::clone(&sub_module),
             self.opts.reloc_mode.to_llvm_reloc_mode(),
             self.opts.code_model.to_llvm_code_model(),
+            self.opts.cpu.clone(),
+            self.opts.target_triple.clone(),
         );
         let base_dir = env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = relative_to_absolute(generated_module_import_path.file_path.clone(), base_dir).unwrap();
