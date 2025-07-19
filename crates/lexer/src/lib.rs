@@ -802,7 +802,6 @@ impl Lexer {
             "in" => TokenKind::In,
             "enum" => TokenKind::Enum,
             "void" => TokenKind::Void,
-            "string" => TokenKind::String,
             "extern" => TokenKind::Extern,
             "inline" => TokenKind::Inline,
             "public" => TokenKind::Public,

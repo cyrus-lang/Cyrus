@@ -130,7 +130,6 @@ pub const PRIMITIVE_TYPES: &[TokenKind] = &[
     TokenKind::Char,
     TokenKind::Bool,
     TokenKind::Void,
-    TokenKind::String,
 ];
 
 impl fmt::Display for TokenKind {
@@ -214,7 +213,6 @@ impl fmt::Display for TokenKind {
             Self::Public => write!(f, "public"),
             Self::Const => write!(f, "const"),
             Self::SizeOf => write!(f, "sizeof"),
-            Self::String => write!(f, "string"),
             Self::Literal(literal) => write!(f, "{}", literal),
             // ETC
             Self::Illegal => write!(f, "ILLEGAL"),
