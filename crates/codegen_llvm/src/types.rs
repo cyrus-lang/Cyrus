@@ -1,6 +1,5 @@
 use crate::CodeGenLLVM;
 use crate::InternalValue;
-use crate::StringValue;
 use crate::diag::*;
 use crate::modules::DefinitionLookupResult;
 use crate::structs::StructMetadata;
@@ -52,7 +51,6 @@ pub(crate) enum InternalType<'a> {
     StructType(InternalStructType<'a>),
     UnnamedStruct(InternalUnnamedStructType<'a>),
     VectorType(InternalVectorType<'a>),
-    StringType(InternalStringType<'a>),
     VoidType(InternalVoidType<'a>),
     PointerType(Box<InternalPointerType<'a>>),
     Lvalue(Box<InternalLvalueType<'a>>),
@@ -140,12 +138,6 @@ pub(crate) struct InternalPointerType<'a> {
     pub pointee_ty: InternalType<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct InternalStringType<'a> {
-    pub type_str: String,
-    pub struct_type: StructType<'a>,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) enum DefinedType<'a> {
     Struct(StructMetadata<'a>),
@@ -186,9 +178,6 @@ impl<'a> fmt::Display for InternalType<'a> {
             }
             InternalType::VectorType(internal_vector_type) => {
                 write!(f, "{}", internal_vector_type.type_str)
-            }
-            InternalType::StringType(_) => {
-                write!(f, "string")
             }
             InternalType::VoidType(internal_void_type) => {
                 write!(f, "{}", internal_void_type.type_str)
@@ -247,12 +236,7 @@ impl<'a> InternalType<'a> {
                 type_str,
                 inner_type: Box::new(InternalType::VectorType(internal_vector_type.clone())),
                 array_type: internal_vector_type.vector_type.array_type(size),
-            })),
-            InternalType::StringType(string_type) => Ok(InternalType::ArrayType(InternalArrayType {
-                type_str,
-                inner_type: Box::new(InternalType::StringType(string_type.clone())),
-                array_type: string_type.struct_type.array_type(size),
-            })),
+            })),            
             InternalType::PointerType(internal_pointer_type) => Ok(InternalType::ArrayType(InternalArrayType {
                 type_str,
                 inner_type: Box::new(InternalType::PointerType(internal_pointer_type.clone())),
@@ -325,9 +309,6 @@ impl<'a> InternalType<'a> {
                 ptr: value.into_pointer_value(),
                 pointee_ty: ptr_ty.pointee_ty.clone(),
             })),
-            InternalType::StringType(_) => Ok(InternalValue::StringValue(StringValue {
-                struct_value: value.into_struct_value(),
-            })),
             InternalType::ConstType(internal_const_type) => internal_const_type.inner_type.into_internal_value(value),
             InternalType::VoidType(_) => unreachable!(),
         }
@@ -356,11 +337,6 @@ impl<'a> InternalType<'a> {
     #[allow(unused)]
     pub fn is_vector_type(&self) -> bool {
         matches!(self, InternalType::VectorType(_))
-    }
-
-    #[allow(unused)]
-    pub fn is_string_type(&self) -> bool {
-        matches!(self, InternalType::StringType(_))
     }
 
     pub fn is_void_type(&self) -> bool {
@@ -396,7 +372,6 @@ impl<'a> InternalType<'a> {
             InternalType::VectorType(t) => Ok(t.vector_type.as_basic_type_enum()),
             InternalType::PointerType(t) => Ok(t.ptr_type.as_basic_type_enum()),
             InternalType::Lvalue(t) => Ok(t.ptr_type.as_basic_type_enum()),
-            InternalType::StringType(t) => Ok(t.struct_type.as_basic_type_enum()),
             InternalType::BoolType(t) => Ok(t.bool_type.as_basic_type_enum()),
             InternalType::UnnamedStruct(t) => Ok(t.unnamed_struct_metadata.struct_type.as_basic_type_enum()),
             InternalType::ConstType(t) => t.inner_type.to_basic_type(ptr_type),
@@ -414,7 +389,6 @@ impl<'a> InternalType<'a> {
             InternalType::VectorType(t) => t.vector_type.as_type_ref(),
             InternalType::PointerType(t) => t.ptr_type.as_type_ref(),
             InternalType::Lvalue(t) => t.ptr_type.as_type_ref(),
-            InternalType::StringType(t) => t.struct_type.as_type_ref(),
             InternalType::ConstType(t) => t.inner_type.as_type_ref(),
             InternalType::BoolType(t) => t.bool_type.as_type_ref(),
             InternalType::UnnamedStruct(t) => t.unnamed_struct_metadata.struct_type.as_type_ref(),
@@ -475,20 +449,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalType::ArrayType(internal_array_type1), InternalType::ArrayType(internal_array_type2)) => {
                 (internal_array_type1.array_type.len() == internal_array_type2.array_type.len())
                     && self.compatible_types(*internal_array_type1.inner_type, *internal_array_type2.inner_type)
-            }
-            (InternalType::StringType(_), InternalType::StringType(_)) => true,
-            (InternalType::StringType(_), InternalType::PointerType(internal_pointer_type)) => {
-                internal_pointer_type.pointee_ty.is_int_type()
-            }
-            (InternalType::PointerType(internal_pointer), InternalType::StringType(_)) => {
-                match internal_pointer.pointee_ty {
-                    InternalType::IntType(_) => true,
-                    InternalType::ConstType(internal_const_type) => match *internal_const_type.inner_type {
-                        InternalType::IntType(_) => true,
-                        _ => false,
-                    },
-                    _ => false,
-                }
             }
             (InternalType::VoidType(_), _) => false,
             (InternalType::ConstType(internal_const_type), rvalue_type) => {
@@ -738,7 +698,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 type_str: token_kind.to_string(),
                 bool_type: self.context.bool_type(),
             }),
-            TokenKind::String => InternalType::StringType(self.string_type.clone()),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,

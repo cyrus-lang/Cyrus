@@ -85,7 +85,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         if let Some(type_specifier) = global_variable.type_specifier {
             variable_type = self.build_type(type_specifier, global_variable.loc.clone(), global_variable.span.end);
         } else {
-            variable_type = initializer_value.clone().get_type(self.string_type.clone())
+            variable_type = initializer_value.clone().get_type(self.context.i8_type())
         }
 
         let ptr_type = self.context.ptr_type(AddressSpace::default());
@@ -127,8 +127,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let linkage = self.build_global_variable_linkage(global_variable.access_specifier.clone());
 
-        let initialzier_basic_value: BasicValueEnum<'ctx> = initializer_value
-            .to_basic_metadata()
+        let initialzier_basic_value: BasicValueEnum<'ctx> = self
+            .internal_value_to_basic_metadata(initializer_value)
             .as_any_value_enum()
             .try_into()
             .unwrap();
@@ -178,12 +178,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     let expr = self.build_expr(Rc::clone(&scope), expr);
                     let rvalue = self.internal_value_as_rvalue(expr, variable.loc.clone(), variable.span.end);
 
-                    if !self.compatible_types(var_internal_type.clone(), rvalue.get_type(self.string_type.clone())) {
+                    if !self.compatible_types(var_internal_type.clone(), rvalue.get_type(self.context.i8_type())) {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(format!(
                                 "Cannot assign value of type '{}' to lvalue of type '{}'.",
-                                rvalue.get_type(self.string_type.clone()),
+                                rvalue.get_type(self.context.i8_type()),
                                 var_internal_type,
                             )),
                             location: Some(DiagLoc {
@@ -225,8 +225,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         variable.loc.clone(),
                         variable.span.end,
                     );
-                    let final_rvalue: BasicValueEnum =
-                        zero_init.to_basic_metadata().as_any_value_enum().try_into().unwrap();
+                    let final_rvalue: BasicValueEnum = self
+                        .internal_value_to_basic_metadata(zero_init)
+                        .as_any_value_enum()
+                        .try_into()
+                        .unwrap();
                     self.builder.build_store(ptr, final_rvalue).unwrap();
                 }
 
@@ -261,7 +264,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 if let Some(expr) = variable.expr {
                     let expr = self.build_expr(Rc::clone(&scope), expr);
                     let rvalue = self.internal_value_as_rvalue(expr, variable.loc.clone(), variable.span.end);
-                    let var_internal_type = rvalue.get_type(self.string_type.clone());
+                    let var_internal_type = rvalue.get_type(self.context.i8_type());
 
                     let var_basic_type =
                         match var_internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default())) {

@@ -495,7 +495,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.builder
                 .build_in_bounds_gep(
                     element_basic_type,
-                    lvalue.to_basic_metadata().try_into().unwrap(),
+                    self.internal_value_to_basic_metadata(lvalue).try_into().unwrap(),
                     &[index_value.clone()],
                     "gep",
                 )

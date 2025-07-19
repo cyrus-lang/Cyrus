@@ -90,31 +90,45 @@ impl BuildManifest {
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn enable_module_flags(&mut self) {
         let module_ref = self.module.borrow_mut();
+        let i32_ty = self.context.i32_type();
 
+        // Required for position-independent code
         if matches!(
             self.opts.reloc_mode,
             RelocModeOptions::PIC | RelocModeOptions::DynamicNoPic
         ) {
-            let pic_level = self.context.i32_type().const_int(2, false);
+            let pic_level = i32_ty.const_int(2, false);
             module_ref.add_basic_value_flag("PIC Level", FlagBehavior::Error, pic_level);
 
-            let pie_level = self.context.i32_type().const_int(2, false);
+            let pie_level = i32_ty.const_int(2, false);
             module_ref.add_basic_value_flag("PIE Level", FlagBehavior::Error, pie_level);
         }
 
+        // Kernel code model does not support unwinding.
         if self.opts.code_model != CodeModelOptions::Kernel {
-            // Unwind tables (uwtable) are not supported in 'kernel' code model.
-            // Kernel code typically disables exception handling and stack unwinding.
-            // Enabling uwtable may cause linker errors or generate invalid metadata.
-            let uwtable_value = self.context.i32_type().const_int(2, false);
-            module_ref.add_basic_value_flag("uwtable", FlagBehavior::Error, uwtable_value);
+            let uwtable = i32_ty.const_int(2, false);
+            module_ref.add_basic_value_flag("uwtable", FlagBehavior::Error, uwtable);
         }
+
+        let dwarf_ver = i32_ty.const_int(4, false); // DWARF v4
+        module_ref.add_basic_value_flag("Dwarf Version", FlagBehavior::Error, dwarf_ver);
+
+        let dbg_ver = i32_ty.const_int(3, false); // DWARF debug info v3
+        module_ref.add_basic_value_flag("Debug Info Version", FlagBehavior::Error, dbg_ver);
+
+        let wchar_size = i32_ty.const_int(4, false); // usually 4 on Linux
+        module_ref.add_basic_value_flag("wchar_size", FlagBehavior::Error, wchar_size);
+
+        let frame_pointer = i32_ty.const_int(2, false); // all
+        module_ref.add_basic_value_flag("frame-pointer", FlagBehavior::Error, frame_pointer);
     }
 
     pub(crate) fn execute_linker(&self, output_path: String, object_files: Vec<String>) {
-        let linker = "clang";
+        let linker = "cc";
 
         let mut linker_command = std::process::Command::new(linker);
+        linker_command.arg("-ldl");
+        linker_command.arg("-rdynamic");
         linker_command.arg("-o").arg(output_path);
 
         object_files.iter().for_each(|path| {

@@ -424,7 +424,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             current_func_ref: None,
             current_block_ref: None,
             terminated_blocks: Vec::new(),
-            string_type: self.string_type.clone(),
             imported_modules: Vec::new(),
             dependent_modules: HashMap::new(),
             output_kind: self.output_kind.clone(),
@@ -612,8 +611,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let initialzier_basic_value: BasicValueEnum<'ctx> = self
-            .build_zero_initialized_internal_value(global_variable_metadata.variable_type, loc.clone(), span_end)
-            .to_basic_metadata()
+            .internal_value_to_basic_metadata(self.build_zero_initialized_internal_value(
+                global_variable_metadata.variable_type,
+                loc.clone(),
+                span_end,
+            ))
             .as_any_value_enum()
             .try_into()
             .unwrap();
