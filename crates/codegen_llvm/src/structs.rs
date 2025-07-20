@@ -174,7 +174,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let opaque_struct = self
             .context
-            .opaque_struct_type(&self.generate_abi_name(self.module_id.clone(), struct_statement.name.clone()));
+            .opaque_struct_type(&self.generate_abi_name(self.module_name.clone(), struct_statement.name.clone()));
 
         let struct_metadata = StructMetadata {
             struct_name: ModuleImport {
@@ -369,7 +369,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let method_name = func_def.name.clone();
         let method_underlying_name =
-            self.generate_method_abi_name(self.module_id.clone(), struct_name.clone(), method_name);
+            self.generate_method_abi_name(self.module_name.clone(), struct_name.clone(), method_name);
 
         let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.access_specifier.clone()));
 
@@ -964,39 +964,40 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         span_end: usize,
     ) -> StructMetadata<'ctx> {
         // TODO add typedef table support
-        match self.struct_table.iter().find(|(_, v)| v.definition_id == definition_id) {
-            Some((_, struct_metadata)) => struct_metadata.clone(),
-            None => {
-                let mut final_struct_metadata: Option<StructMetadata<'ctx>> = None;
-                for imported_module in self.imported_modules.clone() {
-                    match imported_module
-                        .metadata
-                        .struct_table
-                        .iter()
-                        .find(|v| v.1.definition_id == definition_id)
-                    {
-                        Some((_, struct_metadata)) => final_struct_metadata = Some(struct_metadata.clone()),
-                        None => {}
-                    }
-                }
-                match final_struct_metadata {
-                    Some(struct_metadata) => struct_metadata,
-                    None => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(format!("Struct '{}' not found anywhere.", struct_name)),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                }
-            }
-        }
+        todo!();
+        // match self.struct_table.iter().find(|(_, v)| v.definition_id == definition_id) {
+        //     Some((_, struct_metadata)) => struct_metadata.clone(),
+        //     None => {
+        //         let mut final_struct_metadata: Option<StructMetadata<'ctx>> = None;
+        //         for imported_module in self.imported_modules.clone() {
+        //             match imported_module
+        //                 .metadata
+        //                 .struct_table
+        //                 .iter()
+        //                 .find(|v| v.1.definition_id == definition_id)
+        //             {
+        //                 Some((_, struct_metadata)) => final_struct_metadata = Some(struct_metadata.clone()),
+        //                 None => {}
+        //             }
+        //         }
+        //         match final_struct_metadata {
+        //             Some(struct_metadata) => struct_metadata,
+        //             None => {
+        //                 display_single_diag(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: DiagKind::Custom(format!("Struct '{}' not found anywhere.", struct_name)),
+        //                     location: Some(DiagLoc {
+        //                         file: self.file_path.clone(),
+        //                         line: loc.line,
+        //                         column: loc.column,
+        //                         length: span_end,
+        //                     }),
+        //                 });
+        //                 exit(1);
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     pub(crate) fn lookup_struct(
@@ -1474,8 +1475,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .build_struct_gep(struct_type, struct_alloca, idx.try_into().unwrap(), "gep")
                 .unwrap();
 
-            let field_basic_value: BasicValueEnum<'ctx> =
-                self.internal_value_to_basic_metadata(field_value.clone()).try_into().unwrap();
+            let field_basic_value: BasicValueEnum<'ctx> = self
+                .internal_value_to_basic_metadata(field_value.clone())
+                .try_into()
+                .unwrap();
             self.builder.build_store(field_gep, field_basic_value).unwrap();
         }
 

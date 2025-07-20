@@ -1,22 +1,20 @@
 use crate::funcs::FuncMetadata;
-use crate::modules::ImportedModuleMetadata;
+use crate::modules::{CompiledModulesSharedState, ImportedModuleMetadata};
 use crate::opts::BuildDir;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 use crate::types::TypedefTable;
 use crate::variables::GlobalVariablesTable;
 use ast::ast::*;
-use ast::token::Location;
 use build::{BuildManifest, OutputKind};
 use diag::*;
 use funcs::FuncTable;
+use inkwell::OptimizationLevel;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple};
-use inkwell::values::PointerValue;
-use inkwell::{AddressSpace, OptimizationLevel};
 use opts::Options;
 use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
@@ -47,19 +45,12 @@ mod types;
 mod values;
 mod variables;
 
-#[derive(Debug, Clone)]
-pub struct CompiledModuleMetadata {
-    pub module_id: String,
-}
-
-pub type CompiledModulesState = Rc<RefCell<Vec<CompiledModuleMetadata>>>;
-
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
     opts: Options,
     context: &'ctx Context,
     module: Rc<RefCell<Module<'ctx>>>,
-    module_id: String,
+    module_name: String,
     builder: Builder<'ctx>,
     target_machine: TargetMachine,
     build_manifest: BuildManifest,
@@ -80,8 +71,8 @@ pub struct CodeGenLLVM<'ctx> {
     struct_table: StructTable<'ctx>,
     global_variables_table: GlobalVariablesTable<'ctx>,
     typedef_table: TypedefTable<'ctx>,
-    imported_modules: Vec<ImportedModuleMetadata<'ctx>>,
-    compiled_modules_state: CompiledModulesState,
+    imported_modules: Vec<ImportedModuleMetadata>,
+    compiled_modules: CompiledModulesSharedState<'ctx>,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -95,8 +86,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         output_kind: OutputKind,
     ) -> Result<Self, LLVMString> {
         let reporter = DiagReporter::new();
-        let module_id = file_stem(&file_name).unwrap_or(&file_name).to_string();
-        let module = Rc::new(RefCell::new(context.create_module(&module_id.clone())));
+        let module_name = file_stem(&file_name).unwrap_or(&file_name).to_string();
+        let module = Rc::new(RefCell::new(context.create_module(&module_name.clone())));
         let builder = context.create_builder();
         let target_machine = CodeGenLLVM::setup_target_machine(
             Rc::clone(&module),
@@ -141,11 +132,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             terminated_blocks: Vec::new(),
             current_loop_ref: None,
             module: module.clone(),
-            module_id: module_id.clone(),
+            module_name: module_name.clone(),
             imported_modules: Vec::new(),
             dependent_modules: HashMap::new(),
             output_kind,
-            compiled_modules_state: Rc::new(RefCell::new(Vec::new())),
+            compiled_modules: Rc::new(RefCell::new(Vec::new())),
         };
 
         if codegen_llvm.opts.display_target_machine {

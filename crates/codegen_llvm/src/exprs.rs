@@ -118,88 +118,91 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> InternalValue<'ctx> {
-        if module_import.segments.len() == 1 {
-            return self.build_lvalue(Rc::clone(&scope), module_import);
-        }
+        // FIXME
+        todo!();
+        
+        // if module_import.segments.len() == 1 {
+        //     return self.build_lvalue(Rc::clone(&scope), module_import);
+        // }
 
-        let full_module_id = self.build_module_id(ModulePath {
-            alias: None,
-            segments: module_import.segments.clone(),
-            loc: module_import.loc.clone(),
-            span: module_import.span.clone(),
-        });
+        // let full_module_id = self.build_module_name(ModulePath {
+        //     alias: None,
+        //     segments: module_import.segments.clone(),
+        //     loc: module_import.loc.clone(),
+        //     span: module_import.span.clone(),
+        // });
 
-        let last_segment = {
-            match module_import.segments.last().unwrap() {
-                ModuleSegment::SubModule(sub_module) => sub_module,
-                ModuleSegment::Single(_) => unreachable!(),
-            }
-        };
+        // let last_segment = {
+        //     match module_import.segments.last().unwrap() {
+        //         ModuleSegment::SubModule(sub_module) => sub_module,
+        //         ModuleSegment::Single(_) => unreachable!(),
+        //     }
+        // };
 
-        match match self.find_imported_module(full_module_id.clone()) {
-            Some(module_metadata) => {
-                return InternalValue::ModuleValue(module_metadata.metadata.clone());
-            }
-            None => {
-                let module_id = self.build_module_id(ModulePath {
-                    alias: None,
-                    segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
-                    loc: module_import.loc.clone(),
-                    span: module_import.span.clone(),
-                });
+        // match match self.find_imported_module(full_module_id.clone()) {
+        //     Some(module_metadata) => {
+        //         return InternalValue::ModuleValue(module_metadata.metadata.clone());
+        //     }
+        //     None => {
+        //         let module_id = self.build_module_id(ModulePath {
+        //             alias: None,
+        //             segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
+        //             loc: module_import.loc.clone(),
+        //             span: module_import.span.clone(),
+        //         });
 
-                match self.find_imported_module(module_id.clone()) {
-                    Some(module_metadata) => {
-                        if module_metadata.metadata.imports_single {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::CannotUseModuleImportIfImportsSingles,
-                                location: Some(DiagLoc {
-                                    file: self.file_path.clone(),
-                                    line: module_import.loc.line,
-                                    column: module_import.loc.column,
-                                    length: module_import.span.end,
-                                }),
-                            });
-                            exit(1);
-                        }
+        //         match self.find_imported_module(module_id.clone()) {
+        //             Some(module_metadata) => {
+        //                 if module_metadata.metadata.imports_single {
+        //                     display_single_diag(Diag {
+        //                         level: DiagLevel::Error,
+        //                         kind: DiagKind::CannotUseModuleImportIfImportsSingles,
+        //                         location: Some(DiagLoc {
+        //                             file: self.file_path.clone(),
+        //                             line: module_import.loc.line,
+        //                             column: module_import.loc.column,
+        //                             length: module_import.span.end,
+        //                         }),
+        //                     });
+        //                     exit(1);
+        //                 }
 
-                        match module_metadata.metadata.global_variables_table.get(&last_segment.name) {
-                            Some(global_variable_metadata) => {
-                                let global_value_ptr = global_variable_metadata.global_value.as_pointer_value();
-                                let global_value_ptr_type = global_value_ptr.get_type();
-                                return InternalValue::Lvalue(Lvalue {
-                                    ptr: global_value_ptr,
-                                    pointee_ty: InternalType::Lvalue(Box::new(InternalLvalueType {
-                                        ptr_type: global_value_ptr_type,
-                                        pointee_ty: global_variable_metadata.variable_type.clone(),
-                                    })),
-                                });
-                            }
-                            None => {
-                                return InternalValue::ModuleValue(module_metadata.metadata.clone());
-                            }
-                        }
-                    }
-                    None => None,
-                }
-            }
-        } {
-            Some(internal_value) => internal_value,
-            None => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::ModuleNotFound(full_module_id),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: module_import.loc.line,
-                        column: module_import.loc.column,
-                        length: module_import.span.end,
-                    }),
-                });
-                exit(1);
-            }
-        }
+        //                 match module_metadata.metadata.global_variables_table.get(&last_segment.name) {
+        //                     Some(global_variable_metadata) => {
+        //                         let global_value_ptr = global_variable_metadata.global_value.as_pointer_value();
+        //                         let global_value_ptr_type = global_value_ptr.get_type();
+        //                         return InternalValue::Lvalue(Lvalue {
+        //                             ptr: global_value_ptr,
+        //                             pointee_ty: InternalType::Lvalue(Box::new(InternalLvalueType {
+        //                                 ptr_type: global_value_ptr_type,
+        //                                 pointee_ty: global_variable_metadata.variable_type.clone(),
+        //                             })),
+        //                         });
+        //                     }
+        //                     None => {
+        //                         return InternalValue::ModuleValue(module_metadata.metadata.clone());
+        //                     }
+        //                 }
+        //             }
+        //             None => None,
+        //         }
+        //     }
+        // } {
+        //     Some(internal_value) => internal_value,
+        //     None => {
+        //         display_single_diag(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: DiagKind::ModuleNotFound(full_module_id),
+        //             location: Some(DiagLoc {
+        //                 file: self.file_path.clone(),
+        //                 line: module_import.loc.line,
+        //                 column: module_import.loc.column,
+        //                 length: module_import.span.end,
+        //             }),
+        //         });
+        //         exit(1);
+        //     }
+        // }
     }
 
     pub(crate) fn build_lvalue(&self, scope: ScopeRef<'ctx>, module_import: ModuleImport) -> InternalValue<'ctx> {

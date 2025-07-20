@@ -464,80 +464,83 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> Option<DefinedType<'ctx>> {
-        if module_import.segments.len() == 1 {
-            let name = match module_import.segments.last().unwrap() {
-                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
-                ModuleSegment::Single(_) => unreachable!(),
-            };
+        // FIXME
+        todo!();
 
-            match self.lookup_definition(name.clone()) {
-                Some(definition_lookup_result) => match definition_lookup_result {
-                    DefinitionLookupResult::Func(_) => {
-                        // FIXME
-                        panic!("Cannot use function as a data type.");
-                    }
-                    DefinitionLookupResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
-                    DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
-                    DefinitionLookupResult::GlobalVariable(_) => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom("Cannot use a global variable as a type specifier.".to_string()),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                },
-                None => {
-                    return None;
-                }
-            }
-        } else {
-            let module_id = self.build_module_id(ModulePath {
-                alias: None,
-                segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
-                loc: Location::default(),
-                span: Span::default(),
-            });
+        // if module_import.segments.len() == 1 {
+        //     let name = match module_import.segments.last().unwrap() {
+        //         ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+        //         ModuleSegment::Single(_) => unreachable!(),
+        //     };
 
-            let module_metadata = match self.find_imported_module(module_id.clone()) {
-                Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
-                None => {
-                    return None;
-                }
-            };
+        //     match self.lookup_definition(name.clone()) {
+        //         Some(definition_lookup_result) => match definition_lookup_result {
+        //             DefinitionLookupResult::Func(_) => {
+        //                 // FIXME
+        //                 panic!("Cannot use function as a data type.");
+        //             }
+        //             DefinitionLookupResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
+        //             DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
+        //             DefinitionLookupResult::GlobalVariable(_) => {
+        //                 display_single_diag(Diag {
+        //                     level: DiagLevel::Error,
+        //                     kind: DiagKind::Custom("Cannot use a global variable as a type specifier.".to_string()),
+        //                     location: Some(DiagLoc {
+        //                         file: self.file_path.clone(),
+        //                         line: loc.line,
+        //                         column: loc.column,
+        //                         length: span_end,
+        //                     }),
+        //                 });
+        //                 exit(1);
+        //             }
+        //         },
+        //         None => {
+        //             return None;
+        //         }
+        //     }
+        // } else {
+        //     let module_id = self.build_module_name(ModulePath {
+        //         alias: None,
+        //         segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
+        //         loc: Location::default(),
+        //         span: Span::default(),
+        //     });
 
-            let name = match module_import.segments.last().unwrap() {
-                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
-                ModuleSegment::Single(_) => unreachable!(), // singles never achieve at this point
-            };
+        //     let module_metadata = match self.find_imported_module(module_id.clone()) {
+        //         Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
+        //         None => {
+        //             return None;
+        //         }
+        //     };
 
-            match self.lookup_from_module_metadata(name, module_metadata, loc.clone(), span_end) {
-                DefinitionLookupResult::Func(_) => {
-                    // FIXME
-                    panic!("Cannot use function as a data type.");
-                }
-                DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
-                DefinitionLookupResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
-                DefinitionLookupResult::GlobalVariable(_) => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Cannot use a global variable as a type specifier.".to_string()),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
-                }
-            }
-        }
+        //     let name = match module_import.segments.last().unwrap() {
+        //         ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+        //         ModuleSegment::Single(_) => unreachable!(), // singles never achieve at this point
+        //     };
+
+        //     match self.lookup_from_module_metadata(name, module_metadata, loc.clone(), span_end) {
+        //         DefinitionLookupResult::Func(_) => {
+        //             // FIXME
+        //             panic!("Cannot use function as a data type.");
+        //         }
+        //         DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
+        //         DefinitionLookupResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
+        //         DefinitionLookupResult::GlobalVariable(_) => {
+        //             display_single_diag(Diag {
+        //                 level: DiagLevel::Error,
+        //                 kind: DiagKind::Custom("Cannot use a global variable as a type specifier.".to_string()),
+        //                 location: Some(DiagLoc {
+        //                     file: self.file_path.clone(),
+        //                     line: loc.line,
+        //                     column: loc.column,
+        //                     length: span_end,
+        //                 }),
+        //             });
+        //             exit(1);
+        //         }
+        //     }
+        // }
     }
 
     pub(crate) fn build_type(
