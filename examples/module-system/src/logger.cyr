@@ -9,8 +9,6 @@ public struct Person {
     }
 }
 
-// public type MyLogger = Logger;
-
 public struct Logger {
 	group_name: char*;
 

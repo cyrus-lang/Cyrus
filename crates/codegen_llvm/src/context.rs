@@ -47,6 +47,13 @@ mod types;
 mod values;
 mod variables;
 
+#[derive(Debug, Clone)]
+pub struct CompiledModuleMetadata {
+    pub module_id: String,
+}
+
+pub type CompiledModulesState = Rc<RefCell<Vec<CompiledModuleMetadata>>>;
+
 pub struct CodeGenLLVM<'ctx> {
     #[allow(dead_code)]
     opts: Options,
@@ -74,6 +81,7 @@ pub struct CodeGenLLVM<'ctx> {
     global_variables_table: GlobalVariablesTable<'ctx>,
     typedef_table: TypedefTable<'ctx>,
     imported_modules: Vec<ImportedModuleMetadata<'ctx>>,
+    compiled_modules_state: CompiledModulesState,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -137,6 +145,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             imported_modules: Vec::new(),
             dependent_modules: HashMap::new(),
             output_kind,
+            compiled_modules_state: Rc::new(RefCell::new(Vec::new())),
         };
 
         if codegen_llvm.opts.display_target_machine {

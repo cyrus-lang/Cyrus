@@ -1,5 +1,5 @@
 use crate::{
-    CodeGenLLVM,
+    CodeGenLLVM, CompiledModuleMetadata,
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
@@ -390,6 +390,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn build_imported_module(&mut self, module_id: String, generated_module_import_path: GeneratedModuleImportPath) {
+        let module_already_compiled = || -> bool {
+            let compiled_module_state = self.compiled_modules_state.borrow();
+
+            let result = compiled_module_state
+                .iter()
+                .find(|m| m.module_id == module_id.clone())
+                .is_some();
+
+            drop(compiled_module_state);
+            result
+        };
+
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_id)));
         let sub_builder = self.context.create_builder();
         let target_machine = CodeGenLLVM::setup_target_machine(
@@ -429,6 +441,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             output_kind: self.output_kind.clone(),
             final_build_dir: self.final_build_dir.clone(),
             current_loop_ref: None,
+            compiled_modules_state: Rc::clone(&self.compiled_modules_state),
         }));
 
         let mut sub_codegen_ref = sub_codegen.borrow_mut();
@@ -441,8 +454,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
         }
 
-        sub_codegen_ref.compile();
-        self.build_manifest = sub_codegen_ref.build_manifest.clone();
+        if !module_already_compiled() {
+            sub_codegen_ref.compile();
+            self.build_manifest = sub_codegen_ref.build_manifest.clone();
+
+            let mut compiled_module_state = self.compiled_modules_state.borrow_mut();
+            compiled_module_state.push(CompiledModuleMetadata {
+                module_id: module_id.clone(),
+            });
+        }
 
         if let Some(module_segment_singles) = generated_module_import_path.singles.clone() {
             let module_metadata = ModuleMetadata {

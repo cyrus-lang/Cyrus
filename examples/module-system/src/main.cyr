@@ -5,7 +5,7 @@ func main() {
 	#a = struct { name = "Taha" };
 	libc::printf("name: %s\n", a.name);
 
-	#logger = logger::MyLogger.new("services.example");
+	#logger = logger::Logger.new("services.example");
 	libc::printf("Group Name: %s\n", logger.group_name);
 	logger.greeting("Taha");
 	logger.logf("We believe in it.");

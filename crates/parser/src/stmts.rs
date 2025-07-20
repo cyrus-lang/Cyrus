@@ -865,6 +865,19 @@ impl<'a> Parser<'a> {
         // parse return type
         if self.current_token_is(TokenKind::LeftBrace) {
             return_type = None;
+        } else if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::FuncDecl(FuncDecl {
+                name: func_name,
+                params,
+                return_type: None,
+                access_specifier,
+                renamed_as: None,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc,
+            }));
         } else {
             return_type = Some(self.parse_type_specifier()?);
             self.next_token();
