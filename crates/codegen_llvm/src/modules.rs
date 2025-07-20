@@ -1,9 +1,9 @@
 use crate::{
-    CodeGenLLVM, CompiledModuleMetadata,
+    CodeGenLLVM,
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
-    structs::{StructMetadata, StructMethodMetadata, StructTable},
+    structs::{StructMetadata, StructMethodMetadata, StructTable, generate_struct_definition_id},
     types::{InternalType, TypedefMetadata, TypedefTable},
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
@@ -19,17 +19,27 @@ use inkwell::{
     types::FunctionType,
     values::{AnyValue, BasicValueEnum, GlobalValue},
 };
+use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, env, ops::DerefMut, path::Path, process::exit, rc::Rc};
 use utils::fs::{find_file_from_sources, relative_to_absolute};
 
+pub type CompiledModulesSharedState<'a> = Rc<RefCell<Vec<ModuleMetadata<'a>>>>;
+
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'a> {
-    pub identifier: String,
+    pub module_id: u64,
+    pub module_file_path: String,
     pub func_table: FuncTable<'a>,
     pub struct_table: StructTable<'a>,
     pub global_variables_table: GlobalVariablesTable<'a>,
     pub typedef_table: TypedefTable<'a>,
     pub imports_single: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct ImportedModuleMetadata {
+    pub module_id: u64, // reference to compiled modules path
+    pub module_path: ModulePath,
 }
 
 #[derive(Debug, Clone)]
@@ -41,14 +51,7 @@ pub enum DefinitionLookupResult<'a> {
 }
 
 #[derive(Clone)]
-pub(crate) struct ImportedModuleMetadata<'a> {
-    pub metadata: ModuleMetadata<'a>,
-    #[allow(unused)]
-    pub sub_codegen: Rc<RefCell<CodeGenLLVM<'a>>>,
-}
-
-#[derive(Clone)]
-pub(crate) struct GeneratedModuleImportPath {
+pub(crate) struct ImportedModulePath {
     file_path: String,
     module_path: ModulePath,
     singles: Option<Vec<ModuleSegmentSingle>>,
@@ -57,38 +60,13 @@ pub(crate) struct GeneratedModuleImportPath {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_module_id(&self, module_path: ModulePath) -> String {
-        let last_segment = module_path.segments.last().unwrap();
-
-        match last_segment {
-            ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
-            ModuleSegment::Single(_) => {
-                if module_path.alias.is_some() {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(
-                            "Cannot rename imported module when you considered to import singles.".to_string(),
-                        ),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: module_path.loc.line,
-                            column: module_path.loc.column,
-                            length: module_path.span.end,
-                        }),
-                    });
-                    exit(1);
-                } else {
-                    match module_path.segments.iter().nth_back(1).unwrap() {
-                        ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
-                        ModuleSegment::Single(_) => unreachable!(),
-                    }
-                }
-            }
-        }
-    }
-
-    fn error_if_module_already_loaded(&self, module_id: String, module_path: ModulePath) {
-        if let Some(_) = self.find_imported_module(module_id.clone()) {
+    fn error_if_module_already_loaded(&self, module_path: ModulePath) {
+        if self
+            .imported_modules
+            .iter()
+            .find(|i| i.module_path == module_path)
+            .is_some()
+        {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
@@ -104,21 +82,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
             exit(1);
         }
-    }
-
-    // FIXME I don't even know this works or not :/
-    pub(crate) fn rebuild_dependent_modules(&mut self) {
-        // if let Some(module_deps) = self.dependent_modules.get(&self.file_path) {
-        //     for file_path in module_deps {
-        // skip for rebuilding entry_point module
-        // let imported_module_metadata = self
-        //     .imported_modules
-        //     .iter()
-        //     .find(|m| *m.metadata.file_path == *file_path)
-        //     .cloned()
-        //     .expect("Failed to get a loaded module by it's file path.");
-        //     }
-        // }
     }
 
     pub(crate) fn lookup_definition(&self, name: String) -> Option<DefinitionLookupResult<'ctx>> {
@@ -144,46 +107,46 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> DefinitionLookupResult<'ctx> {
-        match match module_metadata.func_table.get(&name) {
-            Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
-            None => match module_metadata.struct_table.get(&name) {
-                Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
-                None => match module_metadata.typedef_table.get(&name) {
-                    Some(typedef_metadata) => Some(DefinitionLookupResult::Typedef(typedef_metadata.clone())),
-                    None => match module_metadata.global_variables_table.get(&name) {
-                        Some(global_variable_metadata) => {
-                            Some(DefinitionLookupResult::GlobalVariable(global_variable_metadata.clone()))
-                        }
-                        None => None,
-                    },
-                },
-            },
-        } {
-            Some(lookup_result) => lookup_result,
-            None => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!(
-                        "Couldn't find anything with '{}' identifier in module '{}'.",
-                        name, module_metadata.identifier
-                    )),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-        }
+        // FIXME
+        todo!();
+
+        // match match module_metadata.func_table.get(&name) {
+        //     Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
+        //     None => match module_metadata.struct_table.get(&name) {
+        //         Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
+        //         None => match module_metadata.typedef_table.get(&name) {
+        //             Some(typedef_metadata) => Some(DefinitionLookupResult::Typedef(typedef_metadata.clone())),
+        //             None => match module_metadata.global_variables_table.get(&name) {
+        //                 Some(global_variable_metadata) => {
+        //                     Some(DefinitionLookupResult::GlobalVariable(global_variable_metadata.clone()))
+        //                 }
+        //                 None => None,
+        //             },
+        //         },
+        //     },
+        // } {
+        //     Some(lookup_result) => lookup_result,
+        //     None => {
+        //         display_single_diag(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: DiagKind::Custom(format!(
+        //                 "Couldn't find anything with '{}' identifier in module '{}'.",
+        //                 name, module_metadata.identifier
+        //             )),
+        //             location: Some(DiagLoc {
+        //                 file: self.file_path.clone(),
+        //                 line: loc.line,
+        //                 column: loc.column,
+        //                 length: span_end,
+        //             }),
+        //         });
+        //         exit(1);
+        //     }
+        // }
     }
 
-    pub(crate) fn find_imported_module(&self, module_id: String) -> Option<ImportedModuleMetadata<'ctx>> {
-        self.imported_modules
-            .iter()
-            .find(|m| m.metadata.identifier == module_id)
-            .cloned()
+    pub(crate) fn find_imported_module(&self, module_id: u64) -> Option<ImportedModuleMetadata> {
+        self.imported_modules.iter().find(|m| m.module_id == module_id).cloned()
     }
 
     fn build_stdlib_modules_path(&self) -> String {
@@ -203,13 +166,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    fn build_import_module_path(
+    fn build_imported_module_path(
         &self,
         module_path: ModulePath,
         mut segments: Vec<ModuleSegment>,
         loc: Location,
         span_end: usize,
-    ) -> GeneratedModuleImportPath {
+    ) -> ImportedModulePath {
         let module_name = module_segments_as_string(segments.clone());
 
         // Remove "std" segment if present and switch source path accordingly
@@ -244,7 +207,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let handle_import_single = |idx: usize,
                                     module_segment_singles: Vec<ModuleSegmentSingle>|
-         -> GeneratedModuleImportPath {
+         -> ImportedModulePath {
             if idx != segments.len() - 1 {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -261,7 +224,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             // Build path from all previous segments
             let base_path =
-                self.build_import_module_path(module_path.clone(), segments[0..idx].to_vec(), loc.clone(), span_end);
+                self.build_imported_module_path(module_path.clone(), segments[0..idx].to_vec(), loc.clone(), span_end);
 
             if !Path::new(&base_path.file_path).is_file() {
                 display_single_diag(Diag {
@@ -279,7 +242,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
 
-            GeneratedModuleImportPath {
+            ImportedModulePath {
                 file_path: base_path.file_path,
                 module_path: module_path.clone(),
                 singles: Some(module_segment_singles.clone()),
@@ -288,11 +251,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        let lookup_file = |idx: usize, file_path: String| -> Option<GeneratedModuleImportPath> {
+        let lookup_file = |idx: usize, file_path: String| -> Option<ImportedModulePath> {
             if let Some(found_path) = find_file_from_sources(file_path, sources.clone()) {
                 if idx == segments.len() - 1 {
                     // last segment is a file
-                    Some(GeneratedModuleImportPath {
+                    Some(ImportedModulePath {
                         file_path: found_path.to_str().unwrap().to_string(),
                         module_path: module_path.clone(),
                         singles: None,
@@ -364,7 +327,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        GeneratedModuleImportPath {
+        ImportedModulePath {
             file_path: module_file_path,
             module_path,
             singles: None,
@@ -373,36 +336,64 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn get_compiled_module_by_file_path(&self, module_file_path: String) -> Option<ModuleMetadata<'ctx>> {
+        let compiled_modules = self.compiled_modules.borrow();
+        compiled_modules
+            .iter()
+            .find(|m| m.module_file_path == module_file_path)
+            .cloned()
+    }
+
     pub(crate) fn build_import(&mut self, import: Import) {
         for module_path in import.paths.clone() {
-            let module_id = self.build_module_id(module_path.clone());
-
-            let generated_module_import_path = self.build_import_module_path(
+            let import_path = self.build_imported_module_path(
                 module_path.clone(),
                 module_path.segments.clone(),
                 import.loc.clone(),
                 import.span.end,
             );
 
-            self.error_if_module_already_loaded(module_id.clone(), module_path);
-            self.build_imported_module(module_id, generated_module_import_path);
+            self.error_if_module_already_loaded(import_path.module_path.clone());
+            self.build_imported_module(import_path);
         }
     }
 
-    fn build_imported_module(&mut self, module_id: String, generated_module_import_path: GeneratedModuleImportPath) {
-        let module_already_compiled = || -> bool {
-            let compiled_module_state = self.compiled_modules_state.borrow();
+    // Local means it only make sense in this module.
+    // It may be aliased or not.
+    pub(crate) fn build_local_module_name(&self, module_path: ModulePath) -> String {
+        let last_segment = module_path.segments.last().unwrap();
 
-            let result = compiled_module_state
-                .iter()
-                .find(|m| m.module_id == module_id.clone())
-                .is_some();
+        match last_segment {
+            ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
+            ModuleSegment::Single(_) => {
+                if module_path.alias.is_some() {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(
+                            "Cannot rename imported module when you considered to import singles.".to_string(),
+                        ),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: module_path.loc.line,
+                            column: module_path.loc.column,
+                            length: module_path.span.end,
+                        }),
+                    });
+                    exit(1);
+                } else {
+                    match module_path.segments.iter().nth_back(1).unwrap() {
+                        ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
+                        ModuleSegment::Single(_) => unreachable!(),
+                    }
+                }
+            }
+        }
+    }
 
-            drop(compiled_module_state);
-            result
-        };
+    fn build_module_with_sub_codegen(&self, import_path: ImportedModulePath) -> (BuildManifest, ModuleMetadata<'ctx>) {
+        let module_name = self.build_local_module_name(import_path.module_path.clone());
 
-        let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_id)));
+        let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_name)));
         let sub_builder = self.context.create_builder();
         let target_machine = CodeGenLLVM::setup_target_machine(
             Rc::clone(&sub_module),
@@ -412,7 +403,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.opts.target_triple.clone(),
         );
         let base_dir = env::current_dir().unwrap().to_str().unwrap().to_string();
-        let file_path = relative_to_absolute(generated_module_import_path.file_path.clone(), base_dir).unwrap();
+        let file_path = relative_to_absolute(import_path.file_path.clone(), base_dir).unwrap();
         let program = parser::parse_program(file_path.clone()).0;
 
         let sub_codegen = Rc::new(RefCell::new(CodeGenLLVM {
@@ -420,7 +411,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             opts: self.opts.clone(),
             context: &self.context,
             module: Rc::clone(&sub_module),
-            module_id: module_id.clone(),
+            module_name: module_name.clone(),
             builder: sub_builder,
             target_machine,
             build_manifest: BuildManifest::default(),
@@ -441,142 +432,156 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             output_kind: self.output_kind.clone(),
             final_build_dir: self.final_build_dir.clone(),
             current_loop_ref: None,
-            compiled_modules_state: Rc::clone(&self.compiled_modules_state),
+            compiled_modules: Rc::clone(&self.compiled_modules),
         }));
 
         let mut sub_codegen_ref = sub_codegen.borrow_mut();
 
         // preventing entry_point of being in dependent_modules
         if self.file_path != self.entry_point_path {
-            sub_codegen_ref.dependent_modules.insert(
-                generated_module_import_path.file_path.clone(),
-                vec![self.file_path.clone()],
-            );
+            sub_codegen_ref
+                .dependent_modules
+                .insert(import_path.file_path.clone(), vec![self.file_path.clone()]);
         }
 
-        if !module_already_compiled() {
-            sub_codegen_ref.compile();
-            self.build_manifest = sub_codegen_ref.build_manifest.clone();
+        sub_codegen_ref.compile();
 
-            let mut compiled_module_state = self.compiled_modules_state.borrow_mut();
-            compiled_module_state.push(CompiledModuleMetadata {
-                module_id: module_id.clone(),
-            });
-        }
+        let build_manifest = sub_codegen_ref.build_manifest.clone();
+        let module_metadata = ModuleMetadata {
+            module_id: generate_module_id(),
+            module_file_path: import_path.file_path.clone(),
+            func_table: sub_codegen_ref.func_table.clone(),
+            struct_table: sub_codegen_ref.struct_table.clone(),
+            global_variables_table: sub_codegen_ref.global_variables_table.clone(),
+            typedef_table: sub_codegen_ref.typedef_table.clone(),
+            imports_single: false,
+        };
 
-        if let Some(module_segment_singles) = generated_module_import_path.singles.clone() {
-            let module_metadata = ModuleMetadata {
-                func_table: sub_codegen_ref.func_table.clone(),
-                struct_table: sub_codegen_ref.struct_table.clone(),
-                global_variables_table: sub_codegen_ref.global_variables_table.clone(),
-                typedef_table: sub_codegen_ref.typedef_table.clone(),
-                identifier: module_id.clone(),
-                imports_single: true,
-            };
+        (build_manifest, module_metadata)
+    }
+
+    fn build_imported_module(&mut self, import_path: ImportedModulePath) {
+        let mut module_metadata = match self.get_compiled_module_by_file_path(import_path.file_path.clone()) {
+            Some(module_metadata) => {
+                // This module compiled before, let's use the same module_metadata.
+                module_metadata
+            }
+            None => {
+                let (build_manifest, module_metadata) = self.build_module_with_sub_codegen(import_path.clone());
+                self.build_manifest = build_manifest;
+                module_metadata
+            }
+        };
+
+        if let Some(module_segment_singles) = import_path.singles.clone() {
+            module_metadata.imports_single = true;
 
             self.imported_modules.push(ImportedModuleMetadata {
-                metadata: module_metadata.clone(),
-                sub_codegen: Rc::clone(&sub_codegen),
+                module_id: module_metadata.module_id,
+                module_path: import_path.module_path.clone(),
             });
 
-            drop(sub_codegen_ref);
-
-            self.build_module_import_singles(
-                module_id.clone(),
-                module_segment_singles,
-                generated_module_import_path.module_path.clone(),
-                generated_module_import_path.loc.clone(),
-                generated_module_import_path.span_end,
-            );
+            // TODO Implement import single
+            // self.build_module_import_singles(
+            //     module_id.clone(),
+            //     module_segment_singles,
+            //     generated_module_import_path.module_path.clone(),
+            //     generated_module_import_path.loc.clone(),
+            //     generated_module_import_path.span_end,
+            // );
         } else {
-            let imported_funcs = self.build_imported_funcs(sub_codegen_ref.func_table.clone());
-            let imported_structs = self.build_imported_structs(
-                generated_module_import_path.module_path,
-                module_id.clone(),
-                sub_codegen_ref.struct_table.clone(),
-            );
-            let imported_global_variables = self.build_imported_global_variables(
-                sub_codegen_ref.global_variables_table.clone(),
-                generated_module_import_path.loc.clone(),
-                generated_module_import_path.span_end,
-            );
+            // TODO Implement import module definitions
+            // let imported_funcs = self.build_imported_funcs(module_metadata.func_table.clone());
+            // let imported_structs = self.build_imported_structs(
+            //     import_path.module_path,
+            //     module_metadata.module_id.clone(),
+            //     sub_codegen_ref.struct_table.clone(),
+            // );
+            // let imported_global_variables = self.build_imported_global_variables(
+            //     sub_codegen_ref.global_variables_table.clone(),
+            //     generated_module_import_path.loc.clone(),
+            //     generated_module_import_path.span_end,
+            // );
 
-            let module_metadata = ModuleMetadata {
-                func_table: imported_funcs,
-                struct_table: imported_structs,
-                global_variables_table: imported_global_variables,
-                typedef_table: sub_codegen_ref.typedef_table.clone(),
-                identifier: module_id.clone(),
-                imports_single: false,
-            };
+            // let module_metadata = ModuleMetadata {
+            //     func_table: imported_funcs,
+            //     struct_table: imported_structs,
+            //     global_variables_table: imported_global_variables,
+            //     typedef_table: sub_codegen_ref.typedef_table.clone(),
+            //     identifier: module_id.clone(),
+            //     imports_single: false,
+            // };
 
-            self.imported_modules.push(ImportedModuleMetadata {
-                metadata: module_metadata.clone(),
-                sub_codegen: Rc::clone(&sub_codegen),
-            });
+            // self.imported_modules.push(ImportedModuleMetadata {
+            //     metadata: module_metadata.clone(),
+            //     sub_codegen: Rc::clone(&sub_codegen),
+            // });
         }
     }
 
     pub(crate) fn build_module_import_singles(
         &mut self,
-        module_id: String,
+        module_id: u64,
         module_segment_singles: Vec<ModuleSegmentSingle>,
         module_path: ModulePath,
         loc: Location,
         span_end: usize,
     ) {
-        let module_metadata = match self.find_imported_module(module_id.clone()) {
-            Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
-            None => panic!("Couldn't lookup imported module in codegen context."),
-        };
+        // FIXME
+        todo!();
 
-        for single in module_segment_singles {
-            let lookup_result = self.lookup_from_module_metadata(
-                single.identifier.name.clone(),
-                module_metadata.clone(),
-                loc.clone(),
-                span_end,
-            );
+        // let module_metadata = match self.find_imported_module(module_id.clone()) {
+        //     Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
+        //     None => panic!("Couldn't lookup imported module in codegen context."),
+        // };
 
-            match lookup_result {
-                DefinitionLookupResult::Func(mut func_metadata) => {
-                    func_metadata.imported_from = Some(module_path.clone());
-                    let (func_name, func_metadata) = self.build_decl_imported_func(func_metadata);
-                    self.func_table.insert(func_name, func_metadata);
-                }
-                DefinitionLookupResult::Struct(struct_metadata) => {
-                    let struct_name = {
-                        match struct_metadata.struct_name.segments.last().unwrap() {
-                            ModuleSegment::SubModule(identifier) => identifier.name.clone(),
-                            ModuleSegment::Single(_) => unreachable!(),
-                        }
-                    };
+        // for single in module_segment_singles {
+        //     let lookup_result = self.lookup_from_module_metadata(
+        //         single.identifier.name.clone(),
+        //         module_metadata.clone(),
+        //         loc.clone(),
+        //         span_end,
+        //     );
 
-                    let new_struct_metadata = self.build_decl_imported_struct_methods(
-                        module_path.clone(),
-                        module_id.clone(),
-                        struct_metadata.clone(),
-                    );
+        //     match lookup_result {
+        //         DefinitionLookupResult::Func(mut func_metadata) => {
+        //             func_metadata.imported_from = Some(module_path.clone());
+        //             let (func_name, func_metadata) = self.build_decl_imported_func(func_metadata);
+        //             self.func_table.insert(func_name, func_metadata);
+        //         }
+        //         DefinitionLookupResult::Struct(struct_metadata) => {
+        //             let struct_name = {
+        //                 match struct_metadata.struct_name.segments.last().unwrap() {
+        //                     ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+        //                     ModuleSegment::Single(_) => unreachable!(),
+        //                 }
+        //             };
 
-                    self.struct_table.insert(struct_name, new_struct_metadata.clone());
-                }
-                DefinitionLookupResult::Typedef(typedef_metadata) => {
-                    self.typedef_table
-                        .insert(single.identifier.name, typedef_metadata.clone());
-                }
-                DefinitionLookupResult::GlobalVariable(mut global_variable_metadata) => {
-                    let global_value = self.build_decl_imported_global_variable(
-                        global_variable_metadata.clone(),
-                        loc.clone(),
-                        span_end,
-                    );
+        //             let new_struct_metadata = self.build_decl_imported_struct_methods(
+        //                 module_path.clone(),
+        //                 module_id.clone(),
+        //                 struct_metadata.clone(),
+        //             );
 
-                    global_variable_metadata.global_value = global_value;
-                    self.global_variables_table
-                        .insert(single.identifier.name, global_variable_metadata.clone());
-                }
-            }
-        }
+        //             self.struct_table.insert(struct_name, new_struct_metadata.clone());
+        //         }
+        //         DefinitionLookupResult::Typedef(typedef_metadata) => {
+        //             self.typedef_table
+        //                 .insert(single.identifier.name, typedef_metadata.clone());
+        //         }
+        //         DefinitionLookupResult::GlobalVariable(mut global_variable_metadata) => {
+        //             let global_value = self.build_decl_imported_global_variable(
+        //                 global_variable_metadata.clone(),
+        //                 loc.clone(),
+        //                 span_end,
+        //             );
+
+        //             global_variable_metadata.global_value = global_value;
+        //             self.global_variables_table
+        //                 .insert(single.identifier.name, global_variable_metadata.clone());
+        //         }
+        //     }
+        // }
     }
 
     fn build_imported_global_variables(
@@ -842,4 +847,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> String {
         format!("{}_{}_{}", module_id, struct_name, method_name)
     }
+}
+
+pub fn generate_module_id() -> u64 {
+    let mut rng = rand::rng();
+    rng.random::<u64>()
 }

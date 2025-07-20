@@ -516,7 +516,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let func_abi_name = self.generate_abi_name(self.module_id.clone(), func_def.name.clone());
+        let func_abi_name = self.generate_abi_name(self.module_name.clone(), func_def.name.clone());
         let actual_func_name = if self.is_current_module_entry_point() {
             func_decl.name.clone()
         } else {
