@@ -414,90 +414,85 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn generate_object_file_internal(&self, output_path: String) {
-        let path = Path::new(&output_path);
-        self.target_machine
-            .write_to_file(&*self.module.borrow(), FileType::Object, &path)
-            .unwrap();
+        let temp_dir = env::temp_dir();
+        let temp_ll_file_path = temp_dir.join("module.ll");
+        let temp_bc_file_path = temp_dir.join("module.bc");
 
-        // let temp_dir = env::temp_dir();
-        // let temp_ll_file_path = temp_dir.join("module.ll");
-        // let temp_bc_file_path = temp_dir.join("module.bc");
+        if let Some(parent) = temp_ll_file_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!("Failed to create temporary directory: {}", e)),
+                    location: None,
+                });
+                exit(1);
+            }
+        }
 
-        // if let Some(parent) = temp_ll_file_path.parent() {
-        //     if let Err(e) = fs::create_dir_all(parent) {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::Custom(format!("Failed to create temporary directory: {}", e)),
-        //             location: None,
-        //         });
-        //         exit(1);
-        //     }
-        // }
+        let result: Result<(), String> = (|| {
+            self.module
+                .borrow()
+                .print_to_file(&temp_ll_file_path)
+                .map_err(|err| format!("Failed to print LLVM IR to temporary file: {}", err))?;
 
-        // let result: Result<(), String> = (|| {
-        //     self.module
-        //         .borrow()
-        //         .print_to_file(&temp_ll_file_path)
-        //         .map_err(|err| format!("Failed to print LLVM IR to temporary file: {}", err))?;
+            let mut llvm_as_command = Command::new("llvm-as");
+            llvm_as_command.arg(&temp_ll_file_path);
+            llvm_as_command.arg("-o");
+            llvm_as_command.arg(&temp_bc_file_path);
 
-        //     let mut llvm_as_command = Command::new("llvm-as");
-        //     llvm_as_command.arg(&temp_ll_file_path);
-        //     llvm_as_command.arg("-o");
-        //     llvm_as_command.arg(&temp_bc_file_path);
+            let llvm_as_command_output = llvm_as_command
+                .output()
+                .map_err(|e| format!("Failed to execute llvm-as command: {}", e))?;
 
-        //     let llvm_as_command_output = llvm_as_command
-        //         .output()
-        //         .map_err(|e| format!("Failed to execute llvm-as command: {}", e))?;
+            if !llvm_as_command_output.status.success() {
+                return Err(format!(
+                    "llvm-as command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
+                    llvm_as_command_output.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&llvm_as_command_output.stdout),
+                    String::from_utf8_lossy(&llvm_as_command_output.stderr)
+                ));
+            }
 
-        //     if !llvm_as_command_output.status.success() {
-        //         return Err(format!(
-        //             "llvm-as command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
-        //             llvm_as_command_output.status.code().unwrap_or(-1),
-        //             String::from_utf8_lossy(&llvm_as_command_output.stdout),
-        //             String::from_utf8_lossy(&llvm_as_command_output.stderr)
-        //         ));
-        //     }
+            let mut llc_command = Command::new("llc");
+            self.apply_llc_flags().iter().for_each(|flag| {
+                llc_command.arg(flag.clone());
+            });
+            llc_command.arg("-filetype=obj");
+            llc_command.arg(&temp_bc_file_path);
+            llc_command.arg("-o");
+            llc_command.arg(&output_path);
 
-        //     let mut llc_command = Command::new("llc");
-        //     self.apply_llc_flags().iter().for_each(|flag| {
-        //         llc_command.arg(flag.clone());
-        //     });
-        //     llc_command.arg("-filetype=obj");
-        //     llc_command.arg(&temp_bc_file_path);
-        //     llc_command.arg("-o");
-        //     llc_command.arg(&output_path);
+            let llc_command_output = llc_command
+                .output()
+                .map_err(|e| format!("Failed to execute llc command: {}", e))?;
 
-        //     let llc_command_output = llc_command
-        //         .output()
-        //         .map_err(|e| format!("Failed to execute llc command: {}", e))?;
+            if !llc_command_output.status.success() {
+                return Err(format!(
+                    "llc command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
+                    llc_command_output.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&llc_command_output.stdout),
+                    String::from_utf8_lossy(&llc_command_output.stderr)
+                ));
+            }
 
-        //     if !llc_command_output.status.success() {
-        //         return Err(format!(
-        //             "llc command failed with exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
-        //             llc_command_output.status.code().unwrap_or(-1),
-        //             String::from_utf8_lossy(&llc_command_output.stdout),
-        //             String::from_utf8_lossy(&llc_command_output.stderr)
-        //         ));
-        //     }
+            Ok(())
+        })();
 
-        //     Ok(())
-        // })();
+        if let Err(err) = result {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(err),
+                location: None,
+            });
+            exit(1);
+        }
 
-        // if let Err(err) = result {
-        //     display_single_diag(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: DiagKind::Custom(err),
-        //         location: None,
-        //     });
-        //     exit(1);
-        // }
-
-        // // clean up temporary files: the .ll and the .bc file
-        // for path in [&temp_ll_file_path, &temp_bc_file_path] {
-        //     if let Err(e) = fs::remove_file(path) {
-        //         eprintln!("Warning: Failed to remove temporary file {:?}: {}", path, e);
-        //     }
-        // }
+        // clean up temporary files: the .ll and the .bc file
+        for path in [&temp_ll_file_path, &temp_bc_file_path] {
+            if let Err(e) = fs::remove_file(path) {
+                eprintln!("Warning: Failed to remove temporary file {:?}: {}", path, e);
+            }
+        }
     }
 
     pub(crate) fn ensure_build_manifest(&mut self, build_dir: String) {
