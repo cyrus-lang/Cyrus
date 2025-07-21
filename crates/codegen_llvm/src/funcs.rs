@@ -1,11 +1,12 @@
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
+use crate::modules::{LocalIRValue, LocalIRValueID, generate_local_ir_value_id};
 use crate::scope::{ScopeRecord, ScopeRef};
 use crate::types::{InternalIntType, InternalVoidType};
 use crate::values::InternalValue;
 use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
     AccessSpecifier, Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams,
-    Identifier, ModulePath, ModuleSegment, Return, TypeSpecifier,
+    Identifier, ModuleImport, ModulePath, Return, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
@@ -22,7 +23,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct FuncMetadata<'a> {
-    pub ptr: FunctionValue<'a>,
+    pub local_ir_value_id: LocalIRValueID,
     pub func_decl: FuncDecl,
     pub return_type: InternalType<'a>,
     pub imported_from: Option<ModulePath>,
@@ -250,13 +251,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         if insert_to_func_table {
             let func_metadata = FuncMetadata {
+                local_ir_value_id: generate_local_ir_value_id(),
                 func_decl: func_decl.clone(),
-                ptr: func_value,
                 return_type,
                 imported_from: None,
                 params_metadata: params_metadata.clone(),
                 is_method,
             };
+
+            self.insert_local_ir_value(func_metadata.local_ir_value_id, LocalIRValue::Func(func_value));
 
             let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
             module_metadata.insert_func(func_decl.get_usable_name(), func_metadata);
@@ -541,20 +544,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.add_function_attributes(func_value);
 
+        let local_ir_value_id = generate_local_ir_value_id();
+
         let func_metadata = FuncMetadata {
+            local_ir_value_id,
             func_decl: func_decl.clone(),
-            ptr: func_value,
             return_type: return_type.clone(),
             imported_from: None,
             params_metadata: params_metadata.clone(),
             is_method: false,
         };
+
+        self.insert_local_ir_value(func_metadata.local_ir_value_id, LocalIRValue::Func(func_value));
+
         let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
         module_metadata.insert_func(func_decl.get_usable_name(), func_metadata);
         drop(module_metadata);
 
         self.block_registry.current_func_ref = Some(FuncMetadata {
-            ptr: func_value.clone(),
+            local_ir_value_id,
             func_decl: func_decl.clone(),
             return_type: return_type.clone(),
             imported_from: None,
@@ -838,79 +846,58 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn build_func_call(&mut self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> InternalValue<'ctx> {
-        let expr = self.build_expr(Rc::clone(&scope), *func_call.operand.clone());
-
-        let func_metadata = {
-            match expr {
-                InternalValue::ModuleValue(module_metadata) => {
-                    if let Expression::ModuleImport(module_import) = *func_call.operand.clone() {
-                        let module_import_str = module_segments_as_string(module_import.segments.clone());
-                        let func_name = match module_import.segments.last().unwrap() {
-                            ModuleSegment::SubModule(identifier) => identifier.clone(),
-                            ModuleSegment::Single(_) => unreachable!(),
-                        };
-
-                        match module_metadata.func_table.get(&func_name.name) {
-                            Some(func_metadata) => {
-                                if !(func_metadata.func_decl.access_specifier == AccessSpecifier::Public
-                                    || func_metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
-                                    || func_metadata.func_decl.access_specifier == AccessSpecifier::PublicInline)
-                                {
-                                    display_single_diag(Diag {
-                                        level: DiagLevel::Error,
-                                        kind: DiagKind::Custom(format!(
-                                            "Function '{}' defined locally and cannot be called here. Consider to make it public and try again.",
-                                            module_import_str
-                                        )),
-                                        location: Some(DiagLoc {
-                                            file: self.file_path.clone(),
-                                            line: func_call.loc.line,
-                                            column: func_call.loc.column,
-                                            length: func_call.span.end,
-                                        }),
-                                    });
-                                    exit(1);
-                                }
-                                func_metadata.clone()
-                            }
-                            None => {
-                                display_single_diag(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: DiagKind::Custom(format!(
-                                        "Function '{}' not found in module '{}'.",
-                                        func_name.name, module_import_str
-                                    )),
-                                    location: Some(DiagLoc {
-                                        file: self.file_path.clone(),
-                                        line: func_call.loc.line,
-                                        column: func_call.loc.column,
-                                        length: func_call.span.end,
-                                    }),
-                                });
-                                exit(1);
-                            }
-                        }
-                    } else {
-                        unreachable!();
-                    }
-                }
-                InternalValue::FunctionValue(func_metadata) => func_metadata,
-                _ => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Cannot build function call with an invalid expression.".to_string()),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: func_call.loc.line,
-                            column: func_call.loc.column,
-                            length: func_call.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
+    fn build_func_call_operand(&self, operand: Box<Expression>, loc: Location, span_end: usize) -> FuncMetadata<'ctx> {
+        let resolve_local_func = |name: String| self.resolve_func_metadata(self.module_id, name);
+        let resolve_imported_func = |module_import: ModuleImport| {
+            if let Some(identifier) = module_import.as_identifier() {
+                resolve_local_func(identifier.name)
+            } else {
+                todo!()
             }
         };
+
+        let (func_metadata_opt, resolving_name) = match *operand {
+            Expression::Identifier(identifier) => (resolve_local_func(identifier.name.clone()), identifier.name),
+            Expression::ModuleImport(module_import) => (
+                resolve_imported_func(module_import.clone()),
+                module_segments_as_string(module_import.segments),
+            ),
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::FuncCallInvalidOperand,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let func_metadata = match func_metadata_opt {
+            Some(func_metadata) => func_metadata,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::FuncNotFound(resolving_name),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        func_metadata
+    }
+    pub(crate) fn build_func_call(&mut self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> InternalValue<'ctx> {
+        let func_metadata = self.build_func_call_operand(func_call.operand, func_call.loc.clone(), func_call.span.end);
 
         self.check_func_args_count_mismatch(
             func_metadata.func_decl.name.clone(),
@@ -933,7 +920,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_call.span.end,
         );
 
-        let call_site_value = self.builder.build_call(func_metadata.ptr, arguments, "call").unwrap();
+        let func_value = self.get_local_func_ir_value(func_metadata.local_ir_value_id);
+        let call_site_value = self.builder.build_call(func_value, arguments, "call").unwrap();
         let return_type = func_metadata.return_type.clone();
 
         if let Some(value) = call_site_value.try_as_basic_value().left() {

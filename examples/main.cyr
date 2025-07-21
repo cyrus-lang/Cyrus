@@ -1,8 +1,7 @@
-import std::libc{printf, malloc};
+// import std::libc{printf, malloc};
 
 extern func printf(format: const char*, ...) void; 
 
 func main() {
-    #ds: struct { a: int32 };
-    ds.a = 10;
+    printf("Hello, World!\n");
 }

@@ -3,7 +3,7 @@ use crate::{
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     types::{
         InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalLvalueType,
-        InternalPointerType, InternalType, InternalVoidType,
+        InternalPointerType, InternalType,
     },
     values::{InternalValue, Lvalue, TypedPointerValue},
 };
@@ -23,18 +23,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         match expr {
             Expression::FieldAccess(field_access) => self.build_field_access(Rc::clone(&scope), field_access),
             Expression::MethodCall(method_call) => self.build_method_call(Rc::clone(&scope), method_call),
-            Expression::Identifier(identifier) => self.build_lvalue(
-                Rc::clone(&scope),
-                ModuleImport {
-                    segments: vec![ModuleSegment::SubModule(identifier.clone())],
-                    span: identifier.span,
-                    loc: identifier.loc,
-                },
-            ),
-            Expression::Assignment(assignment) => {
-                self.build_assignment(Rc::clone(&scope), assignment);
-                InternalValue::PointerValue(self.build_null())
-            }
+            Expression::Identifier(identifier) => self.build_lvalue(Rc::clone(&scope), identifier),
             Expression::Literal(literal) => self.build_literal(literal),
             Expression::Prefix(unary_expression) => self.build_prefix_expr(Rc::clone(&scope), unary_expression),
             Expression::Infix(binary_expression) => self.build_infix_expr(Rc::clone(&scope), binary_expression),
@@ -50,6 +39,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Expression::TypeSpecifier(_) => InternalValue::PointerValue(self.build_null()),
             Expression::UnnamedStructValue(unnamed_struct_value) => {
                 self.build_unnamed_struct_value(Rc::clone(&scope), unnamed_struct_value)
+            }
+            Expression::Assignment(assignment) => {
+                self.build_assignment(Rc::clone(&scope), assignment);
+                InternalValue::PointerValue(self.build_null())
             }
         }
     }
@@ -118,8 +111,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         module_import: ModuleImport,
     ) -> InternalValue<'ctx> {
-        if module_import.segments.len() == 1 {
-            return self.build_lvalue(Rc::clone(&scope), module_import);
+        if let Some(identifier) = module_import.as_identifier() {
+            return self.build_lvalue(Rc::clone(&scope), identifier);
         }
 
         todo!();
@@ -206,14 +199,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         // }
     }
 
-    pub(crate) fn build_lvalue(&self, scope: ScopeRef<'ctx>, module_import: ModuleImport) -> InternalValue<'ctx> {
-        assert_eq!(module_import.segments.len(), 1);
-
-        let identifier = match module_import.segments.first().unwrap() {
-            ModuleSegment::SubModule(identifier) => identifier.clone(),
-            ModuleSegment::Single(_) => unreachable!(),
-        };
-
+    pub(crate) fn build_lvalue(&self, scope: ScopeRef<'ctx>, identifier: Identifier) -> InternalValue<'ctx> {
         // local variable
         if let Some(record) = scope.borrow().get(identifier.name.clone()) {
             let record = record.borrow();
@@ -239,9 +225,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
-                    line: module_import.loc.line,
-                    column: module_import.loc.column,
-                    length: module_import.span.end,
+                    line: identifier.loc.line,
+                    column: identifier.loc.column,
+                    length: identifier.span.end,
                 }),
             });
             exit(1);

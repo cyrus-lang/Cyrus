@@ -51,11 +51,12 @@ macro_rules! build_loop_statement {
         $span_end:expr
     ) => {{
         let current_block = $self.get_current_block("for statement", $loc.clone(), $span_end);
-        let current_func = $self.get_current_func("for statement", $loc.clone(), $span_end).ptr;
+        let current_func = $self.get_current_func("for statement", $loc.clone(), $span_end);
+        let func_value = $self.get_local_func_ir_value(current_func.local_ir_value_id);
 
-        let cond_block = $self.context.append_basic_block(current_func, "loop.cond");
-        let body_block = $self.context.append_basic_block(current_func, "loop.body");
-        let end_block = $self.context.append_basic_block(current_func, "loop.end");
+        let cond_block = $self.context.append_basic_block(func_value, "loop.cond");
+        let body_block = $self.context.append_basic_block(func_value, "loop.body");
+        let end_block = $self.context.append_basic_block(func_value, "loop.end");
 
         let previous_loop_ref = $self.block_registry.current_loop_ref.clone();
         $self.block_registry.current_loop_ref = Some(LoopBlockRefs { cond_block, end_block });
@@ -141,7 +142,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         func_def.span.end,
                         func_def.params.list.clone(),
                         func_def.params.variadic.clone(),
-                        false
+                        false,
                     );
 
                     let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
@@ -155,7 +156,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_decl.span.end,
                     func_decl.params.list.clone(),
                     func_decl.params.variadic.clone(),
-                    false
+                    false,
                 );
 
                 self.build_func_decl(func_decl, param_types, true, false);
@@ -180,7 +181,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn is_block_terminated(&self, basic_block: BasicBlock<'ctx>) -> bool {
-        self.block_registry.terminated_blocks
+        self.block_registry
+            .terminated_blocks
             .iter()
             .find(|metadata| metadata.basic_block == basic_block)
             .is_some()
@@ -190,7 +192,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         basic_block: BasicBlock<'ctx>,
     ) -> Option<TerminatedBlockMetadata<'ctx>> {
-        self.block_registry.terminated_blocks
+        self.block_registry
+            .terminated_blocks
             .iter()
             .find(|metadata| metadata.basic_block == basic_block)
             .cloned()
@@ -418,8 +421,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let array_length = self.build_index_value(internal_array_type.array_type.len().try_into().unwrap());
 
         let current_block = self.get_current_block("for statement", foreach.loc.clone(), foreach.span.end);
-        let current_func = self
-            .get_current_func("for statement", foreach.loc.clone(), foreach.span.end).ptr;
+        let current_func = self.get_current_func("for statement", foreach.loc.clone(), foreach.span.end);
+        let func_value = self.get_local_func_ir_value(current_func.local_ir_value_id);
 
         let index_alloca = self
             .builder
@@ -429,9 +432,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .build_store(index_alloca, self.build_index_value(0))
             .unwrap();
 
-        let cond_block = self.context.append_basic_block(current_func, "loop.cond");
-        let body_block = self.context.append_basic_block(current_func, "loop.body");
-        let end_block = self.context.append_basic_block(current_func, "loop.end");
+        let cond_block = self.context.append_basic_block(func_value, "loop.cond");
+        let body_block = self.context.append_basic_block(func_value, "loop.body");
+        let end_block = self.context.append_basic_block(func_value, "loop.end");
 
         // track current_loop
         let previous_loop_ref = self.block_registry.current_loop_ref.clone();
@@ -563,13 +566,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_if(&mut self, scope: ScopeRef<'ctx>, if_statement: If) {
         let current_block = self.get_current_block("for statement", if_statement.loc.clone(), if_statement.span.end);
-        let current_func = self
-            .get_current_func("for statement", if_statement.loc.clone(), if_statement.span.end)
-            .ptr;
+        let current_func = self.get_current_func("for statement", if_statement.loc.clone(), if_statement.span.end);
+        let func_value = self.get_local_func_ir_value(current_func.local_ir_value_id);
 
-        let then_block = self.context.append_basic_block(current_func, "if.then");
-        let else_block = self.context.append_basic_block(current_func, "if.else");
-        let end_block = self.context.append_basic_block(current_func, "if.end");
+        let then_block = self.context.append_basic_block(func_value, "if.then");
+        let else_block = self.context.append_basic_block(func_value, "if.else");
+        let end_block = self.context.append_basic_block(func_value, "if.end");
 
         let cond = self.build_cond(
             Rc::clone(&scope),
@@ -606,8 +608,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let mut current_else_block = else_block;
         for else_if in if_statement.branches {
-            let new_else_block = self.context.append_basic_block(current_func, "else_if");
-            let new_then_block = self.context.append_basic_block(current_func, "else_if.then");
+            let new_else_block = self.context.append_basic_block(func_value, "else_if");
+            let new_then_block = self.context.append_basic_block(func_value, "else_if.then");
 
             self.builder.position_at_end(current_else_block);
             let else_if_cond = self.build_cond(

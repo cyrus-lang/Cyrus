@@ -45,7 +45,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let array_length_int_value = self.build_index_value(array_length.try_into().unwrap());
 
         let current_block = self.get_current_block("runtime check bounds", loc.clone(), span_end);
-        let current_func = self.get_current_func("runtime check bounds", loc.clone(), span_end).ptr;
+        let current_func = self.get_current_func("runtime check bounds", loc.clone(), span_end);
+        let func_value = self.get_local_func_ir_value(current_func.local_ir_value_id);
 
         if self.is_block_terminated(current_block) {
             display_single_diag(Diag {
@@ -63,8 +64,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        let failure_block = self.context.append_basic_block(current_func, "inbounds_check.failure");
-        let success_block = self.context.append_basic_block(current_func, "inbounds_check.success");
+        let failure_block = self.context.append_basic_block(func_value, "inbounds_check.failure");
+        let success_block = self.context.append_basic_block(func_value, "inbounds_check.success");
 
         let index_implicit_casted = self.implicit_cast(
             index,
