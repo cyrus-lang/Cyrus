@@ -1,5 +1,6 @@
 use crate::context::CodeGenLLVM;
 use crate::diag::*;
+use crate::resolver::MetadataResolverResult;
 use crate::structs::StructID;
 use crate::structs::StructMetadata;
 use crate::structs::StructMethodMetadata;
@@ -399,17 +400,16 @@ impl<'a> InternalType<'a> {
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_typedef(&mut self, typedef: Typedef) {
-        // FIXME Check naming collision before inserting
+        self.error_if_already_declared(typedef.identifier.name.clone(), typedef.loc.clone(), typedef.span.end);
 
-        todo!();
-        // let internal_type = self.build_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end);
-        // self.local_defs.typedef_table.insert(
-        //     typedef.identifier.name,
-        //     TypedefMetadata {
-        //         internal_type,
-        //         access_specifier: typedef.access_specifier.clone(),
-        //     },
-        // );
+        let internal_type = self.build_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end);
+        let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
+        let typedef_metadata = TypedefMetadata {
+            internal_type,
+            access_specifier: typedef.access_specifier.clone(),
+        };
+        module_metadata.insert_typedef(typedef.identifier.name, typedef_metadata);
+        drop(module_metadata);
     }
 
     pub(crate) fn typedef_as_struct_type(
@@ -458,90 +458,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn find_defined_type(
-        &self,
-        module_import: ModuleImport,
-        loc: Location,
-        span_end: usize,
-    ) -> Option<DefinedType<'ctx>> {
-        // FIXME
-        todo!();
-
-        // if module_import.segments.len() == 1 {
-        // FIXME Use as_identifier instead.
-        //     let name = match module_import.segments.last().unwrap() {
-        //         ModuleSegment::SubModule(identifier) => identifier.name.clone(),
-        //         ModuleSegment::Single(_) => unreachable!(),
-        //     };
-
-        //     match self.lookup_definition(name.clone()) {
-        //         Some(definition_lookup_result) => match definition_lookup_result {
-        //             DefinitionLookupResult::Func(_) => {
-        //                 // FIXME
-        //                 panic!("Cannot use function as a data type.");
-        //             }
-        //             DefinitionLookupResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
-        //             DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
-        //             DefinitionLookupResult::GlobalVariable(_) => {
-        //                 display_single_diag(Diag {
-        //                     level: DiagLevel::Error,
-        //                     kind: DiagKind::Custom("Cannot use a global variable as a type specifier.".to_string()),
-        //                     location: Some(DiagLoc {
-        //                         file: self.file_path.clone(),
-        //                         line: loc.line,
-        //                         column: loc.column,
-        //                         length: span_end,
-        //                     }),
-        //                 });
-        //                 exit(1);
-        //             }
-        //         },
-        //         None => {
-        //             return None;
-        //         }
-        //     }
-        // } else {
-        //     let module_id = self.build_module_name(ModulePath {
-        //         alias: None,
-        //         segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
-        //         loc: Location::default(),
-        //         span: Span::default(),
-        //     });
-
-        //     let module_metadata = match self.find_imported_module(module_id.clone()) {
-        //         Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
-        //         None => {
-        //             return None;
-        //         }
-        //     };
-
-        //     let name = match module_import.segments.last().unwrap() {
-        //         ModuleSegment::SubModule(identifier) => identifier.name.clone(),
-        //         ModuleSegment::Single(_) => unreachable!(), // singles never achieve at this point
-        //     };
-
-        //     match self.lookup_from_module_metadata(name, module_metadata, loc.clone(), span_end) {
-        //         DefinitionLookupResult::Func(_) => {
-        //             // FIXME
-        //             panic!("Cannot use function as a data type.");
-        //         }
-        //         DefinitionLookupResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
-        //         DefinitionLookupResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
-        //         DefinitionLookupResult::GlobalVariable(_) => {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::Custom("Cannot use a global variable as a type specifier.".to_string()),
-        //                 location: Some(DiagLoc {
-        //                     file: self.file_path.clone(),
-        //                     line: loc.line,
-        //                     column: loc.column,
-        //                     length: span_end,
-        //                 }),
-        //             });
-        //             exit(1);
-        //         }
-        //     }
-        // }
+    pub(crate) fn get_defined_type(&self, module_import: ModuleImport) -> Option<DefinedType<'ctx>> {
+        match module_import.as_identifier() {
+            Some(identifier) => match self.resolve_metadata(self.module_id, identifier.name) {
+                Some(metadata_resolver_result) => match metadata_resolver_result {
+                    MetadataResolverResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
+                    MetadataResolverResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
+                    MetadataResolverResult::GlobalVariable(_) => None,
+                    MetadataResolverResult::Func(_) => None,
+                },
+                None => None,
+            },
+            None => todo!(),
+        }
     }
 
     pub(crate) fn build_type(
@@ -556,15 +485,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 inner_type: Box::new(self.build_type(*inner_type_specifier.clone(), loc, span_end)),
             }),
             TypeSpecifier::Identifier(identifier) => {
-                match self.find_defined_type(
-                    ModuleImport {
-                        segments: vec![ModuleSegment::SubModule(identifier.clone())],
-                        span: identifier.span.clone(),
-                        loc: identifier.loc.clone(),
-                    },
-                    loc,
-                    span_end,
-                ) {
+                match self.get_defined_type(ModuleImport {
+                    segments: vec![ModuleSegment::SubModule(identifier.clone())],
+                    span: identifier.span.clone(),
+                    loc: identifier.loc.clone(),
+                }) {
                     Some(defined_type) => defined_type.into_internal_type(),
                     None => {
                         display_single_diag(Diag {
@@ -582,7 +507,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
             TypeSpecifier::ModuleImport(module_import) => {
-                match self.find_defined_type(module_import.clone(), loc.clone(), span_end) {
+                match self.get_defined_type(module_import.clone()) {
                     Some(defined_type) => defined_type.into_internal_type(),
                     None => {
                         display_single_diag(Diag {

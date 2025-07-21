@@ -6,14 +6,14 @@ use crate::types::{InternalIntType, InternalType, InternalVoidType};
 use crate::values::InternalValue;
 use ast::ast::{
     AccessSpecifier, Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams,
-    Identifier, ModuleImport, ModulePath, Return, TypeSpecifier,
+    Identifier, ModuleImport, Return, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
-use inkwell::module::{self, Linkage};
+use inkwell::module::Linkage;
 use inkwell::types::FunctionType;
 use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
 use std::collections::HashMap;
@@ -182,11 +182,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn error_if_func_already_declared(&self, func_name: String, loc: Location, span_end: usize) {
-        if self.resolve_func_metadata(self.module_id, func_name.clone()).is_some() {
+    pub(crate) fn error_if_already_declared(&self, name: String, loc: Location, span_end: usize) {
+        if self.resolve_metadata(self.module_id, name.clone()).is_some() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
-                kind: DiagKind::DuplicateFunction(func_name),
+                kind: DiagKind::DuplicateNaming(name),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
                     line: loc.line,
@@ -205,7 +205,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         insert_to_func_table: bool,
         is_method: bool,
     ) -> FunctionValue<'ctx> {
-        self.error_if_func_already_declared(func_decl.get_usable_name(), func_decl.loc.clone(), func_decl.span.end);
+        self.error_if_already_declared(func_decl.get_usable_name(), func_decl.loc.clone(), func_decl.span.end);
 
         let param_types = params_metadata.param_types.clone();
         let is_var_args = params_metadata.variadic_arguments.is_some();
@@ -505,7 +505,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         params_metadata: FuncParamsMetadata<'ctx>,
         is_entry_point: bool,
     ) -> FunctionValue<'ctx> {
-        self.error_if_func_already_declared(func_def.name.clone(), func_def.loc.clone(), func_def.span.end);
+        self.error_if_already_declared(func_def.name.clone(), func_def.loc.clone(), func_def.span.end);
 
         let param_types = params_metadata.param_types.clone();
         self.validate_func_storage_class(func_def.clone(), is_entry_point);
@@ -959,7 +959,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_call.span.end,
         );
 
-        let func_value = self.get_or_declare_local_func_ir_value(func_metadata.local_ir_value_id, func_metadata.clone());
+        let func_value =
+            self.get_or_declare_local_func_ir_value(func_metadata.local_ir_value_id, func_metadata.clone());
         let call_site_value = self.builder.build_call(func_value, arguments, "call").unwrap();
         let return_type = func_metadata.return_type.clone();
 
