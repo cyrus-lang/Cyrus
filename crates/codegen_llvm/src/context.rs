@@ -2,7 +2,7 @@ use crate::build;
 use crate::diag::*;
 use crate::funcs::{FuncMetadata, FuncTable};
 use crate::modules::{
-    ImportedModules, LocalIRValueRegistryRef, ModuleID, ModuleMetadata, ModuleMetadataRegistryRef, generate_module_id,
+    ImportedModule, LocalIRValueRegistryRef, ModuleID, ModuleMetadata, ModuleMetadataRegistryRef, generate_module_id,
 };
 use crate::opts::{BuildDir, Options};
 use crate::scope::Scope;
@@ -46,7 +46,7 @@ pub struct CodeGenLLVM<'ctx> {
     pub(crate) output_kind: OutputKind,                                   // compiler output kind
     pub(crate) final_build_dir: String,                                   // build directory path
     pub(crate) block_registry: BlockRegistry<'ctx>,                       // block registry
-    pub(crate) imported_modules: Vec<ImportedModules>,                    // imported modules list
+    pub(crate) imported_modules: Vec<ImportedModule>,                    // imported modules list
     pub(crate) module_metadata_registry: ModuleMetadataRegistryRef<'ctx>, // global shared module metadata registry
     pub(crate) local_ir_value_registry: LocalIRValueRegistryRef<'ctx>,    // per-module IR-value registry
 }

@@ -7,7 +7,7 @@ use crate::{
 use ast::token::{Location, TokenKind};
 use inkwell::{
     AddressSpace,
-    types::{BasicMetadataTypeEnum},
+    types::BasicMetadataTypeEnum,
     values::{BasicMetadataValueEnum, IntValue, PointerValue},
 };
 use std::process::exit;
@@ -46,13 +46,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let current_block = self.get_current_block("runtime check bounds", loc.clone(), span_end);
         let current_func = self.get_current_func("runtime check bounds", loc.clone(), span_end);
-        let func_value = self.get_local_func_ir_value(current_func.local_ir_value_id);
+        let func_value = match self.get_local_func_ir_value(current_func.local_ir_value_id) {
+            Some(func_value) => func_value,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build runtime inbounds check outside of a function.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
         if self.is_block_terminated(current_block) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(
-                    "Cannot build runtime_inbounds_check because current block is already terminated.".to_string(),
+                    "Cannot build runtime inbounds check because current block is already terminated.".to_string(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -94,10 +109,16 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.builder.position_at_end(failure_block);
 
-        let panic_msg = self.build_global_str(format!(
-            "panic: Index out of bounds!\nAttempted to access index %d in an array of size {}.",
-            array_length
-        ), Location::default(), 0).0;
+        let panic_msg = self
+            .build_global_str(
+                format!(
+                    "panic: Index out of bounds!\nAttempted to access index %d in an array of size {}.",
+                    array_length
+                ),
+                Location::default(),
+                0,
+            )
+            .0;
 
         let module = self.module.borrow_mut();
 

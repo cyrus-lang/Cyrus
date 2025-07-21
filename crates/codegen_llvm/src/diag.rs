@@ -20,6 +20,7 @@ pub enum DiagKind {
     UndefinedDataType(String),
     FuncNotFound(String),
     ModuleNotFound(String),
+    ModuleImportNotFound(String),
     FuncCallArgumentCountMismatch(String, i32, i32),
     MethodCallArgumentCountMismatch(String, i32, i32),
     TypeAnnotationRequiredForParam(String, String),
@@ -102,6 +103,7 @@ impl fmt::Display for DiagKind {
             DiagKind::InvalidStructAccessSpecifier => {
                 "Structs must be declared with public or internal access specifier."
             }
+            DiagKind::ModuleImportNotFound(module_name) => &format!("Module '{}' not found.", module_name),
         };
         write!(f, "{}", msg)
     }

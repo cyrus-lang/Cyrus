@@ -49,10 +49,10 @@ pub struct ModuleMetadata<'a> {
     pub typedef_table: TypedefTable<'a>,
 }
 
-#[derive(Clone)]
-pub(crate) struct ImportedModules {
+#[derive(Debug, Clone)]
+pub(crate) struct ImportedModule {
     // reference to module metadata registry
-    pub module_id: u64,
+    pub module_id: ModuleID,
     pub module_path: ModulePath,
 }
 
@@ -90,8 +90,25 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn get_imported_module(&self, module_id: u64) -> Option<ImportedModules> {
-        self.imported_modules.iter().find(|m| m.module_id == module_id).cloned()
+    pub(crate) fn get_imported_module(&self, segments: Vec<ModuleSegment>) -> Option<ImportedModule> {
+        let equal_segments = |segment1: &ModuleSegment, segment2: &ModuleSegment| {
+            segment1.as_identifier().name == segment2.as_identifier().name
+        };
+
+        self.imported_modules
+            .iter()
+            .find(|m| {
+                if m.module_path.segments.len() != segments.len() {
+                    return false;
+                }
+
+                m.module_path
+                    .segments
+                    .iter()
+                    .zip(segments.iter())
+                    .all(|(s1, s2)| equal_segments(s1, s2))
+            })
+            .cloned()
     }
 
     fn build_stdlib_modules_path(&self) -> String {
@@ -444,7 +461,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 import_path.span_end,
             );
         } else {
-            self.imported_modules.push(ImportedModules {
+            self.imported_modules.push(ImportedModule {
                 module_id: module_metadata.module_id,
                 module_path: import_path.module_path.clone(),
             });
@@ -571,20 +588,40 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         drop(local_ir_value_registry);
     }
 
-    pub(crate) fn get_local_func_ir_value(&self, id: LocalIRValueID) -> FunctionValue<'ctx> {
+    pub(crate) fn get_or_declare_local_func_ir_value(
+        &mut self,
+        id: LocalIRValueID,
+        func_metadata: FuncMetadata<'ctx>,
+    ) -> FunctionValue<'ctx> {
+        match self.get_local_func_ir_value(id) {
+            Some(func_value) => func_value,
+            None => {
+                let func_value = self.build_func_decl(
+                    func_metadata.func_decl.clone(),
+                    func_metadata.params_metadata.clone(),
+                    false,
+                    false,
+                );
+
+                let local_ir_value = generate_local_ir_value_id();
+                self.insert_local_ir_value(local_ir_value, LocalIRValue::Func(func_value));
+                func_value
+            }
+        }
+    }
+
+    pub(crate) fn get_local_func_ir_value(&self, id: LocalIRValueID) -> Option<FunctionValue<'ctx>> {
         let local_ir_value_registry = self.local_ir_value_registry.borrow();
         let local_ir_value = match local_ir_value_registry.get(&id).cloned() {
             Some(local_ir_value) => local_ir_value,
-            None => {
-                panic!("Could not get func ir value from the registry.");
-            }
+            None => return None,
         };
 
         drop(local_ir_value_registry);
         if let LocalIRValue::Func(func_value) = local_ir_value {
-            func_value
+            Some(func_value)
         } else {
-            panic!("Local IR Value is not a function.")
+            None
         }
     }
 }

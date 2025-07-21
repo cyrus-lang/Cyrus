@@ -6,14 +6,14 @@ use crate::types::{InternalIntType, InternalType, InternalVoidType};
 use crate::values::InternalValue;
 use ast::ast::{
     AccessSpecifier, Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams,
-    Identifier, ModuleImport, Return, TypeSpecifier,
+    Identifier, ModuleImport, ModulePath, Return, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
-use inkwell::module::Linkage;
+use inkwell::module::{self, Linkage};
 use inkwell::types::FunctionType;
 use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
 use std::collections::HashMap;
@@ -862,11 +862,35 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     fn build_func_call_operand(&self, operand: Box<Expression>, loc: Location, span_end: usize) -> FuncMetadata<'ctx> {
         let resolve_local_func = |name: String| self.resolve_func_metadata(self.module_id, name);
-        let resolve_imported_func = |module_import: ModuleImport| {
+        let resolve_imported_func = |mut module_import: ModuleImport| {
+            debug_assert!(module_import.segments.len() > 0);
+
             if let Some(identifier) = module_import.as_identifier() {
-                resolve_local_func(identifier.name)
-            } else {
-                todo!()
+                return resolve_local_func(identifier.name);
+            }
+
+            let func_name = module_import.segments.pop().unwrap().as_identifier().name;
+
+            let imported_module_id = match self.get_imported_module(module_import.segments.clone()) {
+                Some(imported_module) => imported_module.module_id,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::ModuleImportNotFound(module_segments_as_string(module_import.segments)),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
+
+            match self.resolve_func_metadata(imported_module_id, func_name) {
+                Some(func_metadata) => Some(func_metadata),
+                None => None,
             }
         };
 
@@ -935,7 +959,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_call.span.end,
         );
 
-        let func_value = self.get_local_func_ir_value(func_metadata.local_ir_value_id);
+        let func_value = self.get_or_declare_local_func_ir_value(func_metadata.local_ir_value_id, func_metadata.clone());
         let call_site_value = self.builder.build_call(func_value, arguments, "call").unwrap();
         let return_type = func_metadata.return_type.clone();
 

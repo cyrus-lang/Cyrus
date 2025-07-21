@@ -1,5 +1,5 @@
-import sample{sum};
+import sample;
 
 func main() {
-    sum(1, 2);
+    sample::sum(1, 2);
 }
