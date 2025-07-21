@@ -39,113 +39,116 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_global_variable(&mut self, global_variable: GlobalVariable) {
-        let initializer_value = match global_variable.expr {
-            Some(expression) => match expression {
-                expr @ Expression::Literal(..)
-                | expr @ Expression::Prefix(..)
-                | expr @ Expression::Infix(..)
-                | expr @ Expression::UnaryOperator(..)
-                | expr @ Expression::ModuleImport(..)
-                | expr @ Expression::Array(..) => {
-                    let fake_scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-                    self.build_expr(fake_scope, expr)
-                }
-                _ => {
-                    display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(
-                        "Invalid initializer for global variable. Global variables must be initialized with a compile-time constant expression."
-                            .to_string(),
-                    ),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: global_variable.loc.line,
-                        column: global_variable.loc.column,
-                        length: global_variable.span.end,
-                    }),
-                });
-                    exit(1);
-                }
-            },
-            None => {
-                let internal_type = self.build_type(
-                    global_variable.type_specifier.clone().unwrap(),
-                    global_variable.loc.clone(),
-                    global_variable.span.end,
-                );
-                self.build_zero_initialized_internal_value(
-                    internal_type,
-                    global_variable.loc.clone(),
-                    global_variable.span.end,
-                )
-            }
-        };
+        // FIXME
+        todo!();
+        
+        // let initializer_value = match global_variable.expr {
+        //     Some(expression) => match expression {
+        //         expr @ Expression::Literal(..)
+        //         | expr @ Expression::Prefix(..)
+        //         | expr @ Expression::Infix(..)
+        //         | expr @ Expression::UnaryOperator(..)
+        //         | expr @ Expression::ModuleImport(..)
+        //         | expr @ Expression::Array(..) => {
+        //             let fake_scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+        //             self.build_expr(fake_scope, expr)
+        //         }
+        //         _ => {
+        //             display_single_diag(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: DiagKind::Custom(
+        //                 "Invalid initializer for global variable. Global variables must be initialized with a compile-time constant expression."
+        //                     .to_string(),
+        //             ),
+        //             location: Some(DiagLoc {
+        //                 file: self.file_path.clone(),
+        //                 line: global_variable.loc.line,
+        //                 column: global_variable.loc.column,
+        //                 length: global_variable.span.end,
+        //             }),
+        //         });
+        //             exit(1);
+        //         }
+        //     },
+        //     None => {
+        //         let internal_type = self.build_type(
+        //             global_variable.type_specifier.clone().unwrap(),
+        //             global_variable.loc.clone(),
+        //             global_variable.span.end,
+        //         );
+        //         self.build_zero_initialized_internal_value(
+        //             internal_type,
+        //             global_variable.loc.clone(),
+        //             global_variable.span.end,
+        //         )
+        //     }
+        // };
 
-        let variable_type: InternalType<'ctx>;
-        if let Some(type_specifier) = global_variable.type_specifier {
-            variable_type = self.build_type(type_specifier, global_variable.loc.clone(), global_variable.span.end);
-        } else {
-            variable_type = initializer_value.clone().get_type(self.context.i8_type())
-        }
+        // let variable_type: InternalType<'ctx>;
+        // if let Some(type_specifier) = global_variable.type_specifier {
+        //     variable_type = self.build_type(type_specifier, global_variable.loc.clone(), global_variable.span.end);
+        // } else {
+        //     variable_type = initializer_value.clone().get_type(self.context.i8_type())
+        // }
 
-        let ptr_type = self.context.ptr_type(AddressSpace::default());
-        let module = self.module.borrow_mut();
+        // let ptr_type = self.context.ptr_type(AddressSpace::default());
+        // let module = self.module.borrow_mut();
 
-        let variable_basic_type = match variable_type.to_basic_type(ptr_type) {
-            Ok(basic_type) => basic_type,
-            Err(err) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(err.to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: global_variable.loc.line,
-                        column: global_variable.loc.column,
-                        length: global_variable.span.end,
-                    }),
-                });
-                exit(1);
-            }
-        };
+        // let variable_basic_type = match variable_type.to_basic_type(ptr_type) {
+        //     Ok(basic_type) => basic_type,
+        //     Err(err) => {
+        //         display_single_diag(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: DiagKind::Custom(err.to_string()),
+        //             location: Some(DiagLoc {
+        //                 file: self.file_path.clone(),
+        //                 line: global_variable.loc.line,
+        //                 column: global_variable.loc.column,
+        //                 length: global_variable.span.end,
+        //             }),
+        //         });
+        //         exit(1);
+        //     }
+        // };
 
-        if matches!(
-            global_variable.access_specifier,
-            AccessSpecifier::Inline | AccessSpecifier::PublicInline
-        ) {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom("Cannot declare an inline global variable.".to_string()),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: global_variable.loc.line,
-                    column: global_variable.loc.column,
-                    length: global_variable.span.end,
-                }),
-            });
-            exit(1);
-        }
+        // if matches!(
+        //     global_variable.access_specifier,
+        //     AccessSpecifier::Inline | AccessSpecifier::PublicInline
+        // ) {
+        //     display_single_diag(Diag {
+        //         level: DiagLevel::Error,
+        //         kind: DiagKind::Custom("Cannot declare an inline global variable.".to_string()),
+        //         location: Some(DiagLoc {
+        //             file: self.file_path.clone(),
+        //             line: global_variable.loc.line,
+        //             column: global_variable.loc.column,
+        //             length: global_variable.span.end,
+        //         }),
+        //     });
+        //     exit(1);
+        // }
 
-        let linkage = self.build_global_variable_linkage(global_variable.access_specifier.clone());
+        // let linkage = self.build_global_variable_linkage(global_variable.access_specifier.clone());
 
-        let initialzier_basic_value: BasicValueEnum<'ctx> = self
-            .internal_value_to_basic_metadata(initializer_value)
-            .as_any_value_enum()
-            .try_into()
-            .unwrap();
+        // let initialzier_basic_value: BasicValueEnum<'ctx> = self
+        //     .internal_value_to_basic_metadata(initializer_value)
+        //     .as_any_value_enum()
+        //     .try_into()
+        //     .unwrap();
 
-        let global_value = module.add_global(variable_basic_type, None, &global_variable.identifier.name);
-        global_value.set_linkage(linkage);
-        global_value.set_initializer(&initialzier_basic_value);
+        // let global_value = module.add_global(variable_basic_type, None, &global_variable.identifier.name);
+        // global_value.set_linkage(linkage);
+        // global_value.set_initializer(&initialzier_basic_value);
 
-        self.global_variables_table.insert(
-            global_variable.identifier.name.clone(),
-            GlobalVariableMetadata {
-                name: global_variable.identifier.name,
-                variable_type,
-                global_value,
-                access_specifier: global_variable.access_specifier,
-            },
-        );
+        // self.global_variables_table.insert(
+        //     global_variable.identifier.name.clone(),
+        //     GlobalVariableMetadata {
+        //         name: global_variable.identifier.name,
+        //         variable_type,
+        //         global_value,
+        //         access_specifier: global_variable.access_specifier,
+        //     },
+        // );
     }
 
     pub(crate) fn build_variable(&mut self, scope: ScopeRef<'ctx>, variable: Variable) {

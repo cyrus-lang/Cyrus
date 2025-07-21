@@ -1,9 +1,9 @@
 use crate::{
-    CodeGenLLVM,
+    BlockRegistry, CodeGenLLVM,
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
-    structs::{StructMetadata, StructMethodMetadata, StructTable, generate_struct_definition_id},
+    structs::{StructMetadata, StructMethodMetadata, StructTable},
     types::{InternalType, TypedefMetadata, TypedefTable},
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
@@ -17,13 +17,30 @@ use inkwell::{
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
     module::Linkage,
     types::FunctionType,
-    values::{AnyValue, BasicValueEnum, GlobalValue},
+    values::{AnyValue, BasicValueEnum, FunctionValue, GlobalValue, StructValue},
 };
 use rand::Rng;
-use std::{cell::RefCell, collections::HashMap, env, ops::DerefMut, path::Path, process::exit, rc::Rc};
+use std::{
+    cell::{RefCell, RefMut},
+    collections::HashMap,
+    env,
+    ops::DerefMut,
+    path::Path,
+    process::exit,
+    rc::Rc,
+};
 use utils::fs::{find_file_from_sources, relative_to_absolute};
 
-pub type CompiledModulesSharedState<'a> = Rc<RefCell<Vec<ModuleMetadata<'a>>>>;
+pub type ModuleID = u64;
+pub type LocalIRDeclarationValueRegistryRef<'a> = Rc<RefCell<LocalIRDeclarationValueRegistry<'a>>>;
+pub type LocalIRDeclarationValueRegistry<'a> = HashMap<u64, LocalIRDeclarationValue<'a>>;
+pub type ModuleMetadataRegistryRef<'a> = Rc<RefCell<Vec<ModuleMetadata<'a>>>>;
+
+#[derive(Debug, Clone)]
+pub enum LocalIRDeclarationValue<'a> {
+    Func(FunctionValue<'a>),
+    Struct(StructValue<'a>),
+}
 
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'a> {
@@ -33,21 +50,13 @@ pub struct ModuleMetadata<'a> {
     pub struct_table: StructTable<'a>,
     pub global_variables_table: GlobalVariablesTable<'a>,
     pub typedef_table: TypedefTable<'a>,
-    pub imports_single: bool,
 }
 
 #[derive(Clone)]
-pub(crate) struct ImportedModuleMetadata {
-    pub module_id: u64, // reference to compiled modules path
+pub(crate) struct ImportedModules {
+    // reference to module metadata registry
+    pub module_id: u64,
     pub module_path: ModulePath,
-}
-
-#[derive(Debug, Clone)]
-pub enum DefinitionLookupResult<'a> {
-    Func(FuncMetadata<'a>),
-    Struct(StructMetadata<'a>),
-    Typedef(TypedefMetadata<'a>),
-    GlobalVariable(GlobalVariableMetadata<'a>),
 }
 
 #[derive(Clone)]
@@ -84,68 +93,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn lookup_definition(&self, name: String) -> Option<DefinitionLookupResult<'ctx>> {
-        match match self.func_table.get(&name) {
-            Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
-            None => match self.struct_table.get(&name) {
-                Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
-                None => match self.typedef_table.get(&name) {
-                    Some(typedef_metadata) => Some(DefinitionLookupResult::Typedef(typedef_metadata.clone())),
-                    None => None,
-                },
-            },
-        } {
-            Some(lookup_result) => Some(lookup_result),
-            None => None,
-        }
-    }
-
-    pub(crate) fn lookup_from_module_metadata(
-        &self,
-        name: String,
-        module_metadata: ModuleMetadata<'ctx>,
-        loc: Location,
-        span_end: usize,
-    ) -> DefinitionLookupResult<'ctx> {
-        // FIXME
-        todo!();
-
-        // match match module_metadata.func_table.get(&name) {
-        //     Some(func_metadata) => Some(DefinitionLookupResult::Func(func_metadata.clone())),
-        //     None => match module_metadata.struct_table.get(&name) {
-        //         Some(struct_metadata) => Some(DefinitionLookupResult::Struct(struct_metadata.clone())),
-        //         None => match module_metadata.typedef_table.get(&name) {
-        //             Some(typedef_metadata) => Some(DefinitionLookupResult::Typedef(typedef_metadata.clone())),
-        //             None => match module_metadata.global_variables_table.get(&name) {
-        //                 Some(global_variable_metadata) => {
-        //                     Some(DefinitionLookupResult::GlobalVariable(global_variable_metadata.clone()))
-        //                 }
-        //                 None => None,
-        //             },
-        //         },
-        //     },
-        // } {
-        //     Some(lookup_result) => lookup_result,
-        //     None => {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::Custom(format!(
-        //                 "Couldn't find anything with '{}' identifier in module '{}'.",
-        //                 name, module_metadata.identifier
-        //             )),
-        //             location: Some(DiagLoc {
-        //                 file: self.file_path.clone(),
-        //                 line: loc.line,
-        //                 column: loc.column,
-        //                 length: span_end,
-        //             }),
-        //         });
-        //         exit(1);
-        //     }
-        // }
-    }
-
-    pub(crate) fn find_imported_module(&self, module_id: u64) -> Option<ImportedModuleMetadata> {
+    pub(crate) fn find_imported_module(&self, module_id: u64) -> Option<ImportedModules> {
         self.imported_modules.iter().find(|m| m.module_id == module_id).cloned()
     }
 
@@ -336,12 +284,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn get_compiled_module_by_file_path(&self, module_file_path: String) -> Option<ModuleMetadata<'ctx>> {
-        let compiled_modules = self.compiled_modules.borrow();
-        compiled_modules
+    pub(crate) fn get_module_metadata_by_file_path(&self, module_file_path: String) -> Option<ModuleMetadata<'ctx>> {
+        let module_metadata_registry = self.module_metadata_registry.borrow_mut();
+        module_metadata_registry
             .iter()
-            .find(|m| m.module_file_path == module_file_path)
+            .find(|r| r.module_file_path == module_file_path)
             .cloned()
+    }
+
+    pub(crate) fn get_module_metadata_by_module_id(&self, module_id: u64) -> Option<RefMut<ModuleMetadata<'ctx>>> {
+        let registry = self.module_metadata_registry.borrow_mut();
+        let index = registry.iter().position(|r| r.module_id == module_id)?;
+        Some(RefMut::map(registry, move |v| &mut v[index]))
     }
 
     pub(crate) fn build_import(&mut self, import: Import) {
@@ -390,7 +344,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    fn build_module_with_sub_codegen(&self, import_path: ImportedModulePath) -> (BuildManifest, ModuleMetadata<'ctx>) {
+    fn build_module_with_sub_codegen(&self, import_path: ImportedModulePath) -> (BuildManifest, ModuleID) {
         let module_name = self.build_local_module_name(import_path.module_path.clone());
 
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_name)));
@@ -410,6 +364,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             program,
             opts: self.opts.clone(),
             context: &self.context,
+            module_id: generate_module_id(),
             module: Rc::clone(&sub_module),
             module_name: module_name.clone(),
             builder: sub_builder,
@@ -419,106 +374,54 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             reporter: self.reporter.clone(),
             entry_point: None,
             entry_point_path: self.entry_point_path.clone(),
-            func_table: HashMap::new(),
-            struct_table: HashMap::new(),
-            typedef_table: HashMap::new(),
-            global_variables_table: HashMap::new(),
             compiler_invoked_single: self.compiler_invoked_single,
-            current_func_ref: None,
-            current_block_ref: None,
-            terminated_blocks: Vec::new(),
+            block_registry: BlockRegistry::new(),
             imported_modules: Vec::new(),
-            dependent_modules: HashMap::new(),
             output_kind: self.output_kind.clone(),
             final_build_dir: self.final_build_dir.clone(),
-            current_loop_ref: None,
-            compiled_modules: Rc::clone(&self.compiled_modules),
+            module_metadata_registry: Rc::clone(&self.module_metadata_registry),
+            local_ir_value_registry: Rc::new(RefCell::new(HashMap::new())),
         }));
 
         let mut sub_codegen_ref = sub_codegen.borrow_mut();
 
-        // preventing entry_point of being in dependent_modules
-        if self.file_path != self.entry_point_path {
-            sub_codegen_ref
-                .dependent_modules
-                .insert(import_path.file_path.clone(), vec![self.file_path.clone()]);
-        }
-
         sub_codegen_ref.compile();
-
-        let build_manifest = sub_codegen_ref.build_manifest.clone();
-        let module_metadata = ModuleMetadata {
-            module_id: generate_module_id(),
-            module_file_path: import_path.file_path.clone(),
-            func_table: sub_codegen_ref.func_table.clone(),
-            struct_table: sub_codegen_ref.struct_table.clone(),
-            global_variables_table: sub_codegen_ref.global_variables_table.clone(),
-            typedef_table: sub_codegen_ref.typedef_table.clone(),
-            imports_single: false,
-        };
-
-        (build_manifest, module_metadata)
+        (sub_codegen_ref.build_manifest.clone(), sub_codegen_ref.module_id)
     }
 
     fn build_imported_module(&mut self, import_path: ImportedModulePath) {
-        let mut module_metadata = match self.get_compiled_module_by_file_path(import_path.file_path.clone()) {
+        let module_metadata = match self.get_module_metadata_by_file_path(import_path.file_path.clone()) {
             Some(module_metadata) => {
                 // This module compiled before, let's use the same module_metadata.
                 module_metadata
             }
             None => {
-                let (build_manifest, module_metadata) = self.build_module_with_sub_codegen(import_path.clone());
+                let (build_manifest, module_id) = self.build_module_with_sub_codegen(import_path.clone());
+
                 self.build_manifest = build_manifest;
-                module_metadata
+                self.get_module_metadata_by_module_id(module_id)
+                    .expect("Couldn't get module metadata by module id.").clone()
             }
         };
 
         if let Some(module_segment_singles) = import_path.singles.clone() {
-            module_metadata.imports_single = true;
-
-            self.imported_modules.push(ImportedModuleMetadata {
+            // Build and load import singles into local_defs.
+            self.build_module_import_singles(
+                module_metadata.module_id.clone(),
+                module_segment_singles,
+                import_path.module_path.clone(),
+                import_path.loc.clone(),
+                import_path.span_end,
+            );
+        } else {
+            self.imported_modules.push(ImportedModules {
                 module_id: module_metadata.module_id,
                 module_path: import_path.module_path.clone(),
             });
-
-            // TODO Implement import single
-            // self.build_module_import_singles(
-            //     module_id.clone(),
-            //     module_segment_singles,
-            //     generated_module_import_path.module_path.clone(),
-            //     generated_module_import_path.loc.clone(),
-            //     generated_module_import_path.span_end,
-            // );
-        } else {
-            // TODO Implement import module definitions
-            // let imported_funcs = self.build_imported_funcs(module_metadata.func_table.clone());
-            // let imported_structs = self.build_imported_structs(
-            //     import_path.module_path,
-            //     module_metadata.module_id.clone(),
-            //     sub_codegen_ref.struct_table.clone(),
-            // );
-            // let imported_global_variables = self.build_imported_global_variables(
-            //     sub_codegen_ref.global_variables_table.clone(),
-            //     generated_module_import_path.loc.clone(),
-            //     generated_module_import_path.span_end,
-            // );
-
-            // let module_metadata = ModuleMetadata {
-            //     func_table: imported_funcs,
-            //     struct_table: imported_structs,
-            //     global_variables_table: imported_global_variables,
-            //     typedef_table: sub_codegen_ref.typedef_table.clone(),
-            //     identifier: module_id.clone(),
-            //     imports_single: false,
-            // };
-
-            // self.imported_modules.push(ImportedModuleMetadata {
-            //     metadata: module_metadata.clone(),
-            //     sub_codegen: Rc::clone(&sub_codegen),
-            // });
         }
     }
 
+    // FIXME Depends on resolver.
     pub(crate) fn build_module_import_singles(
         &mut self,
         module_id: u64,
@@ -530,12 +433,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         // FIXME
         todo!();
 
-        // let module_metadata = match self.find_imported_module(module_id.clone()) {
-        //     Some(imported_module_metadata) => imported_module_metadata.metadata.clone(),
-        //     None => panic!("Couldn't lookup imported module in codegen context."),
+        // let module_metadata = match self.get_module_metadata_by_module_id(module_id) {
+        //     Some(module_metadata) => module_metadata,
+        //     None => panic!("Couldn't lookup module in the module metadata registry."),
         // };
 
-        // for single in module_segment_singles {
+        // module_segment_singles.iter().for_each(|single| {
         //     let lookup_result = self.lookup_from_module_metadata(
         //         single.identifier.name.clone(),
         //         module_metadata.clone(),
@@ -547,26 +450,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         //         DefinitionLookupResult::Func(mut func_metadata) => {
         //             func_metadata.imported_from = Some(module_path.clone());
         //             let (func_name, func_metadata) = self.build_decl_imported_func(func_metadata);
-        //             self.func_table.insert(func_name, func_metadata);
+        //             self.local_defs.func_table.insert(func_name, func_metadata);
         //         }
         //         DefinitionLookupResult::Struct(struct_metadata) => {
-        //             let struct_name = {
-        //                 match struct_metadata.struct_name.segments.last().unwrap() {
-        //                     ModuleSegment::SubModule(identifier) => identifier.name.clone(),
-        //                     ModuleSegment::Single(_) => unreachable!(),
-        //                 }
-        //             };
+        //             // FIXME
+        //             todo!();
 
-        //             let new_struct_metadata = self.build_decl_imported_struct_methods(
-        //                 module_path.clone(),
-        //                 module_id.clone(),
-        //                 struct_metadata.clone(),
-        //             );
+        //             // let struct_name = {
+        //             //     match struct_metadata.struct_name.segments.last().unwrap() {
+        //             //         ModuleSegment::SubModule(identifier) => identifier.name.clone(),
+        //             //         ModuleSegment::Single(_) => unreachable!(),
+        //             //     }
+        //             // };
 
-        //             self.struct_table.insert(struct_name, new_struct_metadata.clone());
+        //             // let new_struct_metadata = self.build_decl_imported_struct_methods(
+        //             //     module_path.clone(),
+        //             //     import.clone(),
+        //             //     struct_metadata.clone(),
+        //             // );
+
+        //             // self.local_defs
+        //             //     .struct_table
+        //             //     .insert(struct_name, new_struct_metadata.clone());
         //         }
         //         DefinitionLookupResult::Typedef(typedef_metadata) => {
-        //             self.typedef_table
+        //             self.local_defs
+        //                 .typedef_table
         //                 .insert(single.identifier.name, typedef_metadata.clone());
         //         }
         //         DefinitionLookupResult::GlobalVariable(mut global_variable_metadata) => {
@@ -577,262 +486,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         //             );
 
         //             global_variable_metadata.global_value = global_value;
-        //             self.global_variables_table
+        //             self.local_defs
+        //                 .global_variables_table
         //                 .insert(single.identifier.name, global_variable_metadata.clone());
         //         }
         //     }
-        // }
-    }
-
-    fn build_imported_global_variables(
-        &mut self,
-        global_variables_table: GlobalVariablesTable<'ctx>,
-        loc: Location,
-        span_end: usize,
-    ) -> HashMap<String, GlobalVariableMetadata<'ctx>> {
-        let mut imported_global_variables: HashMap<String, GlobalVariableMetadata> = HashMap::new();
-        for (_, global_variable_metadata) in global_variables_table {
-            let global_value =
-                self.build_decl_imported_global_variable(global_variable_metadata.clone(), loc.clone(), span_end);
-
-            imported_global_variables.insert(
-                global_variable_metadata.name.clone(),
-                GlobalVariableMetadata {
-                    name: global_variable_metadata.name.clone(),
-                    variable_type: global_variable_metadata.variable_type.clone(),
-                    access_specifier: global_variable_metadata.access_specifier.clone(),
-                    global_value,
-                },
-            );
-        }
-        imported_global_variables
-    }
-
-    fn build_decl_imported_global_variable(
-        &self,
-        global_variable_metadata: GlobalVariableMetadata<'ctx>,
-        loc: Location,
-        span_end: usize,
-    ) -> GlobalValue<'ctx> {
-        let module = self.module.borrow_mut();
-        let linkage = Linkage::Common;
-
-        let ptr_type = self.context.ptr_type(AddressSpace::default());
-        let variable_basic_type = match global_variable_metadata.variable_type.to_basic_type(ptr_type) {
-            Ok(basic_type) => basic_type,
-            Err(err) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(err.to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-        };
-
-        let initialzier_basic_value: BasicValueEnum<'ctx> = self
-            .internal_value_to_basic_metadata(self.build_zero_initialized_internal_value(
-                global_variable_metadata.variable_type,
-                loc.clone(),
-                span_end,
-            ))
-            .as_any_value_enum()
-            .try_into()
-            .unwrap();
-
-        let global_value = module.add_global(variable_basic_type, None, &global_variable_metadata.name);
-        global_value.set_initializer(&initialzier_basic_value);
-        global_value.set_linkage(linkage);
-        global_value
-    }
-
-    fn build_decl_imported_instance_method(
-        &mut self,
-        metadata: FuncMetadata<'ctx>,
-        self_modifier_type: InternalType<'ctx>,
-    ) -> (String, FuncMetadata<'ctx>) {
-        let param_types = metadata.params_metadata.param_types.clone();
-
-        if metadata.func_decl.access_specifier == AccessSpecifier::Public
-            || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
-            || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
-        {
-            let mut new_metadata = metadata.clone();
-
-            new_metadata.params_metadata.param_types.insert(0, self_modifier_type);
-
-            let is_var_args = metadata.func_decl.params.variadic.is_some();
-
-            let fn_type = unsafe {
-                FunctionType::new(LLVMFunctionType(
-                    new_metadata.return_type.as_type_ref(),
-                    param_types
-                        .iter()
-                        .map(|p| p.as_type_ref())
-                        .collect::<Vec<LLVMTypeRef>>()
-                        .as_mut_ptr(),
-                    param_types.len() as u32,
-                    is_var_args as i32,
-                ))
-            };
-
-            let func_linkage = self.build_func_linkage(metadata.func_decl.access_specifier.clone());
-            let func_value = self.module.borrow_mut().deref_mut().add_function(
-                &metadata.func_decl.name,
-                fn_type,
-                Some(func_linkage),
-            );
-
-            new_metadata.ptr = func_value;
-            (new_metadata.func_decl.get_usable_name(), new_metadata)
-        } else {
-            (metadata.func_decl.get_usable_name(), metadata.clone())
-        }
-    }
-
-    fn build_decl_imported_func(&mut self, metadata: FuncMetadata<'ctx>) -> (String, FuncMetadata<'ctx>) {
-        let param_types = metadata.params_metadata.param_types.clone();
-
-        if metadata.func_decl.access_specifier == AccessSpecifier::Public
-            || metadata.func_decl.access_specifier == AccessSpecifier::PublicExtern
-            || metadata.func_decl.access_specifier == AccessSpecifier::PublicInline
-        {
-            let mut new_metadata = metadata.clone();
-            let is_variadic = new_metadata.func_decl.params.variadic.is_some();
-
-            let func_type = unsafe {
-                FunctionType::new(LLVMFunctionType(
-                    metadata.return_type.as_type_ref(),
-                    param_types
-                        .iter()
-                        .map(|p| p.as_type_ref())
-                        .collect::<Vec<LLVMTypeRef>>()
-                        .as_mut_ptr(),
-                    param_types.len() as u32,
-                    is_variadic as i32,
-                ))
-            };
-
-            let func_linkage = self.build_func_linkage(new_metadata.func_decl.access_specifier.clone());
-
-            let func_value = self.module.borrow_mut().deref_mut().add_function(
-                &new_metadata.func_decl.name,
-                func_type,
-                Some(func_linkage),
-            );
-
-            new_metadata.ptr = func_value;
-            (new_metadata.func_decl.get_usable_name(), new_metadata)
-        } else {
-            (metadata.func_decl.get_usable_name(), metadata.clone())
-        }
-    }
-
-    fn build_imported_funcs(&mut self, func_table: FuncTable<'ctx>) -> HashMap<String, FuncMetadata<'ctx>> {
-        let mut imported_funcs: HashMap<String, FuncMetadata> = HashMap::new();
-        for metadata in func_table.values().cloned() {
-            let (func_name, func_metadata) = self.build_decl_imported_func(metadata.clone());
-            imported_funcs.insert(func_name, func_metadata);
-        }
-        imported_funcs
-    }
-
-    fn build_decl_imported_struct_methods(
-        &mut self,
-        imported_from: ModulePath,
-        imported_module_id: String,
-        struct_metadata: StructMetadata<'ctx>,
-    ) -> StructMetadata<'ctx> {
-        let mut final_internal_struct_type = struct_metadata.clone();
-
-        for (idx, mut struct_method_metadata) in struct_metadata.methods.iter().cloned().enumerate() {
-            let struct_name = match struct_metadata.struct_name.segments.last().unwrap() {
-                ModuleSegment::SubModule(identifier) => identifier.name.clone(),
-                ModuleSegment::Single(_) => unreachable!(),
-            };
-
-            struct_method_metadata.method_decl.name = self.generate_method_abi_name(
-                imported_module_id.clone(),
-                struct_name.clone(),
-                struct_method_metadata.method_decl.name.clone(),
-            );
-
-            if struct_method_metadata.is_static_method {
-                let (_, func_metadata) = self.build_decl_imported_func(FuncMetadata {
-                    func_decl: struct_method_metadata.method_decl.clone(),
-                    ptr: struct_method_metadata.method_value,
-                    is_method: true,
-                    imported_from: Some(imported_from.clone()),
-                    params_metadata: struct_method_metadata.method_params_metadata.clone(),
-                    return_type: struct_method_metadata.return_type.clone(),
-                });
-
-                final_internal_struct_type.methods[idx] = StructMethodMetadata {
-                    method_decl: func_metadata.func_decl.clone(),
-                    method_value: func_metadata.ptr,
-                    method_params_metadata: struct_method_metadata.method_params_metadata,
-                    is_static_method: struct_method_metadata.is_static_method.clone(),
-                    return_type: struct_method_metadata.return_type.clone(),
-                    self_modifier_type: struct_method_metadata.self_modifier_type.clone(),
-                };
-            } else {
-                let (self_modifier_type, self_modifier_kind) =
-                    struct_method_metadata.self_modifier_type.clone().unwrap();
-
-                let (_, mut func_metadata) = self.build_decl_imported_instance_method(
-                    FuncMetadata {
-                        func_decl: struct_method_metadata.method_decl.clone(),
-                        ptr: struct_method_metadata.method_value,
-                        is_method: true,
-                        imported_from: Some(imported_from.clone()),
-                        params_metadata: struct_method_metadata.method_params_metadata.clone(),
-                        return_type: struct_method_metadata.return_type.clone(),
-                    },
-                    self_modifier_type,
-                );
-
-                func_metadata
-                    .func_decl
-                    .params
-                    .list
-                    .insert(0, FuncParamKind::SelfModifier(self_modifier_kind));
-
-                final_internal_struct_type.methods[idx] = StructMethodMetadata {
-                    method_decl: func_metadata.func_decl,
-                    method_value: func_metadata.ptr,
-                    method_params_metadata: struct_method_metadata.method_params_metadata,
-                    is_static_method: struct_method_metadata.is_static_method,
-                    return_type: struct_method_metadata.return_type,
-                    self_modifier_type: struct_method_metadata.self_modifier_type.clone(),
-                };
-            }
-        }
-
-        final_internal_struct_type
-    }
-
-    fn build_imported_structs(
-        &mut self,
-        imported_from: ModulePath,
-        imported_module_id: String,
-        struct_table: StructTable<'ctx>,
-    ) -> StructTable<'ctx> {
-        let mut imported_structs = StructTable::new();
-        for (_, (struct_name, struct_metadata)) in struct_table.iter().enumerate() {
-            let new_struct_metadata = self.build_decl_imported_struct_methods(
-                imported_from.clone(),
-                imported_module_id.clone(),
-                struct_metadata.clone(),
-            );
-
-            imported_structs.insert(struct_name.clone(), new_struct_metadata);
-        }
-        imported_structs
+        // });
     }
 
     pub(crate) fn generate_abi_name(&self, module_id: String, name: String) -> String {
@@ -852,4 +511,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 pub fn generate_module_id() -> u64 {
     let mut rng = rand::rng();
     rng.random::<u64>()
+}
+
+impl<'a> ModuleMetadata<'a> {
+    pub fn insert_func(&mut self, name: String, metadata: FuncMetadata<'a>) {
+        self.func_table.insert(name, metadata);
+    }
+
+    pub fn insert_global_variable(&mut self, name: String, metadata: GlobalVariableMetadata<'a>) {
+        self.global_variables_table.insert(name, metadata);
+    }
+
+    pub fn insert_struct(&mut self, name: String, metadata: StructMetadata<'a>) {
+        self.struct_table.insert(name, metadata);
+    }
+
+    pub fn insert_typedef(&mut self, name: String, metadata: TypedefMetadata<'a>) {
+        self.typedef_table.insert(name, metadata);
+    }
 }

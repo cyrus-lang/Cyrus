@@ -1,7 +1,6 @@
 use crate::CodeGenLLVM;
 use crate::InternalValue;
 use crate::diag::*;
-use crate::modules::DefinitionLookupResult;
 use crate::structs::StructMetadata;
 use crate::structs::StructMethodMetadata;
 use crate::structs::UnnamedStructTypeMetadata;
@@ -236,7 +235,7 @@ impl<'a> InternalType<'a> {
                 type_str,
                 inner_type: Box::new(InternalType::VectorType(internal_vector_type.clone())),
                 array_type: internal_vector_type.vector_type.array_type(size),
-            })),            
+            })),
             InternalType::PointerType(internal_pointer_type) => Ok(InternalType::ArrayType(InternalArrayType {
                 type_str,
                 inner_type: Box::new(InternalType::PointerType(internal_pointer_type.clone())),
@@ -403,7 +402,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         // FIXME Check naming collision before inserting
 
         let internal_type = self.build_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end);
-        self.typedef_table.insert(
+        self.local_defs.typedef_table.insert(
             typedef.identifier.name,
             TypedefMetadata {
                 internal_type,
@@ -613,28 +612,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_type_token(&self, type_token: Token, loc: Location) -> InternalType<'ctx> {
         match type_token.kind {
-            TokenKind::Identifier { name } => {
-                match self.struct_table.get(&name) {
-                    Some(struct_metadata) => {
-                        dbg!(struct_metadata);
-                        todo!();
-                        // TODO
-                    }
-                    None => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::UndefinedDataType(name),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: type_token.span.end,
-                            }),
-                        });
-                        exit(1);
-                    }
+            TokenKind::Identifier { name } => match self.resolve_type(self.module_id, name.clone()) {
+                Some(internal_type) => internal_type,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::UndefinedDataType(name),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: type_token.span.end,
+                        }),
+                    });
+                    exit(1);
                 }
-            }
+            },
             token_kind @ TokenKind::UIntPtr | token_kind @ TokenKind::IntPtr | token_kind @ TokenKind::SizeT => {
                 let data_layout = self.target_machine.get_target_data();
                 InternalType::IntType(InternalIntType {

@@ -10,7 +10,7 @@ use ast::ast::{
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::attributes::{Attribute, AttributeLoc};
-use inkwell::llvm_sys::core::{LLVMFunctionType, LLVMGetEnumAttributeKindForName};
+use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::module::Linkage;
 use inkwell::types::FunctionType;
@@ -247,19 +247,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .add_function(&func_decl.name, func_type, Some(func_linkage));
 
         self.add_function_attributes(func_value);
-        
+
         if insert_to_func_table {
-            self.func_table.insert(
-                func_decl.get_usable_name(),
-                FuncMetadata {
-                    func_decl: func_decl.clone(),
-                    ptr: func_value,
-                    return_type,
-                    imported_from: None,
-                    params_metadata: params_metadata.clone(),
-                    is_method,
-                },
-            );
+            let func_metadata = FuncMetadata {
+                func_decl: func_decl.clone(),
+                ptr: func_value,
+                return_type,
+                imported_from: None,
+                params_metadata: params_metadata.clone(),
+                is_method,
+            };
+
+            let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
+            module_metadata.insert_func(func_decl.get_usable_name(), func_metadata);
+            drop(module_metadata);
         }
 
         func_value
@@ -540,19 +541,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         self.add_function_attributes(func_value);
 
-        self.func_table.insert(
-            func_decl.get_usable_name(),
-            FuncMetadata {
-                func_decl: func_decl.clone(),
-                ptr: func_value,
-                return_type: return_type.clone(),
-                imported_from: None,
-                params_metadata: params_metadata.clone(),
-                is_method: false,
-            },
-        );
+        let func_metadata = FuncMetadata {
+            func_decl: func_decl.clone(),
+            ptr: func_value,
+            return_type: return_type.clone(),
+            imported_from: None,
+            params_metadata: params_metadata.clone(),
+            is_method: false,
+        };
+        let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
+        module_metadata.insert_func(func_decl.get_usable_name(), func_metadata);
+        drop(module_metadata);
 
-        self.current_func_ref = Some(FuncMetadata {
+        self.block_registry.current_func_ref = Some(FuncMetadata {
             ptr: func_value.clone(),
             func_decl: func_decl.clone(),
             return_type: return_type.clone(),
@@ -563,7 +564,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let entry_block = self.context.append_basic_block(func_value, "entry");
         self.builder.position_at_end(entry_block);
-        self.current_block_ref = Some(entry_block);
+        self.block_registry.current_block_ref = Some(entry_block);
 
         self.build_func_define_local_params(Rc::clone(&scope), func_value, func_def.clone(), false);
         match func_def.params.variadic.clone() {
