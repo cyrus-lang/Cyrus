@@ -1,5 +1,9 @@
 use crate::{
-    context::CodeGenLLVM, funcs::FuncMetadata, modules::ModuleID, structs::StructMetadata, types::TypedefMetadata,
+    context::CodeGenLLVM,
+    funcs::FuncMetadata,
+    modules::ModuleID,
+    structs::{StructID, StructMetadata},
+    types::TypedefMetadata,
     variables::GlobalVariableMetadata,
 };
 
@@ -39,6 +43,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let opt = module_metadata.func_table.get(&name).cloned();
         drop(module_metadata);
         opt
+    }
+
+    pub(crate) fn resolve_struct_metadata_with_struct_id(&self, struct_id: StructID) -> Option<StructMetadata<'ctx>> {
+        let module_metadata_registry = self.module_metadata_registry.borrow();
+
+        let struct_metadata_opt = module_metadata_registry
+            .iter()
+            .find(|m| m.struct_table.iter().find(|r| r.1.struct_id == struct_id).is_some())
+            .cloned();
+
+        match struct_metadata_opt {
+            Some(module_metadata) => {
+                let struct_metadata = module_metadata
+                    .struct_table
+                    .iter()
+                    .find(|r| r.1.struct_id == struct_id)
+                    .unwrap()
+                    .1
+                    .clone();
+
+                drop(module_metadata_registry);
+                Some(struct_metadata)
+            }
+            None => panic!("Couldn't lookup module in the module metadata registry."),
+        }
     }
 
     pub(crate) fn resolve_struct_metadata(&self, module_id: ModuleID, name: String) -> Option<StructMetadata<'ctx>> {

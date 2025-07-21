@@ -24,6 +24,7 @@ pub enum DiagKind {
     FuncCallArgumentCountMismatch(String, i32, i32),
     MethodCallArgumentCountMismatch(String, i32, i32),
     TypeAnnotationRequiredForParam(String, String),
+    MethodNotDefinedForStruct(String, String),
     SizeOfOperatorOnUnsizedObject,
     CannotUseModuleImportIfImportsSingles,
     FuncCallInvalidOperand,
@@ -33,6 +34,7 @@ pub enum DiagKind {
     ImportingPrivateStruct(String),
     ImportingPrivateTypedef(String),
     InvalidStructAccessSpecifier,
+    MethodCallOnNonStructValue,
     Custom(String),
 }
 
@@ -95,10 +97,9 @@ impl fmt::Display for DiagKind {
             }
             DiagKind::CannotUseModuleImportIfImportsSingles => "Cannot use module import if it imports singles.",
             DiagKind::FuncCallInvalidOperand => "Invalid operand for function call.",
-            DiagKind::DuplicateNaming(name) => &format!(
-                "Another object already declared with name '{}' in this module.",
-                name
-            ),
+            DiagKind::DuplicateNaming(name) => {
+                &format!("Another object already declared with name '{}' in this module.", name)
+            }
             DiagKind::SymbolNotFoundInModule(symbol, module_name) => {
                 &format!("Symbol '{}' not found in module '{}'.", symbol, module_name)
             }
@@ -113,6 +114,10 @@ impl fmt::Display for DiagKind {
                 "Structs must be declared with public or internal access specifier."
             }
             DiagKind::ModuleImportNotFound(module_name) => &format!("Module '{}' not found.", module_name),
+            DiagKind::MethodCallOnNonStructValue => "Cannot build method call for non-struct values.",
+            DiagKind::MethodNotDefinedForStruct(method_name, struct_name) => {
+                &format!("Method '{}' not defined for struct '{}'.", method_name, struct_name)
+            }
         };
         write!(f, "{}", msg)
     }

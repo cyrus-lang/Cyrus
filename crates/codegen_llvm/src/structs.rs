@@ -1,17 +1,17 @@
 use crate::{
     context::CodeGenLLVM,
-    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc},
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     funcs::{FuncMetadata, FuncParamsMetadata},
-    modules::{generate_local_ir_value_id, LocalIRValueID, ModuleID},
+    modules::{LocalIRValue, LocalIRValueID, ModuleID, generate_local_ir_value_id},
     scope::{Scope, ScopeRecord, ScopeRef},
     types::{InternalLvalueType, InternalStructType, InternalType, InternalUnnamedStructType},
-    values::InternalValue,
+    values::{InternalValue, Lvalue},
 };
 use ast::{
     ast::{
-        AccessSpecifier, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams, Identifier,
-        MethodCall, ModuleImport, ModuleSegment, SelfModifier, Struct, StructInit, TypeSpecifier, UnnamedStructType,
-        UnnamedStructValue,
+        AccessSpecifier, Expression, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
+        Identifier, MethodCall, ModuleImport, ModuleSegment, SelfModifier, Struct, StructInit, TypeSpecifier,
+        UnnamedStructType, UnnamedStructValue,
     },
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
@@ -21,7 +21,7 @@ use inkwell::{
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
     module::Linkage,
     types::{BasicTypeEnum, FunctionType, StructType},
-    values::{AggregateValueEnum, BasicValueEnum, FunctionValue, PointerValue},
+    values::{AggregateValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, ops::DerefMut, process::exit, rc::Rc};
@@ -44,11 +44,10 @@ pub struct StructMetadata<'a> {
 pub struct StructMethodMetadata<'a> {
     pub local_ir_value_id: LocalIRValueID,
     pub method_decl: FuncDecl,
-    pub method_value: FunctionValue<'a>,
     pub method_params_metadata: FuncParamsMetadata<'a>,
-    pub is_static_method: bool,
     pub return_type: InternalType<'a>,
     pub self_modifier_type: Option<(InternalType<'a>, SelfModifier)>,
+    pub is_static_method: bool,
 }
 
 impl<'a> StructMetadata<'a> {
@@ -197,7 +196,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             methods: Vec::new(),
             access_specifier: struct_statement.access_specifier.clone(),
             packed: struct_statement.packed,
-            imported_from: None
+            imported_from: None,
         };
 
         let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
@@ -309,7 +308,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> StructMethodMetadata<'ctx> {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
         self.validate_method_storage_class(func_def.clone());
-        let func_decl = self.transform_to_func_decl(func_def.clone());
+        let mut func_decl = self.transform_to_func_decl(func_def.clone());
         let is_variadic = func_def.params.variadic.is_some();
 
         let return_type = self.build_type(
@@ -370,19 +369,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let method_name = func_def.name.clone();
-        let method_underlying_name = self.generate_method_abi_name(
+        let method_abi_name = self.generate_method_abi_name(
             self.module_name.clone(),
             struct_metadata.struct_name.as_identifier().unwrap().name,
             method_name,
         );
 
+        func_decl.renamed_as = Some(func_decl.name);
+        func_decl.name = method_abi_name.clone();
+
         let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.access_specifier.clone()));
 
-        let func_value =
-            self.module
-                .borrow_mut()
-                .deref_mut()
-                .add_function(&method_underlying_name, fn_type, func_linkage);
+        let func_value = self
+            .module
+            .borrow_mut()
+            .deref_mut()
+            .add_function(&method_abi_name, fn_type, func_linkage);
 
         self.block_registry.current_func_ref = Some(FuncMetadata {
             local_ir_value_id,
@@ -492,10 +494,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         func_value.verify(true);
 
+        self.insert_local_ir_value(local_ir_value_id, LocalIRValue::Func(func_value));
+
         StructMethodMetadata {
             local_ir_value_id,
             method_decl: func_decl,
-            method_value: func_value,
             method_params_metadata: params_metadata,
             is_static_method: self_modifier_type.is_none(),
             return_type,
@@ -525,11 +528,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_struct_init(&mut self, scope: ScopeRef<'ctx>, struct_init: StructInit) -> InternalValue<'ctx> {
-        let struct_metadata = self.lookup_struct_by_name(
+        let struct_metadata = match self.lookup_struct_by_name(
             struct_init.struct_name.clone(),
             struct_init.loc.clone(),
             struct_init.span.end,
-        );
+        ) {
+            Some(struct_metadata) => struct_metadata,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::IdentifierNotDefined(struct_init.struct_name.as_identifier().unwrap().name),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: struct_init.loc.line,
+                        column: struct_init.loc.column,
+                        length: struct_init.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
         if struct_metadata.fields.len() != struct_init.field_inits.len() {
             display_single_diag(Diag {
@@ -626,6 +644,53 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         )
     }
 
+    fn build_unnamed_struct_field_access(
+        &self,
+        internal_unnamed_struct_type: InternalUnnamedStructType<'ctx>,
+        pointer: PointerValue<'ctx>,
+        field_name: String,
+        loc: Location,
+        span_end: usize,
+    ) -> InternalValue<'ctx> {
+        internal_unnamed_struct_type
+            .unnamed_struct_metadata
+            .fields
+            .iter()
+            .enumerate()
+            .find(|(_, f)| f.0 == field_name)
+            .map_or_else(
+                || {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!("Unnamed struct has not field named '{}'.", field_name)),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                },
+                |(field_idx, (_, field_type))| {
+                    let field_ptr = self
+                        .builder
+                        .build_struct_gep(
+                            internal_unnamed_struct_type.unnamed_struct_metadata.struct_type,
+                            pointer,
+                            field_idx.try_into().unwrap(),
+                            "gep",
+                        )
+                        .unwrap();
+
+                    InternalValue::Lvalue(Lvalue {
+                        ptr: field_ptr,
+                        pointee_ty: field_type.clone(),
+                    })
+                },
+            )
+    }
+
     pub(crate) fn build_struct_field_access(
         &self,
         pointer: PointerValue<'ctx>,
@@ -634,294 +699,276 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) -> InternalValue<'ctx> {
-        // FIXME
-        todo!();
+        match struct_internal_type {
+            InternalType::StructType(internal_struct_type) => {
+                let struct_metadata = match self.resolve_struct_metadata_with_struct_id(internal_struct_type.struct_id)
+                {
+                    Some(struct_metadata) => struct_metadata,
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(format!(
+                                "Could'nt find any struct with struct name '{}' in the module metadata registry.",
+                                module_segments_as_string(internal_struct_type.struct_name.segments.clone())
+                            )),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                };
 
-        // match struct_internal_type {
-        //     InternalType::StructType(internal_struct_type) => {
-        //         let struct_metadata = self.lookup_struct_by_definition_id(
-        //             internal_struct_type.struct_id.clone(),
-        //             module_segments_as_string(internal_struct_type.struct_name.segments.clone()),
-        //             loc.clone(),
-        //             span_end,
-        //         );
+                match struct_metadata
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .find(|(_, f)| f.name == field_name)
+                {
+                    Some((field_idx, field)) => {
+                        let field_ptr = self
+                            .builder
+                            .build_struct_gep(
+                                struct_metadata.struct_type,
+                                pointer,
+                                field_idx.try_into().unwrap(),
+                                "gep",
+                            )
+                            .unwrap();
 
-        //         match struct_metadata
-        //             .fields
-        //             .iter()
-        //             .enumerate()
-        //             .find(|(_, f)| f.name == field_name)
-        //         {
-        //             Some((field_idx, field)) => {
-        //                 let field_ptr = self
-        //                     .builder
-        //                     .build_struct_gep(
-        //                         struct_metadata.struct_type,
-        //                         pointer,
-        //                         field_idx.try_into().unwrap(),
-        //                         "gep",
-        //                     )
-        //                     .unwrap();
+                        InternalValue::Lvalue(Lvalue {
+                            ptr: field_ptr,
+                            pointee_ty: self.build_type(field.ty.clone(), field.loc.clone(), field.span.end),
+                        })
+                    }
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(format!(
+                                "Struct '{}' has not field named '{}'.",
+                                module_segments_as_string(struct_metadata.struct_name.segments),
+                                field_name
+                            )),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                }
+            }
+            InternalType::UnnamedStruct(internal_unnamed_struct_type) => {
+                self.build_unnamed_struct_field_access(internal_unnamed_struct_type, pointer, field_name, loc, span_end)
+            }
+            _ => unreachable!(),
+        }
+    }
 
-        //                 InternalValue::Lvalue(Lvalue {
-        //                     ptr: field_ptr,
-        //                     pointee_ty: self.build_type(field.ty.clone(), field.loc.clone(), field.span.end),
-        //                 })
-        //             }
-        //             None => {
-        //                 display_single_diag(Diag {
-        //                     level: DiagLevel::Error,
-        //                     kind: DiagKind::Custom(format!(
-        //                         "Struct '{}' has not field named '{}'.",
-        //                         module_segments_as_string(struct_metadata.struct_name.segments),
-        //                         field_name
-        //                     )),
-        //                     location: Some(DiagLoc {
-        //                         file: self.file_path.clone(),
-        //                         line: loc.line,
-        //                         column: loc.column,
-        //                         length: span_end,
-        //                     }),
-        //                 });
-        //                 exit(1);
-        //             }
-        //         }
-        //     }
-        //     InternalType::UnnamedStruct(internal_unnamed_struct_type) => internal_unnamed_struct_type
-        //         .unnamed_struct_metadata
-        //         .fields
-        //         .iter()
-        //         .enumerate()
-        //         .find(|(_, f)| f.0 == field_name)
-        //         .map_or_else(
-        //             || {
-        //                 display_single_diag(Diag {
-        //                     level: DiagLevel::Error,
-        //                     kind: DiagKind::Custom(format!("Unnamed struct has not field named '{}'.", field_name)),
-        //                     location: Some(DiagLoc {
-        //                         file: self.file_path.clone(),
-        //                         line: loc.line,
-        //                         column: loc.column,
-        //                         length: span_end,
-        //                     }),
-        //                 });
-        //                 exit(1);
-        //             },
-        //             |(field_idx, (_, field_type))| {
-        //                 let field_ptr = self
-        //                     .builder
-        //                     .build_struct_gep(
-        //                         internal_unnamed_struct_type.unnamed_struct_metadata.struct_type,
-        //                         pointer,
-        //                         field_idx.try_into().unwrap(),
-        //                         "gep",
-        //                     )
-        //                     .unwrap();
+    fn build_method_call_operand_as_rvalue(
+        &mut self,
+        scope: ScopeRef<'ctx>,
+        method_call: MethodCall,
+    ) -> Option<(StructMetadata<'ctx>, InternalValue<'ctx>, InternalValue<'ctx>)> {
+        let lvalue = self.build_expr(Rc::clone(&scope), *method_call.operand.clone());
+        let rvalue = self.internal_value_as_rvalue(lvalue.clone(), method_call.loc.clone(), method_call.span.end);
+        let rvalue_type = rvalue.get_type(self.context.i8_type());
 
-        //                 InternalValue::Lvalue(Lvalue {
-        //                     ptr: field_ptr,
-        //                     pointee_ty: field_type.clone(),
-        //                 })
-        //             },
-        //         ),
-        //     _ => unreachable!(),
-        // }
+        let internal_struct_type = match rvalue_type {
+            InternalType::StructType(internal_struct_type) => internal_struct_type,
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::MethodCallOnNonStructValue,
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: method_call.loc.line,
+                        column: method_call.loc.column,
+                        length: method_call.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let struct_id = internal_struct_type.struct_id;
+        match self.resolve_struct_metadata_with_struct_id(struct_id) {
+            Some(struct_metadata) => Some((struct_metadata, lvalue, rvalue)),
+            None => None,
+        }
     }
 
     pub(crate) fn build_method_call(&mut self, scope: ScopeRef<'ctx>, method_call: MethodCall) -> InternalValue<'ctx> {
-        // FIXME
-        todo!();
+        let struct_metadata_opt = match *method_call.operand.clone() {
+            Expression::Identifier(identifier) => match self.lookup_struct_by_name(
+                ModuleImport {
+                    segments: vec![ModuleSegment::SubModule(identifier.clone())],
+                    loc: identifier.loc.clone(),
+                    span: identifier.span.clone(),
+                },
+                identifier.loc.clone(),
+                identifier.span.end,
+            ) {
+                Some(struct_metadata) => Some(struct_metadata),
+                None => None,
+            },
+            Expression::ModuleImport(module_import) => match self.lookup_struct_by_name(
+                module_import.clone(),
+                module_import.loc.clone(),
+                module_import.span.end,
+            ) {
+                Some(struct_metadata) => Some(struct_metadata),
+                None => None,
+            },
+            _ => None,
+        };
 
-        // match *method_call.operand.clone() {
-        //     Expression::Identifier(identifier) => match self.resolve_metadata(identifier.name.clone()) {
-        //         Some(definition_lookup_result) => match definition_lookup_result {
-        //             DefinitionLookupResult::Struct(struct_metadata) => {
-        //                 self.build_static_method_call(scope, method_call, struct_metadata.to_internal_struct_type())
-        //             }
-        //             DefinitionLookupResult::Typedef(typedef_metadata) => {
-        //                 match self.typedef_as_struct_type(typedef_metadata) {
-        //                     Some(internal_struct_type) => {
-        //                         self.build_static_method_call(scope, method_call, internal_struct_type.clone())
-        //                     }
-        //                     None => {
-        //                         display_single_diag(Diag {
-        //                             level: DiagLevel::Error,
-        //                             kind: DiagKind::Custom(
-        //                                 "Cannot build method call on a non-struct value.".to_string(),
-        //                             ),
-        //                             location: Some(DiagLoc {
-        //                                 file: self.file_path.clone(),
-        //                                 line: method_call.loc.line,
-        //                                 column: method_call.loc.column,
-        //                                 length: method_call.span.end,
-        //                             }),
-        //                         });
-        //                         exit(1);
-        //                     }
-        //                 }
-        //             }
-        //             DefinitionLookupResult::Func(_) => {
-        //                 display_single_diag(Diag {
-        //                     level: DiagLevel::Error,
-        //                     kind: DiagKind::Custom("Cannot build method call on a function value.".to_string()),
-        //                     location: Some(DiagLoc {
-        //                         file: self.file_path.clone(),
-        //                         line: identifier.loc.line,
-        //                         column: identifier.loc.column,
-        //                         length: identifier.span.end,
-        //                     }),
-        //                 });
-        //                 exit(1);
-        //             }
-        //             DefinitionLookupResult::GlobalVariable(_) => todo!(),
-        //         },
-        //         None => self.build_instance_method_call(Rc::clone(&scope), method_call),
-        //     },
-        //     Expression::ModuleImport(module_import) => {
-        //         match self.get_defined_type(module_import.clone(), method_call.loc.clone(), method_call.span.end) {
-        //             Some(defined_type) => match defined_type {
-        //                 DefinedType::Struct(struct_metadata) => self.build_static_method_call(
-        //                     scope,
-        //                     method_call,
-        //                     InternalStructType {
-        //                         type_str: module_segments_as_string(struct_metadata.struct_name.segments.clone()),
-        //                         struct_name: struct_metadata.struct_name.clone(),
-        //                         struct_type: struct_metadata.struct_type.clone(),
-        //                         fields: struct_metadata.fields.clone(),
-        //                         methods: struct_metadata.methods.clone(),
-        //                         definition_id: struct_metadata.definition_id.clone(),
-        //                     },
-        //                 ),
-        //                 DefinedType::Typedef(typedef_metadata) => match self.typedef_as_struct_type(typedef_metadata) {
-        //                     Some(internal_struct_type) => {
-        //                         self.build_static_method_call(scope, method_call, internal_struct_type.clone())
-        //                     }
-        //                     None => {
-        //                         display_single_diag(Diag {
-        //                             level: DiagLevel::Error,
-        //                             kind: DiagKind::Custom(
-        //                                 "Cannot build method call on a non-struct value.".to_string(),
-        //                             ),
-        //                             location: Some(DiagLoc {
-        //                                 file: self.file_path.clone(),
-        //                                 line: method_call.loc.line,
-        //                                 column: method_call.loc.column,
-        //                                 length: method_call.span.end,
-        //                             }),
-        //                         });
-        //                         exit(1);
-        //                     }
-        //                 },
-        //             },
-        //             None => self.build_instance_method_call(Rc::clone(&scope), method_call),
-        //         }
-        //     }
-        //     _ => self.build_instance_method_call(Rc::clone(&scope), method_call),
-        // }
+        let get_method_metadata = |struct_metadata: StructMetadata<'ctx>, file_path: String| match struct_metadata
+            .methods
+            .iter()
+            .find(|m| m.method_decl.get_usable_name() == method_call.method_name.name)
+        {
+            Some(method_metadata) => method_metadata.clone(),
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::MethodNotDefinedForStruct(
+                        method_call.method_name.name.clone(),
+                        module_segments_as_string(struct_metadata.struct_name.segments),
+                    ),
+                    location: Some(DiagLoc {
+                        file: file_path,
+                        line: method_call.loc.line,
+                        column: method_call.loc.column,
+                        length: method_call.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        match struct_metadata_opt {
+            Some(struct_metadata) => {
+                // Static method call
+                let method_metadata = get_method_metadata(struct_metadata, self.file_path.clone());
+                self.build_static_method_call(Rc::clone(&scope), method_call.clone(), method_metadata)
+            }
+            None => match self.build_method_call_operand_as_rvalue(Rc::clone(&scope), method_call.clone()) {
+                Some((struct_metadata, lvalue, rvalue)) => {
+                    // Instance method call
+                    let method_metadata = get_method_metadata(struct_metadata, self.file_path.clone());
+                    self.build_instance_method_call(
+                        Rc::clone(&scope),
+                        lvalue,
+                        rvalue,
+                        method_metadata,
+                        method_call.clone(),
+                    )
+                }
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::MethodCallOnNonStructValue,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: method_call.loc.line,
+                            column: method_call.loc.column,
+                            length: method_call.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
+        }
     }
 
     pub(crate) fn build_static_method_call(
         &mut self,
         scope: ScopeRef<'ctx>,
         method_call: MethodCall,
-        internal_struct_type: InternalStructType<'ctx>,
+        method_metadata: StructMethodMetadata<'ctx>,
     ) -> InternalValue<'ctx> {
-        let method_metadata = internal_struct_type
-            .methods
-            .iter()
-            .find(|method| method.method_decl.get_usable_name() == method_call.method_name.name);
+        if !method_metadata.is_static_method {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(
+                    "Non-static method cannot be called without an instance of the object.".to_string(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: method_call.method_name.loc.line,
+                    column: method_call.method_name.loc.column,
+                    length: method_call.method_name.span.end,
+                }),
+            });
+            exit(1);
+        }
 
-        match method_metadata {
-            Some(struct_method_metadata) => {
-                if !struct_method_metadata.is_static_method {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(
-                            "Non-static method cannot be called without an instance of the object.".to_string(),
-                        ),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: method_call.method_name.loc.line,
-                            column: method_call.method_name.loc.column,
-                            length: method_call.method_name.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
+        let func_metadata = FuncMetadata {
+            local_ir_value_id: method_metadata.local_ir_value_id,
+            func_decl: method_metadata.method_decl.clone(),
+            return_type: method_metadata.return_type.clone(),
+            imported_from: None,
+            params_metadata: method_metadata.method_params_metadata.clone(),
+            is_method: false,
+        };
+        let method_value = self.get_or_declare_local_func_ir_value(method_metadata.local_ir_value_id, func_metadata);
 
-                let func_basic_blocks = struct_method_metadata.method_value.get_basic_blocks();
-                let current_block =
-                    self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
+        let func_basic_blocks = method_value.get_basic_blocks();
+        let current_block = self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-                if !func_basic_blocks.contains(&current_block)
-                    && struct_method_metadata.method_decl.access_specifier != AccessSpecifier::Public
-                {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(format!(
-                            "Method '{}' is defined internally for the struct and cannot be called directly from outside. It is intended for internal use only.",
-                            method_call.method_name.name.clone()
-                        )),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: method_call.method_name.loc.line,
-                            column: method_call.method_name.loc.column,
-                            length: method_call.method_name.span.end,
-                        }),
-                    });
-                    exit(1);
-                }
+        if !func_basic_blocks.contains(&current_block)
+            && method_metadata.method_decl.access_specifier != AccessSpecifier::Public
+        {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Method '{}' is defined internally for the struct and cannot be called directly from outside. It is intended for internal use only.",
+                    method_call.method_name.name.clone()
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: method_call.method_name.loc.line,
+                    column: method_call.method_name.loc.column,
+                    length: method_call.method_name.span.end,
+                }),
+            });
+            exit(1);
+        }
 
-                // static methods args count checking are the same as the funcs
-                self.check_func_args_count_mismatch(
-                    struct_method_metadata.method_decl.name.clone(),
-                    struct_method_metadata.method_decl.clone(),
-                    method_call.arguments.len(),
-                    method_call.loc.clone(),
-                    method_call.span.end,
-                );
+        // static methods args count checking are the same as the funcs
+        self.check_func_args_count_mismatch(
+            method_metadata.method_decl.name.clone(),
+            method_metadata.method_decl.clone(),
+            method_call.arguments.len(),
+            method_call.loc.clone(),
+            method_call.span.end,
+        );
 
-                let static_params_length = struct_method_metadata.method_params_metadata.param_types.len();
+        let static_params_length = method_metadata.method_params_metadata.param_types.len();
 
-                let arguments = self.build_arguments(
-                    Rc::clone(&scope),
-                    method_call.arguments.clone(),
-                    struct_method_metadata.method_params_metadata.clone(),
-                    0,
-                    static_params_length,
-                    struct_method_metadata.method_decl.get_usable_name(),
-                    method_call.loc.clone(),
-                    method_call.span.end,
-                );
+        let arguments = self.build_arguments(
+            Rc::clone(&scope),
+            method_call.arguments.clone(),
+            method_metadata.method_params_metadata.clone(),
+            0,
+            static_params_length,
+            method_metadata.method_decl.get_usable_name(),
+            method_call.loc.clone(),
+            method_call.span.end,
+        );
 
-                let call_site_value = self
-                    .builder
-                    .build_call(struct_method_metadata.method_value, &arguments, "call")
-                    .unwrap();
+        let call_site_value = self.builder.build_call(method_value, &arguments, "call").unwrap();
 
-                if let Some(value) = call_site_value.try_as_basic_value().left() {
-                    self.new_internal_value(value, struct_method_metadata.return_type.clone())
-                } else {
-                    InternalValue::PointerValue(self.build_null())
-                }
-            }
-            None => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(format!(
-                        "Static method '{}' not defined for struct '{}'.",
-                        method_call.method_name.name.clone(),
-                        module_segments_as_string(internal_struct_type.struct_name.segments)
-                    )),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: method_call.method_name.loc.line,
-                        column: method_call.method_name.loc.column,
-                        length: method_call.method_name.span.end,
-                    }),
-                });
-                exit(1);
-            }
+        if let Some(value) = call_site_value.try_as_basic_value().left() {
+            self.new_internal_value(value, method_metadata.return_type.clone())
+        } else {
+            InternalValue::PointerValue(self.build_null())
         }
     }
 
@@ -976,262 +1023,140 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         struct_name: ModuleImport,
         loc: Location,
         span_end: usize,
-    ) -> StructMetadata<'ctx> {
+    ) -> Option<StructMetadata<'ctx>> {
         if let Some(identifier) = struct_name.as_identifier() {
             let module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
             let struct_metadata = match module_metadata.get_struct_metadata_by_name(identifier.name.clone()) {
                 Some(struct_metadata) => struct_metadata,
                 None => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::IdentifierNotDefined(identifier.name.clone()),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
+                    return None;
                 }
             };
 
             drop(module_metadata);
-            struct_metadata
+            Some(struct_metadata)
         } else {
             // lookup in imported structs
             todo!();
         }
-
-        // let mut struct_metadata = match self.get_defined_type(struct_name.clone(), loc.clone(), span_end) {
-        //     Some(defined_type) => match defined_type {
-        //         DefinedType::Struct(struct_metadata) => struct_metadata,
-        //         DefinedType::Typedef(typedef_metadata) => match typedef_metadata.internal_type.clone() {
-        //             InternalType::StructType(internal_struct_type) => self.lookup_struct_by_definition_id(
-        //                 internal_struct_type.definition_id,
-        //                 module_segments_as_string(internal_struct_type.struct_name.segments),
-        //                 loc,
-        //                 span_end,
-        //             ),
-        //             _ => {
-        //                 display_single_diag(Diag {
-        //                     level: DiagLevel::Error,
-        //                     kind: DiagKind::Custom("Cannot build method call on non-struct value.".to_string()),
-        //                     location: Some(DiagLoc {
-        //                         file: self.file_path.clone(),
-        //                         line: loc.line,
-        //                         column: loc.column,
-        //                         length: span_end,
-        //                     }),
-        //                 });
-        //                 exit(1);
-        //             }
-        //         },
-        //     },
-        //     None => {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::Custom("Couldn't find internal_struct_type anywhere.".to_string()),
-        //             location: Some(DiagLoc {
-        //                 file: self.file_path.clone(),
-        //                 line: loc.line,
-        //                 column: loc.column,
-        //                 length: span_end,
-        //             }),
-        //         });
-        //         exit(1);
-        //     }
-        // };
-
-        // struct_metadata.struct_name = struct_name;
-        // struct_metadata
     }
 
     pub(crate) fn build_instance_method_call(
         &mut self,
         scope: ScopeRef<'ctx>,
+        mut operand: InternalValue<'ctx>,
+        mut operand_rvalue: InternalValue<'ctx>,
+        mut method_metadata: StructMethodMetadata<'ctx>,
         method_call: MethodCall,
     ) -> InternalValue<'ctx> {
-        // FIXME
-        todo!();
+        if method_call.is_fat_arrow {
+            if !operand_rvalue.get_type(self.context.i8_type()).is_pointer_type() {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build fat arrow on non-pointer values.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: method_call.loc.line,
+                        column: method_call.loc.column,
+                        length: method_call.span.end,
+                    }),
+                });
+                exit(1);
+            }
 
-        // let mut operand = self.build_expr(Rc::clone(&scope), *method_call.operand.clone());
-        // let mut operand_rvalue =
-        //     self.internal_value_as_rvalue(operand.clone(), method_call.loc.clone(), method_call.span.end);
+            // REVIEW
+            operand = self.build_deref_internal(operand_rvalue.clone(), method_call.loc.clone(), method_call.span.end);
+            operand_rvalue =
+                self.internal_value_as_rvalue(operand.clone(), method_call.loc.clone(), method_call.span.end);
+        }
 
-        // if method_call.is_fat_arrow {
-        //     if !operand_rvalue.get_type(self.context.i8_type()).is_pointer_type() {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::Custom("Cannot build fat arrow on non-pointer values.".to_string()),
-        //             location: Some(DiagLoc {
-        //                 file: self.file_path.clone(),
-        //                 line: method_call.loc.line,
-        //                 column: method_call.loc.column,
-        //                 length: method_call.span.end,
-        //             }),
-        //         });
-        //         exit(1);
-        //     }
+        // Set ABI naming
+        method_metadata.method_decl.renamed_as = Some(method_metadata.method_decl.name.clone());
+        // method_metadata.method_decl.name = self.generate_method_abi_name(method_metadata., struct_name, method_name);
 
-        //     operand = self.build_deref_internal(operand_rvalue.clone(), method_call.loc.clone(), method_call.span.end);
-        //     operand_rvalue =
-        //         self.internal_value_as_rvalue(operand.clone(), method_call.loc.clone(), method_call.span.end);
-        // }
+        let func_metadata = FuncMetadata {
+            local_ir_value_id: method_metadata.local_ir_value_id,
+            func_decl: method_metadata.method_decl.clone(),
+            return_type: method_metadata.return_type.clone(),
+            imported_from: None,
+            params_metadata: method_metadata.method_params_metadata.clone(),
+            is_method: false,
+        };
+        let method_value = self.get_or_declare_local_func_ir_value(method_metadata.local_ir_value_id, func_metadata);
 
-        // let struct_metadata = match operand_rvalue.clone() {
-        //     InternalValue::StructValue(_, internal_type) => match internal_type {
-        //         InternalType::StructType(internal_struct_type) => self.lookup_struct_by_definition_id(
-        //             internal_struct_type.definition_id,
-        //             module_segments_as_string(internal_struct_type.struct_name.segments.clone()),
-        //             method_call.loc.clone(),
-        //             method_call.span.end,
-        //         ),
-        //         _ => unreachable!(),
-        //     },
-        //     InternalValue::PointerValue(_) => {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::Custom("Cannot build method call on pointer values. Consider to deference before calling the method or use fat arrow (->) instead.".to_string()),
-        //             location: Some(DiagLoc {
-        //                 file: self.file_path.clone(),
-        //                 line: method_call.method_name.loc.line,
-        //                 column: method_call.method_name.loc.column,
-        //                 length: method_call.method_name.span.end,
-        //             }),
-        //         });
-        //         exit(1);
-        //     }
-        //     _ => {
-        //         return self.build_internal_methods(
-        //             method_call.method_name.name,
-        //             operand_rvalue,
-        //             method_call.loc.clone(),
-        //             method_call.span.end,
-        //         );
-        //     }
-        // };
+        let func_basic_blocks = method_value.get_basic_blocks();
+        let current_block = self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
-        // // let's find the method from struct_metadata
-        // let method_metadata_opt = struct_metadata
-        //     .methods
-        //     .iter()
-        //     .find(|method| method.method_decl.get_usable_name() == method_call.method_name.name);
+        if !func_basic_blocks.contains(&current_block)
+            && method_metadata.method_decl.access_specifier != AccessSpecifier::Public
+        {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(format!(
+                    "Method '{}' is defined with internal access specifier for the struct and cannot be called directly from outside of the struct declaration.",
+                    method_call.method_name.name.clone()
+                )),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: method_call.method_name.loc.line,
+                    column: method_call.method_name.loc.column,
+                    length: method_call.method_name.span.end,
+                }),
+            });
+            exit(1);
+        }
 
-        // match method_metadata_opt.cloned() {
-        //     Some(mut method_metadata) => {
-        //         if method_metadata.is_static_method {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::Custom(format!(
-        //                     "Cannot call static method '{}' from an object instance. Call it directly instead.",
-        //                     method_call.method_name.name.clone()
-        //                 )),
-        //                 location: Some(DiagLoc {
-        //                     file: self.file_path.clone(),
-        //                     line: method_call.method_name.loc.line,
-        //                     column: method_call.method_name.loc.column,
-        //                     length: method_call.method_name.span.end,
-        //                 }),
-        //             });
-        //             exit(1);
-        //         }
+        let mut arguments: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
 
-        //         let func_basic_blocks = method_metadata.method_value.get_basic_blocks();
-        //         let current_block =
-        //             self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
+        // Pass self modifier value if exists
+        if let Some(first_param) = method_metadata.method_decl.params.list.first() {
+            if let FuncParamKind::SelfModifier(self_modifier) = first_param {
+                match self_modifier {
+                    SelfModifier::Copied => {
+                        arguments.push(self.internal_value_to_basic_metadata(operand_rvalue));
+                    }
+                    SelfModifier::Referenced => {
+                        arguments.push(self.internal_value_to_basic_metadata(operand));
+                    }
+                }
+            }
 
-        //         if !func_basic_blocks.contains(&current_block)
-        //             && method_metadata.method_decl.access_specifier != AccessSpecifier::Public
-        //         {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::Custom(format!(
-        //                     "Method '{}' is defined internally for the struct and cannot be called directly from outside. It is intended for internal use only.",
-        //                     method_call.method_name.name.clone()
-        //                 )),
-        //                 location: Some(DiagLoc {
-        //                     file: self.file_path.clone(),
-        //                     line: method_call.method_name.loc.line,
-        //                     column: method_call.method_name.loc.column,
-        //                     length: method_call.method_name.span.end,
-        //                 }),
-        //             });
-        //             exit(1);
-        //         }
+            // Remove self modifier from normal params
+            method_metadata.method_params_metadata.param_types.remove(0);
+        }
 
-        //         let mut arguments: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
+        self.check_instance_method_args_count_mismatch(
+            method_metadata.method_decl.name.clone(),
+            method_metadata.method_decl.clone(),
+            // Include self modifier which is added manually from the arguments count
+            method_call.arguments.len() + 1,
+            method_call.loc.clone(),
+            method_call.span.end,
+        );
 
-        //         // pass self modifier value if exists
-        //         if let Some(first_param) = method_metadata.method_decl.params.list.first() {
-        //             if let FuncParamKind::SelfModifier(self_modifier) = first_param {
-        //                 match self_modifier {
-        //                     SelfModifier::Copied => {
-        //                         arguments.push(self.internal_value_to_basic_metadata(operand_rvalue));
-        //                     }
-        //                     SelfModifier::Referenced => {
-        //                         arguments.push(self.internal_value_to_basic_metadata(operand));
-        //                     }
-        //                 }
-        //             }
+        let static_params_length = method_metadata.method_params_metadata.param_types.len();
 
-        //             method_metadata.method_params_metadata.param_types.remove(0); // remove self_modifier from normal params
-        //         }
+        if static_params_length >= 1 {
+            arguments.append(&mut self.build_arguments(
+                Rc::clone(&scope),
+                method_call.arguments.clone(),
+                method_metadata.method_params_metadata.clone(),
+                // exclude self modifier
+                0,
+                static_params_length,
+                method_metadata.method_decl.get_usable_name(),
+                method_call.loc.clone(),
+                method_call.span.end,
+            ));
+        }
 
-        //         self.check_instance_method_args_count_mismatch(
-        //             method_metadata.method_decl.name.clone(),
-        //             method_metadata.method_decl.clone(),
-        //             // include self modifier which is added manually from the arguments count
-        //             method_call.arguments.len() + 1,
-        //             method_call.loc.clone(),
-        //             method_call.span.end,
-        //         );
+        let call_site_value = self.builder.build_call(method_value, &arguments, "call").unwrap();
 
-        //         let static_params_length = method_metadata.method_params_metadata.param_types.len();
-
-        //         if static_params_length >= 1 {
-        //             arguments.append(&mut self.build_arguments(
-        //                 Rc::clone(&scope),
-        //                 method_call.arguments.clone(),
-        //                 method_metadata.method_params_metadata.clone(),
-        //                 // exclude self modifier
-        //                 0,
-        //                 static_params_length,
-        //                 method_metadata.method_decl.get_usable_name(),
-        //                 method_call.loc.clone(),
-        //                 method_call.span.end,
-        //             ));
-        //         }
-
-        //         let call_site_value = self
-        //             .builder
-        //             .build_call(method_metadata.method_value, &arguments, "call")
-        //             .unwrap();
-
-        //         if let Some(value) = call_site_value.try_as_basic_value().left() {
-        //             self.new_internal_value(value, method_metadata.return_type.clone())
-        //         } else {
-        //             InternalValue::PointerValue(self.build_null())
-        //         }
-        //     }
-        //     None => {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::Custom(format!(
-        //                 "Method '{}' not defined for struct '{}'.",
-        //                 method_call.method_name.name.clone(),
-        //                 module_segments_as_string(struct_metadata.struct_name.segments)
-        //             )),
-        //             location: Some(DiagLoc {
-        //                 file: self.file_path.clone(),
-        //                 line: method_call.method_name.loc.line,
-        //                 column: method_call.method_name.loc.column,
-        //                 length: method_call.method_name.span.end,
-        //             }),
-        //         });
-        //         exit(1);
-        //     }
-        // }
+        if let Some(value) = call_site_value.try_as_basic_value().left() {
+            self.new_internal_value(value, method_metadata.return_type.clone())
+        } else {
+            InternalValue::PointerValue(self.build_null())
+        }
     }
 
     pub(crate) fn build_field_access(
@@ -1271,7 +1196,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(format!(
-                                "Expected InternalValue::PointerValue or InternalValue::Lvalue for struct field access but got '{}'.",
+                                "Invalid operand for field access. Expected a struct or reference/pointer, but got type '{}'.",
                                 internal_value.get_type(self.context.i8_type())
                             )),
                             location: Some(DiagLoc {
