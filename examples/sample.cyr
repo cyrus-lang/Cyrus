@@ -1,3 +1,10 @@
+public struct Sample {}
+
+public func sub(x: int32, y: int32) int32 {
+    #a = Sample {};
+    return x - y;
+}
+
 public func sum(x: int32, y: int32) int32 {
     return x + y;
 }

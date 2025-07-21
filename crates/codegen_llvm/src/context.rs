@@ -1,16 +1,18 @@
-use crate::funcs::FuncMetadata;
+use crate::build;
+use crate::diag::*;
+use crate::funcs::{FuncMetadata, FuncTable};
 use crate::modules::{
     ImportedModules, LocalIRValueRegistryRef, ModuleID, ModuleMetadata, ModuleMetadataRegistryRef, generate_module_id,
 };
-use crate::opts::BuildDir;
+use crate::opts::{BuildDir, Options};
+use crate::scope::Scope;
+use crate::scope::ScopeRef;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 use crate::structs::StructTable;
 use crate::types::TypedefTable;
 use crate::variables::GlobalVariablesTable;
 use ast::ast::*;
 use build::{BuildManifest, OutputKind};
-use diag::*;
-use funcs::FuncTable;
 use inkwell::OptimizationLevel;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
@@ -18,57 +20,35 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::support::LLVMString;
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple};
-use opts::Options;
-use scope::{Scope, ScopeRef};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::process::exit;
 use std::rc::Rc;
-use types::InternalType;
-use utils::fs::{file_stem, get_directory_of_file, relative_to_absolute};
+use utils::fs::{file_stem, relative_to_absolute};
 use utils::tui::{tui_compile_finished, tui_compiled};
-use values::InternalValue;
-
-pub mod build;
-pub mod diag;
-mod enums;
-mod exprs;
-mod funcs;
-mod internals;
-mod modules;
-pub mod opts;
-mod resolver;
-mod runtime;
-mod scope;
-mod stmts;
-mod strings;
-mod structs;
-mod types;
-mod values;
-mod variables;
 
 pub struct CodeGenLLVM<'ctx> {
-    opts: Options,                                             // compiler options
-    context: &'ctx Context,                                    // llvm context
-    module_id: ModuleID,                                       // unique per module
-    module_name: String,                                       // module name
-    module: Rc<RefCell<Module<'ctx>>>,                         // llvm module
-    builder: Builder<'ctx>,                                    // llvm builder
-    target_machine: TargetMachine,                             // llvm target machine
-    build_manifest: BuildManifest,                             // build manifest
-    program: ProgramTree,                                      // AST Program
-    file_path: String,                                         // program file path
-    reporter: DiagReporter,                                    // diagnostic
-    entry_point: Option<FuncDef>,                              // FIXME
-    entry_point_path: String,                                  // FIXME
-    compiler_invoked_single: bool,                             // invoked single option
-    output_kind: OutputKind,                                   // compiler output kind
-    final_build_dir: String,                                   // build directory path
-    block_registry: BlockRegistry<'ctx>,                       // block registry
-    imported_modules: Vec<ImportedModules>,                    // imported modules list
-    module_metadata_registry: ModuleMetadataRegistryRef<'ctx>, // global shared module metadata registry
-    local_ir_value_registry: LocalIRValueRegistryRef<'ctx>,    // per-module IR-value registry
+    pub opts: Options,                                                    // compiler options
+    pub target_machine: TargetMachine,                                    // llvm target machine
+    pub(crate) context: &'ctx Context,                                    // llvm context
+    pub(crate) module_id: ModuleID,                                       // unique per module
+    pub(crate) module_name: String,                                       // module name
+    pub(crate) module: Rc<RefCell<Module<'ctx>>>,                         // llvm module
+    pub(crate) builder: Builder<'ctx>,                                    // llvm builder
+    pub(crate) build_manifest: BuildManifest,                             // build manifest
+    pub(crate) program: ProgramTree,                                      // AST Program
+    pub(crate) file_path: String,                                         // program file path
+    pub(crate) reporter: DiagReporter,                                    // diagnostic
+    pub(crate) entry_point: Option<FuncDef>,                              // FIXME
+    pub(crate) entry_point_path: String,                                  // FIXME
+    pub(crate) compiler_invoked_single: bool,                             // invoked single option
+    pub(crate) output_kind: OutputKind,                                   // compiler output kind
+    pub(crate) final_build_dir: String,                                   // build directory path
+    pub(crate) block_registry: BlockRegistry<'ctx>,                       // block registry
+    pub(crate) imported_modules: Vec<ImportedModules>,                    // imported modules list
+    pub(crate) module_metadata_registry: ModuleMetadataRegistryRef<'ctx>, // global shared module metadata registry
+    pub(crate) local_ir_value_registry: LocalIRValueRegistryRef<'ctx>,    // per-module IR-value registry
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -283,10 +263,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
 #[derive(Debug, Clone)]
 pub struct BlockRegistry<'a> {
-    current_func_ref: Option<FuncMetadata<'a>>,
-    current_block_ref: Option<BasicBlock<'a>>,
-    terminated_blocks: Vec<TerminatedBlockMetadata<'a>>,
-    current_loop_ref: Option<LoopBlockRefs<'a>>,
+    pub current_func_ref: Option<FuncMetadata<'a>>,
+    pub current_block_ref: Option<BasicBlock<'a>>,
+    pub terminated_blocks: Vec<TerminatedBlockMetadata<'a>>,
+    pub current_loop_ref: Option<LoopBlockRefs<'a>>,
 }
 
 impl<'a> BlockRegistry<'a> {

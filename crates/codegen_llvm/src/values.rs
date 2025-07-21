@@ -1,9 +1,5 @@
 use crate::{
-    CodeGenLLVM, InternalType,
-    diag::*,
-    funcs::FuncMetadata,
-    modules::ModuleMetadata,
-    types::{InternalArrayType, InternalBoolType, InternalIntType, InternalPointerType},
+    context::CodeGenLLVM, diag::*, funcs::FuncMetadata, modules::ModuleMetadata, types::{InternalArrayType, InternalBoolType, InternalIntType, InternalPointerType, InternalType}
 };
 use ast::token::{Location, TokenKind};
 use inkwell::{

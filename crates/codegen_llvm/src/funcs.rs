@@ -1,12 +1,12 @@
+use crate::context::CodeGenLLVM;
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
-use crate::modules::{generate_local_ir_value_id, LocalIRValue, LocalIRValueID, ModuleID};
+use crate::modules::{LocalIRValue, LocalIRValueID, ModuleID, generate_local_ir_value_id};
 use crate::scope::{ScopeRecord, ScopeRef};
-use crate::types::{InternalIntType, InternalVoidType};
+use crate::types::{InternalIntType, InternalType, InternalVoidType};
 use crate::values::InternalValue;
-use crate::{CodeGenLLVM, InternalType};
 use ast::ast::{
     AccessSpecifier, Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams,
-    Identifier, ModuleImport, ModulePath, Return, TypeSpecifier,
+    Identifier, ModuleImport, Return, TypeSpecifier,
 };
 use ast::format::module_segments_as_string;
 use ast::token::{Location, Span, Token, TokenKind};
@@ -535,7 +535,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ))
         };
 
-        let func_abi_name = self.generate_abi_name(self.module_name.clone(), func_def.name.clone());
+        let func_abi_name = self.generate_func_abi_name(self.module_name.clone(), func_def.name.clone());
         let actual_func_name = if self.is_current_module_entry_point() {
             func_decl.name.clone()
         } else {
@@ -590,8 +590,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.block_registry.current_block_ref = Some(entry_block);
 
         self.build_func_define_local_params(Rc::clone(&scope), func_value, func_def.clone(), false);
-        match func_def.params.variadic.clone() {
-            Some(variadic_type) => match variadic_type {
+        if let Some(variadic_type) = func_def.params.variadic.clone() {
+            match variadic_type {
                 FuncVariadicParams::Typed(identifier, type_specifier) => {
                     self.build_func_vargs(
                         Rc::clone(&scope),
@@ -619,8 +619,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     });
                     exit(1);
                 }
-            },
-            None => {}
+            }
         }
 
         self.build_statements(Rc::clone(&scope), func_def.body.exprs);
@@ -911,6 +910,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         func_metadata
     }
+
     pub(crate) fn build_func_call(&mut self, scope: ScopeRef<'ctx>, func_call: FuncCall) -> InternalValue<'ctx> {
         let func_metadata = self.build_func_call_operand(func_call.operand, func_call.loc.clone(), func_call.span.end);
 

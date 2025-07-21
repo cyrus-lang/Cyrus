@@ -487,6 +487,16 @@ pub enum AccessSpecifier {
     PublicExtern,
 }
 
+impl AccessSpecifier {
+    pub fn is_private(&self) -> bool {
+        matches!(self, Self::Internal | Self::Inline | Self::Extern)
+    }
+
+    pub fn is_public(&self) -> bool {
+        matches!(self, Self::Public | Self::PublicInline | Self::PublicExtern)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStatement {
     pub exprs: Vec<Statement>,

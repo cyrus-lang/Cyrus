@@ -1,5 +1,8 @@
+use crate::{
+    context::CodeGenLLVM, diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, scope::{ScopeRecord, ScopeRef}, types::InternalType
+};
 use ast::{
-    ast::{AccessSpecifier, Expression, GlobalVariable, TypeSpecifier, Variable},
+    ast::{AccessSpecifier, GlobalVariable, TypeSpecifier, Variable},
     token::TokenKind,
 };
 use inkwell::{
@@ -7,14 +10,7 @@ use inkwell::{
     module::Linkage,
     values::{AnyValue, BasicValueEnum, GlobalValue},
 };
-
-use crate::{
-    CodeGenLLVM,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    scope::{Scope, ScopeRecord, ScopeRef},
-    types::InternalType,
-};
-use std::{cell::RefCell, collections::HashMap, process::exit, rc::Rc};
+use std::{collections::HashMap, process::exit, rc::Rc};
 
 pub type GlobalVariablesTable<'a> = HashMap<String, GlobalVariableMetadata<'a>>;
 
@@ -41,7 +37,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_global_variable(&mut self, global_variable: GlobalVariable) {
         // FIXME
         todo!();
-        
+
         // let initializer_value = match global_variable.expr {
         //     Some(expression) => match expression {
         //         expr @ Expression::Literal(..)

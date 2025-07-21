@@ -1,4 +1,4 @@
-use crate::InternalType;
+use crate::types::InternalType;
 use inkwell::values::PointerValue;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
