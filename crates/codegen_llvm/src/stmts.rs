@@ -1,9 +1,10 @@
+use crate::context::CodeGenLLVM;
 use crate::diag::*;
 use crate::funcs::FuncMetadata;
 use crate::scope::{Scope, ScopeRecord};
 use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
-use crate::{CodeGenLLVM, scope::ScopeRef};
+use crate::{scope::ScopeRef};
 use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement};
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;

@@ -1,5 +1,6 @@
+use crate::context::{BlockRegistry, CodeGenLLVM};
+use crate::structs::{StructID, StructMethodMetadata};
 use crate::{
-    BlockRegistry, CodeGenLLVM,
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
@@ -9,10 +10,11 @@ use crate::{
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
 use ast::{
-    ast::{Import, ModulePath, ModuleSegment, ModuleSegmentSingle},
+    ast::{AccessSpecifier, Import, ModulePath, ModuleSegment, ModuleSegmentSingle},
     format::module_segments_as_string,
     token::Location,
 };
+use inkwell::types::StructType;
 use inkwell::values::{FunctionValue, StructValue};
 use rand::Rng;
 use std::{
@@ -449,6 +451,28 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    pub(crate) fn error_if_func_is_private(
+        &self,
+        func_name: String,
+        access_specifier: AccessSpecifier,
+        loc: Location,
+        span_end: usize,
+    ) {
+        if access_specifier.is_private() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::ImportingPrivateFunc(func_name),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
     pub(crate) fn build_module_import_singles(
         &mut self,
         module_id: u64,
@@ -458,6 +482,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         span_end: usize,
     ) {
         let import_func = |mut func_metadata: FuncMetadata<'ctx>| {
+            self.error_if_func_is_private(
+                func_metadata.func_decl.get_usable_name(),
+                func_metadata.func_decl.access_specifier.clone(),
+                loc.clone(),
+                span_end,
+            );
+
             let func_name = func_metadata.func_decl.get_usable_name();
             func_metadata.imported_from = Some(module_id);
             let func_value = self.build_func_decl(
@@ -472,11 +503,37 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 Some(module_metadata) => module_metadata,
                 None => panic!("Couldn't lookup module in the module metadata registry."),
             };
-
             func_metadata.local_ir_value_id = local_ir_value_id;
             module_metadata.func_table.insert(func_name, func_metadata);
             drop(module_metadata);
         };
+
+        // let import_struct = |mut func_metadata: FuncMetadata<'ctx>| {
+        //     self.error_if_func_is_private(
+        //         func_metadata.func_decl.get_usable_name(),
+        //         func_metadata.func_decl.access_specifier.clone(),
+        //         loc.clone(),
+        //         span_end,
+        //     );
+
+        //     let func_name = func_metadata.func_decl.get_usable_name();
+        //     func_metadata.imported_from = Some(module_id);
+        //     let func_value = self.build_func_decl(
+        //         func_metadata.func_decl.clone(),
+        //         func_metadata.params_metadata.clone(),
+        //         false,
+        //         false,
+        //     );
+        //     let local_ir_value_id = generate_local_ir_value_id();
+        //     self.insert_local_ir_value(local_ir_value_id, LocalIRValue::Func(func_value));
+        //     let mut module_metadata = match self.get_module_metadata_by_module_id(self.module_id) {
+        //         Some(module_metadata) => module_metadata,
+        //         None => panic!("Couldn't lookup module in the module metadata registry."),
+        //     };
+        //     func_metadata.local_ir_value_id = local_ir_value_id;
+        //     module_metadata.func_table.insert(func_name, func_metadata);
+        //     drop(module_metadata);
+        // };
 
         module_segment_singles.iter().for_each(|single| {
             let metadata_resolver_result = match self.resolve_metadata(module_id, single.identifier.name.clone()) {
@@ -506,19 +563,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 MetadataResolverResult::GlobalVariable(global_variable_metadata) => todo!(),
             }
         });
-    }
-
-    pub(crate) fn generate_abi_name(&self, module_id: String, name: String) -> String {
-        format!("{}_{}", module_id, name)
-    }
-
-    pub(crate) fn generate_method_abi_name(
-        &self,
-        module_id: String,
-        struct_name: String,
-        method_name: String,
-    ) -> String {
-        format!("{}_{}_{}", module_id, struct_name, method_name)
     }
 
     pub(crate) fn insert_local_ir_value(&self, id: LocalIRValueID, value: LocalIRValue<'ctx>) {
@@ -570,5 +614,31 @@ impl<'a> ModuleMetadata<'a> {
 
     pub fn insert_typedef(&mut self, name: String, metadata: TypedefMetadata<'a>) {
         self.typedef_table.insert(name, metadata);
+    }
+
+    pub fn get_struct_metadata_by_id(&mut self, struct_id: StructID) -> &mut StructMetadata<'a> {
+        self.struct_table
+            .iter_mut()
+            .find(|r| r.1.struct_id == struct_id)
+            .expect("Couldn't find struct from module metadata registry.")
+            .1
+    }
+
+    pub fn get_struct_metadata_by_name(&self, struct_name: String) -> Option<StructMetadata<'a>> {
+        self.struct_table.get(&struct_name).cloned()
+    }
+
+    pub fn get_and_update_struct_type(&mut self, struct_id: StructID, struct_type: StructType<'a>) {
+        let struct_metadata = self.get_struct_metadata_by_id(struct_id);
+        struct_metadata.struct_type = struct_type;
+    }
+
+    pub fn get_and_update_struct_methods(
+        &mut self,
+        struct_id: StructID,
+        struct_methods: Vec<StructMethodMetadata<'a>>,
+    ) {
+        let struct_metadata = self.get_struct_metadata_by_id(struct_id);
+        struct_metadata.methods = struct_methods;
     }
 }

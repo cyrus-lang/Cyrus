@@ -1,9 +1,10 @@
-use crate::CodeGenLLVM;
-use crate::InternalValue;
+use crate::context::CodeGenLLVM;
 use crate::diag::*;
+use crate::structs::StructID;
 use crate::structs::StructMetadata;
 use crate::structs::StructMethodMetadata;
 use crate::structs::UnnamedStructTypeMetadata;
+use crate::values::InternalValue;
 use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
 use ast::ast::AccessSpecifier;
@@ -11,7 +12,6 @@ use ast::ast::ArrayCapacity;
 use ast::ast::ArrayTypeSpecifier;
 use ast::ast::Field;
 use ast::ast::ModuleImport;
-use ast::ast::ModulePath;
 use ast::ast::ModuleSegment;
 use ast::ast::TypeSpecifier;
 use ast::ast::Typedef;
@@ -99,12 +99,12 @@ pub struct InternalFloatType<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct InternalStructType<'a> {
-    pub type_str: String,
+    pub struct_id: StructID,
     pub struct_name: ModuleImport,
     pub struct_type: StructType<'a>,
     pub fields: Vec<Field>,
     pub methods: Vec<StructMethodMetadata<'a>>,
-    pub definition_id: u64,
+    pub type_str: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -147,12 +147,12 @@ impl<'a> DefinedType<'a> {
     pub fn into_internal_type(&self) -> InternalType<'a> {
         match self {
             DefinedType::Struct(struct_metadata) => InternalType::StructType(InternalStructType {
+                struct_id: struct_metadata.struct_id,
                 type_str: module_segments_as_string(struct_metadata.struct_name.segments.clone()),
                 struct_name: struct_metadata.struct_name.clone(),
                 struct_type: struct_metadata.struct_type.clone(),
                 methods: struct_metadata.methods.clone(),
                 fields: struct_metadata.fields.clone(),
-                definition_id: struct_metadata.definition_id,
             }),
             DefinedType::Typedef(typedef_metadata) => typedef_metadata.internal_type.clone(),
         }
@@ -468,7 +468,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         todo!();
 
         // if module_import.segments.len() == 1 {
-            // FIXME Use as_identifier instead.
+        // FIXME Use as_identifier instead.
         //     let name = match module_import.segments.last().unwrap() {
         //         ModuleSegment::SubModule(identifier) => identifier.name.clone(),
         //         ModuleSegment::Single(_) => unreachable!(),

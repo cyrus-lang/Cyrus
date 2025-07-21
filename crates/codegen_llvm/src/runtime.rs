@@ -1,5 +1,5 @@
+use crate::context::CodeGenLLVM;
 use crate::{
-    CodeGenLLVM,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     types::{InternalIntType, InternalType},
     values::{InternalValue, Lvalue},

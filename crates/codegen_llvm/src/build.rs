@@ -1,4 +1,4 @@
-use crate::CodeGenLLVM;
+use crate::context::CodeGenLLVM;
 use crate::diag::*;
 use crate::opts::BuildDir;
 use crate::opts::CodeModelOptions;
@@ -9,7 +9,6 @@ use inkwell::module::FlagBehavior;
 use inkwell::passes::PassBuilderOptions;
 use inkwell::passes::PassManager;
 use inkwell::targets::FileType;
-use inkwell::targets::RelocMode;
 use rand::Rng;
 use rand::distr::Alphanumeric;
 use serde::Deserialize;

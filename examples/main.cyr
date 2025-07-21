@@ -1,5 +1,5 @@
 import sample{sum};
 
 func main() {
-    #result = sum(1, 2);
+    sum(1, 2);
 }

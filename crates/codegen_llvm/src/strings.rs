@@ -1,17 +1,11 @@
 use crate::{
-    CodeGenLLVM, InternalType, InternalValue,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    types::{InternalArrayType, InternalConstType, InternalIntType, InternalVoidType},
-    values::TypedPointerValue,
+    context::CodeGenLLVM,
+    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc},
+    types::{InternalArrayType, InternalIntType, InternalType},
+    values::{InternalValue, TypedPointerValue},
 };
 use ast::token::{Location, TokenKind};
-use inkwell::{
-    AddressSpace,
-    context::Context,
-    module::Linkage,
-    types::ArrayType,
-    values::{GlobalValue, IntValue, PointerValue},
-};
+use inkwell::{module::Linkage, types::ArrayType, values::GlobalValue};
 use std::process::exit;
 use utils::escaping::unescape_string;
 

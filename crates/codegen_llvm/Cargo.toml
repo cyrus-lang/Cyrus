@@ -19,6 +19,3 @@ console = "0.15.11"
 
 [build-dependencies]
 cc = "1.2.19"
-
-[lib]
-path = "src/context.rs"

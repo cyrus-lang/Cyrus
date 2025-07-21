@@ -28,6 +28,8 @@ pub enum DiagKind {
     FuncCallInvalidOperand,
     DuplicateFunction(String),
     SymbolNotFoundInModule(String, String),
+    ImportingPrivateFunc(String),
+    InvalidStructAccessSpecifier,
     Custom(String),
 }
 
@@ -95,6 +97,10 @@ impl fmt::Display for DiagKind {
             }
             DiagKind::SymbolNotFoundInModule(symbol, module_name) => {
                 &format!("Symbol '{}' not found in module '{}'.", symbol, module_name)
+            }
+            DiagKind::ImportingPrivateFunc(func_name) => &format!("Cannot import private function '{}'.", func_name),
+            DiagKind::InvalidStructAccessSpecifier => {
+                "Structs must be declared with public or internal access specifier."
             }
         };
         write!(f, "{}", msg)

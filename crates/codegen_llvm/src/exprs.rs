@@ -1,11 +1,8 @@
 use crate::{
-    CodeGenLLVM, ScopeRef,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    types::{
+    context::CodeGenLLVM, diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, scope::ScopeRef, types::{
         InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalLvalueType,
         InternalPointerType, InternalType,
-    },
-    values::{InternalValue, Lvalue, TypedPointerValue},
+    }, values::{InternalValue, Lvalue, TypedPointerValue}
 };
 use ast::{
     ast::*,

@@ -1,12 +1,9 @@
+use crate::{
+    context::CodeGenLLVM, diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, values::InternalValue
+};
 use ast::token::Location;
 use inkwell::values::IntValue;
 use std::process::exit;
-
-use crate::{
-    CodeGenLLVM,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    values::InternalValue,
-};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_internal_methods(
