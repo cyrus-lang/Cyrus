@@ -1,6 +1,5 @@
-use core::fmt;
-
 use clap::ValueEnum;
+use core::fmt;
 use inkwell::targets::{CodeModel, RelocMode};
 use serde::Deserialize;
 

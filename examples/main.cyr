@@ -1,5 +1,8 @@
-extern func printf(format: const char*, ...) void ; 
+import std::libc{printf, malloc};
+
+extern func printf(format: const char*, ...) void; 
 
 func main() {
-    printf(c"Taha\n");
+    #ds: struct { a: int32 };
+    ds.a = 10;
 }

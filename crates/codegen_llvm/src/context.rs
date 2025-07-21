@@ -1,5 +1,7 @@
 use crate::funcs::FuncMetadata;
-use crate::modules::{CompiledModulesSharedState, ImportedModuleMetadata};
+use crate::modules::{
+    ImportedModules, LocalIRDeclarationValueRegistryRef, ModuleID, ModuleMetadataRegistryRef, generate_module_id,
+};
 use crate::opts::BuildDir;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 use crate::types::TypedefTable;
@@ -22,7 +24,6 @@ use std::collections::HashMap;
 use std::env;
 use std::process::exit;
 use std::rc::Rc;
-use structs::StructTable;
 use types::InternalType;
 use utils::fs::{file_stem, relative_to_absolute};
 use utils::tui::{tui_compile_finished, tui_compiled};
@@ -36,6 +37,7 @@ mod funcs;
 mod internals;
 mod modules;
 pub mod opts;
+mod resolver;
 mod runtime;
 mod scope;
 mod stmts;
@@ -46,33 +48,26 @@ mod values;
 mod variables;
 
 pub struct CodeGenLLVM<'ctx> {
-    #[allow(dead_code)]
-    opts: Options,
-    context: &'ctx Context,
-    module: Rc<RefCell<Module<'ctx>>>,
-    module_name: String,
-    builder: Builder<'ctx>,
-    target_machine: TargetMachine,
-    build_manifest: BuildManifest,
-    program: ProgramTree,
-    file_path: String,
-    reporter: DiagReporter,
-    entry_point: Option<FuncDef>,
-    entry_point_path: String,
-    compiler_invoked_single: bool,
-    current_func_ref: Option<FuncMetadata<'ctx>>,
-    current_block_ref: Option<BasicBlock<'ctx>>,
-    terminated_blocks: Vec<TerminatedBlockMetadata<'ctx>>,
-    current_loop_ref: Option<LoopBlockRefs<'ctx>>,
-    dependent_modules: HashMap<String, Vec<String>>,
-    output_kind: OutputKind,
-    final_build_dir: String,
-    func_table: FuncTable<'ctx>,
-    struct_table: StructTable<'ctx>,
-    global_variables_table: GlobalVariablesTable<'ctx>,
-    typedef_table: TypedefTable<'ctx>,
-    imported_modules: Vec<ImportedModuleMetadata>,
-    compiled_modules: CompiledModulesSharedState<'ctx>,
+    opts: Options,                                                     // compiler options
+    context: &'ctx Context,                                            // llvm context
+    module_id: ModuleID,                                               // unique per module
+    module_name: String,                                               // module name
+    module: Rc<RefCell<Module<'ctx>>>,                                 // llvm module
+    builder: Builder<'ctx>,                                            // llvm builder
+    target_machine: TargetMachine,                                     // llvm target machine
+    build_manifest: BuildManifest,                                     // build manifest
+    program: ProgramTree,                                              // AST Program
+    file_path: String,                                                 // program file path
+    reporter: DiagReporter,                                            // diagnostic
+    entry_point: Option<FuncDef>,                                      // FIXME
+    entry_point_path: String,                                          // FIXME
+    compiler_invoked_single: bool,                                     // invoked single option
+    output_kind: OutputKind,                                           // compiler output kind
+    final_build_dir: String,                                           // build directory path
+    block_registry: BlockRegistry<'ctx>,                               // block registry
+    imported_modules: Vec<ImportedModules>,                            // imported modules list
+    module_metadata_registry: ModuleMetadataRegistryRef<'ctx>,         // global shared module metadata registry
+    local_ir_value_registry: LocalIRDeclarationValueRegistryRef<'ctx>, // per-module IR-value registry
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -111,32 +106,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let file_path = relative_to_absolute(file_path.clone(), base_dir).unwrap();
 
         let codegen_llvm = CodeGenLLVM {
-            final_build_dir,
+            file_path: file_path.clone(),
             opts,
+            output_kind,
+            final_build_dir,
             context,
             builder,
             program,
-            file_path: file_path.clone(),
             reporter,
             target_machine,
             entry_point: None,
             entry_point_path: file_path.clone(),
-            func_table: FuncTable::new(),
-            struct_table: StructTable::new(),
-            typedef_table: TypedefTable::new(),
-            global_variables_table: GlobalVariablesTable::new(),
-            build_manifest: BuildManifest::default(),
             compiler_invoked_single,
-            current_func_ref: None,
-            current_block_ref: None,
-            terminated_blocks: Vec::new(),
-            current_loop_ref: None,
+            block_registry: BlockRegistry::new(),
+            module_id: generate_module_id(),
             module: module.clone(),
             module_name: module_name.clone(),
             imported_modules: Vec::new(),
-            dependent_modules: HashMap::new(),
-            output_kind,
-            compiled_modules: Rc::new(RefCell::new(Vec::new())),
+            module_metadata_registry: Rc::new(RefCell::new(Vec::new())),
+            local_ir_value_registry: Rc::new(RefCell::new(HashMap::new())),
+            build_manifest: BuildManifest::default(),
         };
 
         if codegen_llvm.opts.display_target_machine {
@@ -273,5 +262,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn is_current_module_entry_point(&self) -> bool {
         self.file_path == self.entry_point_path
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockRegistry<'a> {
+    current_func_ref: Option<FuncMetadata<'a>>,
+    current_block_ref: Option<BasicBlock<'a>>,
+    terminated_blocks: Vec<TerminatedBlockMetadata<'a>>,
+    current_loop_ref: Option<LoopBlockRefs<'a>>,
+}
+
+impl<'a> BlockRegistry<'a> {
+    pub fn new() -> Self {
+        Self {
+            current_func_ref: None,
+            current_block_ref: None,
+            current_loop_ref: None,
+            terminated_blocks: Vec::new(),
+        }
     }
 }

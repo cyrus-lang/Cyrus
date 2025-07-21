@@ -150,7 +150,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder.build_unreachable().unwrap();
 
         self.builder.position_at_end(success_block);
-        self.current_block_ref = Some(success_block);
+        self.block_registry.current_block_ref = Some(success_block);
 
         let ordered_indexes: Vec<IntValue<'ctx>> =
             vec![self.build_index_value(0), index_implicit_casted.into_int_value()];
