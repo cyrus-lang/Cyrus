@@ -1,5 +1,9 @@
 public struct Sample {}
 
+public type MySample = Sample;
+
+PI: float64 = 3.14;
+
 public func sub(x: int32, y: int32) int32 {
     #a = Sample {};
     return x - y;

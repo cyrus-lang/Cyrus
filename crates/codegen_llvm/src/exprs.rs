@@ -1,8 +1,12 @@
 use crate::{
-    context::CodeGenLLVM, diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, scope::ScopeRef, types::{
+    context::CodeGenLLVM,
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    scope::ScopeRef,
+    types::{
         InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalLvalueType,
         InternalPointerType, InternalType,
-    }, values::{InternalValue, Lvalue, TypedPointerValue}
+    },
+    values::{InternalValue, Lvalue, TypedPointerValue},
 };
 use ast::{
     ast::*,
@@ -207,7 +211,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         } else if let Some(global_variable_metadata) =
             self.resolve_global_variable_metadata(self.module_id, identifier.name.clone())
         {
-            let global_value_ptr = global_variable_metadata.global_value.as_pointer_value();
+            let global_value_ptr = self
+                .get_local_global_value_ir_value(self.module_id)
+                .unwrap()
+                .as_pointer_value();
             let global_value_ptr_type = global_value_ptr.get_type();
             return InternalValue::Lvalue(Lvalue {
                 ptr: global_value_ptr,

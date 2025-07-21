@@ -9,13 +9,16 @@ use crate::{
     types::{TypedefMetadata, TypedefTable},
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
+use ast::ast::Identifier;
 use ast::{
     ast::{AccessSpecifier, Import, ModulePath, ModuleSegment, ModuleSegmentSingle},
     format::module_segments_as_string,
     token::Location,
 };
+use inkwell::AddressSpace;
+use inkwell::module::Linkage;
 use inkwell::types::StructType;
-use inkwell::values::{FunctionValue, StructValue};
+use inkwell::values::{AnyValue, BasicValueEnum, FunctionValue, GlobalValue};
 use rand::Rng;
 use std::{
     cell::{RefCell, RefMut},
@@ -36,7 +39,8 @@ pub type ModuleMetadataRegistryRef<'a> = Rc<RefCell<Vec<ModuleMetadata<'a>>>>;
 #[derive(Debug, Clone)]
 pub enum LocalIRValue<'a> {
     Func(FunctionValue<'a>),
-    Struct(StructValue<'a>),
+    Struct(StructType<'a>),
+    GlobalValue(GlobalValue<'a>),
 }
 
 #[derive(Debug, Clone)]
@@ -468,7 +472,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn error_if_func_is_private(
+    fn error_if_func_is_private(
         &self,
         func_name: String,
         access_specifier: AccessSpecifier,
@@ -490,6 +494,93 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    fn error_if_struct_is_private(
+        &self,
+        struct_name: String,
+        access_specifier: AccessSpecifier,
+        loc: Location,
+        span_end: usize,
+    ) {
+        if access_specifier.is_private() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::ImportingPrivateStruct(struct_name),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
+    fn error_if_typedef_is_private(
+        &self,
+        typedef_name: String,
+        access_specifier: AccessSpecifier,
+        loc: Location,
+        span_end: usize,
+    ) {
+        if access_specifier.is_private() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::ImportingPrivateTypedef(typedef_name),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
+    }
+
+    fn build_imported_global_variable(
+        &self,
+        global_variable_metadata: GlobalVariableMetadata<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> GlobalValue<'ctx> {
+        let module = self.module.borrow_mut();
+        let linkage = Linkage::Common;
+
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let variable_basic_type = match global_variable_metadata.variable_type.to_basic_type(ptr_type) {
+            Ok(basic_type) => basic_type,
+            Err(err) => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(err.to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let initialzier_basic_value: BasicValueEnum<'ctx> = self
+            .internal_value_to_basic_metadata(self.build_zero_initialized_internal_value(
+                global_variable_metadata.variable_type,
+                loc.clone(),
+                span_end,
+            ))
+            .as_any_value_enum()
+            .try_into()
+            .unwrap();
+
+        let global_value = module.add_global(variable_basic_type, None, &global_variable_metadata.name);
+        global_value.set_initializer(&initialzier_basic_value);
+        global_value.set_linkage(linkage);
+        global_value
+    }
+
     pub(crate) fn build_module_import_singles(
         &mut self,
         module_id: u64,
@@ -498,7 +589,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) {
-        let import_func = |mut func_metadata: FuncMetadata<'ctx>| {
+        let import_func = |mut func_metadata: FuncMetadata<'ctx>, renamed: Option<Identifier>| {
             self.error_if_func_is_private(
                 func_metadata.func_decl.get_usable_name(),
                 func_metadata.func_decl.access_specifier.clone(),
@@ -506,7 +597,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 span_end,
             );
 
-            let func_name = func_metadata.func_decl.get_usable_name();
+            let func_name = match renamed {
+                Some(identifier) => identifier.name,
+                None => func_metadata.func_decl.get_usable_name(),
+            };
+
             func_metadata.imported_from = Some(module_id);
             let func_value = self.build_func_decl(
                 func_metadata.func_decl.clone(),
@@ -521,36 +616,75 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None => panic!("Couldn't lookup module in the module metadata registry."),
             };
             func_metadata.local_ir_value_id = local_ir_value_id;
-            module_metadata.func_table.insert(func_name, func_metadata);
+            module_metadata.insert_func(func_name, func_metadata);
             drop(module_metadata);
         };
 
-        // let import_struct = |mut func_metadata: FuncMetadata<'ctx>| {
-        //     self.error_if_func_is_private(
-        //         func_metadata.func_decl.get_usable_name(),
-        //         func_metadata.func_decl.access_specifier.clone(),
-        //         loc.clone(),
-        //         span_end,
-        //     );
+        let import_struct = |mut struct_metadata: StructMetadata<'ctx>, renamed: Option<Identifier>| {
+            let struct_name = match renamed {
+                Some(identifier) => identifier.name,
+                None => struct_metadata.struct_name.as_identifier().unwrap().name,
+            };
 
-        //     let func_name = func_metadata.func_decl.get_usable_name();
-        //     func_metadata.imported_from = Some(module_id);
-        //     let func_value = self.build_func_decl(
-        //         func_metadata.func_decl.clone(),
-        //         func_metadata.params_metadata.clone(),
-        //         false,
-        //         false,
-        //     );
-        //     let local_ir_value_id = generate_local_ir_value_id();
-        //     self.insert_local_ir_value(local_ir_value_id, LocalIRValue::Func(func_value));
-        //     let mut module_metadata = match self.get_module_metadata_by_module_id(self.module_id) {
-        //         Some(module_metadata) => module_metadata,
-        //         None => panic!("Couldn't lookup module in the module metadata registry."),
-        //     };
-        //     func_metadata.local_ir_value_id = local_ir_value_id;
-        //     module_metadata.func_table.insert(func_name, func_metadata);
-        //     drop(module_metadata);
-        // };
+            self.error_if_struct_is_private(
+                struct_name.clone(),
+                struct_metadata.access_specifier.clone(),
+                loc.clone(),
+                span_end,
+            );
+
+            struct_metadata.imported_from = Some(module_id);
+
+            let local_ir_value_id = generate_local_ir_value_id();
+            self.insert_local_ir_value(
+                local_ir_value_id,
+                LocalIRValue::Struct(struct_metadata.struct_type.clone()),
+            );
+
+            let mut module_metadata = match self.get_module_metadata_by_module_id(self.module_id) {
+                Some(module_metadata) => module_metadata,
+                None => panic!("Couldn't lookup module in the module metadata registry."),
+            };
+
+            module_metadata.insert_struct(struct_name, struct_metadata);
+            drop(module_metadata);
+        };
+
+        let import_typedef = |typedef_name: String, typedef_metadata: TypedefMetadata<'ctx>| {
+            self.error_if_typedef_is_private(
+                typedef_name.clone(),
+                typedef_metadata.access_specifier.clone(),
+                loc.clone(),
+                span_end,
+            );
+
+            let mut module_metadata = match self.get_module_metadata_by_module_id(self.module_id) {
+                Some(module_metadata) => module_metadata,
+                None => panic!("Couldn't lookup module in the module metadata registry."),
+            };
+
+            module_metadata.insert_typedef(typedef_name, typedef_metadata);
+            drop(module_metadata);
+        };
+
+        let import_global_variable = |global_variable_metadata: GlobalVariableMetadata<'ctx>,
+                                      renamed: Option<Identifier>| {
+            let global_variable_name = match renamed {
+                Some(identifier) => identifier.name,
+                None => global_variable_metadata.name.clone(),
+            };
+            let global_value =
+                self.build_imported_global_variable(global_variable_metadata.clone(), loc.clone(), span_end);
+
+            self.insert_local_ir_value(
+                global_variable_metadata.local_ir_value_id,
+                LocalIRValue::GlobalValue(global_value),
+            );
+
+            let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
+            module_metadata.insert_global_variable(global_variable_name, global_variable_metadata);
+            drop(module_metadata);
+        };
 
         module_segment_singles.iter().for_each(|single| {
             let metadata_resolver_result = match self.resolve_metadata(module_id, single.identifier.name.clone()) {
@@ -574,10 +708,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             };
 
             match metadata_resolver_result {
-                MetadataResolverResult::Func(func_metadata) => import_func(func_metadata),
-                MetadataResolverResult::Struct(struct_metadata) => todo!(),
-                MetadataResolverResult::Typedef(typedef_metadata) => todo!(),
-                MetadataResolverResult::GlobalVariable(global_variable_metadata) => todo!(),
+                MetadataResolverResult::Func(func_metadata) => import_func(func_metadata, single.renamed.clone()),
+                MetadataResolverResult::Struct(struct_metadata) => {
+                    import_struct(struct_metadata, single.renamed.clone())
+                }
+                MetadataResolverResult::Typedef(typedef_metadata) => {
+                    let typedef_identifier = single.renamed.clone().or(Some(single.identifier.clone())).unwrap();
+                    import_typedef(typedef_identifier.name, typedef_metadata)
+                }
+                MetadataResolverResult::GlobalVariable(global_variable_metadata) => {
+                    import_global_variable(global_variable_metadata, single.renamed.clone())
+                }
             }
         });
     }
@@ -620,6 +761,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         drop(local_ir_value_registry);
         if let LocalIRValue::Func(func_value) = local_ir_value {
             Some(func_value)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn get_local_global_value_ir_value(&self, id: LocalIRValueID) -> Option<GlobalValue<'ctx>> {
+        let local_ir_value_registry = self.local_ir_value_registry.borrow();
+        let local_ir_value = match local_ir_value_registry.get(&id).cloned() {
+            Some(local_ir_value) => local_ir_value,
+            None => return None,
+        };
+
+        drop(local_ir_value_registry);
+        if let LocalIRValue::GlobalValue(get_local_global_value_ir_value) = local_ir_value {
+            Some(get_local_global_value_ir_value)
         } else {
             None
         }

@@ -27,9 +27,11 @@ pub enum DiagKind {
     SizeOfOperatorOnUnsizedObject,
     CannotUseModuleImportIfImportsSingles,
     FuncCallInvalidOperand,
-    DuplicateFunction(String),
+    DuplicateNaming(String),
     SymbolNotFoundInModule(String, String),
     ImportingPrivateFunc(String),
+    ImportingPrivateStruct(String),
+    ImportingPrivateTypedef(String),
     InvalidStructAccessSpecifier,
     Custom(String),
 }
@@ -93,13 +95,20 @@ impl fmt::Display for DiagKind {
             }
             DiagKind::CannotUseModuleImportIfImportsSingles => "Cannot use module import if it imports singles.",
             DiagKind::FuncCallInvalidOperand => "Invalid operand for function call.",
-            DiagKind::DuplicateFunction(func_name) => {
-                &format!("Function '{}' already defined in this module.", func_name)
-            }
+            DiagKind::DuplicateNaming(name) => &format!(
+                "Another object already declared with name '{}' in this module.",
+                name
+            ),
             DiagKind::SymbolNotFoundInModule(symbol, module_name) => {
                 &format!("Symbol '{}' not found in module '{}'.", symbol, module_name)
             }
             DiagKind::ImportingPrivateFunc(func_name) => &format!("Cannot import private function '{}'.", func_name),
+            DiagKind::ImportingPrivateStruct(struct_name) => {
+                &format!("Cannot import private struct '{}'.", struct_name)
+            }
+            DiagKind::ImportingPrivateTypedef(typedef_name) => {
+                &format!("Cannot import private typedef '{}'.", typedef_name)
+            }
             DiagKind::InvalidStructAccessSpecifier => {
                 "Structs must be declared with public or internal access specifier."
             }

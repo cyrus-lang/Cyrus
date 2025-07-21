@@ -1,5 +1,9 @@
-import sample;
+import sample{};
+
+PI: float64 = 3.14;
 
 func main() {
-    sample::sum(1, 2);
+    PI = 333;
+    // #a: float64 = PI;
+    // sample::sum(1, 2);
 }

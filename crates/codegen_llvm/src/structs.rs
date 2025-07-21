@@ -1,8 +1,8 @@
 use crate::{
     context::CodeGenLLVM,
-    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc},
     funcs::{FuncMetadata, FuncParamsMetadata},
-    modules::{LocalIRValueID, generate_local_ir_value_id},
+    modules::{generate_local_ir_value_id, LocalIRValueID, ModuleID},
     scope::{Scope, ScopeRecord, ScopeRef},
     types::{InternalLvalueType, InternalStructType, InternalType, InternalUnnamedStructType},
     values::InternalValue,
@@ -36,6 +36,7 @@ pub struct StructMetadata<'a> {
     pub fields: Vec<Field>,
     pub methods: Vec<StructMethodMetadata<'a>>,
     pub access_specifier: AccessSpecifier,
+    pub imported_from: Option<ModuleID>,
     pub packed: bool,
 }
 
@@ -196,6 +197,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             methods: Vec::new(),
             access_specifier: struct_statement.access_specifier.clone(),
             packed: struct_statement.packed,
+            imported_from: None
         };
 
         let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
@@ -776,7 +778,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         //         None => self.build_instance_method_call(Rc::clone(&scope), method_call),
         //     },
         //     Expression::ModuleImport(module_import) => {
-        //         match self.find_defined_type(module_import.clone(), method_call.loc.clone(), method_call.span.end) {
+        //         match self.get_defined_type(module_import.clone(), method_call.loc.clone(), method_call.span.end) {
         //             Some(defined_type) => match defined_type {
         //                 DefinedType::Struct(struct_metadata) => self.build_static_method_call(
         //                     scope,
@@ -1001,7 +1003,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             todo!();
         }
 
-        // let mut struct_metadata = match self.find_defined_type(struct_name.clone(), loc.clone(), span_end) {
+        // let mut struct_metadata = match self.get_defined_type(struct_name.clone(), loc.clone(), span_end) {
         //     Some(defined_type) => match defined_type {
         //         DefinedType::Struct(struct_metadata) => struct_metadata,
         //         DefinedType::Typedef(typedef_metadata) => match typedef_metadata.internal_type.clone() {
