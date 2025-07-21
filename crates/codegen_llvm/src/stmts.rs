@@ -1,10 +1,10 @@
 use crate::context::CodeGenLLVM;
 use crate::diag::*;
 use crate::funcs::FuncMetadata;
+use crate::scope::ScopeRef;
 use crate::scope::{Scope, ScopeRecord};
 use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
-use crate::{scope::ScopeRef};
 use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement};
 use ast::token::{Location, TokenKind};
 use inkwell::AddressSpace;
@@ -53,7 +53,22 @@ macro_rules! build_loop_statement {
     ) => {{
         let current_block = $self.get_current_block("for statement", $loc.clone(), $span_end);
         let current_func = $self.get_current_func("for statement", $loc.clone(), $span_end);
-        let func_value = $self.get_local_func_ir_value(current_func.local_ir_value_id);
+        let func_value = match $self.get_local_func_ir_value(current_func.local_ir_value_id) {
+            Some(func_value) => func_value,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build loop statement outside of a function.".to_string()),
+                    location: Some(DiagLoc {
+                        file: $self.file_path.clone(),
+                        line: $loc.line,
+                        column: $loc.column,
+                        length: $span_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
         let cond_block = $self.context.append_basic_block(func_value, "loop.cond");
         let body_block = $self.context.append_basic_block(func_value, "loop.body");
@@ -423,7 +438,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let current_block = self.get_current_block("for statement", foreach.loc.clone(), foreach.span.end);
         let current_func = self.get_current_func("for statement", foreach.loc.clone(), foreach.span.end);
-        let func_value = self.get_local_func_ir_value(current_func.local_ir_value_id);
+        let func_value = match self.get_local_func_ir_value(current_func.local_ir_value_id) {
+            Some(func_value) => func_value,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build foreach statement outside of a function.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: foreach.loc.line,
+                        column: foreach.loc.column,
+                        length: foreach.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
         let index_alloca = self
             .builder
@@ -568,7 +598,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_if(&mut self, scope: ScopeRef<'ctx>, if_statement: If) {
         let current_block = self.get_current_block("for statement", if_statement.loc.clone(), if_statement.span.end);
         let current_func = self.get_current_func("for statement", if_statement.loc.clone(), if_statement.span.end);
-        let func_value = self.get_local_func_ir_value(current_func.local_ir_value_id);
+        let func_value = match self.get_local_func_ir_value(current_func.local_ir_value_id) {
+            Some(func_value) => func_value,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build if statement outside of a function.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: if_statement.loc.line,
+                        column: if_statement.loc.column,
+                        length: if_statement.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
         let then_block = self.context.append_basic_block(func_value, "if.then");
         let else_block = self.context.append_basic_block(func_value, "if.else");

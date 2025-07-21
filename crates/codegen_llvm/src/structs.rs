@@ -2,16 +2,16 @@ use crate::{
     context::CodeGenLLVM,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     funcs::{FuncMetadata, FuncParamsMetadata},
-    modules::{LocalIRValue, LocalIRValueID, generate_local_ir_value_id},
+    modules::{LocalIRValueID, generate_local_ir_value_id},
     scope::{Scope, ScopeRecord, ScopeRef},
-    types::{DefinedType, InternalLvalueType, InternalStructType, InternalType, InternalUnnamedStructType},
-    values::{InternalValue, Lvalue},
+    types::{InternalLvalueType, InternalStructType, InternalType, InternalUnnamedStructType},
+    values::InternalValue,
 };
 use ast::{
     ast::{
-        AccessSpecifier, Expression, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
-        Identifier, MethodCall, ModuleImport, ModuleSegment, SelfModifier, Struct, StructInit, TypeSpecifier,
-        UnnamedStructType, UnnamedStructValue,
+        AccessSpecifier, Field, FieldAccess, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams, Identifier,
+        MethodCall, ModuleImport, ModuleSegment, SelfModifier, Struct, StructInit, TypeSpecifier, UnnamedStructType,
+        UnnamedStructValue,
     },
     format::module_segments_as_string,
     token::{Location, Span, Token, TokenKind},
@@ -21,13 +21,12 @@ use inkwell::{
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
     module::Linkage,
     types::{BasicTypeEnum, FunctionType, StructType},
-    values::{AggregateValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
+    values::{AggregateValueEnum, BasicValueEnum, FunctionValue, PointerValue},
 };
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, ops::DerefMut, process::exit, rc::Rc};
 
 pub type StructID = u64;
-pub type MethodID = u64;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructMetadata<'a> {
@@ -304,7 +303,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_method_def(
         &mut self,
         mut func_def: FuncDef,
-        struct_id: StructID,
         struct_metadata: StructMetadata<'ctx>,
     ) -> StructMethodMetadata<'ctx> {
         let scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
@@ -518,7 +516,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let mut struct_methods: Vec<StructMethodMetadata<'ctx>> = Vec::new();
         for func_def in methods {
-            let method_metadata = self.build_method_def(func_def, struct_id, struct_metadata.clone());
+            let method_metadata = self.build_method_def(func_def, struct_metadata.clone());
             struct_methods.push(method_metadata);
         }
         struct_methods

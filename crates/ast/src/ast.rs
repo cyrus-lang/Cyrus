@@ -359,12 +359,33 @@ pub enum ModuleSegment {
     Single(Vec<ModuleSegmentSingle>),
 }
 
+impl ModuleSegment {
+    pub fn as_identifier(&self) -> Identifier {
+        match self {
+            ModuleSegment::SubModule(identifier) => identifier.clone(),
+            ModuleSegment::Single(_) => {
+                panic!("ModuleSegment is not a SubModule.");
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModulePath {
     pub alias: Option<String>,
     pub segments: Vec<ModuleSegment>,
     pub loc: Location,
     pub span: Span,
+}
+
+impl ModulePath {
+    pub fn as_module_import(&self) -> ModuleImport {
+        ModuleImport {
+            segments: self.segments.clone(),
+            span: self.span.clone(),
+            loc: self.loc.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
