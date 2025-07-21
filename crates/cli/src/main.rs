@@ -51,7 +51,7 @@ struct CompilerOptions {
     libraries: Vec<String>,
 
     #[clap(long = "sources", value_name = "SOURCES", help = "Source files.")]
-    sources_dir: Vec<String>,
+    source_dirs: Vec<String>,
 
     #[clap(
         long = "build-dir",
@@ -91,7 +91,7 @@ impl CompilerOptions {
             },
             library_path: self.library_path.clone(),
             libraries: self.libraries.clone(),
-            sources_dir: self.sources_dir.clone(),
+            source_dirs: self.source_dirs.clone(),
             project_name: None,
             project_version: None,
             cyrus_version: None,
@@ -235,9 +235,9 @@ macro_rules! init_compiler {
 
             let mut opts = $opts.clone();
 
-            opts.sources_dir = {
-                if $opts.sources_dir.len() > 0 {
-                    $opts.sources_dir.clone()
+            opts.source_dirs = {
+                if $opts.source_dirs.len() > 0 {
+                    $opts.source_dirs.clone()
                 } else {
                     match get_directory_of_file(file_path.clone()) {
                         Some(source_dir) => [source_dir].to_vec(),
@@ -302,9 +302,9 @@ macro_rules! init_compiler {
                         .unwrap()
                         .to_string();
 
-                    options.sources_dir = {
-                        if $opts.sources_dir.len() > 0 {
-                            $opts.sources_dir.clone()
+                    options.source_dirs = {
+                        if $opts.source_dirs.len() > 0 {
+                            $opts.source_dirs.clone()
                         } else {
                             match get_directory_of_file(main_file_path.clone()) {
                                 Some(source_dir) => [source_dir].to_vec(),

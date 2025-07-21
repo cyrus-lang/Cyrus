@@ -1,7 +1,5 @@
-// import std::libc{printf, malloc};
-
-extern func printf(format: const char*, ...) void; 
+import sample{sum};
 
 func main() {
-    printf("Hello, World!\n");
+    #result = sum(1, 2);
 }

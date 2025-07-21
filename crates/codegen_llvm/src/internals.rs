@@ -1,7 +1,6 @@
-use std::process::exit;
-
 use ast::token::Location;
 use inkwell::values::IntValue;
+use std::process::exit;
 
 use crate::{
     CodeGenLLVM,

@@ -19,15 +19,15 @@ pub enum DiagKind {
     TypeAnnotationRequired,
     UndefinedDataType(String),
     FuncNotFound(String),
-    InvalidWildcard,
     ModuleNotFound(String),
     FuncCallArgumentCountMismatch(String, i32, i32),
     MethodCallArgumentCountMismatch(String, i32, i32),
     TypeAnnotationRequiredForParam(String, String),
-    LenCalledWithInvalidInput,
     SizeOfOperatorOnUnsizedObject,
     CannotUseModuleImportIfImportsSingles,
     FuncCallInvalidOperand,
+    DuplicateFunction(String),
+    SymbolNotFoundInModule(String, String),
     Custom(String),
 }
 
@@ -70,7 +70,6 @@ impl fmt::Display for DiagKind {
             DiagKind::InvalidTokenAsArrayCapacity => "Invalid token given as array capacity.",
             DiagKind::IdentifierNotDefined(value) => &format!("The '{}' not found anywhere.", value),
             DiagKind::FuncNotFound(func_name) => &format!("Unable to resolve function '{}'.", func_name),
-            DiagKind::InvalidWildcard => "Wildcard cannot be used in the begging or middle of a module path.",
             DiagKind::ModuleNotFound(name) => &format!(
                 "The module '{}' could not be found in any of the specified source directories.",
                 name
@@ -83,7 +82,6 @@ impl fmt::Display for DiagKind {
                 "Expected {} arguments for method '{}', but got {}.",
                 expected, func_name, current
             ),
-            DiagKind::LenCalledWithInvalidInput => "Cannot get length of non-string or non-array value.",
             DiagKind::UndefinedDataType(type_name) => {
                 &format!("The data type '{}' is not defined in this module.", type_name)
             }
@@ -92,6 +90,12 @@ impl fmt::Display for DiagKind {
             }
             DiagKind::CannotUseModuleImportIfImportsSingles => "Cannot use module import if it imports singles.",
             DiagKind::FuncCallInvalidOperand => "Invalid operand for function call.",
+            DiagKind::DuplicateFunction(func_name) => {
+                &format!("Function '{}' already defined in this module.", func_name)
+            }
+            DiagKind::SymbolNotFoundInModule(symbol, module_name) => {
+                &format!("Symbol '{}' not found in module '{}'.", symbol, module_name)
+            }
         };
         write!(f, "{}", msg)
     }
@@ -170,8 +174,6 @@ impl DiagReporter {
                 formatted.push_str("\n");
             }
         }
-
-        // formatted.push_str(&format!("{}", diag.kind.to_string()));
 
         formatted
     }
