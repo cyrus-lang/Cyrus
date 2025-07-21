@@ -1,9 +1,11 @@
-import sample{};
-
-PI: float64 = 3.14;
+import sample{Sample};
 
 func main() {
-    PI = 333;
+    #obj = Sample{ name: "Taha" };
+
+    Sample.hello_world();
+    // obj.greeting("Taha");
+
     // #a: float64 = PI;
     // sample::sum(1, 2);
 }
