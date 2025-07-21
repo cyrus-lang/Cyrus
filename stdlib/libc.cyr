@@ -7,6 +7,6 @@ public extern stdin: c_file;
 
 public extern func printf(format: const char*, ...) int32;
 public extern func fprintf(stream: c_file, format: const char*, ...) int32;
-public extern func malloc(size: int32) void*;
+public extern func malloc(size: size_t) void*;
 public extern func free(ptr: void*) void;
 public extern func exit(status: int32) void;

@@ -1,6 +1,6 @@
 use crate::funcs::FuncMetadata;
 use crate::modules::{
-    generate_module_id, ImportedModules, LocalIRValueRegistryRef, ModuleID, ModuleMetadata, ModuleMetadataRegistryRef
+    ImportedModules, LocalIRValueRegistryRef, ModuleID, ModuleMetadata, ModuleMetadataRegistryRef, generate_module_id,
 };
 use crate::opts::BuildDir;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
@@ -26,7 +26,7 @@ use std::env;
 use std::process::exit;
 use std::rc::Rc;
 use types::InternalType;
-use utils::fs::{file_stem, relative_to_absolute};
+use utils::fs::{file_stem, get_directory_of_file, relative_to_absolute};
 use utils::tui::{tui_compile_finished, tui_compiled};
 use values::InternalValue;
 
@@ -81,6 +81,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         compiler_invoked_single: bool,
         output_kind: OutputKind,
     ) -> Result<Self, LLVMString> {
+        // Setup compiler opts.
+        let final_build_dir = {
+            match opts.build_dir.clone() {
+                BuildDir::Default => {
+                    // specify a tmp directory to be used as build_dir
+                    env::temp_dir().to_str().unwrap().to_string()
+                }
+                BuildDir::Provided(path) => path,
+            }
+        };
+
+        // Create master context.
+
         let reporter = DiagReporter::new();
         let module_name = file_stem(&file_name).unwrap_or(&file_name).to_string();
         let module = Rc::new(RefCell::new(context.create_module(&module_name.clone())));
@@ -92,16 +105,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             opts.cpu.clone(),
             opts.target_triple.clone(),
         );
-
-        let final_build_dir = {
-            match opts.build_dir.clone() {
-                BuildDir::Default => {
-                    // specify a tmp directory to be used as build_dir
-                    env::temp_dir().to_str().unwrap().to_string()
-                }
-                BuildDir::Provided(path) => path,
-            }
-        };
 
         let base_dir = env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = relative_to_absolute(file_path.clone(), base_dir).unwrap();
@@ -131,6 +134,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             build_manifest: BuildManifest::default(),
         };
 
+        // Add an empty module metadata to the registry.
         codegen_llvm.add_module_to_metadata_registry(ModuleMetadata {
             module_id,
             module_file_path: file_path.clone(),

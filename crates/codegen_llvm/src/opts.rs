@@ -31,7 +31,7 @@ pub struct Options {
     pub opt_level: Option<i32>,
     pub library_path: Vec<String>,
     pub libraries: Vec<String>,
-    pub sources_dir: Vec<String>,
+    pub source_dirs: Vec<String>,
     pub build_dir: BuildDir,
     pub quiet: bool,
     pub stdlib_path: Option<String>,
@@ -60,7 +60,7 @@ impl Options {
             build_dir: BuildDir::Default,
             cyrus_version: None,
             project_version: None,
-            sources_dir: vec!["./".to_string()],
+            source_dirs: vec!["./".to_string()],
             quiet: false,
             stdlib_path: None,
             display_target_machine: false,
@@ -94,9 +94,9 @@ impl Options {
                 BuildDir::Provided(provided) => BuildDir::Provided(provided),
                 BuildDir::Default => self.build_dir.clone(),
             },
-            sources_dir: {
-                let mut sources = self.sources_dir.clone();
-                sources.extend(instance.sources_dir);
+            source_dirs: {
+                let mut sources = self.source_dirs.clone();
+                sources.extend(instance.source_dirs);
                 sources
             },
             quiet: instance.quiet || self.quiet,
@@ -187,7 +187,7 @@ impl Options {
                     .to_string(),
             );
 
-            options.sources_dir = table
+            options.source_dirs = table
                 .get("sources")
                 .and_then(|v| v.as_array())
                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())

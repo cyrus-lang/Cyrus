@@ -3,6 +3,7 @@ use crate::{
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
+    resolver::MetadataResolverResult,
     structs::{StructMetadata, StructTable},
     types::{TypedefMetadata, TypedefTable},
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
@@ -87,7 +88,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn find_imported_module(&self, module_id: u64) -> Option<ImportedModules> {
+    pub(crate) fn get_imported_module(&self, module_id: u64) -> Option<ImportedModules> {
         self.imported_modules.iter().find(|m| m.module_id == module_id).cloned()
     }
 
@@ -117,8 +118,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> ImportedModulePath {
         let module_name = module_segments_as_string(segments.clone());
 
-        // Remove "std" segment if present and switch source path accordingly
-        let mut sources = self.opts.sources_dir.clone();
+        // Remove "std" segment if present and switch source path accordingly.
+        let mut sources = self.opts.source_dirs.clone();
+
         if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.name == "std") {
             segments.remove(0);
             sources.insert(0, self.build_stdlib_modules_path());
@@ -280,15 +282,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn get_module_metadata_by_file_path(&self, module_file_path: String) -> Option<ModuleMetadata<'ctx>> {
         let module_metadata_registry = self.module_metadata_registry.borrow_mut();
-        module_metadata_registry
+        let module_metadata = module_metadata_registry
             .iter()
             .find(|r| r.module_file_path == module_file_path)
-            .cloned()
+            .cloned();
+        drop(module_metadata_registry);
+        module_metadata
     }
 
     pub(crate) fn get_module_metadata_by_module_id(&self, module_id: u64) -> Option<RefMut<ModuleMetadata<'ctx>>> {
+        let index = {
+            let registry = self.module_metadata_registry.borrow();
+            let index = registry.iter().position(|r| r.module_id == module_id)?;
+            drop(registry);
+            index
+        };
+
         let registry = self.module_metadata_registry.borrow_mut();
-        let index = registry.iter().position(|r| r.module_id == module_id)?;
         Some(RefMut::map(registry, move |v| &mut v[index]))
     }
 
@@ -308,7 +318,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     // Local means it only make sense in this module.
     // It may be aliased or not.
-    pub(crate) fn build_local_module_name(&self, module_path: ModulePath) -> String {
+    pub(crate) fn get_local_module_name(&self, module_path: ModulePath) -> String {
         let last_segment = module_path.segments.last().unwrap();
 
         match last_segment {
@@ -339,7 +349,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn build_module_with_sub_codegen(&self, import_path: ImportedModulePath) -> (BuildManifest, ModuleID) {
-        let module_name = self.build_local_module_name(import_path.module_path.clone());
+        let module_name = self.get_local_module_name(import_path.module_path.clone());
 
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_name)));
         let sub_builder = self.context.create_builder();
@@ -378,7 +388,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             module_metadata_registry: Rc::clone(&self.module_metadata_registry),
             local_ir_value_registry: Rc::new(RefCell::new(HashMap::new())),
         }));
-        
+
         self.add_module_to_metadata_registry(ModuleMetadata {
             module_id: module_id,
             module_file_path: import_path.file_path.clone(),
@@ -395,10 +405,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn add_module_to_metadata_registry(&self, module_metadata: ModuleMetadata<'ctx>) {
-        self.module_metadata_registry.borrow_mut().push(module_metadata);
+        let mut module_metadata_registry = self.module_metadata_registry.borrow_mut();
+        module_metadata_registry.push(module_metadata);
+        drop(module_metadata_registry);
     }
 
-    fn build_imported_module(&mut self, import_path: ImportedModulePath) {
+    fn build_imported_module(&mut self, mut import_path: ImportedModulePath) {
         let module_metadata = match self.get_module_metadata_by_file_path(import_path.file_path.clone()) {
             Some(module_metadata) => {
                 // This module compiled before, let's use the same module_metadata.
@@ -406,20 +418,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             None => {
                 let (build_manifest, module_id) = self.build_module_with_sub_codegen(import_path.clone());
-
                 self.build_manifest = build_manifest;
-                self.get_module_metadata_by_module_id(module_id)
-                    .expect("Couldn't get module metadata by module id.")
-                    .clone()
+
+                let module_metadata = self
+                    .get_module_metadata_by_module_id(module_id)
+                    .expect("Couldn't get module metadata by module id.");
+                let module_metadata_clone = module_metadata.clone();
+                drop(module_metadata);
+                module_metadata_clone
             }
         };
 
         if let Some(module_segment_singles) = import_path.singles.clone() {
             // Build and load import singles into local_defs.
+
+            import_path.module_path.segments.pop();
+
             self.build_module_import_singles(
                 module_metadata.module_id.clone(),
                 module_segment_singles,
-                import_path.module_path.clone(),
+                import_path.module_path,
                 import_path.loc.clone(),
                 import_path.span_end,
             );
@@ -431,7 +449,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // FIXME Depends on resolver.
     pub(crate) fn build_module_import_singles(
         &mut self,
         module_id: u64,
@@ -440,68 +457,55 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) {
-        // FIXME
-        todo!();
+        let import_func = |mut func_metadata: FuncMetadata<'ctx>| {
+            let func_name = func_metadata.func_decl.get_usable_name();
+            func_metadata.imported_from = Some(module_id);
+            let func_value = self.build_func_decl(
+                func_metadata.func_decl.clone(),
+                func_metadata.params_metadata.clone(),
+                false,
+                false,
+            );
+            let local_ir_value_id = generate_local_ir_value_id();
+            self.insert_local_ir_value(local_ir_value_id, LocalIRValue::Func(func_value));
+            let mut module_metadata = match self.get_module_metadata_by_module_id(self.module_id) {
+                Some(module_metadata) => module_metadata,
+                None => panic!("Couldn't lookup module in the module metadata registry."),
+            };
 
-        // let module_metadata = match self.get_module_metadata_by_module_id(module_id) {
-        //     Some(module_metadata) => module_metadata,
-        //     None => panic!("Couldn't lookup module in the module metadata registry."),
-        // };
+            func_metadata.local_ir_value_id = local_ir_value_id;
+            module_metadata.func_table.insert(func_name, func_metadata);
+            drop(module_metadata);
+        };
 
-        // module_segment_singles.iter().for_each(|single| {
-        //     let lookup_result = self.lookup_from_module_metadata(
-        //         single.identifier.name.clone(),
-        //         module_metadata.clone(),
-        //         loc.clone(),
-        //         span_end,
-        //     );
+        module_segment_singles.iter().for_each(|single| {
+            let metadata_resolver_result = match self.resolve_metadata(module_id, single.identifier.name.clone()) {
+                Some(metadata_resolver_result) => metadata_resolver_result,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::SymbolNotFoundInModule(
+                            single.identifier.name.clone(),
+                            module_segments_as_string(module_path.segments.clone()),
+                        ),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
 
-        //     match lookup_result {
-        //         DefinitionLookupResult::Func(mut func_metadata) => {
-        //             func_metadata.imported_from = Some(module_path.clone());
-        //             let (func_name, func_metadata) = self.build_decl_imported_func(func_metadata);
-        //             self.local_defs.func_table.insert(func_name, func_metadata);
-        //         }
-        //         DefinitionLookupResult::Struct(struct_metadata) => {
-        //             // FIXME
-        //             todo!();
-
-        //             // let struct_name = {
-        //             //     match struct_metadata.struct_name.segments.last().unwrap() {
-        //             //         ModuleSegment::SubModule(identifier) => identifier.name.clone(),
-        //             //         ModuleSegment::Single(_) => unreachable!(),
-        //             //     }
-        //             // };
-
-        //             // let new_struct_metadata = self.build_decl_imported_struct_methods(
-        //             //     module_path.clone(),
-        //             //     import.clone(),
-        //             //     struct_metadata.clone(),
-        //             // );
-
-        //             // self.local_defs
-        //             //     .struct_table
-        //             //     .insert(struct_name, new_struct_metadata.clone());
-        //         }
-        //         DefinitionLookupResult::Typedef(typedef_metadata) => {
-        //             self.local_defs
-        //                 .typedef_table
-        //                 .insert(single.identifier.name, typedef_metadata.clone());
-        //         }
-        //         DefinitionLookupResult::GlobalVariable(mut global_variable_metadata) => {
-        //             let global_value = self.build_decl_imported_global_variable(
-        //                 global_variable_metadata.clone(),
-        //                 loc.clone(),
-        //                 span_end,
-        //             );
-
-        //             global_variable_metadata.global_value = global_value;
-        //             self.local_defs
-        //                 .global_variables_table
-        //                 .insert(single.identifier.name, global_variable_metadata.clone());
-        //         }
-        //     }
-        // });
+            match metadata_resolver_result {
+                MetadataResolverResult::Func(func_metadata) => import_func(func_metadata),
+                MetadataResolverResult::Struct(struct_metadata) => todo!(),
+                MetadataResolverResult::Typedef(typedef_metadata) => todo!(),
+                MetadataResolverResult::GlobalVariable(global_variable_metadata) => todo!(),
+            }
+        });
     }
 
     pub(crate) fn generate_abi_name(&self, module_id: String, name: String) -> String {
@@ -520,19 +524,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn insert_local_ir_value(&self, id: LocalIRValueID, value: LocalIRValue<'ctx>) {
         let mut local_ir_value_registry = self.local_ir_value_registry.borrow_mut();
         local_ir_value_registry.insert(id, value);
+        drop(local_ir_value_registry);
     }
 
     pub(crate) fn get_local_func_ir_value(&self, id: LocalIRValueID) -> FunctionValue<'ctx> {
         let local_ir_value_registry = self.local_ir_value_registry.borrow();
-        let local_ir_value = match local_ir_value_registry.get(&id) {
+        let local_ir_value = match local_ir_value_registry.get(&id).cloned() {
             Some(local_ir_value) => local_ir_value,
             None => {
                 panic!("Could not get func ir value from the registry.");
             }
         };
 
+        drop(local_ir_value_registry);
         if let LocalIRValue::Func(func_value) = local_ir_value {
-            *func_value
+            func_value
         } else {
             panic!("Local IR Value is not a function.")
         }

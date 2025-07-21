@@ -1,5 +1,5 @@
 use crate::diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag};
-use crate::modules::{LocalIRValue, LocalIRValueID, generate_local_ir_value_id};
+use crate::modules::{generate_local_ir_value_id, LocalIRValue, LocalIRValueID, ModuleID};
 use crate::scope::{ScopeRecord, ScopeRef};
 use crate::types::{InternalIntType, InternalVoidType};
 use crate::values::InternalValue;
@@ -26,7 +26,7 @@ pub struct FuncMetadata<'a> {
     pub local_ir_value_id: LocalIRValueID,
     pub func_decl: FuncDecl,
     pub return_type: InternalType<'a>,
-    pub imported_from: Option<ModulePath>,
+    pub imported_from: Option<ModuleID>,
     pub params_metadata: FuncParamsMetadata<'a>,
     pub is_method: bool,
 }
@@ -182,18 +182,31 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // ANCHOR
-    // pub(crate) fn check_func_previous_decl(&self, func_name: String) {
-    //     self.func_table.
-    // }
+    pub(crate) fn error_if_func_already_declared(&self, func_name: String, loc: Location, span_end: usize) {
+        if self.resolve_func_metadata(self.module_id, func_name.clone()).is_some() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::DuplicateFunction(func_name),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
+    }
 
     pub(crate) fn build_func_decl(
-        &mut self,
+        &self,
         func_decl: FuncDecl,
         params_metadata: FuncParamsMetadata<'ctx>,
         insert_to_func_table: bool,
         is_method: bool,
     ) -> FunctionValue<'ctx> {
+        self.error_if_func_already_declared(func_decl.get_usable_name(), func_decl.loc.clone(), func_decl.span.end);
+
         let param_types = params_metadata.param_types.clone();
         let is_var_args = params_metadata.variadic_arguments.is_some();
 
@@ -492,6 +505,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         params_metadata: FuncParamsMetadata<'ctx>,
         is_entry_point: bool,
     ) -> FunctionValue<'ctx> {
+        self.error_if_func_already_declared(func_def.name.clone(), func_def.loc.clone(), func_def.span.end);
+
         let param_types = params_metadata.param_types.clone();
         self.validate_func_storage_class(func_def.clone(), is_entry_point);
         let mut func_decl = self.transform_to_func_decl(func_def.clone());

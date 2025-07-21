@@ -614,8 +614,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_type_token(&self, type_token: Token, loc: Location) -> InternalType<'ctx> {
         match type_token.kind {
-            TokenKind::Identifier { name } => match self.resolve_type(self.module_id, name.clone()) {
-                Some(internal_type) => internal_type,
+            TokenKind::Identifier { name } => match self.resolve_typedef(self.module_id, name.clone()) {
+                Some(typedef_metadata) => typedef_metadata.internal_type,
                 None => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
