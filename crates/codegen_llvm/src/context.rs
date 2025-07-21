@@ -1,9 +1,10 @@
 use crate::funcs::FuncMetadata;
 use crate::modules::{
-    ImportedModules, LocalIRDeclarationValueRegistryRef, ModuleID, ModuleMetadataRegistryRef, generate_module_id,
+    generate_module_id, ImportedModules, LocalIRValueRegistryRef, ModuleID, ModuleMetadata, ModuleMetadataRegistryRef
 };
 use crate::opts::BuildDir;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
+use crate::structs::StructTable;
 use crate::types::TypedefTable;
 use crate::variables::GlobalVariablesTable;
 use ast::ast::*;
@@ -48,26 +49,26 @@ mod values;
 mod variables;
 
 pub struct CodeGenLLVM<'ctx> {
-    opts: Options,                                                     // compiler options
-    context: &'ctx Context,                                            // llvm context
-    module_id: ModuleID,                                               // unique per module
-    module_name: String,                                               // module name
-    module: Rc<RefCell<Module<'ctx>>>,                                 // llvm module
-    builder: Builder<'ctx>,                                            // llvm builder
-    target_machine: TargetMachine,                                     // llvm target machine
-    build_manifest: BuildManifest,                                     // build manifest
-    program: ProgramTree,                                              // AST Program
-    file_path: String,                                                 // program file path
-    reporter: DiagReporter,                                            // diagnostic
-    entry_point: Option<FuncDef>,                                      // FIXME
-    entry_point_path: String,                                          // FIXME
-    compiler_invoked_single: bool,                                     // invoked single option
-    output_kind: OutputKind,                                           // compiler output kind
-    final_build_dir: String,                                           // build directory path
-    block_registry: BlockRegistry<'ctx>,                               // block registry
-    imported_modules: Vec<ImportedModules>,                            // imported modules list
-    module_metadata_registry: ModuleMetadataRegistryRef<'ctx>,         // global shared module metadata registry
-    local_ir_value_registry: LocalIRDeclarationValueRegistryRef<'ctx>, // per-module IR-value registry
+    opts: Options,                                             // compiler options
+    context: &'ctx Context,                                    // llvm context
+    module_id: ModuleID,                                       // unique per module
+    module_name: String,                                       // module name
+    module: Rc<RefCell<Module<'ctx>>>,                         // llvm module
+    builder: Builder<'ctx>,                                    // llvm builder
+    target_machine: TargetMachine,                             // llvm target machine
+    build_manifest: BuildManifest,                             // build manifest
+    program: ProgramTree,                                      // AST Program
+    file_path: String,                                         // program file path
+    reporter: DiagReporter,                                    // diagnostic
+    entry_point: Option<FuncDef>,                              // FIXME
+    entry_point_path: String,                                  // FIXME
+    compiler_invoked_single: bool,                             // invoked single option
+    output_kind: OutputKind,                                   // compiler output kind
+    final_build_dir: String,                                   // build directory path
+    block_registry: BlockRegistry<'ctx>,                       // block registry
+    imported_modules: Vec<ImportedModules>,                    // imported modules list
+    module_metadata_registry: ModuleMetadataRegistryRef<'ctx>, // global shared module metadata registry
+    local_ir_value_registry: LocalIRValueRegistryRef<'ctx>,    // per-module IR-value registry
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -105,6 +106,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let base_dir = env::current_dir().unwrap().to_str().unwrap().to_string();
         let file_path = relative_to_absolute(file_path.clone(), base_dir).unwrap();
 
+        let module_id = generate_module_id();
+
         let codegen_llvm = CodeGenLLVM {
             file_path: file_path.clone(),
             opts,
@@ -119,7 +122,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             entry_point_path: file_path.clone(),
             compiler_invoked_single,
             block_registry: BlockRegistry::new(),
-            module_id: generate_module_id(),
+            module_id,
             module: module.clone(),
             module_name: module_name.clone(),
             imported_modules: Vec::new(),
@@ -127,6 +130,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             local_ir_value_registry: Rc::new(RefCell::new(HashMap::new())),
             build_manifest: BuildManifest::default(),
         };
+
+        codegen_llvm.add_module_to_metadata_registry(ModuleMetadata {
+            module_id,
+            module_file_path: file_path.clone(),
+            func_table: FuncTable::new(),
+            struct_table: StructTable::new(),
+            global_variables_table: GlobalVariablesTable::new(),
+            typedef_table: TypedefTable::new(),
+        });
 
         if codegen_llvm.opts.display_target_machine {
             codegen_llvm.display_target_machine_information();

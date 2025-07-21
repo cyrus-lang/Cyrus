@@ -3,28 +3,21 @@ use crate::{
     build::BuildManifest,
     diag::*,
     funcs::{FuncMetadata, FuncTable},
-    structs::{StructMetadata, StructMethodMetadata, StructTable},
-    types::{InternalType, TypedefMetadata, TypedefTable},
+    structs::{StructMetadata, StructTable},
+    types::{TypedefMetadata, TypedefTable},
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
 use ast::{
-    ast::{AccessSpecifier, FuncParamKind, Import, ModulePath, ModuleSegment, ModuleSegmentSingle},
+    ast::{Import, ModulePath, ModuleSegment, ModuleSegmentSingle},
     format::module_segments_as_string,
     token::Location,
 };
-use inkwell::{
-    AddressSpace,
-    llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
-    module::Linkage,
-    types::FunctionType,
-    values::{AnyValue, BasicValueEnum, FunctionValue, GlobalValue, StructValue},
-};
+use inkwell::values::{FunctionValue, StructValue};
 use rand::Rng;
 use std::{
     cell::{RefCell, RefMut},
     collections::HashMap,
     env,
-    ops::DerefMut,
     path::Path,
     process::exit,
     rc::Rc,
@@ -32,19 +25,20 @@ use std::{
 use utils::fs::{find_file_from_sources, relative_to_absolute};
 
 pub type ModuleID = u64;
-pub type LocalIRDeclarationValueRegistryRef<'a> = Rc<RefCell<LocalIRDeclarationValueRegistry<'a>>>;
-pub type LocalIRDeclarationValueRegistry<'a> = HashMap<u64, LocalIRDeclarationValue<'a>>;
+pub type LocalIRValueID = u64;
+pub type LocalIRValueRegistryRef<'a> = Rc<RefCell<LocalIRValueRegistry<'a>>>;
+pub type LocalIRValueRegistry<'a> = HashMap<LocalIRValueID, LocalIRValue<'a>>;
 pub type ModuleMetadataRegistryRef<'a> = Rc<RefCell<Vec<ModuleMetadata<'a>>>>;
 
 #[derive(Debug, Clone)]
-pub enum LocalIRDeclarationValue<'a> {
+pub enum LocalIRValue<'a> {
     Func(FunctionValue<'a>),
     Struct(StructValue<'a>),
 }
 
 #[derive(Debug, Clone)]
 pub struct ModuleMetadata<'a> {
-    pub module_id: u64,
+    pub module_id: ModuleID,
     pub module_file_path: String,
     pub func_table: FuncTable<'a>,
     pub struct_table: StructTable<'a>,
@@ -360,11 +354,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let file_path = relative_to_absolute(import_path.file_path.clone(), base_dir).unwrap();
         let program = parser::parse_program(file_path.clone()).0;
 
+        let module_id = generate_module_id();
+
         let sub_codegen = Rc::new(RefCell::new(CodeGenLLVM {
             program,
             opts: self.opts.clone(),
             context: &self.context,
-            module_id: generate_module_id(),
+            module_id,
             module: Rc::clone(&sub_module),
             module_name: module_name.clone(),
             builder: sub_builder,
@@ -382,11 +378,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             module_metadata_registry: Rc::clone(&self.module_metadata_registry),
             local_ir_value_registry: Rc::new(RefCell::new(HashMap::new())),
         }));
+        
+        self.add_module_to_metadata_registry(ModuleMetadata {
+            module_id: module_id,
+            module_file_path: import_path.file_path.clone(),
+            func_table: FuncTable::new(),
+            struct_table: StructTable::new(),
+            global_variables_table: GlobalVariablesTable::new(),
+            typedef_table: TypedefTable::new(),
+        });
 
         let mut sub_codegen_ref = sub_codegen.borrow_mut();
 
         sub_codegen_ref.compile();
         (sub_codegen_ref.build_manifest.clone(), sub_codegen_ref.module_id)
+    }
+
+    pub(crate) fn add_module_to_metadata_registry(&self, module_metadata: ModuleMetadata<'ctx>) {
+        self.module_metadata_registry.borrow_mut().push(module_metadata);
     }
 
     fn build_imported_module(&mut self, import_path: ImportedModulePath) {
@@ -400,7 +409,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                 self.build_manifest = build_manifest;
                 self.get_module_metadata_by_module_id(module_id)
-                    .expect("Couldn't get module metadata by module id.").clone()
+                    .expect("Couldn't get module metadata by module id.")
+                    .clone()
             }
         };
 
@@ -506,9 +516,35 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> String {
         format!("{}_{}_{}", module_id, struct_name, method_name)
     }
+
+    pub(crate) fn insert_local_ir_value(&self, id: LocalIRValueID, value: LocalIRValue<'ctx>) {
+        let mut local_ir_value_registry = self.local_ir_value_registry.borrow_mut();
+        local_ir_value_registry.insert(id, value);
+    }
+
+    pub(crate) fn get_local_func_ir_value(&self, id: LocalIRValueID) -> FunctionValue<'ctx> {
+        let local_ir_value_registry = self.local_ir_value_registry.borrow();
+        let local_ir_value = match local_ir_value_registry.get(&id) {
+            Some(local_ir_value) => local_ir_value,
+            None => {
+                panic!("Could not get func ir value from the registry.");
+            }
+        };
+
+        if let LocalIRValue::Func(func_value) = local_ir_value {
+            *func_value
+        } else {
+            panic!("Local IR Value is not a function.")
+        }
+    }
 }
 
-pub fn generate_module_id() -> u64 {
+pub fn generate_module_id() -> ModuleID {
+    let mut rng = rand::rng();
+    rng.random::<u64>()
+}
+
+pub fn generate_local_ir_value_id() -> LocalIRValueID {
     let mut rng = rand::rng();
     rng.random::<u64>()
 }

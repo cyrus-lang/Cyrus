@@ -181,6 +181,19 @@ pub struct ModuleImport {
     pub loc: Location,
 }
 
+impl ModuleImport {
+    pub fn as_identifier(&self) -> Option<Identifier> {
+        if self.segments.len() == 1 {
+            match self.segments.last().unwrap() {
+                ModuleSegment::SubModule(identifier) => Some(identifier.clone()),
+                ModuleSegment::Single(_) => None,
+            }
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Literal {
     pub kind: LiteralKind,

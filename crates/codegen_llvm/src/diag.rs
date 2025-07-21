@@ -27,6 +27,7 @@ pub enum DiagKind {
     LenCalledWithInvalidInput,
     SizeOfOperatorOnUnsizedObject,
     CannotUseModuleImportIfImportsSingles,
+    FuncCallInvalidOperand,
     Custom(String),
 }
 
@@ -68,7 +69,7 @@ impl fmt::Display for DiagKind {
             DiagKind::InfixNonBasic => "Cannot build infix expression for non-basic value.",
             DiagKind::InvalidTokenAsArrayCapacity => "Invalid token given as array capacity.",
             DiagKind::IdentifierNotDefined(value) => &format!("The '{}' not found anywhere.", value),
-            DiagKind::FuncNotFound(func_name) => &format!("Function '{}' not found in this module.", func_name),
+            DiagKind::FuncNotFound(func_name) => &format!("Unable to resolve function '{}'.", func_name),
             DiagKind::InvalidWildcard => "Wildcard cannot be used in the begging or middle of a module path.",
             DiagKind::ModuleNotFound(name) => &format!(
                 "The module '{}' could not be found in any of the specified source directories.",
@@ -90,6 +91,7 @@ impl fmt::Display for DiagKind {
                 "Cannot determine complete sizeof with flexible member at compile time."
             }
             DiagKind::CannotUseModuleImportIfImportsSingles => "Cannot use module import if it imports singles.",
+            DiagKind::FuncCallInvalidOperand => "Invalid operand for function call.",
         };
         write!(f, "{}", msg)
     }

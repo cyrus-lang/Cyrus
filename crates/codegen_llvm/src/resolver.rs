@@ -1,31 +1,15 @@
 use crate::{
-    funcs::FuncMetadata, modules::ModuleID, structs::StructMetadata, types::{InternalType, TypedefMetadata}, variables::GlobalVariableMetadata, CodeGenLLVM
+    CodeGenLLVM, funcs::FuncMetadata, modules::ModuleID, types::InternalType, variables::GlobalVariableMetadata,
 };
 
-#[derive(Debug, Clone)]
-pub enum MetadataResolverResult<'a> {
-    Func(FuncMetadata<'a>),
-    Struct(StructMetadata<'a>),
-    Typedef(TypedefMetadata<'a>),
-    GlobalVariable(GlobalVariableMetadata<'a>),
-}
-
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn resolve_metadata(
-        &self,
-        module_id: ModuleID,
-        name: String,
-    ) -> Option<MetadataResolverResult<'ctx>> {
-        todo!();
-    }
+    pub(crate) fn resolve_func_metadata(&self, module_id: ModuleID, name: String) -> Option<FuncMetadata<'ctx>> {
+        let module_metadata = match self.get_module_metadata_by_module_id(module_id) {
+            Some(module_metadata) => module_metadata,
+            None => return None,
+        };
 
-    pub(crate) fn resolve_func_metadata(
-        &self,
-        module_id: ModuleID,
-        name: String,
-    ) -> Option<FuncMetadata<'ctx>> {
-        
-        todo!();
+        module_metadata.func_table.get(&name).cloned()
     }
 
     pub(crate) fn resolve_global_variable_metadata(

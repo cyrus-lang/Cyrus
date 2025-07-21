@@ -401,14 +401,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_typedef(&mut self, typedef: Typedef) {
         // FIXME Check naming collision before inserting
 
-        let internal_type = self.build_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end);
-        self.local_defs.typedef_table.insert(
-            typedef.identifier.name,
-            TypedefMetadata {
-                internal_type,
-                access_specifier: typedef.access_specifier.clone(),
-            },
-        );
+        todo!();
+        // let internal_type = self.build_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end);
+        // self.local_defs.typedef_table.insert(
+        //     typedef.identifier.name,
+        //     TypedefMetadata {
+        //         internal_type,
+        //         access_specifier: typedef.access_specifier.clone(),
+        //     },
+        // );
     }
 
     pub(crate) fn typedef_as_struct_type(
@@ -467,6 +468,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         todo!();
 
         // if module_import.segments.len() == 1 {
+            // FIXME Use as_identifier instead.
         //     let name = match module_import.segments.last().unwrap() {
         //         ModuleSegment::SubModule(identifier) => identifier.name.clone(),
         //         ModuleSegment::Single(_) => unreachable!(),
