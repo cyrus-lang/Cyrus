@@ -816,14 +816,71 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 Some(struct_metadata) => Some(struct_metadata),
                 None => None,
             },
-            Expression::ModuleImport(module_import) => match self.lookup_struct_by_name(
-                module_import.clone(),
-                module_import.loc.clone(),
-                module_import.span.end,
-            ) {
-                Some(struct_metadata) => Some(struct_metadata),
-                None => None,
-            },
+            Expression::ModuleImport(mut module_import) => {
+                let struct_name = module_import.segments.pop().unwrap().as_identifier().name;
+
+                let module_id = match self.get_imported_module(module_import.segments.clone()) {
+                    Some(imported_module) => imported_module.module_id,
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::ModuleNotFound(module_segments_as_string(module_import.segments)),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: method_call.loc.line,
+                                column: method_call.loc.column,
+                                length: method_call.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                };
+
+                let mut module_metadata = self.get_module_metadata_by_module_id(module_id).unwrap();
+
+                let struct_metadata = match module_metadata.get_defined_type(struct_name.clone()) {
+                    Some(internal_type) => match internal_type {
+                        InternalType::StructType(internal_struct_type) => module_metadata
+                            .get_struct_metadata_by_id(internal_struct_type.struct_id)
+                            .clone(),
+                        _ => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::SymbolIsNotAnStruct(
+                                    struct_name,
+                                    module_segments_as_string(module_import.segments),
+                                ),
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: method_call.loc.line,
+                                    column: method_call.loc.column,
+                                    length: method_call.span.end,
+                                }),
+                            });
+                            exit(1);
+                        }
+                    },
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::SymbolNotFoundInModule(
+                                struct_name,
+                                module_segments_as_string(module_import.segments),
+                            ),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: method_call.loc.line,
+                                column: method_call.loc.column,
+                                length: method_call.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                };
+
+                drop(module_metadata);
+                Some(struct_metadata)
+            }
             _ => None,
         };
 
@@ -1085,7 +1142,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             };
 
             let module_metadata = self.get_module_metadata_by_module_id(module_id).unwrap();
-            
+
             let internal_type = match module_metadata.get_defined_type(struct_name.clone()) {
                 Some(internal_type) => internal_type,
                 None => {

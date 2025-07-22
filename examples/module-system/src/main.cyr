@@ -3,7 +3,6 @@ import logger;
 
 func main() {
 	logger::Logger.new("services.example");
-	// logger::Logger.new("services.example");
 
 	// libc::printf("value: %d\n", logger);
 	// libc::printf("Group Name: %s\n", logger.group_name);
