@@ -1,7 +1,14 @@
+extern func printf(format: const char*, ...);
+
 public struct Sample {
     name: char*;
 
-    public func hello_world() {}
+    public func hello_world() {
+        printf("Hello World\n");
+        printf("Hello World\n");
+        printf("Hello World\n");
+    }
+
     public func greeting(self, name: char*) {}
 }
 

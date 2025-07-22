@@ -4,8 +4,5 @@ func main() {
     #obj = Sample{ name: "Taha" };
 
     Sample.hello_world();
-    // obj.greeting("Taha");
-
-    // #a: float64 = PI;
-    // sample::sum(1, 2);
+    // obj.greeting("as");
 }
