@@ -88,7 +88,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_string_literal(&self, value: String, loc: Location, span_end: usize) -> InternalValue<'ctx> {
-        let (global_str, array_type) = self.build_global_str(value, loc, span_end);
+        let (global_str, _) = self.build_global_str(value, loc, span_end);
         InternalValue::PointerValue(TypedPointerValue {
             type_str: format!("char*"),
             ptr: global_str.as_pointer_value(),
