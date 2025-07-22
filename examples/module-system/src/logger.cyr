@@ -1,14 +1,5 @@
 import std::libc;
 
-public struct Person {
-	name: char*;
-	age: int32;
-
-	public func hello_world() {
-		libc::printf("Hello World\n");
-	}
-}
-
 public struct Logger {
 	group_name: char*;
 

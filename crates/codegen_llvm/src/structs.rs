@@ -1370,36 +1370,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     field_access.span.end,
                 )
             }
-            InternalValue::ModuleValue(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot access fields on a module_value.".to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: field_access.loc.line,
-                        column: field_access.loc.column,
-                        length: field_access.span.end,
-                    }),
-                });
-                exit(1);
-            }
             InternalValue::PointerValue(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom("Cannot build field access on pointer values. Consider to deference before accessing the field or use fat arrow (->) instead.".to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: field_access.loc.line,
-                        column: field_access.loc.column,
-                        length: field_access.span.end,
-                    }),
-                });
-                exit(1);
-            }
-            InternalValue::FunctionValue(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot access fields on an function_value.".to_string()),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
                         line: field_access.loc.line,

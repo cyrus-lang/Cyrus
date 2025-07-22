@@ -1,10 +1,14 @@
 use crate::{
-    context::CodeGenLLVM, diag::*, funcs::FuncMetadata, modules::ModuleMetadata, types::{InternalArrayType, InternalBoolType, InternalIntType, InternalPointerType, InternalType}
+    context::CodeGenLLVM,
+    diag::*,
+    funcs::FuncMetadata,
+    modules::ModuleMetadata,
+    types::{InternalBoolType, InternalPointerType, InternalType},
 };
-use ast::token::{Location, TokenKind};
+use ast::token::Location;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    types::{ArrayType, IntType},
+    types::IntType,
     values::{
         AnyValue, ArrayValue, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue,
         VectorValue,
@@ -18,13 +22,10 @@ pub(crate) enum InternalValue<'a> {
     IntValue(IntValue<'a>, InternalType<'a>),
     FloatValue(FloatValue<'a>, InternalType<'a>),
     ArrayValue(ArrayValue<'a>, InternalType<'a>),
-    ArrayPtrValue(PointerValue<'a>, InternalType<'a>),
     StructValue(StructValue<'a>, InternalType<'a>),
     UnnamedStructValue(StructValue<'a>, InternalType<'a>),
     VectorValue(VectorValue<'a>, InternalType<'a>),
     PointerValue(TypedPointerValue<'a>),
-    ModuleValue(ModuleMetadata<'a>),
-    FunctionValue(FuncMetadata<'a>),
     Lvalue(Lvalue<'a>),
 }
 
@@ -49,9 +50,6 @@ impl<'a> InternalValue<'a> {
             InternalValue::FloatValue(..) => true,
             InternalValue::Lvalue(..) => false,
             InternalValue::PointerValue(..) => false,
-            InternalValue::ArrayPtrValue(..) => false,
-            InternalValue::ModuleValue(..) => unreachable!(),
-            InternalValue::FunctionValue(..) => unreachable!(),
             InternalValue::ArrayValue(array_value, ..) => array_value.is_const(),
             InternalValue::StructValue(struct_value, ..) => struct_value.is_const(),
             InternalValue::UnnamedStructValue(struct_value, ..) => struct_value.is_const(),
@@ -75,24 +73,7 @@ impl<'a> InternalValue<'a> {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
             })),
-            InternalValue::ModuleValue(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot get type of an ModuleValue.".to_string()),
-                    location: None,
-                });
-                exit(1);
-            }
-            InternalValue::FunctionValue(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot get type of an FunctionValue.".to_string()),
-                    location: None,
-                });
-                exit(1);
-            }
             InternalValue::UnnamedStructValue(_, internal_type) => internal_type.clone(),
-            InternalValue::ArrayPtrValue(_, ty) => ty.clone(),
         }
     }
 }
@@ -116,24 +97,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::StructValue(v, ..) => BasicMetadataValueEnum::StructValue(v),
             InternalValue::VectorValue(v, ..) => BasicMetadataValueEnum::VectorValue(v),
             InternalValue::PointerValue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
-            InternalValue::ArrayPtrValue(v, ..) => BasicMetadataValueEnum::PointerValue(v),
             InternalValue::Lvalue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
-            InternalValue::ModuleValue(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot convert ModuleValue to BasicMetadataValueEnum.".to_string()),
-                    location: None,
-                });
-                exit(1);
-            }
-            InternalValue::FunctionValue(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot convert FunctionValue to BasicMetadataValueEnum.".to_string()),
-                    location: None,
-                });
-                exit(1);
-            }
             InternalValue::UnnamedStructValue(struct_value, _) => BasicMetadataValueEnum::StructValue(struct_value),
         }
     }
@@ -245,7 +209,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             InternalType::ArrayType(internal_array_type) => {
                 InternalValue::ArrayValue(value.into_array_value(), InternalType::ArrayType(internal_array_type))
-            }        
+            }
             InternalType::StructType(internal_struct_type) => InternalValue::StructValue(
                 value.into_struct_value(),
                 InternalType::StructType(internal_struct_type),
@@ -343,68 +307,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         });
                         exit(1);
                     })
-            }
-            InternalValue::ModuleValue(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot load ModuleValue as an rvalue.".to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-            InternalValue::FunctionValue(_) => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Cannot load FunctionValue as an rvalue.".to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-            InternalValue::ArrayPtrValue(pointer_value, internal_type) => {
-                let ptr_type = self.context.ptr_type(AddressSpace::default());
-
-                let basic_type = match internal_type.to_basic_type(ptr_type) {
-                    Ok(basic_type) => basic_type,
-                    Err(err) => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(err.to_string()),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                };
-
-                let value = self.builder.build_load(basic_type, pointer_value, "load").unwrap();
-
-                internal_type.into_internal_value(value).unwrap_or_else(|_| {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Failed to convert loaded value to InternalValue.".to_string()),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
-                })
             }
         }
     }
