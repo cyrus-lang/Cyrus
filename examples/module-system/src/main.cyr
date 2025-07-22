@@ -1,12 +1,9 @@
 import logger;
-// import std::libc;
 
 func main() {
-	logger::Logger.new("services.example");
-
-	// libc::printf("value: %d\n", logger);
-	// libc::printf("Group Name: %s\n", logger.group_name);
-	// logger.greeting("Taha");
-	// logger.logf("We believe in it.");
-	// logger.errorf("No problem remains tho.");
+	#my_logger = logger::Logger.new("services.example");
+	
+	my_logger.greeting("Taha");
+	my_logger.logf("We believe in it.");
+	my_logger.errorf("No problem remains tho.");
 }
