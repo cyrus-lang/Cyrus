@@ -175,7 +175,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     false,
                 );
 
-                self.build_func_decl(func_decl, param_types, true, false);
+                self.build_func_decl(func_decl, param_types, true);
             }
             Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),
             Statement::For(for_statement) => self.build_for_statement(

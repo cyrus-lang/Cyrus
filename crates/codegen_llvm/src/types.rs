@@ -2,7 +2,6 @@ use crate::context::CodeGenLLVM;
 use crate::diag::*;
 use crate::resolver::MetadataResolverResult;
 use crate::structs::StructID;
-use crate::structs::StructMetadata;
 use crate::structs::StructMethodMetadata;
 use crate::structs::UnnamedStructTypeMetadata;
 use crate::values::InternalValue;
@@ -136,28 +135,6 @@ pub(crate) struct InternalLvalueType<'a> {
 pub(crate) struct InternalPointerType<'a> {
     pub ptr_type: PointerType<'a>,
     pub pointee_ty: InternalType<'a>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum DefinedType<'a> {
-    Struct(StructMetadata<'a>),
-    Typedef(TypedefMetadata<'a>),
-}
-
-impl<'a> DefinedType<'a> {
-    pub fn into_internal_type(&self) -> InternalType<'a> {
-        match self {
-            DefinedType::Struct(struct_metadata) => InternalType::StructType(InternalStructType {
-                struct_id: struct_metadata.struct_id,
-                type_str: module_segments_as_string(struct_metadata.struct_name.segments.clone()),
-                struct_name: struct_metadata.struct_name.clone(),
-                struct_type: struct_metadata.struct_type.clone(),
-                methods: struct_metadata.methods.clone(),
-                fields: struct_metadata.fields.clone(),
-            }),
-            DefinedType::Typedef(typedef_metadata) => typedef_metadata.internal_type.clone(),
-        }
-    }
 }
 
 impl<'a> fmt::Display for InternalType<'a> {
@@ -412,16 +389,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         drop(module_metadata);
     }
 
-    pub(crate) fn typedef_as_struct_type(
-        &self,
-        typedef_metadata: TypedefMetadata<'ctx>,
-    ) -> Option<InternalStructType<'ctx>> {
-        match typedef_metadata.internal_type {
-            InternalType::StructType(internal_struct_type) => Some(internal_struct_type),
-            _ => None,
-        }
-    }
-
     pub(crate) fn compatible_types(&self, lvalue_type: InternalType<'ctx>, rvalue_type: InternalType<'ctx>) -> bool {
         match (lvalue_type, rvalue_type) {
             (InternalType::BoolType(_), InternalType::BoolType(_)) => true,
@@ -458,18 +425,65 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn get_defined_type(&self, module_import: ModuleImport) -> Option<DefinedType<'ctx>> {
+    pub(crate) fn get_defined_type(&self, mut module_import: ModuleImport) -> Option<InternalType<'ctx>> {
         match module_import.as_identifier() {
             Some(identifier) => match self.resolve_metadata(self.module_id, identifier.name) {
                 Some(metadata_resolver_result) => match metadata_resolver_result {
-                    MetadataResolverResult::Struct(struct_metadata) => Some(DefinedType::Struct(struct_metadata)),
-                    MetadataResolverResult::Typedef(typedef_metadata) => Some(DefinedType::Typedef(typedef_metadata)),
+                    MetadataResolverResult::Struct(struct_metadata) => {
+                        Some(InternalType::StructType(struct_metadata.as_internal_struct_type()))
+                    }
+                    MetadataResolverResult::Typedef(typedef_metadata) => Some(typedef_metadata.internal_type),
                     MetadataResolverResult::GlobalVariable(_) => None,
                     MetadataResolverResult::Func(_) => None,
                 },
                 None => None,
             },
-            None => todo!(),
+            None => {
+                let type_name = module_import.segments.pop().unwrap().as_identifier().name;
+                let module_id = match self.get_imported_module(module_import.segments.clone()) {
+                    Some(imported_module) => imported_module.module_id,
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::UndefinedDataType(module_segments_as_string(
+                                module_import.segments.clone(),
+                            )),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: module_import.loc.line,
+                                column: module_import.loc.column,
+                                length: module_import.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                };
+
+                let module_metadata = self.get_module_metadata_by_module_id(module_id).unwrap();
+
+                let internal_type = match module_metadata.get_defined_type(type_name.clone()) {
+                    Some(internal_type) => internal_type,
+                    None => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::SymbolNotFoundInModule(
+                                type_name,
+                                module_segments_as_string(module_import.segments.clone()),
+                            ),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: module_import.loc.line,
+                                column: module_import.loc.column,
+                                length: module_import.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                };
+
+                drop(module_metadata);
+                Some(internal_type)
+            }
         }
     }
 
@@ -490,7 +504,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     span: identifier.span.clone(),
                     loc: identifier.loc.clone(),
                 }) {
-                    Some(defined_type) => defined_type.into_internal_type(),
+                    Some(internal_type) => internal_type,
                     None => {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
@@ -506,24 +520,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
             }
-            TypeSpecifier::ModuleImport(module_import) => {
-                match self.get_defined_type(module_import.clone()) {
-                    Some(defined_type) => defined_type.into_internal_type(),
-                    None => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::UndefinedDataType(module_segments_as_string(module_import.segments)),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: loc.line,
-                                column: loc.column,
-                                length: span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
+            TypeSpecifier::ModuleImport(module_import) => match self.get_defined_type(module_import.clone()) {
+                Some(internal_type) => internal_type,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::UndefinedDataType(module_segments_as_string(module_import.segments)),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
                 }
-            }
+            },
             TypeSpecifier::Dereference(inner_type_specifier) => {
                 let pointee_ty = self.build_type(*inner_type_specifier, loc.clone(), span_end);
                 InternalType::PointerType(Box::new(InternalPointerType {

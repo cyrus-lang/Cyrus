@@ -10,6 +10,7 @@ use crate::{
 };
 use ast::{
     ast::*,
+    format::module_segments_as_string,
     token::{Location, Token, TokenKind},
 };
 use inkwell::{
@@ -108,96 +109,82 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_module_import(
-        &self,
+        &mut self,
         scope: ScopeRef<'ctx>,
-        module_import: ModuleImport,
+        mut module_import: ModuleImport,
     ) -> InternalValue<'ctx> {
         if let Some(identifier) = module_import.as_identifier() {
             return self.build_lvalue(Rc::clone(&scope), identifier);
         }
 
-        todo!();
+        let symbol_name = {
+            match module_import.segments.pop().unwrap() {
+                ModuleSegment::SubModule(identifier) => identifier.name,
+                ModuleSegment::Single(_) => unreachable!(),
+            }
+        };
 
-        // FIXME
+        let module_id = match self.get_imported_module(module_import.segments.clone()) {
+            Some(imported_module) => imported_module.module_id,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::ModuleNotFound(module_segments_as_string(module_import.segments.clone())),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: module_import.loc.line,
+                        column: module_import.loc.column,
+                        length: module_import.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
-        // let full_module_id = self.build_module_name(ModulePath {
-        //     alias: None,
-        //     segments: module_import.segments.clone(),
-        //     loc: module_import.loc.clone(),
-        //     span: module_import.span.clone(),
-        // });
+        let module_metadata = self.get_module_metadata_by_module_id(module_id).unwrap();
+        let global_variable_metadata = match module_metadata.get_global_variable_by_name(symbol_name.clone()) {
+            Some(global_variable_metadata) => global_variable_metadata,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::SymbolNotFoundInModule(
+                        symbol_name,
+                        module_segments_as_string(module_import.segments.clone()),
+                    ),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: module_import.loc.line,
+                        column: module_import.loc.column,
+                        length: module_import.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
-        // let last_segment = {
-        //     match module_import.segments.last().unwrap() {
-        //         ModuleSegment::SubModule(sub_module) => sub_module,
-        //         ModuleSegment::Single(_) => unreachable!(),
-        //     }
-        // };
+        let global_value = match self.get_local_global_value_ir_value(global_variable_metadata.local_ir_value_id) {
+            Some(global_value) => global_value,
+            None => {
+                self.get_or_declare_local_global_value(
+                global_variable_metadata.local_ir_value_id,
+                global_variable_metadata.clone(),
+            )
+            },
+        };
 
-        // match match self.find_imported_module(full_module_id.clone()) {
-        //     Some(module_metadata) => {
-        //         return InternalValue::ModuleValue(module_metadata.metadata.clone());
-        //     }
-        //     None => {
-        //         let module_id = self.build_module_id(ModulePath {
-        //             alias: None,
-        //             segments: module_import.segments[..(module_import.segments.len() - 1)].to_vec(),
-        //             loc: module_import.loc.clone(),
-        //             span: module_import.span.clone(),
-        //         });
+        let global_value_ptr = global_value.as_pointer_value();
+        let global_value_ptr_type = global_value_ptr.get_type();
 
-        //         match self.find_imported_module(module_id.clone()) {
-        //             Some(module_metadata) => {
-        //                 if module_metadata.metadata.imports_single {
-        //                     display_single_diag(Diag {
-        //                         level: DiagLevel::Error,
-        //                         kind: DiagKind::CannotUseModuleImportIfImportsSingles,
-        //                         location: Some(DiagLoc {
-        //                             file: self.file_path.clone(),
-        //                             line: module_import.loc.line,
-        //                             column: module_import.loc.column,
-        //                             length: module_import.span.end,
-        //                         }),
-        //                     });
-        //                     exit(1);
-        //                 }
+        let internal_value = InternalValue::Lvalue(Lvalue {
+            ptr: global_value_ptr,
+            pointee_ty: InternalType::Lvalue(Box::new(InternalLvalueType {
+                ptr_type: global_value_ptr_type,
+                pointee_ty: global_variable_metadata.variable_type.clone(),
+            })),
+        });
 
-        //                 match module_metadata.metadata.global_variables_table.get(&last_segment.name) {
-        //                     Some(global_variable_metadata) => {
-        //                         let global_value_ptr = global_variable_metadata.global_value.as_pointer_value();
-        //                         let global_value_ptr_type = global_value_ptr.get_type();
-        //                         return InternalValue::Lvalue(Lvalue {
-        //                             ptr: global_value_ptr,
-        //                             pointee_ty: InternalType::Lvalue(Box::new(InternalLvalueType {
-        //                                 ptr_type: global_value_ptr_type,
-        //                                 pointee_ty: global_variable_metadata.variable_type.clone(),
-        //                             })),
-        //                         });
-        //                     }
-        //                     None => {
-        //                         return InternalValue::ModuleValue(module_metadata.metadata.clone());
-        //                     }
-        //                 }
-        //             }
-        //             None => None,
-        //         }
-        //     }
-        // } {
-        //     Some(internal_value) => internal_value,
-        //     None => {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::ModuleNotFound(full_module_id),
-        //             location: Some(DiagLoc {
-        //                 file: self.file_path.clone(),
-        //                 line: module_import.loc.line,
-        //                 column: module_import.loc.column,
-        //                 length: module_import.span.end,
-        //             }),
-        //         });
-        //         exit(1);
-        //     }
-        // }
+        drop(module_metadata);
+        internal_value
     }
 
     pub(crate) fn build_lvalue(&self, scope: ScopeRef<'ctx>, identifier: Identifier) -> InternalValue<'ctx> {
@@ -1156,7 +1143,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_unary_operator(
-        &self,
+        &mut self,
         scope: ScopeRef<'ctx>,
         unary_operator: UnaryOperator,
     ) -> InternalValue<'ctx> {

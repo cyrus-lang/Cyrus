@@ -1,8 +1,1 @@
-import sample{Sample};
-
-func main() {
-    #obj = Sample{ name: "Taha" };
-
-    Sample.hello_world();
-    // obj.greeting("as");
-}
+func main() { } 

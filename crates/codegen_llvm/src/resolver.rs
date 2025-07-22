@@ -53,6 +53,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .find(|m| m.struct_table.iter().find(|r| r.1.struct_id == struct_id).is_some())
             .cloned();
 
+        drop(module_metadata_registry);
+
         match struct_metadata_opt {
             Some(module_metadata) => {
                 let struct_metadata = module_metadata
@@ -63,10 +65,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .1
                     .clone();
 
-                drop(module_metadata_registry);
                 Some(struct_metadata)
             }
-            None => panic!("Couldn't lookup module in the module metadata registry."),
+            None => None,
         }
     }
 

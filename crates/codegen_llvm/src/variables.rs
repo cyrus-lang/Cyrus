@@ -1,18 +1,18 @@
 use crate::{
     context::CodeGenLLVM,
-    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc},
-    modules::{generate_local_ir_value_id, LocalIRValue, LocalIRValueID},
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    modules::{LocalIRValue, LocalIRValueID, generate_local_ir_value_id},
     scope::{Scope, ScopeRecord, ScopeRef},
     types::InternalType,
 };
 use ast::{
     ast::{AccessSpecifier, Expression, GlobalVariable, TypeSpecifier, Variable},
-    token::TokenKind,
+    token::{Location, TokenKind},
 };
 use inkwell::{
     AddressSpace,
     module::Linkage,
-    values::{AnyValue, BasicValueEnum},
+    values::{AnyValue, BasicValueEnum, GlobalValue},
 };
 use std::{cell::RefCell, collections::HashMap, process::exit, rc::Rc};
 
@@ -35,6 +35,50 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             AccessSpecifier::Internal => Linkage::Private,
             AccessSpecifier::Inline => unreachable!(),
             AccessSpecifier::PublicInline => unreachable!(),
+        }
+    }
+
+    pub(crate) fn get_or_declare_local_global_value(
+        &self,
+        id: LocalIRValueID,
+        global_variable_metadata: GlobalVariableMetadata<'ctx>,
+    ) -> GlobalValue<'ctx> {
+        match self.get_local_global_value_ir_value(id) {
+            Some(global_value) => global_value,
+            None => {
+                let module = self.module.borrow_mut();
+
+                let linkage = self.build_global_variable_linkage(global_variable_metadata.access_specifier.clone());
+
+                let zero_initialized_internal_value = self.build_zero_initialized_internal_value(
+                    global_variable_metadata.variable_type.clone(),
+                    Location::default(),
+                    0,
+                );
+
+                let initialzier_basic_value: BasicValueEnum<'ctx> = self
+                    .internal_value_to_basic_metadata(zero_initialized_internal_value)
+                    .as_any_value_enum()
+                    .try_into()
+                    .unwrap();
+
+                let global_value = module.add_global(
+                    global_variable_metadata
+                        .variable_type
+                        .to_basic_type(self.context.ptr_type(AddressSpace::default()))
+                        .unwrap(),
+                    None,
+                    &global_variable_metadata.name,
+                );
+                global_value.set_linkage(linkage);
+                global_value.set_initializer(&initialzier_basic_value);
+
+                self.insert_local_ir_value(
+                    global_variable_metadata.local_ir_value_id,
+                    LocalIRValue::GlobalValue(global_value),
+                );
+                global_value
+            }
         }
     }
 
@@ -139,7 +183,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let global_variable_name = global_variable.identifier.name.clone();
         let local_ir_value_id = generate_local_ir_value_id();
-        
+
         let global_variable_metadata = GlobalVariableMetadata {
             name: global_variable.identifier.name,
             local_ir_value_id,
