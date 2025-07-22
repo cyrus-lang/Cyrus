@@ -177,10 +177,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ptr: internal_pointer_type.ptr_type.const_zero(),
                 pointee_ty: internal_pointer_type.pointee_ty,
             }),
-            InternalType::ArrayPtrType(internal_pointer_type) => InternalValue::ArrayPtrValue(
-                internal_pointer_type.ptr_type.const_zero(),
-                *internal_pointer_type.inner_type,
-            ),
             InternalType::ConstType(_) => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -249,11 +245,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             InternalType::ArrayType(internal_array_type) => {
                 InternalValue::ArrayValue(value.into_array_value(), InternalType::ArrayType(internal_array_type))
-            }
-            InternalType::ArrayPtrType(internal_array_ptr_type) => InternalValue::ArrayPtrValue(
-                value.into_pointer_value(),
-                InternalType::ArrayPtrType(internal_array_ptr_type),
-            ),
+            }        
             InternalType::StructType(internal_struct_type) => InternalValue::StructValue(
                 value.into_struct_value(),
                 InternalType::StructType(internal_struct_type),

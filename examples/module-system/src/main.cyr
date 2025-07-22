@@ -1,9 +1,8 @@
-import logger{Person};
+import logger;
 // import std::libc;
 
 func main() {
-	// #a: Person;
-	Person.hello_world();
+	logger::Logger.new("services.example");
 	// logger::Logger.new("services.example");
 
 	// libc::printf("value: %d\n", logger);

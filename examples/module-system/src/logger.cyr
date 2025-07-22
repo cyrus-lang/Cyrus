@@ -13,7 +13,8 @@ public struct Logger {
 	group_name: char*;
 
     public func new(group_name: char*) Logger { 
-		libc::printf(libc::stdout, "Logger initialized successfully.\n");
+		libc::printf("Hello\n");
+		// libc::printf(libc::stdout, "Logger initialized successfully.\n");
 		return Logger { group_name: group_name };
 	}
 
