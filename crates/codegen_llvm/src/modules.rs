@@ -134,7 +134,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     fn resolve_segments(
         &self,
-        mut module_path: ModulePath,
+        module_path: ModulePath,
         segments: &[ModuleSegment],
         sources: Vec<String>,
         module_file_path: String,
@@ -220,7 +220,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         }
                     }
                 }
-                ModuleSegment::Single(singles) => {
+                ModuleSegment::Single(_) => {
                     return self.resolve_segments(
                         module_path.clone(),
                         &segments[..idx + 1],
@@ -624,6 +624,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let func_value = self.build_func_decl(
                 func_metadata.func_decl.clone(),
                 func_metadata.params_metadata.clone(),
+                func_metadata.return_type.clone(),
                 false,
             );
             let local_ir_value_id = generate_local_ir_value_id();
@@ -751,6 +752,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 let func_value = self.build_func_decl(
                     func_metadata.func_decl.clone(),
                     func_metadata.params_metadata.clone(),
+                    func_metadata.return_type.clone(),
                     false,
                 );
 

@@ -5,8 +5,8 @@ use crate::scope::ScopeRef;
 use crate::scope::{Scope, ScopeRecord};
 use crate::types::{InternalIntType, InternalType};
 use crate::values::InternalValue;
-use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement};
-use ast::token::{Location, TokenKind};
+use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement, TypeSpecifier};
+use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
 use std::cell::RefCell;
@@ -175,7 +175,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     false,
                 );
 
-                self.build_func_decl(func_decl, param_types, true);
+                let return_type = self.build_type(
+                    func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
+                        kind: TokenKind::Void,
+                        span: Span::default(),
+                        loc: Location::default(),
+                    })),
+                    func_decl.loc.clone(),
+                    func_decl.span.end,
+                );
+
+                self.build_func_decl(func_decl, param_types, return_type, true);
             }
             Statement::If(if_statement) => self.build_if(Rc::clone(&scope), if_statement),
             Statement::For(for_statement) => self.build_for_statement(

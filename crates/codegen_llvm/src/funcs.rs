@@ -201,22 +201,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         func_decl: FuncDecl,
         params_metadata: FuncParamsMetadata<'ctx>,
+        return_type: InternalType<'ctx>,
         insert_to_func_table: bool,
     ) -> FunctionValue<'ctx> {
         self.error_if_already_declared(func_decl.get_usable_name(), func_decl.loc.clone(), func_decl.span.end);
 
         let param_types = params_metadata.param_types.clone();
         let is_var_args = params_metadata.variadic_arguments.is_some();
-
-        let return_type = self.build_type(
-            func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
-                kind: TokenKind::Void,
-                span: Span::default(),
-                loc: Location::default(),
-            })),
-            func_decl.loc.clone(),
-            func_decl.span.end,
-        );
 
         let func_type = unsafe {
             FunctionType::new(LLVMFunctionType(
