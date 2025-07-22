@@ -1,5 +1,6 @@
 use crate::context::{BlockRegistry, CodeGenLLVM};
 use crate::structs::{StructID, StructMethodMetadata};
+use crate::types::InternalType;
 use crate::{
     build::BuildManifest,
     diag::*,
@@ -39,7 +40,6 @@ pub type ModuleMetadataRegistryRef<'a> = Rc<RefCell<Vec<ModuleMetadata<'a>>>>;
 #[derive(Debug, Clone)]
 pub enum LocalIRValue<'a> {
     Func(FunctionValue<'a>),
-    Struct(StructType<'a>),
     GlobalValue(GlobalValue<'a>),
 }
 
@@ -60,7 +60,7 @@ pub(crate) struct ImportedModule {
     pub module_path: ModulePath,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct ImportedModulePath {
     file_path: String,
     module_path: ModulePath,
@@ -132,152 +132,124 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    fn build_imported_module_path(
+    fn resolve_segments(
         &self,
-        module_path: ModulePath,
-        mut segments: Vec<ModuleSegment>,
+        mut module_path: ModulePath,
+        segments: &[ModuleSegment],
+        sources: Vec<String>,
+        module_file_path: String,
+        get_module_alias: &dyn Fn(ModulePath) -> ModulePath,
         loc: Location,
         span_end: usize,
     ) -> ImportedModulePath {
-        let module_name = module_segments_as_string(segments.clone());
+        let module_name = module_segments_as_string(segments.to_vec());
+        let mut module_file_path = module_file_path;
 
-        // Remove "std" segment if present and switch source path accordingly.
-        let mut sources = self.opts.source_dirs.clone();
-
-        if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.name == "std") {
-            segments.remove(0);
-            sources.insert(0, self.build_stdlib_modules_path());
-        }
-
-        let mut module_file_path = String::new();
-
-        let lookup_dir_and_develop_module_file_path =
-            |mut module_file_path: String, dir_path: String, codegen_file_path: String| -> String {
-                if let Some(found_path) = find_file_from_sources(dir_path, sources.clone()) {
-                    module_file_path.push_str(found_path.to_str().unwrap());
-                    module_file_path.push('/');
-                    module_file_path
-                } else {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::ModuleNotFound(module_name.clone()),
-                        location: Some(DiagLoc {
-                            file: codegen_file_path,
-                            line: loc.line,
-                            column: loc.column,
-                            length: span_end,
-                        }),
-                    });
-                    exit(1);
-                }
-            };
-
-        let handle_import_single = |idx: usize,
-                                    module_segment_singles: Vec<ModuleSegmentSingle>|
-         -> ImportedModulePath {
-            if idx != segments.len() - 1 {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Single segment must be the last in import path.".to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-
-            // Build path from all previous segments
-            let base_path =
-                self.build_imported_module_path(module_path.clone(), segments[0..idx].to_vec(), loc.clone(), span_end);
-
-            if !Path::new(&base_path.file_path).is_file() {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom(
-                        "Cannot use `::` to access from a directory. Expected a module file.".to_string(),
-                    ),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
-
-            ImportedModulePath {
-                file_path: base_path.file_path,
-                module_path: module_path.clone(),
-                singles: Some(module_segment_singles.clone()),
-                loc: loc.clone(),
-                span_end,
-            }
-        };
-
-        let lookup_file = |idx: usize, file_path: String| -> Option<ImportedModulePath> {
-            if let Some(found_path) = find_file_from_sources(file_path, sources.clone()) {
-                if idx == segments.len() - 1 {
-                    // last segment is a file
-                    Some(ImportedModulePath {
-                        file_path: found_path.to_str().unwrap().to_string(),
-                        module_path: module_path.clone(),
-                        singles: None,
-                        loc: loc.clone(),
-                        span_end,
-                    })
-                } else {
-                    if (segments.len() - 1) - idx == 1 {
-                        // last segment is import single
-                        let next_segment = segments[idx + 1].clone();
-                        match next_segment {
-                            ModuleSegment::SubModule(_) => None,
-                            ModuleSegment::Single(module_segment_singles) => {
-                                Some(handle_import_single(idx + 1, module_segment_singles))
-                            }
-                        }
-                    } else {
-                        None
-                    }
-                }
-            } else {
-                None
-            }
-        };
-
-        // Traverse all segments
         for idx in 0..segments.len() {
-            let segment = &segments[idx];
-            match segment {
+            match &segments[idx] {
                 ModuleSegment::SubModule(identifier) => {
                     let dir_path = format!("{}{}", module_file_path, identifier.name);
                     let file_path = format!("{}{}.cyr", module_file_path, identifier.name);
 
-                    match lookup_file(idx, file_path) {
-                        Some(generated_module_import_path) => {
-                            return generated_module_import_path;
+                    if let Some(file_path_buf) = find_file_from_sources(file_path.clone(), sources.clone()) {
+                        if idx == segments.len() - 1 {
+                            return ImportedModulePath {
+                                file_path: file_path_buf.to_str().unwrap().to_string(),
+                                module_path: get_module_alias(module_path.clone()),
+                                singles: None,
+                                loc: loc.clone(),
+                                span_end,
+                            };
+                        } else if (segments.len() - 1) - idx == 1 {
+                            match &segments[idx + 1] {
+                                ModuleSegment::Single(singles) => {
+                                    let base_path = self.resolve_segments(
+                                        module_path.clone(),
+                                        &segments[..idx + 1],
+                                        sources.clone(),
+                                        module_file_path.clone(),
+                                        get_module_alias,
+                                        loc.clone(),
+                                        span_end,
+                                    );
+
+                                    if !Path::new(&base_path.file_path).is_file() {
+                                        display_single_diag(Diag {
+                                            level: DiagLevel::Error,
+                                            kind: DiagKind::Custom(
+                                                "Cannot use `::` to access from a directory. Expected a module file."
+                                                    .to_string(),
+                                            ),
+                                            location: Some(DiagLoc {
+                                                file: self.file_path.clone(),
+                                                line: loc.line,
+                                                column: loc.column,
+                                                length: span_end,
+                                            }),
+                                        });
+                                        exit(1);
+                                    }
+
+                                    return ImportedModulePath {
+                                        file_path: base_path.file_path,
+                                        module_path: get_module_alias(module_path.clone()),
+                                        singles: Some(singles.clone()),
+                                        loc: loc.clone(),
+                                        span_end,
+                                    };
+                                }
+                                _ => {}
+                            }
                         }
-                        None => {
-                            module_file_path = lookup_dir_and_develop_module_file_path(
-                                module_file_path.clone(),
-                                dir_path,
-                                self.file_path.clone(),
-                            );
+                    } else {
+                        if let Some(found_path) = find_file_from_sources(dir_path, sources.clone()) {
+                            module_file_path.push_str(found_path.to_str().unwrap());
+                            module_file_path.push('/');
+                        } else {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::ModuleNotFound(module_name.clone()),
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: loc.line,
+                                    column: loc.column,
+                                    length: span_end,
+                                }),
+                            });
+                            exit(1);
                         }
                     }
                 }
-
                 ModuleSegment::Single(singles) => {
-                    return handle_import_single(idx, singles.clone());
+                    return self.resolve_segments(
+                        module_path.clone(),
+                        &segments[..idx + 1],
+                        sources.clone(),
+                        module_file_path.clone(),
+                        get_module_alias,
+                        loc.clone(),
+                        span_end,
+                    );
                 }
             }
         }
 
-        // Reached end, check if final path is a valid directory (not allowed)
-        if Path::new(&module_file_path).is_dir() {
+        let path = Path::new(&module_file_path);
+        if !path.exists() {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::ModuleImportNotFound(module_name),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    length: span_end,
+                }),
+            });
+            exit(1);
+        }
+
+        if path.is_dir() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
@@ -296,11 +268,55 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         ImportedModulePath {
             file_path: module_file_path,
-            module_path,
+            module_path: get_module_alias(module_path),
             singles: None,
             loc,
             span_end,
         }
+    }
+
+    fn build_imported_module_path(
+        &self,
+        module_path: ModulePath,
+        segments: Vec<ModuleSegment>,
+        loc: Location,
+        span_end: usize,
+    ) -> ImportedModulePath {
+        let mut sources = self.opts.source_dirs.clone();
+
+        let mut segments = segments;
+        if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.name == "std") {
+            segments.remove(0);
+            sources = vec![self.build_stdlib_modules_path()];
+        }
+
+        let module_file_path = String::new();
+
+        let get_module_alias = |mut module_path: ModulePath| match module_path.alias.clone() {
+            Some(alias) => {
+                module_path.segments = vec![ModuleSegment::SubModule(Identifier {
+                    name: alias,
+                    span: module_path.span.clone(),
+                    loc: module_path.loc.clone(),
+                })];
+                module_path
+            }
+            None => {
+                let module_path_last_segment = module_path.segments.last().unwrap().clone();
+                module_path.segments = vec![module_path_last_segment];
+                module_path
+            }
+        };
+
+        self.resolve_segments(
+            module_path,
+            &segments,
+            sources,
+            module_file_path,
+            &get_module_alias,
+            loc,
+            span_end,
+        )
     }
 
     pub(crate) fn get_module_metadata_by_file_path(&self, module_file_path: String) -> Option<ModuleMetadata<'ctx>> {
@@ -313,7 +329,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         module_metadata
     }
 
-    pub(crate) fn get_module_metadata_by_module_id(&self, module_id: u64) -> Option<RefMut<ModuleMetadata<'ctx>>> {
+    pub(crate) fn get_module_metadata_by_module_id(&self, module_id: ModuleID) -> Option<RefMut<ModuleMetadata<'ctx>>> {
         let index = {
             let registry = self.module_metadata_registry.borrow();
             let index = registry.iter().position(|r| r.module_id == module_id)?;
@@ -327,6 +343,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_import(&mut self, import: Import) {
         for module_path in import.paths.clone() {
+            let module_name = self.get_local_module_name(module_path.clone());
+
             let import_path = self.build_imported_module_path(
                 module_path.clone(),
                 module_path.segments.clone(),
@@ -335,7 +353,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
 
             self.error_if_module_already_loaded(import_path.module_path.clone());
-            self.build_imported_module(import_path);
+            self.build_imported_module(module_name, import_path);
         }
     }
 
@@ -371,9 +389,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    fn build_module_with_sub_codegen(&self, import_path: ImportedModulePath) -> (BuildManifest, ModuleID) {
-        let module_name = self.get_local_module_name(import_path.module_path.clone());
-
+    fn build_module_with_sub_codegen(
+        &self,
+        module_name: String,
+        import_path: ImportedModulePath,
+    ) -> (BuildManifest, ModuleID) {
         let sub_module = Rc::new(RefCell::new(self.context.create_module(&module_name)));
         let sub_builder = self.context.create_builder();
         let target_machine = CodeGenLLVM::setup_target_machine(
@@ -433,14 +453,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         drop(module_metadata_registry);
     }
 
-    fn build_imported_module(&mut self, mut import_path: ImportedModulePath) {
+    fn build_imported_module(&mut self, module_name: String, mut import_path: ImportedModulePath) {
         let module_metadata = match self.get_module_metadata_by_file_path(import_path.file_path.clone()) {
             Some(module_metadata) => {
                 // This module compiled before, let's use the same module_metadata.
                 module_metadata
             }
             None => {
-                let (build_manifest, module_id) = self.build_module_with_sub_codegen(import_path.clone());
+                let (build_manifest, module_id) = self.build_module_with_sub_codegen(module_name, import_path.clone());
                 self.build_manifest = build_manifest;
 
                 let module_metadata = self
@@ -453,8 +473,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         if let Some(module_segment_singles) = import_path.singles.clone() {
-            // Build and load import singles into local_defs.
-
             import_path.module_path.segments.pop();
 
             self.build_module_import_singles(
@@ -607,7 +625,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 func_metadata.func_decl.clone(),
                 func_metadata.params_metadata.clone(),
                 false,
-                false,
             );
             let local_ir_value_id = generate_local_ir_value_id();
             self.insert_local_ir_value(local_ir_value_id, LocalIRValue::Func(func_value));
@@ -634,12 +651,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             );
 
             struct_metadata.imported_from = Some(module_id);
-
-            let local_ir_value_id = generate_local_ir_value_id();
-            self.insert_local_ir_value(
-                local_ir_value_id,
-                LocalIRValue::Struct(struct_metadata.struct_type.clone()),
-            );
 
             let mut module_metadata = match self.get_module_metadata_by_module_id(self.module_id) {
                 Some(module_metadata) => module_metadata,
@@ -741,11 +752,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     func_metadata.func_decl.clone(),
                     func_metadata.params_metadata.clone(),
                     false,
-                    false,
                 );
 
-                let local_ir_value = generate_local_ir_value_id();
-                self.insert_local_ir_value(local_ir_value, LocalIRValue::Func(func_value));
+                self.insert_local_ir_value(func_metadata.local_ir_value_id, LocalIRValue::Func(func_value));
                 func_value
             }
         }
@@ -809,6 +818,16 @@ impl<'a> ModuleMetadata<'a> {
         self.typedef_table.insert(name, metadata);
     }
 
+    pub fn get_defined_type(&self, type_name: String) -> Option<InternalType<'a>> {
+        match self.get_struct_metadata_by_name(type_name.clone()) {
+            Some(struct_metadata) => Some(InternalType::StructType(struct_metadata.as_internal_struct_type())),
+            None => match self.typedef_table.get(&type_name) {
+                Some(typedef_metadata) => Some(typedef_metadata.internal_type.clone()),
+                None => None,
+            },
+        }
+    }
+
     pub fn get_struct_metadata_by_id(&mut self, struct_id: StructID) -> &mut StructMetadata<'a> {
         self.struct_table
             .iter_mut()
@@ -819,6 +838,10 @@ impl<'a> ModuleMetadata<'a> {
 
     pub fn get_struct_metadata_by_name(&self, struct_name: String) -> Option<StructMetadata<'a>> {
         self.struct_table.get(&struct_name).cloned()
+    }
+
+    pub fn get_global_variable_by_name(&self, global_variable_name: String) -> Option<GlobalVariableMetadata<'a>> {
+        self.global_variables_table.get(&global_variable_name).cloned()
     }
 
     pub fn get_and_update_struct_type(&mut self, struct_id: StructID, struct_type: StructType<'a>) {

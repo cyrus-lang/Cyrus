@@ -1,13 +1,14 @@
-import logger;
-import std::libc;
+import logger{Person};
+// import std::libc;
 
 func main() {
-	#a = struct { name = "Taha" };
-	libc::printf("name: %s\n", a.name);
+	// #a: Person;
+	Person.hello_world();
+	// logger::Logger.new("services.example");
 
-	#logger = logger::Logger.new("services.example");
-	libc::printf("Group Name: %s\n", logger.group_name);
-	logger.greeting("Taha");
-	logger.logf("We believe in it.");
-	logger.errorf("No problem remains tho.");
+	// libc::printf("value: %d\n", logger);
+	// libc::printf("Group Name: %s\n", logger.group_name);
+	// logger.greeting("Taha");
+	// logger.logf("We believe in it.");
+	// logger.errorf("No problem remains tho.");
 }

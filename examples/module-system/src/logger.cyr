@@ -1,31 +1,31 @@
 import std::libc;
 
 public struct Person {
-    name: char*;
-    age: uint32;
+	name: char*;
+	age: int32;
 
-    public func display(&self) {
-        libc::printf("display\n");
-    }
+	public func hello_world() {
+		libc::printf("Hello World\n");
+	}
 }
 
 public struct Logger {
 	group_name: char*;
 
     public func new(group_name: char*) Logger { 
-		libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
+		libc::printf(libc::stdout, "Logger initialized successfully.\n");
 		return Logger { group_name: group_name };
 	}
 
-	public func logf(self, format: char*) {
-		libc::fprintf(libc::stdout, "[info][%s] %s\n", self.group_name, format);
-	}
+	// public func logf(self, format: char*) {
+	// 	libc::fprintf(libc::stdout, "[info][%s] %s\n", self.group_name, format);
+	// }
 
-	public func errorf(self, format: char*) {
-		libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
-	}
+	// public func errorf(self, format: char*) {
+	// 	libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
+	// }
 
-    public func greeting(self, name: char*) {
-        libc::fprintf(libc::stdout, "Hello, %s!\n", name);
-    }
+    // public func greeting(self, name: char*) {
+    //     libc::fprintf(libc::stdout, "Hello, %s!\n", name);
+    // }
 }

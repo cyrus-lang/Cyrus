@@ -37,6 +37,7 @@ pub enum DiagKind {
     MethodCallOnNonStructValue,
     MethodIsStatic(String),
     MethodIsAnInstance(String),
+    SymbolIsNotAnStruct(String, String),
     Custom(String),
 }
 
@@ -126,6 +127,10 @@ impl fmt::Display for DiagKind {
             DiagKind::MethodIsAnInstance(method_name) => {
                 &format!("Method '{}' belongs to an instance, not the type itself.", method_name)
             }
+            DiagKind::SymbolIsNotAnStruct(symbol_name, module_name) => &format!(
+                "Symbol '{}' from module '{}' is not a struct.",
+                symbol_name, module_name
+            ),
         };
         write!(f, "{}", msg)
     }

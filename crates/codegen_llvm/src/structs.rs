@@ -21,7 +21,7 @@ use inkwell::{
     llvm_sys::{core::LLVMFunctionType, prelude::LLVMTypeRef},
     module::Linkage,
     types::{BasicTypeEnum, FunctionType, StructType},
-    values::{AggregateValueEnum, BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
+    values::{AggregateValueEnum, BasicMetadataValueEnum, BasicValueEnum, PointerValue},
 };
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, ops::DerefMut, process::exit, rc::Rc};
@@ -392,7 +392,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             return_type: return_type.clone(),
             imported_from: None,
             params_metadata: params_metadata.clone(),
-            is_method: true,
         });
 
         let entry_block = self.context.append_basic_block(func_value, "entry");
@@ -945,7 +944,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             return_type: method_metadata.return_type.clone(),
             imported_from: None,
             params_metadata: method_metadata.method_params_metadata.clone(),
-            is_method: false,
         };
         let method_value = self.get_or_declare_local_func_ir_value(method_metadata.local_ir_value_id, func_metadata);
 
@@ -1050,11 +1048,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn lookup_struct_by_name(
         &self,
-        struct_name: ModuleImport,
+        mut module_import: ModuleImport,
         loc: Location,
         span_end: usize,
     ) -> Option<StructMetadata<'ctx>> {
-        if let Some(identifier) = struct_name.as_identifier() {
+        if let Some(identifier) = module_import.as_identifier() {
             let module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
             let struct_metadata = match module_metadata.get_struct_metadata_by_name(identifier.name.clone()) {
                 Some(struct_metadata) => struct_metadata,
@@ -1067,7 +1065,70 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Some(struct_metadata)
         } else {
             // lookup in imported structs
-            todo!();
+            let struct_name = module_import.segments.pop().unwrap().as_identifier().name;
+
+            let module_id = match self.get_imported_module(module_import.segments.clone()) {
+                Some(imported_module) => imported_module.module_id,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::ModuleNotFound(module_segments_as_string(module_import.segments.clone())),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
+
+            let module_metadata = self.get_module_metadata_by_module_id(module_id).unwrap();
+            
+            let internal_type = match module_metadata.get_defined_type(struct_name.clone()) {
+                Some(internal_type) => internal_type,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::SymbolNotFoundInModule(
+                            struct_name,
+                            module_segments_as_string(module_import.segments.clone()),
+                        ),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
+
+            drop(module_metadata);
+
+            let struct_id = match internal_type {
+                InternalType::StructType(internal_struct_type) => internal_struct_type.struct_id,
+                _ => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::SymbolIsNotAnStruct(
+                            struct_name,
+                            module_segments_as_string(module_import.segments.clone()),
+                        ),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
+
+            self.resolve_struct_metadata_with_struct_id(struct_id)
         }
     }
 
@@ -1108,7 +1169,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             return_type: method_metadata.return_type.clone(),
             imported_from: None,
             params_metadata: method_metadata.method_params_metadata.clone(),
-            is_method: false,
         };
         let method_value = self.get_or_declare_local_func_ir_value(method_metadata.local_ir_value_id, func_metadata);
 
@@ -1457,5 +1517,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 unnamed_struct_metadata,
             }),
         )
+    }
+}
+
+impl<'a> StructMetadata<'a> {
+    pub fn as_internal_struct_type(&self) -> InternalStructType<'a> {
+        InternalStructType {
+            struct_id: self.struct_id,
+            struct_name: self.struct_name.clone(),
+            struct_type: self.struct_type.clone(),
+            fields: self.fields.clone(),
+            methods: self.methods.clone(),
+            type_str: module_segments_as_string(self.struct_name.segments.clone()),
+        }
     }
 }

@@ -23,12 +23,11 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct FuncMetadata<'a> {
-    pub local_ir_value_id: LocalIRValueID,
-    pub func_decl: FuncDecl,
-    pub return_type: InternalType<'a>,
-    pub imported_from: Option<ModuleID>,
-    pub params_metadata: FuncParamsMetadata<'a>,
-    pub is_method: bool,
+    pub(crate) local_ir_value_id: LocalIRValueID,
+    pub(crate) func_decl: FuncDecl,
+    pub(crate) return_type: InternalType<'a>,
+    pub(crate) imported_from: Option<ModuleID>,
+    pub(crate) params_metadata: FuncParamsMetadata<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -203,7 +202,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_decl: FuncDecl,
         params_metadata: FuncParamsMetadata<'ctx>,
         insert_to_func_table: bool,
-        is_method: bool,
     ) -> FunctionValue<'ctx> {
         self.error_if_already_declared(func_decl.get_usable_name(), func_decl.loc.clone(), func_decl.span.end);
 
@@ -269,7 +267,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 return_type,
                 imported_from: None,
                 params_metadata: params_metadata.clone(),
-                is_method,
             };
 
             self.insert_local_ir_value(func_metadata.local_ir_value_id, LocalIRValue::Func(func_value));
@@ -567,7 +564,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             return_type: return_type.clone(),
             imported_from: None,
             params_metadata: params_metadata.clone(),
-            is_method: false,
         };
 
         self.insert_local_ir_value(func_metadata.local_ir_value_id, LocalIRValue::Func(func_value));
@@ -582,7 +578,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             return_type: return_type.clone(),
             imported_from: None,
             params_metadata: params_metadata.clone(),
-            is_method: false,
         });
 
         let entry_block = self.context.append_basic_block(func_value, "entry");
@@ -734,7 +729,19 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             let param_internal_type = match params_metadata.param_types.get(idx) {
                 Some(internal_type) => internal_type.clone(),
-                None => todo!(),
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("Couldn't get param metadata from func metadata.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
             };
 
             if !self.compatible_types(param_internal_type.clone(), rvalue.get_type(self.context.i8_type())) {
