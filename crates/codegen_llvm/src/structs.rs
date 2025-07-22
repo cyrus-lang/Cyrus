@@ -856,12 +856,42 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             Some(struct_metadata) => {
                 // Static method call
                 let method_metadata = get_method_metadata(struct_metadata, self.file_path.clone());
+
+                if !method_metadata.is_static_method {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::MethodIsAnInstance(method_call.method_name.name.clone()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: method_call.loc.line,
+                            column: method_call.loc.column,
+                            length: method_call.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+
                 self.build_static_method_call(Rc::clone(&scope), method_call.clone(), method_metadata)
             }
             None => match self.build_method_call_operand_as_rvalue(Rc::clone(&scope), method_call.clone()) {
                 Some((struct_metadata, lvalue, rvalue)) => {
                     // Instance method call
                     let method_metadata = get_method_metadata(struct_metadata, self.file_path.clone());
+
+                    if method_metadata.is_static_method {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::MethodIsStatic(method_call.method_name.name.clone()),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: method_call.loc.line,
+                                column: method_call.loc.column,
+                                length: method_call.span.end,
+                            }),
+                        });
+                        exit(1);
+                    }
+
                     self.build_instance_method_call(
                         Rc::clone(&scope),
                         lvalue,
@@ -1071,8 +1101,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         // Set ABI naming
-        method_metadata.method_decl.renamed_as = Some(method_metadata.method_decl.name.clone());
-        // method_metadata.method_decl.name = self.generate_method_abi_name(method_metadata., struct_name, method_name);
 
         let func_metadata = FuncMetadata {
             local_ir_value_id: method_metadata.local_ir_value_id,
@@ -1126,10 +1154,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         self.check_instance_method_args_count_mismatch(
-            method_metadata.method_decl.name.clone(),
+            method_metadata.method_decl.get_usable_name().clone(),
             method_metadata.method_decl.clone(),
-            // Include self modifier which is added manually from the arguments count
-            method_call.arguments.len() + 1,
+            method_call.arguments.len(),
             method_call.loc.clone(),
             method_call.span.end,
         );

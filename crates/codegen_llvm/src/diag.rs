@@ -35,6 +35,8 @@ pub enum DiagKind {
     ImportingPrivateTypedef(String),
     InvalidStructAccessSpecifier,
     MethodCallOnNonStructValue,
+    MethodIsStatic(String),
+    MethodIsAnInstance(String),
     Custom(String),
 }
 
@@ -117,6 +119,12 @@ impl fmt::Display for DiagKind {
             DiagKind::MethodCallOnNonStructValue => "Cannot build method call for non-struct values.",
             DiagKind::MethodNotDefinedForStruct(method_name, struct_name) => {
                 &format!("Method '{}' not defined for struct '{}'.", method_name, struct_name)
+            }
+            DiagKind::MethodIsStatic(method_name) => {
+                &format!("Method '{}' is static, cannot be called on an instance.", method_name)
+            }
+            DiagKind::MethodIsAnInstance(method_name) => {
+                &format!("Method '{}' belongs to an instance, not the type itself.", method_name)
             }
         };
         write!(f, "{}", msg)
