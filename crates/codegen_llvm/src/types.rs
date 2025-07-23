@@ -11,6 +11,7 @@ use ast::ast::AccessSpecifier;
 use ast::ast::ArrayCapacity;
 use ast::ast::ArrayTypeSpecifier;
 use ast::ast::Field;
+use ast::ast::MatrixType;
 use ast::ast::ModuleImport;
 use ast::ast::ModuleSegment;
 use ast::ast::TypeSpecifier;
@@ -526,7 +527,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             TypeSpecifier::Array(array_type_specifier) => self.build_array_type(array_type_specifier, loc, span_end),
             TypeSpecifier::TypeToken(token) => self.build_type_token(token, loc.clone()),
             TypeSpecifier::UnnamedStruct(unnamed_struct) => self.build_unnamed_struct_type(unnamed_struct),
+            TypeSpecifier::Matrix(matrix_type) => self.build_matrix_type(matrix_type),
         }
+    }
+
+    pub(crate) fn build_matrix_type(&self, matrix_type: MatrixType) -> InternalType<'ctx> {
+        todo!();
     }
 
     pub(crate) fn build_type_token(&self, type_token: Token, loc: Location) -> InternalType<'ctx> {

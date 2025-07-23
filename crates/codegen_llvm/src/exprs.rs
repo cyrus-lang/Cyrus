@@ -46,7 +46,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_assignment(Rc::clone(&scope), assignment);
                 InternalValue::PointerValue(self.build_null())
             }
+            Expression::MatrixValue(matrix_value) => self.build_matrix_value(Rc::clone(&scope), matrix_value),
         }
+    }
+
+    pub(crate) fn build_matrix_value(&self, scope: ScopeRef<'ctx>, matrix_value: MatrixValue) -> InternalValue<'ctx> {
+        todo!();
     }
 
     pub(crate) fn build_address_of(&mut self, scope: ScopeRef<'ctx>, address_of: AddressOf) -> InternalValue<'ctx> {
@@ -164,12 +169,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let global_value = match self.get_local_global_value_ir_value(global_variable_metadata.local_ir_value_id) {
             Some(global_value) => global_value,
-            None => {
-                self.get_or_declare_local_global_value(
+            None => self.get_or_declare_local_global_value(
                 global_variable_metadata.local_ir_value_id,
                 global_variable_metadata.clone(),
-            )
-            },
+            ),
         };
 
         let global_value_ptr = global_value.as_pointer_value();

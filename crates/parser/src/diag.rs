@@ -18,6 +18,7 @@ pub enum ParserErrorType {
     IncompleteConditionalForLoop,
     InvalidUntypedArrayConstructor,
     ExpectedSelfModifier(String),
+    MatrixDimensionMustBeAnInteger,
     SeveralSelfModifierDefinition,
 }
 
@@ -39,6 +40,7 @@ impl fmt::Display for ParserErrorType {
             ParserErrorType::InvalidUntypedArrayConstructor => write!(f, "InvalidUntypedArrayConstructor"),
             ParserErrorType::ExpectedSelfModifier(_) => write!(f, "ExpectedSelfModifier"),
             ParserErrorType::SeveralSelfModifierDefinition => write!(f, "SeveralSelfModifierDefinition"),
+            ParserErrorType::MatrixDimensionMustBeAnInteger => write!(f, "MatrixDimensionMustBeAnInteger"),
         }
     }
 }
@@ -79,6 +81,9 @@ impl CompileTypeErrorType for ParserErrorType {
             }
             ParserErrorType::ExpectedSelfModifier(name) => {
                 format!("Self modifier identifier must be 'self' not '{}'.", name)
+            }
+            ParserErrorType::MatrixDimensionMustBeAnInteger => {
+                "Matrix dimensions must a value of type integer.".to_string()
             }
         }
     }

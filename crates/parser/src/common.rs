@@ -62,6 +62,9 @@ impl<'a> Parser<'a> {
         let current = self.current_token.clone();
 
         let parsed_kind = match current.kind.clone() {
+            TokenKind::Matrix => {
+                Ok(TypeSpecifier::Matrix(self.parse_matrix()?))
+            }
             token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
             TokenKind::Struct | TokenKind::Bits => self.parse_struct_type(),
             TokenKind::Const => {

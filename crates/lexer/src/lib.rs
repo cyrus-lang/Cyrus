@@ -807,6 +807,7 @@ impl Lexer {
             "public" => TokenKind::Public,
             "const" => TokenKind::Const,
             "sizeof" => TokenKind::SizeOf,
+            "matrix" => TokenKind::Matrix,
             _ => TokenKind::Identifier {
                 name: ident.to_string(),
             },

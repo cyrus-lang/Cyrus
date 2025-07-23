@@ -48,6 +48,16 @@ pub enum Expression {
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
     UnnamedStructValue(UnnamedStructValue),
+    MatrixValue(MatrixValue)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatrixValue {
+    pub element_type: Box<TypeSpecifier>,
+    pub dims: (usize, usize),
+    pub values: Vec<Expression>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -226,7 +236,17 @@ pub enum TypeSpecifier {
     ModuleImport(ModuleImport),
     Dereference(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
+    Matrix(MatrixType),
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatrixType {
+    pub element_type: Box<TypeSpecifier>,
+    pub dims: (usize, usize),
+    pub loc: Location,
+    pub span: Span,
+}
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArrayTypeSpecifier {

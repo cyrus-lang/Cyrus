@@ -100,6 +100,7 @@ pub enum TokenKind {
     Null,
     As,
     Const,
+    Matrix,
 
     // Object Visibility Keywords
     Extern,
@@ -130,6 +131,7 @@ pub const PRIMITIVE_TYPES: &[TokenKind] = &[
     TokenKind::Char,
     TokenKind::Bool,
     TokenKind::Void,
+    TokenKind::Matrix,
 ];
 
 impl fmt::Display for TokenKind {
@@ -213,6 +215,7 @@ impl fmt::Display for TokenKind {
             Self::Public => write!(f, "public"),
             Self::Const => write!(f, "const"),
             Self::SizeOf => write!(f, "sizeof"),
+            Self::Matrix => write!(f, "matrix"),
             Self::Literal(literal) => write!(f, "{}", literal),
             // ETC
             Self::Illegal => write!(f, "ILLEGAL"),

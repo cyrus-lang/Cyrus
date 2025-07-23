@@ -117,6 +117,13 @@ impl fmt::Display for TypeSpecifier {
                 }
                 write!(f, "}}")
             }
+            TypeSpecifier::Matrix(matrix_type) => {
+                write!(
+                    f,
+                    "matrix[{}, {}] {}",
+                    matrix_type.dims.0, matrix_type.dims.1, matrix_type.element_type
+                )
+            }
         }
     }
 }
@@ -205,6 +212,16 @@ impl fmt::Display for Expression {
                 write!(f, "{}", module_import.to_string())
             }
             Expression::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
+            Expression::MatrixValue(matrix_value) => {
+                write!(
+                    f,
+                    "matrix[{}, {}] {} {{ {} }}",
+                    matrix_value.dims.0,
+                    matrix_value.dims.1,
+                    matrix_value.element_type,
+                    expression_series_to_string(matrix_value.values.clone())
+                )
+            }
         }
     }
 }
@@ -255,7 +272,7 @@ impl fmt::Display for UnnamedStructValue {
             if let Some(field_type) = field.field_type {
                 write!(f, ": {}", field_type)?;
             }
-            
+
             write!(f, " = {}", *field.field_value)?;
         }
         write!(f, " }}")

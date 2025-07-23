@@ -189,6 +189,7 @@ impl<'a> Parser<'a> {
                     expr
                 }
             }
+            TokenKind::Matrix => self.parse_matrix_value()?,
             _ => {
                 if self.matches_type_token(self.current_token.kind.clone()) {
                     let type_specifier = self.parse_type_specifier()?;
@@ -700,6 +701,88 @@ impl<'a> Parser<'a> {
         }
 
         Ok(base_index)
+    }
+
+    pub fn parse_and_get_integer_value(&mut self) -> Result<i64, ParseError> {
+        let loc = self.current_token.loc.clone();
+        let start = self.current_token.span.start;
+
+        match match self.parse_prefix_expression()? {
+            Expression::Literal(literal) => match literal.kind {
+                LiteralKind::Integer(integer) => Some(integer),
+                _ => None,
+            },
+            _ => None,
+        } {
+            Some(integer) => Ok(integer),
+            None => {
+                return Err(CompileTimeError {
+                    location: loc,
+                    etype: ParserErrorType::MatrixDimensionMustBeAnInteger,
+                    file_name: Some(self.lexer.file_name.clone()),
+                    source_content: Box::new(self.lexer.input.clone()),
+                    verbose: None,
+                    caret: Some(Span::new(start, self.current_token.span.end)),
+                });
+            }
+        }
+    }
+
+    pub fn parse_matrix(&mut self) -> Result<MatrixType, ParseError> {
+        let loc = self.current_token.loc.clone();
+        let start = self.current_token.span.start;
+
+        self.expect_current(TokenKind::Matrix)?;
+        self.expect_current(TokenKind::LeftBracket)?;
+
+        let row = self.parse_and_get_integer_value()? as usize;
+        self.next_token();
+
+        self.expect_current(TokenKind::Comma)?;
+
+        let column = self.parse_and_get_integer_value()? as usize;
+        self.next_token();
+
+        self.expect_current(TokenKind::RightBracket)?;
+
+        let element_type = self.parse_type_specifier()?;
+
+        Ok(MatrixType {
+            element_type: Box::new(element_type),
+            dims: (row, column),
+            loc,
+            span: Span::new(start, self.current_token.span.end),
+        })
+    }
+
+    pub fn parse_matrix_value(&mut self) -> Result<Expression, ParseError> {
+        let loc = self.current_token.loc.clone();
+        let start = self.current_token.span.start;
+
+        let matrix_type = self.parse_matrix()?;
+        self.next_token();
+
+        self.expect_current(TokenKind::LeftBrace)?;
+        let values = self.parse_expression_series(TokenKind::RightBrace)?.0;
+
+        if !self.current_token_is(TokenKind::RightBrace) {
+            return Err(CompileTimeError {
+                location: loc.clone(),
+                etype: ParserErrorType::ExpectedToken(self.current_token.kind.clone()),
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: Some(Span::new(start, self.current_token.span.end)),
+            });
+        }
+
+        Ok(Expression::MatrixValue(MatrixValue {
+            element_type: matrix_type.element_type,
+            dims: matrix_type.dims,
+            values,
+            loc,
+            span: Span::new(start, self.current_token.span.end),
+        }))
     }
 
     pub fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expression, ParseError> {
