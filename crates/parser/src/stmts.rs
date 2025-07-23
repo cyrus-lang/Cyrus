@@ -115,6 +115,7 @@ impl<'a> Parser<'a> {
                     break;
                 } else {
                     self.expect_current(TokenKind::Comma)?;
+                    continue;
                 }
             }
         }
@@ -124,7 +125,6 @@ impl<'a> Parser<'a> {
 
     pub fn parse_enum(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParseError> {
         let loc = self.current_token.loc.clone();
-        let access_specifier = access_specifier.unwrap_or(AccessSpecifier::Inline);
 
         self.next_token(); // parse enum keyword
 
@@ -147,15 +147,15 @@ impl<'a> Parser<'a> {
         enum_fields.push(self.parse_enum_field()?);
 
         while self.current_token_is(TokenKind::Comma) {
-            self.next_token(); // consume comma
+            self.expect_current(TokenKind::Comma)?;
 
             if self.current_token_is(TokenKind::RightBrace) {
                 break;
             }
 
             enum_fields.push(self.parse_enum_field()?);
-            if !self.current_token_is(TokenKind::RightBrace) {
-                self.expect_current(TokenKind::Comma)?;
+            if self.peek_token_is(TokenKind::RightBrace) {
+                break;
             }
         }
 
@@ -163,8 +163,6 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::Comma) {
             self.next_token();
         }
-
-        self.expect_current(TokenKind::RightBrace)?;
 
         Ok(Statement::Enum(Enum {
             name: enum_name,

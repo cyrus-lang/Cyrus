@@ -99,7 +99,7 @@ pub struct UnnamedStructTypeField {
 pub struct Enum {
     pub name: Identifier,
     pub variants: Vec<EnumField>,
-    pub access_specifier: AccessSpecifier,
+    pub access_specifier: Option<AccessSpecifier>,
     pub loc: Location,
 }
 
