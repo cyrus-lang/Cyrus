@@ -1,1 +1,10 @@
-func main() { } 
+enum Color {
+    RED,
+    BLUE,
+    Custom(a int32),
+    ANOTHER = 10,
+}
+
+func main() {
+    
+} 
