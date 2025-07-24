@@ -76,7 +76,7 @@ impl<'a> Parser<'a> {
         let mut variant_fields: Vec<EnumValuedField> = Vec::new();
 
         if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
-            return Ok(EnumField::OnlyIdentifier(variant_name));
+            return Ok(EnumField::Identifier(variant_name));
         } else if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign 
             let value = self.parse_expression(Precedence::Lowest)?.0;
@@ -102,6 +102,8 @@ impl<'a> Parser<'a> {
                 let field_name = self.parse_identifier()?;
                 self.next_token(); // consume field name
 
+                self.expect_current(TokenKind::Colon)?;
+                
                 let field_type = self.parse_type_specifier()?;
                 self.next_token();
 
@@ -124,7 +126,9 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_enum(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParseError> {
+        let access_specifier = access_specifier.unwrap_or(AccessSpecifier::Internal);
         let loc = self.current_token.loc.clone();
+        let start = self.current_token.span.start;
 
         self.next_token(); // parse enum keyword
 
@@ -137,10 +141,11 @@ impl<'a> Parser<'a> {
 
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Statement::Enum(Enum {
-                name: enum_name,
+                identifier: enum_name,
                 variants: enum_fields,
                 access_specifier,
                 loc,
+                span: Span::new(start, self.current_token.span.end)
             }));
         }
 
@@ -165,10 +170,11 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Statement::Enum(Enum {
-            name: enum_name,
+            identifier: enum_name,
             variants: enum_fields,
             access_specifier,
             loc,
+            span: Span::new(start, self.current_token.span.end)
         }))
     }
 

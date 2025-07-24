@@ -1,4 +1,5 @@
 use crate::context::{BlockRegistry, CodeGenLLVM};
+use crate::enums::{EnumMetadata, EnumTable};
 use crate::structs::{StructID, StructMethodMetadata};
 use crate::types::InternalType;
 use crate::{
@@ -50,6 +51,7 @@ pub struct ModuleMetadata<'a> {
     pub func_table: FuncTable<'a>,
     pub struct_table: StructTable<'a>,
     pub global_variables_table: GlobalVariablesTable<'a>,
+    pub enum_table: EnumTable<'a>,
     pub typedef_table: TypedefTable<'a>,
 }
 
@@ -438,6 +440,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             func_table: FuncTable::new(),
             struct_table: StructTable::new(),
             global_variables_table: GlobalVariablesTable::new(),
+            enum_table: EnumTable::new(),
             typedef_table: TypedefTable::new(),
         });
 
@@ -814,6 +817,10 @@ impl<'a> ModuleMetadata<'a> {
 
     pub fn insert_struct(&mut self, name: String, metadata: StructMetadata<'a>) {
         self.struct_table.insert(name, metadata);
+    }
+
+    pub fn insert_enum(&mut self, name: String, metadata: EnumMetadata<'a>) {
+        self.enum_table.insert(name, metadata);
     }
 
     pub fn insert_typedef(&mut self, name: String, metadata: TypedefMetadata<'a>) {
