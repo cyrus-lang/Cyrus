@@ -34,6 +34,7 @@ pub enum DiagKind {
     ImportingPrivateStruct(String),
     ImportingPrivateTypedef(String),
     InvalidStructAccessSpecifier,
+    InvalidEnumAccessSpecifier,
     MethodCallOnNonStructValue,
     MethodIsStatic(String),
     MethodIsAnInstance(String),
@@ -115,6 +116,9 @@ impl fmt::Display for DiagKind {
             }
             DiagKind::InvalidStructAccessSpecifier => {
                 "Structs must be declared with public or internal access specifier."
+            }
+            DiagKind::InvalidEnumAccessSpecifier => {
+                "Enums must be declared with public or internal access specifier."
             }
             DiagKind::ModuleImportNotFound(module_name) => &format!("Module '{}' not found.", module_name),
             DiagKind::MethodCallOnNonStructValue => "Cannot build method call for non-struct values.",

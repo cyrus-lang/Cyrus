@@ -1,5 +1,6 @@
 use crate::build;
 use crate::diag::*;
+use crate::enums::EnumTable;
 use crate::funcs::{FuncMetadata, FuncTable};
 use crate::modules::{
     ImportedModule, LocalIRValueRegistryRef, ModuleID, ModuleMetadata, ModuleMetadataRegistryRef, generate_module_id,
@@ -122,6 +123,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             struct_table: StructTable::new(),
             global_variables_table: GlobalVariablesTable::new(),
             typedef_table: TypedefTable::new(),
+            enum_table: EnumTable::new()
         });
 
         if codegen_llvm.opts.display_target_machine {
