@@ -101,7 +101,7 @@ pub struct Enum {
     pub variants: Vec<EnumField>,
     pub access_specifier: AccessSpecifier,
     pub loc: Location,
-    pub span: Span
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -113,7 +113,7 @@ pub enum EnumField {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumValuedField {
-    pub name: Identifier,
+    pub identifier: Identifier,
     pub field_type: TypeSpecifier,
 }
 

@@ -47,7 +47,7 @@ pub struct CodeGenLLVM<'ctx> {
     pub(crate) output_kind: OutputKind,                                   // compiler output kind
     pub(crate) final_build_dir: String,                                   // build directory path
     pub(crate) block_registry: BlockRegistry<'ctx>,                       // block registry
-    pub(crate) imported_modules: Vec<ImportedModule>,                    // imported modules list
+    pub(crate) imported_modules: Vec<ImportedModule>,                     // imported modules list
     pub(crate) module_metadata_registry: ModuleMetadataRegistryRef<'ctx>, // global shared module metadata registry
     pub(crate) local_ir_value_registry: LocalIRValueRegistryRef<'ctx>,    // per-module IR-value registry
 }
@@ -123,7 +123,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             struct_table: StructTable::new(),
             global_variables_table: GlobalVariablesTable::new(),
             typedef_table: TypedefTable::new(),
-            enum_table: EnumTable::new()
+            enum_table: EnumTable::new(),
         });
 
         if codegen_llvm.opts.display_target_machine {

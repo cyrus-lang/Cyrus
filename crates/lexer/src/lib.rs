@@ -355,8 +355,7 @@ impl Lexer {
                 if self.ch == 'b' && self.peek_char() == '"' {
                     self.read_char();
                     return self.read_string(Some(StringPrefix::B));
-                }
-                else if self.ch.is_alphabetic() || self.ch == '_' {
+                } else if self.ch.is_alphabetic() || self.ch == '_' {
                     return self.read_identifier();
                 } else if self.is_numeric(self.ch) {
                     return self.read_number();

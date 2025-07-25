@@ -64,8 +64,8 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
                     // Read up to 2 more octal digits
                     for _ in 0..2 {
                         if let Some(c @ '0'..='7') = chars.peek() {
-                             oct.push(*c);
-                             chars.next(); // consume the peeked char
+                            oct.push(*c);
+                            chars.next(); // consume the peeked char
                         } else {
                             break;
                         }
@@ -121,4 +121,3 @@ pub fn saturating_sub(value: usize, input: usize) -> usize {
 pub fn spaces(n: usize) -> String {
     " ".repeat(n)
 }
-

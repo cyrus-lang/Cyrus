@@ -255,7 +255,7 @@ impl fmt::Display for UnnamedStructValue {
             if let Some(field_type) = field.field_type {
                 write!(f, ": {}", field_type)?;
             }
-            
+
             write!(f, " = {}", *field.field_value)?;
         }
         write!(f, " }}")

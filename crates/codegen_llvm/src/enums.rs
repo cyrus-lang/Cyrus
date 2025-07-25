@@ -1,14 +1,14 @@
 use crate::{
     context::CodeGenLLVM,
     diag::*,
-    modules::{LocalIRValue, LocalIRValueID, generate_local_ir_value_id},
+    modules::{LocalIRValueID, generate_local_ir_value_id},
     structs::UnnamedStructTypeMetadata,
+    types::{InternalEnumType, InternalType},
+    values::InternalValue,
 };
 use ast::ast::{AccessSpecifier, Enum, EnumField, Identifier};
 use inkwell::{
-    module::{self, Linkage},
-    types::IntType,
-    values::IntValue,
+    types::{ArrayType, BasicTypeEnum}, values::{ArrayValue, BasicValueEnum}, AddressSpace
 };
 use rand::Rng;
 use std::{collections::HashMap, process::exit};
@@ -19,16 +19,25 @@ pub type EnumID = u64;
 pub struct EnumMetadata<'a> {
     pub enum_id: EnumID,
     pub variants: Vec<(Identifier, EnumVariantMetadata<'a>)>,
+    pub internal_type: InternalType<'a>,
     pub access_specifier: AccessSpecifier,
+    payload_type: EnumPayloadType<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumIdentifierVariantMetadata {
-    local_ir_value_id: LocalIRValueID,
+    variant_number: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumVariantFieldMetadata<'a> {
+    variant_number: u32,
+    unnamed_struct_type: UnnamedStructTypeMetadata<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumValuedVariantMetadata {
+    variant_number: u32,
     local_ir_value_id: LocalIRValueID,
 }
 
@@ -36,30 +45,19 @@ pub struct EnumValuedVariantMetadata {
 pub enum EnumVariantMetadata<'a> {
     Identifier(EnumIdentifierVariantMetadata),
     Valued(EnumValuedVariantMetadata),
-    Variant(UnnamedStructTypeMetadata<'a>),
+    Variant(EnumVariantFieldMetadata<'a>),
 }
 
 pub type EnumTable<'a> = HashMap<String, EnumMetadata<'a>>;
+pub type EnumPayloadType<'a> = ArrayType<'a>;
+pub type EnumPayloadValue<'a> = ArrayValue<'a>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    fn build_enum_variant_int_type(&self) -> IntType<'ctx> {
-        self.context.i32_type()
-    }
-
-    fn build_enum_variant_int_value(&self, value: u64) -> IntValue<'ctx> {
-        self.context.i32_type().const_int(value, false)
-    }
-
-    fn build_enum_linkage(&self, access_specifier: AccessSpecifier) -> Linkage {
-        match access_specifier {
-            AccessSpecifier::Public => Linkage::External,
-            AccessSpecifier::Internal => Linkage::Private,
-            _ => unreachable!(),
-        }
-    }
-
-    pub(crate) fn build_enum(&self, enum_statement: Enum) {
-        if !matches!(
+    pub(crate) fn build_enum(&mut self, enum_statement: Enum) {
+        if enum_statement.access_specifier == AccessSpecifier::Extern {
+            self.build_c_enum(enum_statement);
+            return;
+        } else if !matches!(
             enum_statement.access_specifier,
             AccessSpecifier::Public | AccessSpecifier::Internal
         ) {
@@ -77,58 +75,206 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         let enum_name = enum_statement.identifier.name.clone();
-        let module_ref = self.module.borrow_mut();
+        let enum_opaque_struct = self
+            .context
+            .opaque_struct_type(&self.generate_enum_abi_name(self.module_name.clone(), enum_name.clone()));
+
         let mut enum_iota = 0;
 
-        let mut enum_variants: Vec<(Identifier, EnumVariantMetadata)> = Vec::new();
+        // Determine payload size
+        let mut payload_size = 0;
+        let mut variants: Vec<(Identifier, EnumVariantMetadata<'ctx>)> = Vec::new();
 
         enum_statement.variants.iter().for_each(|variant| {
             let (identifier, enum_variant_metadata) = match variant {
                 EnumField::Identifier(identifier) => {
-                    let global_value = module_ref.add_global(
-                        self.build_enum_variant_int_type(),
-                        None,
-                        &self.generate_enum_variant_abi_name(
-                            self.module_name.clone(),
-                            enum_name.clone(),
-                            identifier.name.clone(),
-                        ),
-                    );
+                    // Does not affect payload size.
+                    (
+                        identifier,
+                        EnumVariantMetadata::Identifier(EnumIdentifierVariantMetadata {
+                            variant_number: enum_iota,
+                        }),
+                    )
+                }
+                EnumField::Valued(identifier, expression) => {
+                    match self.build_unscoped_expression(*expression.clone()) {
+                        Some(internal_value) => {
+                            let internal_type = internal_value.get_type();
+                            let store_size = self.get_internal_type_store_size(internal_type);
 
-                    let local_ir_value_id = generate_local_ir_value_id();
-                    let variant_value = self.build_enum_variant_int_value(enum_iota);
+                            if store_size > payload_size {
+                                payload_size = store_size;
+                            }
 
-                    global_value.set_initializer(&variant_value);
-                    global_value.set_constant(true);
-                    global_value.set_linkage(self.build_enum_linkage(enum_statement.access_specifier.clone()));
-                    global_value.set_alignment(1);
+                            (
+                                identifier,
+                                EnumVariantMetadata::Valued(EnumValuedVariantMetadata {
+                                    variant_number: enum_iota,
+                                    local_ir_value_id: generate_local_ir_value_id(),
+                                }),
+                            )
+                        }
+                        None => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::MustBeComptimeExpr,
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: identifier.loc.line,
+                                    column: identifier.loc.column,
+                                    length: identifier.span.end,
+                                }),
+                            });
+                            exit(1);
+                        }
+                    }
+                }
+                EnumField::Variant(identifier, enum_valued_fields) => {
+                    let mut fields_metadata: Vec<(String, InternalType<'ctx>)> = Vec::new();
 
-                    self.insert_local_ir_value(local_ir_value_id, LocalIRValue::GlobalValue(global_value));
+                    let ptr_type = self.context.ptr_type(AddressSpace::default());
+                    let variant_fields: Vec<BasicTypeEnum<'ctx>> = enum_valued_fields
+                        .iter()
+                        .map(|enum_valued_field| {
+                            let internal_type = self.build_type(
+                                enum_valued_field.field_type.clone(),
+                                enum_valued_field.identifier.loc.clone(),
+                                enum_valued_field.identifier.span.end,
+                            );
 
-                    enum_iota += 1;
+                            fields_metadata.push((enum_valued_field.identifier.name.clone(), internal_type.clone()));
+
+                            match internal_type.to_basic_type(ptr_type) {
+                                Ok(basic_type) => basic_type,
+                                Err(err) => {
+                                    display_single_diag(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: DiagKind::Custom(err.to_string()),
+                                        location: Some(DiagLoc {
+                                            file: self.file_path.clone(),
+                                            line: identifier.loc.line,
+                                            column: identifier.loc.column,
+                                            length: identifier.span.end,
+                                        }),
+                                    });
+                                    exit(1);
+                                }
+                            }
+                        })
+                        .collect();
+
+                    let struct_type = self.context.struct_type(&variant_fields, false);
+                    let store_size = self.get_struct_store_size(struct_type);
+                    if store_size > payload_size {
+                        payload_size = store_size;
+                    }
 
                     (
                         identifier,
-                        EnumVariantMetadata::Identifier(EnumIdentifierVariantMetadata { local_ir_value_id }),
+                        EnumVariantMetadata::Variant(EnumVariantFieldMetadata {
+                            unnamed_struct_type: UnnamedStructTypeMetadata {
+                                struct_type,
+                                fields: fields_metadata,
+                            },
+                            variant_number: enum_iota,
+                        }),
                     )
                 }
-                EnumField::Valued(identifier, expression) => todo!(),
-                EnumField::Variant(identifier, enum_valued_fields) => todo!(),
             };
 
-            enum_variants.push((identifier.clone(), enum_variant_metadata));
+            variants.push((identifier.clone(), enum_variant_metadata));
+            enum_iota += 1;
         });
 
+        let payload_type = self.context.i8_type().array_type(payload_size.try_into().unwrap());
+        let field_types: &[BasicTypeEnum<'ctx>; 2] = &[
+            BasicTypeEnum::IntType(self.context.i32_type()),
+            BasicTypeEnum::ArrayType(payload_type),
+        ];
+        enum_opaque_struct.set_body(field_types, false);
+
+        let enum_id = generate_enum_id();
+
+        let enum_internal_type = InternalType::EnumType(InternalEnumType {
+            enum_id,
+            enum_type: enum_opaque_struct,
+            type_str: enum_statement.identifier.name.clone(),
+        });
+
+        let enum_metadata = EnumMetadata {
+            enum_id,
+            variants,
+            payload_type,
+            internal_type: enum_internal_type,
+            access_specifier: enum_statement.access_specifier,
+        };
+
         let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
-        module_metadata.insert_enum(
-            enum_name,
-            EnumMetadata {
-                enum_id: generate_enum_id(),
-                variants: enum_variants,
-                access_specifier: enum_statement.access_specifier,
-            },
-        );
+        module_metadata.insert_enum(enum_name, enum_metadata);
         drop(module_metadata);
+    }
+
+    fn build_c_enum(&self, enum_statement: Enum) {
+        // Build C-ABI compatible enum statement.
+        todo!();
+    }
+
+    pub(crate) fn build_construct_enum(&self, enum_metadata: EnumMetadata<'ctx>, variant_number: u32) -> InternalValue<'ctx> {
+        let variant_metadata = enum_metadata.resolve_enum_variant_metadata(variant_number).unwrap().1;
+        let payload_value = variant_metadata.get_payload(enum_metadata.payload_type);
+
+        let internal_enum_type = match enum_metadata.internal_type.clone() {
+            InternalType::EnumType(internal_enum_type) => internal_enum_type,
+            _ => unreachable!(),
+        };
+
+        let struct_value = internal_enum_type.enum_type.const_named_struct(&[
+            BasicValueEnum::IntValue(self.context.i32_type().const_int(variant_number.into(), false)),
+            BasicValueEnum::ArrayValue(payload_value)
+        ]);
+
+        InternalValue::EnumValue(struct_value, enum_metadata.internal_type.clone())
+    }
+}
+
+impl EnumIdentifierVariantMetadata {
+    pub fn get_payload<'a>(&self, payload_type: EnumPayloadType<'a>) -> EnumPayloadValue<'a> {
+        payload_type.const_zero()
+    }
+}
+
+impl EnumValuedVariantMetadata {
+    pub fn get_payload<'a>(&self, payload_type: EnumPayloadType<'a>) -> EnumPayloadValue<'a> {
+        todo!();
+    }
+}
+
+impl<'a> EnumVariantFieldMetadata<'a> {
+    pub fn get_payload(&self, payload_type: EnumPayloadType<'a>) -> EnumPayloadValue<'a> {
+        todo!();
+    }
+}
+
+impl<'a> EnumVariantMetadata<'a> {
+    pub fn get_payload(&self, payload_type: EnumPayloadType<'a>) -> EnumPayloadValue<'a> {
+        match self {
+            EnumVariantMetadata::Identifier(m) => m.get_payload(payload_type),
+            EnumVariantMetadata::Valued(m) => m.get_payload(payload_type),
+            EnumVariantMetadata::Variant(m) => m.get_payload(payload_type),
+        }
+    }
+}
+
+impl<'a> EnumMetadata<'a> {
+    pub fn resolve_enum_variant_metadata(&self, variant_number: u32) -> Option<(Identifier, EnumVariantMetadata<'a>)> {
+        self.variants
+            .iter()
+            .find(|v| match &v.1 {
+                EnumVariantMetadata::Identifier(m) => m.variant_number == variant_number,
+                EnumVariantMetadata::Valued(m) => m.variant_number == variant_number,
+                EnumVariantMetadata::Variant(m) => m.variant_number == variant_number,
+            })
+            .cloned()
     }
 }
 

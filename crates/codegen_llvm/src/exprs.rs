@@ -1,7 +1,7 @@
 use crate::{
     context::CodeGenLLVM,
     diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
-    scope::ScopeRef,
+    scope::{Scope, ScopeRef},
     types::{
         InternalArrayType, InternalBoolType, InternalFloatType, InternalIntType, InternalLvalueType,
         InternalPointerType, InternalType,
@@ -18,7 +18,7 @@ use inkwell::{
     types::{BasicType, BasicTypeEnum},
     values::{ArrayValue, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue},
 };
-use std::{process::exit, rc::Rc};
+use std::{cell::RefCell, process::exit, rc::Rc};
 
 impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_expr(&mut self, scope: ScopeRef<'ctx>, expr: Expression) -> InternalValue<'ctx> {
@@ -46,6 +46,21 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 self.build_assignment(Rc::clone(&scope), assignment);
                 InternalValue::PointerValue(self.build_null())
             }
+        }
+    }
+
+    pub(crate) fn build_unscoped_expression(&mut self, expression: Expression) -> Option<InternalValue<'ctx>> {
+        match expression {
+            expr @ Expression::Literal(..)
+            | expr @ Expression::Prefix(..)
+            | expr @ Expression::Infix(..)
+            | expr @ Expression::UnaryOperator(..)
+            | expr @ Expression::ModuleImport(..)
+            | expr @ Expression::Array(..) => {
+                let fake_scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
+                Some(self.build_expr(fake_scope, expr))
+            }
+            _ => None,
         }
     }
 
@@ -164,12 +179,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let global_value = match self.get_local_global_value_ir_value(global_variable_metadata.local_ir_value_id) {
             Some(global_value) => global_value,
-            None => {
-                self.get_or_declare_local_global_value(
+            None => self.get_or_declare_local_global_value(
                 global_variable_metadata.local_ir_value_id,
                 global_variable_metadata.clone(),
-            )
-            },
+            ),
         };
 
         let global_value_ptr = global_value.as_pointer_value();
@@ -244,13 +257,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
                 if !self.compatible_types(
                     typed_pointer_value.pointee_ty.clone(),
-                    rvalue.get_type(self.context.i8_type()),
+                    rvalue.get_type(),
                 ) {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
                             "Cannot assign value of type '{}' to lvalue of type '{}'.",
-                            rvalue.get_type(self.context.i8_type()),
+                            rvalue.get_type(),
                             typed_pointer_value.pointee_ty
                         )),
                         location: Some(DiagLoc {
@@ -289,12 +302,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                if !self.compatible_types(lvalue.pointee_ty.clone(), rvalue.get_type(self.context.i8_type())) {
+                if !self.compatible_types(lvalue.pointee_ty.clone(), rvalue.get_type()) {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
                             "Cannot assign value of type '{}' to lvalue of type '{}'.",
-                            rvalue.get_type(self.context.i8_type()),
+                            rvalue.get_type(),
                             lvalue.pointee_ty
                         )),
                         location: Some(DiagLoc {
@@ -378,14 +391,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .iter()
                 .enumerate()
                 .map(|(idx, v)| {
-                    if !self.compatible_types(v.get_type(self.context.i8_type()), element_type.clone()) {
+                    if !self.compatible_types(v.get_type(), element_type.clone()) {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(format!(
                                 "Incompatible item in array construction at index {}. Expected item with type '{}' but got '{}'.",
                                 idx,
                                 element_type,
-                                v.get_type(self.context.i8_type())
+                                v.get_type()
                             )),
                             location: Some(DiagLoc {
                                 file: self.file_path.clone(),
@@ -880,12 +893,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let internal_value = self.internal_value_as_rvalue(cast_expr, cast.loc.clone(), cast.span.end);
         let target_type = self.build_type(cast.target_type, cast.loc.clone(), cast.span.end);
 
-        if !self.compatible_types(target_type.clone(), internal_value.get_type(self.context.i8_type())) {
+        if !self.compatible_types(target_type.clone(), internal_value.get_type()) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
                     "Cannot cast value of type '{}' to lvalue of type '{}'.",
-                    internal_value.get_type(self.context.i8_type()),
+                    internal_value.get_type(),
                     target_type
                 )),
                 location: Some(DiagLoc {
@@ -969,6 +982,22 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                 }
             }
+            InternalType::EnumType(internal_enum_type) => match internal_enum_type.enum_type.size_of() {
+                Some(size) => size,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::SizeOfOperatorOnUnsizedObject,
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: loc.line,
+                            column: loc.column,
+                            length: span_end,
+                        }),
+                    });
+                    exit(1);
+                }
+            },
             InternalType::VectorType(internal_vector_type) => match internal_vector_type.vector_type.size_of() {
                 Some(size) => size,
                 None => {
@@ -1019,7 +1048,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) -> InternalValue<'ctx> {
         let expr = self.build_expr(scope, expr);
         let internal_value = self.internal_value_as_rvalue(expr, loc.clone(), span_end);
-        let internal_type = internal_value.get_type(self.context.i8_type());
+        let internal_type = internal_value.get_type();
         let size_int_value = self.build_sizeof_operator_internal(internal_type, loc, span_end);
         InternalValue::IntValue(
             size_int_value,
@@ -1049,7 +1078,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             ),
             TokenKind::Minus => match operand_internal_value {
                 InternalValue::IntValue(int_value, _) => {
-                    let operand_internal_type = operand_internal_value.get_type(self.context.i8_type());
+                    let operand_internal_type = operand_internal_value.get_type();
                     InternalValue::IntValue(
                         self.builder.build_int_neg(int_value, "prefix_iminus").unwrap(),
                         InternalType::IntType(InternalIntType {
@@ -1065,7 +1094,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 InternalValue::FloatValue(float_value, _) => InternalValue::FloatValue(
                     self.builder.build_float_neg(float_value, "prefix_fminus").unwrap(),
                     InternalType::FloatType(InternalFloatType {
-                        type_str: operand_internal_value.get_type(self.context.i8_type()).to_string(),
+                        type_str: operand_internal_value.get_type().to_string(),
                         float_type: float_value.get_type(),
                     }),
                 ),
@@ -1154,7 +1183,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 InternalValue::IntValue(
                     int_one_value,
                     InternalType::IntType(InternalIntType {
-                        type_str: operand_internal_value.get_type(self.context.i8_type()).to_string(),
+                        type_str: operand_internal_value.get_type().to_string(),
                         int_kind: TokenKind::Int32,
                         int_type: int_one_value.get_type(),
                     }),
@@ -1164,7 +1193,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     unary_operator.loc.clone(),
                     unary_operator.span.end,
                 )
-                .get_type(self.context.i8_type()),
+                .get_type(),
                 unary_operator.loc.clone(),
                 unary_operator.span.end,
             )
@@ -1320,15 +1349,15 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.internal_value_as_rvalue(right_expr, binary_expression.loc.clone(), binary_expression.span.end);
 
         if !self.compatible_types(
-            left.get_type(self.context.i8_type()),
-            right.get_type(self.context.i8_type()),
+            left.get_type(),
+            right.get_type(),
         ) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
                     "Incompatible types for binary operation: '{}' and '{}'.",
-                    left.get_type(self.context.i8_type()),
-                    right.get_type(self.context.i8_type())
+                    left.get_type(),
+                    right.get_type()
                 )),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -1343,11 +1372,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         right = self.new_internal_value(
             self.implicit_cast(
                 right,
-                left.get_type(self.context.i8_type()),
+                left.get_type(),
                 binary_expression.loc.clone(),
                 binary_expression.span.end,
             ),
-            left.get_type(self.context.i8_type()),
+            left.get_type(),
         );
 
         let result = match binary_expression.operator.kind {
@@ -1407,7 +1436,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let expr = self.build_expr(scope, expr);
         let condition = self.internal_value_as_rvalue(expr, loc.clone(), span_end);
 
-        if !condition.get_type(self.context.i8_type()).is_bool_type() {
+        if !condition.get_type().is_bool_type() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom("Condition result must be an bool value.".to_string()),

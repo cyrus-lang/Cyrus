@@ -39,6 +39,7 @@ pub enum DiagKind {
     MethodIsStatic(String),
     MethodIsAnInstance(String),
     SymbolIsNotAnStruct(String, String),
+    MustBeComptimeExpr,
     Custom(String),
 }
 
@@ -117,9 +118,7 @@ impl fmt::Display for DiagKind {
             DiagKind::InvalidStructAccessSpecifier => {
                 "Structs must be declared with public or internal access specifier."
             }
-            DiagKind::InvalidEnumAccessSpecifier => {
-                "Enums must be declared with public or internal access specifier."
-            }
+            DiagKind::InvalidEnumAccessSpecifier => "Enums must be declared with public or internal access specifier.",
             DiagKind::ModuleImportNotFound(module_name) => &format!("Module '{}' not found.", module_name),
             DiagKind::MethodCallOnNonStructValue => "Cannot build method call for non-struct values.",
             DiagKind::MethodNotDefinedForStruct(method_name, struct_name) => {
@@ -135,6 +134,9 @@ impl fmt::Display for DiagKind {
                 "Symbol '{}' from module '{}' is not a struct.",
                 symbol_name, module_name
             ),
+            DiagKind::MustBeComptimeExpr => {
+                "The value assigned to an enum variant must be determinable at compile time. This means you cannot use complex expressions or logic that would require runtime evaluation or execution within a function's basic block. Please ensure the value is a constant expression."
+            }
         };
         write!(f, "{}", msg)
     }

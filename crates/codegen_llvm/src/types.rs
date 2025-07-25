@@ -1,5 +1,6 @@
 use crate::context::CodeGenLLVM;
 use crate::diag::*;
+use crate::enums::EnumID;
 use crate::resolver::MetadataResolverResult;
 use crate::structs::StructID;
 use crate::structs::StructMethodMetadata;
@@ -20,6 +21,7 @@ use ast::token::*;
 use inkwell::AddressSpace;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
 use inkwell::types::AnyType;
+use inkwell::types::AnyTypeEnum;
 use inkwell::types::ArrayType;
 use inkwell::types::AsTypeRef;
 use inkwell::types::BasicType;
@@ -55,6 +57,14 @@ pub(crate) enum InternalType<'a> {
     Lvalue(Box<InternalLvalueType<'a>>),
     ArrayType(InternalArrayType<'a>),
     ConstType(InternalConstType<'a>),
+    EnumType(InternalEnumType<'a>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct InternalEnumType<'a> {
+    pub enum_id: EnumID,
+    pub enum_type: StructType<'a>,
+    pub type_str: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -168,6 +178,9 @@ impl<'a> fmt::Display for InternalType<'a> {
             InternalType::ConstType(internal_const_type) => {
                 write!(f, "const {}", internal_const_type.inner_type)
             }
+            InternalType::EnumType(internal_enum_type) => {
+                write!(f, "{}", internal_enum_type.type_str)
+            }
         }
     }
 }
@@ -221,6 +234,11 @@ impl<'a> InternalType<'a> {
                     .struct_type
                     .array_type(size),
             })),
+            InternalType::EnumType(internal_enum_type) => Ok(InternalType::ArrayType(InternalArrayType {
+                type_str,
+                inner_type: Box::new(InternalType::EnumType(internal_enum_type.clone())),
+                array_type: internal_enum_type.enum_type.array_type(size),
+            })),
             InternalType::VoidType(_) => Err("VoidType cannot be converted to an array type.".to_string()),
             InternalType::Lvalue(_) => Err("Lvalue cannot be converted to an array type.".to_string()),
         }
@@ -270,6 +288,7 @@ impl<'a> InternalType<'a> {
             })),
             InternalType::ConstType(internal_const_type) => internal_const_type.inner_type.into_internal_value(value),
             InternalType::VoidType(_) => unreachable!(),
+            InternalType::EnumType(internal_enum_type) => todo!(),
         }
     }
 
@@ -334,6 +353,7 @@ impl<'a> InternalType<'a> {
             InternalType::BoolType(t) => Ok(t.bool_type.as_basic_type_enum()),
             InternalType::UnnamedStruct(t) => Ok(t.unnamed_struct_metadata.struct_type.as_basic_type_enum()),
             InternalType::ConstType(t) => t.inner_type.to_basic_type(ptr_type),
+            InternalType::EnumType(t) => Ok(t.enum_type.as_basic_type_enum()),
             InternalType::VoidType(_) => Err("InternalVoidType cannot be convert to basic llvm type."),
         }
     }
@@ -349,6 +369,7 @@ impl<'a> InternalType<'a> {
             InternalType::Lvalue(t) => t.ptr_type.as_type_ref(),
             InternalType::ConstType(t) => t.inner_type.as_type_ref(),
             InternalType::BoolType(t) => t.bool_type.as_type_ref(),
+            InternalType::EnumType(t) => t.enum_type.as_type_ref(),
             InternalType::UnnamedStruct(t) => t.unnamed_struct_metadata.struct_type.as_type_ref(),
             InternalType::VoidType(t) => AnyType::as_any_type_enum(&t.void_type).as_type_ref(),
         }
@@ -356,6 +377,15 @@ impl<'a> InternalType<'a> {
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn get_internal_type_store_size(&self, internal_type: InternalType<'ctx>) -> u64 {
+        let any_type_enum = unsafe { AnyTypeEnum::new(internal_type.as_type_ref()) };
+        self.target_machine.get_target_data().get_store_size(&any_type_enum)
+    }
+
+    pub(crate) fn get_struct_store_size(&self, struct_type: StructType<'ctx>) -> u64 {
+        self.target_machine.get_target_data().get_store_size(&struct_type)
+    }
+
     pub(crate) fn build_typedef(&mut self, typedef: Typedef) {
         self.error_if_already_declared(typedef.identifier.name.clone(), typedef.loc.clone(), typedef.span.end);
 
@@ -413,6 +443,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         Some(InternalType::StructType(struct_metadata.as_internal_struct_type()))
                     }
                     MetadataResolverResult::Typedef(typedef_metadata) => Some(typedef_metadata.internal_type),
+                    MetadataResolverResult::Enum(enum_metadata) => Some(enum_metadata.internal_type),
                     MetadataResolverResult::GlobalVariable(_) => None,
                     MetadataResolverResult::Func(_) => None,
                 },
@@ -531,7 +562,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_type_token(&self, type_token: Token, loc: Location) -> InternalType<'ctx> {
         match type_token.kind {
-            TokenKind::Identifier { name } => match self.resolve_typedef(self.module_id, name.clone()) {
+            TokenKind::Identifier { name } => match self.resolve_typedef_metadata(self.module_id, name.clone()) {
                 Some(typedef_metadata) => typedef_metadata.internal_type,
                 None => {
                     display_single_diag(Diag {
