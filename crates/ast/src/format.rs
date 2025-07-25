@@ -121,6 +121,19 @@ impl fmt::Display for TypeSpecifier {
     }
 }
 
+impl fmt::Display for UnnamedStructType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "struct {{ ")?;
+        for (idx, field) in self.fields.iter().enumerate() {
+            write!(f, "{}: {}", field.field_name, field.field_type)?;
+            if idx == self.fields.len() - 1 {
+                write!(f, ", ",)?;
+            }
+        }
+        write!(f, " }}")
+    }
+}
+
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

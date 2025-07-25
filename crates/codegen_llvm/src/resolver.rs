@@ -1,3 +1,8 @@
+use ast::{
+    ast::{Identifier, ModuleImport, ModuleSegment},
+    token::{Location, Span},
+};
+
 use crate::{
     context::CodeGenLLVM,
     enums::{EnumID, EnumMetadata},
@@ -29,7 +34,18 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     }
                     None => match self.resolve_typedef_metadata(module_id, name.clone()) {
                         Some(typedef_metadata) => Some(MetadataResolverResult::Typedef(typedef_metadata)),
-                        None => match self.resolve_enum_metadata(module_id, name) {
+                        None => match self.resolve_enum_metadata(
+                            module_id,
+                            ModuleImport {
+                                segments: vec![ModuleSegment::SubModule(Identifier {
+                                    name,
+                                    loc: Location::default(),
+                                    span: Span::default(),
+                                })],
+                                loc: Location::default(),
+                                span: Span::default(),
+                            },
+                        ) {
                             Some(enum_metadata) => Some(MetadataResolverResult::Enum(enum_metadata)),
                             None => None,
                         },
@@ -39,15 +55,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    pub(crate) fn resolve_enum_metadata(&self, module_id: ModuleID, name: String) -> Option<EnumMetadata<'ctx>> {
-        let module_metadata = match self.get_module_metadata_by_module_id(module_id) {
-            Some(module_metadata) => module_metadata,
-            None => return None,
-        };
+    pub(crate) fn resolve_enum_metadata(
+        &self,
+        module_id: ModuleID,
+        module_import: ModuleImport,
+    ) -> Option<EnumMetadata<'ctx>> {
+        if let Some(identifier) = module_import.as_identifier() {
+            let module_metadata = match self.get_module_metadata_by_module_id(module_id) {
+                Some(module_metadata) => module_metadata,
+                None => return None,
+            };
 
-        let opt = module_metadata.enum_table.get(&name).cloned();
-        drop(module_metadata);
-        opt
+            let opt = module_metadata.enum_table.get(&identifier.name).cloned();
+            drop(module_metadata);
+            opt
+        } else {
+            // FIXME Implement resolve enum metadata from module import.
+            todo!();
+        }
     }
 
     pub(crate) fn resolve_func_metadata(&self, module_id: ModuleID, name: String) -> Option<FuncMetadata<'ctx>> {
