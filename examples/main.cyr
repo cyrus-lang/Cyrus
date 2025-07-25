@@ -1,10 +1,10 @@
 enum Color {
-    RED,
-    BLUE,
-    GREEN,
+    Red, 
+    Blue,
+    Green,
     Custom(a: uint32, b: uint32, c: uint32),
 }
 
 func main() {
-    #my_color: Color = Color.GREEN;
+    #my_color = Color.Blue;
 }

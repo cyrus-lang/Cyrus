@@ -631,7 +631,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     AggregateValueEnum::StructValue(struct_value),
                     field_rvalue,
                     field_idx.try_into().unwrap(),
-                    "insert_data",
+                    "set",
                 )
                 .unwrap()
                 .into_struct_value();
@@ -1316,7 +1316,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         field_access: FieldAccess,
     ) -> InternalValue<'ctx> {
-        let mut internal_value = self.build_expr(Rc::clone(&scope), *field_access.operand);
+        let mut internal_value = self.build_expr(Rc::clone(&scope), *field_access.operand.clone());
+
+        if let InternalValue::Enum(enum_metadata)  = internal_value {
+            return self.build_enum_value(enum_metadata, field_access);
+        }
 
         if field_access.is_fat_arrow {
             let rvalue =
