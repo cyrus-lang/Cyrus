@@ -1,5 +1,6 @@
 use crate::{
     context::CodeGenLLVM,
+    enums::{EnumID, EnumMetadata},
     funcs::FuncMetadata,
     modules::ModuleID,
     structs::{StructID, StructMetadata},
@@ -13,6 +14,7 @@ pub enum MetadataResolverResult<'a> {
     Struct(StructMetadata<'a>),
     Typedef(TypedefMetadata<'a>),
     GlobalVariable(GlobalVariableMetadata<'a>),
+    Enum(EnumMetadata<'a>),
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
@@ -25,13 +27,27 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     Some(global_variable_metadata) => {
                         Some(MetadataResolverResult::GlobalVariable(global_variable_metadata))
                     }
-                    None => match self.resolve_typedef(module_id, name) {
+                    None => match self.resolve_typedef_metadata(module_id, name.clone()) {
                         Some(typedef_metadata) => Some(MetadataResolverResult::Typedef(typedef_metadata)),
-                        None => None,
+                        None => match self.resolve_enum_metadata(module_id, name) {
+                            Some(enum_metadata) => Some(MetadataResolverResult::Enum(enum_metadata)),
+                            None => None,
+                        },
                     },
                 },
             },
         }
+    }
+
+    pub(crate) fn resolve_enum_metadata(&self, module_id: ModuleID, name: String) -> Option<EnumMetadata<'ctx>> {
+        let module_metadata = match self.get_module_metadata_by_module_id(module_id) {
+            Some(module_metadata) => module_metadata,
+            None => return None,
+        };
+
+        let opt = module_metadata.enum_table.get(&name).cloned();
+        drop(module_metadata);
+        opt
     }
 
     pub(crate) fn resolve_func_metadata(&self, module_id: ModuleID, name: String) -> Option<FuncMetadata<'ctx>> {
@@ -43,6 +59,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let opt = module_metadata.func_table.get(&name).cloned();
         drop(module_metadata);
         opt
+    }
+
+    pub(crate) fn resolve_enum_metadata_with_struct_id(&self, enum_id: EnumID) -> Option<EnumMetadata<'ctx>> {
+        let module_metadata_registry = self.module_metadata_registry.borrow();
+
+        let enum_metadata_opt = module_metadata_registry
+            .iter()
+            .find(|m| m.enum_table.iter().find(|r| r.1.enum_id == enum_id).is_some())
+            .cloned();
+
+        drop(module_metadata_registry);
+
+        match enum_metadata_opt {
+            Some(module_metadata) => {
+                let enum_metadata = module_metadata
+                    .enum_table
+                    .iter()
+                    .find(|r| r.1.enum_id == enum_id)
+                    .unwrap()
+                    .1
+                    .clone();
+
+                Some(enum_metadata)
+            }
+            None => None,
+        }
     }
 
     pub(crate) fn resolve_struct_metadata_with_struct_id(&self, struct_id: StructID) -> Option<StructMetadata<'ctx>> {
@@ -97,7 +139,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         opt
     }
 
-    pub(crate) fn resolve_typedef(&self, module_id: ModuleID, name: String) -> Option<TypedefMetadata<'ctx>> {
+    pub(crate) fn resolve_typedef_metadata(&self, module_id: ModuleID, name: String) -> Option<TypedefMetadata<'ctx>> {
         let module_metadata = match self.get_module_metadata_by_module_id(module_id) {
             Some(module_metadata) => module_metadata,
             None => return None,

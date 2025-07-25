@@ -1,8 +1,8 @@
-use codegen_llvm::context::CodeGenLLVM;
 use ::parser::{Parser as CyrusParser, parse_program};
 use ast::token::TokenKind;
 use clap::*;
 use codegen_llvm::build::OutputKind;
+use codegen_llvm::context::CodeGenLLVM;
 use codegen_llvm::diag::*;
 use codegen_llvm::opts::{BuildDir, CodeModelOptions, RelocModeOptions};
 use lexer::Lexer;

@@ -1,6 +1,6 @@
 use crate::{
     context::CodeGenLLVM,
-    diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc},
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
     types::{InternalArrayType, InternalIntType, InternalType},
     values::{InternalValue, TypedPointerValue},
 };
@@ -77,7 +77,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let const_str = self.context.const_string(unescaped_string.as_bytes(), true);
-        let module_ref = self.module.borrow_mut(); 
+        let module_ref = self.module.borrow_mut();
         let global_str = module_ref.add_global(const_str.get_type(), None, ".str");
         global_str.set_initializer(&const_str);
         global_str.set_constant(true);

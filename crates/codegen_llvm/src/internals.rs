@@ -1,5 +1,7 @@
 use crate::{
-    context::CodeGenLLVM, diag::{display_single_diag, Diag, DiagKind, DiagLevel, DiagLoc}, values::InternalValue
+    context::CodeGenLLVM,
+    diag::{Diag, DiagKind, DiagLevel, DiagLoc, display_single_diag},
+    values::InternalValue,
 };
 use ast::token::Location;
 use inkwell::values::IntValue;
@@ -30,7 +32,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
                         "No any internal method found for value of type '{}'.",
-                        internal_value.get_type(self.context.i8_type())
+                        internal_value.get_type()
                     )),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),

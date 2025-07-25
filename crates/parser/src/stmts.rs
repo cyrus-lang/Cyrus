@@ -103,12 +103,12 @@ impl<'a> Parser<'a> {
                 self.next_token(); // consume field name
 
                 self.expect_current(TokenKind::Colon)?;
-                
+
                 let field_type = self.parse_type_specifier()?;
                 self.next_token();
 
                 variant_fields.push(EnumValuedField {
-                    name: field_name,
+                    identifier: field_name,
                     field_type: field_type,
                 });
 
@@ -145,7 +145,7 @@ impl<'a> Parser<'a> {
                 variants: enum_fields,
                 access_specifier,
                 loc,
-                span: Span::new(start, self.current_token.span.end)
+                span: Span::new(start, self.current_token.span.end),
             }));
         }
 
@@ -174,7 +174,7 @@ impl<'a> Parser<'a> {
             variants: enum_fields,
             access_specifier,
             loc,
-            span: Span::new(start, self.current_token.span.end)
+            span: Span::new(start, self.current_token.span.end),
         }))
     }
 

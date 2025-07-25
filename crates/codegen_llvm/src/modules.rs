@@ -1,5 +1,5 @@
 use crate::context::{BlockRegistry, CodeGenLLVM};
-use crate::enums::{EnumMetadata, EnumTable};
+use crate::enums::{EnumID, EnumMetadata, EnumTable};
 use crate::structs::{StructID, StructMethodMetadata};
 use crate::types::InternalType;
 use crate::{
@@ -734,6 +734,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 MetadataResolverResult::GlobalVariable(global_variable_metadata) => {
                     import_global_variable(global_variable_metadata, single.renamed.clone())
                 }
+                MetadataResolverResult::Enum(enum_metadata) => todo!(),
             }
         });
     }
@@ -835,6 +836,14 @@ impl<'a> ModuleMetadata<'a> {
                 None => None,
             },
         }
+    }
+
+    pub fn get_enum_metadata_by_id(&mut self, enum_id: EnumID) -> &mut EnumMetadata<'a> {
+        self.enum_table
+            .iter_mut()
+            .find(|r| r.1.enum_id == enum_id)
+            .expect("Couldn't find enum from module metadata registry.")
+            .1
     }
 
     pub fn get_struct_metadata_by_id(&mut self, struct_id: StructID) -> &mut StructMetadata<'a> {

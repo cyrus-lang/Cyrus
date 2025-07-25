@@ -84,17 +84,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_global_variable(&mut self, global_variable: GlobalVariable) {
         let initializer_value = match global_variable.expr {
-            Some(expression) => match expression {
-                expr @ Expression::Literal(..)
-                | expr @ Expression::Prefix(..)
-                | expr @ Expression::Infix(..)
-                | expr @ Expression::UnaryOperator(..)
-                | expr @ Expression::ModuleImport(..)
-                | expr @ Expression::Array(..) => {
-                    let fake_scope: ScopeRef<'ctx> = Rc::new(RefCell::new(Scope::new()));
-                    self.build_expr(fake_scope, expr)
-                }
-                _ => {
+            Some(expression) => match self.build_unscoped_expression(expression) {
+                Some(internal_value) => internal_value,
+                None => {
                     display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(
@@ -129,7 +121,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         if let Some(type_specifier) = global_variable.type_specifier {
             variable_type = self.build_type(type_specifier, global_variable.loc.clone(), global_variable.span.end);
         } else {
-            variable_type = initializer_value.clone().get_type(self.context.i8_type())
+            variable_type = initializer_value.clone().get_type()
         }
 
         let ptr_type = self.context.ptr_type(AddressSpace::default());
@@ -228,12 +220,12 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     let expr = self.build_expr(Rc::clone(&scope), expr);
                     let rvalue = self.internal_value_as_rvalue(expr, variable.loc.clone(), variable.span.end);
 
-                    if !self.compatible_types(var_internal_type.clone(), rvalue.get_type(self.context.i8_type())) {
+                    if !self.compatible_types(var_internal_type.clone(), rvalue.get_type()) {
                         display_single_diag(Diag {
                             level: DiagLevel::Error,
                             kind: DiagKind::Custom(format!(
                                 "Cannot assign value of type '{}' to lvalue of type '{}'.",
-                                rvalue.get_type(self.context.i8_type()),
+                                rvalue.get_type(),
                                 var_internal_type,
                             )),
                             location: Some(DiagLoc {
@@ -314,7 +306,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 if let Some(expr) = variable.expr {
                     let expr = self.build_expr(Rc::clone(&scope), expr);
                     let rvalue = self.internal_value_as_rvalue(expr, variable.loc.clone(), variable.span.end);
-                    let var_internal_type = rvalue.get_type(self.context.i8_type());
+                    let var_internal_type = rvalue.get_type();
 
                     let var_basic_type =
                         match var_internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default())) {

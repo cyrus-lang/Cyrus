@@ -2,10 +2,9 @@ enum Color {
     RED,
     BLUE,
     GREEN,
-    Valued = "MyValuedVariant!",
-    Custom(a: uint32, b: uint32, c: uint32)
+    Custom(a: uint32, b: uint32, c: uint32),
 }
 
 func main() {
-    
-} 
+    #my_color: Color = Color.GREEN;
+}

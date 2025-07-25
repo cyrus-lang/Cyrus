@@ -26,6 +26,7 @@ pub(crate) enum InternalValue<'a> {
     UnnamedStructValue(StructValue<'a>, InternalType<'a>),
     VectorValue(VectorValue<'a>, InternalType<'a>),
     PointerValue(TypedPointerValue<'a>),
+    EnumValue(StructValue<'a>, InternalType<'a>),
     Lvalue(Lvalue<'a>),
 }
 
@@ -52,12 +53,13 @@ impl<'a> InternalValue<'a> {
             InternalValue::PointerValue(..) => false,
             InternalValue::ArrayValue(array_value, ..) => array_value.is_const(),
             InternalValue::StructValue(struct_value, ..) => struct_value.is_const(),
+            InternalValue::EnumValue(struct_value, ..) => struct_value.is_const(),
             InternalValue::UnnamedStructValue(struct_value, ..) => struct_value.is_const(),
             InternalValue::VectorValue(vector_value, ..) => vector_value.is_const(),
         }
     }
 
-    pub(crate) fn get_type(&self, i8_type: IntType<'a>) -> InternalType<'a> {
+    pub(crate) fn get_type(&self) -> InternalType<'a> {
         match self {
             InternalValue::BoolValue(_, ty) => ty.clone(),
             InternalValue::IntValue(_, ty) => ty.clone(),
@@ -65,6 +67,7 @@ impl<'a> InternalValue<'a> {
             InternalValue::ArrayValue(_, ty, ..) => ty.clone(),
             InternalValue::StructValue(_, ty, ..) => ty.clone(),
             InternalValue::VectorValue(_, ty, ..) => ty.clone(),
+            InternalValue::EnumValue(_, ty) => ty.clone(),
             InternalValue::PointerValue(v) => InternalType::PointerType(Box::new(InternalPointerType {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
@@ -97,6 +100,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::StructValue(v, ..) => BasicMetadataValueEnum::StructValue(v),
             InternalValue::VectorValue(v, ..) => BasicMetadataValueEnum::VectorValue(v),
             InternalValue::PointerValue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
+            InternalValue::EnumValue(v, ..) => BasicMetadataValueEnum::StructValue(v),
             InternalValue::Lvalue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
             InternalValue::UnnamedStructValue(struct_value, _) => BasicMetadataValueEnum::StructValue(struct_value),
         }
@@ -189,6 +193,13 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
+            InternalType::EnumType(internal_enum_type) => {
+                let enum_metadata = self
+                    .resolve_enum_metadata_with_struct_id(internal_enum_type.enum_id)
+                    .unwrap();
+
+                self.build_construct_enum(enum_metadata, 0)
+            }
         }
     }
 
@@ -240,6 +251,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 value.into_struct_value(),
                 InternalType::UnnamedStruct(unnamed_struct_metadata),
             ),
+            InternalType::EnumType(internal_enum_type) => todo!(),
         }
     }
 
@@ -269,6 +281,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::FloatValue(v, ty) => InternalValue::FloatValue(v, ty),
             InternalValue::ArrayValue(v, ty) => InternalValue::ArrayValue(v, ty),
             InternalValue::StructValue(v, ty) => InternalValue::StructValue(v, ty),
+            InternalValue::EnumValue(v, ty) => InternalValue::StructValue(v, ty),
             InternalValue::UnnamedStructValue(v, ty) => InternalValue::UnnamedStructValue(v, ty),
             InternalValue::VectorValue(v, ty) => InternalValue::VectorValue(v, ty),
             InternalValue::Lvalue(typed_pointer_value) => {

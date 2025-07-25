@@ -735,7 +735,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             };
 
-            if !self.compatible_types(param_internal_type.clone(), rvalue.get_type(self.context.i8_type())) {
+            if !self.compatible_types(param_internal_type.clone(), rvalue.get_type()) {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
                     kind: DiagKind::Custom(format!(
@@ -776,7 +776,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         let lvalue = self.build_expr(Rc::clone(&scope), arg.clone());
                         let rvalue = self.internal_value_as_rvalue(lvalue, loc.clone(), span_end);
 
-                        let argument_type = rvalue.get_type(self.context.i8_type());
+                        let argument_type = rvalue.get_type();
                         if !self.compatible_types(argument_type, variadic_element_type.clone()) {
                             display_single_diag(Diag {
                                 level: DiagLevel::Error,
