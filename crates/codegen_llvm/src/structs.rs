@@ -819,8 +819,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         let struct_metadata_opt = match *method_call.operand.clone() {
-            Expression::Identifier(identifier) => lookup_with_identifier(identifier),
+            Expression::Identifier(identifier) => {
+                match self.resolve_enum_metadata(
+                    self.module_id,
+                    ModuleImport {
+                        segments: vec![ModuleSegment::SubModule(identifier.clone())],
+                        loc: identifier.loc.clone(),
+                        span: identifier.span.clone(),
+                    },
+                ) {
+                    Some(enum_metadata) => {
+                        return self.build_enum_variant_value(Rc::clone(&scope), enum_metadata, method_call);
+                    }
+                    None => lookup_with_identifier(identifier),
+                }
+            }
             Expression::ModuleImport(mut module_import) => {
+                if let Some(enum_metadata) = self.resolve_enum_metadata(self.module_id, module_import.clone()) {
+                    return self.build_enum_variant_value(Rc::clone(&scope), enum_metadata, method_call);
+                }
+
                 if let Some(identifier) = module_import.as_identifier() {
                     lookup_with_identifier(identifier)
                 } else {
@@ -1316,11 +1334,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         field_access: FieldAccess,
     ) -> InternalValue<'ctx> {
-        let mut internal_value = self.build_expr(Rc::clone(&scope), *field_access.operand.clone());
-
-        if let InternalValue::Enum(enum_metadata)  = internal_value {
-            return self.build_enum_value(enum_metadata, field_access);
-        }
+        let mut internal_value = match *field_access.operand.clone() {
+            Expression::ModuleImport(module_import) => {
+                match self.resolve_enum_metadata(self.module_id, module_import) {
+                    Some(enum_metadata) => {
+                        return self.build_enum_value(enum_metadata, field_access);
+                    }
+                    None => self.build_expr(Rc::clone(&scope), *field_access.operand.clone()),
+                }
+            }
+            expr @ _ => self.build_expr(Rc::clone(&scope), expr),
+        };
 
         if field_access.is_fat_arrow {
             let rvalue =
@@ -1464,7 +1488,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .collect(),
         };
         InternalType::UnnamedStruct(InternalUnnamedStructType {
-            type_str: "".to_string(), // FIXME
+            type_str: unnamed_struct.to_string(), 
             unnamed_struct_metadata,
         })
     }
@@ -1547,9 +1571,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             struct_type,
             fields: field_values
                 .iter()
-                .map(|(field_name, field_value)| {
-                    (field_name.clone(), field_value.get_type().clone())
-                })
+                .map(|(field_name, field_value)| (field_name.clone(), field_value.get_type().clone()))
                 .collect(),
         };
 

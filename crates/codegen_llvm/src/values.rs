@@ -1,7 +1,6 @@
 use crate::{
     context::CodeGenLLVM,
     diag::*,
-    enums::EnumMetadata,
     types::{InternalBoolType, InternalPointerType, InternalType},
 };
 use ast::token::Location;
@@ -25,7 +24,6 @@ pub(crate) enum InternalValue<'a> {
     VectorValue(VectorValue<'a>, InternalType<'a>),
     PointerValue(TypedPointerValue<'a>),
     EnumVariantValue(StructValue<'a>, InternalType<'a>),
-    Enum(EnumMetadata<'a>),
     Lvalue(Lvalue<'a>),
 }
 
@@ -55,7 +53,6 @@ impl<'a> InternalValue<'a> {
             InternalValue::UnnamedStructValue(struct_value, ..) => struct_value.is_const(),
             InternalValue::VectorValue(vector_value, ..) => vector_value.is_const(),
             InternalValue::EnumVariantValue(struct_value, ..) => struct_value.is_const(),
-            InternalValue::Enum(..) => unreachable!(),
         }
     }
 
@@ -68,7 +65,6 @@ impl<'a> InternalValue<'a> {
             InternalValue::StructValue(_, ty, ..) => ty.clone(),
             InternalValue::VectorValue(_, ty, ..) => ty.clone(),
             InternalValue::EnumVariantValue(_, ty) => ty.clone(),
-            InternalValue::Enum(..) => unreachable!(),
             InternalValue::PointerValue(v) => InternalType::PointerType(Box::new(InternalPointerType {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
@@ -104,7 +100,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::Lvalue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
             InternalValue::UnnamedStructValue(struct_value, _) => BasicMetadataValueEnum::StructValue(struct_value),
             InternalValue::EnumVariantValue(v, ..) => BasicMetadataValueEnum::StructValue(v),
-            InternalValue::Enum(..) => unreachable!(),
         }
     }
 
@@ -200,7 +195,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .resolve_enum_metadata_with_struct_id(internal_enum_type.enum_id)
                     .unwrap();
 
-                self.build_construct_enum(enum_metadata, 0)
+                self.build_construct_enum(enum_metadata, 0, loc, span_end)
             }
         }
     }
@@ -286,7 +281,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::EnumVariantValue(v, ty) => InternalValue::StructValue(v, ty),
             InternalValue::UnnamedStructValue(v, ty) => InternalValue::UnnamedStructValue(v, ty),
             InternalValue::VectorValue(v, ty) => InternalValue::VectorValue(v, ty),
-            InternalValue::Enum(..) => unreachable!(),
             InternalValue::Lvalue(typed_pointer_value) => {
                 let ptr_type = self.context.ptr_type(AddressSpace::default());
 

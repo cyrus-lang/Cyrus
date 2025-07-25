@@ -223,8 +223,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     pointee_ty: global_variable_metadata.variable_type.clone(),
                 })),
             });
-        } else if let Some(enum_metadata) = self.resolve_enum_metadata(self.module_id, identifier.name.clone()) {
-            InternalValue::Enum(enum_metadata)
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
