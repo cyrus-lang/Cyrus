@@ -431,6 +431,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             (InternalType::ConstType(internal_const_type), rvalue_type) => {
                 self.compatible_types(*internal_const_type.inner_type, rvalue_type)
             }
+            (InternalType::EnumType(internal_enum_type1), InternalType::EnumType(internal_enum_type2)) => {
+                internal_enum_type1.enum_id == internal_enum_type2.enum_id
+            }
             _ => false,
         }
     }

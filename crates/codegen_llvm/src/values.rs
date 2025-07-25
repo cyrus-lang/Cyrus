@@ -1,14 +1,12 @@
 use crate::{
     context::CodeGenLLVM,
     diag::*,
-    funcs::FuncMetadata,
-    modules::ModuleMetadata,
+    enums::EnumMetadata,
     types::{InternalBoolType, InternalPointerType, InternalType},
 };
 use ast::token::Location;
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    types::IntType,
     values::{
         AnyValue, ArrayValue, BasicMetadataValueEnum, BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue,
         VectorValue,
@@ -26,7 +24,8 @@ pub(crate) enum InternalValue<'a> {
     UnnamedStructValue(StructValue<'a>, InternalType<'a>),
     VectorValue(VectorValue<'a>, InternalType<'a>),
     PointerValue(TypedPointerValue<'a>),
-    EnumValue(StructValue<'a>, InternalType<'a>),
+    EnumVariantValue(StructValue<'a>, InternalType<'a>),
+    Enum(EnumMetadata<'a>),
     Lvalue(Lvalue<'a>),
 }
 
@@ -53,9 +52,10 @@ impl<'a> InternalValue<'a> {
             InternalValue::PointerValue(..) => false,
             InternalValue::ArrayValue(array_value, ..) => array_value.is_const(),
             InternalValue::StructValue(struct_value, ..) => struct_value.is_const(),
-            InternalValue::EnumValue(struct_value, ..) => struct_value.is_const(),
             InternalValue::UnnamedStructValue(struct_value, ..) => struct_value.is_const(),
             InternalValue::VectorValue(vector_value, ..) => vector_value.is_const(),
+            InternalValue::EnumVariantValue(struct_value, ..) => struct_value.is_const(),
+            InternalValue::Enum(..) => unreachable!(),
         }
     }
 
@@ -67,7 +67,8 @@ impl<'a> InternalValue<'a> {
             InternalValue::ArrayValue(_, ty, ..) => ty.clone(),
             InternalValue::StructValue(_, ty, ..) => ty.clone(),
             InternalValue::VectorValue(_, ty, ..) => ty.clone(),
-            InternalValue::EnumValue(_, ty) => ty.clone(),
+            InternalValue::EnumVariantValue(_, ty) => ty.clone(),
+            InternalValue::Enum(..) => unreachable!(),
             InternalValue::PointerValue(v) => InternalType::PointerType(Box::new(InternalPointerType {
                 ptr_type: v.ptr.get_type(),
                 pointee_ty: v.pointee_ty.clone(),
@@ -100,9 +101,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::StructValue(v, ..) => BasicMetadataValueEnum::StructValue(v),
             InternalValue::VectorValue(v, ..) => BasicMetadataValueEnum::VectorValue(v),
             InternalValue::PointerValue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
-            InternalValue::EnumValue(v, ..) => BasicMetadataValueEnum::StructValue(v),
             InternalValue::Lvalue(v) => BasicMetadataValueEnum::PointerValue(v.ptr),
             InternalValue::UnnamedStructValue(struct_value, _) => BasicMetadataValueEnum::StructValue(struct_value),
+            InternalValue::EnumVariantValue(v, ..) => BasicMetadataValueEnum::StructValue(v),
+            InternalValue::Enum(..) => unreachable!(),
         }
     }
 
@@ -281,9 +283,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::FloatValue(v, ty) => InternalValue::FloatValue(v, ty),
             InternalValue::ArrayValue(v, ty) => InternalValue::ArrayValue(v, ty),
             InternalValue::StructValue(v, ty) => InternalValue::StructValue(v, ty),
-            InternalValue::EnumValue(v, ty) => InternalValue::StructValue(v, ty),
+            InternalValue::EnumVariantValue(v, ty) => InternalValue::StructValue(v, ty),
             InternalValue::UnnamedStructValue(v, ty) => InternalValue::UnnamedStructValue(v, ty),
             InternalValue::VectorValue(v, ty) => InternalValue::VectorValue(v, ty),
+            InternalValue::Enum(..) => unreachable!(),
             InternalValue::Lvalue(typed_pointer_value) => {
                 let ptr_type = self.context.ptr_type(AddressSpace::default());
 

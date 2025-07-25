@@ -6,9 +6,11 @@ use crate::{
     types::{InternalEnumType, InternalType},
     values::InternalValue,
 };
-use ast::ast::{AccessSpecifier, Enum, EnumField, Identifier};
+use ast::ast::{AccessSpecifier, Enum, EnumField, FieldAccess, Identifier};
 use inkwell::{
-    types::{ArrayType, BasicTypeEnum}, values::{ArrayValue, BasicValueEnum}, AddressSpace
+    AddressSpace,
+    types::{ArrayType, BasicTypeEnum},
+    values::{ArrayValue, BasicValueEnum},
 };
 use rand::Rng;
 use std::{collections::HashMap, process::exit};
@@ -18,6 +20,7 @@ pub type EnumID = u64;
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumMetadata<'a> {
     pub enum_id: EnumID,
+    pub enum_name: String,
     pub variants: Vec<(Identifier, EnumVariantMetadata<'a>)>,
     pub internal_type: InternalType<'a>,
     pub access_specifier: AccessSpecifier,
@@ -205,6 +208,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             enum_id,
             variants,
             payload_type,
+            enum_name: enum_name.clone(),
             internal_type: enum_internal_type,
             access_specifier: enum_statement.access_specifier,
         };
@@ -219,7 +223,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         todo!();
     }
 
-    pub(crate) fn build_construct_enum(&self, enum_metadata: EnumMetadata<'ctx>, variant_number: u32) -> InternalValue<'ctx> {
+    pub(crate) fn build_construct_enum(
+        &self,
+        enum_metadata: EnumMetadata<'ctx>,
+        variant_number: u32,
+    ) -> InternalValue<'ctx> {
         let variant_metadata = enum_metadata.resolve_enum_variant_metadata(variant_number).unwrap().1;
         let payload_value = variant_metadata.get_payload(enum_metadata.payload_type);
 
@@ -230,10 +238,79 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let struct_value = internal_enum_type.enum_type.const_named_struct(&[
             BasicValueEnum::IntValue(self.context.i32_type().const_int(variant_number.into(), false)),
-            BasicValueEnum::ArrayValue(payload_value)
+            BasicValueEnum::ArrayValue(payload_value),
         ]);
 
-        InternalValue::EnumValue(struct_value, enum_metadata.internal_type.clone())
+        InternalValue::EnumVariantValue(struct_value, enum_metadata.internal_type.clone())
+    }
+
+    pub(crate) fn build_enum_value(
+        &self,
+        enum_metadata: EnumMetadata<'ctx>,
+        field_access: FieldAccess,
+    ) -> InternalValue<'ctx> {
+        if field_access.is_fat_arrow {
+            display_single_diag(Diag {
+                level: DiagLevel::Error,
+                kind: DiagKind::Custom(
+                    "Cannot access enum value with '->'. Enum members must be accessed using '.' notation.".to_string(),
+                ),
+                location: Some(DiagLoc {
+                    file: self.file_path.clone(),
+                    line: field_access.loc.line,
+                    column: field_access.loc.column,
+                    length: field_access.span.end,
+                }),
+            });
+            exit(1);
+        }
+
+        let (identifier, enum_variant_metadata) =
+            match enum_metadata.resolve_enum_variant_metadata_with_name(field_access.field_name.name.clone()) {
+                Some(v) => v,
+                None => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "The enum '{}' does not contain a variant named '{}'.",
+                            enum_metadata.enum_name, field_access.field_name.name
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: field_access.loc.line,
+                            column: field_access.loc.column,
+                            length: field_access.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
+
+        let internal_enum_type = match enum_metadata.internal_type.clone() {
+            InternalType::EnumType(internal_enum_type) => internal_enum_type,
+            _ => unreachable!(),
+        };
+
+        let mut struct_value = internal_enum_type.enum_type.get_undef();
+        let payload_value = enum_variant_metadata.get_payload(enum_metadata.payload_type);
+        let variant_number = self
+            .context
+            .i32_type()
+            .const_int(enum_variant_metadata.get_variant_number().into(), false);
+
+        struct_value = self
+            .builder
+            .build_insert_value(struct_value, variant_number, 0, "set")
+            .unwrap()
+            .into_struct_value();
+
+        struct_value = self
+            .builder
+            .build_insert_value(struct_value, payload_value, 1, "set")
+            .unwrap()
+            .into_struct_value();
+
+        InternalValue::EnumVariantValue(struct_value, enum_metadata.internal_type)
     }
 }
 
@@ -263,6 +340,14 @@ impl<'a> EnumVariantMetadata<'a> {
             EnumVariantMetadata::Variant(m) => m.get_payload(payload_type),
         }
     }
+
+    pub fn get_variant_number(&self) -> u32 {
+        match self {
+            EnumVariantMetadata::Identifier(m) => m.variant_number,
+            EnumVariantMetadata::Valued(m) => m.variant_number,
+            EnumVariantMetadata::Variant(m) => m.variant_number,
+        }
+    }
 }
 
 impl<'a> EnumMetadata<'a> {
@@ -275,6 +360,13 @@ impl<'a> EnumMetadata<'a> {
                 EnumVariantMetadata::Variant(m) => m.variant_number == variant_number,
             })
             .cloned()
+    }
+
+    pub fn resolve_enum_variant_metadata_with_name(
+        &self,
+        name: String,
+    ) -> Option<(Identifier, EnumVariantMetadata<'a>)> {
+        self.variants.iter().find(|(v, ..)| v.name == name).cloned()
     }
 }
 

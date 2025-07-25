@@ -223,6 +223,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     pointee_ty: global_variable_metadata.variable_type.clone(),
                 })),
             });
+        } else if let Some(enum_metadata) = self.resolve_enum_metadata(self.module_id, identifier.name.clone()) {
+            InternalValue::Enum(enum_metadata)
         } else {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -255,10 +257,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     exit(1);
                 }
 
-                if !self.compatible_types(
-                    typed_pointer_value.pointee_ty.clone(),
-                    rvalue.get_type(),
-                ) {
+                if !self.compatible_types(typed_pointer_value.pointee_ty.clone(), rvalue.get_type()) {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
                         kind: DiagKind::Custom(format!(
@@ -1348,10 +1347,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let mut right =
             self.internal_value_as_rvalue(right_expr, binary_expression.loc.clone(), binary_expression.span.end);
 
-        if !self.compatible_types(
-            left.get_type(),
-            right.get_type(),
-        ) {
+        if !self.compatible_types(left.get_type(), right.get_type()) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(format!(
