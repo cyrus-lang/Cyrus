@@ -1,9 +1,10 @@
-enum Color {
-    Red, 
-    Value = "MyValue",
-    Custom(a: uint32, b: uint32, c: uint32),
-}
-
 func main() {
-    #my_color = Color.Custom(1, 2, 3);
+    
+    // #i = 10;
+    // switch i {
+    //     case 10:
+    //         return;
+    //     default:
+    //         return;
+    // }
 }

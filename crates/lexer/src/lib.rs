@@ -762,7 +762,8 @@ impl Lexer {
         match ident.as_str() {
             "type" => TokenKind::Typedef,
             "func" => TokenKind::Function,
-            "match" => TokenKind::Match,
+            "switch" => TokenKind::Switch,
+            "case" => TokenKind::Case,
             "struct" => TokenKind::Struct,
             "bits" => TokenKind::Bits,
             "import" => TokenKind::Import,
