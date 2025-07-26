@@ -56,7 +56,8 @@ pub enum TokenKind {
     // Keywords
     Function,
     Typedef,
-    Match,
+    Switch,
+    Case,
     If,
     Else,
     Return,
@@ -169,7 +170,8 @@ impl fmt::Display for TokenKind {
             // Keywords
             Self::Typedef => write!(f, "type"),
             Self::Function => write!(f, "func"),
-            Self::Match => write!(f, "match"),
+            Self::Switch => write!(f, "switch"),
+            Self::Case => write!(f, "case"),
             Self::Struct => write!(f, "struct"),
             Self::Bits => write!(f, "bits"),
             Self::Import => write!(f, "import"),

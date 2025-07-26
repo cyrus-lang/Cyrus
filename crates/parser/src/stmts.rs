@@ -7,7 +7,7 @@ use ast::token::*;
 use diag::errors::CompileTimeError;
 
 impl<'a> Parser<'a> {
-    pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_statement(&mut self, toplevel: bool) -> Result<Statement, ParseError> {
         if self.current_token_is(TokenKind::Extern)
             || self.current_token_is(TokenKind::Inline)
             || self.current_token_is(TokenKind::Public)
@@ -37,26 +37,54 @@ impl<'a> Parser<'a> {
             return self.parse_enum(None);
         } else if self.current_token_is(TokenKind::Typedef) {
             return self.parse_typedef(None);
-        } else if let TokenKind::Identifier { .. } = self.current_token.kind.clone() {
-            if self.peek_token_is(TokenKind::Colon) || self.peek_token_is(TokenKind::Assign) {
+        } else if let TokenKind::Identifier { name } = self.current_token.kind.clone() {
+            if toplevel && (self.peek_token_is(TokenKind::Colon) || self.peek_token_is(TokenKind::Assign)) {
                 return self.parse_global_variable(None);
+            } else {
+                self.next_token();
+                let assignment = self.parse_assignment(
+                    Expression::Identifier(Identifier {
+                        name,
+                        span: self.current_token.span.clone(),
+                        loc: self.current_token.loc.clone(),
+                    }),
+                    self.current_token.span.start,
+                )?;
+                self.expect_peek(TokenKind::Semicolon)?;
+                return Ok(Statement::Expression(assignment));
             }
         }
 
-        match self.current_token.kind {
-            TokenKind::If => self.parse_if(),
-            TokenKind::Return => self.parse_return(),
-            TokenKind::Hashtag => self.parse_variable(),
-            TokenKind::For => self.parse_for_loop(),
-            TokenKind::Foreach => self.parse_foreach(),
-            TokenKind::Break => self.parse_break(),
-            TokenKind::Continue => self.parse_continue(),
-            TokenKind::Import => self.parse_import(),
-            TokenKind::LeftBrace => {
-                let block_statement = self.parse_block_statement()?;
-                Ok(Statement::BlockStatement(block_statement))
+        if !toplevel {
+            match self.current_token.kind {
+                TokenKind::If => self.parse_if(),
+                TokenKind::Hashtag => self.parse_variable(),
+                TokenKind::Return => self.parse_return(),
+                TokenKind::For => self.parse_for_loop(),
+                TokenKind::Foreach => self.parse_foreach(),
+                TokenKind::Break => self.parse_break(),
+                TokenKind::Continue => self.parse_continue(),
+                TokenKind::Switch => self.parse_switch(),
+                TokenKind::LeftBrace => {
+                    let block_statement = self.parse_block_statement()?;
+                    Ok(Statement::BlockStatement(block_statement))
+                }
+                _ => self.parse_expression_statement(),
             }
-            _ => self.parse_expression_statement(),
+        } else {
+            match self.current_token.kind {
+                TokenKind::Import => self.parse_import(),
+                _ => {
+                    return Err(CompileTimeError {
+                        location: self.current_token.loc.clone(),
+                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
+                        file_name: Some(self.lexer.file_name.clone()),
+                        source_content: Box::new(self.lexer.input.clone()),
+                        caret: Some(self.current_token.span.clone()),
+                        verbose: None,
+                    });
+                }
+            }
         }
     }
 
@@ -1019,7 +1047,7 @@ impl<'a> Parser<'a> {
         }
 
         loop {
-            let statement = self.parse_statement()?;
+            let statement = self.parse_statement(false)?;
 
             // Some statements are valid to be inside a block statement, like
             // struct definitions that works both globally and locally.
@@ -1103,6 +1131,13 @@ impl<'a> Parser<'a> {
             loc,
             span: Span::new(start, self.current_token.span.end),
         }))
+    }
+    
+    pub fn parse_switch(&mut self) -> Result<Statement, ParseError> {
+        // self.next_token();
+        // self.expect_current(TokenKind::LeftParen)?;
+        // ANCHOR
+        todo!();
     }
 
     pub fn parse_if(&mut self) -> Result<Statement, ParseError> {
