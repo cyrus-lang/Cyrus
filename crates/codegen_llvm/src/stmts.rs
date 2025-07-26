@@ -467,10 +467,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let index_alloca = self
             .builder
-            .build_alloca(self.context.i32_type(), "foreach.index")
+            .build_alloca(array_length.get_type(), "foreach.index")
             .unwrap();
+
         self.builder
-            .build_store(index_alloca, self.build_index_value(0))
+            .build_store(index_alloca, array_length.get_type().const_int(0, false))
             .unwrap();
 
         let cond_block = self.context.append_basic_block(func_value, "loop.cond");
@@ -489,11 +490,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let condition = {
             let index_value = self
                 .builder
-                .build_load(self.context.i32_type(), index_alloca, "load")
+                .build_load(array_length.get_type(), index_alloca, "load")
                 .unwrap();
             self.builder
                 .build_int_compare(
-                    inkwell::IntPredicate::SLT,
+                    inkwell::IntPredicate::ULT,
                     index_value.into_int_value(),
                     array_length,
                     "foreach.condition",
@@ -531,7 +532,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let index_value = self
             .builder
-            .build_load(self.context.i32_type(), index_alloca, "load")
+            .build_load(array_length.get_type(), index_alloca, "load")
             .unwrap()
             .into_int_value();
 
@@ -560,9 +561,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 ScopeRecord {
                     ptr: index_alloca,
                     ty: InternalType::IntType(InternalIntType {
-                        type_str: "int32".to_string(),
-                        int_kind: TokenKind::Int32,
-                        int_type: self.context.i32_type(),
+                        type_str: "size_t".to_string(),
+                        int_kind: TokenKind::SizeT,
+                        int_type: array_length.get_type(),
                     }),
                 },
             );
@@ -583,7 +584,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.builder.position_at_end(after_body_block);
 
             // increment
-            let one_value = self.context.i32_type().const_int(1, false);
+            let one_value = array_length.get_type().const_int(1, false);
 
             self.builder
                 .build_store(

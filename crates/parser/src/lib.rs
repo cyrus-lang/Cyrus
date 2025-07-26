@@ -90,7 +90,7 @@ impl<'a> Parser<'a> {
 
     /// Parses a statement and adds it to the program, accumulating errors if any.
     pub fn parse_and_add_statement(&mut self, program: &mut ProgramTree) {
-        match self.parse_statement() {
+        match self.parse_statement(true) {
             Ok(statement) => program.body.push(statement),
             Err(error) => self.errors.push(error),
         }
