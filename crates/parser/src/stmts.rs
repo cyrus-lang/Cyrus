@@ -37,21 +37,9 @@ impl<'a> Parser<'a> {
             return self.parse_enum(None);
         } else if self.current_token_is(TokenKind::Typedef) {
             return self.parse_typedef(None);
-        } else if let TokenKind::Identifier { name } = self.current_token.kind.clone() {
+        } else if let TokenKind::Identifier { .. } = self.current_token.kind.clone() {
             if toplevel && (self.peek_token_is(TokenKind::Colon) || self.peek_token_is(TokenKind::Assign)) {
                 return self.parse_global_variable(None);
-            } else {
-                self.next_token();
-                let assignment = self.parse_assignment(
-                    Expression::Identifier(Identifier {
-                        name,
-                        span: self.current_token.span.clone(),
-                        loc: self.current_token.loc.clone(),
-                    }),
-                    self.current_token.span.start,
-                )?;
-                self.expect_peek(TokenKind::Semicolon)?;
-                return Ok(Statement::Expression(assignment));
             }
         }
 
@@ -1132,7 +1120,7 @@ impl<'a> Parser<'a> {
             span: Span::new(start, self.current_token.span.end),
         }))
     }
-    
+
     pub fn parse_switch(&mut self) -> Result<Statement, ParseError> {
         // self.next_token();
         // self.expect_current(TokenKind::LeftParen)?;
