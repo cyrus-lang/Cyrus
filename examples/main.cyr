@@ -1,13 +1,14 @@
 import std::libc;
 
 func main() {
-    #i = 10;
+    #i = 2;
 
     switch (i) {
         case 0:
         case 1:
-            libc::printf("Here we are!\n");
+            libc::printf("value is 0 or 1\n");
         case 2:
         case 3:
+            libc::printf("value is 2 or 3\n");
     }
 }

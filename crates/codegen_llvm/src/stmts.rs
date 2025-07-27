@@ -9,12 +9,15 @@ use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, St
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
+use inkwell::values::IntValue;
 use std::cell::RefCell;
+use std::collections::{HashMap, LinkedList};
 use std::process::exit;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 struct SwitchCaseItem<'a> {
+    case_id: u32,
     block_id: u32,
     value: InternalValue<'a>,
     body: BlockStatement,
@@ -289,6 +292,14 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
+    fn select_switch_grouped_cases(&self, block_id: u32, case_list: SwitchCaseList<'ctx>) -> SwitchCaseList<'ctx> {
+        case_list
+            .iter()
+            .filter(|case| case.block_id == block_id)
+            .cloned()
+            .collect()
+    }
+
     pub(crate) fn build_switch(&mut self, scope: ScopeRef<'ctx>, switch: Switch) {
         let lvalue = self.build_expr(Rc::clone(&scope), switch.value);
         let rvalue = self.internal_value_as_rvalue(lvalue, switch.loc.clone(), switch.span.end);
@@ -297,7 +308,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let mut includes_non_integer_value = false;
 
         let mut case_list: SwitchCaseList<'ctx> = Vec::new();
-        let mut id_state = 0;
+        let mut block_id = 0;
+        let mut case_id = 0;
 
         for case in switch.cases {
             let case_lvalue = self.build_expr(Rc::clone(&scope), case.raw.clone());
@@ -310,7 +322,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
 
             case_list.push(SwitchCaseItem {
-                block_id: id_state,
+                block_id,
+                case_id,
                 value: case_rvalue,
                 body: case.body.clone(),
                 loc: case.loc.clone(),
@@ -318,34 +331,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             });
 
             if !case.body.exprs.is_empty() {
-                id_state += 1;
+                block_id += 1;
             }
+
+            case_id += 1;
         }
 
-        case_list.iter().for_each(|case| {
-            dbg!((case.block_id, case.value.clone()));
-        });
-
-        // if includes_non_integer_value {
-        //     self.build_smart_switch(
-        //         Rc::clone(&scope),
-        //         rvalue,
-        //         case_list,
-        //         switch.loc.clone(),
-        //         switch.span.end,
-        //     );
-        // } else {
-        //     self.build_traditional_switch(
-        //         Rc::clone(&scope),
-        //         rvalue,
-        //         case_list,
-        //         switch.loc.clone(),
-        //         switch.span.end,
-        //     );
-        // }
+        if includes_non_integer_value {
+            self.build_smart_switch(
+                Rc::clone(&scope),
+                rvalue,
+                case_list,
+                switch.loc.clone(),
+                switch.span.end,
+            );
+        } else {
+            self.build_traditional_switch(
+                Rc::clone(&scope),
+                rvalue,
+                case_list,
+                switch.loc.clone(),
+                switch.span.end,
+            );
+        }
     }
 
-    pub(crate) fn build_traditional_switch(
+    fn build_traditional_switch(
         &mut self,
         scope: ScopeRef<'ctx>,
         value: InternalValue<'ctx>,
@@ -353,62 +364,97 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         switch_loc: Location,
         switch_end: usize,
     ) {
-        // let current_func_metadata = self.get_current_func("switch statement", switch_loc.clone(), switch_end);
-        // let current_func = match self.get_local_func_ir_value(current_func_metadata.local_ir_value_id) {
-        //     Some(func_value) => func_value,
-        //     None => {
-        //         display_single_diag(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: DiagKind::Custom("Cannot build switch statement outside of a function.".to_string()),
-        //             location: Some(DiagLoc {
-        //                 file: self.file_path.clone(),
-        //                 line: switch_loc.line,
-        //                 column: switch_loc.column,
-        //                 length: switch_end,
-        //             }),
-        //         });
-        //         exit(1);
-        //     }
-        // };
-        // let exit_block = self.context.append_basic_block(current_func, "switch.exit");
+        let current_func_metadata = self.get_current_func("switch statement", switch_loc.clone(), switch_end);
+        let current_func = match self.get_local_func_ir_value(current_func_metadata.local_ir_value_id) {
+            Some(func_value) => func_value,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build switch statement outside of a function.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: switch_loc.line,
+                        column: switch_loc.column,
+                        length: switch_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+        let exit_block = self.context.append_basic_block(current_func, "switch.exit");
+        let parent_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
+        let mut case_blocks: HashMap<u32, BasicBlock<'ctx>> = HashMap::new();
 
-        // let mut cases: Vec<(IntValue<'ctx>, BasicBlock<'ctx>)> = Vec::new();
+        let max_block_id = case_list.iter().last().unwrap().block_id;
 
-        // for case_item in case_list {
-        //     let cond = match case_item.value {
-        //         InternalValue::IntValue(int_value, ..) => int_value,
-        //         _ => {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::Custom(
-        //                     "Cannot build traditional switch statement with a non-integer case value..".to_string(),
-        //                 ),
-        //                 location: Some(DiagLoc {
-        //                     file: self.file_path.clone(),
-        //                     line: case_item.loc.line,
-        //                     column: case_item.loc.column,
-        //                     length: case_item.span_end,
-        //                 }),
-        //             });
-        //             exit(1);
-        //         }
-        //     };
+        for block_id in 0..(max_block_id + 1) {
+            let case_block = self.context.append_basic_block(current_func, "switch.case");
+            case_blocks.insert(block_id, case_block);
+        }
 
-        //     let case_block = self.context.append_basic_block(current_func, "switch.case");
-        //     self.builder.position_at_end(case_block);
-        //     self.build_statements(Rc::clone(&scope), case_item.body.exprs.clone());
-        //     cases.push((cond.clone(), case_block));
-        // }
+        for block_id in 0..(max_block_id + 1) {
+            let group = self.select_switch_grouped_cases(block_id, case_list.clone());
+            let group_body = &group.iter().last().unwrap().body;
 
-        // self.builder
-        //     .build_switch(
-        //         self.internal_value_to_basic_metadata(value).into_int_value(),
-        //         exit_block,
-        //         &cases,
-        //     )
-        //     .unwrap();
+            let case_block = case_blocks.get(&block_id).unwrap();
+            self.builder.position_at_end(*case_block);
+            self.build_statements(Rc::clone(&scope), group_body.exprs.clone());
 
-        // self.builder.position_at_end(exit_block);
+            group.iter().for_each(|case| {
+                let cond = match case.value {
+                    InternalValue::IntValue(int_value, ..) => int_value,
+                    _ => {
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(
+                                "Cannot build traditional switch statement with a non-integer case value..".to_string(),
+                            ),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: case.loc.line,
+                                column: case.loc.column,
+                                length: case.span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+                };
+            });
+
+            // NOTE Jump to the exit block if this is the last case, otherwise jump to the next case.
+            match case_list.iter().find(|case| case.block_id == block_id + 1) {
+                Some(next_case) => {
+                    let next_case_block = case_blocks.get(&next_case.block_id).unwrap();
+                    self.builder.build_unconditional_branch(*next_case_block).unwrap();
+                }
+                None => {
+                    self.builder.build_unconditional_branch(exit_block).unwrap();
+                }
+            }
+        }
+
+        let ir_cases: Vec<(IntValue<'ctx>, BasicBlock<'ctx>)> = case_list
+            .iter()
+            .map(|case| {
+                let int_value = match &case.value {
+                    InternalValue::IntValue(int_value, ..) => int_value,
+                    _ => unreachable!(),
+                };
+                let basic_block = case_blocks.get(&case.block_id).cloned().unwrap();
+                (int_value.clone(), basic_block)
+            })
+            .collect();
+
+        self.builder.position_at_end(parent_block);
+        self.builder
+            .build_switch(
+                self.internal_value_to_basic_metadata(value).into_int_value(),
+                exit_block,
+                &ir_cases,
+            )
+            .unwrap();
+
+        self.builder.position_at_end(exit_block);
     }
 
     pub(crate) fn build_smart_switch(
