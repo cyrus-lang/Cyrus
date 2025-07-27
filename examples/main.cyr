@@ -1,12 +1,25 @@
 import std::libc;
 
 func main() {
-    #i = 2;
+    #i = 4;
+
+    // if (i > 3) {
+    //     libc::printf("AAAA\n");
+    //     // SWITCH
+    //     libc::printf("done\n");
+    // } else {
+    //     libc::printf("BBBB\n");
+    // }
+
+    // for (#i = 0; i < 3; i++) {    
+    //     break;
+    // }
 
     switch (i) {
         case 0:
-        case 1:
-            libc::printf("value is 0 or 1\n");
+        case 4:
+            libc::printf("value is 0 or 4\n");
+            // break;
         case 2:
         case 3:
             libc::printf("value is 2 or 3\n");
