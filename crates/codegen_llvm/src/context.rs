@@ -8,6 +8,7 @@ use crate::modules::{
 use crate::opts::{BuildDir, Options};
 use crate::scope::Scope;
 use crate::scope::ScopeRef;
+use crate::stmts::SwitchBlockRefs;
 use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 use crate::structs::StructTable;
 use crate::types::TypedefTable;
@@ -269,6 +270,7 @@ pub struct BlockRegistry<'a> {
     pub current_block_ref: Option<BasicBlock<'a>>,
     pub terminated_blocks: Vec<TerminatedBlockMetadata<'a>>,
     pub current_loop_ref: Option<LoopBlockRefs<'a>>,
+    pub current_switch: Option<SwitchBlockRefs<'a>>
 }
 
 impl<'a> BlockRegistry<'a> {
@@ -277,6 +279,7 @@ impl<'a> BlockRegistry<'a> {
             current_func_ref: None,
             current_block_ref: None,
             current_loop_ref: None,
+            current_switch: None,
             terminated_blocks: Vec::new(),
         }
     }

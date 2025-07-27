@@ -4,9 +4,9 @@ func main() {
     #i = 10;
 
     switch (i) {
+        case 0:
         case 1:
-            1 + 2;
-            break;
+            libc::printf("Here we are!\n");
         case 2:
         case 3:
     }
