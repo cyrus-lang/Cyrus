@@ -35,7 +35,7 @@ pub struct LoopBlockRefs<'a> {
 
 #[derive(Debug, Clone)]
 pub struct SwitchBlockRefs<'a> {
-    pub case_blocks: Vec<BasicBlock<'a>>,
+    pub exit_block: BasicBlock<'a>,
 }
 
 #[derive(Debug, Clone)]
@@ -337,6 +337,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             case_id += 1;
         }
 
+        // Temporarily remove reference to the loop-blocks. It's state must be returned after building the switch statement.
+        let current_loop_ref_copy: Option<LoopBlockRefs<'ctx>> = self.block_registry.current_loop_ref.clone();
+        self.block_registry.current_loop_ref = None;
+
         if includes_non_integer_value {
             self.build_smart_switch(
                 Rc::clone(&scope),
@@ -354,6 +358,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 switch.span.end,
             );
         }
+
+        self.block_registry.current_loop_ref = current_loop_ref_copy;
     }
 
     fn build_traditional_switch(
@@ -385,6 +391,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let parent_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
         let mut case_blocks: HashMap<u32, BasicBlock<'ctx>> = HashMap::new();
 
+        self.block_registry.current_switch = Some(SwitchBlockRefs { exit_block });
         let max_block_id = case_list.iter().last().unwrap().block_id;
 
         for block_id in 0..(max_block_id + 1) {
@@ -398,39 +405,32 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             let case_block = case_blocks.get(&block_id).unwrap();
             self.builder.position_at_end(*case_block);
+            self.block_registry.current_block_ref = Some(*case_block);
             self.build_statements(Rc::clone(&scope), group_body.exprs.clone());
 
-            group.iter().for_each(|case| {
-                let cond = match case.value {
-                    InternalValue::IntValue(int_value, ..) => int_value,
-                    _ => {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom(
-                                "Cannot build traditional switch statement with a non-integer case value..".to_string(),
-                            ),
-                            location: Some(DiagLoc {
-                                file: self.file_path.clone(),
-                                line: case.loc.line,
-                                column: case.loc.column,
-                                length: case.span_end,
-                            }),
-                        });
-                        exit(1);
-                    }
-                };
-            });
-
             // NOTE Jump to the exit block if this is the last case, otherwise jump to the next case.
-            match case_list.iter().find(|case| case.block_id == block_id + 1) {
-                Some(next_case) => {
-                    let next_case_block = case_blocks.get(&next_case.block_id).unwrap();
-                    self.builder.build_unconditional_branch(*next_case_block).unwrap();
-                }
-                None => {
-                    self.builder.build_unconditional_branch(exit_block).unwrap();
+            let current_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
+            self.builder.position_at_end(current_block);
+
+            if !self.is_block_terminated(current_block) {
+                match case_list.iter().find(|case| case.block_id == block_id + 1) {
+                    Some(next_case) => {
+                        self.mark_block_terminated(current_block, false);
+                        let next_case_block = case_blocks.get(&next_case.block_id).unwrap();
+                        self.builder.build_unconditional_branch(*next_case_block).unwrap();
+                        self.builder.position_at_end(*next_case_block);
+                    }
+                    None => {}
                 }
             }
+        }
+
+        // Check if ending case doesn't have a terminator...
+        let current_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
+        if !self.is_block_terminated(current_block) {
+            // self.mark_block_terminated(current_block, false);
+            self.builder.build_unconditional_branch(exit_block).unwrap();
+            self.builder.position_at_end(exit_block);
         }
 
         let ir_cases: Vec<(IntValue<'ctx>, BasicBlock<'ctx>)> = case_list
@@ -455,8 +455,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(exit_block);
+        // self.block_registry.current_block_ref = Some(exit_block);
     }
 
+    // TODO Implement.
     pub(crate) fn build_smart_switch(
         &self,
         scope: ScopeRef<'ctx>,
@@ -537,12 +539,20 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let current_block =
             self.get_current_block("break statement", break_statement.loc.clone(), break_statement.span.end);
 
-        let loop_end_block = match &self.block_registry.current_loop_ref {
-            Some(loop_block_refs) => loop_block_refs.end_block,
+        self.mark_block_terminated(current_block, false);
+
+        let target_block = match match &self.block_registry.current_loop_ref {
+            Some(loop_block_refs) => Some(loop_block_refs.end_block),
+            None => match &self.block_registry.current_switch {
+                Some(switch_block_refs) => Some(switch_block_refs.exit_block),
+                None => None,
+            },
+        } {
+            Some(basic_block) => basic_block,
             None => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Break statement can only be used inside of a for loop.".to_string()),
+                    kind: DiagKind::Custom("Break statement cannot be used here.".to_string()),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
                         line: break_statement.loc.line,
@@ -554,9 +564,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
         };
 
-        self.mark_block_terminated(current_block, false);
-        self.builder.build_unconditional_branch(loop_end_block).unwrap();
-        self.builder.position_at_end(loop_end_block);
+        self.builder.build_unconditional_branch(target_block).unwrap();
+        self.builder.position_at_end(target_block);
     }
 
     pub(crate) fn build_infinite_for_statement(&mut self, scope: ScopeRef<'ctx>, for_statement: For) {
