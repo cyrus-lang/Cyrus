@@ -1,9 +1,13 @@
-import std::libc{printf};
+import std::libc;
 
 func main() {
-    #list = char*[4] {"Cyrus", "Rust", "C", "D"};
+    #i = 10;
 
-    foreach (item, index in list) {
-        printf("(%d, %s)\n", index + 1, item);
+    switch (i) {
+        case 1:
+            1 + 2;
+            break;
+        case 2:
+        case 3:
     }
 }
