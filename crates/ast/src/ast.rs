@@ -454,16 +454,16 @@ pub struct Foreach {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Switch {
     pub value: Expression,
-    pub sections: Option<Vec<MatchPattern>>,
-    pub default: BlockStatement,
-    pub body: Box<BlockStatement>,
+    pub cases: Vec<SwitchCase>,
+    pub default: Option<BlockStatement>,
     pub span: Span,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MatchPattern {
+pub struct SwitchCase {
     pub raw: Expression,
+    pub body: BlockStatement,
     pub span: Span,
     pub loc: Location,
 }

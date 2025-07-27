@@ -6,6 +6,8 @@ use ast::ast::*;
 use ast::token::*;
 use diag::errors::CompileTimeError;
 
+const SWITCH_ENDING_TOKENS: &[TokenKind; 3] = &[TokenKind::Case, TokenKind::Default, TokenKind::RightBrace];
+
 impl<'a> Parser<'a> {
     pub fn parse_statement(&mut self, toplevel: bool) -> Result<Statement, ParseError> {
         if self.current_token_is(TokenKind::Extern)
@@ -1036,15 +1038,6 @@ impl<'a> Parser<'a> {
 
         loop {
             let statement = self.parse_statement(false)?;
-
-            // Some statements are valid to be inside a block statement, like
-            // struct definitions that works both globally and locally.
-            // Global statements does not need an semicolon, but local statements
-            // must be ended with a semicolon. That's the reason, we add some extra rules here.
-            if matches!(statement, Statement::Struct(_) | Statement::Enum(_)) {
-                self.expect_peek(TokenKind::Semicolon)?;
-            }
-
             block_statement.push(statement);
 
             match self.peek_token.kind {
@@ -1121,11 +1114,116 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    pub fn parse_case_body(&mut self) -> Result<BlockStatement, ParseError> {
+        let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
+
+        let mut block_statement: Vec<Statement> = Vec::new();
+
+        if SWITCH_ENDING_TOKENS.contains(&self.current_token.kind) {
+            // detected empty block statement
+            return Ok(BlockStatement {
+                exprs: block_statement,
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc,
+            });
+        }
+
+        loop {
+            let statement = self.parse_statement(false)?;
+            block_statement.push(statement);
+
+            if SWITCH_ENDING_TOKENS.contains(&self.peek_token.kind) {
+                break;
+            } else {
+                self.next_token();
+            }
+        }
+
+        let end = self.current_token.span.end;
+
+        Ok(BlockStatement {
+            exprs: block_statement,
+            span: Span { start, end },
+            loc,
+        })
+    }
+
     pub fn parse_switch(&mut self) -> Result<Statement, ParseError> {
-        // self.next_token();
-        // self.expect_current(TokenKind::LeftParen)?;
-        // ANCHOR
-        todo!();
+        let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
+
+        self.next_token();
+        self.expect_current(TokenKind::LeftParen)?;
+        let value = self.parse_expression(Precedence::Lowest)?.0;
+        self.next_token();
+        self.expect_current(TokenKind::RightParen)?;
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut cases: Vec<SwitchCase> = Vec::new();
+        let mut default_case: Option<BlockStatement> = None;
+
+        loop {
+            if self.current_token_is(TokenKind::Case) {
+                let case_loc = self.current_token.loc.clone();
+                let case_start = self.current_token.span.start;
+                self.next_token();
+                let case_expr = self.parse_expression(Precedence::Lowest)?.0;
+                self.next_token();
+                self.expect_current(TokenKind::Colon)?;
+                let case_body;
+                if SWITCH_ENDING_TOKENS.contains(&self.current_token.kind.clone()) {
+                    case_body = BlockStatement {
+                        exprs: Vec::new(),
+                        span: Span::new(case_start, self.current_token.span.end),
+                        loc: case_loc.clone(),
+                    };
+                } else {
+                    dbg!(self.current_token.kind.clone());
+                    case_body = self.parse_case_body()?;
+                    self.next_token();
+                }
+
+                cases.push(SwitchCase {
+                    raw: case_expr,
+                    body: case_body,
+                    span: Span::new(case_start, self.current_token.span.end),
+                    loc: case_loc,
+                });
+
+            } else if self.current_token_is(TokenKind::Default) {
+                self.next_token();
+                self.expect_current(TokenKind::Colon)?;
+                let case_body = self.parse_case_body()?;
+                self.next_token();
+                default_case = Some(case_body);
+                break;
+            } else {
+                break;
+            }
+        }
+
+        if !self.current_token_is(TokenKind::RightBrace) {
+            return Err(CompileTimeError {
+                location: loc,
+                etype: ParserErrorType::MissingClosingBrace,
+                file_name: Some(self.lexer.file_name.clone()),
+                source_content: Box::new(self.lexer.input.clone()),
+                verbose: None,
+                caret: Some(Span::new(start, self.current_token.span.end)),
+            });
+        }
+
+        Ok(Statement::Switch(Switch {
+            value,
+            cases,
+            default: default_case,
+            span: Span::new(start, self.current_token.span.end),
+            loc,
+        }))
     }
 
     pub fn parse_if(&mut self) -> Result<Statement, ParseError> {

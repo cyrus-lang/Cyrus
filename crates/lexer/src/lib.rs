@@ -764,6 +764,7 @@ impl Lexer {
             "func" => TokenKind::Function,
             "switch" => TokenKind::Switch,
             "case" => TokenKind::Case,
+            "default" => TokenKind::Default,
             "struct" => TokenKind::Struct,
             "bits" => TokenKind::Bits,
             "import" => TokenKind::Import,
