@@ -1182,7 +1182,6 @@ impl<'a> Parser<'a> {
                         loc: case_loc.clone(),
                     };
                 } else {
-                    dbg!(self.current_token.kind.clone());
                     case_body = self.parse_case_body()?;
                     self.next_token();
                 }
