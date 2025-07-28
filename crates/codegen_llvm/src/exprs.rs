@@ -713,6 +713,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             | TokenKind::UInt32
             | TokenKind::UInt64
             | TokenKind::UInt128 => return false,
+            TokenKind::Char => return false,
             _ => {
                 panic!("Given TypeToken is not a type of integer kind.");
             }

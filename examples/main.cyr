@@ -1,26 +1,18 @@
 import std::libc;
 
 func main() {
-    #i = 20;
+    #value: char* = "Cyrus";
 
-    if (i > 3) {
-        libc::printf("AAAA\n");
-
-        switch (i) {
-            case 0:
-            case 4:
-                libc::printf("value is 0 or 4\n");
-                break;
-            case 2:
-            case 3:
-                libc::printf("value is 2 or 3\n");
-            default:
-                libc::printf("default case!\n");
-                break;
-        }
-
-        libc::printf("done\n");
-    } else {
-        libc::printf("BBBB\n");
+    switch (value) {
+        case "Taha":
+            libc::printf("value A: %s\n", value);
+            break;
+        case "Cyrus":
+            libc::printf("value B: %s\n", value);
+        case "Rust":
+            libc::printf("value C: %s\n", value);
+            break;
+        default:
+            libc::printf("default condition\n");
     }
 }
