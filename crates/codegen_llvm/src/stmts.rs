@@ -36,6 +36,7 @@ pub struct LoopBlockRefs<'a> {
 #[derive(Debug, Clone)]
 pub struct SwitchBlockRefs<'a> {
     pub exit_block: BasicBlock<'a>,
+    pub default_block: Option<BasicBlock<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -346,6 +347,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 Rc::clone(&scope),
                 rvalue,
                 case_list,
+                switch.default,
                 switch.loc.clone(),
                 switch.span.end,
             );
@@ -354,6 +356,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 Rc::clone(&scope),
                 rvalue,
                 case_list,
+                switch.default,
                 switch.loc.clone(),
                 switch.span.end,
             );
@@ -367,6 +370,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         value: InternalValue<'ctx>,
         case_list: SwitchCaseList<'ctx>,
+        default_case: Option<BlockStatement>,
         switch_loc: Location,
         switch_end: usize,
     ) {
@@ -387,11 +391,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 exit(1);
             }
         };
-        let exit_block = self.context.append_basic_block(current_func, "switch.exit");
-        let parent_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
-        let mut case_blocks: HashMap<u32, BasicBlock<'ctx>> = HashMap::new();
 
-        self.block_registry.current_switch = Some(SwitchBlockRefs { exit_block });
+        let parent_switch_copy = self.block_registry.current_switch.clone();
+        let parent_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
+
+        let exit_block = self.context.append_basic_block(current_func, "switch.exit");
+        let target_block = if let Some(block_statement) = default_case.clone() {
+            let default_block = self.context.append_basic_block(current_func, "switch.default");
+            self.block_registry.current_block_ref = Some(default_block.clone());
+            self.builder.position_at_end(default_block);
+            self.block_registry.current_switch = Some(SwitchBlockRefs {
+                exit_block,
+                default_block: Some(default_block.clone()),
+            });
+            self.build_statements(Rc::clone(&scope), block_statement.exprs);
+            default_block
+        } else {
+            self.block_registry.current_switch = Some(SwitchBlockRefs {
+                exit_block,
+                default_block: None,
+            });
+            exit_block
+        };
+
+        let mut case_blocks: HashMap<u32, BasicBlock<'ctx>> = HashMap::new();
         let max_block_id = case_list.iter().last().unwrap().block_id;
 
         for block_id in 0..(max_block_id + 1) {
@@ -428,9 +451,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         // Check if ending case doesn't have a terminator...
         let current_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
         if !self.is_block_terminated(current_block) {
-            // self.mark_block_terminated(current_block, false);
-            self.builder.build_unconditional_branch(exit_block).unwrap();
-            self.builder.position_at_end(exit_block);
+            self.mark_block_terminated(current_block, false);
+            self.builder.build_unconditional_branch(target_block).unwrap();
+            self.builder.position_at_end(target_block);
         }
 
         let ir_cases: Vec<(IntValue<'ctx>, BasicBlock<'ctx>)> = case_list
@@ -449,13 +472,23 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.builder
             .build_switch(
                 self.internal_value_to_basic_metadata(value).into_int_value(),
-                exit_block,
+                target_block,
                 &ir_cases,
             )
             .unwrap();
 
+        if default_case.is_some() {
+            self.builder.position_at_end(target_block);
+            if !self.is_block_terminated(target_block) {
+                self.builder.position_at_end(target_block);
+                self.mark_block_terminated(target_block, false);
+                self.builder.build_unconditional_branch(exit_block).unwrap();
+            }
+        }
+
         self.builder.position_at_end(exit_block);
-        // self.block_registry.current_block_ref = Some(exit_block);
+        self.block_registry.current_block_ref = Some(exit_block);
+        self.block_registry.current_switch = parent_switch_copy;
     }
 
     // TODO Implement.
@@ -464,6 +497,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         scope: ScopeRef<'ctx>,
         value: InternalValue<'ctx>,
         case_list: SwitchCaseList<'ctx>,
+        default_case: Option<BlockStatement>,
         switch_loc: Location,
         switch_end: usize,
     ) {
@@ -538,7 +572,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     pub(crate) fn build_break_statement(&mut self, break_statement: Break) {
         let current_block =
             self.get_current_block("break statement", break_statement.loc.clone(), break_statement.span.end);
-
         self.mark_block_terminated(current_block, false);
 
         let target_block = match match &self.block_registry.current_loop_ref {

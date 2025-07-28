@@ -1,7 +1,7 @@
 import std::libc;
 
 func main() {
-    #i = 4;
+    #i = 20;
 
     // if (i > 3) {
     //     libc::printf("AAAA\n");
@@ -11,7 +11,7 @@ func main() {
     //     libc::printf("BBBB\n");
     // }
 
-    // for (#i = 0; i < 3; i++) {    
+    // for (#i = 0; i < 3; i++) {
     //     break;
     // }
 
@@ -19,9 +19,12 @@ func main() {
         case 0:
         case 4:
             libc::printf("value is 0 or 4\n");
-            // break;
+            break;
         case 2:
         case 3:
             libc::printf("value is 2 or 3\n");
+        default:
+            libc::printf("default case!\n");
+            break;
     }
 }
