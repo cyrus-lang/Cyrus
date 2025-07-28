@@ -3,13 +3,13 @@ use crate::diag::*;
 use crate::funcs::FuncMetadata;
 use crate::scope::ScopeRef;
 use crate::scope::{Scope, ScopeRecord};
-use crate::types::{InternalIntType, InternalType};
+use crate::types::{InternalBoolType, InternalIntType, InternalType};
 use crate::values::InternalValue;
 use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement, Switch, TypeSpecifier};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
-use inkwell::values::IntValue;
+use inkwell::values::{BasicValueEnum, IntValue};
 use std::cell::RefCell;
 use std::collections::{HashMap, LinkedList};
 use std::process::exit;
@@ -17,7 +17,6 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 struct SwitchCaseItem<'a> {
-    case_id: u32,
     block_id: u32,
     value: InternalValue<'a>,
     body: BlockStatement,
@@ -309,7 +308,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let mut case_list: SwitchCaseList<'ctx> = Vec::new();
         let mut block_id = 0;
-        let mut case_id = 0;
 
         for case in switch.cases {
             let case_lvalue = self.build_expr(Rc::clone(&scope), case.raw.clone());
@@ -323,7 +321,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             case_list.push(SwitchCaseItem {
                 block_id,
-                case_id,
                 value: case_rvalue,
                 body: case.body.clone(),
                 loc: case.loc.clone(),
@@ -333,8 +330,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             if !case.body.exprs.is_empty() {
                 block_id += 1;
             }
-
-            case_id += 1;
         }
 
         // Temporarily remove reference to the loop-blocks. It's state must be returned after building the switch statement.
@@ -484,9 +479,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         self.block_registry.current_switch = parent_switch_copy;
     }
 
-    // TODO Implement.
-    pub(crate) fn build_smart_switch(
-        &self,
+    fn build_smart_switch(
+        &mut self,
         scope: ScopeRef<'ctx>,
         value: InternalValue<'ctx>,
         case_list: SwitchCaseList<'ctx>,
@@ -494,43 +488,132 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         switch_loc: Location,
         switch_end: usize,
     ) {
-        // let exit_block = self.context.append_basic_block(current_func, "case");
+        let current_func_metadata = self.get_current_func("switch statement", switch_loc.clone(), switch_end);
+        let current_func = match self.get_local_func_ir_value(current_func_metadata.local_ir_value_id) {
+            Some(func_value) => func_value,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build switch statement outside of a function.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: switch_loc.line,
+                        column: switch_loc.column,
+                        length: switch_end,
+                    }),
+                });
+                exit(1);
+            }
+        };
 
-        // let case_block = self.context.append_basic_block(current_func, "case");
-        // let current_block = self.get_current_block("switch statement", switch.loc.clone(), switch.span.end);
-        // if !self.is_block_terminated(current_block) {
-        //     let case_cond = match self.bin_op_eq(rvalue.clone(), case_rvalue) {
-        //         Ok(internal_value) => match internal_value {
-        //             InternalValue::BoolValue(int_value, ..) => int_value,
-        //             _ => unreachable!(),
-        //         },
-        //         Err(err) => {
-        //             display_single_diag(Diag {
-        //                 level: DiagLevel::Error,
-        //                 kind: DiagKind::Custom(err.to_string()),
-        //                 location: Some(DiagLoc {
-        //                     file: self.file_path.clone(),
-        //                     line: switch.loc.line,
-        //                     column: switch.loc.column,
-        //                     length: switch.span.end,
-        //                 }),
-        //             });
-        //             exit(1);
-        //         }
-        //     };
+        let parent_switch_copy = self.block_registry.current_switch.clone();
+        let parent_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
 
-        //     self.builder.position_at_end(current_block);
-        //     self.builder
-        //         .build_conditional_branch(case_cond, case_block, exit_block)
-        //         .unwrap();
-        // }
+        let exit_block = self.context.append_basic_block(current_func, "smart_switch.exit");
+        let target_block = if let Some(block_statement) = default_case.clone() {
+            let default_block = self.context.append_basic_block(current_func, "smart_switch.default");
+            self.block_registry.current_block_ref = Some(default_block.clone());
+            self.builder.position_at_end(default_block);
+            self.block_registry.current_switch = Some(SwitchBlockRefs { exit_block });
+            self.build_statements(Rc::clone(&scope), block_statement.exprs);
+            default_block
+        } else {
+            self.block_registry.current_switch = Some(SwitchBlockRefs { exit_block });
+            exit_block
+        };
 
-        // self.block_registry.current_block_ref = Some(case_block);
-        // self.builder.position_at_end(case_block);
-        // self.build_statements(Rc::clone(&scope), case.body.exprs.clone());
+        let mut case_blocks: HashMap<u32, BasicBlock<'ctx>> = HashMap::new();
+        let max_block_id = case_list.iter().last().unwrap().block_id;
 
-        // self.block_registry.current_block_ref = Some(exit_block);
-        // self.builder.position_at_end(exit_block);
+        for block_id in 0..(max_block_id + 1) {
+            let case_block = self.context.append_basic_block(current_func, "smart_switch.case");
+            case_blocks.insert(block_id, case_block);
+        }
+
+        for block_id in 0..(max_block_id + 1) {
+            let group = self.select_switch_grouped_cases(block_id, case_list.clone());
+            let group_body = &group.iter().last().unwrap().body;
+
+            let case_block = case_blocks.get(&block_id).unwrap();
+            self.builder.position_at_end(*case_block);
+            self.block_registry.current_block_ref = Some(*case_block);
+            self.build_statements(Rc::clone(&scope), group_body.exprs.clone());
+
+            let current_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
+            self.builder.position_at_end(current_block);
+
+            if !self.is_block_terminated(current_block) {
+                match case_list.iter().find(|case| case.block_id == block_id + 1) {
+                    Some(next_case) => {
+                        self.mark_block_terminated(current_block, false);
+                        let next_case_block = case_blocks.get(&next_case.block_id).unwrap();
+                        self.builder.build_unconditional_branch(*next_case_block).unwrap();
+                        self.builder.position_at_end(*next_case_block);
+                    }
+                    None => {}
+                }
+            }
+        }
+
+        // Check if ending case doesn't have a terminator...
+        let current_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
+        if !self.is_block_terminated(current_block) {
+            self.mark_block_terminated(current_block, false);
+            self.builder.build_unconditional_branch(target_block).unwrap();
+            self.builder.position_at_end(target_block);
+        }
+
+        let mut ir_cases: Vec<(InternalValue<'ctx>, BasicBlock<'ctx>)> = case_list
+            .iter()
+            .map(|case| {
+                let basic_block = case_blocks.get(&case.block_id).cloned().unwrap();
+                (case.value.clone(), basic_block)
+            })
+            .collect();
+
+        // Starting point of the switch statement.
+        {
+            let (internal_value, basic_block) = ir_cases.remove(0);
+            self.builder.position_at_end(parent_block);
+
+            let condition_internal_value = match self.bin_op_eq(internal_value, value.clone()) {
+                Ok(internal_value) => internal_value,
+                Err(..) => InternalValue::BoolValue(
+                    self.context.bool_type().const_int(0, false),
+                    InternalType::BoolType(InternalBoolType {
+                        type_str: "bool".to_string(),
+                        bool_type: self.context.bool_type(),
+                    }),
+                ),
+            };
+
+            let basic_value: BasicValueEnum<'ctx> = self
+                .internal_value_to_basic_metadata(condition_internal_value.clone())
+                .try_into()
+                .unwrap();
+
+            self.builder
+                .build_conditional_branch(basic_value.into_int_value(), basic_block, {
+                    match ir_cases.first() {
+                        Some((_, basic_block, ..)) => basic_block.clone(),
+                        None => target_block,
+                    }
+                })
+                .unwrap();
+        }
+
+        if default_case.is_some() {
+            self.builder.position_at_end(target_block);
+            if !self.is_block_terminated(target_block) {
+                self.builder.position_at_end(target_block);
+                self.mark_block_terminated(target_block, false);
+                self.builder.build_unconditional_branch(exit_block).unwrap();
+            }
+        }
+
+        self.builder.position_at_end(exit_block);
+        self.block_registry.current_block_ref = Some(exit_block);
+        self.block_registry.current_switch = parent_switch_copy;
     }
 
     pub(crate) fn build_continue_statement(&mut self, continue_statement: Continue) {
