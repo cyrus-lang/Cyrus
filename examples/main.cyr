@@ -3,28 +3,24 @@ import std::libc;
 func main() {
     #i = 20;
 
-    // if (i > 3) {
-    //     libc::printf("AAAA\n");
-    //     // SWITCH
-    //     libc::printf("done\n");
-    // } else {
-    //     libc::printf("BBBB\n");
-    // }
+    if (i > 3) {
+        libc::printf("AAAA\n");
 
-    // for (#i = 0; i < 3; i++) {
-    //     break;
-    // }
+        switch (i) {
+            case 0:
+            case 4:
+                libc::printf("value is 0 or 4\n");
+                break;
+            case 2:
+            case 3:
+                libc::printf("value is 2 or 3\n");
+            default:
+                libc::printf("default case!\n");
+                break;
+        }
 
-    switch (i) {
-        case 0:
-        case 4:
-            libc::printf("value is 0 or 4\n");
-            break;
-        case 2:
-        case 3:
-            libc::printf("value is 2 or 3\n");
-        default:
-            libc::printf("default case!\n");
-            break;
+        libc::printf("done\n");
+    } else {
+        libc::printf("BBBB\n");
     }
 }

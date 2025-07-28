@@ -36,7 +36,6 @@ pub struct LoopBlockRefs<'a> {
 #[derive(Debug, Clone)]
 pub struct SwitchBlockRefs<'a> {
     pub exit_block: BasicBlock<'a>,
-    pub default_block: Option<BasicBlock<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -400,17 +399,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let default_block = self.context.append_basic_block(current_func, "switch.default");
             self.block_registry.current_block_ref = Some(default_block.clone());
             self.builder.position_at_end(default_block);
-            self.block_registry.current_switch = Some(SwitchBlockRefs {
-                exit_block,
-                default_block: Some(default_block.clone()),
-            });
+            self.block_registry.current_switch = Some(SwitchBlockRefs { exit_block });
             self.build_statements(Rc::clone(&scope), block_statement.exprs);
             default_block
         } else {
-            self.block_registry.current_switch = Some(SwitchBlockRefs {
-                exit_block,
-                default_block: None,
-            });
+            self.block_registry.current_switch = Some(SwitchBlockRefs { exit_block });
             exit_block
         };
 
