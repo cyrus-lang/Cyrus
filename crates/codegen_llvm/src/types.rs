@@ -288,7 +288,10 @@ impl<'a> InternalType<'a> {
             })),
             InternalType::ConstType(internal_const_type) => internal_const_type.inner_type.into_internal_value(value),
             InternalType::VoidType(_) => unreachable!(),
-            InternalType::EnumType(internal_enum_type) => todo!(),
+            InternalType::EnumType(internal_enum_type) => Ok(InternalValue::EnumVariantValue(
+                value.into_struct_value(),
+                InternalType::EnumType(internal_enum_type.clone()),
+            )),
         }
     }
 

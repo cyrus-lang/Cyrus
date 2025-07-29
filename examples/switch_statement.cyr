@@ -1,0 +1,17 @@
+import std::libc;
+
+func main() {
+    #value: char* = "Dostifam";
+
+    switch (value) {
+        case "Taha":
+        case "Dostifam":
+            libc::printf("value A: %s\n", value);
+        case "Cyrus":
+            libc::printf("value B: %s\n", value);
+        case "Rust":
+            libc::printf("value C: %s\n", value);
+    }
+
+    libc::printf("Program End\n");
+}
