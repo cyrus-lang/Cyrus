@@ -548,18 +548,26 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             case_blocks.insert(block_id, case_block);
         }
 
+        let mut starting_check_case: Option<(InternalValue<'ctx>, BasicBlock<'ctx>, Option<BasicBlock<'ctx>>)> = None;
+        let mut groups: HashMap<
+            u32,
+            (
+                BasicBlock<'ctx>,                             // case_block
+                Vec<(InternalValue<'ctx>, BasicBlock<'ctx>)>, // cond, check_block
+            ),
+        > = HashMap::new();
+
         for block_id in 0..(max_block_id + 1) {
             let group = self.select_switch_grouped_cases(block_id, case_list.clone());
             let group_body = &group.iter().last().unwrap().body;
 
+            // This case_block includes the body of the matching case.
             let case_block = case_blocks.get(&block_id).unwrap();
             self.builder.position_at_end(*case_block);
             self.block_registry.current_block_ref = Some(*case_block);
             self.build_statements(Rc::clone(&scope), group_body.exprs.clone());
 
             let current_block = self.get_current_block("switch statement", switch_loc.clone(), switch_end);
-            self.builder.position_at_end(current_block);
-
             if !self.is_block_terminated(current_block) {
                 match case_list.iter().find(|case| case.block_id == block_id + 1) {
                     Some(next_case) => {
@@ -568,8 +576,87 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         self.builder.build_unconditional_branch(*next_case_block).unwrap();
                         self.builder.position_at_end(*next_case_block);
                     }
-                    None => {}
+                    None => {
+                        self.mark_block_terminated(current_block, false);
+                        self.builder.build_unconditional_branch(target_block).unwrap();
+                        self.builder.position_at_end(target_block);
+                    }
                 }
+            }
+
+            let curent_group_check_blocks: Vec<(InternalValue<'ctx>, BasicBlock<'ctx>)> = group
+                .iter()
+                .map(|switch_case_item| {
+                    let case_group_check_block = self
+                        .context
+                        .append_basic_block(current_func, "smart_switch.group.check");
+
+                    (switch_case_item.value.clone(), case_group_check_block)
+                })
+                .collect();
+
+            groups.insert(block_id, (case_block.clone(), curent_group_check_blocks));
+        }
+
+        for (group_idx, (case_block, group_check_blocks)) in groups.iter() {
+            // Build Check Blocks
+            for idx in 0..group_check_blocks.len() {
+                let (internal_value, check_block) = group_check_blocks.get(idx).unwrap();
+
+                // Current group_check_blocks may not contain another check_block, Hence we gotta retrieve
+                // the next group and retrieve it's group_check_blocks and extract the next_check_block.
+                let next_check_block = match group_check_blocks.get(idx + 1) {
+                    Some((_, basic_block)) => basic_block.clone(),
+                    None => {
+                        // REVIEW Consider to move this part to the higher scope to prevent redundant lookup.
+                        let next_group_id = group_idx + 1;
+                        match groups.get(&next_group_id) {
+                            Some(next_group) => {
+                                let group_check_blocks = next_group.1.clone();
+                                match group_check_blocks.first() {
+                                    Some(first_check_block) => first_check_block.1,
+                                    None => target_block,
+                                }
+                            }
+                            None => target_block,
+                        }
+                    }
+                };
+                if starting_check_case.is_none() {
+                    starting_check_case = Some((
+                        internal_value.clone(),
+                        check_block.clone(),
+                        match group_check_blocks.get(idx + 1).cloned() {
+                            Some((_, basic_block)) => Some(basic_block),
+                            None => None,
+                        },
+                    ));
+                }
+
+                self.builder.position_at_end(check_block.clone());
+                let condition_internal_value = match self.bin_op_eq(internal_value.clone(), value.clone()) {
+                    Ok(internal_value) => internal_value,
+                    Err(..) => InternalValue::BoolValue(
+                        self.context.bool_type().const_int(0, false),
+                        InternalType::BoolType(InternalBoolType {
+                            type_str: "bool".to_string(),
+                            bool_type: self.context.bool_type(),
+                        }),
+                    ),
+                };
+
+                let condition_basic_value: BasicValueEnum<'ctx> = self
+                    .internal_value_to_basic_metadata(condition_internal_value.clone())
+                    .try_into()
+                    .unwrap();
+
+                self.builder
+                    .build_conditional_branch(
+                        condition_basic_value.into_int_value(),
+                        *case_block,
+                        next_check_block.clone(),
+                    )
+                    .unwrap();
             }
         }
 
@@ -581,43 +668,39 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             self.builder.position_at_end(target_block);
         }
 
-        let mut ir_cases: Vec<(InternalValue<'ctx>, BasicBlock<'ctx>)> = case_list
-            .iter()
-            .map(|case| {
-                let basic_block = case_blocks.get(&case.block_id).cloned().unwrap();
-                (case.value.clone(), basic_block)
-            })
-            .collect();
-
-        // Starting point of the switch statement.
+        // Starting point of the switch statement which retrieves first check_case and it's condition
+        // And builds the first comparison instruction and jumps to the linked blocks.
         {
-            let (internal_value, basic_block) = ir_cases.remove(0);
             self.builder.position_at_end(parent_block);
 
-            let condition_internal_value = match self.bin_op_eq(internal_value, value.clone()) {
-                Ok(internal_value) => internal_value,
-                Err(..) => InternalValue::BoolValue(
-                    self.context.bool_type().const_int(0, false),
-                    InternalType::BoolType(InternalBoolType {
-                        type_str: "bool".to_string(),
-                        bool_type: self.context.bool_type(),
-                    }),
-                ),
-            };
+            match starting_check_case {
+                Some((internal_value, starting_check_case, next_check_case)) => {
+                    let condition_internal_value = match self.bin_op_eq(internal_value, value.clone()) {
+                        Ok(internal_value) => internal_value,
+                        Err(..) => InternalValue::BoolValue(
+                            self.context.bool_type().const_int(0, false),
+                            InternalType::BoolType(InternalBoolType {
+                                type_str: "bool".to_string(),
+                                bool_type: self.context.bool_type(),
+                            }),
+                        ),
+                    };
 
-            let basic_value: BasicValueEnum<'ctx> = self
-                .internal_value_to_basic_metadata(condition_internal_value.clone())
-                .try_into()
-                .unwrap();
+                    let basic_value: BasicValueEnum<'ctx> = self
+                        .internal_value_to_basic_metadata(condition_internal_value.clone())
+                        .try_into()
+                        .unwrap();
 
-            self.builder
-                .build_conditional_branch(basic_value.into_int_value(), basic_block, {
-                    match ir_cases.first() {
-                        Some((_, basic_block, ..)) => basic_block.clone(),
-                        None => target_block,
-                    }
-                })
-                .unwrap();
+                    self.builder
+                        .build_conditional_branch(basic_value.into_int_value(), starting_check_case, {
+                            next_check_case.unwrap_or(target_block)
+                        })
+                        .unwrap();
+                }
+                None => {
+                    self.builder.build_unconditional_branch(target_block).unwrap();
+                }
+            }
         }
 
         if default_case.is_some() {
