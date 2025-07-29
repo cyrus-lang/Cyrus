@@ -548,7 +548,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             case_blocks.insert(block_id, case_block);
         }
 
-        let mut starting_check_case: Option<(InternalValue<'ctx>, BasicBlock<'ctx>, Option<BasicBlock<'ctx>>)> = None;
+        let mut starting_check_block: Option<BasicBlock<'ctx>> = None;
         let mut groups: HashMap<
             u32,
             (
@@ -561,7 +561,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let group = self.select_switch_grouped_cases(block_id, case_list.clone());
             let group_body = &group.iter().last().unwrap().body;
 
-            // This case_block includes the body of the matching case.
+            // Build Case Block
             let case_block = case_blocks.get(&block_id).unwrap();
             self.builder.position_at_end(*case_block);
             self.block_registry.current_block_ref = Some(*case_block);
@@ -571,6 +571,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             if !self.is_block_terminated(current_block) {
                 match case_list.iter().find(|case| case.block_id == block_id + 1) {
                     Some(next_case) => {
+                        self.builder.position_at_end(current_block);
                         self.mark_block_terminated(current_block, false);
                         let next_case_block = case_blocks.get(&next_case.block_id).unwrap();
                         self.builder.build_unconditional_branch(*next_case_block).unwrap();
@@ -595,6 +596,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 })
                 .collect();
 
+            if starting_check_block.is_none() {
+                starting_check_block = Some(curent_group_check_blocks.first().unwrap().1.clone());
+            }
+
             groups.insert(block_id, (case_block.clone(), curent_group_check_blocks));
         }
 
@@ -610,7 +615,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     None => {
                         // REVIEW Consider to move this part to the higher scope to prevent redundant lookup.
                         let next_group_id = group_idx + 1;
-                        match groups.get(&next_group_id) {
+                        let basic_block = match groups.get(&next_group_id) {
                             Some(next_group) => {
                                 let group_check_blocks = next_group.1.clone();
                                 match group_check_blocks.first() {
@@ -619,19 +624,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                 }
                             }
                             None => target_block,
-                        }
+                        };
+                        basic_block
                     }
                 };
-                if starting_check_case.is_none() {
-                    starting_check_case = Some((
-                        internal_value.clone(),
-                        check_block.clone(),
-                        match group_check_blocks.get(idx + 1).cloned() {
-                            Some((_, basic_block)) => Some(basic_block),
-                            None => None,
-                        },
-                    ));
-                }
 
                 self.builder.position_at_end(check_block.clone());
                 let condition_internal_value = match self.bin_op_eq(internal_value.clone(), value.clone()) {
@@ -673,29 +669,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         {
             self.builder.position_at_end(parent_block);
 
-            match starting_check_case {
-                Some((internal_value, starting_check_case, next_check_case)) => {
-                    let condition_internal_value = match self.bin_op_eq(internal_value, value.clone()) {
-                        Ok(internal_value) => internal_value,
-                        Err(..) => InternalValue::BoolValue(
-                            self.context.bool_type().const_int(0, false),
-                            InternalType::BoolType(InternalBoolType {
-                                type_str: "bool".to_string(),
-                                bool_type: self.context.bool_type(),
-                            }),
-                        ),
-                    };
-
-                    let basic_value: BasicValueEnum<'ctx> = self
-                        .internal_value_to_basic_metadata(condition_internal_value.clone())
-                        .try_into()
-                        .unwrap();
-
-                    self.builder
-                        .build_conditional_branch(basic_value.into_int_value(), starting_check_case, {
-                            next_check_case.unwrap_or(target_block)
-                        })
-                        .unwrap();
+            match starting_check_block {
+                Some(starting_check_block) => {
+                    self.builder.build_unconditional_branch(starting_check_block).unwrap();
                 }
                 None => {
                     self.builder.build_unconditional_branch(target_block).unwrap();
