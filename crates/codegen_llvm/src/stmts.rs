@@ -319,6 +319,24 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 }
             }
 
+            if !self.compatible_types(rvalue.get_type(), case_rvalue.get_type()) {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom(format!(
+                        "Case with value of type '{}' is not compatible with switch expression of type '{}'.",
+                        case_rvalue.get_type(),
+                        rvalue.get_type()
+                    )),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: case.loc.line,
+                        column: case.loc.column,
+                        length: case.span.end,
+                    }),
+                });
+                exit(1);
+            }
+
             case_list.push(SwitchCaseItem {
                 block_id,
                 value: case_rvalue,
