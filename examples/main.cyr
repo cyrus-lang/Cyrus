@@ -5,14 +5,16 @@ func main() {
 
     switch (value) {
         case "Taha":
+        case "Dostifam":
             libc::printf("value A: %s\n", value);
             break;
         case "Cyrus":
             libc::printf("value B: %s\n", value);
+            break;
         case "Rust":
             libc::printf("value C: %s\n", value);
             break;
-        default:
-            libc::printf("default condition\n");
     }
+
+    libc::printf("Program End\n");
 }
