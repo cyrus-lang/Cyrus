@@ -1,13 +1,15 @@
-use crate::ParseError;
 use crate::Parser;
-use crate::diag::ParserErrorType;
+use crate::ParserError;
+use crate::diag::ParserDiagKind;
 use crate::prec::Precedence;
 use ast::ast::*;
 use ast::token::*;
-use diag::errors::CompileTimeError;
+use diagcentral::Diag;
+use diagcentral::DiagLevel;
+use diagcentral::DiagLoc;
 
 impl<'a> Parser<'a> {
-    pub fn parse_identifier(&mut self) -> Result<Identifier, CompileTimeError<ParserErrorType>> {
+    pub fn parse_identifier(&mut self) -> Result<Identifier, Diag<ParserDiagKind>> {
         match self.current_token.kind.clone() {
             TokenKind::Identifier { name } => Ok(Identifier {
                 name,
@@ -15,13 +17,15 @@ impl<'a> Parser<'a> {
                 loc: self.current_token.loc.clone(),
             }),
             _ => {
-                return Err(CompileTimeError {
-                    location: self.current_token.loc.clone(),
-                    etype: ParserErrorType::ExpectedIdentifier,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: None,
-                    caret: Some(self.current_token.span.clone()),
+                return Err(Diag {
+                    kind: ParserDiagKind::ExpectedIdentifier,
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(
+                        self.lexer.file_name.clone(),
+                        self.current_token.loc.clone(),
+                        self.current_token.span.end,
+                    )),
+                    hint: None,
                 });
             }
         }
@@ -40,7 +44,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, ParseError> {
+    pub fn parse_type_specifier(&mut self) -> Result<TypeSpecifier, ParserError> {
         let mut base_type = self.parse_base_type_token()?;
 
         loop {
@@ -58,7 +62,7 @@ impl<'a> Parser<'a> {
         Ok(base_type)
     }
 
-    fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, ParseError> {
+    fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, ParserError> {
         let current = self.current_token.clone();
 
         let parsed_kind = match current.kind.clone() {
@@ -87,20 +91,22 @@ impl<'a> Parser<'a> {
                     }))
                 }
             }
-            _ => Err(CompileTimeError {
-                location: self.current_token.loc.clone(),
-                etype: ParserErrorType::InvalidTypeToken(current.kind.clone()),
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(current.span.start, self.current_token.span.end)),
+            _ => Err(Diag {
+                kind: ParserDiagKind::InvalidTypeToken(current.kind.clone()),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.lexer.file_name.clone(),
+                    self.current_token.loc.clone(),
+                    self.current_token.span.end,
+                )),
+                hint: None,
             }),
         };
 
         parsed_kind
     }
 
-    pub fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, ParseError> {
+    pub fn parse_array_type(&mut self, base_type_specifier: TypeSpecifier) -> Result<TypeSpecifier, ParserError> {
         let mut dimensions: Vec<ArrayCapacity> = Vec::new();
 
         while self.current_token_is(TokenKind::LeftBracket) {
@@ -123,7 +129,7 @@ impl<'a> Parser<'a> {
         Ok(type_specifier)
     }
 
-    pub fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParseError> {
+    pub fn parse_single_array_capacity(&mut self) -> Result<ArrayCapacity, ParserError> {
         self.expect_current(TokenKind::LeftBracket)?;
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
@@ -133,18 +139,19 @@ impl<'a> Parser<'a> {
         Ok(ArrayCapacity::Fixed(capacity))
     }
 
-    pub fn parse_single_array_index(&mut self) -> Result<Expression, ParseError> {
+    pub fn parse_single_array_index(&mut self) -> Result<Expression, ParserError> {
         self.expect_current(TokenKind::LeftBracket)?;
-        let start = self.current_token.span.start;
 
         if self.current_token_is(TokenKind::RightBracket) {
-            return Err(CompileTimeError {
-                location: self.current_token.loc.clone(),
-                etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
+            return Err(Diag {
+                kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.lexer.file_name.clone(),
+                    self.current_token.loc.clone(),
+                    self.current_token.span.end,
+                )),
+                hint: None,
             });
         }
         let index = self.parse_expression(Precedence::Lowest)?.0;
@@ -152,7 +159,7 @@ impl<'a> Parser<'a> {
         Ok(index)
     }
 
-    pub fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, ParseError> {
+    pub fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, ParserError> {
         let access_specifier = {
             if self.current_token_is(TokenKind::Inline) {
                 self.next_token();
@@ -172,13 +179,11 @@ impl<'a> Parser<'a> {
                     AccessSpecifier::Public
                 }
             } else {
-                return Err(CompileTimeError {
-                    location: token.loc,
-                    etype: ParserErrorType::InvalidToken(token.kind),
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: None,
-                    caret: Some(token.span.clone()),
+                return Err(Diag {
+                    kind: ParserDiagKind::InvalidToken(token.kind),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(self.lexer.file_name.clone(), token.loc, token.span.end)),
+                    hint: None,
                 });
             }
         };
@@ -186,9 +191,7 @@ impl<'a> Parser<'a> {
         Ok(access_specifier)
     }
 
-    pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParseError> {
-        let struct_start = self.current_token.span.start;
-
+    pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParserError> {
         let packed = {
             if self.current_token_is(TokenKind::Bits) {
                 self.next_token();
@@ -197,13 +200,15 @@ impl<'a> Parser<'a> {
                 self.next_token();
                 false
             } else {
-                return Err(CompileTimeError {
-                    location: self.current_token.loc.clone(),
-                    etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: None,
-                    caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                return Err(Diag {
+                    kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(
+                        self.lexer.file_name.clone(),
+                        self.current_token.loc.clone(),
+                        self.current_token.span.end,
+                    )),
+                    hint: None,
                 });
             }
         };
@@ -217,13 +222,15 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 TokenKind::EOF => {
-                    return Err(CompileTimeError {
-                        location: self.current_token.loc.clone(),
-                        etype: ParserErrorType::MissingClosingBrace,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: None,
-                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingClosingBrace,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            self.current_token.loc.clone(),
+                            self.current_token.span.end,
+                        )),
+                        hint: None,
                     });
                 }
                 TokenKind::Identifier { name: field_name } => {
@@ -254,13 +261,15 @@ impl<'a> Parser<'a> {
                     }
                 }
                 _ => {
-                    return Err(CompileTimeError {
-                        location: self.current_token.loc.clone(),
-                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: Some(String::from("Invalid token inside a anonymous struct definition.")),
-                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            self.current_token.loc.clone(),
+                            self.current_token.span.end,
+                        )),
+                        hint: None,
                     });
                 }
             }

@@ -1,7 +1,10 @@
-use ::diag::errors::CompileTimeError;
+use crate::diag::ParserDiagKind;
 use ast::ast::*;
 use ast::token::*;
-use diag::ParserErrorType;
+use diagcentral::Diag;
+use diagcentral::DiagLevel;
+use diagcentral::DiagLoc;
+use diagcentral::reporter::DiagReporter;
 use lexer::*;
 use utils::fs::read_file;
 
@@ -11,7 +14,7 @@ mod exprs;
 mod prec;
 mod stmts;
 
-pub type ParseError = CompileTimeError<ParserErrorType>;
+pub type ParserError = Diag<ParserDiagKind>;
 
 /// Parses the program from the given file path.
 ///
@@ -51,7 +54,7 @@ pub struct Parser<'a> {
     lexer: &'a mut Lexer,
     current_token: Token,
     peek_token: Token,
-    errors: Vec<ParseError>,
+    errors: Vec<ParserError>,
 }
 
 impl<'a> Parser<'a> {
@@ -68,7 +71,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the entire input program and returns it as a `Node::ProgramTree`.
-    pub fn parse(&mut self) -> Result<Node, Vec<ParseError>> {
+    pub fn parse(&mut self) -> Result<Node, Vec<ParserError>> {
         let program = self.parse_program()?;
         Ok(Node::ProgramTree(program))
     }
@@ -77,7 +80,7 @@ impl<'a> Parser<'a> {
     ///
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
-    pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<ParseError>> {
+    pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<ParserError>> {
         let mut program = ProgramTree::new();
 
         while self.current_token.kind != TokenKind::EOF {
@@ -96,15 +99,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn display_parser_errors(&mut self, errors: Vec<CompileTimeError<ParserErrorType>>) {
+    pub fn display_parser_errors(&mut self, errors: Vec<ParserError>) {
         if errors.len() > 0 {
-            errors[0].print();
+            let output = DiagReporter::format_panel(&errors[0]);
+            eprintln!("{}", output);
             std::process::exit(1);
         }
     }
 
     /// Finalizes the program parse by checking for errors.
-    pub fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<ParseError>> {
+    pub fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<ParserError>> {
         if self.errors.is_empty() {
             Ok(program)
         } else {
@@ -129,37 +133,41 @@ impl<'a> Parser<'a> {
     /// This function peeks at the next token without advancing the lexer. If the token matches
     /// the expected kind, it consumes the token and returns `Ok`. Otherwise, it returns an error
     /// with a message indicating the mismatch.
-    pub fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), ParseError> {
+    pub fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
         if self.peek_token_is(token_kind.clone()) {
             self.next_token(); // consume current token
             return Ok(());
         }
 
-        Err(CompileTimeError {
-            location: self.peek_token.loc.clone(),
-            etype: ParserErrorType::ExpectedToken(token_kind),
-            file_name: Some(self.lexer.file_name.clone()),
-            source_content: Box::new(self.lexer.input.clone()),
-            verbose: None,
-            caret: Some(self.current_token.span.clone()),
+        Err(Diag {
+            kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+            level: DiagLevel::Error,
+            location: Some(DiagLoc::new(
+                self.lexer.file_name.clone(),
+                self.current_token.loc.clone(),
+                self.current_token.span.end,
+            )),
+            hint: Some(String::from("Invalid token inside an anonymous struct definition.")),
         })
     }
 
     /// This function checks the current token and consumes it if it matches the expected kind.
     /// If the current token does not match, it returns an error indicating the mismatch.
-    pub fn expect_current(&mut self, token_kind: TokenKind) -> Result<(), ParseError> {
+    pub fn expect_current(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
         if self.current_token_is(token_kind.clone()) {
             self.next_token(); // consume current token
             return Ok(());
         }
 
-        Err(CompileTimeError {
-            location: self.current_token.loc.clone(),
-            etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), token_kind),
-            file_name: Some(self.lexer.file_name.clone()),
-            source_content: Box::new(self.lexer.input.clone()),
-            verbose: None,
-            caret: Some(self.current_token.span.clone()),
+        Err(Diag {
+            kind: ParserDiagKind::UnexpectedToken(self.current_token.kind.clone(), token_kind),
+            level: DiagLevel::Error,
+            location: Some(DiagLoc::new(
+                self.lexer.file_name.clone(),
+                self.current_token.loc.clone(),
+                self.current_token.span.end,
+            )),
+            hint: None,
         })
     }
 }
