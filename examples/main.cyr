@@ -12,15 +12,12 @@ func main() {
     #my_color: Color = Color.StringColor;
 
 	switch (my_color) {
-	   	case .Red:
-		 	libc::printf("Color is red with index %d.\n", my_color.index);
-	  		break;
+		case .Red:
+		 	libc::printf("Color is Red!.\n");
+  			break;
 		case .StringColor(value):
 		 	libc::printf("Color is %s.\n", value);
   			break;
-		case .Custom:
-		 	libc::printf("Color is custom with index %d.\n", my_color.index);
-	  		break;
 		default:
 			libc::printf("Unknown Color!.\n");
 			break;
