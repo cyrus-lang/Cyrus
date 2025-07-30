@@ -1,11 +1,11 @@
 use crate::context::CodeGenLLVM;
 use crate::diag::*;
-use crate::enums::EnumVariantMetadata;
+use crate::enums::{EnumValuedVariantMetadata, EnumVariantMetadata};
 use crate::funcs::FuncMetadata;
 use crate::modules::LocalIRValueID;
 use crate::scope::ScopeRef;
 use crate::scope::{Scope, ScopeRecord};
-use crate::types::{InternalBoolType, InternalEnumType, InternalIntType, InternalType};
+use crate::types::{InternalBoolType, InternalEnumType, InternalIntType, InternalLvalueType, InternalType};
 use crate::values::InternalValue;
 use ast::ast::{
     BlockStatement, Break, Continue, Expression, For, Foreach, Identifier, If, Statement, Switch, SwitchCasePattern,
@@ -421,7 +421,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         #[derive(Debug, Clone)]
         enum PatternKind<'a> {
             Identifier(Identifier, u32),
-            Valued(Identifier, u32, PointerValue<'a>),
+            Valued(Identifier, u32, Identifier, EnumValuedVariantMetadata<'a>),
             EnumVariant(Identifier, u32, Vec<(Identifier, PointerValue<'a>)>),
         }
 
@@ -554,13 +554,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                         exit(1);
                                     }
 
-                                    // Load value of the enum variant and make a internal copy of it.
-                                    let global_value = self.get_local_global_value_ir_value(enum_valued_variant_metadata.local_ir_value_id).unwrap();
-                                    let alloca = self.builder.build_alloca(enum_valued_variant_metadata.value_type.clone(), "alloca").unwrap();
-                                    let loaded_value = self.builder.build_load(enum_valued_variant_metadata.value_type, global_value.as_pointer_value(), "load").unwrap();
-                                    self.builder.build_store(alloca, loaded_value).unwrap();
-
-                                    PatternKind::Valued(identifier.clone(), enum_variant_metadata.get_variant_number(), alloca)
+                                    let exporting_name = identifiers.first().unwrap();
+                                    PatternKind::Valued(identifier.clone(), enum_variant_metadata.get_variant_number(), exporting_name.clone(), enum_valued_variant_metadata.clone())
                                 },
                                 EnumVariantMetadata::Variant(enum_variant_field_metadata) => {
                                     todo!();
@@ -605,12 +600,62 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 .cloned()
                 .collect();
 
+            let group_last_pattern = group.last().unwrap();
             let group_body = &group.iter().last().unwrap().body;
 
             let case_block = case_blocks.get(&block_id).unwrap();
             self.builder.position_at_end(*case_block);
             self.block_registry.current_block_ref = Some(*case_block);
-            // TODO Add identifiers to scope if exists.
+            match &group_last_pattern.pattern_kind {
+                PatternKind::Identifier(..) => {}
+                PatternKind::Valued(_, _, exporting_name, enum_valued_variant_metadata) => {
+                    // Load value of the enum variant and make a internal copy of it.
+                    let global_value = self
+                        .get_local_global_value_ir_value(enum_valued_variant_metadata.local_ir_value_id)
+                        .unwrap();
+                    let variant_basic_type = match enum_valued_variant_metadata
+                        .value_type
+                        .to_basic_type(self.context.ptr_type(AddressSpace::default()))
+                    {
+                        Ok(basic_type) => basic_type,
+                        Err(err) => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::Custom(err.to_string()),
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: exporting_name.loc.line,
+                                    column: exporting_name.loc.column,
+                                    length: exporting_name.span.end,
+                                }),
+                            });
+                            exit(1);
+                        }
+                    };
+                    let alloca = self.builder.build_alloca(variant_basic_type.clone(), "alloca").unwrap();
+                    let loaded_value = self
+                        .builder
+                        .build_load(variant_basic_type, global_value.as_pointer_value(), "load")
+                        .unwrap();
+                    self.builder.build_store(alloca, loaded_value).unwrap();
+
+                    let lvalue_type = InternalType::Lvalue(Box::new(InternalLvalueType {
+                        ptr_type: alloca.get_type(),
+                        pointee_ty: enum_valued_variant_metadata.value_type.clone(),
+                    }));
+
+                    let mut scope_borrowed = scope.borrow_mut();
+                    scope_borrowed.insert(
+                        exporting_name.name.clone(),
+                        ScopeRecord {
+                            ptr: alloca.clone(),
+                            ty: lvalue_type.clone(),
+                        },
+                    );
+                    drop(scope_borrowed);
+                }
+                PatternKind::EnumVariant(identifier, _, items) => todo!(),
+            }
             self.build_statements(Rc::clone(&scope), group_body.exprs.clone());
 
             // NOTE Jump to the exit block if this is the last case, otherwise jump to the next case.
