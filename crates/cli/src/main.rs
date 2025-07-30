@@ -3,7 +3,6 @@ use ast::token::TokenKind;
 use clap::{Parser, ValueEnum};
 use codegen::build::OutputKind;
 use codegen::context::CodeGenLLVM;
-use codegen::diag::*;
 use codegen::opts::{BuildDir, CodeModelOptions, RelocModeOptions};
 use lexer::Lexer;
 use utils::fs::{get_directory_of_file, read_file};

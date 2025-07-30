@@ -1,11 +1,11 @@
-use ::diag::errors::CompileTimeError;
 use ast::ast::{Literal, LiteralKind, StringPrefix};
 use ast::token::*;
-use diag::{LexicalErrorType, lexer_invalid_char_error};
+use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
+use diagnostics::{LexicalDiagKind, lexer_invalid_char_error};
 use std::{fmt::Debug, process::exit};
 use utils::escaping::escape_string;
 
-mod diag;
+mod diagnostics;
 mod format;
 
 #[derive(Debug, Clone)]
@@ -366,7 +366,6 @@ impl Lexer {
                         self.column - 1,
                         self.ch,
                         Span::new(self.column - 1, self.column),
-                        Box::new(self.input.clone()),
                     );
                     exit(1);
                 }
@@ -400,19 +399,16 @@ impl Lexer {
             final_char = Some(self.ch);
 
             if self.is_eof() {
-                CompileTimeError {
-                    location: Location {
-                        line: self.line,
-                        column: self.column,
-                    },
-                    source_content: Box::new(self.input.clone()),
-                    etype: LexicalErrorType::UnterminatedStringLiteral,
-                    verbose: None,
-                    caret: Some(Span::new(start, self.column + 1)),
-                    file_name: Some(self.file_name.clone()),
-                }
-                .print();
-                exit(1);
+                display_single_diag!(Diag {
+                    level: DiagLevel::Error,
+                    kind: LexicalDiagKind::UnterminatedStringLiteral,
+                    location: Some(DiagLoc::new(
+                        self.file_name.clone(),
+                        Location::new(self.line, self.column),
+                        self.column,
+                    )),
+                    hint: None,
+                });
             }
         }
 
@@ -436,19 +432,16 @@ impl Lexer {
                 loc: Location::new(self.line, self.column),
             }
         } else {
-            CompileTimeError {
-                location: Location {
-                    line: self.line,
-                    column: self.column,
-                },
-                source_content: Box::new(self.input.clone()),
-                etype: LexicalErrorType::EmptyCharLiteral,
-                verbose: None,
-                caret: Some(span),
-                file_name: Some(self.file_name.clone()),
-            }
-            .print();
-            exit(1);
+            display_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: LexicalDiagKind::EmptyCharLiteral,
+                location: Some(DiagLoc::new(
+                    self.file_name.clone(),
+                    Location::new(self.line, self.column),
+                    self.column,
+                )),
+                hint: None,
+            });
         }
     }
 
@@ -467,19 +460,16 @@ impl Lexer {
             final_string.push(self.ch);
 
             if self.is_eof() {
-                CompileTimeError {
-                    location: Location {
-                        line: self.line,
-                        column: self.column,
-                    },
-                    source_content: Box::new(self.input.clone()),
-                    etype: LexicalErrorType::UnterminatedStringLiteral,
-                    verbose: None,
-                    caret: Some(Span::new(start, self.column + 1)),
-                    file_name: Some(self.file_name.clone()),
-                }
-                .print();
-                exit(1);
+                display_single_diag!(Diag {
+                    level: DiagLevel::Error,
+                    kind: LexicalDiagKind::UnterminatedStringLiteral,
+                    location: Some(DiagLoc::new(
+                        self.file_name.clone(),
+                        Location::new(self.line, self.column),
+                        self.column,
+                    )),
+                    hint: None,
+                });
             }
         }
 
@@ -549,19 +539,16 @@ impl Lexer {
                     span: Span::new(start, self.column),
                 }),
                 Err(_) => {
-                    CompileTimeError {
-                        location: Location {
-                            line: self.line,
-                            column: self.column,
-                        },
-                        source_content: Box::new(self.input.clone()),
-                        etype: LexicalErrorType::InvalidIntegerLiteral,
-                        verbose: None,
-                        caret: Some(Span::new(start, self.column + 1)),
-                        file_name: Some(self.file_name.clone()),
-                    }
-                    .print();
-                    exit(1);
+                    display_single_diag!(Diag {
+                        level: DiagLevel::Error,
+                        kind: LexicalDiagKind::InvalidIntegerLiteral,
+                        location: Some(DiagLoc::new(
+                            self.file_name.clone(),
+                            Location::new(self.line, self.column),
+                            self.column,
+                        )),
+                        hint: None,
+                    });
                 }
             }
         } else {
@@ -617,19 +604,16 @@ impl Lexer {
                         span: Span::new(start, self.column),
                     }),
                     Err(_) => {
-                        CompileTimeError {
-                            location: Location {
-                                line: self.line,
-                                column: self.column,
-                            },
-                            source_content: Box::new(self.input.clone()),
-                            etype: LexicalErrorType::InvalidFloatLiteral,
-                            verbose: None,
-                            caret: Some(Span::new(start, self.column + 1)),
-                            file_name: Some(self.file_name.clone()),
-                        }
-                        .print();
-                        exit(1);
+                        display_single_diag!(Diag {
+                            level: DiagLevel::Error,
+                            kind: LexicalDiagKind::InvalidFloatLiteral,
+                            location: Some(DiagLoc::new(
+                                self.file_name.clone(),
+                                Location::new(self.line, self.column),
+                                self.column,
+                            )),
+                            hint: None,
+                        });
                     }
                 }
             } else {
@@ -640,19 +624,16 @@ impl Lexer {
                         span: Span::new(start, self.column),
                     }),
                     Err(_) => {
-                        CompileTimeError {
-                            location: Location {
-                                line: self.line,
-                                column: self.column,
-                            },
-                            source_content: Box::new(self.input.clone()),
-                            etype: LexicalErrorType::InvalidIntegerLiteral,
-                            verbose: None,
-                            caret: Some(Span::new(start, self.column + 1)),
-                            file_name: Some(self.file_name.clone()),
-                        }
-                        .print();
-                        exit(1);
+                        display_single_diag!(Diag {
+                            level: DiagLevel::Error,
+                            kind: LexicalDiagKind::InvalidIntegerLiteral,
+                            location: Some(DiagLoc::new(
+                                self.file_name.clone(),
+                                Location::new(self.line, self.column),
+                                self.column,
+                            )),
+                            hint: None,
+                        });
                     }
                 }
             }
@@ -730,19 +711,16 @@ impl Lexer {
                 }
 
                 if !(self.ch == '*' && self.peek_char() == '/') {
-                    CompileTimeError {
-                        location: Location {
-                            line: self.line,
-                            column: self.column,
-                        },
-                        source_content: Box::new(self.input.clone()),
-                        etype: LexicalErrorType::UnterminatedMultiLineComment,
-                        verbose: None,
-                        caret: Some(Span::new(start, self.column + 1)),
-                        file_name: Some(self.file_name.clone()),
-                    }
-                    .print();
-                    exit(1);
+                    display_single_diag!(Diag {
+                        level: DiagLevel::Error,
+                        kind: LexicalDiagKind::UnterminatedMultiLineComment,
+                        location: Some(DiagLoc::new(
+                            self.file_name.clone(),
+                            Location::new(self.line, self.column),
+                            self.column,
+                        )),
+                        hint: None,
+                    });
                 }
                 self.read_char();
                 self.read_char();

@@ -7,7 +7,7 @@ edition = "2024"
 lexer = { path = "../lexer", version = "*" }
 ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
-diag = { path = "../diag", version = "*" }
+diagcentral = { path = "../diagcentral", version = "*" }
 
 [lib]
 name = "parser"
