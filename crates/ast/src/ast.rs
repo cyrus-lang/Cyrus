@@ -462,10 +462,17 @@ pub struct Switch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SwitchCase {
-    pub raw: Expression,
+    pub pattern: SwitchCasePattern,
     pub body: BlockStatement,
     pub span: Span,
     pub loc: Location,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SwitchCasePattern {
+    Expression(Expression),
+    Identifier(Identifier),
+    EnumVariant(Identifier, Vec<Identifier>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

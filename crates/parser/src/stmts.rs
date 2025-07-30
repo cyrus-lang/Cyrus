@@ -96,9 +96,9 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
             return Ok(EnumField::Identifier(variant_name));
         } else if self.current_token_is(TokenKind::Assign) {
-            self.next_token(); // consume assign 
+            self.next_token(); // consume assign
             let value = self.parse_expression(Precedence::Lowest)?.0;
-            self.next_token(); // consume last token of the expression 
+            self.next_token(); // consume last token of the expression
             return Ok(EnumField::Valued(variant_name, Box::new(value)));
         } else if self.current_token_is(TokenKind::LeftParen) {
             self.next_token(); // consume left paren
@@ -1171,8 +1171,36 @@ impl<'a> Parser<'a> {
                 let case_loc = self.current_token.loc.clone();
                 let case_start = self.current_token.span.start;
                 self.next_token();
-                let case_expr = self.parse_expression(Precedence::Lowest)?.0;
-                self.next_token();
+
+                let case_pattern = if self.current_token_is(TokenKind::Dot) {
+                    self.next_token();
+                    let identifier = self.parse_identifier()?;
+                    self.next_token();
+
+                    if self.current_token_is(TokenKind::LeftParen) {
+                        self.next_token();
+                        let mut items: Vec<Identifier> = Vec::new();
+                        loop {
+                            let item = self.parse_identifier()?;
+                            self.next_token();
+                            items.push(item);
+                            if self.current_token_is(TokenKind::RightParen) {
+                                break;
+                            } else {
+                                self.expect_current(TokenKind::Comma)?;
+                            }
+                        }
+                        self.expect_current(TokenKind::RightParen)?;
+                        SwitchCasePattern::EnumVariant(identifier, items)
+                    } else {
+                        SwitchCasePattern::Identifier(identifier)
+                    }
+                } else {
+                    let expr = self.parse_expression(Precedence::Lowest)?.0;
+                    self.next_token();
+                    SwitchCasePattern::Expression(expr)
+                };
+
                 self.expect_current(TokenKind::Colon)?;
                 let case_body;
                 if SWITCH_ENDING_TOKENS.contains(&self.current_token.kind.clone()) {
@@ -1187,12 +1215,11 @@ impl<'a> Parser<'a> {
                 }
 
                 cases.push(SwitchCase {
-                    raw: case_expr,
+                    pattern: case_pattern,
                     body: case_body,
                     span: Span::new(case_start, self.current_token.span.end),
                     loc: case_loc,
                 });
-
             } else if self.current_token_is(TokenKind::Default) {
                 self.next_token();
                 self.expect_current(TokenKind::Colon)?;

@@ -86,7 +86,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         opt
     }
 
-    pub(crate) fn resolve_enum_metadata_with_struct_id(&self, enum_id: EnumID) -> Option<EnumMetadata<'ctx>> {
+    pub(crate) fn resolve_enum_metadata_with_enum_id(&self, enum_id: EnumID) -> Option<EnumMetadata<'ctx>> {
         let module_metadata_registry = self.module_metadata_registry.borrow();
 
         let enum_metadata_opt = module_metadata_registry

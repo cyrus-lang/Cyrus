@@ -1,17 +1,22 @@
 use crate::context::CodeGenLLVM;
 use crate::diag::*;
+use crate::enums::EnumVariantMetadata;
 use crate::funcs::FuncMetadata;
+use crate::modules::LocalIRValueID;
 use crate::scope::ScopeRef;
 use crate::scope::{Scope, ScopeRecord};
-use crate::types::{InternalBoolType, InternalIntType, InternalType};
+use crate::types::{InternalBoolType, InternalEnumType, InternalIntType, InternalType};
 use crate::values::InternalValue;
-use ast::ast::{BlockStatement, Break, Continue, Expression, For, Foreach, If, Statement, Switch, TypeSpecifier};
+use ast::ast::{
+    BlockStatement, Break, Continue, Expression, For, Foreach, Identifier, If, Statement, Switch, SwitchCasePattern,
+    TypeSpecifier,
+};
 use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
-use inkwell::values::{BasicValueEnum, IntValue};
+use inkwell::values::{BasicValueEnum, IntValue, PointerValue, StructValue};
 use std::cell::RefCell;
-use std::collections::{HashMap, LinkedList};
+use std::collections::HashMap;
 use std::process::exit;
 use std::rc::Rc;
 
@@ -300,8 +305,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_switch(&mut self, scope: ScopeRef<'ctx>, switch: Switch) {
-        let lvalue = self.build_expr(Rc::clone(&scope), switch.value);
+        let lvalue = self.build_expr(Rc::clone(&scope), switch.value.clone());
         let rvalue = self.internal_value_as_rvalue(lvalue, switch.loc.clone(), switch.span.end);
+
+        if let InternalValue::EnumVariantValue(struct_value, internal_type) = rvalue {
+            let internal_enum_type = match internal_type {
+                InternalType::EnumType(internal_enum_type) => internal_enum_type,
+                _ => unreachable!(),
+            };
+            self.build_switch_for_enum_variants(Rc::clone(&scope), struct_value, internal_enum_type, switch);
+            return;
+        }
 
         // Analyze switch to determine it must be compiled as traditional-switch or smart-switch.
         let mut includes_non_integer_value = false;
@@ -310,7 +324,27 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let mut block_id = 0;
 
         for case in switch.cases {
-            let case_lvalue = self.build_expr(Rc::clone(&scope), case.raw.clone());
+            let case_expr = match case.pattern {
+                SwitchCasePattern::Expression(expression) => expression,
+                _ => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom(format!(
+                            "Switch statement is operating on a value of type '{}', which is not an enum variant. When switching on a non-enum type, each case must be an expression that directly matches a possible value of the switch input, not an enum-like pattern.",
+                            rvalue.get_type(),
+                        )),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: case.loc.line,
+                            column: case.loc.column,
+                            length: case.span.end,
+                        }),
+                    });
+                    exit(1);
+                }
+            };
+
+            let case_lvalue = self.build_expr(Rc::clone(&scope), case_expr);
             let case_rvalue = self.internal_value_as_rvalue(case_lvalue, case.loc.clone(), case.span.end);
             match case_rvalue {
                 InternalValue::IntValue(..) => {}
@@ -375,6 +409,264 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
 
         self.block_registry.current_loop_ref = current_loop_ref_copy;
+    }
+
+    fn build_switch_for_enum_variants(
+        &mut self,
+        scope: ScopeRef<'ctx>,
+        enum_value: StructValue<'ctx>,
+        internal_enum_type: InternalEnumType<'ctx>,
+        switch: Switch,
+    ) {
+        #[derive(Debug, Clone)]
+        enum PatternKind<'a> {
+            Identifier(Identifier, u32),
+            Valued(Identifier, u32, PointerValue<'a>),
+            EnumVariant(Identifier, u32, Vec<(Identifier, PointerValue<'a>)>),
+        }
+
+        #[derive(Debug, Clone)]
+        struct Pattern<'a> {
+            block_id: u32,
+            pattern_kind: PatternKind<'a>,
+            body: BlockStatement,
+            loc: Location,
+            span_end: usize,
+        }
+
+        let index_value = self
+            .builder
+            .build_extract_value(enum_value, 0, "extract")
+            .unwrap()
+            .into_int_value();
+
+        let enum_metadata = self
+            .resolve_enum_metadata_with_enum_id(internal_enum_type.enum_id)
+            .unwrap();
+
+        let current_func_metadata = self.get_current_func("switch statement", switch.loc.clone(), switch.span.end);
+        let current_func = match self.get_local_func_ir_value(current_func_metadata.local_ir_value_id) {
+            Some(func_value) => func_value,
+            None => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("Cannot build switch statement outside of a function.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: switch.loc.line,
+                        column: switch.loc.column,
+                        length: switch.span.end,
+                    }),
+                });
+                exit(1);
+            }
+        };
+
+        let parent_switch_copy = self.block_registry.current_switch.clone();
+        let parent_block = self.get_current_block("switch statement", switch.loc.clone(), switch.span.end);
+
+        let exit_block = self.context.append_basic_block(current_func, "switch.exit");
+        let target_block = if let Some(block_statement) = switch.default.clone() {
+            let default_block = self.context.append_basic_block(current_func, "switch.default");
+            self.block_registry.current_block_ref = Some(default_block.clone());
+            self.builder.position_at_end(default_block);
+            self.block_registry.current_switch = Some(SwitchBlockRefs { exit_block });
+            self.build_statements(Rc::clone(&scope), block_statement.exprs);
+            default_block
+        } else {
+            self.block_registry.current_switch = Some(SwitchBlockRefs { exit_block });
+            exit_block
+        };
+
+        let mut block_id = 0;
+        let mut patterns: Vec<Pattern> = Vec::new();
+
+        switch.cases.iter().for_each(|case| {
+            let pattern_kind = match &case.pattern {
+                SwitchCasePattern::Expression(..) => {
+                    display_single_diag(Diag {
+                        level: DiagLevel::Error,
+                        kind: DiagKind::Custom("When switching on an enum variant, each case must be an enum-like pattern that directly matches a possible variant of the enum, not a standalone expression.".to_string()),
+                        location: Some(DiagLoc {
+                            file: self.file_path.clone(),
+                            line: case.loc.line,
+                            column: case.loc.column,
+                            length: case.span.end,
+                        }),
+                    });
+                    exit(1);
+                },
+                SwitchCasePattern::Identifier(identifier) => {
+                    match enum_metadata.variants.iter().find(|(variant_identifier, ..)| variant_identifier.name == identifier.name) {
+                        Some((_, enum_variant_metadata)) => {
+                            PatternKind::Identifier(identifier.clone(), enum_variant_metadata.get_variant_number())
+                        },
+                        None => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::EnumVariantNotDefined(identifier.name.clone(), enum_metadata.enum_name.clone()),
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: case.loc.line,
+                                    column: case.loc.column,
+                                    length: case.span.end,
+                                }),
+                            });
+                            exit(1);
+                        },
+                    }
+                },
+                SwitchCasePattern::EnumVariant(identifier, identifiers) => {
+                    match enum_metadata.variants.iter().find(|(variant_identifier, ..)| variant_identifier.name == identifier.name) {
+                        Some((_, enum_variant_metadata)) => {
+                            match enum_variant_metadata {
+                                EnumVariantMetadata::Identifier(_) => {
+                                    display_single_diag(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: DiagKind::Custom(
+                                            format!("Enum variant '{}' is not a valued variant and does not export any value.",
+                                                identifier.name.clone()
+                                            )
+                                        ),
+                                        location: Some(DiagLoc {
+                                            file: self.file_path.clone(),
+                                            line: case.loc.line,
+                                            column: case.loc.column,
+                                            length: case.span.end,
+                                        }),
+                                    });
+                                    exit(1);
+                                },
+                                EnumVariantMetadata::Valued(enum_valued_variant_metadata) => {
+                                    if identifiers.len() != 1  {
+                                        display_single_diag(Diag {
+                                            level: DiagLevel::Error,
+                                            kind: DiagKind::Custom(
+                                                format!("Valued enum variant expects a single value, but you provided '{}' values.", identifiers.len())
+                                            ),
+                                            location: Some(DiagLoc {
+                                                file: self.file_path.clone(),
+                                                line: case.loc.line,
+                                                column: case.loc.column,
+                                                length: case.span.end,
+                                            }),
+                                        });
+                                        exit(1);
+                                    }
+
+                                    // Load value of the enum variant and make a internal copy of it.
+                                    let global_value = self.get_local_global_value_ir_value(enum_valued_variant_metadata.local_ir_value_id).unwrap();
+                                    let alloca = self.builder.build_alloca(enum_valued_variant_metadata.value_type.clone(), "alloca").unwrap();
+                                    let loaded_value = self.builder.build_load(enum_valued_variant_metadata.value_type, global_value.as_pointer_value(), "load").unwrap();
+                                    self.builder.build_store(alloca, loaded_value).unwrap();
+
+                                    PatternKind::Valued(identifier.clone(), enum_variant_metadata.get_variant_number(), alloca)
+                                },
+                                EnumVariantMetadata::Variant(enum_variant_field_metadata) => {
+                                    todo!();
+                                },
+                            }
+                        },
+                        None => {
+                            display_single_diag(Diag {
+                                level: DiagLevel::Error,
+                                kind: DiagKind::EnumVariantNotDefined(identifier.name.clone(), enum_metadata.enum_name.clone()),
+                                location: Some(DiagLoc {
+                                    file: self.file_path.clone(),
+                                    line: case.loc.line,
+                                    column: case.loc.column,
+                                    length: case.span.end,
+                                }),
+                            });
+                            exit(1);
+                        },
+                    }
+                },
+            };
+
+            patterns.push(Pattern { block_id, pattern_kind, body: case.body.clone(), loc: case.loc.clone(),  span_end: case.span.end });
+            if !case.body.exprs.is_empty() {
+                block_id += 1;
+            }
+        });
+
+        let mut case_blocks: HashMap<u32, BasicBlock<'ctx>> = HashMap::new();
+        let max_block_id = patterns.iter().last().unwrap().block_id;
+
+        for block_id in 0..(max_block_id + 1) {
+            let case_block = self.context.append_basic_block(current_func, "switch.case");
+            case_blocks.insert(block_id, case_block);
+        }
+
+        for block_id in 0..(max_block_id + 1) {
+            let group: Vec<Pattern> = patterns
+                .iter()
+                .filter(|case| case.block_id == block_id)
+                .cloned()
+                .collect();
+
+            let group_body = &group.iter().last().unwrap().body;
+
+            let case_block = case_blocks.get(&block_id).unwrap();
+            self.builder.position_at_end(*case_block);
+            self.block_registry.current_block_ref = Some(*case_block);
+            // TODO Add identifiers to scope if exists.
+            self.build_statements(Rc::clone(&scope), group_body.exprs.clone());
+
+            // NOTE Jump to the exit block if this is the last case, otherwise jump to the next case.
+            let current_block = self.get_current_block("switch statement", switch.loc.clone(), switch.span.end);
+            self.builder.position_at_end(current_block);
+
+            if !self.is_block_terminated(current_block) {
+                match patterns.iter().find(|case| case.block_id == block_id + 1) {
+                    Some(next_case) => {
+                        self.mark_block_terminated(current_block, false);
+                        let next_case_block = case_blocks.get(&next_case.block_id).unwrap();
+                        self.builder.build_unconditional_branch(*next_case_block).unwrap();
+                        self.builder.position_at_end(*next_case_block);
+                    }
+                    None => {}
+                }
+            }
+        }
+
+        // Check if ending case doesn't have a terminator...
+        let current_block = self.get_current_block("switch statement", switch.loc.clone(), switch.span.end);
+        if !self.is_block_terminated(current_block) {
+            self.mark_block_terminated(current_block, false);
+            self.builder.build_unconditional_branch(target_block).unwrap();
+            self.builder.position_at_end(target_block);
+        }
+
+        let ir_cases: Vec<(IntValue<'ctx>, BasicBlock<'ctx>)> = patterns
+            .iter()
+            .map(|case| {
+                let variant_number = match &case.pattern_kind {
+                    PatternKind::Identifier(.., variant_number) => variant_number,
+                    PatternKind::Valued(_, variant_number, ..) => variant_number,
+                    PatternKind::EnumVariant(_, variant_number, _) => variant_number,
+                };
+                let int_value = self.context.i32_type().const_int((*variant_number).into(), false);
+                let basic_block = case_blocks.get(&case.block_id).cloned().unwrap();
+                (int_value.clone(), basic_block)
+            })
+            .collect();
+
+        self.builder.position_at_end(parent_block);
+        self.builder.build_switch(index_value, target_block, &ir_cases).unwrap();
+
+        if switch.default.is_some() {
+            self.builder.position_at_end(target_block);
+            if !self.is_block_terminated(target_block) {
+                self.builder.position_at_end(target_block);
+                self.mark_block_terminated(target_block, false);
+                self.builder.build_unconditional_branch(exit_block).unwrap();
+            }
+        }
+
+        self.builder.position_at_end(exit_block);
+        self.block_registry.current_block_ref = Some(exit_block);
+        self.block_registry.current_switch = parent_switch_copy;
     }
 
     fn build_traditional_switch(

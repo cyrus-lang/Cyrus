@@ -1371,16 +1371,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             InternalValue::StructValue(_, internal_type) | InternalValue::UnnamedStructValue(_, internal_type) => {
                 let pointer = match internal_value {
                     InternalValue::PointerValue(typed_pointer_value) => typed_pointer_value.ptr,
-                    InternalValue::EnumVariantValue(struct_value, internal_type) => {
-                        let internal_enum_type = match internal_type {
-                            InternalType::EnumType(internal_enum_type) => internal_enum_type,
-                            _ => unreachable!(),
-                        };
-
+                    InternalValue::EnumVariantValue(struct_value, _) => {
                         return self.buld_enum_variant_internal_field(
                             field_access.field_name.name.clone(),
                             struct_value,
-                            internal_enum_type,
                             field_access.loc.clone(),
                             field_access.span.end,
                         );
@@ -1438,16 +1432,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 });
                 exit(1);
             }
-            InternalValue::EnumVariantValue(struct_value, internal_type) => {
-                let internal_enum_type = match internal_type {
-                    InternalType::EnumType(internal_enum_type) => internal_enum_type,
-                    _ => unreachable!(),
-                };
-
+            InternalValue::EnumVariantValue(struct_value, _) => {
                 return self.buld_enum_variant_instance_internal_field(
                     field_access.field_name.name.clone(),
                     struct_value,
-                    internal_enum_type,
                     field_access.loc.clone(),
                     field_access.span.end,
                 );

@@ -6,7 +6,7 @@ use crate::{
     types::InternalType,
 };
 use ast::{
-    ast::{AccessSpecifier, Expression, GlobalVariable, TypeSpecifier, Variable},
+    ast::{AccessSpecifier, GlobalVariable, TypeSpecifier, Variable},
     token::{Location, TokenKind},
 };
 use inkwell::{
@@ -14,7 +14,7 @@ use inkwell::{
     module::Linkage,
     values::{AnyValue, BasicValueEnum, GlobalValue},
 };
-use std::{cell::RefCell, collections::HashMap, process::exit, rc::Rc};
+use std::{collections::HashMap, process::exit, rc::Rc};
 
 pub type GlobalVariablesTable<'a> = HashMap<String, GlobalVariableMetadata<'a>>;
 
