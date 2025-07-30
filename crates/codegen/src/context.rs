@@ -98,7 +98,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
         let module_id = generate_module_id();
 
-        let codegen_llvm = CodeGenLLVM {
+        let codegen = CodeGenLLVM {
             file_path: file_path.clone(),
             opts,
             output_kind,
@@ -122,7 +122,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         // Add an empty module metadata to the registry.
-        codegen_llvm.add_module_to_metadata_registry(ModuleMetadata {
+        codegen.add_module_to_metadata_registry(ModuleMetadata {
             module_id,
             module_file_path: file_path.clone(),
             func_table: FuncTable::new(),
@@ -132,10 +132,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             enum_table: EnumTable::new(),
         });
 
-        if codegen_llvm.opts.display_target_machine {
-            codegen_llvm.display_target_machine_information();
+        if codegen.opts.display_target_machine {
+            codegen.display_target_machine_information();
         }
-        Ok(codegen_llvm)
+        Ok(codegen)
     }
 
     fn display_target_machine_information(&self) {

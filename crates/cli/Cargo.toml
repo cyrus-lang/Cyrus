@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-codegen_llvm = { path = "../codegen_llvm", version = "*" }
+codegen = { path = "../codegen", version = "*" }
 layout = { path = "../layout", version = "*" }
 parser = { path = "../parser", version = "*" }
 clap = { version = "4.5.41", features = ["derive"] }
@@ -13,3 +13,7 @@ utils = { path = "../utils", version = "*" }
 ast = { path = "../ast", version = "*" }
 colorized = "1.0.0"
 toml = "0.8.20"
+
+[[bin]]
+name = "cyrus"
+path = "./src/main.rs"

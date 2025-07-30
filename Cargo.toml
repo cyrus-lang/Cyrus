@@ -1,35 +1,18 @@
-[package]
-name = "cyrus-lang"
-version = "0.0.1"
-edition = "2024"
-resolver = "2"
-
 [workspace]
 members = [
-    "crates/codegen_llvm",
+    "crates/codegen",
     "crates/lexer",
     "crates/parser",
     "crates/ast",
     "crates/utils",
+    "crates/layout",
+    "crates/diag",
+    "crates/typed_ast",
     "crates/cli",
-    "crates/layout", 
-    "crates/diag"
 ]
+default-members = ["crates/cli"]
 
-[[bin]]
-name = "cyrus"
-path = "./crates/cli/src/main.rs"
-
-[dependencies]
-codegen_llvm = { path = "./crates/codegen_llvm", version = "*" }
-layout = { path = "./crates/layout", version = "*" }
-parser = { path = "./crates/parser", version = "*" }
-clap = { version = "4.5.41", features = ["derive"] }
-lexer = { path = "./crates/lexer", version = "*" }
-utils = { path = "./crates/utils", version = "*" }
-ast = { path = "./crates/ast", version = "*" }
-colorized = "1.0.0"
-toml = "0.8.20"
+resolver = "3"
 
 [profile.dev]
-codegen-units = 512
+codegen-units = 1024

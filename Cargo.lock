@@ -129,7 +129,7 @@ version = "0.1.0"
 dependencies = [
  "ast",
  "clap",
- "codegen_llvm",
+ "codegen",
  "colorized",
  "layout",
  "lexer",
@@ -139,7 +139,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "codegen_llvm"
+name = "codegen"
 version = "0.1.0"
 dependencies = [
  "ast",
@@ -189,21 +189,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a97769d94ddab943e4510d138150169a2758b5ef3eb191a9ee688de3e23ef7b3"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "cyrus-lang"
-version = "0.0.1"
-dependencies = [
- "ast",
- "clap",
- "codegen_llvm",
- "colorized",
- "layout",
- "lexer",
- "parser",
- "toml",
- "utils",
 ]
 
 [[package]]
@@ -320,7 +305,7 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 name = "layout"
 version = "0.1.0"
 dependencies = [
- "codegen_llvm",
+ "codegen",
 ]
 
 [[package]]
@@ -609,6 +594,10 @@ dependencies = [
  "toml_datetime",
  "winnow",
 ]
+
+[[package]]
+name = "typed_ast"
+version = "0.1.0"
 
 [[package]]
 name = "unicode-ident"

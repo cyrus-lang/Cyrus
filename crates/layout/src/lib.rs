@@ -1,4 +1,4 @@
-use codegen_llvm::diag::{Diag, DiagKind, DiagLevel, display_single_diag};
+use codegen::diag::{Diag, DiagKind, DiagLevel, display_single_diag};
 use std::{
     fs::{self, File},
     io::Write,
