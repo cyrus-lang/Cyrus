@@ -8,7 +8,7 @@ members = [
     "crates/layout",
     "crates/diag",
     "crates/typed_ast",
-    "crates/cli",
+    "crates/cli", "crates/static_analyzer",
 ]
 default-members = ["crates/cli"]
 
