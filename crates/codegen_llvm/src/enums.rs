@@ -4,17 +4,17 @@ use crate::{
     modules::{LocalIRValueID, generate_local_ir_value_id},
     scope::ScopeRef,
     structs::UnnamedStructTypeMetadata,
-    types::{InternalEnumType, InternalType},
+    types::{InternalEnumType, InternalIntType, InternalType},
     values::InternalValue,
 };
 use ast::{
     ast::{AccessSpecifier, Enum, EnumField, FieldAccess, Identifier, MethodCall},
-    token::Location,
+    token::{Location, TokenKind},
 };
 use inkwell::{
     AddressSpace,
-    types::{ArrayType, BasicTypeEnum, PointerType},
-    values::{ArrayValue, BasicValueEnum, PointerValue},
+    types::{ArrayType, BasicTypeEnum},
+    values::{ArrayValue, BasicValueEnum, StructValue},
 };
 use rand::Rng;
 use std::{collections::HashMap, process::exit, rc::Rc};
@@ -60,6 +60,96 @@ pub type EnumPayloadType<'a> = ArrayType<'a>;
 pub type EnumPayloadValue<'a> = ArrayValue<'a>;
 
 impl<'ctx> CodeGenLLVM<'ctx> {
+    pub(crate) fn buld_enum_variant_internal_field(
+        &self,
+        field_name: String,
+        struct_value: StructValue<'ctx>,
+        internal_enum_type: InternalEnumType<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> InternalValue<'ctx> {
+        match &*field_name {
+            "index" => self.build_enum_extract_index(struct_value),
+            "value" => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::Custom("The 'value' field must be accessed through an instance of an enum variant, not directly on the enum type itself.".to_string()),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::FieldNotFoundForEnumVariant(field_name),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+    }
+
+    pub(crate) fn buld_enum_variant_instance_internal_field(
+        &self,
+        field_name: String,
+        struct_value: StructValue<'ctx>,
+        internal_enum_type: InternalEnumType<'ctx>,
+        loc: Location,
+        span_end: usize,
+    ) -> InternalValue<'ctx> {
+        match &*field_name {
+            "index" => self.build_enum_extract_index(struct_value),
+            "value" => self.build_enum_extract_value(struct_value, internal_enum_type),
+            _ => {
+                display_single_diag(Diag {
+                    level: DiagLevel::Error,
+                    kind: DiagKind::FieldNotFoundForEnumVariant(field_name),
+                    location: Some(DiagLoc {
+                        file: self.file_path.clone(),
+                        line: loc.line,
+                        column: loc.column,
+                        length: span_end,
+                    }),
+                });
+                exit(1);
+            }
+        }
+    }
+
+    pub(crate) fn build_enum_extract_index(&self, struct_value: StructValue<'ctx>) -> InternalValue<'ctx> {
+        let index_value = self
+            .builder
+            .build_extract_value(struct_value, 0, "extract")
+            .unwrap()
+            .into_int_value();
+        InternalValue::IntValue(
+            index_value,
+            InternalType::IntType(InternalIntType {
+                type_str: "uint32".to_string(),
+                int_kind: TokenKind::UInt32,
+                int_type: index_value.get_type(),
+            }),
+        )
+    }
+
+    pub(crate) fn build_enum_extract_value(
+        &self,
+        struct_value: StructValue<'ctx>,
+        internal_enum_type: InternalEnumType<'ctx>,
+    ) -> InternalValue<'ctx> {
+        todo!()
+    }
+
     pub(crate) fn build_enum(&mut self, enum_statement: Enum) {
         if enum_statement.access_specifier == AccessSpecifier::Extern {
             self.build_c_enum(enum_statement);
