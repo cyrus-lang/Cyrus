@@ -7,11 +7,11 @@ use crate::scope::ScopeRef;
 use crate::scope::{Scope, ScopeRecord};
 use crate::types::{InternalBoolType, InternalEnumType, InternalIntType, InternalLvalueType, InternalType};
 use crate::values::InternalValue;
-use ast::ast::{
+use ast::token::{Location, Span, Token, TokenKind};
+use ast::{
     BlockStatement, Break, Continue, Expression, For, Foreach, Identifier, If, Statement, Switch, SwitchCasePattern,
     TypeSpecifier,
 };
-use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
 use inkwell::values::{BasicValueEnum, IntValue, PointerValue, StructValue};

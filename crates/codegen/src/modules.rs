@@ -11,7 +11,7 @@ use crate::{
     types::{TypedefMetadata, TypedefTable},
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
-use ast::ast::Identifier;
+use ast::Identifier;
 use ast::{
     ast::{AccessSpecifier, Import, ModulePath, ModuleSegment, ModuleSegmentSingle},
     format::module_segments_as_string,

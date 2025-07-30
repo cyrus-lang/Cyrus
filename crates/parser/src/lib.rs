@@ -1,6 +1,6 @@
 use crate::diag::ParserDiagKind;
-use ast::ast::*;
 use ast::token::*;
+use ast::*;
 use diagcentral::Diag;
 use diagcentral::DiagLevel;
 use diagcentral::DiagLoc;
