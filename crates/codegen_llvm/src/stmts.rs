@@ -1,6 +1,6 @@
 use crate::context::CodeGenLLVM;
 use crate::diag::*;
-use crate::enums::{EnumValuedVariantMetadata, EnumVariantMetadata};
+use crate::enums::{EnumValuedVariantMetadata, EnumVariantFieldMetadata, EnumVariantMetadata};
 use crate::funcs::FuncMetadata;
 use crate::modules::LocalIRValueID;
 use crate::scope::ScopeRef;
@@ -15,7 +15,7 @@ use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::AddressSpace;
 use inkwell::basic_block::BasicBlock;
 use inkwell::values::{BasicValueEnum, IntValue, PointerValue, StructValue};
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::process::exit;
 use std::rc::Rc;
@@ -420,9 +420,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     ) {
         #[derive(Debug, Clone)]
         enum PatternKind<'a> {
-            Identifier(Identifier, u32),
-            Valued(Identifier, u32, Identifier, EnumValuedVariantMetadata<'a>),
-            EnumVariant(Identifier, u32, Vec<(Identifier, PointerValue<'a>)>),
+            Identifier(u32),
+            Valued(u32, Identifier, EnumValuedVariantMetadata<'a>),
+            EnumVariant(u32, Vec<Identifier>, EnumVariantFieldMetadata<'a>),
         }
 
         #[derive(Debug, Clone)]
@@ -499,7 +499,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 SwitchCasePattern::Identifier(identifier) => {
                     match enum_metadata.variants.iter().find(|(variant_identifier, ..)| variant_identifier.name == identifier.name) {
                         Some((_, enum_variant_metadata)) => {
-                            PatternKind::Identifier(identifier.clone(), enum_variant_metadata.get_variant_number())
+                            PatternKind::Identifier(enum_variant_metadata.get_variant_number())
                         },
                         None => {
                             display_single_diag(Diag {
@@ -555,10 +555,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                                     }
 
                                     let exporting_name = identifiers.first().unwrap();
-                                    PatternKind::Valued(identifier.clone(), enum_variant_metadata.get_variant_number(), exporting_name.clone(), enum_valued_variant_metadata.clone())
+                                    PatternKind::Valued(enum_variant_metadata.get_variant_number(), exporting_name.clone(), enum_valued_variant_metadata.clone())
                                 },
                                 EnumVariantMetadata::Variant(enum_variant_field_metadata) => {
-                                    todo!();
+                                    PatternKind::EnumVariant(enum_variant_metadata.get_variant_number(), identifiers.clone(), enum_variant_field_metadata.clone())
                                 },
                             }
                         },
@@ -606,9 +606,121 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             let case_block = case_blocks.get(&block_id).unwrap();
             self.builder.position_at_end(*case_block);
             self.block_registry.current_block_ref = Some(*case_block);
-            match &group_last_pattern.pattern_kind {
-                PatternKind::Identifier(..) => {}
-                PatternKind::Valued(_, _, exporting_name, enum_valued_variant_metadata) => {
+
+            let build_enum_variant_field_pattern =
+                |scope: ScopeRef<'ctx>,
+                 exporting_items: &Vec<Identifier>,
+                 enum_variant_field_metadata: &EnumVariantFieldMetadata<'ctx>| {
+                    let payload_buffer = self
+                        .builder
+                        .build_extract_value(enum_value, 1, "extract")
+                        .unwrap()
+                        .into_array_value();
+
+                    let payload_alloca = self
+                        .builder
+                        .build_alloca(payload_buffer.get_type(), "payload_alloca")
+                        .unwrap();
+                    self.builder.build_store(payload_alloca, payload_buffer).unwrap();
+
+                    let payload_type = enum_variant_field_metadata.unnamed_struct_type.clone();
+                    let extracted_value = self
+                        .builder
+                        .build_alloca(payload_type.struct_type, "payload_alloca")
+                        .unwrap();
+
+                    let buffer_size = self.context.i64_type().const_int(
+                        self.get_struct_store_size(enum_variant_field_metadata.unnamed_struct_type.struct_type),
+                        false,
+                    );
+
+                    let src_ptr = self
+                        .builder
+                        .build_bit_cast(
+                            payload_alloca,
+                            self.context.ptr_type(AddressSpace::default()),
+                            "src_ptr",
+                        )
+                        .unwrap()
+                        .into_pointer_value();
+
+                    let dest_ptr = self
+                        .builder
+                        .build_bit_cast(
+                            extracted_value,
+                            self.context.ptr_type(AddressSpace::default()),
+                            "dest_ptr",
+                        )
+                        .unwrap()
+                        .into_pointer_value();
+
+                    let struct_alignment = self
+                        .target_machine
+                        .get_target_data()
+                        .get_abi_alignment(&enum_variant_field_metadata.unnamed_struct_type.struct_type);
+
+                    self.builder
+                        .build_memcpy(dest_ptr, struct_alignment, src_ptr, struct_alignment, buffer_size)
+                        .unwrap();
+
+                    if exporting_items.len() != enum_variant_field_metadata.unnamed_struct_type.fields.len() {
+                        let loc = exporting_items.first().unwrap().loc.clone();
+                        let span_end = exporting_items.first().unwrap().span.end;
+
+                        display_single_diag(Diag {
+                            level: DiagLevel::Error,
+                            kind: DiagKind::Custom(format!(
+                                "Enum Variant '{}' has {} fields but you provided {} exporting items.",
+                                internal_enum_type.type_str.clone(),
+                                enum_variant_field_metadata.unnamed_struct_type.fields.len(),
+                                exporting_items.len(),
+                            )),
+                            location: Some(DiagLoc {
+                                file: self.file_path.clone(),
+                                line: loc.line,
+                                column: loc.column,
+                                length: span_end,
+                            }),
+                        });
+                        exit(1);
+                    }
+
+                    let struct_fields = &enum_variant_field_metadata.unnamed_struct_type.fields;
+
+                    exporting_items.iter().enumerate().for_each(|(idx, exporting_name)| {
+                        let field_internal_type = struct_fields.get(idx).cloned().unwrap().1;
+
+                        let struct_gep = self
+                            .builder
+                            .build_struct_gep(
+                                payload_type.struct_type,
+                                extracted_value,
+                                idx.try_into().unwrap(),
+                                "struct_gep",
+                            )
+                            .unwrap();
+
+                        let lvalue_type = InternalType::Lvalue(Box::new(InternalLvalueType {
+                            ptr_type: struct_gep.get_type(),
+                            pointee_ty: field_internal_type.clone(),
+                        }));
+
+                        let mut scope_borrowed = scope.borrow_mut();
+                        scope_borrowed.insert(
+                            exporting_name.name.clone(),
+                            ScopeRecord {
+                                ptr: struct_gep.clone(),
+                                ty: lvalue_type.clone(),
+                            },
+                        );
+                        drop(scope_borrowed);
+                    });
+                };
+
+            let build_enum_valued_variant_pattern =
+                |scope: ScopeRef<'ctx>,
+                 enum_valued_variant_metadata: &EnumValuedVariantMetadata<'ctx>,
+                 exporting_name: &Identifier| {
                     // Load value of the enum variant and make a internal copy of it.
                     let global_value = self
                         .get_local_global_value_ir_value(enum_valued_variant_metadata.local_ir_value_id)
@@ -653,10 +765,30 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                         },
                     );
                     drop(scope_borrowed);
+                };
+
+            let scope_ref = scope.borrow();
+            let scope_cloned = Rc::new(RefCell::new(scope_ref.deep_clone_detached()));
+            drop(scope_ref);
+
+            match &group_last_pattern.pattern_kind {
+                PatternKind::Identifier(..) => {}
+                PatternKind::Valued(_, exporting_name, enum_valued_variant_metadata) => {
+                    build_enum_valued_variant_pattern(
+                        Rc::clone(&scope_cloned),
+                        enum_valued_variant_metadata,
+                        exporting_name,
+                    );
                 }
-                PatternKind::EnumVariant(identifier, _, items) => todo!(),
+                PatternKind::EnumVariant(_, exporting_items, enum_variant_field_metadata) => {
+                    build_enum_variant_field_pattern(
+                        Rc::clone(&scope_cloned),
+                        exporting_items,
+                        enum_variant_field_metadata,
+                    );
+                }
             }
-            self.build_statements(Rc::clone(&scope), group_body.exprs.clone());
+            self.build_statements(Rc::clone(&scope_cloned), group_body.exprs.clone());
 
             // NOTE Jump to the exit block if this is the last case, otherwise jump to the next case.
             let current_block = self.get_current_block("switch statement", switch.loc.clone(), switch.span.end);
@@ -687,9 +819,9 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             .iter()
             .map(|case| {
                 let variant_number = match &case.pattern_kind {
-                    PatternKind::Identifier(.., variant_number) => variant_number,
-                    PatternKind::Valued(_, variant_number, ..) => variant_number,
-                    PatternKind::EnumVariant(_, variant_number, _) => variant_number,
+                    PatternKind::Identifier(variant_number) => variant_number,
+                    PatternKind::Valued(variant_number, ..) => variant_number,
+                    PatternKind::EnumVariant(variant_number, ..) => variant_number,
                 };
                 let int_value = self.context.i32_type().const_int((*variant_number).into(), false);
                 let basic_block = case_blocks.get(&case.block_id).cloned().unwrap();

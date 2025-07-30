@@ -40,7 +40,7 @@ pub struct EnumIdentifierVariantMetadata {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumVariantFieldMetadata<'a> {
     variant_number: u32,
-    unnamed_struct_type: UnnamedStructTypeMetadata<'a>,
+    pub unnamed_struct_type: UnnamedStructTypeMetadata<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

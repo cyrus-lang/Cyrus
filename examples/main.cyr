@@ -9,7 +9,7 @@ enum Color {
 }
 
 func main() {
-    #my_color: Color = Color.StringColor;
+    #my_color: Color = Color.Custom(251, 187, 130);
 
 	switch (my_color) {
 		case .Red:
@@ -18,6 +18,10 @@ func main() {
 		case .StringColor(value):
 		 	libc::printf("Color is %s.\n", value);
   			break;
+    	case .Custom(a, b, c):
+     			libc::printf("Color is Custom with index %d.\n", my_color.index);
+     			libc::printf("Color is (%d, %d, %d).\n", a, b, c);
+     			break;
 		default:
 			libc::printf("Unknown Color!.\n");
 			break;
