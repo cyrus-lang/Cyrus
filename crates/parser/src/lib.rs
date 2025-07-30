@@ -100,10 +100,13 @@ impl<'a> Parser<'a> {
     }
 
     pub fn display_parser_errors(&mut self, errors: Vec<ParserError>) {
-        if errors.len() > 0 {
-            let output = DiagReporter::format_panel(&errors[0]);
-            eprintln!("{}", output);
-            std::process::exit(1);
+        let len = errors.len();
+        if len > 0 {
+            // Take last 3 errors or fewer if less than 3
+            let start_index = if len > 3 { len - 3 } else { 0 };
+            for error in &errors[start_index..] {
+                DiagReporter::display_single(error.clone());
+            }
         }
     }
 
