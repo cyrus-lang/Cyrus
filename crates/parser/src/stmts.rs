@@ -1,15 +1,17 @@
-use crate::ParseError;
 use crate::Parser;
-use crate::diag::ParserErrorType;
+use crate::ParserError;
+use crate::diag::ParserDiagKind;
 use crate::prec::Precedence;
 use ast::ast::*;
 use ast::token::*;
-use diag::errors::CompileTimeError;
+use diagcentral::Diag;
+use diagcentral::DiagLevel;
+use diagcentral::DiagLoc;
 
 const SWITCH_ENDING_TOKENS: &[TokenKind; 3] = &[TokenKind::Case, TokenKind::Default, TokenKind::RightBrace];
 
 impl<'a> Parser<'a> {
-    pub fn parse_statement(&mut self, toplevel: bool) -> Result<Statement, ParseError> {
+    pub fn parse_statement(&mut self, toplevel: bool) -> Result<Statement, ParserError> {
         if self.current_token_is(TokenKind::Extern)
             || self.current_token_is(TokenKind::Inline)
             || self.current_token_is(TokenKind::Public)
@@ -65,27 +67,28 @@ impl<'a> Parser<'a> {
             match self.current_token.kind {
                 TokenKind::Import => self.parse_import(),
                 _ => {
-                    return Err(CompileTimeError {
-                        location: self.current_token.loc.clone(),
-                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        caret: Some(self.current_token.span.clone()),
-                        verbose: None,
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            self.current_token.loc.clone(),
+                            self.current_token.span.end,
+                        )),
+                        hint: None,
                     });
                 }
             }
         }
     }
 
-    pub fn parse_expression_statement(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
         let expr = self.parse_expression(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::Semicolon)?;
         Ok(Statement::Expression(expr))
     }
 
-    pub fn parse_enum_field(&mut self) -> Result<EnumField, ParseError> {
-        let start = self.current_token.span.start;
+    pub fn parse_enum_field(&mut self) -> Result<EnumField, ParserError> {
         let loc = self.current_token.loc.clone();
 
         let variant_name = self.parse_identifier()?;
@@ -105,15 +108,17 @@ impl<'a> Parser<'a> {
 
             loop {
                 if self.current_token_is(TokenKind::RightParen) {
-                    return Err(CompileTimeError {
-                        location: loc,
-                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: Some(String::from(
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            loc,
+                            self.current_token.span.end,
+                        )),
+                        hint: Some(String::from(
                             "Consider to add a field to enum variant or remove the parenthesis.",
                         )),
-                        caret: Some(Span::new(start, self.current_token.span.end)),
                     });
                 }
 
@@ -143,7 +148,7 @@ impl<'a> Parser<'a> {
         return Ok(EnumField::Variant(variant_name, variant_fields));
     }
 
-    pub fn parse_enum(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParseError> {
+    pub fn parse_enum(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
         let access_specifier = access_specifier.unwrap_or(AccessSpecifier::Internal);
         let loc = self.current_token.loc.clone();
         let start = self.current_token.span.start;
@@ -200,7 +205,7 @@ impl<'a> Parser<'a> {
         &mut self,
         access_specifier: Option<AccessSpecifier>,
         packed: bool,
-    ) -> Result<Statement, ParseError> {
+    ) -> Result<Statement, ParserError> {
         let loc = self.current_token.loc.clone();
         let struct_start = self.current_token.span.start.clone();
 
@@ -222,13 +227,15 @@ impl<'a> Parser<'a> {
                         break;
                     }
                     TokenKind::EOF => {
-                        return Err(CompileTimeError {
-                            location: loc,
-                            etype: ParserErrorType::MissingOpeningBrace,
-                            file_name: Some(self.lexer.file_name.clone()),
-                            source_content: Box::new(self.lexer.input.clone()),
-                            verbose: None,
-                            caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                        return Err(Diag {
+                            kind: ParserDiagKind::MissingOpeningBrace,
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(
+                                self.lexer.file_name.clone(),
+                                loc,
+                                self.current_token.span.end,
+                            )),
+                            hint: None,
                         });
                     }
                     TokenKind::Identifier { name: inherit_struct } => {
@@ -244,13 +251,15 @@ impl<'a> Parser<'a> {
                         continue;
                     }
                     _ => {
-                        return Err(CompileTimeError {
-                            location: loc,
-                            etype: ParserErrorType::ExpectedIdentifier,
-                            file_name: Some(self.lexer.file_name.clone()),
-                            source_content: Box::new(self.lexer.input.clone()),
-                            verbose: None,
-                            caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                        return Err(Diag {
+                            kind: ParserDiagKind::ExpectedIdentifier,
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(
+                                self.lexer.file_name.clone(),
+                                loc,
+                                self.current_token.span.end,
+                            )),
+                            hint: None,
                         });
                     }
                 }
@@ -268,13 +277,15 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 TokenKind::EOF => {
-                    return Err(CompileTimeError {
-                        location: self.current_token.loc.clone(),
-                        etype: ParserErrorType::MissingClosingBrace,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: None,
-                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingClosingBrace,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            self.current_token.loc.clone(),
+                            self.current_token.span.end,
+                        )),
+                        hint: None,
                     });
                 }
                 TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
@@ -319,13 +330,15 @@ impl<'a> Parser<'a> {
                     fields.push(field);
                 }
                 _ => {
-                    return Err(CompileTimeError {
-                        location: self.current_token.loc.clone(),
-                        etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: Some(String::from("Invalid token inside a struct definition.")),
-                        caret: Some(Span::new(struct_start, self.current_token.span.end)),
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            self.current_token.loc.clone(),
+                            self.current_token.span.end,
+                        )),
+                        hint: None,
                     });
                 }
             }
@@ -346,19 +359,21 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_break(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_break(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
         self.next_token();
         if !self.current_token_is(TokenKind::Semicolon) {
-            return Err(CompileTimeError {
-                location: loc,
-                etype: ParserErrorType::MissingSemicolon,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
+            return Err(Diag {
+                kind: ParserDiagKind::MissingSemicolon,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.lexer.file_name.clone(),
+                    loc,
+                    self.current_token.span.end,
+                )),
+                hint: None,
             });
         } else {
             Ok(Statement::Break(Break {
@@ -368,19 +383,21 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_continue(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_continue(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
         self.next_token();
         if !self.current_token_is(TokenKind::Semicolon) {
-            return Err(CompileTimeError {
-                location: loc,
-                etype: ParserErrorType::MissingSemicolon,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
+            return Err(Diag {
+                kind: ParserDiagKind::MissingSemicolon,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.lexer.file_name.clone(),
+                    loc,
+                    self.current_token.span.end,
+                )),
+                hint: None,
             });
         } else {
             Ok(Statement::Continue(Continue {
@@ -390,7 +407,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_import_module_path(&mut self, module_path: ModulePath) -> Result<ModulePath, ParseError> {
+    pub fn parse_import_module_path(&mut self, module_path: ModulePath) -> Result<ModulePath, ParserError> {
         if self.current_token_is(TokenKind::LeftBrace) {
             self.next_token();
 
@@ -435,7 +452,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_import(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_import(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
@@ -465,13 +482,15 @@ impl<'a> Parser<'a> {
                         }
                     }
                     _ => {
-                        return Err(CompileTimeError {
-                            location: self.current_token.loc.clone(),
-                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                            file_name: Some(self.lexer.file_name.clone()),
-                            source_content: Box::new(self.lexer.input.clone()),
-                            verbose: None,
-                            caret: Some(Span::new(start, self.current_token.span.end)),
+                        return Err(Diag {
+                            kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(
+                                self.lexer.file_name.clone(),
+                                self.current_token.loc.clone(),
+                                self.current_token.span.end,
+                            )),
+                            hint: None,
                         });
                     }
                 }
@@ -494,8 +513,7 @@ impl<'a> Parser<'a> {
         }));
     }
 
-    pub fn parse_func_params(&mut self) -> Result<FuncParams, ParseError> {
-        let start = self.current_token.span.start;
+    pub fn parse_func_params(&mut self) -> Result<FuncParams, ParserError> {
         let loc = self.current_token.loc.clone();
 
         self.expect_current(TokenKind::LeftParen)?;
@@ -510,13 +528,15 @@ impl<'a> Parser<'a> {
                     self.next_token(); // consume triple_dot
 
                     if self.current_token_is(TokenKind::Comma) {
-                        return Err(CompileTimeError {
-                            location: self.current_token.loc.clone(),
-                            etype: ParserErrorType::InvalidToken(self.current_token.kind.clone()),
-                            file_name: Some(self.lexer.file_name.clone()),
-                            source_content: Box::new(self.lexer.input.clone()),
-                            verbose: Some(String::from("Fixed parameters must be defined before the vargs.")),
-                            caret: Some(Span::new(start, self.current_token.span.end)),
+                        return Err(Diag {
+                            kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(
+                                self.lexer.file_name.clone(),
+                                self.current_token.loc.clone(),
+                                self.current_token.span.end,
+                            )),
+                            hint: Some("Fixed parameters must be defined before the vargs.".to_string()),
                         });
                     }
 
@@ -529,13 +549,15 @@ impl<'a> Parser<'a> {
                     self.next_token(); // consume identifier
 
                     if &identifier.name != "self" {
-                        return Err(CompileTimeError {
-                            location: loc,
-                            etype: ParserErrorType::ExpectedSelfModifier(identifier.name),
-                            file_name: Some(self.lexer.file_name.clone()),
-                            source_content: Box::new(self.lexer.input.clone()),
-                            verbose: None,
-                            caret: Some(Span::new(start, self.current_token.span.end)),
+                        return Err(Diag {
+                            kind: ParserDiagKind::ExpectedSelfModifier(identifier.name.clone()),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(
+                                self.lexer.file_name.clone(),
+                                loc.clone(),
+                                self.current_token.span.end,
+                            )),
+                            hint: None,
                         });
                     }
 
@@ -599,13 +621,15 @@ impl<'a> Parser<'a> {
                     }
                 }
                 _ => {
-                    return Err(CompileTimeError {
-                        location: loc,
-                        etype: ParserErrorType::ExpectedIdentifier,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: None,
-                        caret: Some(Span::new(start, self.current_token.span.end)),
+                    return Err(Diag {
+                        kind: ParserDiagKind::ExpectedIdentifier,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            loc.clone(),
+                            self.current_token.span.end,
+                        )),
+                        hint: None,
                     });
                 }
             }
@@ -619,26 +643,30 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
-                    return Err(CompileTimeError {
-                        location: loc,
-                        etype: ParserErrorType::MissingComma,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: None,
-                        caret: Some(Span::new(start, self.current_token.span.end)),
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingComma,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            loc.clone(),
+                            self.current_token.span.end,
+                        )),
+                        hint: None,
                     });
                 }
             }
         }
 
         if self_modifier_count > 1 {
-            return Err(CompileTimeError {
-                location: loc,
-                etype: ParserErrorType::SeveralSelfModifierDefinition,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
+            return Err(Diag {
+                kind: ParserDiagKind::SeveralSelfModifierDefinition,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.lexer.file_name.clone(),
+                    loc,
+                    self.current_token.span.end,
+                )),
+                hint: None,
             });
         }
 
@@ -647,8 +675,7 @@ impl<'a> Parser<'a> {
         Ok(FuncParams { list, variadic })
     }
 
-    pub fn parse_for_loop_body(&mut self) -> Result<Box<BlockStatement>, ParseError> {
-        let start = self.current_token.span.start;
+    pub fn parse_for_loop_body(&mut self) -> Result<Box<BlockStatement>, ParserError> {
         let loc = self.current_token.loc.clone();
 
         let body: Box<BlockStatement>;
@@ -659,19 +686,21 @@ impl<'a> Parser<'a> {
                 self.next_token();
             }
         } else {
-            return Err(CompileTimeError {
-                location: loc,
-                etype: ParserErrorType::MissingOpeningBrace,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
+            return Err(Diag {
+                kind: ParserDiagKind::MissingOpeningBrace,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.lexer.file_name.clone(),
+                    loc,
+                    self.current_token.span.end,
+                )),
+                hint: None,
             });
         }
         Ok(body)
     }
 
-    pub fn parse_foreach(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_foreach(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token.span.end;
         let loc = self.current_token.loc.clone();
 
@@ -708,7 +737,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_for_loop(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_for_loop(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
@@ -724,13 +753,15 @@ impl<'a> Parser<'a> {
                     self.next_token();
                 }
             } else {
-                return Err(CompileTimeError {
-                    location: loc,
-                    etype: ParserErrorType::MissingOpeningBrace,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: None,
-                    caret: Some(Span::new(start, self.current_token.span.end)),
+                return Err(Diag {
+                    kind: ParserDiagKind::MissingOpeningBrace,
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(
+                        self.lexer.file_name.clone(),
+                        loc,
+                        self.current_token.span.end,
+                    )),
+                    hint: None,
                 });
             }
 
@@ -801,7 +832,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_variable(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_variable(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
@@ -857,7 +888,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_func(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParseError> {
+    pub fn parse_func(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
@@ -868,13 +899,15 @@ impl<'a> Parser<'a> {
         let func_name = match self.current_token.kind.clone() {
             TokenKind::Identifier { name } => name,
             _ => {
-                return Err(CompileTimeError {
-                    location: loc,
-                    etype: ParserErrorType::ExpectedIdentifier,
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: None,
-                    caret: Some(Span::new(start, self.current_token.span.end)),
+                return Err(Diag {
+                    kind: ParserDiagKind::ExpectedIdentifier,
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(
+                        self.lexer.file_name.clone(),
+                        loc,
+                        self.current_token.span.end,
+                    )),
+                    hint: None,
                 });
             }
         }; // export the name of the function
@@ -926,13 +959,15 @@ impl<'a> Parser<'a> {
             let renamed_as = match self.current_token.kind.clone() {
                 TokenKind::Identifier { name } => name,
                 _ => {
-                    return Err(CompileTimeError {
-                        location: loc,
-                        etype: ParserErrorType::ExpectedIdentifier,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: None,
-                        caret: Some(Span::new(start, self.current_token.span.end)),
+                    return Err(Diag {
+                        kind: ParserDiagKind::ExpectedIdentifier,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            loc,
+                            self.current_token.span.end,
+                        )),
+                        hint: None,
                     });
                 }
             }; // export the name of the function
@@ -940,15 +975,17 @@ impl<'a> Parser<'a> {
             if self.peek_token_is(TokenKind::Semicolon) {
                 self.next_token();
             } else if self.peek_token_is(TokenKind::LeftBrace) {
-                return Err(CompileTimeError {
-                    location: loc,
-                    etype: ParserErrorType::InvalidToken(self.peek_token.kind.clone()),
-                    file_name: Some(self.lexer.file_name.clone()),
-                    source_content: Box::new(self.lexer.input.clone()),
-                    verbose: Some(String::from(
+                return Err(Diag {
+                    kind: ParserDiagKind::InvalidToken(self.peek_token.kind.clone()),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(
+                        self.lexer.file_name.clone(),
+                        loc,
+                        self.current_token.span.end,
+                    )),
+                    hint: Some(String::from(
                         "FuncDecl does not accept a body. Use a semicolon `;` instead of a body `{ ... }`.",
                     )),
-                    caret: Some(Span::new(start, self.current_token.span.end)),
                 });
             }
 
@@ -980,7 +1017,7 @@ impl<'a> Parser<'a> {
         }));
     }
 
-    pub fn parse_return(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_return(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
@@ -998,13 +1035,15 @@ impl<'a> Parser<'a> {
         self.next_token();
 
         if !self.current_token_is(TokenKind::Semicolon) {
-            return Err(CompileTimeError {
-                location: loc,
-                etype: ParserErrorType::MissingSemicolon,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
+            return Err(Diag {
+                kind: ParserDiagKind::MissingSemicolon,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.lexer.file_name.clone(),
+                    loc,
+                    self.current_token.span.end,
+                )),
+                hint: None,
             });
         }
 
@@ -1017,7 +1056,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_block_statement(&mut self) -> Result<BlockStatement, ParseError> {
+    pub fn parse_block_statement(&mut self) -> Result<BlockStatement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
         self.expect_current(TokenKind::LeftBrace)?;
@@ -1061,7 +1100,7 @@ impl<'a> Parser<'a> {
     pub fn parse_global_variable(
         &mut self,
         access_specifier: Option<AccessSpecifier>,
-    ) -> Result<Statement, ParseError> {
+    ) -> Result<Statement, ParserError> {
         let loc = self.current_token.loc.clone();
         let start = self.current_token.span.start;
         let identifier = self.parse_identifier()?;
@@ -1095,7 +1134,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_typedef(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParseError> {
+    pub fn parse_typedef(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
         let loc = self.current_token.loc.clone();
         let start = self.current_token.span.start;
 
@@ -1114,7 +1153,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_case_body(&mut self) -> Result<BlockStatement, ParseError> {
+    pub fn parse_case_body(&mut self) -> Result<BlockStatement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
@@ -1152,7 +1191,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn parse_switch(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_switch(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
@@ -1233,13 +1272,15 @@ impl<'a> Parser<'a> {
         }
 
         if !self.current_token_is(TokenKind::RightBrace) {
-            return Err(CompileTimeError {
-                location: loc,
-                etype: ParserErrorType::MissingClosingBrace,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
+            return Err(Diag {
+                kind: ParserDiagKind::MissingClosingBrace,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.lexer.file_name.clone(),
+                    loc,
+                    self.current_token.span.end,
+                )),
+                hint: None,
             });
         }
 
@@ -1252,7 +1293,7 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    pub fn parse_if(&mut self) -> Result<Statement, ParseError> {
+    pub fn parse_if(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
@@ -1305,26 +1346,30 @@ impl<'a> Parser<'a> {
                 alternate = Some(Box::new(self.parse_block_statement()?));
 
                 if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
-                    return Err(CompileTimeError {
-                        location: loc,
-                        etype: ParserErrorType::MissingClosingBrace,
-                        file_name: Some(self.lexer.file_name.clone()),
-                        source_content: Box::new(self.lexer.input.clone()),
-                        verbose: None,
-                        caret: Some(Span::new(start, self.current_token.span.end)),
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingClosingBrace,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.lexer.file_name.clone(),
+                            loc,
+                            self.current_token.span.end,
+                        )),
+                        hint: None,
                     });
                 }
             }
         }
 
         if !self.current_token_is(TokenKind::RightBrace) {
-            return Err(CompileTimeError {
-                location: loc,
-                etype: ParserErrorType::MissingClosingBrace,
-                file_name: Some(self.lexer.file_name.clone()),
-                source_content: Box::new(self.lexer.input.clone()),
-                verbose: None,
-                caret: Some(Span::new(start, self.current_token.span.end)),
+            return Err(Diag {
+                kind: ParserDiagKind::MissingClosingBrace,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.lexer.file_name.clone(),
+                    loc,
+                    self.current_token.span.end,
+                )),
+                hint: None,
             });
         }
 

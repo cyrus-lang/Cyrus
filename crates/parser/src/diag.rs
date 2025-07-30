@@ -1,9 +1,8 @@
 use ast::token::TokenKind;
-use core::fmt;
-use diag::errors::CompileTypeErrorType;
+use std::fmt;
 
 #[derive(Debug, Clone)]
-pub enum ParserErrorType {
+pub enum ParserDiagKind {
     UnexpectedToken(TokenKind, TokenKind),
     ExpectedToken(TokenKind),
     InvalidTypeToken(TokenKind),
@@ -21,64 +20,46 @@ pub enum ParserErrorType {
     SeveralSelfModifierDefinition,
 }
 
-impl fmt::Display for ParserErrorType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ParserDiagKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ParserErrorType::UnexpectedToken(_, _) => write!(f, "UnexpectedToken"),
-            ParserErrorType::ExpectedToken(_) => write!(f, "ExpectedToken"),
-            ParserErrorType::InvalidTypeToken(_) => write!(f, "InvalidTypeToken"),
-            ParserErrorType::InvalidToken(_) => write!(f, "InvalidToken"),
-            ParserErrorType::MissingClosingBrace => write!(f, "MissingClosingBrace"),
-            ParserErrorType::MissingOpeningBrace => write!(f, "MissingOpeningBrace"),
-            ParserErrorType::MissingClosingParen => write!(f, "MissingClosingParen "),
-            ParserErrorType::MissingOpeningParen => write!(f, "MissingOpeningParen "),
-            ParserErrorType::ExpectedIdentifier => write!(f, "ExpectedIdentifier"),
-            ParserErrorType::MissingSemicolon => write!(f, "MissingSemicolon"),
-            ParserErrorType::MissingComma => write!(f, "MissingComma"),
-            ParserErrorType::IncompleteConditionalForLoop => write!(f, "IncompleteConditionalForLoop"),
-            ParserErrorType::InvalidUntypedArrayConstructor => write!(f, "InvalidUntypedArrayConstructor"),
-            ParserErrorType::ExpectedSelfModifier(_) => write!(f, "ExpectedSelfModifier"),
-            ParserErrorType::SeveralSelfModifierDefinition => write!(f, "SeveralSelfModifierDefinition"),
-        }
-    }
-}
-
-impl CompileTypeErrorType for ParserErrorType {
-    fn context(&self) -> String {
-        match self {
-            ParserErrorType::UnexpectedToken(current, expected) => {
-                format!("Expected token '{}' but got '{}'", expected, current)
+            ParserDiagKind::UnexpectedToken(current, expected) => {
+                write!(f, "Expected token '{}' but got '{}'", expected, current)
             }
-            ParserErrorType::ExpectedToken(expected) => {
-                format!("Expected token '{}'", expected)
+            ParserDiagKind::ExpectedToken(expected) => {
+                write!(f, "Expected token '{}'", expected)
             }
-            ParserErrorType::InvalidToken(token_kind) => {
-                format!("Unexpected token: '{}'", token_kind)
+            ParserDiagKind::InvalidToken(token_kind) => {
+                write!(f, "Unexpected token: '{}'", token_kind)
             }
-            ParserErrorType::InvalidTypeToken(token_kind) => {
-                format!("Expected type token but got '{}'", token_kind)
+            ParserDiagKind::InvalidTypeToken(token_kind) => {
+                write!(f, "Expected type token but got '{}'", token_kind)
             }
-            ParserErrorType::MissingClosingBrace => format!("Missing closing brace '}}'"),
-            ParserErrorType::MissingOpeningBrace => format!("Missing opening brace '{{'"),
-            ParserErrorType::MissingClosingParen => format!("Missing closing paren ')'"),
-            ParserErrorType::MissingOpeningParen => format!("Missing opening paren '('"),
-            ParserErrorType::ExpectedIdentifier => format!("Expected an identifier"),
-            ParserErrorType::MissingSemicolon => format!("Missing semicolon"),
-            ParserErrorType::MissingComma => format!("Missing comma"),
-            ParserErrorType::IncompleteConditionalForLoop => {
-                format!(
+            ParserDiagKind::MissingClosingBrace => write!(f, "Missing closing brace '}}'"),
+            ParserDiagKind::MissingOpeningBrace => write!(f, "Missing opening brace '{{'"),
+            ParserDiagKind::MissingClosingParen => write!(f, "Missing closing paren ')'"),
+            ParserDiagKind::MissingOpeningParen => write!(f, "Missing opening paren '('"),
+            ParserDiagKind::ExpectedIdentifier => write!(f, "Expected an identifier"),
+            ParserDiagKind::MissingSemicolon => write!(f, "Missing semicolon"),
+            ParserDiagKind::MissingComma => write!(f, "Missing comma"),
+            ParserDiagKind::IncompleteConditionalForLoop => {
+                write!(
+                    f,
                     "Defined a conditional for loop with incomplete condition. \n
                     Consider to add a condition to current for loop or change it into unconditional for loop"
                 )
             }
-            ParserErrorType::InvalidUntypedArrayConstructor => {
-                "If untyped array constructor would not have an item, consider to remove it.".to_string()
+            ParserDiagKind::InvalidUntypedArrayConstructor => {
+                write!(
+                    f,
+                    "If untyped array constructor would not have an item, consider to remove it."
+                )
             }
-            ParserErrorType::SeveralSelfModifierDefinition => {
-                "Cannot define self modifier several times in a function.".to_string()
+            ParserDiagKind::SeveralSelfModifierDefinition => {
+                write!(f, "Cannot define self modifier several times in a function.")
             }
-            ParserErrorType::ExpectedSelfModifier(name) => {
-                format!("Self modifier identifier must be 'self' not '{}'.", name)
+            ParserDiagKind::ExpectedSelfModifier(name) => {
+                write!(f, "Self modifier identifier must be 'self' not '{}'.", name)
             }
         }
     }

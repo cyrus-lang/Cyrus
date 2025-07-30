@@ -682,8 +682,6 @@ impl Lexer {
     }
 
     fn skip_comments(&mut self) {
-        let start = self.pos;
-
         while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
             if self.peek_char() == '/' {
                 // handle single-line comment
