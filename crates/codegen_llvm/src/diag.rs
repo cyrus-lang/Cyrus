@@ -40,8 +40,8 @@ pub enum DiagKind {
     MethodIsAnInstance(String),
     SymbolIsNotAnStruct(String, String),
     MustBeComptimeExpr,
-    EnumVariantNotFound(String, String),
     FieldNotFoundForEnumVariant(String),
+    EnumVariantNotDefined(String, String),
     Custom(String),
 }
 
@@ -139,13 +139,13 @@ impl fmt::Display for DiagKind {
             DiagKind::MustBeComptimeExpr => {
                 "The value assigned to an enum variant must be determinable at compile time. This means you cannot use complex expressions or logic that would require runtime evaluation or execution within a function's basic block. Please ensure the value is a constant expression."
             }
-            DiagKind::EnumVariantNotFound(enum_name, variant_name) => &format!(
-                "The enum '{}' does not contain a variant named '{}'.",
-                enum_name, variant_name
-            ),
             DiagKind::FieldNotFoundForEnumVariant(field_name) => {
-                format!("This field '{}' is not defined for enum variants.", field_name)
+                &format!("'{}' field is not defined for enum variants.", field_name)
             }
+            DiagKind::EnumVariantNotDefined(variant_name, enum_name) => &format!(
+                "Enum variant '{}' is not defined for enum '{}'.",
+                variant_name, enum_name,
+            ),
         };
         write!(f, "{}", msg)
     }

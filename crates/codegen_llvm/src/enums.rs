@@ -1,7 +1,7 @@
 use crate::{
     context::CodeGenLLVM,
     diag::*,
-    modules::{LocalIRValueID, generate_local_ir_value_id},
+    modules::{LocalIRValue, LocalIRValueID, generate_local_ir_value_id},
     scope::ScopeRef,
     structs::UnnamedStructTypeMetadata,
     types::{InternalEnumType, InternalIntType, InternalType},
@@ -13,6 +13,7 @@ use ast::{
 };
 use inkwell::{
     AddressSpace,
+    module::Linkage,
     types::{ArrayType, BasicTypeEnum},
     values::{ArrayValue, BasicValueEnum, StructValue},
 };
@@ -43,15 +44,16 @@ pub struct EnumVariantFieldMetadata<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnumValuedVariantMetadata {
+pub struct EnumValuedVariantMetadata<'a> {
     variant_number: u32,
-    local_ir_value_id: LocalIRValueID,
+    pub value_type: InternalType<'a>,
+    pub local_ir_value_id: LocalIRValueID,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EnumVariantMetadata<'a> {
     Identifier(EnumIdentifierVariantMetadata),
-    Valued(EnumValuedVariantMetadata),
+    Valued(EnumValuedVariantMetadata<'a>),
     Variant(EnumVariantFieldMetadata<'a>),
 }
 
@@ -64,25 +66,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         field_name: String,
         struct_value: StructValue<'ctx>,
-        internal_enum_type: InternalEnumType<'ctx>,
         loc: Location,
         span_end: usize,
     ) -> InternalValue<'ctx> {
         match &*field_name {
             "index" => self.build_enum_extract_index(struct_value),
-            "value" => {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("The 'value' field must be accessed through an instance of an enum variant, not directly on the enum type itself.".to_string()),
-                    location: Some(DiagLoc {
-                        file: self.file_path.clone(),
-                        line: loc.line,
-                        column: loc.column,
-                        length: span_end,
-                    }),
-                });
-                exit(1);
-            }
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -103,13 +91,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         &self,
         field_name: String,
         struct_value: StructValue<'ctx>,
-        internal_enum_type: InternalEnumType<'ctx>,
         loc: Location,
         span_end: usize,
     ) -> InternalValue<'ctx> {
         match &*field_name {
             "index" => self.build_enum_extract_index(struct_value),
-            "value" => self.build_enum_extract_value(struct_value, internal_enum_type),
             _ => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
@@ -140,14 +126,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 int_type: index_value.get_type(),
             }),
         )
-    }
-
-    pub(crate) fn build_enum_extract_value(
-        &self,
-        struct_value: StructValue<'ctx>,
-        internal_enum_type: InternalEnumType<'ctx>,
-    ) -> InternalValue<'ctx> {
-        todo!()
     }
 
     pub(crate) fn build_enum(&mut self, enum_statement: Enum) {
@@ -197,17 +175,57 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     match self.build_unscoped_expression(*expression.clone()) {
                         Some(internal_value) => {
                             let internal_type = internal_value.get_type();
-                            let store_size = self.get_internal_type_store_size(internal_type);
+                            let store_size = self.get_internal_type_store_size(internal_type.clone());
 
                             if store_size > payload_size {
                                 payload_size = store_size;
                             }
 
+                            let basic_value: BasicValueEnum<'ctx> = self
+                                .internal_value_to_basic_metadata(internal_value)
+                                .try_into()
+                                .unwrap();
+
+                            let basic_type =
+                                match internal_type.to_basic_type(self.context.ptr_type(AddressSpace::default())) {
+                                    Ok(basic_type) => basic_type,
+                                    Err(err) => {
+                                        display_single_diag(Diag {
+                                            level: DiagLevel::Error,
+                                            kind: DiagKind::Custom(err.to_string()),
+                                            location: Some(DiagLoc {
+                                                file: self.file_path.clone(),
+                                                line: identifier.loc.line,
+                                                column: identifier.loc.column,
+                                                length: identifier.span.end,
+                                            }),
+                                        });
+                                        exit(1);
+                                    }
+                                };
+
+                            let local_ir_value_id = generate_local_ir_value_id();
+                            let module = self.module.borrow_mut();
+                            let global_value = module.add_global(
+                                basic_type,
+                                None,
+                                &self.generate_enum_variant_abi_name(
+                                    self.module_name.clone(),
+                                    enum_name.clone(),
+                                    identifier.name.clone(),
+                                ),
+                            );
+                            global_value.set_linkage(Linkage::External);
+                            global_value.set_initializer(&basic_value);
+                            self.insert_local_ir_value(local_ir_value_id, LocalIRValue::GlobalValue(global_value));
+                            drop(module);
+
                             (
                                 identifier,
                                 EnumVariantMetadata::Valued(EnumValuedVariantMetadata {
                                     variant_number: enum_iota,
-                                    local_ir_value_id: generate_local_ir_value_id(),
+                                    value_type: internal_type.clone(),
+                                    local_ir_value_id,
                                 }),
                             )
                         }
@@ -353,7 +371,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let payload_value = match enum_variant_metadata.clone() {
             EnumVariantMetadata::Identifier(m) => m.get_payload(enum_metadata.payload_type),
             EnumVariantMetadata::Valued(m) => m.get_payload(enum_metadata.payload_type),
-            EnumVariantMetadata::Variant(m) => unreachable!(),
+            EnumVariantMetadata::Variant(..) => unreachable!(),
         };
         let variant_number = self
             .context
@@ -387,7 +405,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 None => {
                     display_single_diag(Diag {
                         level: DiagLevel::Error,
-                        kind: DiagKind::EnumVariantNotFound(enum_metadata.enum_name, method_call.method_name.name),
+                        kind: DiagKind::EnumVariantNotDefined(enum_metadata.enum_name, method_call.method_name.name),
                         location: Some(DiagLoc {
                             file: self.file_path.clone(),
                             line: method_call.loc.line,
@@ -616,7 +634,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             None => {
                 display_single_diag(Diag {
                     level: DiagLevel::Error,
-                    kind: DiagKind::EnumVariantNotFound(enum_metadata.enum_name, field_access.field_name.name),
+                    kind: DiagKind::EnumVariantNotDefined(enum_metadata.enum_name, field_access.field_name.name),
                     location: Some(DiagLoc {
                         file: self.file_path.clone(),
                         line: field_access.loc.line,
@@ -643,8 +661,8 @@ impl EnumIdentifierVariantMetadata {
     }
 }
 
-impl EnumValuedVariantMetadata {
-    pub fn get_payload<'a>(&self, payload_type: EnumPayloadType<'a>) -> EnumPayloadValue<'a> {
+impl<'a> EnumValuedVariantMetadata<'a> {
+    pub fn get_payload(&self, payload_type: EnumPayloadType<'a>) -> EnumPayloadValue<'a> {
         payload_type.const_zero()
     }
 }

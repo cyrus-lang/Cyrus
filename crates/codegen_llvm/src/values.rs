@@ -192,7 +192,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             }
             InternalType::EnumType(internal_enum_type) => {
                 let enum_metadata = self
-                    .resolve_enum_metadata_with_struct_id(internal_enum_type.enum_id)
+                    .resolve_enum_metadata_with_enum_id(internal_enum_type.enum_id)
                     .unwrap();
 
                 self.build_construct_enum(enum_metadata, 0, loc, span_end)
