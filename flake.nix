@@ -31,6 +31,7 @@
           gcc
           libgcc
           glibc
+          glibc.static
           gcc_multi
           clang-tools
           clang
@@ -43,7 +44,7 @@
         ];
 
         buildPhase = ''
-          export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
+          export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
           export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
           cargo build --release
         '';
@@ -68,6 +69,7 @@
           gcc
           libgcc
           glibc
+          glibc.static
           gcc_multi
           clang-tools
           clang
@@ -80,7 +82,7 @@
         ];
 
         shellHook = ''
-          export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
+          export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
           export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
           alias cyrus="cargo run -j24 --"
         '';
