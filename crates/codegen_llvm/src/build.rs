@@ -126,8 +126,17 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let linker = "cc";
 
         let mut linker_command = std::process::Command::new(linker);
-        linker_command.arg("-ldl");
-        linker_command.arg("-rdynamic");
+        if self.opts.reloc_mode == RelocModeOptions::Static {
+            linker_command.arg("-static");
+            linker_command.arg("-lc");
+        } else if matches!(
+            self.opts.reloc_mode,
+            RelocModeOptions::PIC | RelocModeOptions::DynamicNoPic
+        ) {
+            linker_command.arg("-ldl");
+            linker_command.arg("-rdynamic");
+        }
+
         linker_command.arg("-o").arg(output_path);
 
         object_files.iter().for_each(|path| {

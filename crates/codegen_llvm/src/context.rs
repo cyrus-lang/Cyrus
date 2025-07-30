@@ -5,6 +5,7 @@ use crate::funcs::{FuncMetadata, FuncTable};
 use crate::modules::{
     ImportedModule, LocalIRValueRegistryRef, ModuleID, ModuleMetadata, ModuleMetadataRegistryRef, generate_module_id,
 };
+use crate::opts::RelocModeOptions;
 use crate::opts::{BuildDir, Options};
 use crate::scope::Scope;
 use crate::scope::ScopeRef;
@@ -59,7 +60,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         file_path: String,
         file_name: String,
         program: ProgramTree,
-        opts: Options,
+        mut opts: Options,
         compiler_invoked_single: bool,
         output_kind: OutputKind,
     ) -> Result<Self, LLVMString> {
@@ -73,6 +74,10 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                 BuildDir::Provided(path) => path,
             }
         };
+
+        if opts.reloc_mode == RelocModeOptions::Default {
+            opts.reloc_mode = RelocModeOptions::Static;
+        }
 
         // Create master context.
 
@@ -270,7 +275,7 @@ pub struct BlockRegistry<'a> {
     pub current_block_ref: Option<BasicBlock<'a>>,
     pub terminated_blocks: Vec<TerminatedBlockMetadata<'a>>,
     pub current_loop_ref: Option<LoopBlockRefs<'a>>,
-    pub current_switch: Option<SwitchBlockRefs<'a>>
+    pub current_switch: Option<SwitchBlockRefs<'a>>,
 }
 
 impl<'a> BlockRegistry<'a> {
