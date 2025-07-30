@@ -1,8 +1,6 @@
-use std::{env, error};
-
-use diagcentral::reporter::DiagReporter;
 use lexer::Lexer;
 use parser::Parser;
+use std::env;
 use utils::fs::read_file;
 
 pub fn main() {

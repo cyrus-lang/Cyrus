@@ -1,4 +1,4 @@
-use crate::ast::*;
+use crate::*;
 use core::fmt;
 
 impl fmt::Display for BlockStatement {

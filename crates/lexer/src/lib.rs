@@ -1,5 +1,5 @@
-use ast::ast::{Literal, LiteralKind, StringPrefix};
 use ast::token::*;
+use ast::{Literal, LiteralKind, StringPrefix};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
 use diagnostics::{LexicalDiagKind, lexer_invalid_char_error};
 use std::{fmt::Debug, process::exit};

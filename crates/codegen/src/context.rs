@@ -14,7 +14,7 @@ use crate::stmts::{LoopBlockRefs, TerminatedBlockMetadata};
 use crate::structs::StructTable;
 use crate::types::TypedefTable;
 use crate::variables::GlobalVariablesTable;
-use ast::ast::*;
+use ast::*;
 use build::{BuildManifest, OutputKind};
 use inkwell::OptimizationLevel;
 use inkwell::basic_block::BasicBlock;

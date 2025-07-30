@@ -4,12 +4,12 @@ use crate::modules::{LocalIRValue, LocalIRValueID, ModuleID, generate_local_ir_v
 use crate::scope::{ScopeRecord, ScopeRef};
 use crate::types::{InternalIntType, InternalType, InternalVoidType};
 use crate::values::InternalValue;
-use ast::ast::{
+use ast::format::module_segments_as_string;
+use ast::token::{Location, Span, Token, TokenKind};
+use ast::{
     AccessSpecifier, Expression, FuncCall, FuncDecl, FuncDef, FuncParamKind, FuncParams, FuncVariadicParams,
     Identifier, ModuleImport, Return, TypeSpecifier,
 };
-use ast::format::module_segments_as_string;
-use ast::token::{Location, Span, Token, TokenKind};
 use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::llvm_sys::core::LLVMFunctionType;
 use inkwell::llvm_sys::prelude::LLVMTypeRef;
