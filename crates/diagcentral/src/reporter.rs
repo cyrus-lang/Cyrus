@@ -80,3 +80,12 @@ impl<K: Display> DiagReporter<K> {
         formatted
     }
 }
+
+#[macro_export]
+macro_rules! display_single_diag {
+    ($diag:expr) => {
+        let output = diagcentral::reporter::DiagReporter::format_panel(&$diag);
+        eprintln!("{}", output);
+        std::process::exit(1);
+    };
+}

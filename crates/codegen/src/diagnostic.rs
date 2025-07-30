@@ -1,13 +1,5 @@
-use colorized::{Color, Colors};
-use console::user_attended;
-use core::fmt;
-use std::fs;
-use utils::escaping::{saturating_sub, spaces};
-
-const PANEL_LENGTH: usize = 4;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DiagKind {
+pub enum CodeGenDiagKind {
     NoEntryPointDetected,
     InvalidTypeToken,
     DerefNonPointerType,
@@ -45,28 +37,7 @@ pub enum DiagKind {
     Custom(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DiagLevel {
-    Error,
-    Warning,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiagLoc {
-    pub file: String,
-    pub line: usize,
-    pub column: usize,
-    pub length: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Diag {
-    pub level: DiagLevel,
-    pub kind: DiagKind,
-    pub location: Option<DiagLoc>,
-}
-
-impl fmt::Display for DiagKind {
+impl fmt::Display for CodeGenDiagKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match self {
             DiagKind::Custom(str) => str,
@@ -148,83 +119,5 @@ impl fmt::Display for DiagKind {
             ),
         };
         write!(f, "{}", msg)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DiagReporter {
-    diags: Vec<Diag>,
-}
-
-pub fn display_single_diag(diag: Diag) {
-    let mut reporter = DiagReporter::new();
-    reporter.report(diag);
-    reporter.display_diags();
-}
-
-impl DiagReporter {
-    pub fn new() -> Self {
-        DiagReporter { diags: Vec::new() }
-    }
-
-    pub fn report(&mut self, diag: Diag) -> &mut Self {
-        self.diags.push(diag);
-        self
-    }
-
-    pub fn display_diags(&self) {
-        for diag in &self.diags {
-            match diag.level {
-                DiagLevel::Error => eprintln!("{}", self.format_panel(diag)),
-                DiagLevel::Warning => println!("{}", self.format_panel(diag)),
-            }
-        }
-    }
-
-    pub fn has_errors(&self) -> bool {
-        self.diags.len() > 0
-    }
-
-    fn format_panel(&self, diag: &Diag) -> String {
-        let mut formatted = String::new();
-
-        let diag_level_text = match diag.level {
-            DiagLevel::Error => "error".color(Colors::RedFg),
-            DiagLevel::Warning => "warning".color(Colors::YellowFg),
-        };
-
-        formatted.push_str(&format!("{}: {}\n", diag_level_text, diag.kind.to_string()));
-
-        if let Some(loc) = &diag.location {
-            formatted.push_str(&format!(
-                "       --> {}:{}:{}\n\n",
-                loc.file.clone(),
-                loc.line,
-                loc.column
-            ));
-
-            let mut starting_line = saturating_sub(loc.line, PANEL_LENGTH);
-            let source_content = fs::read_to_string(loc.file.clone()).unwrap();
-            let sources_lines: Vec<&str> = source_content.split("\n").collect();
-
-            while starting_line < loc.line + PANEL_LENGTH {
-                if let Some(line_str) = sources_lines.get(starting_line) {
-                    if starting_line + 1 == loc.line && user_attended() {
-                        formatted.push_str(
-                            &format!("{}{}  |  {}", spaces(2), starting_line + 1, line_str).color(Colors::RedFg),
-                        );
-                    } else {
-                        formatted.push_str(&format!("{}{}  |  {}", spaces(2), starting_line + 1, line_str));
-                    }
-                } else {
-                    break;
-                }
-
-                starting_line += 1;
-                formatted.push_str("\n");
-            }
-        }
-
-        formatted
     }
 }

@@ -192,7 +192,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "diag"
+name = "diagcentral"
 version = "0.1.0"
 dependencies = [
  "ast",
@@ -319,7 +319,7 @@ name = "lexer"
 version = "0.1.0"
 dependencies = [
  "ast",
- "diag",
+ "diagcentral",
  "unicode-segmentation",
  "utils",
 ]
@@ -361,7 +361,7 @@ name = "parser"
 version = "0.1.0"
 dependencies = [
  "ast",
- "diag",
+ "diagcentral",
  "lexer",
  "utils",
 ]

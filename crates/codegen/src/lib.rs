@@ -1,7 +1,7 @@
 mod abi;
 pub mod build;
 pub mod context;
-pub mod diag;
+pub mod diagnostic;
 mod enums;
 mod exprs;
 mod funcs;
