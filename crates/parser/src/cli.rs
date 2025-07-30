@@ -1,5 +1,6 @@
-use std::env;
+use std::{env, error};
 
+use diagcentral::reporter::DiagReporter;
 use lexer::Lexer;
 use parser::Parser;
 use utils::fs::read_file;
@@ -10,12 +11,12 @@ pub fn main() {
     let file_content = read_file(file_path.clone()).0;
     let mut lexer = Lexer::new(file_content, file_path);
 
-    match Parser::new(&mut lexer).parse() {
+    let mut parser = Parser::new(&mut lexer);
+
+    match parser.parse() {
         Ok(result) => println!("{:#?}", result),
         Err(errors) => {
-            for err in errors {
-                err.print();
-            }
+            parser.display_parser_errors(errors);
         }
     }
 }

@@ -84,8 +84,7 @@ impl<K: Display> DiagReporter<K> {
 #[macro_export]
 macro_rules! display_single_diag {
     ($diag:expr) => {
-        let output = diagcentral::reporter::DiagReporter::format_panel(&$diag);
-        eprintln!("{}", output);
+        diagcentral::reporter::DiagReporter::display_single($diag);
         std::process::exit(1);
     };
 }
