@@ -126,6 +126,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let linker = "cc";
 
         let mut linker_command = std::process::Command::new(linker);
+
         if self.opts.reloc_mode == RelocModeOptions::Static {
             linker_command.arg("-static");
             linker_command.arg("-lc");
