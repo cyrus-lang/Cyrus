@@ -7,25 +7,21 @@ enum Color {
 }
 
 func main() {
-	// Methods List
-	// 1. value
-	// 2. index
-	// 3. typeof
-    #my_string_color: char* = Color.StringColor.value;
-    #my_color: struct { a: uint32, b: uint32, c: uint32 } = Color.Custom(1, 2, 3).value;
+    #my_string_color = Color.StringColor;
+    libc::printf("Index: %d\n", my_string_color.index);
 
     // Option 2: (Implement pattern matching features)
-    #my_color: Color = Color.Custom(1, 2, 3);
+    // #my_color: Color = Color.Custom(1, 2, 3);
 
-	switch (my_color) {
-	   	case .Red:
-			 	libc::printf("Color is red with index %d.\n", my_color.index);
-	  		break;
-	   	case .StringColor:
-			 	libc::printf("Color is %s.\n", my_color.value);
-	      		break;
-	    case .Custom(a, b, c):
-	    		 	libc::printf("Color is (%d, %d, %d).\n", a, b, c,);
-	      		break;
-	}
+	// switch (my_color) {
+	//    	case .Red:
+	// 		 	libc::printf("Color is red with index %d.\n", my_color.index);
+	//   		break;
+	//    	case .StringColor:
+	// 		 	libc::printf("Color is %s.\n", my_color.value);
+	//       		break;
+	//     case .Custom(a, b, c):
+	//     		 	libc::printf("Color is (%d, %d, %d).\n", a, b, c,);
+	//       		break;
+	// }
 }
