@@ -69,8 +69,8 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         );
     }
 
-    pub(crate) fn build_func_linkage(&self, access_specifier: AccessSpecifier) -> Linkage {
-        match access_specifier {
+    pub(crate) fn build_func_linkage(&self, vis: AccessSpecifier) -> Linkage {
+        match vis: AccessSpecifier {
             AccessSpecifier::Extern => Linkage::External,
             AccessSpecifier::Public => Linkage::External,
             AccessSpecifier::Internal => Linkage::Private,
@@ -223,7 +223,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         if matches!(
-            func_decl.access_specifier,
+            func_decl.vis: AccessSpecifier,
             AccessSpecifier::Inline | AccessSpecifier::PublicInline
         ) {
             display_single_diag(Diag {
@@ -242,7 +242,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        let func_linkage = self.build_func_linkage(func_decl.access_specifier.clone());
+        let func_linkage = self.build_func_linkage(func_decl.vis: AccessSpecifier.clone());
         let func_value =
             self.module
                 .borrow_mut()
@@ -335,7 +335,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             name: func_def.name.clone(),
             params: func_def.params.clone(),
             return_type: func_def.return_type.clone(),
-            access_specifier: func_def.access_specifier.clone(),
+            vis: AccessSpecifier: func_def.vis: AccessSpecifier.clone(),
             renamed_as: Some(func_def.name.clone()),
             span: func_def.span.clone(),
             loc: func_def.loc.clone(),
@@ -343,11 +343,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn validate_func_storage_class(&self, func_def: FuncDef, is_entry_point: bool) {
-        if is_entry_point && !matches!(func_def.access_specifier, AccessSpecifier::Internal) {
+        if is_entry_point && !matches!(func_def.vis: AccessSpecifier, AccessSpecifier::Internal) {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(
-                    "Module entry point cannot be declared with non-internal access_specifier.".to_string(),
+                    "Module entry point cannot be declared with non-internal vis: AccessSpecifier.".to_string(),
                 ),
                 location: Some(DiagLoc {
                     file: self.file_path.clone(),
@@ -359,7 +359,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        if func_def.access_specifier == AccessSpecifier::Extern {
+        if func_def.vis: AccessSpecifier == AccessSpecifier::Extern {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(
@@ -534,7 +534,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_decl.name = actual_func_name.clone();
 
         let func_linkage: Option<Linkage> = if !is_entry_point {
-            Some(self.build_func_linkage(func_def.access_specifier.clone()))
+            Some(self.build_func_linkage(func_def.vis: AccessSpecifier.clone()))
         } else {
             None
         };
