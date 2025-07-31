@@ -1,6 +1,6 @@
 use ast::token::Location;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConcreteType {
     BasicType(BasicConcreteType),
     Array(TypedArray),
@@ -9,7 +9,7 @@ pub enum ConcreteType {
     UnnamedStruct(TypedUnnamedStructType),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BasicConcreteType {
     UIntPtr,
     IntPtr,
@@ -35,27 +35,27 @@ pub enum BasicConcreteType {
     Void,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedArray {
     pub element_type: Box<ConcreteType>,
     pub capacity: TypedArrayCapacity,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypedArrayCapacity {
     Fixed(u32),
     Dynamic,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructType {
     pub fields: Vec<TypedUnnamedStructTypeField>,
     pub packed: bool,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructTypeField {
     pub field_name: String,
     pub field_type: Box<ConcreteType>,

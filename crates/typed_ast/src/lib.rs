@@ -5,19 +5,19 @@ use ast::{
     token::Location,
 };
 
-pub type ModuleID = u64;
-
 pub mod types;
+
+pub type ModuleID = u64;
 
 #[derive(Debug)]
 pub enum TypedProgram {
-    ProgramTree(TypedProgramTree),
+    ProgramTree(TypedASTModule),
     Statement(TypedStatement),
     Expression(TypedExpression),
 }
 
 #[derive(Debug)]
-pub struct TypedProgramTree {
+pub struct TypedASTModule {
     pub body: Vec<TypedStatement>,
 }
 
@@ -144,13 +144,13 @@ pub struct TypedUnnamedStructValue {
 #[derive(Debug, Clone)]
 pub enum TypedStatement {
     Import(TypedImport),
-    Variable(Variable),
+    Variable(TypedVariable),
     Typedef(TypedTypedef),
     GlobalVariable(TypedGlobalVariable),
-    FuncDef(FuncDef),
-    FuncDecl(FuncDecl),
+    FuncDef(TypedFuncDef),
+    FuncDecl(TypedFuncDecl),
     BlockStatement(TypedBlockStatement),
-    If(If),
+    If(TypedIf),
     Return(TypedReturn),
     Break(TypedBreak),
     Continue(TypedContinue),
@@ -165,13 +165,13 @@ pub enum TypedStatement {
 #[derive(Debug, Clone)]
 pub struct TypedEnum {
     pub name: String,
-    pub variants: Vec<TypedEnumField>,
+    pub variants: Vec<TypedEnumVariant>,
     pub vis: AccessSpecifier,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
-pub enum TypedEnumField {
+pub enum TypedEnumVariant {
     Identifier(String),
     Valued(String, Box<TypedExpression>),
     Variant(String, Vec<TypedEnumValuedField>),
@@ -186,17 +186,16 @@ pub struct TypedEnumValuedField {
 #[derive(Debug, Clone)]
 pub struct TypedStruct {
     pub name: String,
-    // FIXME
-    // pub impls: Vec<>,
-    pub fields: Vec<ConcreteType>,
-    pub methods: Vec<FuncDef>,
+    // pub impls: Vec<TypedInterface>,
+    pub fields: Vec<TypedStructField>,
+    pub methods: Vec<TypedFuncDef>,
     pub vis: AccessSpecifier,
     pub packed: bool,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedField {
+pub struct TypedStructField {
     pub name: String,
     pub ty: ConcreteType,
     pub loc: Location,
@@ -246,8 +245,17 @@ pub struct TypedBlockStatement {
     pub loc: Location,
 }
 
+impl TypedBlockStatement {
+    pub fn new_empty() -> Self {
+        Self {
+            exprs: Vec::new(),
+            loc: Location::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct Variable {
+pub struct TypedVariable {
     pub name: String,
     pub ty: ConcreteType,
     pub rhs: Option<TypedExpression>,
@@ -255,16 +263,16 @@ pub struct Variable {
 }
 
 #[derive(Debug, Clone)]
-pub struct If {
+pub struct TypedIf {
     pub condition: TypedExpression,
     pub consequent: Box<TypedBlockStatement>,
-    pub branches: Vec<If>,
+    pub branches: Vec<TypedIf>,
     pub alternate: Option<Box<TypedBlockStatement>>,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
-pub struct FuncDef {
+pub struct TypedFuncDef {
     pub name: String,
     pub params: TypedFuncParams,
     pub body: Box<TypedBlockStatement>,
@@ -274,7 +282,7 @@ pub struct FuncDef {
 }
 
 #[derive(Debug, Clone)]
-pub struct FuncDecl {
+pub struct TypedFuncDecl {
     pub name: String,
     pub params: TypedFuncParams,
     pub return_type: ConcreteType,
@@ -310,7 +318,7 @@ pub struct TypedFuncParam {
 
 #[derive(Debug, Clone)]
 pub struct TypedFor {
-    pub initializer: Option<Variable>,
+    pub initializer: Option<TypedVariable>,
     pub condition: Option<TypedExpression>,
     pub increment: Option<TypedExpression>,
     pub body: Box<TypedBlockStatement>,

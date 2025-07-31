@@ -88,7 +88,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::Expression(expr))
     }
 
-    pub fn parse_enum_field(&mut self) -> Result<EnumField, ParserError> {
+    pub fn parse_enum_field(&mut self) -> Result<EnumVariant, ParserError> {
         let loc = self.current_token.loc.clone();
 
         let variant_name = self.parse_identifier()?;
@@ -97,12 +97,12 @@ impl<'a> Parser<'a> {
         let mut variant_fields: Vec<EnumValuedField> = Vec::new();
 
         if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
-            return Ok(EnumField::Identifier(variant_name));
+            return Ok(EnumVariant::Identifier(variant_name));
         } else if self.current_token_is(TokenKind::Assign) {
             self.next_token(); // consume assign
             let value = self.parse_expression(Precedence::Lowest)?.0;
             self.next_token(); // consume last token of the expression
-            return Ok(EnumField::Valued(variant_name, Box::new(value)));
+            return Ok(EnumVariant::Valued(variant_name, Box::new(value)));
         } else if self.current_token_is(TokenKind::LeftParen) {
             self.next_token(); // consume left paren
 
@@ -145,7 +145,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        return Ok(EnumField::Variant(variant_name, variant_fields));
+        return Ok(EnumVariant::Variant(variant_name, variant_fields));
     }
 
     pub fn parse_enum(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
@@ -160,7 +160,7 @@ impl<'a> Parser<'a> {
 
         self.expect_current(TokenKind::LeftBrace)?;
 
-        let mut enum_fields: Vec<EnumField> = Vec::new();
+        let mut enum_fields: Vec<EnumVariant> = Vec::new();
 
         if self.current_token_is(TokenKind::RightBrace) {
             return Ok(Statement::Enum(Enum {
