@@ -8,14 +8,14 @@ use crate::structs::UnnamedStructTypeMetadata;
 use crate::values::InternalValue;
 use crate::values::Lvalue;
 use crate::values::TypedPointerValue;
-use ast::ast::AccessSpecifier;
-use ast::ast::ArrayCapacity;
-use ast::ast::ArrayTypeSpecifier;
-use ast::ast::Field;
-use ast::ast::ModuleImport;
-use ast::ast::ModuleSegment;
-use ast::ast::TypeSpecifier;
-use ast::ast::Typedef;
+use ast::AccessSpecifier;
+use ast::ArrayCapacity;
+use ast::ArrayTypeSpecifier;
+use ast::Field;
+use ast::ModuleImport;
+use ast::ModuleSegment;
+use ast::TypeSpecifier;
+use ast::Typedef;
 use ast::format::module_segments_as_string;
 use ast::token::*;
 use inkwell::AddressSpace;
@@ -41,7 +41,7 @@ pub type TypedefTable<'a> = HashMap<String, TypedefMetadata<'a>>;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedefMetadata<'a> {
     pub internal_type: InternalType<'a>,
-    pub access_specifier: AccessSpecifier,
+    pub vis: AccessSpecifier,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -396,7 +396,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();
         let typedef_metadata = TypedefMetadata {
             internal_type,
-            access_specifier: typedef.access_specifier.clone(),
+            vis: AccessSpecifier: typedef.vis: AccessSpecifier.clone(),
         };
         module_metadata.insert_typedef(typedef.identifier.name, typedef_metadata);
         drop(module_metadata);

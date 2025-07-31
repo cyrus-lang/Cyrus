@@ -35,7 +35,7 @@ pub struct StructMetadata<'a> {
     pub struct_type: StructType<'a>,
     pub fields: Vec<Field>,
     pub methods: Vec<StructMethodMetadata<'a>>,
-    pub access_specifier: AccessSpecifier,
+    pub vis: AccessSpecifier,
     pub imported_from: Option<ModuleID>,
     pub packed: bool,
 }
@@ -159,7 +159,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
     pub(crate) fn build_global_struct(&mut self, struct_statement: Struct) {
         if !matches!(
-            struct_statement.access_specifier,
+            struct_statement.vis: AccessSpecifier,
             AccessSpecifier::Public | AccessSpecifier::Internal
         ) {
             display_single_diag(Diag {
@@ -194,7 +194,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             struct_type: opaque_struct,
             fields: struct_statement.fields.clone(),
             methods: Vec::new(),
-            access_specifier: struct_statement.access_specifier.clone(),
+            vis: AccessSpecifier: struct_statement.vis: AccessSpecifier.clone(),
             packed: struct_statement.packed,
             imported_from: None,
         };
@@ -240,7 +240,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     fn validate_method_storage_class(&self, func_def: FuncDef) {
-        if func_def.access_specifier == AccessSpecifier::Extern {
+        if func_def.vis: AccessSpecifier == AccessSpecifier::Extern {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::Custom(
@@ -378,7 +378,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         func_decl.renamed_as = Some(func_decl.name);
         func_decl.name = method_abi_name.clone();
 
-        let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.access_specifier.clone()));
+        let func_linkage: Option<Linkage> = Some(self.build_func_linkage(func_def.vis: AccessSpecifier.clone()));
 
         let func_value = self
             .module
@@ -1034,7 +1034,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let current_block = self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
         if !func_basic_blocks.contains(&current_block)
-            && method_metadata.method_decl.access_specifier != AccessSpecifier::Public
+            && method_metadata.method_decl.vis: AccessSpecifier != AccessSpecifier::Public
         {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
@@ -1259,7 +1259,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let current_block = self.get_current_block("method call", method_call.loc.clone(), method_call.span.end);
 
         if !func_basic_blocks.contains(&current_block)
-            && method_metadata.method_decl.access_specifier != AccessSpecifier::Public
+            && method_metadata.method_decl.vis: AccessSpecifier != AccessSpecifier::Public
         {
             display_single_diag(Diag {
                 level: DiagLevel::Error,

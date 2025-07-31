@@ -1,4 +1,4 @@
-use crate::ast::Literal;
+use crate::Literal;
 use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
