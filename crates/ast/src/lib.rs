@@ -105,14 +105,14 @@ pub struct UnnamedStructTypeField {
 #[derive(Debug, Clone)]
 pub struct Enum {
     pub identifier: Identifier,
-    pub variants: Vec<EnumField>,
+    pub variants: Vec<EnumVariant>,
     pub vis: AccessSpecifier,
     pub loc: Location,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub enum EnumField {
+pub enum EnumVariant {
     Identifier(Identifier),
     Variant(Identifier, Vec<EnumValuedField>),
     Valued(Identifier, Box<Expression>),
