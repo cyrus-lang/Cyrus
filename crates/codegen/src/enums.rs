@@ -28,7 +28,7 @@ pub struct EnumMetadata<'a> {
     pub enum_name: String,
     pub variants: Vec<(Identifier, EnumVariantMetadata<'a>)>,
     pub internal_type: InternalType<'a>,
-    pub access_specifier: AccessSpecifier,
+    pub vis: AccessSpecifier,
     payload_type: EnumPayloadType<'a>,
 }
 
@@ -129,11 +129,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_enum(&mut self, enum_statement: Enum) {
-        if enum_statement.access_specifier == AccessSpecifier::Extern {
+        if enum_statement.vis: AccessSpecifier == AccessSpecifier::Extern {
             self.build_c_enum(enum_statement);
             return;
         } else if !matches!(
-            enum_statement.access_specifier,
+            enum_statement.vis: AccessSpecifier,
             AccessSpecifier::Public | AccessSpecifier::Internal
         ) {
             display_single_diag(Diag {
@@ -322,7 +322,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             payload_type,
             enum_name: enum_name.clone(),
             internal_type: enum_internal_type,
-            access_specifier: enum_statement.access_specifier,
+            vis: AccessSpecifier: enum_statement.vis: AccessSpecifier,
         };
 
         let mut module_metadata = self.get_module_metadata_by_module_id(self.module_id).unwrap();

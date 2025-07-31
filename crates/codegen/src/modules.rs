@@ -32,7 +32,6 @@ use std::{
 };
 use utils::fs::{find_file_from_sources, relative_to_absolute};
 
-pub type ModuleID = u64;
 pub type LocalIRValueID = u64;
 pub type LocalIRValueRegistryRef<'a> = Rc<RefCell<LocalIRValueRegistry<'a>>>;
 pub type LocalIRValueRegistry<'a> = HashMap<LocalIRValueID, LocalIRValue<'a>>;
@@ -496,11 +495,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn error_if_func_is_private(
         &self,
         func_name: String,
-        access_specifier: AccessSpecifier,
+        vis: AccessSpecifier,
         loc: Location,
         span_end: usize,
     ) {
-        if access_specifier.is_private() {
+        if vis: AccessSpecifier.is_private() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::ImportingPrivateFunc(func_name),
@@ -518,11 +517,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn error_if_struct_is_private(
         &self,
         struct_name: String,
-        access_specifier: AccessSpecifier,
+        vis: AccessSpecifier,
         loc: Location,
         span_end: usize,
     ) {
-        if access_specifier.is_private() {
+        if vis: AccessSpecifier.is_private() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::ImportingPrivateStruct(struct_name),
@@ -540,11 +539,11 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     fn error_if_typedef_is_private(
         &self,
         typedef_name: String,
-        access_specifier: AccessSpecifier,
+        vis: AccessSpecifier,
         loc: Location,
         span_end: usize,
     ) {
-        if access_specifier.is_private() {
+        if vis: AccessSpecifier.is_private() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::ImportingPrivateTypedef(typedef_name),
@@ -613,7 +612,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let import_func = |mut func_metadata: FuncMetadata<'ctx>, renamed: Option<Identifier>| {
             self.error_if_func_is_private(
                 func_metadata.func_decl.get_usable_name(),
-                func_metadata.func_decl.access_specifier.clone(),
+                func_metadata.func_decl.vis: AccessSpecifier.clone(),
                 loc.clone(),
                 span_end,
             );
@@ -649,7 +648,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
 
             self.error_if_struct_is_private(
                 struct_name.clone(),
-                struct_metadata.access_specifier.clone(),
+                struct_metadata.vis: AccessSpecifier.clone(),
                 loc.clone(),
                 span_end,
             );
@@ -668,7 +667,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         let import_typedef = |typedef_name: String, typedef_metadata: TypedefMetadata<'ctx>| {
             self.error_if_typedef_is_private(
                 typedef_name.clone(),
-                typedef_metadata.access_specifier.clone(),
+                typedef_metadata.vis: AccessSpecifier.clone(),
                 loc.clone(),
                 span_end,
             );

@@ -23,12 +23,12 @@ pub struct GlobalVariableMetadata<'a> {
     pub name: String,
     pub local_ir_value_id: LocalIRValueID,
     pub variable_type: InternalType<'a>,
-    pub access_specifier: AccessSpecifier,
+    pub vis: AccessSpecifier,
 }
 
 impl<'ctx> CodeGenLLVM<'ctx> {
-    pub(crate) fn build_global_variable_linkage(&self, access_specifier: AccessSpecifier) -> Linkage {
-        match access_specifier {
+    pub(crate) fn build_global_variable_linkage(&self, vis: AccessSpecifier) -> Linkage {
+        match vis: AccessSpecifier {
             AccessSpecifier::PublicExtern => Linkage::Common,
             AccessSpecifier::Extern => Linkage::Common,
             AccessSpecifier::Public => Linkage::External,
@@ -48,7 +48,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             None => {
                 let module = self.module.borrow_mut();
 
-                let linkage = self.build_global_variable_linkage(global_variable_metadata.access_specifier.clone());
+                let linkage = self.build_global_variable_linkage(global_variable_metadata.vis: AccessSpecifier.clone());
 
                 let zero_initialized_internal_value = self.build_zero_initialized_internal_value(
                     global_variable_metadata.variable_type.clone(),
@@ -145,7 +145,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         };
 
         if matches!(
-            global_variable.access_specifier,
+            global_variable.vis: AccessSpecifier,
             AccessSpecifier::Inline | AccessSpecifier::PublicInline
         ) {
             display_single_diag(Diag {
@@ -161,7 +161,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             exit(1);
         }
 
-        let linkage = self.build_global_variable_linkage(global_variable.access_specifier.clone());
+        let linkage = self.build_global_variable_linkage(global_variable.vis: AccessSpecifier.clone());
 
         let initialzier_basic_value: BasicValueEnum<'ctx> = self
             .internal_value_to_basic_metadata(initializer_value)
@@ -180,7 +180,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             name: global_variable.identifier.name,
             local_ir_value_id,
             variable_type,
-            access_specifier: global_variable.access_specifier,
+            vis: AccessSpecifier: global_variable.vis: AccessSpecifier,
         };
 
         self.insert_local_ir_value(self.module_id, LocalIRValue::GlobalValue(global_value));

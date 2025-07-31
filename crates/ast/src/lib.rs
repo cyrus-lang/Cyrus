@@ -1,6 +1,10 @@
-use crate::token::*;
+use crate::{
+    operators::{InfixOperator, PrefixOperator, UnaryOperator},
+    token::*,
+};
 
 pub mod format;
+pub mod operators;
 pub mod token;
 
 #[derive(Debug)]
@@ -31,7 +35,7 @@ impl ProgramTree {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     Cast(Cast),
     Identifier(Identifier),
@@ -39,9 +43,9 @@ pub enum Expression {
     ModuleImport(ModuleImport),
     Assignment(Box<Assignment>),
     Literal(Literal),
-    Prefix(UnaryExpression),
-    Infix(BinaryExpression),
-    UnaryOperator(UnaryOperator),
+    Prefix(PrefixExpression),
+    Infix(InfixExpression),
+    Unary(UnaryExpression),
     Array(Array),
     ArrayIndex(ArrayIndex),
     AddressOf(AddressOf),
@@ -53,21 +57,21 @@ pub enum Expression {
     UnnamedStructValue(UnnamedStructValue),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Dereference {
     pub expr: Box<Expression>,
     pub loc: Location,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct AddressOf {
     pub expr: Box<Expression>,
     pub loc: Location,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct UnnamedStructValue {
     pub fields: Vec<UnnamedStructValueField>,
     pub packed: bool,
@@ -75,7 +79,7 @@ pub struct UnnamedStructValue {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct UnnamedStructValueField {
     pub field_name: Identifier,
     pub field_type: Option<TypeSpecifier>,
@@ -84,13 +88,13 @@ pub struct UnnamedStructValueField {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct UnnamedStructType {
     pub fields: Vec<UnnamedStructTypeField>,
     pub packed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct UnnamedStructTypeField {
     pub field_name: String,
     pub field_type: TypeSpecifier,
@@ -98,29 +102,29 @@ pub struct UnnamedStructTypeField {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Enum {
     pub identifier: Identifier,
     pub variants: Vec<EnumField>,
-    pub access_specifier: AccessSpecifier,
+    pub vis: AccessSpecifier,
     pub loc: Location,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum EnumField {
     Identifier(Identifier),
     Variant(Identifier, Vec<EnumValuedField>),
     Valued(Identifier, Box<Expression>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct EnumValuedField {
     pub identifier: Identifier,
     pub field_type: TypeSpecifier,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Cast {
     pub expr: Box<Expression>,
     pub target_type: TypeSpecifier,
@@ -128,23 +132,15 @@ pub struct Cast {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum UnaryOperatorType {
-    PreIncrement,
-    PreDecrement,
-    PostIncrement,
-    PostDecrement,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct UnaryOperator {
-    pub module_import: ModuleImport,
-    pub ty: UnaryOperatorType,
+#[derive(Debug, Clone)]
+pub struct PrefixExpression {
+    pub operand: Box<Expression>,
+    pub op: PrefixOperator,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FuncCall {
     pub operand: Box<Expression>,
     pub arguments: Vec<Expression>,
@@ -152,7 +148,7 @@ pub struct FuncCall {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FieldAccess {
     pub is_fat_arrow: bool,
     pub operand: Box<Expression>,
@@ -161,7 +157,7 @@ pub struct FieldAccess {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct MethodCall {
     pub is_fat_arrow: bool,
     pub operand: Box<Expression>,
@@ -171,14 +167,14 @@ pub struct MethodCall {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Identifier {
     pub name: String,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ModuleImport {
     pub segments: Vec<ModuleSegment>,
     pub span: Span,
@@ -198,14 +194,14 @@ impl ModuleImport {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Literal {
     pub kind: LiteralKind,
     pub loc: Location,
     pub span: Span,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LiteralKind {
     Integer(i64),
     Float(f64),
@@ -215,13 +211,13 @@ pub enum LiteralKind {
     Null,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StringPrefix {
     C, // C-style string which is const char*
     B, // Bytes string
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum TypeSpecifier {
     TypeToken(Token),
     Identifier(Identifier),
@@ -232,36 +228,36 @@ pub enum TypeSpecifier {
     UnnamedStruct(UnnamedStructType),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ArrayTypeSpecifier {
     pub size: ArrayCapacity,
     pub element_type: Box<TypeSpecifier>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum ArrayCapacity {
     Fixed(TokenKind),
     Dynamic,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct UnaryExpression {
-    pub operator: Token,
     pub operand: Box<Expression>,
+    pub op: UnaryOperator,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct BinaryExpression {
-    pub operator: Token,
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
+#[derive(Debug, Clone)]
+pub struct InfixExpression {
+    pub op: InfixOperator,
+    pub lhs: Box<Expression>,
+    pub rhs: Box<Expression>,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Array {
     pub data_type: TypeSpecifier,
     pub elements: Vec<Expression>,
@@ -269,22 +265,15 @@ pub struct Array {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ArrayIndex {
-    pub expr: Box<Expression>,
+    pub operand: Box<Expression>,
     pub index: Box<Expression>,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Hash {
-    pub pairs: Vec<(Expression, Expression)>,
-    pub span: Span,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Variable(Variable),
     Expression(Expression),
@@ -305,9 +294,9 @@ pub enum Statement {
     GlobalVariable(GlobalVariable),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct GlobalVariable {
-    pub access_specifier: AccessSpecifier,
+    pub vis: AccessSpecifier,
     pub identifier: Identifier,
     pub type_specifier: Option<TypeSpecifier>,
     pub expr: Option<Expression>,
@@ -315,49 +304,41 @@ pub struct GlobalVariable {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Typedef {
-    pub access_specifier: AccessSpecifier,
     pub identifier: Identifier,
     pub type_specifier: TypeSpecifier,
+    pub vis: AccessSpecifier,
     pub loc: Location,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Break {
     pub loc: Location,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Continue {
     pub loc: Location,
     pub span: Span,
 }
 
-pub fn format_expressions(exprs: &Vec<Expression>) -> String {
-    exprs.iter().map(|expr| expr.to_string()).collect()
-}
-
-pub fn format_statements(stmts: &Vec<Statement>) -> String {
-    stmts.iter().map(|stmt| stmt.to_string()).collect()
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Return {
     pub argument: Option<Expression>,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ModuleSegmentSingle {
     pub identifier: Identifier,
     pub renamed: Option<Identifier>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum ModuleSegment {
     SubModule(Identifier),
     Single(Vec<ModuleSegmentSingle>),
@@ -374,7 +355,7 @@ impl ModuleSegment {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ModulePath {
     pub alias: Option<String>,
     pub segments: Vec<ModuleSegment>,
@@ -392,26 +373,26 @@ impl ModulePath {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Import {
     pub paths: Vec<ModulePath>,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Struct {
     pub name: String,
-    pub inherits: Vec<Identifier>,
-    pub fields: Vec<Field>,
+    pub impls: Vec<Identifier>,
+    pub fields: Vec<StructField>,
     pub methods: Vec<FuncDef>,
-    pub access_specifier: AccessSpecifier,
+    pub vis: AccessSpecifier,
     pub packed: bool,
     pub loc: Location,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct StructInit {
     pub struct_name: ModuleImport,
     pub field_inits: Vec<FieldInit>,
@@ -419,22 +400,22 @@ pub struct StructInit {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Field {
+#[derive(Debug, Clone)]
+pub struct StructField {
     pub name: String,
     pub ty: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FieldInit {
     pub name: String,
     pub value: Expression,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct For {
     pub initializer: Option<Variable>,
     pub condition: Option<Expression>,
@@ -444,7 +425,7 @@ pub struct For {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Foreach {
     pub item: Identifier,
     pub index: Option<Identifier>,
@@ -454,16 +435,16 @@ pub struct Foreach {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Switch {
-    pub value: Expression,
+    pub operand: Expression,
     pub cases: Vec<SwitchCase>,
-    pub default: Option<BlockStatement>,
+    pub default_case: Option<BlockStatement>,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SwitchCase {
     pub pattern: SwitchCasePattern,
     pub body: BlockStatement,
@@ -471,30 +452,30 @@ pub struct SwitchCase {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum SwitchCasePattern {
     Expression(Expression),
     Identifier(Identifier),
     EnumVariant(Identifier, Vec<Identifier>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FuncDef {
     pub name: String,
     pub params: FuncParams,
     pub body: Box<BlockStatement>,
     pub return_type: Option<TypeSpecifier>,
-    pub access_specifier: AccessSpecifier,
+    pub vis: AccessSpecifier,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FuncDecl {
     pub name: String,
     pub params: FuncParams,
     pub return_type: Option<TypeSpecifier>,
-    pub access_specifier: AccessSpecifier,
+    pub vis: AccessSpecifier,
     pub renamed_as: Option<String>,
     pub span: Span,
     pub loc: Location,
@@ -509,7 +490,7 @@ impl FuncDecl {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum AccessSpecifier {
     Extern,
     Public,
@@ -529,64 +510,63 @@ impl AccessSpecifier {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct BlockStatement {
     pub exprs: Vec<Statement>,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     pub name: String,
     pub ty: Option<TypeSpecifier>,
-    pub expr: Option<Expression>,
+    pub rhs: Option<Expression>,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Assignment {
-    pub assign_to: Expression,
-    pub expr: Expression,
+    pub lhs: Expression,
+    pub rhs: Expression,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum SelfModifier {
     Copied,
     Referenced,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum FuncParamKind {
     FuncParam(FuncParam),
     SelfModifier(SelfModifier),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FuncParam {
     pub identifier: Identifier,
     pub ty: Option<TypeSpecifier>,
-    pub default_value: Option<Expression>,
     pub span: Span,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FuncParams {
     pub list: Vec<FuncParamKind>,
     pub variadic: Option<FuncVariadicParams>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum FuncVariadicParams {
     UntypedCStyle,
     Typed(Identifier, TypeSpecifier),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct If {
     pub condition: Expression,
     pub consequent: Box<BlockStatement>,
