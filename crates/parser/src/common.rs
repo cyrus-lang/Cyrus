@@ -160,7 +160,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_access_specifier(&mut self, token: Token) -> Result<AccessSpecifier, ParserError> {
-        let vis: AccessSpecifier = {
+        let access_specifier: AccessSpecifier = {
             if self.current_token_is(TokenKind::Inline) {
                 self.next_token();
                 AccessSpecifier::Inline
@@ -188,7 +188,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        Ok(vis: AccessSpecifier)
+        Ok(access_specifier)
     }
 
     pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParserError> {

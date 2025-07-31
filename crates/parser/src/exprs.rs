@@ -2,6 +2,9 @@ use crate::Parser;
 use crate::ParserError;
 use crate::diag::ParserDiagKind;
 use crate::prec::*;
+use ast::operators::InfixOperator;
+use ast::operators::PrefixOperator;
+use ast::operators::UnaryOperator;
 use ast::token::*;
 use ast::*;
 use diagcentral::Diag;
@@ -64,17 +67,17 @@ impl<'a> Parser<'a> {
                     self.parse_struct_init(module_import)?
                 } else if self.peek_token_is(TokenKind::Increment) {
                     self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        module_import: module_import.clone(),
-                        ty: UnaryOperatorType::PostIncrement,
+                    Expression::Unary(UnaryExpression {
+                        operand: Box::new(Expression::ModuleImport(module_import.clone())),
+                        op: UnaryOperator::PostIncrement,
                         span: Span::new(start, self.current_token.span.end),
                         loc: loc.clone(),
                     })
                 } else if self.peek_token_is(TokenKind::Decrement) {
                     self.next_token();
-                    Expression::UnaryOperator(UnaryOperator {
-                        module_import: module_import.clone(),
-                        ty: UnaryOperatorType::PostDecrement,
+                    Expression::Unary(UnaryExpression {
+                        operand: Box::new(Expression::ModuleImport(module_import.clone())),
+                        op: UnaryOperator::PostDecrement,
                         span: Span::new(start, self.current_token.span.end),
                         loc: loc.clone(),
                     })
@@ -108,9 +111,9 @@ impl<'a> Parser<'a> {
                 loc: loc.clone(),
             }),
             token_kind @ TokenKind::Increment | token_kind @ TokenKind::Decrement => {
-                let unary_operator_type = match token_kind {
-                    TokenKind::Increment => UnaryOperatorType::PreIncrement,
-                    TokenKind::Decrement => UnaryOperatorType::PreDecrement,
+                let unary_operator = match token_kind {
+                    TokenKind::Increment => UnaryOperator::PreIncrement,
+                    TokenKind::Decrement => UnaryOperator::PreDecrement,
                     _ => {
                         return Err(Diag {
                             kind: ParserDiagKind::InvalidToken(token_kind.clone()),
@@ -131,9 +134,9 @@ impl<'a> Parser<'a> {
                     TokenKind::Identifier { .. } => {
                         let module_import = self.parse_module_import()?;
 
-                        Expression::UnaryOperator(UnaryOperator {
-                            module_import: module_import,
-                            ty: unary_operator_type,
+                        Expression::Unary(UnaryExpression {
+                            operand: Box::new(Expression::ModuleImport(module_import)),
+                            op: unary_operator,
                             span: Span {
                                 start,
                                 end: self.current_token.span.end,
@@ -169,13 +172,29 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
-            TokenKind::Minus | TokenKind::Bang | TokenKind::SizeOf => {
+            token_kind @ TokenKind::Minus | token_kind @ TokenKind::Bang | token_kind @ TokenKind::SizeOf => {
                 let start = self.current_token.span.start;
-                let prefix_operator = self.current_token.clone();
+                let prefix_operator = match token_kind {
+                    TokenKind::Minus => PrefixOperator::Minus,
+                    TokenKind::Bang => PrefixOperator::Bang,
+                    TokenKind::SizeOf => PrefixOperator::SizeOf,
+                    _ => {
+                        return Err(Diag {
+                            kind: ParserDiagKind::InvalidPrefixOperator(token_kind.clone()),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(
+                                self.lexer.file_name.clone(),
+                                loc,
+                                self.current_token.span.end,
+                            )),
+                            hint: None,
+                        });
+                    }
+                };
                 self.next_token(); // consume the prefix operator
                 let (expr, span) = self.parse_expression(Precedence::Prefix)?;
-                Expression::Prefix(UnaryExpression {
-                    operator: prefix_operator,
+                Expression::Prefix(PrefixExpression {
+                    op: prefix_operator,
                     operand: Box::new(expr),
                     span: Span { start, end: span.end },
                     loc: loc.clone(),
@@ -272,16 +291,43 @@ impl<'a> Parser<'a> {
             | TokenKind::Or
             | TokenKind::Identifier { .. } => {
                 self.next_token(); // consume left expression
-                let operator = self.current_token.clone();
-                let precedence = token_precedence_of(operator.kind.clone());
+                let op_token = self.current_token.kind.clone();
+                let precedence = token_precedence_of(op_token.clone());
                 self.next_token(); // consume the operator
 
+                let op = match op_token {
+                    TokenKind::Plus => InfixOperator::Add,
+                    TokenKind::Minus => InfixOperator::Sub,
+                    TokenKind::Asterisk => InfixOperator::Mul,
+                    TokenKind::Slash => InfixOperator::Div,
+                    TokenKind::Percent => InfixOperator::Rem,
+                    TokenKind::LessThan => InfixOperator::LessThan,
+                    TokenKind::LessEqual => InfixOperator::LessEqual,
+                    TokenKind::GreaterThan => InfixOperator::GreaterThan,
+                    TokenKind::GreaterEqual => InfixOperator::GreaterEqual,
+                    TokenKind::Equal => InfixOperator::Equal,
+                    TokenKind::NotEqual => InfixOperator::NotEqual,
+                    TokenKind::Or => InfixOperator::Or,
+                    TokenKind::And => InfixOperator::And,
+                    _ => {
+                        return Some(Err(Diag {
+                            kind: ParserDiagKind::InvalidInfixOperator(self.current_token.kind.clone()),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(
+                                self.lexer.file_name.clone(),
+                                loc,
+                                self.current_token.span.end,
+                            )),
+                            hint: None,
+                        }));
+                    }
+                };
                 let (right, span) = self.parse_expression(precedence).ok()?;
 
-                Some(Ok(Expression::Infix(BinaryExpression {
-                    operator,
-                    left: Box::new(left),
-                    right: Box::new(right),
+                Some(Ok(Expression::Infix(InfixExpression {
+                    op,
+                    lhs: Box::new(left),
+                    rhs: Box::new(right),
                     span: Span {
                         start: left_start,
                         end: span.end,
@@ -685,15 +731,15 @@ impl<'a> Parser<'a> {
         }));
     }
 
-    pub fn parse_assignment(&mut self, assign_to: Expression, start: usize) -> Result<Expression, ParserError> {
+    pub fn parse_assignment(&mut self, lhs: Expression, start: usize) -> Result<Expression, ParserError> {
         let loc = self.current_token.loc.clone();
 
         self.expect_current(TokenKind::Assign)?;
-        let expr = self.parse_expression(Precedence::Lowest)?.0;
+        let rhs = self.parse_expression(Precedence::Lowest)?.0;
         let end = self.current_token.span.end;
         Ok(Expression::Assignment(Box::new(Assignment {
-            assign_to,
-            expr,
+            lhs,
+            rhs,
             span: Span { start, end },
             loc,
         })))
@@ -704,7 +750,7 @@ impl<'a> Parser<'a> {
         let start = self.current_token.span.start;
 
         let mut base_index = Expression::ArrayIndex(ArrayIndex {
-            expr: Box::new(expr),
+            operand: Box::new(expr),
             index: Box::new(self.parse_single_array_index()?),
             span: Span::new(start, self.current_token.span.end),
             loc: loc.clone(),
@@ -716,7 +762,7 @@ impl<'a> Parser<'a> {
 
         while self.current_token_is(TokenKind::LeftBracket) {
             base_index = Expression::ArrayIndex(ArrayIndex {
-                expr: Box::new(base_index),
+                operand: Box::new(base_index),
                 index: Box::new(self.parse_single_array_index()?),
                 span: Span::new(start, self.current_token.span.end),
                 loc: loc.clone(),

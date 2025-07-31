@@ -138,7 +138,7 @@ impl fmt::Display for PrefixOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PrefixOperator::SizeOf => write!(f, "sizeof"),
-            PrefixOperator::Band => write!(f, "&"),
+            PrefixOperator::Bang => write!(f, "&"),
             PrefixOperator::Minus => write!(f, "-"),
         }
     }

@@ -18,6 +18,8 @@ pub enum ParserDiagKind {
     InvalidUntypedArrayConstructor,
     ExpectedSelfModifier(String),
     SeveralSelfModifierDefinition,
+    InvalidPrefixOperator(TokenKind),
+    InvalidInfixOperator(TokenKind),
 }
 
 impl fmt::Display for ParserDiagKind {
@@ -60,6 +62,12 @@ impl fmt::Display for ParserDiagKind {
             }
             ParserDiagKind::ExpectedSelfModifier(name) => {
                 write!(f, "Self modifier identifier must be 'self' not '{}'.", name)
+            }
+            ParserDiagKind::InvalidInfixOperator(token_kind) => {
+                write!(f, "Invalid infix operator '{}'.", token_kind)
+            }
+            ParserDiagKind::InvalidPrefixOperator(token_kind) => {
+                write!(f, "Invalid prefix operator '{}'.", token_kind)
             }
         }
     }

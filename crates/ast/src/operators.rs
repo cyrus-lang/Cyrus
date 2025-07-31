@@ -18,7 +18,7 @@ pub enum InfixOperator {
 #[derive(Debug, Clone)]
 pub enum PrefixOperator {
     SizeOf,
-    Band,
+    Bang,
     Minus,
 }
 
