@@ -1,4 +1,3 @@
-use crate::diag::ParserDiagKind;
 use ast::token::*;
 use ast::*;
 use diagcentral::Diag;
@@ -8,8 +7,10 @@ use diagcentral::reporter::DiagReporter;
 use lexer::*;
 use utils::fs::read_file;
 
+use crate::diagnostics::ParserDiagKind;
+
 mod common;
-mod diag;
+mod diagnostics;
 mod exprs;
 mod prec;
 mod stmts;

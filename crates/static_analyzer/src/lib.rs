@@ -1,3 +1,3 @@
 mod analyzer;
 mod context;
-mod diag;
+mod diagnostics;
