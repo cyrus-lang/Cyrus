@@ -57,7 +57,7 @@ impl fmt::Display for FuncCall {
             f,
             "{}({})",
             self.operand,
-            expression_series_to_string(self.arguments.clone())
+            expression_series_to_string(self.args.clone())
         )
     }
 }
@@ -194,7 +194,7 @@ impl fmt::Display for Expression {
                     "{}.{}({})",
                     method_call.operand,
                     method_call.method_name,
-                    expression_series_to_string(method_call.arguments.clone())
+                    expression_series_to_string(method_call.args.clone())
                 )
             }
             Expression::Array(array) => {

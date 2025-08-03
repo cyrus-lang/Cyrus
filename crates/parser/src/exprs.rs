@@ -1,6 +1,6 @@
 use crate::Parser;
 use crate::ParserError;
-use crate::diag::ParserDiagKind;
+use crate::diagnostics::ParserDiagKind;
 use crate::prec::*;
 use ast::operators::InfixOperator;
 use ast::operators::PrefixOperator;
@@ -556,7 +556,7 @@ impl<'a> Parser<'a> {
             });
         }
 
-        let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
+        let args = self.parse_expression_series(TokenKind::RightParen)?.0;
         if !self.current_token_is(TokenKind::RightParen) {
             return Err(Diag {
                 kind: ParserDiagKind::MissingClosingParen,
@@ -574,7 +574,7 @@ impl<'a> Parser<'a> {
             is_fat_arrow,
             operand: Box::new(operand),
             method_name,
-            arguments,
+            args,
             span: Span::new(start, self.current_token.span.end),
             loc,
         }))
@@ -626,7 +626,7 @@ impl<'a> Parser<'a> {
 
         self.expect_peek(TokenKind::LeftParen)?;
 
-        let arguments = self.parse_expression_series(TokenKind::RightParen)?.0;
+        let args = self.parse_expression_series(TokenKind::RightParen)?.0;
         if !(self.current_token_is(TokenKind::RightParen)) {
             return Err(Diag {
                 kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
@@ -642,7 +642,7 @@ impl<'a> Parser<'a> {
 
         Ok(Expression::FuncCall(FuncCall {
             operand: Box::new(operand),
-            arguments,
+            args,
             span: Span::new(start, self.current_token.span.end),
             loc: loc,
         }))

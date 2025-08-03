@@ -35,10 +35,11 @@ mod tests {
 
             let module_id = 1;
             let mut resolver = Resolver::new();
-            resolver.resolve_module(module_id, &ast_module);
+            let result = resolver.resolve_module(module_id, &ast_module);
+            assert!(result.is_ok());
 
-            let module_symbols = resolver.global_symbols.get(&module_id).expect("Module not found.");
-            let symbol_entry = module_symbols.symbols.get("foo").expect("Function not found.");
+            let symbol_table = resolver.global_symbols.get(&module_id).expect("Module not found.");
+            let symbol_entry = symbol_table.get("foo").expect("Function not found.");
 
             match symbol_entry {
                 SymbolEntry::Func(resolved_fn) => {

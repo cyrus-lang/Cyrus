@@ -26,3 +26,19 @@ pub struct EnumSig {
     pub vis: AccessSpecifier,
     pub loc: Location,
 }
+
+#[derive(Debug, Clone)]
+pub struct TypedefSig {
+    pub name: String,
+    pub ty: ConcreteType,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct GlobalVarSig {
+    pub name: String,
+    pub ty: ConcreteType,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
+}

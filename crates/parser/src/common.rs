@@ -1,6 +1,6 @@
 use crate::Parser;
 use crate::ParserError;
-use crate::diag::ParserDiagKind;
+use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
 use ast::token::*;
 use ast::*;

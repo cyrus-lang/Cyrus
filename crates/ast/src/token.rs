@@ -259,6 +259,12 @@ impl Location {
     }
 }
 
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
+    }
+}
+
 impl Default for Location {
     fn default() -> Self {
         Self {

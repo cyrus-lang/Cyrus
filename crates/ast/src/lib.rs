@@ -143,7 +143,7 @@ pub struct PrefixExpression {
 #[derive(Debug, Clone)]
 pub struct FuncCall {
     pub operand: Box<Expression>,
-    pub arguments: Vec<Expression>,
+    pub args: Vec<Expression>,
     pub span: Span,
     pub loc: Location,
 }
@@ -162,7 +162,7 @@ pub struct MethodCall {
     pub is_fat_arrow: bool,
     pub operand: Box<Expression>,
     pub method_name: Identifier,
-    pub arguments: Vec<Expression>,
+    pub args: Vec<Expression>,
     pub span: Span,
     pub loc: Location,
 }

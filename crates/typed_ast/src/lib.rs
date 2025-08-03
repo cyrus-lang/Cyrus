@@ -7,6 +7,7 @@ use ast::{
 
 pub mod types;
 
+pub type SymbolID = u32;
 pub type ModuleID = u64;
 
 #[derive(Debug)]
@@ -25,6 +26,7 @@ pub struct TypedASTModule {
 
 #[derive(Debug, Clone)]
 pub enum TypedExpression {
+    Identifier(TypedIdentifier),
     Literal(Literal),
     Prefix(TypedUnaryExpression),
     Infix(TypedInfixExpression),
@@ -39,6 +41,12 @@ pub enum TypedExpression {
     FieldAccess(TypedFieldAccess),
     MethodCall(TypedMethodCall),
     UnnamedStructValue(TypedUnnamedStructValue),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedIdentifier {
+    pub name: String,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -112,7 +120,7 @@ pub struct TypedStructFieldInit {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncCall {
-    pub func: Box<TypedExpression>,
+    pub operand: Box<TypedExpression>,
     pub args: Vec<TypedExpression>,
     pub loc: Location,
 }
@@ -216,18 +224,18 @@ pub struct TypedReturn {
 
 #[derive(Debug, Clone)]
 pub struct TypedGlobalVariable {
-    pub vis: AccessSpecifier,
     pub name: String,
     pub ty: Option<ConcreteType>,
     pub expr: Option<TypedExpression>,
+    pub vis: AccessSpecifier,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedTypedef {
     pub name: String,
-    pub vis: AccessSpecifier,
     pub ty: ConcreteType,
+    pub vis: AccessSpecifier,
     pub loc: Location,
 }
 
@@ -241,7 +249,7 @@ pub struct TypedImport {
 
 #[derive(Debug, Clone)]
 pub struct TypedBlockStatement {
-    pub exprs: Vec<TypedBlockStatement>,
+    pub exprs: Vec<TypedStatement>,
     pub loc: Location,
 }
 
