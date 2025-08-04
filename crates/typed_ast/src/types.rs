@@ -1,7 +1,13 @@
-use ast::token::{Location, TokenKind};
+use ast::{
+    Identifier,
+    token::{Location, TokenKind},
+};
+
+use crate::SymbolID;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConcreteType {
+    Symbol(SymbolID),
     BasicType(BasicConcreteType),
     Array(TypedArray),
     Const(Box<ConcreteType>),
@@ -87,7 +93,7 @@ pub struct TypedUnnamedStructType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructTypeField {
-    pub field_name: String,
+    pub field_name: Identifier,
     pub field_type: Box<ConcreteType>,
     pub loc: Location,
 }

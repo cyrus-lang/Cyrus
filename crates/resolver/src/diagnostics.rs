@@ -28,6 +28,7 @@ pub enum ResolverDiagKind {
         expected: String,
         found: String,
     },
+    InvalidTopLevelStatement,
 }
 
 impl fmt::Display for ResolverDiagKind {
@@ -69,6 +70,9 @@ impl fmt::Display for ResolverDiagKind {
                     "Unexpected symbol type for '{}': expected '{}', but found '{}'.",
                     name, expected, found
                 )
+            }
+            ResolverDiagKind::InvalidTopLevelStatement => {
+                write!(f, "Invalid top-level statement.")
             }
         }
     }

@@ -208,7 +208,7 @@ impl<'a> Parser<'a> {
         let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
         self.next_token(); // consume struct token
 
-        let struct_name = self.parse_identifier()?.name;
+        let struct_name = self.parse_identifier()?;
         self.next_token(); // consume struct name
 
         let mut impls: Vec<Identifier> = Vec::new();
@@ -301,10 +301,11 @@ impl<'a> Parser<'a> {
                         unreachable!();
                     }
                 }
-                TokenKind::Identifier { name: field_name } => {
+                TokenKind::Identifier { .. } => {
                     let start = self.current_token.span.start;
                     let loc = self.current_token.loc.clone();
 
+                    let identifier = self.parse_identifier()?;
                     self.next_token(); // consume identifier
 
                     self.expect_current(TokenKind::Colon)?;
@@ -313,7 +314,7 @@ impl<'a> Parser<'a> {
                     self.next_token();
 
                     let field = StructField {
-                        name: field_name,
+                        identifier,
                         ty: type_token,
                         loc,
                         span: Span {
@@ -341,7 +342,7 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Statement::Struct(Struct {
-            name: struct_name,
+            identifier: struct_name,
             impls,
             vis,
             fields,
@@ -823,12 +824,12 @@ impl<'a> Parser<'a> {
 
         self.next_token(); // consume sharp token
 
-        let name = self.parse_identifier()?.name;
+        let identifier = self.parse_identifier()?;
         self.next_token();
 
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Statement::Variable(Variable {
-                name,
+                identifier,
                 ty: None,
                 rhs: None,
                 span: Span {
@@ -849,7 +850,7 @@ impl<'a> Parser<'a> {
 
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Statement::Variable(Variable {
-                name,
+                identifier,
                 ty: variable_type,
                 rhs: None,
                 span: Span {
@@ -865,7 +866,7 @@ impl<'a> Parser<'a> {
         self.expect_peek(TokenKind::Semicolon)?;
 
         Ok(Statement::Variable(Variable {
-            name,
+            identifier,
             rhs: Some(expr),
             span: Span { start, end: span.end },
             ty: variable_type,
@@ -881,21 +882,7 @@ impl<'a> Parser<'a> {
 
         self.next_token(); // consume the fn token
 
-        let func_name = match self.current_token.kind.clone() {
-            TokenKind::Identifier { name } => name,
-            _ => {
-                return Err(Diag {
-                    kind: ParserDiagKind::ExpectedIdentifier,
-                    level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(
-                        self.lexer.file_name.clone(),
-                        loc,
-                        self.current_token.span.end,
-                    )),
-                    hint: None,
-                });
-            }
-        }; // export the name of the function
+        let func_name = self.parse_identifier()?; // export the name of the function
         self.next_token(); // consume the name of the identifier
 
         let params = self.parse_func_params()?;
@@ -907,7 +894,7 @@ impl<'a> Parser<'a> {
             return_type = None;
         } else if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Statement::FuncDecl(FuncDecl {
-                name: func_name,
+                identifier: func_name,
                 params,
                 return_type: None,
                 vis,
@@ -926,7 +913,7 @@ impl<'a> Parser<'a> {
         // parse as func decl
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Statement::FuncDecl(FuncDecl {
-                name: func_name,
+                identifier: func_name,
                 params,
                 return_type,
                 vis,
@@ -975,7 +962,7 @@ impl<'a> Parser<'a> {
             }
 
             return Ok(Statement::FuncDecl(FuncDecl {
-                name: func_name,
+                identifier: func_name,
                 params,
                 return_type,
                 vis,
@@ -992,7 +979,7 @@ impl<'a> Parser<'a> {
         let end = self.current_token.span.end;
 
         return Ok(Statement::FuncDef(FuncDef {
-            name: func_name,
+            identifier: func_name,
             params,
             body,
             return_type,

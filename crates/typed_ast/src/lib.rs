@@ -12,13 +12,13 @@ pub type ModuleID = u64;
 
 #[derive(Debug)]
 pub enum TypedProgram {
-    ProgramTree(TypedASTModule),
+    ProgramTree(TypedProgramTree),
     Statement(TypedStatement),
     Expression(TypedExpression),
 }
 
 #[derive(Debug)]
-pub struct TypedASTModule {
+pub struct TypedProgramTree {
     pub body: Vec<TypedStatement>,
 }
 

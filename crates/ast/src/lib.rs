@@ -20,6 +20,15 @@ pub struct ProgramTree {
     pub span: Span,
 }
 
+impl Node {
+    pub fn as_program(&self) -> &ProgramTree {
+        match self {
+            Node::ProgramTree(program_tree) => program_tree,
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl Default for ProgramTree {
     fn default() -> Self {
         Self::new()
@@ -92,11 +101,12 @@ pub struct UnnamedStructValueField {
 pub struct UnnamedStructType {
     pub fields: Vec<UnnamedStructTypeField>,
     pub packed: bool,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnnamedStructTypeField {
-    pub field_name: String,
+    pub field_name: Identifier,
     pub field_type: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
@@ -167,7 +177,7 @@ pub struct MethodCall {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Identifier {
     pub name: String,
     pub span: Span,
@@ -382,7 +392,7 @@ pub struct Import {
 
 #[derive(Debug, Clone)]
 pub struct Struct {
-    pub name: String,
+    pub identifier: Identifier,
     pub impls: Vec<Identifier>,
     pub fields: Vec<StructField>,
     pub methods: Vec<FuncDef>,
@@ -402,7 +412,7 @@ pub struct StructInit {
 
 #[derive(Debug, Clone)]
 pub struct StructField {
-    pub name: String,
+    pub identifier: Identifier,
     pub ty: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
@@ -410,7 +420,7 @@ pub struct StructField {
 
 #[derive(Debug, Clone)]
 pub struct FieldInit {
-    pub name: String,
+    pub identifier: Identifier,
     pub value: Expression,
     pub loc: Location,
 }
@@ -461,7 +471,7 @@ pub enum SwitchCasePattern {
 
 #[derive(Debug, Clone)]
 pub struct FuncDef {
-    pub name: String,
+    pub identifier: Identifier,
     pub params: FuncParams,
     pub body: Box<BlockStatement>,
     pub return_type: Option<TypeSpecifier>,
@@ -472,7 +482,7 @@ pub struct FuncDef {
 
 #[derive(Debug, Clone)]
 pub struct FuncDecl {
-    pub name: String,
+    pub identifier: Identifier,
     pub params: FuncParams,
     pub return_type: Option<TypeSpecifier>,
     pub vis: AccessSpecifier,
@@ -485,7 +495,7 @@ impl FuncDecl {
     pub fn get_usable_name(&self) -> String {
         match &self.renamed_as {
             Some(name) => name.clone(),
-            None => self.name.clone(),
+            None => self.identifier.name.clone(),
         }
     }
 }
@@ -519,7 +529,7 @@ pub struct BlockStatement {
 
 #[derive(Debug, Clone)]
 pub struct Variable {
-    pub name: String,
+    pub identifier: Identifier,
     pub ty: Option<TypeSpecifier>,
     pub rhs: Option<Expression>,
     pub span: Span,

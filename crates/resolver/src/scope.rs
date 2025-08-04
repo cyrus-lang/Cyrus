@@ -1,11 +1,18 @@
 use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, StructSig, TypedefSig};
 use ast::{BlockStatement, Variable};
+use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::ModuleID;
 
 // Symbol Table (Per Module)
 
-pub type SymbolTable = HashMap<String, SymbolEntry>;
+pub type SymbolID = u32;
+
+#[derive(Debug)]
+pub struct SymbolTable {
+    pub entries: HashMap<SymbolID, SymbolEntry>,
+    pub names: HashMap<String, SymbolID>,
+}
 
 #[derive(Debug, Clone)]
 pub enum SymbolEntry {
@@ -80,4 +87,55 @@ impl LocalScope {
     pub fn resolve(&self, name: &str) -> Option<&LocalSymbol> {
         self.symbols.get(name).or_else(|| self.parent.as_ref()?.resolve(name))
     }
+}
+
+impl SymbolTable {
+    pub fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            names: HashMap::new(),
+        }
+    }
+}
+
+impl SymbolEntry {
+    pub fn as_struct(&self) -> Option<&ResolvedStruct> {
+        match self {
+            SymbolEntry::Struct(struct_) => Some(struct_),
+            _ => None,
+        }
+    }
+
+    pub fn as_enum(&self) -> Option<&ResolvedEnum> {
+        match self {
+            SymbolEntry::Enum(enum_) => Some(enum_),
+            _ => None,
+        }
+    }
+
+    pub fn as_typedef(&self) -> Option<&ResolvedTypedef> {
+        match self {
+            SymbolEntry::Typedef(typedef) => Some(typedef),
+            _ => None,
+        }
+    }
+
+    pub fn as_func(&self) -> Option<&ResolvedFunction> {
+        match self {
+            SymbolEntry::Func(func) => Some(func),
+            _ => None,
+        }
+    }
+
+    pub fn as_global_var(&self) -> Option<&ResolvedGlobalVar> {
+        match self {
+            SymbolEntry::GlobalVar(global_var) => Some(global_var),
+            _ => None,
+        }
+    }
+}
+
+pub fn generate_symbol_id() -> SymbolID {
+    let mut rng = rand::rng();
+    rng.random::<u32>()
 }

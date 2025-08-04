@@ -7,7 +7,7 @@ mod tests {
         use ast::token::Location;
         use typed_ast::types::{BasicConcreteType, ConcreteType};
         use typed_ast::{
-            TypedASTModule, TypedBlockStatement, TypedFuncDef, TypedFuncParam, TypedFuncParamKind, TypedFuncParams,
+            TypedBlockStatement, TypedFuncDef, TypedFuncParam, TypedFuncParamKind, TypedFuncParams, TypedProgramTree,
             TypedStatement,
         };
 
@@ -29,7 +29,7 @@ mod tests {
                 body: Box::new(TypedBlockStatement::new_empty()),
             };
 
-            let ast_module = TypedASTModule {
+            let ast_module = TypedProgramTree {
                 body: vec![TypedStatement::FuncDef(func)],
             };
 

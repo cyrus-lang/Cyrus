@@ -11,6 +11,7 @@ clap = { version = "4.5.41", features = ["derive"] }
 lexer = { path = "../lexer", version = "*" }
 utils = { path = "../utils", version = "*" }
 ast = { path = "../ast", version = "*" }
+resolver = { path = "../resolver", version = "*" }
 colorized = "1.0.0"
 toml = "0.8.20"
 
