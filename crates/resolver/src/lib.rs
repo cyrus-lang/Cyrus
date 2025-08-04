@@ -1,19 +1,21 @@
 use crate::{
     declsign::TypedefSig,
     diagnostics::ResolverDiagKind,
-    scope::{LocalScope, LocalScopeRef, ResolvedTypedef, SymbolEntry, SymbolTable, generate_symbol_id},
+    scope::{LocalScope, LocalScopeRef, LocalSymbol, ResolvedTypedef, SymbolEntry, SymbolTable, generate_symbol_id},
 };
 use ast::{
-    BlockStatement, Expression, FuncDef, ProgramTree, Statement, TypeSpecifier, Typedef,
+    ArrayCapacity, BlockStatement, Enum, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams, LiteralKind,
+    ProgramTree, Statement, Struct, TypeSpecifier, Typedef, Variable,
     token::{Location, Span, Token, TokenKind},
 };
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{
-    ModuleID, SymbolID, TypedExpression, TypedFuncCall, TypedIdentifier, TypedProgramTree, TypedStatement,
-    TypedTypedef,
-    types::{ConcreteType, TypedUnnamedStructType, TypedUnnamedStructTypeField},
+    ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedEnum, TypedEnumVariant, TypedExpression,
+    TypedFuncDecl, TypedFuncDef, TypedFuncParam, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParams, TypedIf,
+    TypedProgramTree, TypedReturn, TypedStatement, TypedStruct, TypedStructField, TypedTypedef, TypedVariable,
+    types::{ConcreteType, TypedArrayCapacity, TypedArrayType, TypedUnnamedStructType, TypedUnnamedStructTypeField},
 };
 
 pub mod declsign;
@@ -58,7 +60,44 @@ impl Resolver {
                 loc.clone(),
                 span_end,
             )?))),
-            TypeSpecifier::Array(array_type_specifier) => todo!(),
+            TypeSpecifier::Array(array_type_specifier) => Ok({
+                let element_type = match self.resolve_type(*array_type_specifier.element_type, loc.clone(), span_end) {
+                    Some(concrete_type) => concrete_type,
+                    None => return None,
+                };
+
+                let capacity = match &array_type_specifier.size {
+                    ArrayCapacity::Fixed(token_kind) => {
+                        let fixed_capacity = match match token_kind {
+                            TokenKind::Literal(literal) => match &literal.kind {
+                                LiteralKind::Integer(integer_literal) => Some(integer_literal),
+                                _ => None,
+                            },
+                            _ => None,
+                        } {
+                            Some(const_int) => const_int,
+                            None => {
+                                self.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: ResolverDiagKind::InvalidArrayCapacity,
+                                    location: Some(DiagLoc::new(self.file_path.to_string(), loc.clone(), span_end)),
+                                    hint: None,
+                                });
+                                return None;
+                            }
+                        };
+
+                        TypedArrayCapacity::Fixed((*fixed_capacity).try_into().unwrap())
+                    }
+                    ArrayCapacity::Dynamic => TypedArrayCapacity::Dynamic,
+                };
+
+                ConcreteType::Array(TypedArrayType {
+                    element_type: Box::new(element_type),
+                    capacity,
+                    loc: loc.clone(),
+                })
+            }),
             TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
                 let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
@@ -163,15 +202,24 @@ impl Resolver {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::FuncDef(func_def) => match self.resoolve_func_def(&module_id, func_def) {
+                Statement::FuncDef(func_def) => match self.resoolve_func_def(func_def) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::FuncDecl(func_decl) => todo!(),
-                Statement::Struct(_) => todo!(),
-                Statement::Import(import) => todo!(),
-                Statement::Enum(_) => todo!(),
+                Statement::FuncDecl(func_decl) => match self.resolve_func_decl(func_decl) {
+                    Some(typed_stmt) => Ok(typed_stmt),
+                    None => continue,
+                },
+                Statement::Struct(struct_) => match self.resolve_struct(struct_) {
+                    Some(typed_stmt) => Ok(typed_stmt),
+                    None => continue,
+                },
+                Statement::Enum(enum_) => match self.resolve_enum(enum_) {
+                    Some(typed_stmt) => Ok(typed_stmt),
+                    None => continue,
+                },
                 Statement::GlobalVariable(global_variable) => todo!(),
+                Statement::Import(import) => todo!(),
 
                 // Invalid top-level statements.
                 Statement::Variable(variable) => Err((variable.loc.clone(), variable.span.end)),
@@ -206,19 +254,210 @@ impl Resolver {
         typed_body
     }
 
-    fn resoolve_func_def(&mut self, module_id: &ModuleID, func_def: &FuncDef) -> Option<TypedStatement> {
-        let return_type_specifier = func_def.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
+    fn resolve_enum(&mut self, enum_: &Enum) -> Option<TypedStatement> {
+        let mut typed_variants: Vec<TypedEnumVariant> = Vec::new();
+
+        // FIXME
+        todo!();
+
+        // for variant in enum_.variants {
+        //     match variant {
+        //         EnumVariant::Identifier(identifier) => {
+        //             typed_variants.push(TypedEnumVariant::Identifier(identifier.name.clone()));
+        //         },
+        //         EnumVariant::Variant(identifier, enum_valued_fields) => {
+        //             todo!()
+        //         },
+        //         EnumVariant::Valued(identifier, expression) => {
+        //             TypedEnumVariant::Valued(identifier.name.clone(), self.resolve_expr(scope, expr))
+        //         },
+        //     }
+        // }
+
+        Some(TypedStatement::Enum(TypedEnum {
+            name: enum_.identifier.name.clone(),
+            variants: typed_variants,
+            vis: enum_.vis.clone(),
+            loc: enum_.loc.clone(),
+        }))
+    }
+
+    fn resolve_struct(&mut self, struct_: &Struct) -> Option<TypedStatement> {
+        let mut typed_struct_fields: Vec<TypedStructField> = Vec::new();
+        let mut typed_methods: Vec<TypedFuncDef> = Vec::new();
+
+        for field in &struct_.fields {
+            match self.resolve_type(field.ty.clone(), field.loc.clone(), field.span.end) {
+                Some(concrete_type) => {
+                    typed_struct_fields.push(TypedStructField {
+                        name: field.identifier.name.clone(),
+                        ty: concrete_type,
+                        loc: field.loc.clone(),
+                    });
+                }
+                None => continue,
+            }
+        }
+
+        for func_def in &struct_.methods {
+            let local_scope: LocalScopeRef = Rc::new(RefCell::new(LocalScope::new(None)));
+
+            let typed_func_body = match self.resolve_block_statement(Rc::clone(&local_scope), &func_def.body) {
+                Some(typed_block_statement) => typed_block_statement,
+                None => return None,
+            };
+
+            match self.resolve_func(&func_def.as_func_decl()) {
+                Some((return_type, typed_func_params, typed_variadic_param)) => {
+                    typed_methods.push(TypedFuncDef {
+                        name: func_def.identifier.name.clone(),
+                        params: TypedFuncParams {
+                            list: typed_func_params,
+                            variadic: typed_variadic_param,
+                        },
+                        return_type,
+                        vis: func_def.vis.clone(),
+                        loc: func_def.loc.clone(),
+                        body: Box::new(typed_func_body),
+                    });
+                }
+                None => continue,
+            }
+        }
+
+        Some(TypedStatement::Struct(TypedStruct {
+            name: struct_.identifier.name.clone(),
+            fields: typed_struct_fields,
+            methods: Vec::new(), // FIXME
+            vis: struct_.vis.clone(),
+            packed: struct_.packed.clone(),
+            loc: struct_.loc.clone(),
+        }))
+    }
+
+    fn resolve_func(
+        &mut self,
+        func_decl: &FuncDecl,
+    ) -> Option<(ConcreteType, Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
+        let return_type_specifier = func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
             kind: TokenKind::Void,
             span: Span::default(),
             loc: Location::default(),
         }));
 
-        let return_type = match self.resolve_type(return_type_specifier, func_def.loc.clone(), func_def.span.end) {
+        let return_type = match self.resolve_type(return_type_specifier, func_decl.loc.clone(), func_decl.span.end) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
 
-        todo!()
+        let mut typed_func_params: Vec<TypedFuncParamKind> = Vec::new();
+
+        for param in &func_decl.params.list {
+            match param {
+                FuncParamKind::FuncParam(func_param) => {
+                    let param_type = match &func_param.ty {
+                        Some(type_specifier) => {
+                            match self.resolve_type(type_specifier.clone(), func_param.loc.clone(), func_param.span.end)
+                            {
+                                Some(concrete_type) => concrete_type,
+                                None => continue,
+                            }
+                        }
+                        None => {
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: ResolverDiagKind::InvalidUntypedFuncParam,
+                                location: Some(DiagLoc::new(
+                                    self.file_path.to_string(),
+                                    func_param.loc.clone(),
+                                    func_param.span.end,
+                                )),
+                                hint: None,
+                            });
+                            continue;
+                        }
+                    };
+
+                    typed_func_params.push(TypedFuncParamKind::FuncParam(TypedFuncParam {
+                        name: func_param.identifier.name.clone(),
+                        ty: param_type,
+                        loc: func_param.loc.clone(),
+                    }));
+                }
+                FuncParamKind::SelfModifier(self_modifier) => {
+                    typed_func_params.push(TypedFuncParamKind::SelfModifier(self_modifier.clone()));
+                }
+            }
+        }
+
+        let typed_variadic_param = {
+            if let Some(variadic_param) = &func_decl.params.variadic {
+                match variadic_param {
+                    FuncVariadicParams::UntypedCStyle => todo!(),
+                    FuncVariadicParams::Typed(identifier, type_specifier) => {
+                        let concrete_type = match self.resolve_type(
+                            type_specifier.clone(),
+                            identifier.loc.clone(),
+                            identifier.span.end,
+                        ) {
+                            Some(concrete_type) => concrete_type,
+                            None => return None,
+                        };
+
+                        Some(TypedFuncVariadicParams::Typed(identifier.name.clone(), concrete_type))
+                    }
+                }
+            } else {
+                None
+            }
+        };
+
+        Some((return_type, typed_func_params, typed_variadic_param))
+    }
+
+    fn resolve_func_decl(&mut self, func_decl: &FuncDecl) -> Option<TypedStatement> {
+        match self.resolve_func(func_decl) {
+            Some((return_type, typed_func_params, typed_variadic_param)) => {
+                Some(TypedStatement::FuncDecl(TypedFuncDecl {
+                    name: func_decl.identifier.name.clone(),
+                    params: TypedFuncParams {
+                        list: typed_func_params,
+                        variadic: typed_variadic_param,
+                    },
+                    return_type,
+                    vis: func_decl.vis.clone(),
+                    renamed_as: func_decl.renamed_as.clone(),
+                    loc: func_decl.loc.clone(),
+                }))
+            }
+            None => None,
+        }
+    }
+
+    fn resoolve_func_def(&mut self, func_def: &FuncDef) -> Option<TypedStatement> {
+        let local_scope: LocalScopeRef = Rc::new(RefCell::new(LocalScope::new(None)));
+
+        let typed_func_body = match self.resolve_block_statement(Rc::clone(&local_scope), &func_def.body) {
+            Some(typed_block_statement) => typed_block_statement,
+            None => return None,
+        };
+
+        match self.resolve_func(&func_def.as_func_decl()) {
+            Some((return_type, typed_func_params, typed_variadic_param)) => {
+                Some(TypedStatement::FuncDef(TypedFuncDef {
+                    name: func_def.identifier.name.clone(),
+                    params: TypedFuncParams {
+                        list: typed_func_params,
+                        variadic: typed_variadic_param,
+                    },
+                    return_type,
+                    vis: func_def.vis.clone(),
+                    loc: func_def.loc.clone(),
+                    body: Box::new(typed_func_body),
+                }))
+            }
+            None => None,
+        }
     }
 
     fn resolve_typedef(&mut self, module_id: &u64, typedef: &Typedef) -> Option<TypedStatement> {
@@ -271,105 +510,276 @@ impl Resolver {
         self.global_symbols.insert(module_id, SymbolTable::new());
 
         self.resolve_decl_names(module_id, &ast);
-
-        dbg!(self.global_symbols.get(&module_id).unwrap().names.clone());
-
         let typed_body = self.resolve_definitions(module_id, &ast);
-
-        // for symbol_entry in symbol_table.values().into_iter() {
-        //     let resolved_func = match symbol_entry {
-        //         SymbolEntry::Func(resolved_func) => resolved_func,
-        //         _ => continue,
-        //     };
-
-        //     if let Some(body) = &resolved_func.body {
-        //         self.resolve_func_body(body.clone());
-        //     }
-        // }
-
         TypedProgramTree { body: typed_body }
     }
 
-    fn resolve_func_body(&self, func_body: BlockStatement) -> Result<(), ResolverDiagKind> {
-        let local_scope: LocalScopeRef = Rc::new(RefCell::new(LocalScope::new(None)));
+    fn declare_local_variable(&mut self, scope: LocalScopeRef, variable: &Variable) -> Option<TypedStatement> {
+        let var_type = {
+            if let Some(var_type_specifier) = &variable.ty {
+                match self.resolve_type(var_type_specifier.clone(), variable.loc.clone(), variable.span.end) {
+                    Some(concrete_type) => Some(concrete_type),
+                    None => None,
+                }
+            } else {
+                return None;
+            }
+        };
 
-        // for stmt in func_body.exprs {
-        //     self.resolve_expr(Rc::clone(&local_scope), stmt)?;
-        // }
+        let typed_rhs = {
+            if let Some(rhs) = &variable.rhs {
+                match self.resolve_expr(Rc::clone(&scope), rhs) {
+                    Some(typed_expr) => Some(typed_expr),
+                    None => return None,
+                }
+            } else {
+                None
+            }
+        };
 
-        Ok(())
+        let typed_variable = TypedVariable {
+            name: variable.identifier.name.clone(),
+            ty: var_type,
+            rhs: typed_rhs,
+            loc: variable.loc.clone(),
+        };
+
+        let mut scope_borrowed = scope.borrow_mut();
+        scope_borrowed.insert(
+            variable.identifier.name.clone(),
+            LocalSymbol::Variable(typed_variable.clone()),
+        );
+        drop(scope_borrowed);
+
+        Some(TypedStatement::Variable(typed_variable))
     }
 
-    fn resolve_expr(&self, scope: LocalScopeRef, expr: Expression) -> Result<TypedExpression, ResolverDiagKind> {
-        match expr {
-            Expression::Identifier(ident) => {
-                let name = &ident.name;
-                let mut scope_borrowed = scope.borrow_mut();
-                let symbol_entry = scope_borrowed.resolve(name).cloned();
-                if symbol_entry.is_none() {
-                    return Err(ResolverDiagKind::SymbolNotFound { name: name.clone() });
+    fn declare_local_typedef(
+        &mut self,
+        scope: LocalScopeRef,
+        module_id: &ModuleID,
+        typedef: &Typedef,
+    ) -> Option<TypedStatement> {
+        let concrete_type =
+            match self.resolve_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end) {
+                Some(concrete_type) => concrete_type,
+                None => return None,
+            };
+
+        let typed_typedef = TypedTypedef {
+            name: typedef.identifier.name.clone(),
+            ty: concrete_type.clone(),
+            vis: typedef.vis.clone(),
+            loc: typedef.loc.clone(),
+        };
+
+        let resolved_typedef = ResolvedTypedef {
+            module_id: *module_id,
+            typedef_sig: TypedefSig {
+                name: typedef.identifier.name.clone(),
+                ty: concrete_type,
+                vis: typedef.vis.clone(),
+                loc: typedef.loc.clone(),
+            },
+        };
+
+        let mut scope_borrowed = scope.borrow_mut();
+        scope_borrowed.insert(typedef.identifier.name.clone(), LocalSymbol::Typedef(resolved_typedef));
+        drop(scope_borrowed);
+
+        Some(TypedStatement::Typedef(typed_typedef))
+    }
+
+    fn resolve_block_statement(
+        &mut self,
+        local_scope: LocalScopeRef,
+        block_statement: &BlockStatement,
+    ) -> Option<TypedBlockStatement> {
+        let module_id = self.current_module.unwrap();
+        let mut typed_body: Vec<TypedStatement> = Vec::new();
+
+        for stmt in &block_statement.exprs {
+            match stmt {
+                Statement::Variable(variable) => {
+                    match self.declare_local_variable(Rc::clone(&local_scope), &variable) {
+                        Some(typed_stmt) => {
+                            typed_body.push(typed_stmt);
+                        }
+                        None => continue,
+                    }
                 }
+                Statement::Expression(expr) => match self.resolve_expr(Rc::clone(&local_scope), expr) {
+                    Some(typed_expr) => {
+                        typed_body.push(TypedStatement::Expression(typed_expr));
+                    }
+                    None => continue,
+                },
+                Statement::If(if_stmt) => {
+                    let typed_condition = match self.resolve_expr(Rc::clone(&local_scope), &if_stmt.condition) {
+                        Some(typed_expr) => typed_expr,
+                        None => continue,
+                    };
 
-                scope_borrowed.insert(name.clone(), symbol_entry.unwrap());
-                drop(scope_borrowed);
+                    let typed_consequent =
+                        match self.resolve_block_statement(Rc::clone(&local_scope), &if_stmt.consequent) {
+                            Some(typed_block) => Box::new(typed_block),
+                            None => continue,
+                        };
 
-                Ok(TypedExpression::Identifier(TypedIdentifier {
-                    name: name.clone(),
-                    loc: ident.loc.clone(),
-                }))
-            }
-            Expression::FuncCall(ref func_call) => {
-                let typed_operand = self.resolve_expr(scope.clone(), *func_call.operand.clone())?;
-                let typed_args = func_call
-                    .args
-                    .iter()
-                    .map(|arg| self.resolve_expr(scope.clone(), arg.clone()))
-                    .collect::<Result<Vec<TypedExpression>, ResolverDiagKind>>()?;
+                    let typed_alternate = {
+                        if let Some(alternate) = &if_stmt.alternate {
+                            match self.resolve_block_statement(Rc::clone(&local_scope), &*alternate) {
+                                Some(typed_block) => Some(Box::new(typed_block)),
+                                None => continue,
+                            }
+                        } else {
+                            None
+                        }
+                    };
 
-                Ok(TypedExpression::FuncCall(TypedFuncCall {
-                    args: typed_args,
-                    operand: Box::new(typed_operand),
-                    loc: func_call.loc.clone(),
-                }))
+                    typed_body.push(TypedStatement::If(TypedIf {
+                        condition: typed_condition,
+                        consequent: typed_consequent,
+                        branches: Vec::new(),
+                        alternate: typed_alternate,
+                        loc: if_stmt.loc.clone(),
+                    }));
+                }
+                Statement::Return(return_stmt) => {
+                    let argument = {
+                        if let Some(argument) = &return_stmt.argument {
+                            match self.resolve_expr(Rc::clone(&local_scope), argument) {
+                                Some(typed_expr) => Some(typed_expr),
+                                None => continue,
+                            }
+                        } else {
+                            None
+                        }
+                    };
+
+                    typed_body.push(TypedStatement::Return(TypedReturn {
+                        argument,
+                        loc: return_stmt.loc.clone(),
+                    }));
+                }
+                Statement::For(for_stmt) => todo!(),
+                Statement::Foreach(foreach) => todo!(),
+                Statement::Switch(switch) => todo!(),
+                Statement::Struct(_) => todo!(),
+                Statement::BlockStatement(block_statement) => {
+                    let local_scope_copy = LocalScope::deep_clone(&local_scope);
+
+                    match self.resolve_block_statement(local_scope_copy, block_statement) {
+                        Some(typed_stmt) => {
+                            typed_body.push(TypedStatement::BlockStatement(typed_stmt));
+                        }
+                        None => continue,
+                    }
+                }
+                Statement::Enum(_) => todo!(),
+                Statement::Break(break_stmt) => {
+                    typed_body.push(TypedStatement::Break(TypedBreak {
+                        loc: break_stmt.loc.clone(),
+                    }));
+                }
+                Statement::Continue(continue_stmt) => {
+                    typed_body.push(TypedStatement::Continue(TypedContinue {
+                        loc: continue_stmt.loc.clone(),
+                    }));
+                }
+                Statement::Typedef(typedef) => {
+                    match self.declare_local_typedef(Rc::clone(&local_scope), &module_id, typedef) {
+                        Some(typed_stmt) => {
+                            typed_body.push(typed_stmt);
+                        }
+                        None => continue,
+                    }
+                }
+                // Invalid statements.
+                Statement::GlobalVariable(global_variable) => unreachable!(),
+                Statement::FuncDef(..) => unreachable!(),
+                Statement::FuncDecl(..) => unreachable!(),
+                Statement::Import(..) => unreachable!(),
             }
-            Expression::FieldAccess(ref field) => {
-                // self.resolve_expr(scope.clone(), *field.operand.clone())?;
-                // optional: check field existence here if possible
-                todo!();
-            }
-            Expression::Array(ref arr) => {
-                // for item in &arr.elements {
-                //     self.resolve_expr(scope.clone(), item.clone())?;
-                // }
-                todo!();
-            }
-            Expression::Infix(ref bin) => {
-                // self.resolve_expr(scope.clone(), *bin.left.clone())?;
-                // self.resolve_expr(scope.clone(), *bin.right.clone())?;
-                todo!();
-            }
-            Expression::Prefix(ref unary) => {
-                // self.resolve_expr(scope.clone(), *unary.expr.clone())?;
-                todo!();
-            }
-            Expression::StructInit(ref init) => {
-                // for (_, value) in &init.field_inits {
-                //     self.resolve_expr(scope.clone(), value.clone())?;
-                // }
-                todo!();
-            }
-            Expression::Cast(cast) => todo!(),
-            Expression::TypeSpecifier(type_specifier) => todo!(),
-            Expression::ModuleImport(module_import) => todo!(),
-            Expression::Assignment(assignment) => todo!(),
-            Expression::Literal(literal) => todo!(),
-            Expression::Unary(unary_expression) => todo!(),
-            Expression::ArrayIndex(array_index) => todo!(),
-            Expression::AddressOf(address_of) => todo!(),
-            Expression::Dereference(dereference) => todo!(),
-            Expression::MethodCall(method_call) => todo!(),
-            Expression::UnnamedStructValue(unnamed_struct_value) => todo!(),
         }
+
+        Some(TypedBlockStatement {
+            exprs: typed_body,
+            loc: block_statement.loc.clone(),
+        })
+    }
+
+    fn resolve_expr(&self, scope: LocalScopeRef, expr: &Expression) -> Option<TypedExpression> {
+        todo!()
+        // match expr {
+        //     Expression::Identifier(ident) => {
+        //         let name = &ident.name;
+        //         let mut scope_borrowed = scope.borrow_mut();
+        //         let symbol_entry = scope_borrowed.resolve(name).cloned();
+        //         if symbol_entry.is_none() {
+        //             return Err(ResolverDiagKind::SymbolNotFound { name: name.clone() });
+        //         }
+
+        //         scope_borrowed.insert(name.clone(), symbol_entry.unwrap());
+        //         drop(scope_borrowed);
+
+        //         Ok(TypedExpression::Identifier(TypedIdentifier {
+        //             name: name.clone(),
+        //             loc: ident.loc.clone(),
+        //         }))
+        //     }
+        //     Expression::FuncCall(ref func_call) => {
+        //         let typed_operand = self.resolve_expr(scope.clone(), &func_call.operand.clone())?;
+        //         let typed_args = func_call
+        //             .args
+        //             .iter()
+        //             .map(|arg| self.resolve_expr(scope.clone(), &arg.clone()))
+        //             .collect::<Result<Vec<TypedExpression>, ResolverDiagKind>>()?;
+
+        //         Ok(TypedExpression::FuncCall(TypedFuncCall {
+        //             args: typed_args,
+        //             operand: Box::new(typed_operand),
+        //             loc: func_call.loc.clone(),
+        //         }))
+        //     }
+        //     Expression::FieldAccess(ref field) => {
+        //         // self.resolve_expr(scope.clone(), *field.operand.clone())?;
+        //         // optional: check field existence here if possible
+        //         todo!();
+        //     }
+        //     Expression::Array(ref arr) => {
+        //         // for item in &arr.elements {
+        //         //     self.resolve_expr(scope.clone(), item.clone())?;
+        //         // }
+        //         todo!();
+        //     }
+        //     Expression::Infix(ref bin) => {
+        //         // self.resolve_expr(scope.clone(), *bin.left.clone())?;
+        //         // self.resolve_expr(scope.clone(), *bin.right.clone())?;
+        //         todo!();
+        //     }
+        //     Expression::Prefix(ref unary) => {
+        //         // self.resolve_expr(scope.clone(), *unary.expr.clone())?;
+        //         todo!();
+        //     }
+        //     Expression::StructInit(ref init) => {
+        //         // for (_, value) in &init.field_inits {
+        //         //     self.resolve_expr(scope.clone(), value.clone())?;
+        //         // }
+        //         todo!();
+        //     }
+        //     Expression::Cast(cast) => todo!(),
+        //     Expression::TypeSpecifier(type_specifier) => todo!(),
+        //     Expression::ModuleImport(module_import) => todo!(),
+        //     Expression::Assignment(assignment) => todo!(),
+        //     Expression::Literal(literal) => todo!(),
+        //     Expression::Unary(unary_expression) => todo!(),
+        //     Expression::ArrayIndex(array_index) => todo!(),
+        //     Expression::AddressOf(address_of) => todo!(),
+        //     Expression::Dereference(dereference) => todo!(),
+        //     Expression::MethodCall(method_call) => todo!(),
+        //     Expression::UnnamedStructValue(unnamed_struct_value) => todo!(),
+        // }
     }
 
     pub fn lookup_symbol_id(&self, module_id: &ModuleID, name: &str) -> Option<SymbolID> {

@@ -511,6 +511,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_func_params(&mut self) -> Result<FuncParams, ParserError> {
+        let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
         self.expect_current(TokenKind::LeftParen)?;
@@ -559,7 +560,11 @@ impl<'a> Parser<'a> {
                     }
 
                     self_modifier_count += 1;
-                    list.push(FuncParamKind::SelfModifier(SelfModifier::Referenced));
+                    list.push(FuncParamKind::SelfModifier(SelfModifier {
+                        kind: SelfModifierKind::Referenced,
+                        loc: loc.clone(),
+                        span: Span::new(start, self.current_token.span.end),
+                    }));
                 }
                 TokenKind::Identifier { name } => {
                     let param_loc = self.current_token.loc.clone();
@@ -569,7 +574,11 @@ impl<'a> Parser<'a> {
 
                     if identifier.name == "self" {
                         self_modifier_count += 1;
-                        list.push(FuncParamKind::SelfModifier(SelfModifier::Copied));
+                        list.push(FuncParamKind::SelfModifier(SelfModifier {
+                            kind: SelfModifierKind::Copied,
+                            loc: param_loc,
+                            span: Span::new(start, self.current_token.span.end),
+                        }));
                     } else {
                         // get the var type
 

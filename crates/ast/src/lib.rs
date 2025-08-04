@@ -491,6 +491,20 @@ pub struct FuncDecl {
     pub loc: Location,
 }
 
+impl FuncDef {
+    pub fn as_func_decl(&self) -> FuncDecl {
+        FuncDecl {
+            identifier: self.identifier.clone(),
+            params: self.params.clone(),
+            return_type: self.return_type.clone(),
+            vis: self.vis.clone(),
+            renamed_as: None,
+            span: self.span.clone(),
+            loc: self.loc.clone(),
+        }
+    }
+}
+
 impl FuncDecl {
     pub fn get_usable_name(&self) -> String {
         match &self.renamed_as {
@@ -545,7 +559,14 @@ pub struct Assignment {
 }
 
 #[derive(Debug, Clone)]
-pub enum SelfModifier {
+pub struct SelfModifier {
+    pub kind: SelfModifierKind,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum SelfModifierKind {
     Copied,
     Referenced,
 }
