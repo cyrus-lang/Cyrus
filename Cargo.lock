@@ -134,6 +134,7 @@ dependencies = [
  "layout",
  "lexer",
  "parser",
+ "resolver",
  "toml",
  "utils",
 ]
@@ -470,7 +471,12 @@ name = "resolver"
 version = "0.1.0"
 dependencies = [
  "ast",
+ "diagcentral",
+ "lexer",
+ "parser",
+ "rand 0.9.0",
  "typed_ast",
+ "utils",
 ]
 
 [[package]]

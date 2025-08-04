@@ -5,6 +5,7 @@ use codegen::build::OutputKind;
 use codegen::context::CodeGenLLVM;
 use codegen::opts::{BuildDir, CodeModelOptions, RelocModeOptions};
 use lexer::Lexer;
+use resolver::{Resolver, generate_module_id};
 use utils::fs::{get_directory_of_file, read_file};
 
 const PROJECT_FILE_PATH: &str = "Project.toml";
@@ -544,14 +545,20 @@ fn syntactic_only_command(file_path: String) {
     let (file_content, file_name) = read_file(file_path.clone());
     let mut lexer = Lexer::new(file_content, file_name);
 
-    match CyrusParser::new(&mut lexer).parse() {
-        Ok(_) => {
-            println!("Program is correct grammatically.");
-        }
+    let program_tree = match CyrusParser::new(&mut lexer).parse() {
+        Ok(node) => node.as_program(),
         Err(errors) => {
             for err in errors {
                 err.print();
             }
         }
-    }
+    };
+
+    let resolver = Resolver::new();
+    let module_id = generate_module_id();
+    let typed_program_tree = resolver.resolve_module(module_id, program_tree);
+
+    dbg!(typed_program_tree);
+
+    println!("Program is correct grammatically.");
 }

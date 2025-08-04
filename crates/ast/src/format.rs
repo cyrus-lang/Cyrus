@@ -215,7 +215,7 @@ impl fmt::Display for Expression {
                     Expression::ModuleImport(struct_init.struct_name.clone()).to_string()
                 )?;
                 for field in &struct_init.field_inits {
-                    write!(f, "{}: {};", field.name, field.value)?;
+                    write!(f, "{}: {};", field.identifier, field.value)?;
                 }
                 write!(f, "}}")
             }

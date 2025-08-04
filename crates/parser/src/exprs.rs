@@ -668,7 +668,7 @@ impl<'a> Parser<'a> {
         }
 
         loop {
-            let field_name = self.parse_identifier()?.name;
+            let field_name = self.parse_identifier()?;
             let field_loc = self.current_token.loc.clone();
 
             self.next_token(); // consume identifier
@@ -678,7 +678,7 @@ impl<'a> Parser<'a> {
             self.next_token();
 
             field_inits.push(FieldInit {
-                name: field_name,
+                identifier: field_name,
                 value,
                 loc: field_loc,
             });

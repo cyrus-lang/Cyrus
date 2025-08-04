@@ -796,11 +796,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 }
 
-pub fn generate_module_id() -> ModuleID {
-    let mut rng = rand::rng();
-    rng.random::<u64>()
-}
-
 pub fn generate_local_ir_value_id() -> LocalIRValueID {
     let mut rng = rand::rng();
     rng.random::<u64>()

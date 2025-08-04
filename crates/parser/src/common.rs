@@ -192,6 +192,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParserError> {
+        let loc = self.current_token.loc.clone();
+
         let packed = {
             if self.current_token_is(TokenKind::Bits) {
                 self.next_token();
@@ -233,10 +235,11 @@ impl<'a> Parser<'a> {
                         hint: None,
                     });
                 }
-                TokenKind::Identifier { name: field_name } => {
+                TokenKind::Identifier { .. } => {
                     let start = self.current_token.span.start;
                     let loc = self.current_token.loc.clone();
 
+                    let field_name = self.parse_identifier()?;
                     self.next_token(); // consume identifier
 
                     self.expect_current(TokenKind::Colon)?;
@@ -275,6 +278,6 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType { fields, packed }))
+        Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType { fields, packed, loc }))
     }
 }

@@ -1,29 +1,6 @@
-import std::libc;
+type Char = MyInt8;
+type MyInt8 = int8;
 
-enum Color {
-    Red,
-    Blue,
-    Green,
-    StringColor = "MyStringColor",
-    Custom(a: uint32, b: uint32, c: uint32),
-}
+func get_char(ch: Char) Char {
 
-func main() {
-    #my_color: Color = Color.Custom(251, 187, 130);
-
-	switch (my_color) {
-		case .Red:
-		 	libc::printf("Color is Red!.\n");
-  			break;
-		case .StringColor(value):
-		 	libc::printf("Color is %s.\n", value);
-  			break;
-    	case .Custom(a, b, c):
-     			libc::printf("Color is Custom with index %d.\n", my_color.index);
-     			libc::printf("Color is (%d, %d, %d).\n", a, b, c);
-     			break;
-		default:
-			libc::printf("Unknown Color!.\n");
-			break;
-	}
 }
