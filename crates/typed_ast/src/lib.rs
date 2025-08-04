@@ -32,7 +32,7 @@ pub enum TypedExpression {
     Infix(TypedInfixExpression),
     Assignment(TypedAssignment),
     Cast(TypedCast),
-    Array(TypedArray),
+    Array(TypedArrayValue),
     ArrayIndex(TypedArrayIndex),
     AddressOf(TypedAddressOf),
     Dereference(TypedDereference),
@@ -79,7 +79,7 @@ pub struct TypedCast {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedArray {
+pub struct TypedArrayValue {
     pub element_type: ConcreteType,
     pub elements: Vec<TypedExpression>,
     pub loc: Location,
@@ -265,7 +265,7 @@ impl TypedBlockStatement {
 #[derive(Debug, Clone)]
 pub struct TypedVariable {
     pub name: String,
-    pub ty: ConcreteType,
+    pub ty: Option<ConcreteType>,
     pub rhs: Option<TypedExpression>,
     pub loc: Location,
 }
@@ -320,7 +320,7 @@ pub enum TypedFuncParamKind {
 #[derive(Debug, Clone)]
 pub struct TypedFuncParam {
     pub name: String,
-    pub ty: Option<ConcreteType>,
+    pub ty: ConcreteType,
     pub loc: Location,
 }
 

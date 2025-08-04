@@ -1,8 +1,12 @@
 use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, StructSig, TypedefSig};
 use ast::{BlockStatement, Variable};
 use rand::Rng;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use typed_ast::ModuleID;
+use std::{
+    cell::{Ref, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
+use typed_ast::{ModuleID, TypedVariable};
 
 // Symbol Table (Per Module)
 
@@ -59,6 +63,7 @@ pub struct ResolvedTypedef {
 
 pub type LocalScopeRef = Rc<RefCell<LocalScope>>;
 
+#[derive(Debug, Clone)]
 pub struct LocalScope {
     pub symbols: HashMap<String, LocalSymbol>,
     pub parent: Option<Box<LocalScope>>,
@@ -66,10 +71,10 @@ pub struct LocalScope {
 
 #[derive(Debug, Clone)]
 pub enum LocalSymbol {
-    Variable(Variable),
+    Variable(TypedVariable),
     Struct(ResolvedStruct),
     Enum(ResolvedEnum),
-    TypeAlias(ResolvedTypedef),
+    Typedef(ResolvedTypedef),
 }
 
 impl LocalScope {
@@ -86,6 +91,13 @@ impl LocalScope {
 
     pub fn resolve(&self, name: &str) -> Option<&LocalSymbol> {
         self.symbols.get(name).or_else(|| self.parent.as_ref()?.resolve(name))
+    }
+
+    pub fn deep_clone(scope_ref: &LocalScopeRef) -> LocalScopeRef {
+        let borrowed = scope_ref.borrow();
+        let copy = borrowed.clone();
+        drop(borrowed);
+        Rc::new(RefCell::new(copy))
     }
 }
 

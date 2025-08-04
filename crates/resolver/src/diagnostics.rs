@@ -19,6 +19,7 @@ pub enum ResolverDiagKind {
         found: usize,
     },
     InvalidSelfUsage,
+    InvalidSelfModifier,
     InvalidReturnType {
         expected: String,
         found: String,
@@ -29,6 +30,8 @@ pub enum ResolverDiagKind {
         found: String,
     },
     InvalidTopLevelStatement,
+    InvalidArrayCapacity,
+    InvalidUntypedFuncParam,
 }
 
 impl fmt::Display for ResolverDiagKind {
@@ -73,6 +76,15 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::InvalidTopLevelStatement => {
                 write!(f, "Invalid top-level statement.")
+            }
+            ResolverDiagKind::InvalidArrayCapacity => {
+                write!(f, "Array capacity must be a positive constant integer.")
+            }
+            ResolverDiagKind::InvalidUntypedFuncParam => {
+                write!(f, "Function parameter must have a type.")
+            }
+            ResolverDiagKind::InvalidSelfModifier => {
+                write!(f, "Self modifier must be the beginning parameter of a method.")
             }
         }
     }

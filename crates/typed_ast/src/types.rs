@@ -9,7 +9,7 @@ use crate::SymbolID;
 pub enum ConcreteType {
     Symbol(SymbolID),
     BasicType(BasicConcreteType),
-    Array(TypedArray),
+    Array(TypedArrayType),
     Const(Box<ConcreteType>),
     Pointer(Box<ConcreteType>),
     UnnamedStruct(TypedUnnamedStructType),
@@ -72,7 +72,7 @@ impl From<TokenKind> for ConcreteType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypedArray {
+pub struct TypedArrayType {
     pub element_type: Box<ConcreteType>,
     pub capacity: TypedArrayCapacity,
     pub loc: Location,

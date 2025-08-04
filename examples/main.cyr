@@ -1,6 +1,10 @@
 type Char = MyInt8;
 type MyInt8 = int8;
 
-func get_char(ch: Char) Char {
-
+func main() {
+    #a: int32;
+    {
+        type A = Char;
+        a;
+    }
 }
