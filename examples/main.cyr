@@ -1,15 +1,9 @@
-// import sample;
+import sample;
 
-///AA
 func main() {
     // sample::sumA();
     // sample::sum();
     // sample::sumB();
-}
-
-// Helo
-func main() {
-
 }
 
 // func samplefunc() {

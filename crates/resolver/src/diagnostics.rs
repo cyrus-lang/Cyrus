@@ -129,11 +129,11 @@ impl fmt::Display for ResolverDiagKind {
             ResolverDiagKind::ImportCycle { module_names } => {
                 write!(
                     f,
-                    "An import cycle was found, indicating a circular dependency between modules.\n"
+                    "An import cycle was found, indicating a circular dependency between modules.\n\n"
                 )?;
                 write!(f, "Cycle Path: \n")?;
                 for (i, module_name) in module_names.iter().enumerate() {
-                    write!(f, "   {}.{}", i + 1, module_name)?;
+                    write!(f, "   {} {}\n", i + 1, module_name)?;
                 }
                 write!(f, "\n")?;
                 write!(f, "Consider resolving the cycle by refactoring the modules.")
@@ -156,7 +156,7 @@ impl fmt::Display for ResolverDiagKind {
             ResolverDiagKind::ModuleNotFound { module_name } => {
                 write!(
                     f,
-                    "The module '{}' could not be found in any of the specified source directories.",
+                    "Module '{}' couldn't be found in any of the specified source directories.",
                     module_name
                 )
             }
