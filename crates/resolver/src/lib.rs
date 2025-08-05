@@ -28,7 +28,6 @@ pub mod scope;
 
 pub struct Resolver {
     pub global_symbols: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
-    pub module_deps: Arc<Mutex<HashMap<ModuleID, HashSet<ModuleID>>>>,
     pub module_aliases: Arc<Mutex<HashMap<ModuleAlias, ModuleID>>>,
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
     pub file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
@@ -39,42 +38,34 @@ pub struct Resolver {
 }
 
 pub struct Visiting {
-    pub module_ids: HashSet<ModuleID>,
+    pub file_paths: HashSet<ModuleFilePath>,
 }
 
 impl Visiting {
     pub fn new() -> Self {
         Self {
-            module_ids: HashSet::new(),
+            file_paths: HashSet::new(),
         }
     }
 
-    pub fn contains(&self, module_id: ModuleID) -> bool {
-        self.module_ids.contains(&module_id)
+    pub fn contains(&self, file_path: ModuleFilePath) -> bool {
+        self.file_paths.contains(&file_path)
     }
 
-    pub fn insert(&mut self, module_id: ModuleID) {
-        self.module_ids.insert(module_id);
+    pub fn insert(&mut self, file_path: ModuleFilePath) {
+        self.file_paths.insert(file_path);
     }
 
-    pub fn remove(&mut self, module_id: ModuleID) {
-        self.module_ids.remove(&module_id);
-    }
-
-    pub fn get_module_names(&self, file_paths: &HashMap<ModuleID, ModuleFilePath>) -> Vec<String> {
-        self.module_ids
-            .iter()
-            .map(|module_id| file_paths.get(module_id).unwrap().clone())
-            .collect()
+    pub fn remove(&mut self, file_path: ModuleFilePath) {
+        self.file_paths.remove(&file_path);
     }
 }
 
 impl Resolver {
     pub fn new(opts: ModuleLoaderOptions, master_module_file_path: String) -> Self {
-        Resolver {
+        Self {
             global_symbols: Arc::new(Mutex::new(HashMap::new())),
             analyzed_modules: Arc::new(Mutex::new(HashSet::new())),
-            module_deps: Arc::new(Mutex::new(HashMap::new())),
             module_aliases: Arc::new(Mutex::new(HashMap::new())),
             file_paths: Arc::new(Mutex::new(HashMap::new())),
             reporter: DiagReporter::new(),
@@ -134,13 +125,26 @@ impl Resolver {
 
         Some(symbol_id)
     }
+
     fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, mut visiting: &mut Visiting) {
         let loaded_modules_list = self
             .module_loader
             .load_module(import.clone(), self.get_current_module_file_path());
 
+        let report_if_imports_twice = |this: &mut Resolver, module_file_path: String| -> bool {
+            let file_paths = this.file_paths.lock().unwrap();
+            let imported_before = file_paths
+                .values()
+                .into_iter()
+                .find(|file_path| **file_path == module_file_path)
+                .is_some();
+            drop(file_paths);
+
+            if imported_before { true } else { false }
+        };
+
         for loaded_module in loaded_modules_list {
-            let (module_alias, _, program_tree) = match loaded_module {
+            let (module_alias, module_file_path, program_tree) = match loaded_module {
                 Ok(module_ast_and_file_path) => module_ast_and_file_path,
                 Err(diag_kind) => {
                     self.reporter.report(Diag {
@@ -158,13 +162,50 @@ impl Resolver {
             };
 
             let module_id = generate_module_id();
-            match self.resolve_module(module_id, program_tree.as_ref(), &mut visiting) {
+
+            if visiting.contains(module_file_path.clone()) {
+                // Cycle import detected.
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ImportCycle {
+                        module_names: {
+                            let file_paths = self.file_paths.lock().unwrap();
+                            let module_names = visiting.file_paths.clone().into_iter().collect();
+                            drop(file_paths);
+                            module_names
+                        },
+                    },
+                    location: None,
+                    hint: None,
+                });
+
+                continue;
+            } else if report_if_imports_twice(self, module_file_path.clone()) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ImportTwice {
+                        module_name: module_alias,
+                    },
+                    location: Some(DiagLoc::new(
+                        self.get_current_module_file_path(),
+                        import.loc.clone(),
+                        import.span.end,
+                    )),
+                    hint: Some("Consider to remove previous declaration.".to_string()),
+                });
+
+                continue;
+            }
+
+            visiting.insert(module_file_path.clone());
+            self.insert_module_file_path(module_id, module_file_path);
+
+            match self.resolve_module(module_id, program_tree.as_ref(), &mut visiting, false) {
                 Some(..) => {}
                 None => continue,
             };
 
             self.insert_module_alias(module_alias, module_id);
-            self.insert_module_dep(parent_module_id, module_id);
         }
     }
 
@@ -173,25 +214,13 @@ impl Resolver {
         module_id: ModuleID,
         ast: &ProgramTree,
         mut visiting: &mut Visiting,
+        is_master: bool,
     ) -> Option<TypedProgramTree> {
         self.current_module = Some(module_id);
 
-        if visiting.contains(module_id) {
-            // Cycle import detected.
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: ResolverDiagKind::ImportCycle {
-                    module_names: {
-                        let file_paths = self.file_paths.lock().unwrap();
-                        let module_names = visiting.get_module_names(&file_paths.clone());
-                        drop(file_paths);
-                        module_names
-                    },
-                },
-                location: None,
-                hint: None,
-            });
-            return None;
+        if is_master {
+            self.insert_module_file_path(module_id, self.master_module_file_path.clone());
+            visiting.insert(self.master_module_file_path.clone());
         }
 
         let mut analyzed = self.analyzed_modules.lock().unwrap();
@@ -200,9 +229,6 @@ impl Resolver {
         }
         analyzed.insert(module_id);
         drop(analyzed);
-
-        // Start visiting this module
-        visiting.insert(module_id);
 
         // Initialize symbol table for this module
         let mut global_symbols = self.global_symbols.lock().unwrap();
@@ -223,8 +249,6 @@ impl Resolver {
 
         // Collect exact definitions and details of the symbols (second pass).
         let typed_body = self.resolve_definitions(module_id, &ast);
-
-        visiting.remove(module_id);
         Some(TypedProgramTree { body: typed_body })
     }
 
@@ -359,7 +383,7 @@ impl Resolver {
         let mut global_symbols = self.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         symbol_table.names.insert(name.clone(), symbol_id);
-        let module_file_path = self.get_module_file_path(module_id);
+        let module_file_path = self.get_module_file_path(module_id).unwrap();
         symbol_table.locs.insert(symbol_id, (module_file_path, loc, span_end));
         drop(global_symbols);
     }
@@ -1282,39 +1306,26 @@ impl Resolver {
             }};
         }
 
-        match expr {
-            Expression::FieldAccess(field) => {
-                // self.resolve_expr(scope.clone(), *field.operand.clone())?;
-                // optional: check field existence here if possible
-                todo!();
-            }
-            Expression::ModuleImport(module_import) => todo!(),
-            Expression::MethodCall(method_call) => todo!(),
-            Expression::StructInit(init) => {
-                // for (_, value) in &init.field_inits {
-                //     self.resolve_expr(scope.clone(), value.clone())?;
-                // }
-                todo!();
-            }
-            Expression::Identifier(identifier) => {
-                if is_unscoped_expr!(identifier.loc.clone(), identifier.span.end) {
+        macro_rules! resolve_local_identifier {
+            ($identifier:expr) => {{
+                if is_unscoped_expr!($identifier.loc.clone(), $identifier.span.end) {
                     return None;
                 }
 
                 let local_scope = get_local_scope!();
                 let scope_borrowed = local_scope.borrow_mut();
 
-                let local_symbol_opt = scope_borrowed.resolve(&identifier.name.clone()).cloned();
+                let local_symbol_opt = scope_borrowed.resolve(&$identifier.name.clone()).cloned();
                 if local_symbol_opt.is_none() {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: ResolverDiagKind::SymbolNotFound {
-                            name: identifier.name.clone(),
+                            name: $identifier.name.clone(),
                         },
                         location: Some(DiagLoc::new(
                             self.get_current_module_file_path(),
-                            identifier.loc.clone(),
-                            identifier.span.end,
+                            $identifier.loc.clone(),
+                            $identifier.span.end,
                         )),
                         hint: None,
                     });
@@ -1323,11 +1334,37 @@ impl Resolver {
                 }
                 drop(scope_borrowed);
 
-                Some(TypedExpression::Identifier(TypedIdentifier {
-                    name: identifier.name.clone(),
-                    symbol_id: local_symbol_opt.unwrap().get_symbol_id(),
-                    loc: identifier.loc.clone(),
-                }))
+                local_symbol_opt.unwrap().get_symbol_id()
+            }};
+        }
+
+        match expr {
+            Expression::FieldAccess(field) => {
+                // self.resolve_expr(scope.clone(), *field.operand.clone())?;
+                // optional: check field existence here if possible
+                todo!();
+            }
+            Expression::MethodCall(method_call) => todo!(),
+            Expression::StructInit(init) => {
+                // for (_, value) in &init.field_inits {
+                //     self.resolve_expr(scope.clone(), value.clone())?;
+                // }
+                todo!();
+            }
+            Expression::ModuleImport(module_import) => {
+                if let Some(identifier) = module_import.as_identifier() {
+                    let symbol_id = resolve_local_identifier!(identifier);
+                    Some(TypedExpression::Symbol(symbol_id))
+                } else {
+                    match self.resolve_module_import(module_id, module_import.clone()) {
+                        Some(symbol_id) => Some(TypedExpression::Symbol(symbol_id)),
+                        None => return None,
+                    }
+                }
+            }
+            Expression::Identifier(identifier) => {
+                let symbol_id = resolve_local_identifier!(identifier);
+                Some(TypedExpression::Symbol(symbol_id))
             }
             Expression::FuncCall(func_call) => {
                 if is_unscoped_expr!(func_call.loc.clone(), func_call.span.end) {
@@ -1632,17 +1669,6 @@ impl Resolver {
         option
     }
 
-    fn insert_module_dep(&self, parent_module_id: ModuleID, dep_module_id: ModuleID) {
-        let mut module_deps = self.module_deps.lock().unwrap();
-        let mut deps_hset = match module_deps.get(&parent_module_id) {
-            Some(hset) => hset.clone(),
-            None => HashSet::new(),
-        };
-        deps_hset.insert(dep_module_id);
-        module_deps.insert(parent_module_id, deps_hset);
-        drop(module_deps);
-    }
-
     fn get_current_module_file_path(&self) -> ModuleFilePath {
         let current_module_id = self.current_module.unwrap();
         let file_paths = self.file_paths.lock().unwrap();
@@ -1654,14 +1680,20 @@ impl Resolver {
         file_path
     }
 
-    fn get_module_file_path(&self, module_id: ModuleID) -> ModuleFilePath {
+    fn get_module_file_path(&self, module_id: ModuleID) -> Option<ModuleFilePath> {
         let file_paths = self.file_paths.lock().unwrap();
         let file_path = match file_paths.get(&module_id) {
-            Some(child_module_file_path) => child_module_file_path.clone(),
-            None => self.master_module_file_path.clone(),
+            Some(module_file_path) => Some(module_file_path.clone()),
+            None => None,
         };
         drop(file_paths);
         file_path
+    }
+
+    fn insert_module_file_path(&self, module_id: ModuleID, module_file_path: ModuleFilePath) {
+        let mut file_paths = self.file_paths.lock().unwrap();
+        file_paths.insert(module_id, module_file_path);
+        drop(file_paths);
     }
 }
 

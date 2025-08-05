@@ -26,7 +26,7 @@ pub struct TypedProgramTree {
 
 #[derive(Debug, Clone)]
 pub enum TypedExpression {
-    Identifier(TypedIdentifier),
+    Symbol(SymbolID),
     Literal(Literal),
     Prefix(TypedPrefixExpression),
     Infix(TypedInfixExpression),

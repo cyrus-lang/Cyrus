@@ -1,7 +1,5 @@
-public func sum(x: int32, y: int32) int32 {
-    return 0;
-}
+import foo;
 
 public func sum(x: int32, y: int32) int32 {
-    return 0;
+    // return x;
 }
