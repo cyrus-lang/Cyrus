@@ -1,10 +1,8 @@
-type Char = MyInt8;
-type MyInt8 = int8;
+func sample() {
+
+}
 
 func main() {
-    #a: int32;
-    {
-        type A = Char;
-        a;
-    }
+    sample();
+    // for (#i = 10; a > 0; i--) {  }
 }
