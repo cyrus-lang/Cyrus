@@ -1,8 +1,8 @@
-func sample() {
-
+func main() {
+    #a = 10;
+    sample();
 }
 
-func main() {
-    sample();
-    // for (#i = 10; a > 0; i--) {  }
+func sample() {
+
 }

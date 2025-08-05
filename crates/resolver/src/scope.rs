@@ -31,32 +31,50 @@ pub enum SymbolEntry {
 #[derive(Debug, Clone)]
 pub struct ResolvedEnum {
     pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
     pub enum_sig: EnumSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedStruct {
     pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
     pub struct_sig: StructSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedGlobalVar {
     pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
     pub global_var_sig: GlobalVarSig,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedFunction {
     pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
     pub func_sig: FuncSig,
-    pub body: Option<BlockStatement>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedTypedef {
     pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
     pub typedef_sig: TypedefSig,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedVariable {
+    pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
+    pub typed_variable: TypedVariable,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedIdentifier {
+    pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
+    pub name: String,
 }
 
 // Local Scope
@@ -71,10 +89,23 @@ pub struct LocalScope {
 
 #[derive(Debug, Clone)]
 pub enum LocalSymbol {
-    Variable(TypedVariable),
+    Identifier(ResolvedIdentifier),
+    Variable(ResolvedVariable),
     Struct(ResolvedStruct),
     Enum(ResolvedEnum),
     Typedef(ResolvedTypedef),
+}
+
+impl LocalSymbol {
+    pub fn get_symbol_id(&self) -> SymbolID {
+        match self {
+            LocalSymbol::Variable(resolved) => resolved.symbol_id,
+            LocalSymbol::Struct(resolved) => resolved.symbol_id,
+            LocalSymbol::Enum(resolved) => resolved.symbol_id,
+            LocalSymbol::Typedef(resolved) => resolved.symbol_id,
+            LocalSymbol::Identifier(resolved) => resolved.symbol_id,
+        }
+    }
 }
 
 impl LocalScope {
