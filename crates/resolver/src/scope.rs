@@ -1,11 +1,7 @@
 use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, StructSig, TypedefSig};
-use ast::{BlockStatement, Variable};
+use ast::token::Location;
 use rand::Rng;
-use std::{
-    cell::{Ref, RefCell},
-    collections::HashMap,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{ModuleID, SymbolID, TypedVariable};
 
 // Symbol Table (Per Module)
@@ -14,6 +10,7 @@ use typed_ast::{ModuleID, SymbolID, TypedVariable};
 pub struct SymbolTable {
     pub entries: HashMap<SymbolID, SymbolEntry>,
     pub names: HashMap<String, SymbolID>,
+    pub locs: HashMap<SymbolID, (String, Location, usize)>,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +132,7 @@ impl SymbolTable {
         Self {
             entries: HashMap::new(),
             names: HashMap::new(),
+            locs: HashMap::new(),
         }
     }
 }

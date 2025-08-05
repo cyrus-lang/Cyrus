@@ -5,7 +5,7 @@ use std::fmt::Display;
 use std::fs;
 use utils::escaping::{saturating_sub, spaces};
 
-const PANEL_LENGTH: usize = 4;
+const PANEL_LENGTH: usize = 2;
 
 #[derive(Debug, Clone)]
 pub struct DiagReporter<K> {
@@ -73,7 +73,8 @@ impl<K: Display> DiagReporter<K> {
             }
 
             if let Some(hint) = &diag.hint {
-                formatted.push_str(&format!("  {}: {}", "hint".color(Colors::BlueFg), hint));
+                formatted.push_str("\n");
+                formatted.push_str(&format!(" {}: {}", "hint".color(Colors::BlueFg), hint));
             }
         }
 

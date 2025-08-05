@@ -57,6 +57,9 @@ pub enum ResolverDiagKind {
     ImportTwice {
         module_name: String,
     },
+    DuplicateSymbol {
+        symbol_name: String,
+    },
 }
 
 impl fmt::Display for ResolverDiagKind {
@@ -172,6 +175,9 @@ impl fmt::Display for ResolverDiagKind {
                     "Symbol '{}' is not defined in module '{}'.",
                     symbol_name, module_name
                 )
+            }
+            ResolverDiagKind::DuplicateSymbol { symbol_name } => {
+                write!(f, "Symbol '{}' has already been declared in this module.", symbol_name)
             }
         }
     }
