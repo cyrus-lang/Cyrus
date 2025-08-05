@@ -1,8 +1,9 @@
-func main() {
+import sample;
 
-    sample();
+func main() {
+    sample::sum();
 }
 
-func sample() {
+func samplefunc() {
 
 }

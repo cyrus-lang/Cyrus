@@ -38,6 +38,25 @@ pub enum ResolverDiagKind {
         name: String,
     },
     UselessTypeSpecifier,
+    ImportCycle {
+        module_names: Vec<String>,
+    },
+    StdlibNotFound,
+    InvalidRenameWhenImportingModule,
+    CannotImportDirectoryAsModule,
+    ModuleNotFound {
+        module_name: String,
+    },
+    ModuleImportNotFound {
+        module_name: String,
+    },
+    SymbolIsNotDefinedInModule {
+        symbol_name: String,
+        module_name: String,
+    },
+    ImportTwice {
+        module_name: String,
+    },
 }
 
 impl fmt::Display for ResolverDiagKind {
@@ -103,6 +122,56 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::UselessTypeSpecifier => {
                 write!(f, "What you wanna do with this type specifier?")
+            }
+            ResolverDiagKind::ImportCycle { module_names } => {
+                write!(
+                    f,
+                    "An import cycle was found, indicating a circular dependency between modules.\n"
+                )?;
+                write!(f, "Cycle Path: \n")?;
+                for (i, module_name) in module_names.iter().enumerate() {
+                    write!(f, "   {}.{}", i + 1, module_name)?;
+                }
+                write!(f, "\n")?;
+                write!(f, "Consider resolving the cycle by refactoring the modules.")
+            }
+            ResolverDiagKind::StdlibNotFound => {
+                write!(
+                    f,
+                    "Could'nt find stdlib anywhere. You can set it with 'CYRUS_STDLIB_PATH' environment variable or '--stdlib' command line argument."
+                )
+            }
+            ResolverDiagKind::InvalidRenameWhenImportingModule => {
+                write!(
+                    f,
+                    "Cannot rename imported module when you considered to import singles."
+                )
+            }
+            ResolverDiagKind::CannotImportDirectoryAsModule => {
+                write!(f, "Cannot import directory as module.")
+            }
+            ResolverDiagKind::ModuleNotFound { module_name } => {
+                write!(
+                    f,
+                    "The module '{}' could not be found in any of the specified source directories.",
+                    module_name
+                )
+            }
+            ResolverDiagKind::ModuleImportNotFound { module_name } => {
+                write!(f, "Module '{}' not found.", module_name)
+            }
+            ResolverDiagKind::ImportTwice { module_name } => {
+                write!(f, "Cannot import module '{}' twice.", module_name)
+            }
+            ResolverDiagKind::SymbolIsNotDefinedInModule {
+                symbol_name,
+                module_name,
+            } => {
+                write!(
+                    f,
+                    "Symbol '{}' is not defined in module '{}'.",
+                    symbol_name, module_name
+                )
             }
         }
     }

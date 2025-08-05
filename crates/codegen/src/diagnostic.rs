@@ -11,8 +11,6 @@ pub enum CodeGenDiagKind {
     TypeAnnotationRequired,
     UndefinedDataType(String),
     FuncNotFound(String),
-    ModuleNotFound(String),
-    ModuleImportNotFound(String),
     FuncCallArgumentCountMismatch(String, i32, i32),
     MethodCallArgumentCountMismatch(String, i32, i32),
     TypeAnnotationRequiredForParam(String, String),
@@ -55,10 +53,6 @@ impl fmt::Display for CodeGenDiagKind {
             DiagKind::InvalidTokenAsArrayCapacity => "Invalid token given as array capacity.",
             DiagKind::IdentifierNotDefined(value) => &format!("The '{}' not found anywhere.", value),
             DiagKind::FuncNotFound(func_name) => &format!("Unable to resolve function '{}'.", func_name),
-            DiagKind::ModuleNotFound(name) => &format!(
-                "The module '{}' could not be found in any of the specified source directories.",
-                name
-            ),
             DiagKind::FuncCallArgumentCountMismatch(func_name, current, expected) => &format!(
                 "Expected {} arguments for function '{}', but got {}.",
                 expected, func_name, current
@@ -92,7 +86,6 @@ impl fmt::Display for CodeGenDiagKind {
                 "Structs must be declared with public or internal access specifier."
             }
             DiagKind::InvalidEnumAccessSpecifier => "Enums must be declared with public or internal access specifier.",
-            DiagKind::ModuleImportNotFound(module_name) => &format!("Module '{}' not found.", module_name),
             DiagKind::MethodCallOnNonStructValue => "Cannot build method call for non-struct values.",
             DiagKind::MethodNotDefinedForStruct(method_name, struct_name) => {
                 &format!("Method '{}' not defined for struct '{}'.", method_name, struct_name)

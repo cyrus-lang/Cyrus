@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::*,
@@ -16,8 +18,7 @@ pub enum Node {
 
 #[derive(Debug)]
 pub struct ProgramTree {
-    pub body: Vec<Statement>,
-    pub span: Span,
+    pub body: Rc<Vec<Statement>>,
 }
 
 impl Node {
@@ -38,9 +39,19 @@ impl Default for ProgramTree {
 impl ProgramTree {
     pub fn new() -> Self {
         Self {
-            body: vec![],
-            span: Span::default(),
+            body: Rc::new(Vec::new()),
         }
+    }
+
+    pub fn get_imports(&self) -> Vec<Import> {
+        let mut imports: Vec<Import> = Vec::new();
+
+        self.body.iter().for_each(|stmt| match stmt {
+            Statement::Import(import) => imports.push(import.clone()),
+            _ => {}
+        });
+
+        imports
     }
 }
 
