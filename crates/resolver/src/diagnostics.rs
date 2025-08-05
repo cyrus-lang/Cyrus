@@ -37,6 +37,7 @@ pub enum ResolverDiagKind {
     SymbolIsNotAFunction {
         name: String,
     },
+    UselessTypeSpecifier,
 }
 
 impl fmt::Display for ResolverDiagKind {
@@ -99,6 +100,9 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::SymbolIsNotAFunction { name } => {
                 write!(f, "Symbol '{}' is not a function.", name)
+            }
+            ResolverDiagKind::UselessTypeSpecifier => {
+                write!(f, "What you wanna do with this type specifier?")
             }
         }
     }

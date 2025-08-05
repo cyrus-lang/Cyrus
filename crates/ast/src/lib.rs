@@ -102,6 +102,7 @@ pub struct UnnamedStructType {
     pub fields: Vec<UnnamedStructTypeField>,
     pub packed: bool,
     pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -236,6 +237,20 @@ pub enum TypeSpecifier {
     ModuleImport(ModuleImport),
     Dereference(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
+}
+
+impl TypeSpecifier {
+    pub fn get_loc(&self) -> (Location, usize) {
+        match self {
+            TypeSpecifier::TypeToken(token) => (token.loc.clone(), token.span.end),
+            TypeSpecifier::Identifier(identifier) => (identifier.loc.clone(), identifier.span.end),
+            TypeSpecifier::Const(inner) => inner.get_loc(),
+            TypeSpecifier::Array(array) => array.element_type.get_loc(),
+            TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
+            TypeSpecifier::Dereference(inner) => inner.get_loc(),
+            TypeSpecifier::UnnamedStruct(struct_type) => (struct_type.loc.clone(), struct_type.span.end),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

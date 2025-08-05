@@ -1,7 +1,7 @@
 use crate::types::ConcreteType;
 use ast::{
     AccessSpecifier, Literal, SelfModifier,
-    operators::{InfixOperator, UnaryOperator},
+    operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::Location,
 };
 
@@ -28,11 +28,12 @@ pub struct TypedProgramTree {
 pub enum TypedExpression {
     Identifier(TypedIdentifier),
     Literal(Literal),
-    Prefix(TypedUnaryExpression),
+    Prefix(TypedPrefixExpression),
     Infix(TypedInfixExpression),
+    Unary(TypedUnaryExpression),
     Assignment(TypedAssignment),
     Cast(TypedCast),
-    Array(TypedArrayValue),
+    Array(TypedArray),
     ArrayIndex(TypedArrayIndex),
     AddressOf(TypedAddressOf),
     Dereference(TypedDereference),
@@ -51,9 +52,16 @@ pub struct TypedIdentifier {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedUnaryExpression {
-    pub op: UnaryOperator,
+pub struct TypedPrefixExpression {
+    pub op: PrefixOperator,
     pub operand: Box<TypedExpression>,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedUnaryExpression {
+    pub operand: Box<TypedExpression>,
+    pub op: UnaryOperator,
     pub loc: Location,
 }
 
@@ -80,7 +88,7 @@ pub struct TypedCast {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypedArrayValue {
+pub struct TypedArray {
     pub element_type: ConcreteType,
     pub elements: Vec<TypedExpression>,
     pub loc: Location,
@@ -143,8 +151,16 @@ pub struct TypedMethodCall {
 
 #[derive(Debug, Clone)]
 pub struct TypedUnnamedStructValue {
-    pub struct_type: ConcreteType,
-    pub values: Vec<TypedExpression>,
+    pub fields: Vec<TypedUnnamedStructValueField>,
+    pub packed: bool,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedUnnamedStructValueField {
+    pub field_name: String,
+    pub field_type: Option<ConcreteType>,
+    pub field_value: Box<TypedExpression>,
     pub loc: Location,
 }
 

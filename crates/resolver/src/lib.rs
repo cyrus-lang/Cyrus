@@ -15,10 +15,12 @@ use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{
-    ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedEnum, TypedEnumValuedField,
-    TypedEnumVariant, TypedExpression, TypedFor, TypedForeach, TypedFuncCall, TypedFuncDecl, TypedFuncDef,
-    TypedFuncParam, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParams, TypedIdentifier, TypedIf,
-    TypedProgramTree, TypedReturn, TypedStatement, TypedStruct, TypedStructField, TypedTypedef, TypedVariable,
+    ModuleID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedBlockStatement, TypedBreak,
+    TypedCast, TypedContinue, TypedDereference, TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression,
+    TypedFor, TypedForeach, TypedFuncCall, TypedFuncDecl, TypedFuncDef, TypedFuncParam, TypedFuncParamKind,
+    TypedFuncParams, TypedFuncVariadicParams, TypedIdentifier, TypedIf, TypedInfixExpression, TypedPrefixExpression,
+    TypedProgramTree, TypedReturn, TypedStatement, TypedStruct, TypedStructField, TypedTypedef, TypedUnaryExpression,
+    TypedUnnamedStructValue, TypedUnnamedStructValueField, TypedVariable,
     types::{ConcreteType, TypedArrayCapacity, TypedArrayType, TypedUnnamedStructType, TypedUnnamedStructTypeField},
 };
 
@@ -944,6 +946,19 @@ impl Resolver {
         }
 
         match expr {
+            Expression::FieldAccess(field) => {
+                // self.resolve_expr(scope.clone(), *field.operand.clone())?;
+                // optional: check field existence here if possible
+                todo!();
+            }
+            Expression::ModuleImport(module_import) => todo!(),
+            Expression::MethodCall(method_call) => todo!(),
+            Expression::StructInit(init) => {
+                // for (_, value) in &init.field_inits {
+                //     self.resolve_expr(scope.clone(), value.clone())?;
+                // }
+                todo!();
+            }
             Expression::Identifier(identifier) => {
                 if is_unscoped_expr!(identifier.loc.clone(), identifier.span.end) {
                     return None;
@@ -982,9 +997,9 @@ impl Resolver {
                     return None;
                 }
 
-                let mut resolve_func_with_identifier = |identifier: Identifier| -> Option<ResolvedFunction> {
-                    let symbol_entry = match self.lookup_symbol(&module_id, &identifier.name) {
-                        Some(symbol_entry) => symbol_entry,
+                let mut resolve_func_with_identifier = |identifier: Identifier| -> Option<SymbolID> {
+                    match self.lookup_symbol_id(&module_id, &identifier.name) {
+                        Some(symbol_id) => Some(symbol_id),
                         None => {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
@@ -1001,28 +1016,10 @@ impl Resolver {
 
                             return None;
                         }
-                    };
-
-                    match symbol_entry {
-                        SymbolEntry::Func(resolved_function) => Some(resolved_function.clone()),
-                        _ => {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: ResolverDiagKind::InvalidOperandForFuncCall,
-                                location: Some(DiagLoc::new(
-                                    self.file_path.to_string(),
-                                    func_call.loc.clone(),
-                                    func_call.span.end,
-                                )),
-                                hint: None,
-                            });
-
-                            return None;
-                        }
                     }
                 };
 
-                let resolved_function = match &*func_call.operand.clone() {
+                let symbol_id = match &*func_call.operand.clone() {
                     Expression::Identifier(identifier) => match resolve_func_with_identifier(identifier.clone()) {
                         Some(resolved) => resolved,
                         None => return None,
@@ -1052,7 +1049,6 @@ impl Resolver {
                     }
                 };
 
-                let func_symbol_id = resolved_function.symbol_id;
                 let mut typed_args: Vec<TypedExpression> = Vec::new();
 
                 for arg in &func_call.args {
@@ -1066,47 +1062,184 @@ impl Resolver {
 
                 Some(TypedExpression::FuncCall(TypedFuncCall {
                     args: typed_args,
-                    symbol_id: func_symbol_id,
+                    symbol_id,
                     loc: func_call.loc.clone(),
                 }))
             }
-            Expression::FieldAccess(field) => {
-                // self.resolve_expr(scope.clone(), *field.operand.clone())?;
-                // optional: check field existence here if possible
-                todo!();
-            }
             Expression::Array(arr) => {
-                // for item in &arr.elements {
-                //     self.resolve_expr(scope.clone(), item.clone())?;
-                // }
-                todo!();
+                let element_type = match self.resolve_type(arr.data_type.clone(), arr.loc.clone(), arr.span.end) {
+                    Some(concrete_type) => concrete_type,
+                    None => return None,
+                };
+
+                let mut typed_elements: Vec<TypedExpression> = Vec::new();
+
+                for item in &arr.elements {
+                    match self.resolve_expr(module_id, local_scope_opt.clone(), &item.clone()) {
+                        Some(typed_expr) => typed_elements.push(typed_expr),
+                        None => continue,
+                    };
+                }
+
+                Some(TypedExpression::Array(TypedArray {
+                    element_type,
+                    elements: typed_elements,
+                    loc: arr.loc.clone(),
+                }))
             }
             Expression::Infix(bin) => {
-                // self.resolve_expr(scope.clone(), *bin.left.clone())?;
-                // self.resolve_expr(scope.clone(), *bin.right.clone())?;
-                todo!();
+                let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.lhs.clone())?;
+                let rhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.rhs.clone())?;
+
+                Some(TypedExpression::Infix(TypedInfixExpression {
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                    op: bin.op.clone(),
+                    loc: bin.loc.clone(),
+                }))
             }
-            Expression::Prefix(unary) => {
-                // self.resolve_expr(scope.clone(), *unary.expr.clone())?;
-                todo!();
+            Expression::Prefix(prefix) => {
+                let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &*prefix.operand.clone())?;
+
+                Some(TypedExpression::Prefix(TypedPrefixExpression {
+                    operand: Box::new(operand),
+                    op: prefix.op.clone(),
+                    loc: prefix.loc.clone(),
+                }))
             }
-            Expression::StructInit(init) => {
-                // for (_, value) in &init.field_inits {
-                //     self.resolve_expr(scope.clone(), value.clone())?;
-                // }
-                todo!();
+            Expression::Cast(cast) => {
+                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &*cast.expr.clone()) {
+                    Some(typed_expr) => typed_expr,
+                    None => return None,
+                };
+
+                let target_type = match self.resolve_type(cast.target_type.clone(), cast.loc.clone(), cast.span.end) {
+                    Some(concrete_type) => concrete_type,
+                    None => return None,
+                };
+
+                Some(TypedExpression::Cast(TypedCast {
+                    operand: Box::new(operand),
+                    target_type,
+                    loc: cast.loc.clone(),
+                }))
             }
-            Expression::Cast(cast) => todo!(),
-            Expression::TypeSpecifier(type_specifier) => todo!(),
-            Expression::ModuleImport(module_import) => todo!(),
-            Expression::Assignment(assignment) => todo!(),
+            Expression::TypeSpecifier(type_specifier) => {
+                let (loc, span_end) = type_specifier.get_loc();
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::UselessTypeSpecifier,
+                    location: Some(DiagLoc::new(self.file_path.to_string(), loc, span_end)),
+                    hint: None,
+                });
+
+                None
+            }
+            Expression::Assignment(assignment) => {
+                let lhs = match self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.lhs) {
+                    Some(typed_expr) => typed_expr,
+                    None => return None,
+                };
+
+                let rhs = match self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.rhs) {
+                    Some(typed_expr) => typed_expr,
+                    None => return None,
+                };
+
+                Some(TypedExpression::Assignment(TypedAssignment {
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                    loc: assignment.loc.clone(),
+                }))
+            }
             Expression::Literal(literal) => Some(TypedExpression::Literal(literal.clone())),
-            Expression::Unary(unary_expression) => todo!(),
-            Expression::ArrayIndex(array_index) => todo!(),
-            Expression::AddressOf(address_of) => todo!(),
-            Expression::Dereference(dereference) => todo!(),
-            Expression::MethodCall(method_call) => todo!(),
-            Expression::UnnamedStructValue(unnamed_struct_value) => todo!(),
+            Expression::Unary(unary) => {
+                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &*unary.operand) {
+                    Some(typed_expr) => typed_expr,
+                    None => return None,
+                };
+
+                Some(TypedExpression::Unary(TypedUnaryExpression {
+                    op: unary.op.clone(),
+                    operand: Box::new(operand),
+                    loc: unary.loc.clone(),
+                }))
+            }
+            Expression::ArrayIndex(array_index) => {
+                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &array_index.operand) {
+                    Some(typed_expr) => typed_expr,
+                    None => return None,
+                };
+
+                let index = match self.resolve_expr(module_id, local_scope_opt.clone(), &array_index.index) {
+                    Some(typed_expr) => typed_expr,
+                    None => return None,
+                };
+
+                Some(TypedExpression::ArrayIndex(TypedArrayIndex {
+                    operand: Box::new(operand),
+                    index: Box::new(index),
+                    loc: array_index.loc.clone(),
+                }))
+            }
+            Expression::AddressOf(address_of) => {
+                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &address_of.expr) {
+                    Some(typed_expr) => typed_expr,
+                    None => return None,
+                };
+
+                Some(TypedExpression::AddressOf(TypedAddressOf {
+                    operand: Box::new(operand),
+                    loc: address_of.loc.clone(),
+                }))
+            }
+            Expression::Dereference(dereference) => {
+                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &dereference.expr) {
+                    Some(typed_expr) => typed_expr,
+                    None => return None,
+                };
+
+                Some(TypedExpression::Dereference(TypedDereference {
+                    operand: Box::new(operand),
+                    loc: dereference.loc.clone(),
+                }))
+            }
+            Expression::UnnamedStructValue(unnamed_struct_value) => {
+                let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
+
+                for field in &unnamed_struct_value.fields {
+                    let field_type = {
+                        if let Some(type_specifier) = &field.field_type {
+                            match self.resolve_type(type_specifier.clone(), field.loc.clone(), field.span.end) {
+                                Some(concrete_type) => Some(concrete_type),
+                                None => continue,
+                            }
+                        } else {
+                            None
+                        }
+                    };
+
+                    let field_value = match self.resolve_expr(module_id, local_scope_opt.clone(), &*&field.field_value)
+                    {
+                        Some(typed_expr) => typed_expr,
+                        None => continue,
+                    };
+
+                    fields.push(TypedUnnamedStructValueField {
+                        field_name: field.field_name.name.clone(),
+                        field_type,
+                        field_value: Box::new(field_value),
+                        loc: field.loc.clone(),
+                    });
+                }
+
+                Some(TypedExpression::UnnamedStructValue(TypedUnnamedStructValue {
+                    fields,
+                    packed: unnamed_struct_value.packed,
+                    loc: unnamed_struct_value.loc.clone(),
+                }))
+            }
         }
     }
 
