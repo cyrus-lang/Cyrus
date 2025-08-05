@@ -192,6 +192,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParserError> {
+        let start = self.current_token.span.start;
         let loc = self.current_token.loc.clone();
 
         let packed = {
@@ -278,6 +279,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType { fields, packed, loc }))
+        Ok(TypeSpecifier::UnnamedStruct(UnnamedStructType {
+            fields,
+            packed,
+            loc,
+            span: Span::new(start, self.current_token.span.end),
+        }))
     }
 }
