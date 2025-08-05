@@ -32,6 +32,11 @@ pub enum ResolverDiagKind {
     InvalidTopLevelStatement,
     InvalidArrayCapacity,
     InvalidUntypedFuncParam,
+    RequiresLocalScope,
+    InvalidOperandForFuncCall,
+    SymbolIsNotAFunction {
+        name: String,
+    },
 }
 
 impl fmt::Display for ResolverDiagKind {
@@ -45,7 +50,7 @@ impl fmt::Display for ResolverDiagKind {
                 )
             }
             ResolverDiagKind::SymbolNotFound { name } => {
-                write!(f, "Symbol '{}' not found in current scope.", name)
+                write!(f, "Symbol '{}' not found anywhere.", name)
             }
             ResolverDiagKind::FuncSignatureMismatch { name, expected, found } => {
                 write!(
@@ -85,6 +90,15 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::InvalidSelfModifier => {
                 write!(f, "Self modifier must be the beginning parameter of a method.")
+            }
+            ResolverDiagKind::RequiresLocalScope => {
+                write!(f, "This expression requires a local scope.")
+            }
+            ResolverDiagKind::InvalidOperandForFuncCall => {
+                write!(f, "Invalid operand for function call.")
+            }
+            ResolverDiagKind::SymbolIsNotAFunction { name } => {
+                write!(f, "Symbol '{}' is not a function.", name)
             }
         }
     }

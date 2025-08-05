@@ -46,6 +46,7 @@ pub enum TypedExpression {
 #[derive(Debug, Clone)]
 pub struct TypedIdentifier {
     pub name: String,
+    pub symbol_id: SymbolID,
     pub loc: Location,
 }
 
@@ -120,7 +121,7 @@ pub struct TypedStructFieldInit {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncCall {
-    pub operand: Box<TypedExpression>,
+    pub symbol_id: SymbolID,
     pub args: Vec<TypedExpression>,
     pub loc: Location,
 }
@@ -335,8 +336,8 @@ pub struct TypedFor {
 
 #[derive(Debug, Clone)]
 pub struct TypedForeach {
-    pub item: String,
-    pub index: Option<String>,
+    pub item: TypedIdentifier,
+    pub index: Option<TypedIdentifier>,
     pub expr: TypedExpression,
     pub body: Box<TypedBlockStatement>,
     pub loc: Location,
