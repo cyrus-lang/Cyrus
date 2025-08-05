@@ -1,76 +1,261 @@
+use crate::moduleloader::{ModuleAlias, ModuleFilePath, ModuleLoader, ModuleLoaderOptions};
+use crate::scope::*;
 use crate::{
     declsign::{FuncSig, TypedefSig},
     diagnostics::ResolverDiagKind,
-    scope::{
-        LocalScope, LocalScopeRef, LocalSymbol, ResolvedFunction, ResolvedIdentifier, ResolvedTypedef,
-        ResolvedVariable, SymbolEntry, SymbolTable, generate_symbol_id,
-    },
 };
+use ast::format::module_segments_as_string;
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
     Identifier, LiteralKind, ProgramTree, Statement, Struct, TypeSpecifier, Typedef, Variable,
     token::{Location, Span, Token, TokenKind},
 };
-use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
+use ast::{Import, ModuleImport};
+use diagcentral::{reporter::DiagReporter, *};
 use rand::Rng;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use typed_ast::{
-    ModuleID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedBlockStatement, TypedBreak,
-    TypedCast, TypedContinue, TypedDereference, TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression,
-    TypedFor, TypedForeach, TypedFuncCall, TypedFuncDecl, TypedFuncDef, TypedFuncParam, TypedFuncParamKind,
-    TypedFuncParams, TypedFuncVariadicParams, TypedIdentifier, TypedIf, TypedInfixExpression, TypedPrefixExpression,
-    TypedProgramTree, TypedReturn, TypedStatement, TypedStruct, TypedStructField, TypedTypedef, TypedUnaryExpression,
-    TypedUnnamedStructValue, TypedUnnamedStructValueField, TypedVariable,
-    types::{ConcreteType, TypedArrayCapacity, TypedArrayType, TypedUnnamedStructType, TypedUnnamedStructTypeField},
+use typed_ast::types::{
+    ConcreteType, TypedArrayCapacity, TypedArrayType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
 };
+use typed_ast::{SymbolID, *};
 
 pub mod declsign;
 mod diagnostics;
+pub mod moduleloader;
 pub mod scope;
-mod tests;
-
-type MaybeResolved<T> = Option<T>;
 
 pub struct Resolver {
-    pub global_symbols: HashMap<ModuleID, SymbolTable>,
-    pub file_path: String,
+    pub global_symbols: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
+    pub module_deps: Arc<Mutex<HashMap<ModuleID, HashSet<ModuleID>>>>,
+    pub module_aliases: Arc<Mutex<HashMap<ModuleAlias, ModuleID>>>,
+    pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
+    pub file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
     pub reporter: DiagReporter<ResolverDiagKind>,
+    pub module_loader: ModuleLoader,
+    pub master_module_file_path: String,
     current_module: Option<ModuleID>,
 }
 
-impl Resolver {
-    pub fn new(file_path: String) -> Self {
-        Resolver {
-            global_symbols: HashMap::new(),
-            file_path,
-            reporter: DiagReporter::new(),
-            current_module: None,
+pub struct Visiting {
+    pub module_ids: HashSet<ModuleID>,
+}
+
+impl Visiting {
+    pub fn new() -> Self {
+        Self {
+            module_ids: HashSet::new(),
         }
+    }
+
+    pub fn contains(&self, module_id: ModuleID) -> bool {
+        self.module_ids.contains(&module_id)
+    }
+
+    pub fn insert(&mut self, module_id: ModuleID) {
+        self.module_ids.insert(module_id);
+    }
+
+    pub fn remove(&mut self, module_id: ModuleID) {
+        self.module_ids.remove(&module_id);
+    }
+
+    pub fn get_module_names(&self, file_paths: &HashMap<ModuleID, ModuleFilePath>) -> Vec<String> {
+        self.module_ids
+            .iter()
+            .map(|module_id| file_paths.get(module_id).unwrap().clone())
+            .collect()
+    }
+}
+
+impl Resolver {
+    pub fn new(opts: ModuleLoaderOptions, master_module_file_path: String) -> Self {
+        Resolver {
+            global_symbols: Arc::new(Mutex::new(HashMap::new())),
+            analyzed_modules: Arc::new(Mutex::new(HashSet::new())),
+            module_deps: Arc::new(Mutex::new(HashMap::new())),
+            module_aliases: Arc::new(Mutex::new(HashMap::new())),
+            file_paths: Arc::new(Mutex::new(HashMap::new())),
+            reporter: DiagReporter::new(),
+            module_loader: ModuleLoader::new(opts),
+            current_module: None,
+            master_module_file_path,
+        }
+    }
+
+    fn resolve_module_import(&mut self, module_id: ModuleID, mut module_import: ModuleImport) -> Option<SymbolID> {
+        if let Some(identifier) = module_import.as_identifier() {
+            return self.resolve_identifier(module_id, identifier, module_import.loc.clone(), module_import.span.end);
+        }
+
+        assert!(module_import.segments.len() >= 2);
+
+        let symbol_name = module_import.segments.pop().unwrap().as_identifier().name;
+
+        let module_import_alias = module_segments_as_string(module_import.segments.clone());
+        let module_id = match self.get_module_alias(module_import_alias.clone()) {
+            Some(module_id) => module_id,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ModuleImportNotFound {
+                        module_name: module_import_alias,
+                    },
+                    location: Some(DiagLoc::new(
+                        self.get_current_module_file_path(),
+                        module_import.loc.clone(),
+                        module_import.span.end,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let symbol_id = match self.lookup_symbol_id(module_id, &symbol_name) {
+            Some(symbol_id) => symbol_id,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::SymbolIsNotDefinedInModule {
+                        symbol_name,
+                        module_name: module_import_alias,
+                    },
+                    location: Some(DiagLoc::new(
+                        self.get_current_module_file_path(),
+                        module_import.loc.clone(),
+                        module_import.span.end,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        Some(symbol_id)
+    }
+    fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, mut visiting: &mut Visiting) {
+        let loaded_modules_list = self
+            .module_loader
+            .load_module(import.clone(), self.get_current_module_file_path());
+
+        for loaded_module in loaded_modules_list {
+            let (module_alias, _, program_tree) = match loaded_module {
+                Ok(module_ast_and_file_path) => module_ast_and_file_path,
+                Err(diag_kind) => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: diag_kind,
+                        location: Some(DiagLoc::new(
+                            self.get_current_module_file_path(),
+                            import.loc.clone(),
+                            import.span.end,
+                        )),
+                        hint: None,
+                    });
+                    continue;
+                }
+            };
+
+            let module_id = generate_module_id();
+            match self.resolve_module(module_id, program_tree.as_ref(), &mut visiting) {
+                Some(..) => {}
+                None => continue,
+            };
+
+            self.insert_module_alias(module_alias, module_id);
+            self.insert_module_dep(parent_module_id, module_id);
+        }
+    }
+
+    pub fn resolve_module(
+        &mut self,
+        module_id: ModuleID,
+        ast: &ProgramTree,
+        mut visiting: &mut Visiting,
+    ) -> Option<TypedProgramTree> {
+        self.current_module = Some(module_id);
+
+        if visiting.contains(module_id) {
+            // Cycle import detected.
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::ImportCycle {
+                    module_names: {
+                        let file_paths = self.file_paths.lock().unwrap();
+                        let module_names = visiting.get_module_names(&file_paths.clone());
+                        drop(file_paths);
+                        module_names
+                    },
+                },
+                location: None,
+                hint: None,
+            });
+            return None;
+        }
+
+        let mut analyzed = self.analyzed_modules.lock().unwrap();
+        if analyzed.contains(&module_id) {
+            return None;
+        }
+        analyzed.insert(module_id);
+        drop(analyzed);
+
+        // Start visiting this module
+        visiting.insert(module_id);
+
+        // Initialize symbol table for this module
+        let mut global_symbols = self.global_symbols.lock().unwrap();
+        global_symbols.insert(module_id, SymbolTable::new());
+        drop(global_symbols);
+
+        // Collect symbol names (first pass).
+        self.resolve_decl_names(module_id, &ast);
+
+        let parent_module_id = module_id;
+
+        // Analyze imports of this module
+        for import in ast.get_imports() {
+            self.resolve_import(parent_module_id, import, &mut visiting);
+        }
+
+        self.current_module = Some(parent_module_id);
+
+        // Collect exact definitions and details of the symbols (second pass).
+        let typed_body = self.resolve_definitions(module_id, &ast);
+
+        visiting.remove(module_id);
+        Some(TypedProgramTree { body: typed_body })
     }
 
     fn resolve_type(
         &mut self,
+        module_id: ModuleID,
         type_specifier: TypeSpecifier,
         loc: Location,
         span_end: usize,
-    ) -> MaybeResolved<ConcreteType> {
+    ) -> Option<ConcreteType> {
         let resolving_result = match type_specifier {
             TypeSpecifier::TypeToken(token) => Ok(ConcreteType::from(token.kind.clone())),
             TypeSpecifier::Const(type_specifier) => Ok(ConcreteType::Const(Box::new(self.resolve_type(
+                module_id,
                 *type_specifier,
                 loc.clone(),
                 span_end,
             )?))),
             TypeSpecifier::Dereference(type_specifier) => Ok(ConcreteType::Pointer(Box::new(self.resolve_type(
+                module_id,
                 *type_specifier,
                 loc.clone(),
                 span_end,
             )?))),
             TypeSpecifier::Array(array_type_specifier) => Ok({
-                let element_type = match self.resolve_type(*array_type_specifier.element_type, loc.clone(), span_end) {
-                    Some(concrete_type) => concrete_type,
-                    None => return None,
-                };
+                let element_type =
+                    match self.resolve_type(module_id, *array_type_specifier.element_type, loc.clone(), span_end) {
+                        Some(concrete_type) => concrete_type,
+                        None => return None,
+                    };
 
                 let capacity = match &array_type_specifier.size {
                     ArrayCapacity::Fixed(token_kind) => {
@@ -86,7 +271,11 @@ impl Resolver {
                                 self.reporter.report(Diag {
                                     level: DiagLevel::Error,
                                     kind: ResolverDiagKind::InvalidArrayCapacity,
-                                    location: Some(DiagLoc::new(self.file_path.to_string(), loc.clone(), span_end)),
+                                    location: Some(DiagLoc::new(
+                                        self.get_current_module_file_path(),
+                                        loc.clone(),
+                                        span_end,
+                                    )),
                                     hint: None,
                                 });
                                 return None;
@@ -108,7 +297,7 @@ impl Resolver {
                 let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
                 for field in &unnamed_struct_type.fields {
-                    match self.resolve_type(field.field_type.clone(), field.loc.clone(), field.span.end) {
+                    match self.resolve_type(module_id, field.field_type.clone(), field.loc.clone(), field.span.end) {
                         Some(concrete_type) => {
                             fields.push(TypedUnnamedStructTypeField {
                                 field_name: field.field_name.clone(),
@@ -126,13 +315,14 @@ impl Resolver {
                     loc: unnamed_struct_type.loc.clone(),
                 }))
             }
-            TypeSpecifier::ModuleImport(module_import) => {
-                // let module_symbols = self.modules.get(&module_import.module_id)
-                //     .ok_or_else(|| ResolverDiagKind::ModuleNotFound(module_import.module_id.clone()))?;
-                todo!();
-            }
+            TypeSpecifier::ModuleImport(module_import) => match self.resolve_module_import(module_id, module_import) {
+                Some(symbol_id) => {
+                    todo!();
+                }
+                None => return None,
+            },
             TypeSpecifier::Identifier(identifier) => {
-                match match self.lookup_symbol_id(&self.current_module.unwrap(), &identifier.name.clone()) {
+                match match self.lookup_symbol_id(module_id, &identifier.name.clone()) {
                     Some(symbol_entry) => Some(symbol_entry),
                     None => None,
                 } {
@@ -150,7 +340,7 @@ impl Resolver {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: diag_kind,
-                    location: Some(DiagLoc::new(self.file_path.to_string(), loc, span_end)),
+                    location: Some(DiagLoc::new(self.get_current_module_file_path(), loc, span_end)),
                     hint: None,
                 });
                 None
@@ -158,41 +348,45 @@ impl Resolver {
         }
     }
 
-    pub fn insert_symbol_entry(&mut self, module_id: &ModuleID, symbol_id: SymbolID, entry: SymbolEntry) {
-        let symbol_table = self.global_symbols.get_mut(module_id).unwrap();
+    pub fn insert_symbol_entry(&mut self, module_id: ModuleID, symbol_id: SymbolID, entry: SymbolEntry) {
+        let mut global_symbols = self.global_symbols.lock().unwrap();
+        let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         symbol_table.entries.insert(symbol_id, entry);
+        drop(global_symbols);
     }
 
-    pub fn insert_symbol_name(&mut self, module_id: &ModuleID, name: &String) {
+    pub fn insert_symbol_name(&mut self, module_id: ModuleID, name: &String) {
         let symbol_id = generate_symbol_id();
-        let symbol_table = self.global_symbols.get_mut(module_id).unwrap();
+        let mut global_symbols = self.global_symbols.lock().unwrap();
+        let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         symbol_table.names.insert(name.clone(), symbol_id);
+        drop(global_symbols);
     }
 
     // Scans the top-level AST for declarations (typedefs, functions, structs, etc.)
     // And Registers each declared name into the current module’s symbol table. (first pass)
     fn resolve_decl_names(&mut self, module_id: ModuleID, ast: &ProgramTree) {
-        for stmt in &ast.body {
+        for stmt in ast.body.as_ref() {
             match stmt {
                 Statement::Typedef(typedef) => {
-                    self.insert_symbol_name(&module_id, &typedef.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &typedef.identifier.name.clone());
                 }
                 Statement::FuncDef(func_def) => {
-                    self.insert_symbol_name(&module_id, &func_def.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &func_def.identifier.name.clone());
                 }
                 Statement::FuncDecl(func_decl) => {
-                    self.insert_symbol_name(&module_id, &func_decl.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &func_decl.identifier.name.clone());
                 }
                 Statement::GlobalVariable(global_variable) => {
-                    self.insert_symbol_name(&module_id, &global_variable.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &global_variable.identifier.name.clone());
                 }
                 Statement::Struct(struct_decl) => {
-                    self.insert_symbol_name(&module_id, &struct_decl.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &struct_decl.identifier.name.clone());
                 }
                 Statement::Enum(enum_) => {
-                    self.insert_symbol_name(&module_id, &enum_.identifier.name.clone());
+                    self.insert_symbol_name(module_id, &enum_.identifier.name.clone());
                 }
-                _ => unreachable!(),
+                _ => {}
             };
         }
     }
@@ -201,10 +395,12 @@ impl Resolver {
     fn resolve_definitions(&mut self, module_id: ModuleID, ast: &ProgramTree) -> Vec<TypedStatement> {
         let mut typed_body: Vec<TypedStatement> = Vec::new();
 
-        for stmt in &ast.body {
+        for stmt in ast.body.as_ref() {
             let valid_top_level_stmt: Result<TypedStatement, (Location, usize)> = match stmt {
                 // Valid top-level statements.
-                Statement::Typedef(typedef) => match self.resolve_typedef(&module_id, typedef) {
+                Statement::Import(_) => continue,
+                Statement::GlobalVariable(global_variable) => todo!(),
+                Statement::Typedef(typedef) => match self.resolve_typedef(module_id, typedef) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
@@ -216,7 +412,7 @@ impl Resolver {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Struct(struct_) => match self.resolve_struct(struct_) {
+                Statement::Struct(struct_) => match self.resolve_struct(module_id, struct_) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
@@ -224,8 +420,6 @@ impl Resolver {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::GlobalVariable(global_variable) => todo!(),
-                Statement::Import(import) => todo!(),
 
                 // Invalid top-level statements.
                 Statement::Variable(variable) => Err((variable.loc.clone(), variable.span.end)),
@@ -250,7 +444,7 @@ impl Resolver {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: ResolverDiagKind::InvalidTopLevelStatement,
-                        location: Some(DiagLoc::new(self.file_path.clone(), loc, span_end)),
+                        location: Some(DiagLoc::new(self.get_current_module_file_path(), loc, span_end)),
                         hint: None,
                     });
                 }
@@ -275,6 +469,7 @@ impl Resolver {
                     let mut fields: Vec<TypedEnumValuedField> = Vec::new();
                     for valued_field in enum_valued_fields {
                         let field_type = match self.resolve_type(
+                            module_id,
                             valued_field.field_type.clone(),
                             valued_field.identifier.loc.clone(),
                             valued_field.identifier.span.end,
@@ -314,12 +509,12 @@ impl Resolver {
         }))
     }
 
-    fn resolve_struct(&mut self, struct_: &Struct) -> Option<TypedStatement> {
+    fn resolve_struct(&mut self, module_id: ModuleID, struct_: &Struct) -> Option<TypedStatement> {
         let mut typed_struct_fields: Vec<TypedStructField> = Vec::new();
         let mut typed_methods: Vec<TypedFuncDef> = Vec::new();
 
         for field in &struct_.fields {
-            match self.resolve_type(field.ty.clone(), field.loc.clone(), field.span.end) {
+            match self.resolve_type(module_id, field.ty.clone(), field.loc.clone(), field.span.end) {
                 Some(concrete_type) => {
                     typed_struct_fields.push(TypedStructField {
                         name: field.identifier.name.clone(),
@@ -339,7 +534,7 @@ impl Resolver {
                 None => return None,
             };
 
-            match self.resolve_func(&func_def.as_func_decl()) {
+            match self.resolve_func(module_id, &func_def.as_func_decl()) {
                 Some((return_type, typed_func_params, typed_variadic_param)) => {
                     typed_methods.push(TypedFuncDef {
                         name: func_def.identifier.name.clone(),
@@ -369,6 +564,7 @@ impl Resolver {
 
     fn resolve_func(
         &mut self,
+        module_id: ModuleID,
         func_decl: &FuncDecl,
     ) -> Option<(ConcreteType, Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
         let return_type_specifier = func_decl.return_type.clone().unwrap_or(TypeSpecifier::TypeToken(Token {
@@ -377,7 +573,12 @@ impl Resolver {
             loc: Location::default(),
         }));
 
-        let return_type = match self.resolve_type(return_type_specifier, func_decl.loc.clone(), func_decl.span.end) {
+        let return_type = match self.resolve_type(
+            module_id,
+            return_type_specifier,
+            func_decl.loc.clone(),
+            func_decl.span.end,
+        ) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -389,8 +590,12 @@ impl Resolver {
                 FuncParamKind::FuncParam(func_param) => {
                     let param_type = match &func_param.ty {
                         Some(type_specifier) => {
-                            match self.resolve_type(type_specifier.clone(), func_param.loc.clone(), func_param.span.end)
-                            {
+                            match self.resolve_type(
+                                module_id,
+                                type_specifier.clone(),
+                                func_param.loc.clone(),
+                                func_param.span.end,
+                            ) {
                                 Some(concrete_type) => concrete_type,
                                 None => continue,
                             }
@@ -400,7 +605,7 @@ impl Resolver {
                                 level: DiagLevel::Error,
                                 kind: ResolverDiagKind::InvalidUntypedFuncParam,
                                 location: Some(DiagLoc::new(
-                                    self.file_path.to_string(),
+                                    self.get_current_module_file_path(),
                                     func_param.loc.clone(),
                                     func_param.span.end,
                                 )),
@@ -428,6 +633,7 @@ impl Resolver {
                     FuncVariadicParams::UntypedCStyle => todo!(),
                     FuncVariadicParams::Typed(identifier, type_specifier) => {
                         let concrete_type = match self.resolve_type(
+                            module_id,
                             type_specifier.clone(),
                             identifier.loc.clone(),
                             identifier.span.end,
@@ -448,12 +654,12 @@ impl Resolver {
     }
 
     fn resolve_func_decl(&mut self, module_id: ModuleID, func_decl: &FuncDecl) -> Option<TypedStatement> {
-        let symbol_id = self.lookup_symbol_id(&module_id, &func_decl.get_usable_name()).unwrap();
+        let symbol_id = self.lookup_symbol_id(module_id, &func_decl.get_usable_name()).unwrap();
 
-        match self.resolve_func(func_decl) {
+        match self.resolve_func(module_id, func_decl) {
             Some((return_type, typed_func_params, typed_variadic_param)) => {
                 self.insert_symbol_entry(
-                    &module_id,
+                    module_id,
                     symbol_id,
                     SymbolEntry::Func(ResolvedFunction {
                         module_id,
@@ -496,13 +702,13 @@ impl Resolver {
         };
 
         let symbol_id = self
-            .lookup_symbol_id(&module_id, &func_def.identifier.name.clone())
+            .lookup_symbol_id(module_id, &func_def.identifier.name.clone())
             .unwrap();
 
-        match self.resolve_func(&func_def.as_func_decl()) {
+        match self.resolve_func(module_id, &func_def.as_func_decl()) {
             Some((return_type, typed_func_params, typed_variadic_param)) => {
                 self.insert_symbol_entry(
-                    &module_id,
+                    module_id,
                     symbol_id,
                     SymbolEntry::Func(ResolvedFunction {
                         module_id,
@@ -536,13 +742,18 @@ impl Resolver {
         }
     }
 
-    fn resolve_typedef(&mut self, module_id: &u64, typedef: &Typedef) -> Option<TypedStatement> {
+    fn resolve_typedef(&mut self, module_id: ModuleID, typedef: &Typedef) -> Option<TypedStatement> {
         match self.lookup_symbol_id(module_id, &typedef.identifier.name.clone()) {
             Some(symbol_id) => {
-                match self.resolve_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end) {
+                match self.resolve_type(
+                    module_id,
+                    typedef.type_specifier.clone(),
+                    typedef.loc.clone(),
+                    typedef.span.end,
+                ) {
                     Some(concrete_type) => {
                         let symbol_entry = SymbolEntry::Typedef(ResolvedTypedef {
-                            module_id: *module_id,
+                            module_id,
                             symbol_id,
                             typedef_sig: TypedefSig {
                                 name: typedef.identifier.name.clone(),
@@ -569,7 +780,7 @@ impl Resolver {
                         name: typedef.identifier.name.clone(),
                     },
                     location: Some(DiagLoc::new(
-                        self.file_path.to_string(),
+                        self.get_current_module_file_path(),
                         typedef.loc.clone(),
                         typedef.span.end,
                     )),
@@ -580,17 +791,6 @@ impl Resolver {
         }
     }
 
-    pub fn resolve_module(&mut self, module_id: ModuleID, ast: &ProgramTree) -> TypedProgramTree {
-        self.current_module = Some(module_id);
-
-        // Initialize symbol table for this module
-        self.global_symbols.insert(module_id, SymbolTable::new());
-
-        self.resolve_decl_names(module_id, &ast);
-        let typed_body = self.resolve_definitions(module_id, &ast);
-        TypedProgramTree { body: typed_body }
-    }
-
     fn declare_local_variable(
         &mut self,
         module_id: ModuleID,
@@ -599,7 +799,12 @@ impl Resolver {
     ) -> Option<TypedVariable> {
         let var_type = {
             if let Some(var_type_specifier) = &variable.ty {
-                match self.resolve_type(var_type_specifier.clone(), variable.loc.clone(), variable.span.end) {
+                match self.resolve_type(
+                    module_id,
+                    var_type_specifier.clone(),
+                    variable.loc.clone(),
+                    variable.span.end,
+                ) {
                     Some(concrete_type) => Some(concrete_type),
                     None => return None,
                 }
@@ -644,14 +849,18 @@ impl Resolver {
     fn declare_local_typedef(
         &mut self,
         scope: LocalScopeRef,
-        module_id: &ModuleID,
+        module_id: ModuleID,
         typedef: &Typedef,
     ) -> Option<TypedStatement> {
-        let concrete_type =
-            match self.resolve_type(typedef.type_specifier.clone(), typedef.loc.clone(), typedef.span.end) {
-                Some(concrete_type) => concrete_type,
-                None => return None,
-            };
+        let concrete_type = match self.resolve_type(
+            module_id,
+            typedef.type_specifier.clone(),
+            typedef.loc.clone(),
+            typedef.span.end,
+        ) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
 
         let typed_typedef = TypedTypedef {
             name: typedef.identifier.name.clone(),
@@ -661,7 +870,7 @@ impl Resolver {
         };
 
         let resolved_typedef = ResolvedTypedef {
-            module_id: *module_id,
+            module_id,
             symbol_id: generate_symbol_id(),
             typedef_sig: TypedefSig {
                 name: typedef.identifier.name.clone(),
@@ -893,7 +1102,7 @@ impl Resolver {
                     }));
                 }
                 Statement::Typedef(typedef) => {
-                    match self.declare_local_typedef(Rc::clone(&local_scope), &module_id, typedef) {
+                    match self.declare_local_typedef(Rc::clone(&local_scope), module_id, typedef) {
                         Some(typed_stmt) => {
                             typed_body.push(typed_stmt);
                         }
@@ -914,6 +1123,30 @@ impl Resolver {
         })
     }
 
+    fn resolve_identifier(
+        &mut self,
+        module_id: ModuleID,
+        identifier: Identifier,
+        loc: Location,
+        span_end: usize,
+    ) -> Option<u32> {
+        match self.lookup_symbol_id(module_id, &identifier.name) {
+            Some(symbol_id) => Some(symbol_id),
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::SymbolNotFound {
+                        name: identifier.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(self.get_current_module_file_path(), loc.clone(), span_end)),
+                    hint: None,
+                });
+
+                return None;
+            }
+        }
+    }
+
     fn resolve_expr(
         &mut self,
         module_id: ModuleID,
@@ -926,7 +1159,7 @@ impl Resolver {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: ResolverDiagKind::RequiresLocalScope,
-                        location: Some(DiagLoc::new(self.file_path.to_string(), $loc, $span_end)),
+                        location: Some(DiagLoc::new(self.get_current_module_file_path(), $loc, $span_end)),
                         hint: None,
                     });
                 }
@@ -975,7 +1208,7 @@ impl Resolver {
                             name: identifier.name.clone(),
                         },
                         location: Some(DiagLoc::new(
-                            self.file_path.to_string(),
+                            self.get_current_module_file_path(),
                             identifier.loc.clone(),
                             identifier.span.end,
                         )),
@@ -997,41 +1230,20 @@ impl Resolver {
                     return None;
                 }
 
-                let mut resolve_func_with_identifier = |identifier: Identifier| -> Option<SymbolID> {
-                    match self.lookup_symbol_id(&module_id, &identifier.name) {
-                        Some(symbol_id) => Some(symbol_id),
-                        None => {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: ResolverDiagKind::SymbolNotFound {
-                                    name: identifier.name.clone(),
-                                },
-                                location: Some(DiagLoc::new(
-                                    self.file_path.to_string(),
-                                    func_call.loc.clone(),
-                                    func_call.span.end,
-                                )),
-                                hint: None,
-                            });
-
-                            return None;
-                        }
-                    }
-                };
-
                 let symbol_id = match &*func_call.operand.clone() {
-                    Expression::Identifier(identifier) => match resolve_func_with_identifier(identifier.clone()) {
+                    Expression::Identifier(identifier) => match self.resolve_identifier(
+                        module_id,
+                        identifier.clone(),
+                        func_call.loc.clone(),
+                        func_call.span.end,
+                    ) {
                         Some(resolved) => resolved,
                         None => return None,
                     },
                     Expression::ModuleImport(module_import) => {
-                        if let Some(identifier) = module_import.as_identifier() {
-                            match resolve_func_with_identifier(identifier) {
-                                Some(resolved) => resolved,
-                                None => return None,
-                            }
-                        } else {
-                            todo!();
+                        match self.resolve_module_import(module_id, module_import.clone()) {
+                            Some(resolved) => resolved,
+                            None => return None,
                         }
                     }
                     _ => {
@@ -1039,7 +1251,7 @@ impl Resolver {
                             level: DiagLevel::Error,
                             kind: ResolverDiagKind::InvalidOperandForFuncCall,
                             location: Some(DiagLoc::new(
-                                self.file_path.to_string(),
+                                self.get_current_module_file_path(),
                                 func_call.loc.clone(),
                                 func_call.span.end,
                             )),
@@ -1067,10 +1279,11 @@ impl Resolver {
                 }))
             }
             Expression::Array(arr) => {
-                let element_type = match self.resolve_type(arr.data_type.clone(), arr.loc.clone(), arr.span.end) {
-                    Some(concrete_type) => concrete_type,
-                    None => return None,
-                };
+                let element_type =
+                    match self.resolve_type(module_id, arr.data_type.clone(), arr.loc.clone(), arr.span.end) {
+                        Some(concrete_type) => concrete_type,
+                        None => return None,
+                    };
 
                 let mut typed_elements: Vec<TypedExpression> = Vec::new();
 
@@ -1113,10 +1326,11 @@ impl Resolver {
                     None => return None,
                 };
 
-                let target_type = match self.resolve_type(cast.target_type.clone(), cast.loc.clone(), cast.span.end) {
-                    Some(concrete_type) => concrete_type,
-                    None => return None,
-                };
+                let target_type =
+                    match self.resolve_type(module_id, cast.target_type.clone(), cast.loc.clone(), cast.span.end) {
+                        Some(concrete_type) => concrete_type,
+                        None => return None,
+                    };
 
                 Some(TypedExpression::Cast(TypedCast {
                     operand: Box::new(operand),
@@ -1130,7 +1344,7 @@ impl Resolver {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: ResolverDiagKind::UselessTypeSpecifier,
-                    location: Some(DiagLoc::new(self.file_path.to_string(), loc, span_end)),
+                    location: Some(DiagLoc::new(self.get_current_module_file_path(), loc, span_end)),
                     hint: None,
                 });
 
@@ -1211,7 +1425,12 @@ impl Resolver {
                 for field in &unnamed_struct_value.fields {
                     let field_type = {
                         if let Some(type_specifier) = &field.field_type {
-                            match self.resolve_type(type_specifier.clone(), field.loc.clone(), field.span.end) {
+                            match self.resolve_type(
+                                module_id,
+                                type_specifier.clone(),
+                                field.loc.clone(),
+                                field.span.end,
+                            ) {
                                 Some(concrete_type) => Some(concrete_type),
                                 None => continue,
                             }
@@ -1243,27 +1462,68 @@ impl Resolver {
         }
     }
 
-    pub fn lookup_symbol_id(&self, module_id: &ModuleID, name: &str) -> Option<SymbolID> {
-        match self.global_symbols.get(module_id) {
+    pub fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+        let global_symbols = self.global_symbols.lock().unwrap();
+        let option = match global_symbols.get(&module_id) {
             Some(symbol_table) => match symbol_table.names.get(name) {
                 Some(symbol_id) => Some(*symbol_id),
                 None => None,
             },
             None => None,
-        }
+        };
+        drop(global_symbols);
+        option
     }
 
-    pub fn lookup_symbol(&self, module_id: &ModuleID, name: &str) -> Option<&SymbolEntry> {
-        match self.global_symbols.get(module_id) {
+    pub fn lookup_symbol(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
+        let global_symbols = self.global_symbols.lock().unwrap();
+        let option = match global_symbols.get(&module_id) {
             Some(symbol_table) => match symbol_table.names.get(name) {
                 Some(symbol_id) => match symbol_table.entries.get(symbol_id) {
-                    Some(symbol_entry) => Some(symbol_entry),
+                    Some(symbol_entry) => Some(symbol_entry.clone()),
                     None => None,
                 },
                 None => None,
             },
             None => None,
-        }
+        };
+        drop(global_symbols);
+        option
+    }
+
+    fn insert_module_alias(&self, alias: ModuleAlias, module_id: ModuleID) {
+        let mut module_aliases = self.module_aliases.lock().unwrap();
+        module_aliases.insert(alias, module_id);
+        drop(module_aliases);
+    }
+
+    fn get_module_alias(&self, alias: ModuleAlias) -> Option<ModuleID> {
+        let module_aliases = self.module_aliases.lock().unwrap();
+        let option = module_aliases.get(&alias).cloned();
+        drop(module_aliases);
+        option
+    }
+
+    fn insert_module_dep(&self, parent_module_id: ModuleID, dep_module_id: ModuleID) {
+        let mut module_deps = self.module_deps.lock().unwrap();
+        let mut deps_hset = match module_deps.get(&parent_module_id) {
+            Some(hset) => hset.clone(),
+            None => HashSet::new(),
+        };
+        deps_hset.insert(dep_module_id);
+        module_deps.insert(parent_module_id, deps_hset);
+        drop(module_deps);
+    }
+
+    fn get_current_module_file_path(&self) -> ModuleFilePath {
+        let current_module_id = self.current_module.unwrap();
+        let file_paths = self.file_paths.lock().unwrap();
+        let file_path = match file_paths.get(&current_module_id) {
+            Some(child_module_file_path) => child_module_file_path.clone(),
+            None => self.master_module_file_path.clone(),
+        };
+        drop(file_paths);
+        file_path
     }
 }
 

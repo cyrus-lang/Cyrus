@@ -11,7 +11,7 @@ use crate::{
     types::{TypedefMetadata, TypedefTable},
     variables::{GlobalVariableMetadata, GlobalVariablesTable},
 };
-use ast::Identifier;
+use ast::{AccessSpecifier, Identifier};
 use ast::{
     ast::{AccessSpecifier, Import, ModulePath, ModuleSegment, ModuleSegmentSingle},
     format::module_segments_as_string,
@@ -61,15 +61,6 @@ pub(crate) struct ImportedModule {
     pub module_path: ModulePath,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct ImportedModulePath {
-    file_path: String,
-    module_path: ModulePath,
-    singles: Option<Vec<ModuleSegmentSingle>>,
-    loc: Location,
-    span_end: usize,
-}
-
 impl<'ctx> CodeGenLLVM<'ctx> {
     fn error_if_module_already_loaded(&self, module_path: ModulePath) {
         if self
@@ -114,211 +105,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     .all(|(s1, s2)| equal_segments(s1, s2))
             })
             .cloned()
-    }
-
-    fn build_stdlib_modules_path(&self) -> String {
-        match self.opts.stdlib_path.clone() {
-            Some(stdlib_path) => stdlib_path,
-            None => match env::var("CYRUS_STDLIB_PATH") {
-                Ok(stdlib_path) => stdlib_path,
-                Err(_) => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom("Standard library path not defined anywhere. You can set it with 'CYRUS_STDLIB_PATH' environment variable or '--stdlib' command line argument.".to_string()),
-                        location: None,
-                    });
-                    exit(1);
-                }
-            },
-        }
-    }
-
-    fn resolve_segments(
-        &self,
-        module_path: ModulePath,
-        segments: &[ModuleSegment],
-        sources: Vec<String>,
-        module_file_path: String,
-        get_module_alias: &dyn Fn(ModulePath) -> ModulePath,
-        loc: Location,
-        span_end: usize,
-    ) -> ImportedModulePath {
-        let module_name = module_segments_as_string(segments.to_vec());
-        let mut module_file_path = module_file_path;
-
-        for idx in 0..segments.len() {
-            match &segments[idx] {
-                ModuleSegment::SubModule(identifier) => {
-                    let dir_path = format!("{}{}", module_file_path, identifier.name);
-                    let file_path = format!("{}{}.cyr", module_file_path, identifier.name);
-
-                    if let Some(file_path_buf) = find_file_from_sources(file_path.clone(), sources.clone()) {
-                        if idx == segments.len() - 1 {
-                            return ImportedModulePath {
-                                file_path: file_path_buf.to_str().unwrap().to_string(),
-                                module_path: get_module_alias(module_path.clone()),
-                                singles: None,
-                                loc: loc.clone(),
-                                span_end,
-                            };
-                        } else if (segments.len() - 1) - idx == 1 {
-                            match &segments[idx + 1] {
-                                ModuleSegment::Single(singles) => {
-                                    let base_path = self.resolve_segments(
-                                        module_path.clone(),
-                                        &segments[..idx + 1],
-                                        sources.clone(),
-                                        module_file_path.clone(),
-                                        get_module_alias,
-                                        loc.clone(),
-                                        span_end,
-                                    );
-
-                                    if !Path::new(&base_path.file_path).is_file() {
-                                        display_single_diag(Diag {
-                                            level: DiagLevel::Error,
-                                            kind: DiagKind::Custom(
-                                                "Cannot use `::` to access from a directory. Expected a module file."
-                                                    .to_string(),
-                                            ),
-                                            location: Some(DiagLoc {
-                                                file: self.file_path.clone(),
-                                                line: loc.line,
-                                                column: loc.column,
-                                                length: span_end,
-                                            }),
-                                        });
-                                        exit(1);
-                                    }
-
-                                    return ImportedModulePath {
-                                        file_path: base_path.file_path,
-                                        module_path: get_module_alias(module_path.clone()),
-                                        singles: Some(singles.clone()),
-                                        loc: loc.clone(),
-                                        span_end,
-                                    };
-                                }
-                                _ => {}
-                            }
-                        }
-                    } else {
-                        if let Some(found_path) = find_file_from_sources(dir_path, sources.clone()) {
-                            module_file_path.push_str(found_path.to_str().unwrap());
-                            module_file_path.push('/');
-                        } else {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::ModuleNotFound(module_name.clone()),
-                                location: Some(DiagLoc {
-                                    file: self.file_path.clone(),
-                                    line: loc.line,
-                                    column: loc.column,
-                                    length: span_end,
-                                }),
-                            });
-                            exit(1);
-                        }
-                    }
-                }
-                ModuleSegment::Single(_) => {
-                    return self.resolve_segments(
-                        module_path.clone(),
-                        &segments[..idx + 1],
-                        sources.clone(),
-                        module_file_path.clone(),
-                        get_module_alias,
-                        loc.clone(),
-                        span_end,
-                    );
-                }
-            }
-        }
-
-        let path = Path::new(&module_file_path);
-        if !path.exists() {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::ModuleImportNotFound(module_name),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        }
-
-        if path.is_dir() {
-            display_single_diag(Diag {
-                level: DiagLevel::Error,
-                kind: DiagKind::Custom(format!(
-                    "Importing module `{}` as a directory is not allowed.",
-                    module_name
-                )),
-                location: Some(DiagLoc {
-                    file: self.file_path.clone(),
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-            });
-            exit(1);
-        }
-
-        ImportedModulePath {
-            file_path: module_file_path,
-            module_path: get_module_alias(module_path),
-            singles: None,
-            loc,
-            span_end,
-        }
-    }
-
-    fn build_imported_module_path(
-        &self,
-        module_path: ModulePath,
-        segments: Vec<ModuleSegment>,
-        loc: Location,
-        span_end: usize,
-    ) -> ImportedModulePath {
-        let mut sources = self.opts.source_dirs.clone();
-
-        let mut segments = segments;
-        if matches!(segments.first(), Some(ModuleSegment::SubModule(id)) if id.name == "std") {
-            segments.remove(0);
-            sources = vec![self.build_stdlib_modules_path()];
-        }
-
-        let module_file_path = String::new();
-
-        let get_module_alias = |mut module_path: ModulePath| match module_path.alias.clone() {
-            Some(alias) => {
-                module_path.segments = vec![ModuleSegment::SubModule(Identifier {
-                    name: alias,
-                    span: module_path.span.clone(),
-                    loc: module_path.loc.clone(),
-                })];
-                module_path
-            }
-            None => {
-                let module_path_last_segment = module_path.segments.last().unwrap().clone();
-                module_path.segments = vec![module_path_last_segment];
-                module_path
-            }
-        };
-
-        self.resolve_segments(
-            module_path,
-            &segments,
-            sources,
-            module_file_path,
-            &get_module_alias,
-            loc,
-            span_end,
-        )
-    }
+    }   
 
     pub(crate) fn get_module_metadata_by_file_path(&self, module_file_path: String) -> Option<ModuleMetadata<'ctx>> {
         let module_metadata_registry = self.module_metadata_registry.borrow_mut();
@@ -358,37 +145,6 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         }
     }
 
-    // Local means it only make sense in this module.
-    // It may be aliased or not.
-    pub(crate) fn get_local_module_name(&self, module_path: ModulePath) -> String {
-        let last_segment = module_path.segments.last().unwrap();
-
-        match last_segment {
-            ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
-            ModuleSegment::Single(_) => {
-                if module_path.alias.is_some() {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(
-                            "Cannot rename imported module when you considered to import singles.".to_string(),
-                        ),
-                        location: Some(DiagLoc {
-                            file: self.file_path.clone(),
-                            line: module_path.loc.line,
-                            column: module_path.loc.column,
-                            length: module_path.span.end,
-                        }),
-                    });
-                    exit(1);
-                } else {
-                    match module_path.segments.iter().nth_back(1).unwrap() {
-                        ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
-                        ModuleSegment::Single(_) => unreachable!(),
-                    }
-                }
-            }
-        }
-    }
 
     fn build_module_with_sub_codegen(
         &self,
@@ -499,7 +255,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
         loc: Location,
         span_end: usize,
     ) {
-        if vis: AccessSpecifier.is_private() {
+        if vis.is_private() {
             display_single_diag(Diag {
                 level: DiagLevel::Error,
                 kind: DiagKind::ImportingPrivateFunc(func_name),

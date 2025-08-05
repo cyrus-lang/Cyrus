@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use ast::token::*;
 use ast::*;
 use diagcentral::Diag;
@@ -82,22 +84,18 @@ impl<'a> Parser<'a> {
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
     pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<ParserError>> {
-        let mut program = ProgramTree::new();
+        let mut body: Vec<Statement> = Vec::new();
 
         while self.current_token.kind != TokenKind::EOF {
-            self.parse_and_add_statement(&mut program);
+            match self.parse_statement(true) {
+                Ok(statement) => body.push(statement),
+                Err(error) => self.errors.push(error),
+            }
             self.next_token();
         }
 
+        let program = ProgramTree { body: Rc::new(body) };
         self.finalize_program_parse(program)
-    }
-
-    /// Parses a statement and adds it to the program, accumulating errors if any.
-    pub fn parse_and_add_statement(&mut self, program: &mut ProgramTree) {
-        match self.parse_statement(true) {
-            Ok(statement) => program.body.push(statement),
-            Err(error) => self.errors.push(error),
-        }
     }
 
     pub fn display_parser_errors(&mut self, errors: Vec<ParserError>) {

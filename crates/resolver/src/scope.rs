@@ -6,11 +6,9 @@ use std::{
     collections::HashMap,
     rc::Rc,
 };
-use typed_ast::{ModuleID, TypedVariable};
+use typed_ast::{ModuleID, SymbolID, TypedVariable};
 
 // Symbol Table (Per Module)
-
-pub type SymbolID = u32;
 
 #[derive(Debug)]
 pub struct SymbolTable {
