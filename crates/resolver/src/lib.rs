@@ -90,7 +90,6 @@ impl Resolver {
         }
 
         assert!(module_import.segments.len() >= 2);
-
         let symbol_name = module_import.segments.pop().unwrap().as_identifier().name;
 
         let module_import_alias = module_segments_as_string(module_import.segments.clone());
@@ -348,19 +347,29 @@ impl Resolver {
         }
     }
 
-    pub fn insert_symbol_entry(&mut self, module_id: ModuleID, symbol_id: SymbolID, entry: SymbolEntry) {
+    fn insert_symbol_entry(&mut self, module_id: ModuleID, symbol_id: SymbolID, entry: SymbolEntry) {
         let mut global_symbols = self.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         symbol_table.entries.insert(symbol_id, entry);
         drop(global_symbols);
     }
 
-    pub fn insert_symbol_name(&mut self, module_id: ModuleID, name: &String) {
+    fn insert_symbol_name(&mut self, module_id: ModuleID, name: &String, loc: Location, span_end: usize) {
         let symbol_id = generate_symbol_id();
         let mut global_symbols = self.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         symbol_table.names.insert(name.clone(), symbol_id);
+        let module_file_path = self.get_module_file_path(module_id);
+        symbol_table.locs.insert(symbol_id, (module_file_path, loc, span_end));
         drop(global_symbols);
+    }
+
+    fn get_symbol_loc(&self, module_id: ModuleID, symbol_id: SymbolID) -> Option<(String, Location, usize)> {
+        let mut global_symbols = self.global_symbols.lock().unwrap();
+        let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+        let option = symbol_table.locs.get(&symbol_id).cloned();
+        drop(global_symbols);
+        option
     }
 
     // Scans the top-level AST for declarations (typedefs, functions, structs, etc.)
@@ -369,22 +378,106 @@ impl Resolver {
         for stmt in ast.body.as_ref() {
             match stmt {
                 Statement::Typedef(typedef) => {
-                    self.insert_symbol_name(module_id, &typedef.identifier.name.clone());
+                    if self.duplicate_symbol(
+                        module_id,
+                        typedef.identifier.name.clone(),
+                        typedef.loc.clone(),
+                        typedef.span.end,
+                    ) {
+                        continue;
+                    }
+
+                    self.insert_symbol_name(
+                        module_id,
+                        &typedef.identifier.name.clone(),
+                        typedef.loc.clone(),
+                        typedef.span.end,
+                    );
                 }
                 Statement::FuncDef(func_def) => {
-                    self.insert_symbol_name(module_id, &func_def.identifier.name.clone());
+                    if self.duplicate_symbol(
+                        module_id,
+                        func_def.identifier.name.clone(),
+                        func_def.loc.clone(),
+                        func_def.span.end,
+                    ) {
+                        continue;
+                    }
+
+                    self.insert_symbol_name(
+                        module_id,
+                        &func_def.identifier.name.clone(),
+                        func_def.loc.clone(),
+                        func_def.span.end,
+                    );
                 }
                 Statement::FuncDecl(func_decl) => {
-                    self.insert_symbol_name(module_id, &func_decl.identifier.name.clone());
+                    if self.duplicate_symbol(
+                        module_id,
+                        func_decl.identifier.name.clone(),
+                        func_decl.loc.clone(),
+                        func_decl.span.end,
+                    ) {
+                        continue;
+                    }
+
+                    self.insert_symbol_name(
+                        module_id,
+                        &func_decl.identifier.name.clone(),
+                        func_decl.loc.clone(),
+                        func_decl.span.end,
+                    );
                 }
                 Statement::GlobalVariable(global_variable) => {
-                    self.insert_symbol_name(module_id, &global_variable.identifier.name.clone());
+                    if self.duplicate_symbol(
+                        module_id,
+                        global_variable.identifier.name.clone(),
+                        global_variable.loc.clone(),
+                        global_variable.span.end,
+                    ) {
+                        continue;
+                    }
+
+                    self.insert_symbol_name(
+                        module_id,
+                        &global_variable.identifier.name.clone(),
+                        global_variable.loc.clone(),
+                        global_variable.span.end,
+                    );
                 }
                 Statement::Struct(struct_decl) => {
-                    self.insert_symbol_name(module_id, &struct_decl.identifier.name.clone());
+                    if self.duplicate_symbol(
+                        module_id,
+                        struct_decl.identifier.name.clone(),
+                        struct_decl.loc.clone(),
+                        struct_decl.span.end,
+                    ) {
+                        continue;
+                    }
+
+                    self.insert_symbol_name(
+                        module_id,
+                        &struct_decl.identifier.name.clone(),
+                        struct_decl.loc.clone(),
+                        struct_decl.span.end,
+                    );
                 }
-                Statement::Enum(enum_) => {
-                    self.insert_symbol_name(module_id, &enum_.identifier.name.clone());
+                Statement::Enum(enum_decl) => {
+                    if self.duplicate_symbol(
+                        module_id,
+                        enum_decl.identifier.name.clone(),
+                        enum_decl.loc.clone(),
+                        enum_decl.span.end,
+                    ) {
+                        continue;
+                    }
+
+                    self.insert_symbol_name(
+                        module_id,
+                        &enum_decl.identifier.name.clone(),
+                        enum_decl.loc.clone(),
+                        enum_decl.span.end,
+                    );
                 }
                 _ => {}
             };
@@ -412,11 +505,11 @@ impl Resolver {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Struct(struct_) => match self.resolve_struct(module_id, struct_) {
+                Statement::Struct(struct_decl) => match self.resolve_struct(module_id, struct_decl) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Enum(enum_) => match self.resolve_enum(module_id, None, enum_) {
+                Statement::Enum(enum_decl) => match self.resolve_enum(module_id, None, enum_decl) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
@@ -458,11 +551,11 @@ impl Resolver {
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
-        enum_: &Enum,
+        enum_decl: &Enum,
     ) -> Option<TypedStatement> {
         let mut variants: Vec<TypedEnumVariant> = Vec::new();
 
-        for variant in &enum_.variants {
+        for variant in &enum_decl.variants {
             let typed_variant = match variant {
                 EnumVariant::Identifier(identifier) => TypedEnumVariant::Identifier(identifier.name.clone()),
                 EnumVariant::Variant(identifier, enum_valued_fields) => {
@@ -502,18 +595,18 @@ impl Resolver {
         }
 
         Some(TypedStatement::Enum(TypedEnum {
-            name: enum_.identifier.name.clone(),
+            name: enum_decl.identifier.name.clone(),
             variants,
-            vis: enum_.vis.clone(),
-            loc: enum_.identifier.loc.clone(),
+            vis: enum_decl.vis.clone(),
+            loc: enum_decl.identifier.loc.clone(),
         }))
     }
 
-    fn resolve_struct(&mut self, module_id: ModuleID, struct_: &Struct) -> Option<TypedStatement> {
+    fn resolve_struct(&mut self, module_id: ModuleID, struct_decl: &Struct) -> Option<TypedStatement> {
         let mut typed_struct_fields: Vec<TypedStructField> = Vec::new();
         let mut typed_methods: Vec<TypedFuncDef> = Vec::new();
 
-        for field in &struct_.fields {
+        for field in &struct_decl.fields {
             match self.resolve_type(module_id, field.ty.clone(), field.loc.clone(), field.span.end) {
                 Some(concrete_type) => {
                     typed_struct_fields.push(TypedStructField {
@@ -526,7 +619,7 @@ impl Resolver {
             }
         }
 
-        for func_def in &struct_.methods {
+        for func_def in &struct_decl.methods {
             let local_scope: LocalScopeRef = Rc::new(RefCell::new(LocalScope::new(None)));
 
             let typed_func_body = match self.resolve_block_statement(Rc::clone(&local_scope), &func_def.body) {
@@ -553,12 +646,12 @@ impl Resolver {
         }
 
         Some(TypedStatement::Struct(TypedStruct {
-            name: struct_.identifier.name.clone(),
+            name: struct_decl.identifier.name.clone(),
             fields: typed_struct_fields,
             methods: Vec::new(), // FIXME
-            vis: struct_.vis.clone(),
-            packed: struct_.packed.clone(),
-            loc: struct_.loc.clone(),
+            vis: struct_decl.vis.clone(),
+            packed: struct_decl.packed.clone(),
+            loc: struct_decl.loc.clone(),
         }))
     }
 
@@ -743,6 +836,15 @@ impl Resolver {
     }
 
     fn resolve_typedef(&mut self, module_id: ModuleID, typedef: &Typedef) -> Option<TypedStatement> {
+        if self.duplicate_symbol(
+            module_id,
+            typedef.identifier.name.clone(),
+            typedef.loc.clone(),
+            typedef.span.end,
+        ) {
+            return None;
+        }
+
         match self.lookup_symbol_id(module_id, &typedef.identifier.name.clone()) {
             Some(symbol_id) => {
                 match self.resolve_type(
@@ -1074,12 +1176,14 @@ impl Resolver {
                     }));
                 }
                 Statement::Switch(switch) => todo!(),
-                Statement::Enum(enum_) => match self.resolve_enum(module_id, Some(Rc::clone(&local_scope)), enum_) {
-                    Some(typed_stmt) => {
-                        typed_body.push(typed_stmt);
+                Statement::Enum(enum_decl) => {
+                    match self.resolve_enum(module_id, Some(Rc::clone(&local_scope)), enum_decl) {
+                        Some(typed_stmt) => {
+                            typed_body.push(typed_stmt);
+                        }
+                        None => continue,
                     }
-                    None => continue,
-                },
+                }
                 Statement::Struct(_) => todo!(),
                 Statement::BlockStatement(block_statement) => {
                     let local_scope_copy = LocalScope::deep_clone(&local_scope);
@@ -1462,7 +1566,31 @@ impl Resolver {
         }
     }
 
-    pub fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+    fn duplicate_symbol(&mut self, module_id: ModuleID, symbol_name: String, loc: Location, span_end: usize) -> bool {
+        match self.lookup_symbol_id(module_id, &symbol_name) {
+            Some(symbol_id) => {
+                let previous_decl = match self.get_symbol_loc(module_id, symbol_id) {
+                    Some(previous_decl) => previous_decl,
+                    None => return false,
+                };
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::DuplicateSymbol { symbol_name },
+                    location: Some(DiagLoc::new(self.get_current_module_file_path(), loc.clone(), span_end)),
+                    hint: Some(format!(
+                        "Previous declaration: {}:{}:{}.",
+                        previous_decl.0, previous_decl.1.line, previous_decl.1.column
+                    )),
+                });
+
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
         let global_symbols = self.global_symbols.lock().unwrap();
         let option = match global_symbols.get(&module_id) {
             Some(symbol_table) => match symbol_table.names.get(name) {
@@ -1475,7 +1603,7 @@ impl Resolver {
         option
     }
 
-    pub fn lookup_symbol(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
+    fn lookup_symbol(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
         let global_symbols = self.global_symbols.lock().unwrap();
         let option = match global_symbols.get(&module_id) {
             Some(symbol_table) => match symbol_table.names.get(name) {
@@ -1519,6 +1647,16 @@ impl Resolver {
         let current_module_id = self.current_module.unwrap();
         let file_paths = self.file_paths.lock().unwrap();
         let file_path = match file_paths.get(&current_module_id) {
+            Some(child_module_file_path) => child_module_file_path.clone(),
+            None => self.master_module_file_path.clone(),
+        };
+        drop(file_paths);
+        file_path
+    }
+
+    fn get_module_file_path(&self, module_id: ModuleID) -> ModuleFilePath {
+        let file_paths = self.file_paths.lock().unwrap();
+        let file_path = match file_paths.get(&module_id) {
             Some(child_module_file_path) => child_module_file_path.clone(),
             None => self.master_module_file_path.clone(),
         };
