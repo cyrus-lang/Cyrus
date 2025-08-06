@@ -1,11 +1,16 @@
 import sample;
 
-func main() {
-    // sample::sumA();
-    // sample::sum();
-    // sample::sumB();
+struct String {
+    id: uint32;
+
+    func push_char(&self, ch: char) { }
+
+    func another(self) {
+        self.push_char();
+    }
 }
 
-// func samplefunc() {
-
-// }
+func main() {
+    #name = String { id: 10 };
+    name.another();
+}
