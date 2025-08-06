@@ -34,6 +34,7 @@ pub enum ResolverDiagKind {
     InvalidUntypedFuncParam,
     RequiresLocalScope,
     InvalidOperandForFuncCall,
+    InvalidOperandForMethodCall,
     SymbolIsNotAFunction {
         name: String,
     },
@@ -59,6 +60,10 @@ pub enum ResolverDiagKind {
     },
     DuplicateSymbol {
         symbol_name: String,
+    },
+    MethodNotDefined {
+        struct_name: String,
+        method_name: String,
     },
 }
 
@@ -120,6 +125,9 @@ impl fmt::Display for ResolverDiagKind {
             ResolverDiagKind::InvalidOperandForFuncCall => {
                 write!(f, "Invalid operand for function call.")
             }
+            ResolverDiagKind::InvalidOperandForMethodCall => {
+                write!(f, "Invalid operand for method call.")
+            }
             ResolverDiagKind::SymbolIsNotAFunction { name } => {
                 write!(f, "Symbol '{}' is not a function.", name)
             }
@@ -178,6 +186,16 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::DuplicateSymbol { symbol_name } => {
                 write!(f, "Symbol '{}' has already been declared in this module.", symbol_name)
+            }
+            ResolverDiagKind::MethodNotDefined {
+                struct_name,
+                method_name,
+            } => {
+                write!(
+                    f,
+                    "Method '{}' is not defined for struct '{}'.",
+                    method_name, struct_name
+                )
             }
         }
     }

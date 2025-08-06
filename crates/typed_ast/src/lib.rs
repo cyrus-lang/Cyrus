@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::types::ConcreteType;
 use ast::{
     AccessSpecifier, Literal, SelfModifier,
@@ -115,7 +117,7 @@ pub struct TypedDereference {
 
 #[derive(Debug, Clone)]
 pub struct TypedStructInit {
-    pub struct_type: ConcreteType,
+    pub symbol_id: SymbolID,
     pub fields: Vec<TypedStructFieldInit>,
     pub loc: Location,
 }
@@ -143,9 +145,10 @@ pub struct TypedFieldAccess {
 
 #[derive(Debug, Clone)]
 pub struct TypedMethodCall {
-    pub receiver: Box<TypedExpression>,
+    pub symbol_id: SymbolID,
     pub method_name: String,
     pub args: Vec<TypedExpression>,
+    pub is_fat_arrow: bool,
     pub loc: Location,
 }
 
@@ -213,7 +216,7 @@ pub struct TypedStruct {
     pub name: String,
     // pub impls: Vec<TypedInterface>,
     pub fields: Vec<TypedStructField>,
-    pub methods: Vec<TypedFuncDef>,
+    pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
     pub packed: bool,
     pub loc: Location,
@@ -223,13 +226,6 @@ pub struct TypedStruct {
 pub struct TypedStructField {
     pub name: String,
     pub ty: ConcreteType,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedFieldInit {
-    pub name: String,
-    pub value: TypedExpression,
     pub loc: Location,
 }
 
@@ -370,7 +366,7 @@ pub struct TypedSwitch {
 #[derive(Debug, Clone)]
 pub struct TypedSwitchCase {
     pub pattern: TypedSwitchCasePattern,
-    pub body: TypedBlockStatement,
+    pub body: Box<TypedBlockStatement>,
     pub loc: Location,
 }
 

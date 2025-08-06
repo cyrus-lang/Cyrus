@@ -2,7 +2,7 @@ use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, StructSig, TypedefSig};
 use ast::token::Location;
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use typed_ast::{ModuleID, SymbolID, TypedVariable};
+use typed_ast::{ModuleID, SymbolID, TypedBlockStatement, TypedVariable};
 
 // Symbol Table (Per Module)
 
@@ -15,6 +15,7 @@ pub struct SymbolTable {
 
 #[derive(Debug, Clone)]
 pub enum SymbolEntry {
+    Method(ResolvedMethod),
     Func(ResolvedFunction),
     Typedef(ResolvedTypedef),
     GlobalVar(ResolvedGlobalVar),
@@ -45,6 +46,14 @@ pub struct ResolvedGlobalVar {
 }
 
 #[derive(Debug, Clone)]
+pub struct ResolvedMethod {
+    pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
+    pub func_sig: FuncSig,
+    pub func_body: Option<Box<TypedBlockStatement>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ResolvedFunction {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
@@ -65,13 +74,6 @@ pub struct ResolvedVariable {
     pub typed_variable: TypedVariable,
 }
 
-#[derive(Debug, Clone)]
-pub struct ResolvedIdentifier {
-    pub module_id: ModuleID,
-    pub symbol_id: SymbolID,
-    pub name: String,
-}
-
 // Local Scope
 
 pub type LocalScopeRef = Rc<RefCell<LocalScope>>;
@@ -84,11 +86,16 @@ pub struct LocalScope {
 
 #[derive(Debug, Clone)]
 pub enum LocalSymbol {
-    Identifier(ResolvedIdentifier),
     Variable(ResolvedVariable),
     Struct(ResolvedStruct),
     Enum(ResolvedEnum),
     Typedef(ResolvedTypedef),
+}
+
+#[derive(Debug, Clone)]
+pub enum LocalOrGlobalSymbol {
+    LocalSymbol(LocalSymbol),
+    GlobalSymbol(SymbolEntry),
 }
 
 impl LocalSymbol {
@@ -98,7 +105,6 @@ impl LocalSymbol {
             LocalSymbol::Struct(resolved) => resolved.symbol_id,
             LocalSymbol::Enum(resolved) => resolved.symbol_id,
             LocalSymbol::Typedef(resolved) => resolved.symbol_id,
-            LocalSymbol::Identifier(resolved) => resolved.symbol_id,
         }
     }
 }
