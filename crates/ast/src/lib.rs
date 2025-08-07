@@ -128,6 +128,7 @@ pub struct UnnamedStructTypeField {
 pub struct Enum {
     pub identifier: Identifier,
     pub variants: Vec<EnumVariant>,
+    pub methods: Vec<FuncDef>,
     pub vis: AccessSpecifier,
     pub loc: Location,
     pub span: Span,
@@ -194,6 +195,12 @@ pub struct Identifier {
     pub name: String,
     pub span: Span,
     pub loc: Location,
+}
+
+impl Identifier {
+    pub fn as_string(&self) -> String {
+        self.name.clone()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -311,6 +318,7 @@ pub struct ArrayIndex {
 
 #[derive(Debug, Clone)]
 pub enum Statement {
+    Interface(Interface),
     Variable(Variable),
     Expression(Expression),
     If(If),
@@ -328,6 +336,15 @@ pub enum Statement {
     Continue(Continue),
     Typedef(Typedef),
     GlobalVariable(GlobalVariable),
+}
+
+#[derive(Debug, Clone)]
+pub struct Interface {
+    pub identifier: Identifier,
+    pub methods: Vec<FuncDecl>,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -512,7 +529,7 @@ pub struct FuncDecl {
     pub params: FuncParams,
     pub return_type: Option<TypeSpecifier>,
     pub vis: AccessSpecifier,
-    pub renamed_as: Option<String>,
+    pub renamed_as: Option<Identifier>,
     pub span: Span,
     pub loc: Location,
 }
@@ -534,7 +551,7 @@ impl FuncDef {
 impl FuncDecl {
     pub fn get_usable_name(&self) -> String {
         match &self.renamed_as {
-            Some(name) => name.clone(),
+            Some(identifier) => identifier.name.clone(),
             None => self.identifier.name.clone(),
         }
     }

@@ -736,6 +736,7 @@ impl Lexer {
 
     fn lookup_identifier(&mut self, ident: String) -> TokenKind {
         match ident.as_str() {
+            "interface" => TokenKind::Interface,
             "type" => TokenKind::Typedef,
             "func" => TokenKind::Function,
             "switch" => TokenKind::Switch,

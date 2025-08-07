@@ -138,7 +138,7 @@ pub struct TypedFuncCall {
 
 #[derive(Debug, Clone)]
 pub struct TypedFieldAccess {
-    pub operand: Box<TypedExpression>,
+    pub symbol_id: SymbolID,
     pub field_name: String,
     pub loc: Location,
 }
@@ -187,13 +187,23 @@ pub enum TypedStatement {
     Switch(TypedSwitch),
     Struct(TypedStruct),
     Enum(TypedEnum),
+    Interface(TypedInterface),
     Expression(TypedExpression),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedInterface {
+    pub symbol_id: SymbolID,
+    pub methods: Vec<TypedFuncDecl>,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedEnum {
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
+    pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
     pub loc: Location,
 }

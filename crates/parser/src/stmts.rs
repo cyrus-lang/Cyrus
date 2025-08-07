@@ -30,6 +30,8 @@ impl<'a> Parser<'a> {
                 return self.parse_typedef(Some(vis));
             } else if let TokenKind::Identifier { .. } = self.current_token.kind.clone() {
                 return self.parse_global_variable(Some(vis));
+            } else if self.current_token_is(TokenKind::Interface) {
+                return self.parse_interface(Some(vis));
             }
         } else if self.current_token_is(TokenKind::Function) {
             return self.parse_func(None);
@@ -41,6 +43,8 @@ impl<'a> Parser<'a> {
             return self.parse_enum(None);
         } else if self.current_token_is(TokenKind::Typedef) {
             return self.parse_typedef(None);
+        } else if self.current_token_is(TokenKind::Interface) {
+            return self.parse_interface(None);
         } else if let TokenKind::Identifier { .. } = self.current_token.kind.clone() {
             if toplevel && (self.peek_token_is(TokenKind::Colon) || self.peek_token_is(TokenKind::Assign)) {
                 return self.parse_global_variable(None);
@@ -166,6 +170,7 @@ impl<'a> Parser<'a> {
             return Ok(Statement::Enum(Enum {
                 identifier: enum_name,
                 variants: enum_fields,
+                methods: Vec::new(),
                 vis,
                 loc,
                 span: Span::new(start, self.current_token.span.end),
@@ -182,7 +187,12 @@ impl<'a> Parser<'a> {
             }
 
             enum_fields.push(self.parse_enum_field()?);
-            if self.peek_token_is(TokenKind::RightBrace) {
+            if self.peek_token_is(TokenKind::RightBrace)
+                || self.peek_token_is(TokenKind::Function)
+                || self.peek_token_is(TokenKind::Extern)
+                || self.peek_token_is(TokenKind::Public)
+                || self.peek_token_is(TokenKind::Inline)
+            {
                 break;
             }
         }
@@ -192,9 +202,37 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
+        let mut methods: Vec<FuncDef> = Vec::new();
+
+        loop {
+            match self.current_token.kind.clone() {
+                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                    let vis: AccessSpecifier = self.parse_access_specifier(self.current_token.clone())?;
+                    if let Statement::FuncDef(method) = self.parse_func(Some(vis))? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                TokenKind::Function => {
+                    if let Statement::FuncDef(method) = self.parse_func(None)? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+
         Ok(Statement::Enum(Enum {
             identifier: enum_name,
             variants: enum_fields,
+            methods,
             vis,
             loc,
             span: Span::new(start, self.current_token.span.end),
@@ -447,6 +485,70 @@ impl<'a> Parser<'a> {
         } else {
             Ok(module_path)
         }
+    }
+
+    pub fn parse_interface(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+        let start = self.current_token.span.start;
+        let loc = self.current_token.loc.clone();
+        let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
+
+        self.next_token();
+        let identifier = self.parse_identifier()?;
+        self.next_token();
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut methods: Vec<FuncDecl> = Vec::new();
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Statement::Interface(Interface {
+                identifier,
+                methods,
+                loc,
+                vis,
+                span: Span::new(start, self.current_token.span.end),
+            }));
+        }
+
+        loop {
+            match self.current_token.kind.clone() {
+                TokenKind::Function => {
+                    let func_decl = match self.parse_func(Some(vis.clone()))? {
+                        Statement::FuncDecl(func_decl) => func_decl,
+                        _ => {
+                            return Err(Diag {
+                                level: DiagLevel::Error,
+                                kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                                location: Some(DiagLoc::new(
+                                    self.lexer.file_name.clone(),
+                                    self.current_token.loc.clone(),
+                                    self.current_token.span.end,
+                                )),
+                                hint: None,
+                            });
+                        }
+                    };
+
+                    methods.push(func_decl);
+
+                    if !self.peek_token_is(TokenKind::RightBrace) {
+                        self.expect_current(TokenKind::Semicolon)?;
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        self.expect_peek(TokenKind::RightBrace)?;
+
+        Ok(Statement::Interface(Interface {
+            identifier,
+            methods,
+            loc,
+            vis,
+            span: Span::new(start, self.current_token.span.end),
+        }))
     }
 
     pub fn parse_import(&mut self) -> Result<Statement, ParserError> {
@@ -914,12 +1016,28 @@ impl<'a> Parser<'a> {
                 },
                 loc,
             }));
+        } else if self.current_token_is(TokenKind::As) {
+            self.next_token();
+            let renamed_as = self.parse_identifier()?;
+            self.next_token();
+
+            return Ok(Statement::FuncDecl(FuncDecl {
+                identifier: func_name,
+                params,
+                return_type: None,
+                vis,
+                renamed_as: Some(renamed_as),
+                span: Span {
+                    start,
+                    end: self.current_token.span.end,
+                },
+                loc,
+            }));
         } else {
             return_type = Some(self.parse_type_specifier()?);
             self.next_token();
         }
 
-        // parse as func decl
         if self.current_token_is(TokenKind::Semicolon) {
             return Ok(Statement::FuncDecl(FuncDecl {
                 identifier: func_name,
@@ -937,21 +1055,7 @@ impl<'a> Parser<'a> {
             self.next_token();
 
             // parse renamed func decl
-            let renamed_as = match self.current_token.kind.clone() {
-                TokenKind::Identifier { name } => name,
-                _ => {
-                    return Err(Diag {
-                        kind: ParserDiagKind::ExpectedIdentifier,
-                        level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
-                            self.lexer.file_name.clone(),
-                            loc,
-                            self.current_token.span.end,
-                        )),
-                        hint: None,
-                    });
-                }
-            }; // export the name of the function
+            let renamed_as = self.parse_identifier()?;
 
             if self.peek_token_is(TokenKind::Semicolon) {
                 self.next_token();
