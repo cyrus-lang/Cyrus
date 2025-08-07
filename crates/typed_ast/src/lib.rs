@@ -10,6 +10,7 @@ use ast::{
 pub mod format;
 pub mod types;
 
+pub type ScopeID = u32;
 pub type SymbolID = u32;
 pub type ModuleID = u64;
 
@@ -272,13 +273,15 @@ pub struct TypedImport {
 
 #[derive(Debug, Clone)]
 pub struct TypedBlockStatement {
+    pub scope_id: ScopeID,
     pub exprs: Vec<TypedStatement>,
     pub loc: Location,
 }
 
 impl TypedBlockStatement {
-    pub fn new_empty() -> Self {
+    pub fn new_empty(scope_id: ScopeID) -> Self {
         Self {
+            scope_id,
             exprs: Vec::new(),
             loc: Location::default(),
         }

@@ -1,4 +1,6 @@
+// struct Person {}
+
 func main() {
-    #a: int128 = 0;
-    a;
+    #a = 10;
+    a = true;
 }
