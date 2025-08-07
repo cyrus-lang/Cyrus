@@ -61,6 +61,9 @@ pub enum ResolverDiagKind {
     DuplicateSymbol {
         symbol_name: String,
     },
+    DuplicateSymbolInThisScope {
+        symbol_name: String,
+    },
     MethodNotDefined {
         struct_name: String,
         method_name: String,
@@ -187,6 +190,9 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::DuplicateSymbol { symbol_name } => {
                 write!(f, "Symbol '{}' has already been declared in this module.", symbol_name)
+            }
+            ResolverDiagKind::DuplicateSymbolInThisScope { symbol_name } => {
+                write!(f, "Symbol '{}' cannot be declared again. It already exists within the current scope.", symbol_name)
             }
             ResolverDiagKind::MethodNotDefined {
                 struct_name,

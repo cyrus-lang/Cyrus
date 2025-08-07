@@ -1288,6 +1288,23 @@ impl Resolver {
         scope: LocalScopeRef,
         variable: &Variable,
     ) -> Option<TypedVariable> {
+        let scope_borrowed = scope.borrow();
+        if scope_borrowed.resolve(&variable.identifier.name.clone()).is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::DuplicateSymbolInThisScope {
+                    symbol_name: variable.identifier.name.clone(),
+                },
+                location: Some(DiagLoc::new(
+                    self.get_current_module_file_path(),
+                    variable.loc.clone(),
+                    variable.span.end,
+                )),
+                hint: None,
+            });
+        }
+        drop(scope_borrowed);
+
         let var_type = {
             if let Some(var_type_specifier) = &variable.ty {
                 match self.resolve_type(
@@ -2325,7 +2342,7 @@ impl Resolver {
         option
     }
 
-    fn get_current_module_file_path(&self) -> ModuleFilePath {
+    pub fn get_current_module_file_path(&self) -> ModuleFilePath {
         let current_module_id = self.current_module.unwrap();
         let file_paths = self.file_paths.lock().unwrap();
         let file_path = match file_paths.get(&current_module_id) {
