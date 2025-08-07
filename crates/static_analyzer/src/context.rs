@@ -1,7 +1,10 @@
 use crate::diagnostics::AnalyzerDiagKind;
 use ast::{LiteralKind, operators::PrefixOperator};
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
-use resolver::Resolver;
+use resolver::{
+    Resolver,
+    scope::{LocalOrGlobalSymbol, LocalSymbol, SymbolEntry},
+};
 use typed_ast::{
     format::format_concrete_type,
     types::{BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayType},
@@ -46,19 +49,17 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Struct(typed_struct) => todo!(),
                 TypedStatement::Enum(typed_enum) => todo!(),
                 TypedStatement::Interface(typed_interface) => todo!(),
-                TypedStatement::Expression(typed_expr) => self.analyze_expr(typed_expr),
+                TypedStatement::Expression(typed_expr) => todo!(),
             }
         }
     }
 
-    pub fn analyze_expr(&mut self, typed_expr: &TypedExpression) {
-        todo!();
-    }
-
-    fn analyze_block_statement(&mut self, block_statement: &TypedBlockStatement) {
-        for typed_stmt in &block_statement.exprs {
+    fn analyze_block_statement(&mut self, block_stmt: &TypedBlockStatement) {
+        for typed_stmt in &block_stmt.exprs {
             match typed_stmt {
-                TypedStatement::Variable(typed_variable) => self.analyze_variable(typed_variable),
+                TypedStatement::Variable(typed_variable) => {
+                    self.analyze_variable(Some(block_stmt.scope_id), typed_variable)
+                }
                 TypedStatement::Typedef(typed_typedef) => todo!(),
                 TypedStatement::BlockStatement(typed_block_statement) => {
                     self.analyze_block_statement(typed_block_statement)
@@ -74,7 +75,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Enum(typed_enum) => todo!(),
                 TypedStatement::Interface(typed_interface) => todo!(),
                 TypedStatement::Expression(typed_expression) => {
-                    self.get_typed_expr_type(typed_expression);
+                    self.get_typed_expr_type(Some(block_stmt.scope_id), typed_expression);
                 }
                 // Invalid statements.
                 TypedStatement::FuncDef(_) => unreachable!(),
@@ -85,13 +86,13 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_variable(&mut self, typed_variable: &TypedVariable) {
+    fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &TypedVariable) {
         if typed_variable.ty.is_none() || typed_variable.rhs.is_none() {
             return;
         }
 
         let target_type = typed_variable.ty.clone().unwrap();
-        let value_type = match self.get_typed_expr_type(&typed_variable.rhs.clone().unwrap()) {
+        let value_type = match self.get_typed_expr_type(scope_id_opt, &typed_variable.rhs.clone().unwrap()) {
             Some(concrete_type) => concrete_type,
             None => return,
         };
@@ -113,13 +114,17 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn get_infix_expr_type(&mut self, infix_expr: &TypedInfixExpression) -> Option<ConcreteType> {
-        let lhs_type = match self.get_typed_expr_type(&infix_expr.lhs) {
+    fn get_infix_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        infix_expr: &TypedInfixExpression,
+    ) -> Option<ConcreteType> {
+        let lhs_type = match self.get_typed_expr_type(scope_id_opt, &infix_expr.lhs) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
 
-        let rhs_type = match self.get_typed_expr_type(&infix_expr.rhs) {
+        let rhs_type = match self.get_typed_expr_type(scope_id_opt, &infix_expr.rhs) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -160,8 +165,12 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn get_prefix_expr_type(&mut self, prefix_expr: &TypedPrefixExpression) -> Option<ConcreteType> {
-        let operand_type = match self.get_typed_expr_type(&prefix_expr.operand) {
+    fn get_prefix_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        prefix_expr: &TypedPrefixExpression,
+    ) -> Option<ConcreteType> {
+        let operand_type = match self.get_typed_expr_type(scope_id_opt, &prefix_expr.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -245,8 +254,12 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn get_unary_expr_type(&mut self, unary_expr: &TypedUnaryExpression) -> Option<ConcreteType> {
-        let operand_type = match self.get_typed_expr_type(&unary_expr.operand) {
+    fn get_unary_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unary_expr: &TypedUnaryExpression,
+    ) -> Option<ConcreteType> {
+        let operand_type = match self.get_typed_expr_type(scope_id_opt, &unary_expr.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -282,17 +295,67 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn get_typed_expr_type(&mut self, typed_expr: &TypedExpression) -> Option<ConcreteType> {
+    fn get_type_from_local_or_global_symbol(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_or_global_symbol: LocalOrGlobalSymbol,
+    ) -> Option<ConcreteType> {
+        match local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol {
+                LocalSymbol::Variable(resolved_variable) => match resolved_variable.typed_variable.ty {
+                    Some(concrete_type) => Some(concrete_type),
+                    None => self.get_typed_expr_type(scope_id_opt, &resolved_variable.typed_variable.rhs.unwrap()),
+                },
+                _ => Some(ConcreteType::Symbol(local_symbol.get_symbol_id())),
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => Some(ConcreteType::Symbol(symbol_entry.get_symbol_id())),
+        }
+    }
+
+    fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, typed_assignment: &TypedAssignment) {
+        let lhs_type = match self.get_typed_expr_type(scope_id_opt, &typed_assignment.lhs) {
+            Some(concrete_type) => concrete_type,
+            None => return,
+        };
+
+        let rhs_type = match self.get_typed_expr_type(scope_id_opt, &typed_assignment.rhs) {
+            Some(concrete_type) => concrete_type,
+            None => return,
+        };
+
+        if !self.check_type_mismatch(rhs_type.clone(), lhs_type.clone()) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::AssignmentTypeMismatch {
+                    lhs_type: format_concrete_type(lhs_type, self.get_symbol_formatter()),
+                    rhs_type: format_concrete_type(rhs_type, self.get_symbol_formatter()),
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_assignment.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
+    }
+
+    fn get_typed_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_expr: &TypedExpression,
+    ) -> Option<ConcreteType> {
+        let scope_id = scope_id_opt.unwrap();
+
         match typed_expr {
             TypedExpression::Symbol(symbol_id) => {
-                let symbol_entry = self
+                let local_scope_ref = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
+                let local_or_global_symbol = self
                     .resolver
-                    .lookup_symbol_entry_with_id(self.module_id, *symbol_id)
+                    .resolve_local_or_global_symbol(self.module_id, Some(local_scope_ref), *symbol_id)
                     .unwrap();
 
-                dbg!(symbol_entry.clone());
-
-                todo!();
+                self.get_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
             }
             TypedExpression::Literal(literal) => match &literal.kind {
                 LiteralKind::Integer(_) => Some(ConcreteType::BasicType(BasicConcreteType::Int)),
@@ -319,10 +382,13 @@ impl<'a> AnalysisContext<'a> {
                 LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
                 LiteralKind::Null => Some(ConcreteType::BasicType(BasicConcreteType::Null)),
             },
-            TypedExpression::Prefix(typed_prefix_expr) => self.get_prefix_expr_type(typed_prefix_expr),
-            TypedExpression::Infix(typed_infix_expr) => self.get_infix_expr_type(typed_infix_expr),
-            TypedExpression::Unary(typed_unary_expr) => self.get_unary_expr_type(typed_unary_expr),
-            TypedExpression::Assignment(typed_assignment) => todo!(),
+            TypedExpression::Prefix(typed_prefix_expr) => self.get_prefix_expr_type(scope_id_opt, typed_prefix_expr),
+            TypedExpression::Infix(typed_infix_expr) => self.get_infix_expr_type(scope_id_opt, typed_infix_expr),
+            TypedExpression::Unary(typed_unary_expr) => self.get_unary_expr_type(scope_id_opt, typed_unary_expr),
+            TypedExpression::Assignment(typed_assignment) => {
+                self.analyze_assignment(scope_id_opt, typed_assignment);
+                None
+            }
             TypedExpression::Cast(typed_cast) => todo!(),
             TypedExpression::Array(typed_array) => todo!(),
             TypedExpression::ArrayIndex(typed_array_index) => todo!(),

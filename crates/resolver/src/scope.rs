@@ -2,7 +2,7 @@ use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, T
 use ast::token::Location;
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use typed_ast::{ModuleID, SymbolID, TypedBlockStatement, TypedVariable};
+use typed_ast::{ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedVariable};
 
 // Symbol Table (Per Module)
 
@@ -10,6 +10,7 @@ use typed_ast::{ModuleID, SymbolID, TypedBlockStatement, TypedVariable};
 pub struct SymbolTable {
     pub entries: HashMap<SymbolID, SymbolEntry>,
     pub names: HashMap<String, SymbolID>,
+    pub scopes: HashMap<ScopeID, LocalScopeRef>,
     pub locs: HashMap<SymbolID, (String, Location, usize)>,
 }
 
@@ -21,7 +22,7 @@ pub enum SymbolEntry {
     GlobalVar(ResolvedGlobalVar),
     Struct(ResolvedStruct),
     Enum(ResolvedEnum),
-    Interface(ResolvedInterface)
+    Interface(ResolvedInterface),
 }
 
 #[derive(Debug, Clone)]
@@ -147,12 +148,25 @@ impl SymbolTable {
         Self {
             entries: HashMap::new(),
             names: HashMap::new(),
+            scopes: HashMap::new(),
             locs: HashMap::new(),
         }
     }
 }
 
 impl SymbolEntry {
+    pub fn get_symbol_id(&self) -> SymbolID {
+        match self {
+            SymbolEntry::Method(resolved_method) => resolved_method.symbol_id,
+            SymbolEntry::Func(resolved_func) => resolved_func.symbol_id,
+            SymbolEntry::Typedef(resolved_typedef) => resolved_typedef.symbol_id,
+            SymbolEntry::GlobalVar(resolved_global_var) => resolved_global_var.symbol_id,
+            SymbolEntry::Struct(resolved_struct) => resolved_struct.symbol_id,
+            SymbolEntry::Enum(resolved_enum) => resolved_enum.symbol_id,
+            SymbolEntry::Interface(resolved_interface) => resolved_interface.symbol_id,
+        }
+    }
+
     pub fn as_struct(&self) -> Option<&ResolvedStruct> {
         match self {
             SymbolEntry::Struct(struct_) => Some(struct_),
@@ -190,6 +204,11 @@ impl SymbolEntry {
 }
 
 pub fn generate_symbol_id() -> SymbolID {
+    let mut rng = rand::rng();
+    rng.random::<u32>()
+}
+
+pub fn generate_scope_id() -> ScopeID {
     let mut rng = rand::rng();
     rng.random::<u32>()
 }

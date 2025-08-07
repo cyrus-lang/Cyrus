@@ -826,7 +826,9 @@ impl Resolver {
         }
 
         for func_def in &struct_decl.methods {
+            let scope_id = generate_scope_id();
             let local_scope_rc = Rc::new(RefCell::new(LocalScope::new(None)));
+            self.insert_scope_ref(module_id, scope_id, local_scope_rc.clone());
 
             match self.resolve_func(module_id, Some(local_scope_rc.clone()), &func_def.as_func_decl()) {
                 Some((return_type, typed_func_params, typed_variadic_param)) => {
@@ -907,10 +909,15 @@ impl Resolver {
                 }
             }
 
-            let typed_func_body = match self.resolve_block_statement(local_scope_rc.clone(), &method_body) {
-                Some(typed_block_statement) => typed_block_statement,
-                None => return None,
-            };
+            let method_scope_id = generate_scope_id();
+            let method_scope = LocalScope::deep_clone(&local_scope_rc);
+            self.insert_scope_ref(module_id, method_scope_id, method_scope.clone());
+
+            let typed_func_body =
+                match self.resolve_block_statement(method_scope_id, method_scope.clone(), &method_body) {
+                    Some(typed_block_statement) => typed_block_statement,
+                    None => return None,
+                };
 
             resolved_method.func_body = Some(Box::new(typed_func_body));
             self.insert_symbol_entry(module_id, *symbol_id, SymbolEntry::Method(resolved_method));
@@ -1169,13 +1176,15 @@ impl Resolver {
     }
 
     fn resolve_func_def(&mut self, module_id: ModuleID, func_def: &FuncDef) -> Option<TypedStatement> {
-        let local_scope_rc = Rc::new(RefCell::new(LocalScope::new(None)));
+        let scope_id = generate_scope_id();
+        let body_scope = Rc::new(RefCell::new(LocalScope::new(None)));
+        self.insert_scope_ref(module_id, scope_id, body_scope.clone());
 
         let symbol_id = self
             .lookup_symbol_id(module_id, &func_def.identifier.name.clone())
             .unwrap();
 
-        match self.resolve_func(module_id, Some(local_scope_rc.clone()), &func_def.as_func_decl()) {
+        match self.resolve_func(module_id, Some(body_scope.clone()), &func_def.as_func_decl()) {
             Some((return_type, typed_func_params, typed_variadic_param)) => {
                 self.insert_symbol_entry(
                     module_id,
@@ -1196,7 +1205,7 @@ impl Resolver {
                     }),
                 );
 
-                let typed_func_body = match self.resolve_block_statement(local_scope_rc.clone(), &func_def.body) {
+                let typed_func_body = match self.resolve_block_statement(scope_id, body_scope.clone(), &func_def.body) {
                     Some(typed_block_statement) => typed_block_statement,
                     None => return None,
                 };
@@ -1356,6 +1365,7 @@ impl Resolver {
 
     fn resolve_block_statement(
         &mut self,
+        scope_id: ScopeID,
         local_scope: LocalScopeRef,
         block_statement: &BlockStatement,
     ) -> Option<TypedBlockStatement> {
@@ -1387,15 +1397,27 @@ impl Resolver {
                             None => continue,
                         };
 
-                    let typed_consequent =
-                        match self.resolve_block_statement(Rc::clone(&local_scope), &if_stmt.consequent) {
-                            Some(typed_block) => Box::new(typed_block),
-                            None => continue,
-                        };
+                    let consequent_scope_id = generate_scope_id();
+                    let consequent_scope = LocalScope::deep_clone(&local_scope);
+                    self.insert_scope_ref(module_id, consequent_scope_id, consequent_scope.clone());
+
+                    let typed_consequent = match self.resolve_block_statement(
+                        consequent_scope_id,
+                        consequent_scope,
+                        &if_stmt.consequent,
+                    ) {
+                        Some(typed_block) => Box::new(typed_block),
+                        None => continue,
+                    };
 
                     let typed_alternate = {
                         if let Some(alternate) = &if_stmt.alternate {
-                            match self.resolve_block_statement(Rc::clone(&local_scope), &*alternate) {
+                            let alternate_scope_id = generate_scope_id();
+                            let alternate_scope = LocalScope::deep_clone(&local_scope);
+                            self.insert_scope_ref(module_id, alternate_scope_id, alternate_scope.clone());
+
+                            match self.resolve_block_statement(alternate_scope_id, Rc::clone(&local_scope), &*alternate)
+                            {
                                 Some(typed_block) => Some(Box::new(typed_block)),
                                 None => continue,
                             }
@@ -1463,10 +1485,15 @@ impl Resolver {
                         }
                     };
 
-                    let for_typed_body = match self.resolve_block_statement(Rc::clone(&local_scope), &*for_stmt.body) {
-                        Some(typed_block) => Box::new(typed_block),
-                        None => continue,
-                    };
+                    let body_scope_id = generate_scope_id();
+                    let body_scope = LocalScope::deep_clone(&local_scope);
+                    self.insert_scope_ref(module_id, scope_id, body_scope.clone());
+
+                    let for_typed_body =
+                        match self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*for_stmt.body) {
+                            Some(typed_block) => Box::new(typed_block),
+                            None => continue,
+                        };
 
                     typed_body.push(TypedStatement::For(TypedFor {
                         initializer,
@@ -1477,12 +1504,14 @@ impl Resolver {
                     }));
                 }
                 Statement::Foreach(foreach) => {
-                    let local_scope_copy = LocalScope::deep_clone(&local_scope);
-
                     let typed_expr = self.resolve_expr(module_id, Some(local_scope.clone()), &foreach.expr)?;
 
+                    let body_scope_id = generate_scope_id();
+                    let body_scope = LocalScope::deep_clone(&local_scope);
+                    self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
+
                     let foreach_typed_body =
-                        match self.resolve_block_statement(local_scope_copy.clone(), &*foreach.body) {
+                        match self.resolve_block_statement(body_scope_id, body_scope.clone(), &*foreach.body) {
                             Some(typed_block) => Box::new(typed_block),
                             None => continue,
                         };
@@ -1494,7 +1523,7 @@ impl Resolver {
                             loc: foreach.item.loc.clone(),
                         };
 
-                        let mut local_scope = local_scope_copy.borrow_mut();
+                        let mut local_scope = body_scope.borrow_mut();
                         local_scope.insert(
                             typed_identifier.name.clone(),
                             LocalSymbol::Variable(ResolvedVariable {
@@ -1520,7 +1549,7 @@ impl Resolver {
                                 loc: index.loc.clone(),
                             };
 
-                            let mut local_scope = local_scope_copy.borrow_mut();
+                            let mut local_scope = body_scope.borrow_mut();
                             local_scope.insert(
                                 index.name.clone(),
                                 LocalSymbol::Variable(ResolvedVariable {
@@ -1615,10 +1644,12 @@ impl Resolver {
                             }
                         };
 
-                        let body = match self.resolve_block_statement(Rc::new(RefCell::new(case_scope)), &case.body) {
-                            Some(typed_block) => typed_block,
-                            None => continue,
-                        };
+                        let body =
+                            match self.resolve_block_statement(scope_id, Rc::new(RefCell::new(case_scope)), &case.body)
+                            {
+                                Some(typed_block) => typed_block,
+                                None => continue,
+                            };
 
                         cases.push(TypedSwitchCase {
                             pattern,
@@ -1629,7 +1660,11 @@ impl Resolver {
 
                     let default_case = {
                         if let Some(default_case) = &switch.default_case {
-                            match self.resolve_block_statement(Rc::clone(&local_scope), &default_case) {
+                            let body_scope_id = generate_scope_id();
+                            let body_scope = LocalScope::deep_clone(&local_scope);
+                            self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
+
+                            match self.resolve_block_statement(scope_id, body_scope.clone(), &default_case) {
                                 Some(typed_block) => Some(typed_block),
                                 None => continue,
                             }
@@ -1670,9 +1705,11 @@ impl Resolver {
                     }
                 }
                 Statement::BlockStatement(block_statement) => {
+                    let scope_id = generate_scope_id();
                     let local_scope_copy = LocalScope::deep_clone(&local_scope);
+                    self.insert_scope_ref(module_id, scope_id, local_scope_copy.clone());
 
-                    match self.resolve_block_statement(local_scope_copy, block_statement) {
+                    match self.resolve_block_statement(scope_id, local_scope_copy, block_statement) {
                         Some(typed_stmt) => {
                             typed_body.push(TypedStatement::BlockStatement(typed_stmt));
                         }
@@ -1704,6 +1741,7 @@ impl Resolver {
         }
 
         Some(TypedBlockStatement {
+            scope_id,
             exprs: typed_body,
             loc: block_statement.loc.clone(),
         })
@@ -2367,6 +2405,25 @@ impl Resolver {
         let mut file_paths = self.file_paths.lock().unwrap();
         file_paths.insert(module_id, module_file_path);
         drop(file_paths);
+    }
+
+    fn insert_scope_ref(&self, module_id: ModuleID, scope_id: ScopeID, scope_ref: LocalScopeRef) {
+        let mut global_symbols = self.global_symbols.lock().unwrap();
+        let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+        symbol_table.scopes.insert(scope_id, scope_ref);
+        drop(global_symbols);
+    }
+
+    pub fn get_scope_ref(
+        &self,
+        module_id: ModuleID,
+        scope_id: ScopeID,
+    ) -> Option<LocalScopeRef> {
+        let global_symbols = self.global_symbols.lock().unwrap();
+        let symbol_table = global_symbols.get(&module_id).unwrap();
+        let option = symbol_table.scopes.get(&scope_id).cloned();
+        drop(global_symbols);
+        option
     }
 }
 
