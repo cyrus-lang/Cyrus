@@ -65,6 +65,7 @@ pub enum ResolverDiagKind {
         struct_name: String,
         method_name: String,
     },
+    RenameInterfaceMethod,
 }
 
 impl fmt::Display for ResolverDiagKind {
@@ -196,6 +197,9 @@ impl fmt::Display for ResolverDiagKind {
                     "Method '{}' is not defined for struct '{}'.",
                     method_name, struct_name
                 )
+            }
+            ResolverDiagKind::RenameInterfaceMethod => {
+                write!(f, "Interface methods cannot be renamed.")
             }
         }
     }

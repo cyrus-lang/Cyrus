@@ -1,16 +1,4 @@
-import sample;
-
-struct String {
-    id: uint32;
-
-    func push_char(&self, ch: char) { }
-
-    func another(self) {
-        self.push_char();
-    }
-}
-
-func main() {
-    #name = String { id: 10 };
-    name.another();
+interface Display {
+    func display() void;
+    func as_str() char*;
 }

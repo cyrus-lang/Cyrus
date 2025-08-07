@@ -54,6 +54,7 @@ pub enum TokenKind {
     And,
     Or,
     // Keywords
+    Interface,
     Function,
     Typedef,
     Switch,
@@ -169,6 +170,7 @@ impl fmt::Display for TokenKind {
             Self::Semicolon => write!(f, ";"),
             Self::Colon => write!(f, ":"),
             // Keywords
+            Self::Interface => write!(f, "interface"),
             Self::Typedef => write!(f, "type"),
             Self::Function => write!(f, "func"),
             Self::Switch => write!(f, "switch"),
