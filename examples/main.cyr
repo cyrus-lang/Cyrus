@@ -1,6 +1,7 @@
 // struct Person {}
 
+1 + 2;
+
 func main() {
-    #a = 10;
-    a = true;
+    #a = (int64) 10;
 }
