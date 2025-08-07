@@ -1,4 +1,4 @@
-use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, StructSig, TypedefSig};
+use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig};
 use ast::token::Location;
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -21,7 +21,7 @@ pub enum SymbolEntry {
     GlobalVar(ResolvedGlobalVar),
     Struct(ResolvedStruct),
     Enum(ResolvedEnum),
-    // Module(ModuleId),
+    Interface(ResolvedInterface)
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +68,13 @@ pub struct ResolvedTypedef {
 }
 
 #[derive(Debug, Clone)]
+pub struct ResolvedInterface {
+    pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
+    pub interface_sig: InterfaceSig,
+}
+
+#[derive(Debug, Clone)]
 pub struct ResolvedVariable {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
@@ -90,6 +97,7 @@ pub enum LocalSymbol {
     Struct(ResolvedStruct),
     Enum(ResolvedEnum),
     Typedef(ResolvedTypedef),
+    Interface(ResolvedInterface),
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +113,7 @@ impl LocalSymbol {
             LocalSymbol::Struct(resolved) => resolved.symbol_id,
             LocalSymbol::Enum(resolved) => resolved.symbol_id,
             LocalSymbol::Typedef(resolved) => resolved.symbol_id,
+            LocalSymbol::Interface(resolved) => resolved.symbol_id,
         }
     }
 }

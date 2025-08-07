@@ -1,12 +1,13 @@
-use std::collections::HashMap;
-
+use crate::scope::LocalOrGlobalSymbol;
 use ast::{AccessSpecifier, token::Location};
-use typed_ast::{SymbolID, TypedEnumVariant, TypedFuncParams, TypedStructField, types::ConcreteType};
+use std::collections::HashMap;
+use typed_ast::{SymbolID, TypedEnumVariant, TypedFuncDecl, TypedFuncParams, TypedStructField, types::ConcreteType};
 
 #[derive(Debug, Clone)]
 pub struct StructSig {
     pub name: String,
     pub fields: Vec<TypedStructField>,
+    pub impls: Vec<LocalOrGlobalSymbol>,
     pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
     pub loc: Location,
@@ -33,6 +34,14 @@ pub struct EnumSig {
 pub struct TypedefSig {
     pub name: String,
     pub ty: ConcreteType,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct InterfaceSig {
+    pub name: String,
+    pub methods: Vec<TypedFuncDecl>,
     pub vis: AccessSpecifier,
     pub loc: Location,
 }
