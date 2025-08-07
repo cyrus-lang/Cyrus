@@ -7,6 +7,7 @@ use ast::{
     token::Location,
 };
 
+pub mod format;
 pub mod types;
 
 pub type SymbolID = u32;

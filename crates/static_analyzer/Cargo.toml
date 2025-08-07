@@ -4,3 +4,18 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+typed_ast = { path = "../typed_ast", version = "*" }
+ast = { path = "../ast", version = "*" }
+parser = { path = "../parser", version = "*" }
+lexer = { path = "../lexer", version = "*" }
+utils = { path = "../utils", version = "*" }
+resolver = { path = "../resolver", version = "*" }
+diagcentral = { path = "../diagcentral", version = "*" }
+
+[lib]
+name = "static_analyzer"
+path = "./src/lib.rs"
+
+[[bin]]
+name = "static_analyzer"
+path = "./src/cli.rs"

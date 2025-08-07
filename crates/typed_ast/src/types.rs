@@ -1,9 +1,8 @@
+use crate::SymbolID;
 use ast::{
     Identifier,
     token::{Location, TokenKind},
 };
-
-use crate::SymbolID;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConcreteType {
@@ -39,6 +38,7 @@ pub enum BasicConcreteType {
     Char,
     Bool,
     Void,
+    Null,
 }
 
 impl From<TokenKind> for ConcreteType {
