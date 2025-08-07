@@ -1,3 +1,4 @@
 func main() {
-    #a: intptr = 10;
+    #a: int128 = 0;
+    a;
 }

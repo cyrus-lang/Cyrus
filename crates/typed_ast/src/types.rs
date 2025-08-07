@@ -41,6 +41,35 @@ pub enum BasicConcreteType {
     Null,
 }
 
+impl BasicConcreteType {
+    pub fn bigger_type(a: BasicConcreteType, b: BasicConcreteType) -> Option<BasicConcreteType> {
+        use BasicConcreteType::*;
+
+        fn rank(ty: &BasicConcreteType) -> Option<u8> {
+            match ty {
+                Int8 | UInt8 => Some(2),
+                Int16 | UInt16 => Some(3),
+                Int32 | UInt32 => Some(4),
+                Int | UInt => Some(5),
+                Int64 | UInt64 => Some(6),
+                IntPtr | UIntPtr | SizeT => Some(7),
+                Int128 | UInt128 => Some(8),
+
+                Float16 => Some(9),
+                Float32 => Some(10),
+                Float64 => Some(11),
+                Float128 => Some(12),
+
+                _ => None,
+            }
+        }
+
+        let a_rank = rank(&a)?;
+        let b_rank = rank(&b)?;
+        if a_rank >= b_rank { Some(a) } else { Some(b) }
+    }
+}
+
 impl From<TokenKind> for ConcreteType {
     fn from(token_kind: TokenKind) -> Self {
         ConcreteType::BasicType(match &token_kind {
