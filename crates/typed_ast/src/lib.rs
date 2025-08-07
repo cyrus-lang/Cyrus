@@ -224,7 +224,6 @@ pub struct TypedEnumValuedField {
 #[derive(Debug, Clone)]
 pub struct TypedStruct {
     pub name: String,
-    // pub impls: Vec<TypedInterface>,
     pub fields: Vec<TypedStructField>,
     pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,

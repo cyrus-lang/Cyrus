@@ -2,3 +2,7 @@ interface Display {
     func display() void;
     func as_str() char*;
 }
+
+struct Person : Display {
+
+}

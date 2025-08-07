@@ -1,4 +1,4 @@
-use crate::declsign::{EnumSig, GlobalVarSig, StructSig};
+use crate::declsign::{EnumSig, GlobalVarSig, InterfaceSig, StructSig};
 use crate::moduleloader::{ModuleAlias, ModuleFilePath, ModuleLoader, ModuleLoaderOptions};
 use crate::scope::*;
 use crate::{
@@ -382,6 +382,23 @@ impl Resolver {
     fn resolve_decl_names(&mut self, module_id: ModuleID, ast: &ProgramTree) {
         for stmt in ast.body.as_ref() {
             match stmt {
+                Statement::Interface(interface) => {
+                    if self.duplicate_symbol(
+                        module_id,
+                        interface.identifier.name.clone(),
+                        interface.loc.clone(),
+                        interface.span.end,
+                    ) {
+                        continue;
+                    }
+
+                    self.insert_symbol_name(
+                        module_id,
+                        &interface.identifier.name.clone(),
+                        interface.loc.clone(),
+                        interface.span.end,
+                    );
+                }
                 Statement::Typedef(typedef) => {
                     if self.duplicate_symbol(
                         module_id,
@@ -606,6 +623,31 @@ impl Resolver {
                 }
                 None => continue,
             }
+        }
+
+        let resolved_interface = ResolvedInterface {
+            module_id,
+            symbol_id: interface_symbol_id,
+            interface_sig: InterfaceSig {
+                name: interface.identifier.name.clone(),
+                methods: typed_methods.clone(),
+                vis: interface.vis.clone(),
+                loc: interface.loc.clone(),
+            },
+        };
+
+        if let Some(local_scope_rc) = &local_scope_opt {
+            let mut local_scope = local_scope_rc.borrow_mut();
+            local_scope.insert(
+                interface.identifier.name.clone(),
+                LocalSymbol::Interface(resolved_interface),
+            );
+        } else {
+            self.insert_symbol_entry(
+                module_id,
+                interface_symbol_id,
+                SymbolEntry::Interface(resolved_interface),
+            );
         }
 
         Some(TypedStatement::Interface(TypedInterface {
@@ -874,12 +916,63 @@ impl Resolver {
             self.insert_symbol_entry(module_id, *symbol_id, SymbolEntry::Method(resolved_method));
         }
 
+        let mut impls: Vec<LocalOrGlobalSymbol> = Vec::new();
+
+        for identifier in &struct_decl.impls {
+            let interface_option = {
+                let option = {
+                    if let Some(local_scope) = &local_scope_opt {
+                        let local_scope = local_scope.borrow();
+                        let local_option = match local_scope.resolve(&identifier.as_string()) {
+                            Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol.clone())),
+                            None => None,
+                        };
+                        drop(local_scope);
+                        // option
+                        local_option
+                    } else {
+                        None
+                    }
+                };
+
+                match option {
+                    Some(local_or_global_symbol) => Some(local_or_global_symbol),
+                    None => match self.lookup_symbol(module_id, &identifier.name) {
+                        Some(global_symbol) => Some(LocalOrGlobalSymbol::GlobalSymbol(global_symbol)),
+                        None => None,
+                    },
+                }
+            };
+
+            let interface = match interface_option {
+                Some(local_or_global_symbol) => local_or_global_symbol,
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: ResolverDiagKind::SymbolNotFound {
+                            name: identifier.as_string(),
+                        },
+                        location: Some(DiagLoc::new(
+                            self.get_current_module_file_path(),
+                            identifier.loc.clone(),
+                            identifier.span.end,
+                        )),
+                        hint: None,
+                    });
+                    continue;
+                }
+            };
+
+            impls.push(interface);
+        }
+
         let resolved_struct = ResolvedStruct {
             module_id: module_id,
             symbol_id: struct_symbol_id,
             struct_sig: StructSig {
                 name: struct_decl.identifier.name.clone(),
                 fields: typed_struct_fields.clone(),
+                impls,
                 methods: methods.clone(),
                 vis: struct_decl.vis.clone(),
                 loc: struct_decl.loc.clone(),
@@ -1242,47 +1335,6 @@ impl Resolver {
         drop(scope_borrowed);
 
         Some(typed_variable)
-    }
-
-    fn declare_local_typedef(
-        &mut self,
-        scope: LocalScopeRef,
-        module_id: ModuleID,
-        typedef: &Typedef,
-    ) -> Option<TypedStatement> {
-        let concrete_type = match self.resolve_type(
-            module_id,
-            typedef.type_specifier.clone(),
-            typedef.loc.clone(),
-            typedef.span.end,
-        ) {
-            Some(concrete_type) => concrete_type,
-            None => return None,
-        };
-
-        let typed_typedef = TypedTypedef {
-            name: typedef.identifier.name.clone(),
-            ty: concrete_type.clone(),
-            vis: typedef.vis.clone(),
-            loc: typedef.loc.clone(),
-        };
-
-        let resolved_typedef = ResolvedTypedef {
-            module_id,
-            symbol_id: generate_symbol_id(),
-            typedef_sig: TypedefSig {
-                name: typedef.identifier.name.clone(),
-                ty: concrete_type,
-                vis: typedef.vis.clone(),
-                loc: typedef.loc.clone(),
-            },
-        };
-
-        let mut scope_borrowed = scope.borrow_mut();
-        scope_borrowed.insert(typedef.identifier.name.clone(), LocalSymbol::Typedef(resolved_typedef));
-        drop(scope_borrowed);
-
-        Some(TypedStatement::Typedef(typed_typedef))
     }
 
     fn resolve_block_statement(
@@ -1664,6 +1716,53 @@ impl Resolver {
         }
     }
 
+    fn resolve_local_module_import(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        module_id: ModuleID,
+        module_import: &ModuleImport,
+    ) -> Option<SymbolID> {
+        let local_option = {
+            if let Some(local_scope) = local_scope_opt {
+                let scope_borrowed = local_scope.borrow_mut();
+                let symbol_id_option = module_import.as_identifier().and_then(|identifier| {
+                    scope_borrowed
+                        .resolve(&identifier.name)
+                        .cloned()
+                        .map(|local_symbol| local_symbol.get_symbol_id())
+                });
+                drop(scope_borrowed);
+                symbol_id_option
+            } else {
+                None
+            }
+        };
+
+        let symbol_id = match local_option {
+            Some(symbol_id) => symbol_id,
+            None => match self.resolve_module_import(module_id, module_import.clone()) {
+                Some(symbol_id) => symbol_id,
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: ResolverDiagKind::SymbolNotFound {
+                            name: module_segments_as_string(module_import.segments.clone()),
+                        },
+                        location: Some(DiagLoc::new(
+                            self.get_current_module_file_path(),
+                            module_import.loc.clone(),
+                            module_import.span.end,
+                        )),
+                        hint: None,
+                    });
+                    return None;
+                }
+            },
+        };
+
+        Some(symbol_id)
+    }
+
     fn resolve_expr(
         &mut self,
         module_id: ModuleID,
@@ -1733,53 +1832,6 @@ impl Resolver {
                         }
                     },
                 };
-                drop(scope_borrowed);
-                symbol_id
-            }};
-        }
-
-        macro_rules! resolve_local_module_import {
-            ($module_import:expr) => {{
-                if is_unscoped_expr!($module_import.loc.clone(), $module_import.span.end) {
-                    return None;
-                }
-
-                let local_scope = get_local_scope!();
-                let scope_borrowed = local_scope.borrow_mut();
-
-                let local_option = {
-                    if let Some(identifier) = $module_import.as_identifier() {
-                        match scope_borrowed.resolve(&identifier.name.clone()).cloned() {
-                            Some(local_symbol) => Some(local_symbol.get_symbol_id()),
-                            None => None,
-                        }
-                    } else {
-                        None
-                    }
-                };
-
-                let symbol_id = match local_option {
-                    Some(symbol_id) => symbol_id,
-                    None => match self.resolve_module_import(module_id, $module_import) {
-                        Some(symbol_id) => symbol_id,
-                        None => {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: ResolverDiagKind::SymbolNotFound {
-                                    name: module_segments_as_string($module_import.segments.clone()),
-                                },
-                                location: Some(DiagLoc::new(
-                                    self.get_current_module_file_path(),
-                                    $module_import.loc.clone(),
-                                    $module_import.span.end,
-                                )),
-                                hint: None,
-                            });
-                            return None;
-                        }
-                    },
-                };
-
                 drop(scope_borrowed);
                 symbol_id
             }};
@@ -1858,7 +1910,33 @@ impl Resolver {
                 }))
             }
             Expression::StructInit(struct_init) => {
-                let symbol_id = resolve_local_module_import!(struct_init.struct_name.clone());
+                if is_unscoped_expr!(struct_init.struct_name.loc.clone(), struct_init.struct_name.span.end) {
+                    return None;
+                }
+
+                let symbol_id = match self.resolve_local_module_import(
+                    local_scope_opt.clone(),
+                    module_id,
+                    &struct_init.struct_name.clone(),
+                ) {
+                    Some(symbol_id) => symbol_id,
+                    None => {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: ResolverDiagKind::SymbolNotFound {
+                                name: module_segments_as_string(struct_init.struct_name.segments.clone()),
+                            },
+                            location: Some(DiagLoc::new(
+                                self.get_current_module_file_path(),
+                                struct_init.struct_name.loc.clone(),
+                                struct_init.struct_name.span.end,
+                            )),
+                            hint: None,
+                        });
+
+                        return None;
+                    }
+                };
 
                 let mut field_inits: Vec<TypedStructFieldInit> = Vec::new();
 
