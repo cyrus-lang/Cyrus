@@ -1,25 +1,27 @@
 use crate::diagnostics::AnalyzerDiagKind;
-use ast::LiteralKind;
+use ast::{LiteralKind, operators::PrefixOperator};
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use resolver::Resolver;
 use typed_ast::{
-    SymbolID, TypedBlockStatement, TypedExpression, TypedFuncDef, TypedProgramTree, TypedStatement, TypedVariable,
     format::format_concrete_type,
     types::{BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayType},
+    *,
 };
 
 pub struct AnalysisContext<'a> {
     pub ast: &'a TypedProgramTree,
     pub resolver: &'a Resolver,
     pub reporter: DiagReporter<AnalyzerDiagKind>,
+    pub module_id: ModuleID,
 }
 
 impl<'a> AnalysisContext<'a> {
-    pub fn new(resolver: &'a Resolver, ast: &'a TypedProgramTree) -> Self {
+    pub fn new(resolver: &'a Resolver, module_id: ModuleID, ast: &'a TypedProgramTree) -> Self {
         Self {
             ast,
             resolver,
             reporter: DiagReporter::new(),
+            module_id,
         }
     }
 
@@ -71,7 +73,9 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Struct(typed_struct) => todo!(),
                 TypedStatement::Enum(typed_enum) => todo!(),
                 TypedStatement::Interface(typed_interface) => todo!(),
-                TypedStatement::Expression(typed_expression) => todo!(),
+                TypedStatement::Expression(typed_expression) => {
+                    self.get_typed_expr_type(typed_expression);
+                }
                 // Invalid statements.
                 TypedStatement::FuncDef(_) => unreachable!(),
                 TypedStatement::FuncDecl(_) => unreachable!(),
@@ -87,7 +91,10 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let target_type = typed_variable.ty.clone().unwrap();
-        let value_type = self.get_typed_expr_type(&typed_variable.rhs.clone().unwrap());
+        let value_type = match self.get_typed_expr_type(&typed_variable.rhs.clone().unwrap()) {
+            Some(concrete_type) => concrete_type,
+            None => return,
+        };
 
         if !self.check_type_mismatch(value_type.clone(), target_type.clone()) {
             self.reporter.report(Diag {
@@ -106,59 +113,215 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn check_type_mismatch(&self, value_type: ConcreteType, target_type: ConcreteType) -> bool {
-        match (value_type, target_type) {
+    fn get_infix_expr_type(&mut self, infix_expr: &TypedInfixExpression) -> Option<ConcreteType> {
+        let lhs_type = match self.get_typed_expr_type(&infix_expr.lhs) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
+
+        let rhs_type = match self.get_typed_expr_type(&infix_expr.rhs) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
+
+        let valid_concrete_type = match (lhs_type.clone(), rhs_type.clone()) {
             (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
-                self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
+                if (self.is_basic_concrete_type_integer(basic_concrete_type1.clone())
+                    && self.is_basic_concrete_type_integer(basic_concrete_type2.clone()))
+                    || (self.is_basic_concrete_type_float(basic_concrete_type1.clone())
+                        && self.is_basic_concrete_type_integer(basic_concrete_type2.clone()))
+                {
+                    Some(BasicConcreteType::bigger_type(basic_concrete_type1, basic_concrete_type2).unwrap())
+                } else {
+                    None
+                }
             }
-            (ConcreteType::Const(inner_concrete_type1), ConcreteType::Const(inner_concrete_type2)) => {
-                self.check_type_mismatch(*inner_concrete_type1, *inner_concrete_type2)
+            _ => None,
+        };
+
+        match valid_concrete_type {
+            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type)),
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InvalidInfix {
+                        lhs_type: format_concrete_type(lhs_type, self.get_symbol_formatter()),
+                        rhs_type: format_concrete_type(rhs_type, self.get_symbol_formatter()),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        infix_expr.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
             }
-            (ConcreteType::Const(inner_concrete_type1), concrete_type2) => {
-                self.check_type_mismatch(*inner_concrete_type1, concrete_type2)
-            }
-            (concrete_type1, ConcreteType::Const(inner_concrete_type2)) => {
-                self.check_type_mismatch(concrete_type1, *inner_concrete_type2)
-            }
-            _ => false,
         }
     }
 
-    fn get_symbol_formatter(&self) -> Box<&dyn Fn(SymbolID) -> String> {
-        Box::new(&move |symbol_id: SymbolID| -> String {
-            todo!();
-        })
+    fn get_prefix_expr_type(&mut self, prefix_expr: &TypedPrefixExpression) -> Option<ConcreteType> {
+        let operand_type = match self.get_typed_expr_type(&prefix_expr.operand) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
+
+        match prefix_expr.op {
+            PrefixOperator::SizeOf => Some(ConcreteType::BasicType(BasicConcreteType::SizeT)),
+            PrefixOperator::Bang => {
+                let valid_concrete_type = match &operand_type {
+                    ConcreteType::BasicType(basic_concrete_type) => match basic_concrete_type {
+                        BasicConcreteType::Bool => Some(ConcreteType::BasicType(basic_concrete_type.clone())),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+
+                match valid_concrete_type {
+                    Some(concrete_type) => Some(concrete_type),
+                    None => {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::PrefixBangOnNonBool {
+                                operand_type: format_concrete_type(operand_type, self.get_symbol_formatter()),
+                            },
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_current_module_file_path(),
+                                prefix_expr.loc.clone(),
+                                0,
+                            )),
+                            hint: None,
+                        });
+                        return None;
+                    }
+                }
+            }
+            PrefixOperator::Minus => {
+                let valid_concrete_type = match &operand_type {
+                    ConcreteType::BasicType(basic_concrete_type) => match basic_concrete_type {
+                        BasicConcreteType::UIntPtr
+                        | BasicConcreteType::IntPtr
+                        | BasicConcreteType::SizeT
+                        | BasicConcreteType::Int
+                        | BasicConcreteType::Int8
+                        | BasicConcreteType::Int16
+                        | BasicConcreteType::Int32
+                        | BasicConcreteType::Int64
+                        | BasicConcreteType::Int128
+                        | BasicConcreteType::UInt
+                        | BasicConcreteType::UInt8
+                        | BasicConcreteType::UInt16
+                        | BasicConcreteType::UInt32
+                        | BasicConcreteType::UInt64
+                        | BasicConcreteType::UInt128
+                        | BasicConcreteType::Float16
+                        | BasicConcreteType::Float32
+                        | BasicConcreteType::Float64
+                        | BasicConcreteType::Float128 => Some(ConcreteType::BasicType(basic_concrete_type.clone())),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+
+                match valid_concrete_type {
+                    Some(concrete_type) => Some(concrete_type),
+                    None => {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::PrefixMinusOnNonInteger {
+                                operand_type: format_concrete_type(operand_type, self.get_symbol_formatter()),
+                            },
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_current_module_file_path(),
+                                prefix_expr.loc.clone(),
+                                0,
+                            )),
+                            hint: None,
+                        });
+                        return None;
+                    }
+                }
+            }
+        }
     }
 
-    fn get_typed_expr_type(&self, typed_expr: &TypedExpression) -> ConcreteType {
+    fn get_unary_expr_type(&mut self, unary_expr: &TypedUnaryExpression) -> Option<ConcreteType> {
+        let operand_type = match self.get_typed_expr_type(&unary_expr.operand) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
+
+        let valid_operand_type = match &operand_type {
+            ConcreteType::BasicType(basic_concrete_type) => {
+                if self.is_basic_concrete_type_integer(basic_concrete_type.clone()) {
+                    Some(basic_concrete_type)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        match valid_operand_type {
+            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type.clone())),
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InvalidUnary {
+                        operand_type: format_concrete_type(operand_type, self.get_symbol_formatter()),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        unary_expr.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        }
+    }
+
+    fn get_typed_expr_type(&mut self, typed_expr: &TypedExpression) -> Option<ConcreteType> {
         match typed_expr {
-            TypedExpression::Symbol(_) => todo!(),
+            TypedExpression::Symbol(symbol_id) => {
+                let symbol_entry = self
+                    .resolver
+                    .lookup_symbol_entry_with_id(self.module_id, *symbol_id)
+                    .unwrap();
+
+                dbg!(symbol_entry.clone());
+
+                todo!();
+            }
             TypedExpression::Literal(literal) => match &literal.kind {
-                LiteralKind::Integer(_) => ConcreteType::BasicType(BasicConcreteType::Int),
-                LiteralKind::Float(_) => ConcreteType::BasicType(BasicConcreteType::Float32),
-                LiteralKind::Bool(_) => ConcreteType::BasicType(BasicConcreteType::Bool),
+                LiteralKind::Integer(_) => Some(ConcreteType::BasicType(BasicConcreteType::Int)),
+                LiteralKind::Float(_) => Some(ConcreteType::BasicType(BasicConcreteType::Float32)),
+                LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
                 LiteralKind::String(string_value, string_prefix) => {
                     if let Some(string_prefix) = string_prefix {
                         match string_prefix {
                             ast::StringPrefix::B => {
                                 let len = string_value.len() + 1;
-                                return ConcreteType::Array(TypedArrayType {
+                                return Some(ConcreteType::Array(TypedArrayType {
                                     element_type: Box::new(ConcreteType::BasicType(BasicConcreteType::Char)),
                                     capacity: TypedArrayCapacity::Fixed(len.try_into().unwrap()),
                                     loc: literal.loc.clone(),
-                                });
+                                }));
                             }
                             ast::StringPrefix::C => {}
                         }
                     }
-                    ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)))
+                    Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                        BasicConcreteType::Char,
+                    ))))
                 }
-                LiteralKind::Char(_) => ConcreteType::BasicType(BasicConcreteType::Char),
-                LiteralKind::Null => ConcreteType::BasicType(BasicConcreteType::Null),
+                LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
+                LiteralKind::Null => Some(ConcreteType::BasicType(BasicConcreteType::Null)),
             },
-            TypedExpression::Prefix(typed_prefix_expression) => todo!(),
-            TypedExpression::Infix(typed_infix_expression) => todo!(),
-            TypedExpression::Unary(typed_unary_expression) => todo!(),
+            TypedExpression::Prefix(typed_prefix_expr) => self.get_prefix_expr_type(typed_prefix_expr),
+            TypedExpression::Infix(typed_infix_expr) => self.get_infix_expr_type(typed_infix_expr),
+            TypedExpression::Unary(typed_unary_expr) => self.get_unary_expr_type(typed_unary_expr),
             TypedExpression::Assignment(typed_assignment) => todo!(),
             TypedExpression::Cast(typed_cast) => todo!(),
             TypedExpression::Array(typed_array) => todo!(),

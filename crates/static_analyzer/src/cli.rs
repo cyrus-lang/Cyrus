@@ -44,7 +44,7 @@ pub fn main() {
                 exit(1);
             }
 
-            let mut analyzer = AnalysisContext::new(&resolver, &typed_program_tree);
+            let mut analyzer = AnalysisContext::new(&resolver, module_id, &typed_program_tree);
             analyzer.analyze();
             if analyzer.reporter.has_errors() {
                 DiagReporter::display(&analyzer.reporter);
