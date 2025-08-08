@@ -48,6 +48,29 @@ pub enum TypedExpression {
     UnnamedStructValue(TypedUnnamedStructValue),
 }
 
+impl TypedExpression {
+    pub fn is_lvalue(&self) -> bool {
+        match self {
+            TypedExpression::Symbol(_) => true,
+            TypedExpression::ArrayIndex(_) => true,
+            TypedExpression::Dereference(_) => true,
+            TypedExpression::FieldAccess(_) => true,
+            TypedExpression::MethodCall(_) => false,
+            TypedExpression::FuncCall(_) => false,
+            TypedExpression::StructInit(_) => false,
+            TypedExpression::UnnamedStructValue(_) => false,
+            TypedExpression::Literal(_) => false,
+            TypedExpression::Prefix(_) => false,
+            TypedExpression::Infix(_) => false,
+            TypedExpression::Unary(_) => false,
+            TypedExpression::Assignment(_) => false,
+            TypedExpression::Cast(_) => false,
+            TypedExpression::AddressOf(_) => false,
+            TypedExpression::Array(_) => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedIdentifier {
     pub name: String,
