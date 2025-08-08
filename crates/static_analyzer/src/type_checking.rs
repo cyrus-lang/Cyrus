@@ -255,7 +255,22 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        Some(ConcreteType::Pointer(Box::new(operand_type)))
+        match operand_type {
+            ConcreteType::Pointer(concrete_type) => Some(ConcreteType::Pointer(concrete_type)),
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::DerefNonPointerValue,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        dereference.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        }
     }
 
     fn check_func_call(&mut self, scope_id_opt: Option<ScopeID>, func_call: &TypedFuncCall) -> Option<ConcreteType> {
@@ -378,54 +393,11 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        let mut param_names: Vec<String> = Vec::new();
-
-        for (param_idx, param) in func_sig.params.list.iter().enumerate() {
-            match param {
-                TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    if param_names.contains(&typed_func_param.name) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::DuplicateFuncParameter {
-                                param_name: typed_func_param.name.clone(),
-                                param_idx: param_idx.try_into().unwrap(),
-                            },
-                            location: Some(DiagLoc::new(
-                                self.resolver.get_current_module_file_path(),
-                                func_call.loc.clone(),
-                                0,
-                            )),
-                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
-                        });
-                    }
-
-                    param_names.push(typed_func_param.name.clone());
-                }
-                TypedFuncParamKind::SelfModifier(_) => {
-                    param_names.push("self".to_string());
-                }
-            }
-        }
-
-        if is_variadic {
-            match func_sig.params.variadic.unwrap() {
-                TypedFuncVariadicParams::Typed(identifier, _) => {
-                    if param_names.contains(&identifier) {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::DuplicateFuncVariadicParameter { param_name: identifier },
-                            location: Some(DiagLoc::new(
-                                self.resolver.get_current_module_file_path(),
-                                func_call.loc.clone(),
-                                0,
-                            )),
-                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
-                        });
-                    }
-                }
-                TypedFuncVariadicParams::UntypedCStyle => {}
-            }
-        }
+        self.check_duplicate_param_names(
+            &func_sig.params.list,
+            func_sig.params.variadic.as_ref(),
+            DiagLoc::new(self.resolver.get_current_module_file_path(), func_call.loc.clone(), 0),
+        );
 
         Some(func_sig.return_type)
     }

@@ -160,7 +160,6 @@ impl Resolver {
                     location: None,
                     hint: None,
                 });
-
                 continue;
             } else if report_if_imports_twice(self, module_file_path.clone()) {
                 self.reporter.report(Diag {
@@ -673,7 +672,7 @@ impl Resolver {
 
         for variant in &enum_decl.variants {
             let typed_variant = match variant {
-                EnumVariant::Identifier(identifier) => TypedEnumVariant::Identifier(identifier.name.clone()),
+                EnumVariant::Identifier(identifier) => TypedEnumVariant::Identifier(identifier.clone()),
                 EnumVariant::Variant(identifier, enum_valued_fields) => {
                     let mut fields: Vec<TypedEnumValuedField> = Vec::new();
                     for valued_field in enum_valued_fields {
@@ -690,9 +689,10 @@ impl Resolver {
                         fields.push(TypedEnumValuedField {
                             name: valued_field.identifier.name.clone(),
                             field_type,
+                            loc: valued_field.identifier.loc.clone(),
                         });
                     }
-                    TypedEnumVariant::Variant(identifier.name.clone(), fields)
+                    TypedEnumVariant::Variant(identifier.clone(), fields)
                 }
                 EnumVariant::Valued(identifier, expr) => match self.resolve_expr(
                     module_id,
@@ -702,7 +702,7 @@ impl Resolver {
                     },
                     expr,
                 ) {
-                    Some(typed_expr) => TypedEnumVariant::Valued(identifier.name.clone(), Box::new(typed_expr)),
+                    Some(typed_expr) => TypedEnumVariant::Valued(identifier.clone(), Box::new(typed_expr)),
                     None => continue,
                 },
             };
@@ -728,8 +728,12 @@ impl Resolver {
             self.insert_symbol_entry(module_id, enum_symbol_id, SymbolEntry::Enum(resolved_enum));
         }
 
-        let mut methods: HashMap<String, SymbolID> = HashMap::new();
-        todo!();
+        self.check_duplicate_method_names(&enum_decl.identifier.name, enum_decl.methods.clone());
+
+        let methods = match self.resolve_methods(module_id, &enum_decl.methods, enum_symbol_id) {
+            Some(methods) => methods,
+            None => return None,
+        };
 
         Some(TypedStatement::Enum(TypedEnum {
             name: enum_decl.identifier.name.clone(),
@@ -797,35 +801,43 @@ impl Resolver {
         }))
     }
 
-    fn resolve_struct(
+    fn check_duplicate_method_names(&mut self, struct_name: &str, methods_list: Vec<FuncDef>) {
+        let mut method_names: Vec<String> = Vec::new();
+
+        for func_def in methods_list {
+            let method_name = func_def.identifier.name.clone();
+
+            if method_names.contains(&method_name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::DuplicateMethodName {
+                        struct_name: struct_name.to_string(),
+                        method_name: method_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.get_current_module_file_path(),
+                        func_def.loc.clone(),
+                        0,
+                    )),
+                    hint: Some("Consider to rename the method to a different name.".to_string()),
+                });
+                continue;
+            }
+
+            method_names.push(method_name);
+        }
+    }
+
+    fn resolve_methods(
         &mut self,
         module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
-        struct_decl: &Struct,
-    ) -> Option<TypedStatement> {
-        let struct_symbol_id = if local_scope_opt.is_some() {
-            generate_symbol_id() // new symbol 
-        } else {
-            self.lookup_symbol_id(module_id, &struct_decl.identifier.name).unwrap()
-        };
-        let mut typed_struct_fields: Vec<TypedStructField> = Vec::new();
+        methods_list: &Vec<FuncDef>,
+        struct_symbol_id: SymbolID,
+    ) -> Option<HashMap<String, SymbolID>> {
         let mut methods: HashMap<String, SymbolID> = HashMap::new();
         let mut method_bodies: HashMap<SymbolID, (LocalScopeRef, Box<BlockStatement>)> = HashMap::new();
 
-        for field in &struct_decl.fields {
-            match self.resolve_type(module_id, field.ty.clone(), field.loc.clone(), field.span.end) {
-                Some(concrete_type) => {
-                    typed_struct_fields.push(TypedStructField {
-                        name: field.identifier.name.clone(),
-                        ty: concrete_type,
-                        loc: field.loc.clone(),
-                    });
-                }
-                None => continue,
-            }
-        }
-
-        for func_def in &struct_decl.methods {
+        for func_def in methods_list {
             let scope_id = generate_scope_id();
             let local_scope_rc = Rc::new(RefCell::new(LocalScope::new(None)));
             self.insert_scope_ref(module_id, scope_id, local_scope_rc.clone());
@@ -922,6 +934,42 @@ impl Resolver {
             resolved_method.func_body = Some(Box::new(typed_func_body));
             self.insert_symbol_entry(module_id, *symbol_id, SymbolEntry::Method(resolved_method));
         }
+
+        Some(methods)
+    }
+
+    fn resolve_struct(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        struct_decl: &Struct,
+    ) -> Option<TypedStatement> {
+        let struct_symbol_id = if local_scope_opt.is_some() {
+            generate_symbol_id() // new symbol 
+        } else {
+            self.lookup_symbol_id(module_id, &struct_decl.identifier.name).unwrap()
+        };
+        let mut typed_struct_fields: Vec<TypedStructField> = Vec::new();
+
+        for field in &struct_decl.fields {
+            match self.resolve_type(module_id, field.ty.clone(), field.loc.clone(), field.span.end) {
+                Some(concrete_type) => {
+                    typed_struct_fields.push(TypedStructField {
+                        name: field.identifier.name.clone(),
+                        ty: concrete_type,
+                        loc: field.loc.clone(),
+                    });
+                }
+                None => continue,
+            }
+        }
+
+        self.check_duplicate_method_names(&struct_decl.identifier.name, struct_decl.methods.clone());
+
+        let methods = match self.resolve_methods(module_id, &struct_decl.methods, struct_symbol_id) {
+            Some(methods) => methods,
+            None => return None,
+        };
 
         let mut impls: Vec<LocalOrGlobalSymbol> = Vec::new();
 
@@ -1839,56 +1887,54 @@ impl Resolver {
             }};
         }
 
-        macro_rules! get_local_scope {
-            () => {{
-                if let Some(local_scope) = &local_scope_opt {
-                    Rc::clone(&local_scope)
-                } else {
-                    return None;
-                }
-            }};
-        }
-
         macro_rules! resolve_local_identifier {
             ($identifier:expr) => {{
-                if is_unscoped_expr!($identifier.loc.clone(), $identifier.span.end) {
-                    return None;
-                }
+                let local_option = {
+                    if let Some(local_scope) = &local_scope_opt {
+                        let scope_borrowed = local_scope.borrow_mut();
 
-                let local_scope = get_local_scope!();
-                let scope_borrowed = local_scope.borrow_mut();
-
-                let symbol_id = match scope_borrowed.resolve(&$identifier.name.clone()).cloned() {
-                    Some(local_symbol) => local_symbol.get_symbol_id(),
-                    None => match self.resolve_module_import(
-                        module_id,
-                        ModuleImport {
-                            segments: vec![ModuleSegment::SubModule($identifier.clone())],
-                            loc: $identifier.loc.clone(),
-                            span: $identifier.span.clone(),
-                        },
-                    ) {
-                        Some(symbol_id) => symbol_id,
-                        None => {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: ResolverDiagKind::SymbolNotFound {
-                                    name: $identifier.name.clone(),
-                                },
-                                location: Some(DiagLoc::new(
-                                    self.get_current_module_file_path(),
-                                    $identifier.loc.clone(),
-                                    $identifier.span.end,
-                                )),
-                                hint: None,
-                            });
-
-                            return None;
-                        }
-                    },
+                        let symbol_id_opt = match scope_borrowed.resolve(&$identifier.name.clone()).cloned() {
+                            Some(local_symbol) => Some(local_symbol.get_symbol_id()),
+                            None => None,
+                        };
+                        drop(scope_borrowed);
+                        symbol_id_opt
+                    } else {
+                        None
+                    }
                 };
-                drop(scope_borrowed);
-                symbol_id
+
+                match local_option {
+                    Some(symbol_id) => symbol_id,
+                    None => {
+                        match self.resolve_module_import(
+                            module_id,
+                            ModuleImport {
+                                segments: vec![ModuleSegment::SubModule($identifier.clone())],
+                                loc: $identifier.loc.clone(),
+                                span: $identifier.span.clone(),
+                            },
+                        ) {
+                            Some(symbol_id) => symbol_id,
+                            None => {
+                                self.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: ResolverDiagKind::SymbolNotFound {
+                                        name: $identifier.name.clone(),
+                                    },
+                                    location: Some(DiagLoc::new(
+                                        self.get_current_module_file_path(),
+                                        $identifier.loc.clone(),
+                                        $identifier.span.end,
+                                    )),
+                                    hint: None,
+                                });
+
+                                return None;
+                            }
+                        }
+                    }
+                }
             }};
         }
 
@@ -2414,11 +2460,7 @@ impl Resolver {
         drop(global_symbols);
     }
 
-    pub fn get_scope_ref(
-        &self,
-        module_id: ModuleID,
-        scope_id: ScopeID,
-    ) -> Option<LocalScopeRef> {
+    pub fn get_scope_ref(&self, module_id: ModuleID, scope_id: ScopeID) -> Option<LocalScopeRef> {
         let global_symbols = self.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get(&module_id).unwrap();
         let option = symbol_table.scopes.get(&scope_id).cloned();

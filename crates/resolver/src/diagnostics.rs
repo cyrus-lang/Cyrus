@@ -68,12 +68,26 @@ pub enum ResolverDiagKind {
         struct_name: String,
         method_name: String,
     },
+    DuplicateMethodName {
+        struct_name: String,
+        method_name: String,
+    },
     RenameInterfaceMethod,
 }
 
 impl fmt::Display for ResolverDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ResolverDiagKind::DuplicateMethodName {
+                struct_name,
+                method_name,
+            } => {
+                write!(
+                    f,
+                    "Duplicate declaration of method '{}' in struct '{}'.",
+                    method_name, struct_name
+                )
+            }
             ResolverDiagKind::SymbolAlreadyDefined { name, original } => {
                 write!(
                     f,
@@ -124,7 +138,10 @@ impl fmt::Display for ResolverDiagKind {
                 write!(f, "Self modifier must be the beginning parameter of a method.")
             }
             ResolverDiagKind::RequiresLocalScope => {
-                write!(f, "This expression requires a local scope.")
+                write!(
+                    f,
+                    "No local scope found here. This expression must be inside a function or block scope."
+                )
             }
             ResolverDiagKind::InvalidOperandForFuncCall => {
                 write!(f, "Invalid operand for function call.")
@@ -192,7 +209,11 @@ impl fmt::Display for ResolverDiagKind {
                 write!(f, "Symbol '{}' has already been declared in this module.", symbol_name)
             }
             ResolverDiagKind::DuplicateSymbolInThisScope { symbol_name } => {
-                write!(f, "Symbol '{}' cannot be declared again. It already exists within the current scope.", symbol_name)
+                write!(
+                    f,
+                    "Symbol '{}' cannot be declared again. It already exists within the current scope.",
+                    symbol_name
+                )
             }
             ResolverDiagKind::MethodNotDefined {
                 struct_name,
