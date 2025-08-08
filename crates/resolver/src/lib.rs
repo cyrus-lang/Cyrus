@@ -2083,7 +2083,7 @@ impl Resolver {
                 }))
             }
             Expression::Array(arr) => {
-                let element_type =
+                let array_type =
                     match self.resolve_type(module_id, arr.data_type.clone(), arr.loc.clone(), arr.span.end) {
                         Some(concrete_type) => concrete_type,
                         None => return None,
@@ -2099,7 +2099,7 @@ impl Resolver {
                 }
 
                 Some(TypedExpression::Array(TypedArray {
-                    element_type,
+                    array_type,
                     elements: typed_elements,
                     loc: arr.loc.clone(),
                 }))

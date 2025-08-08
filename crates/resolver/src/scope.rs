@@ -201,6 +201,13 @@ impl SymbolEntry {
             _ => None,
         }
     }
+
+    pub fn as_interface(&self) -> Option<&ResolvedInterface> {
+        match self {
+            SymbolEntry::Interface(interface) => Some(interface),
+            _ => None,
+        }
+    }
 }
 
 pub fn generate_symbol_id() -> SymbolID {

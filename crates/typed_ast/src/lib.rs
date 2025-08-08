@@ -93,7 +93,7 @@ pub struct TypedCast {
 
 #[derive(Debug, Clone)]
 pub struct TypedArray {
-    pub element_type: ConcreteType,
+    pub array_type: ConcreteType,
     pub elements: Vec<TypedExpression>,
     pub loc: Location,
 }

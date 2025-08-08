@@ -2,7 +2,8 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::{LiteralKind, operators::PrefixOperator};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use typed_ast::{
-    ScopeID, SymbolID, TypedExpression, TypedInfixExpression, TypedPrefixExpression, TypedUnaryExpression,
+    ScopeID, SymbolID, TypedArray, TypedCast, TypedExpression, TypedInfixExpression, TypedPrefixExpression,
+    TypedUnaryExpression,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
@@ -205,10 +206,8 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_assignment(scope_id_opt, typed_assignment);
                 None
             }
-            TypedExpression::Cast(typed_cast) => {
-                todo!();
-            }
-            TypedExpression::Array(typed_array) => todo!(),
+            TypedExpression::Cast(typed_cast) => self.get_cast_expr_type(scope_id_opt, typed_cast),
+            TypedExpression::Array(typed_array) => self.get_array_expr_type(scope_id_opt, typed_array),
             TypedExpression::ArrayIndex(typed_array_index) => todo!(),
             TypedExpression::AddressOf(typed_address_of) => todo!(),
             TypedExpression::Dereference(typed_dereference) => todo!(),
@@ -219,6 +218,73 @@ impl<'a> AnalysisContext<'a> {
             TypedExpression::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
         }
     }
+
+    fn get_array_expr_type(&mut self, scope_id_opt: Option<ScopeID>, typed_array: &TypedArray) -> Option<ConcreteType> {
+        let typed_array_type = match &typed_array.array_type {
+            ConcreteType::Array(typed_array_type) => typed_array_type,
+            _ => unreachable!(),
+        };
+
+        if let TypedArrayCapacity::Fixed(fixed_capacity) = typed_array_type.capacity {
+            if typed_array.elements.len() != fixed_capacity.try_into().unwrap() {}
+        }
+
+        for (element_index, element) in typed_array.elements.iter().enumerate() {
+            let element_type = match self.get_typed_expr_type(scope_id_opt, element) {
+                Some(concrete_type) => concrete_type,
+                None => continue,
+            };
+
+            if !self.check_type_mismatch(element_type.clone(), *typed_array_type.element_type.clone()) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::ArrayElementTypeMismatch {
+                        element_type: format_concrete_type(element_type, self.get_symbol_formatter()),
+                        element_index: element_index.try_into().unwrap(),
+                        expected_type: format_concrete_type(
+                            *typed_array_type.element_type.clone(),
+                            self.get_symbol_formatter(),
+                        ),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_array.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+            }
+        }
+
+        Some(ConcreteType::Array(typed_array_type.clone()))
+    }
+
+    fn get_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &TypedCast) -> Option<ConcreteType> {
+        let operand = match self.get_typed_expr_type(scope_id_opt, &cast.operand) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
+
+        if !self.check_type_mismatch(operand.clone(), cast.target_type.clone()) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::CastTypeMismatch {
+                    lhs_type: format_concrete_type(cast.target_type.clone(), self.get_symbol_formatter()),
+                    rhs_type: format_concrete_type(operand, self.get_symbol_formatter()),
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    cast.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        }
+
+        Some(cast.target_type.clone())
+    }
+
     fn get_infix_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
