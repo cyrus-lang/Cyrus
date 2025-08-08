@@ -33,7 +33,6 @@ impl<'a> AnalysisContext<'a> {
         for typed_stmt in &self.ast.body {
             match typed_stmt {
                 TypedStatement::FuncDef(typed_func_def) => self.analyze_block_statement(&typed_func_def.body),
-                TypedStatement::Typedef(typed_typedef) => todo!(),
                 TypedStatement::Import(typed_import) => todo!(),
                 TypedStatement::GlobalVariable(typed_global_variable) => todo!(),
                 TypedStatement::Variable(typed_variable) => todo!(),
@@ -41,7 +40,9 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::BlockStatement(typed_block_statement) => todo!(),
                 TypedStatement::Struct(typed_struct) => todo!(),
                 TypedStatement::Enum(typed_enum) => todo!(),
-                TypedStatement::Interface(typed_interface) => todo!(),
+                TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
+                // Not analyzed
+                TypedStatement::Typedef(_) => continue,
                 // Invalid top-level statements
                 TypedStatement::If(_) => unreachable!(),
                 TypedStatement::Return(_) => unreachable!(),
@@ -54,6 +55,37 @@ impl<'a> AnalysisContext<'a> {
                     unreachable!()
                 }
             }
+        }
+    }
+
+    fn analyze_interface(&mut self, typed_interface: &TypedInterface) {
+        let mut name_list: Vec<String> = Vec::new();
+
+        let resolved_interface = self
+            .resolver
+            .lookup_symbol_entry_with_id(self.module_id, typed_interface.symbol_id)
+            .unwrap();
+
+        let interface_name = resolved_interface.as_interface().unwrap().interface_sig.name.clone();
+
+        for method in &typed_interface.methods {
+            if name_list.contains(&method.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InterfaceDuplicateMethod {
+                        interface_name: interface_name.clone(),
+                        method_name: method.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        method.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+            }
+
+            name_list.push(method.name.clone());
         }
     }
 
@@ -90,30 +122,31 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &TypedVariable) {
-        if typed_variable.ty.is_none() || typed_variable.rhs.is_none() {
+        if typed_variable.ty.is_none() && typed_variable.rhs.is_none() {
             return;
         }
 
-        let target_type = typed_variable.ty.clone().unwrap();
         let value_type = match self.get_typed_expr_type(scope_id_opt, &typed_variable.rhs.clone().unwrap()) {
             Some(concrete_type) => concrete_type,
             None => return,
         };
 
-        if !self.check_type_mismatch(value_type.clone(), target_type.clone()) {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::AssignmentTypeMismatch {
-                    lhs_type: format_concrete_type(target_type, self.get_symbol_formatter()),
-                    rhs_type: format_concrete_type(value_type, self.get_symbol_formatter()),
-                },
-                location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
-                    typed_variable.loc.clone(),
-                    0,
-                )),
-                hint: None,
-            });
+        if let Some(var_type) = &typed_variable.ty {
+            if !self.check_type_mismatch(value_type.clone(), var_type.clone()) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::AssignmentTypeMismatch {
+                        lhs_type: format_concrete_type(var_type.clone(), self.get_symbol_formatter()),
+                        rhs_type: format_concrete_type(value_type, self.get_symbol_formatter()),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_variable.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+            }
         }
     }
 
