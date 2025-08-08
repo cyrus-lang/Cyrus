@@ -1,17 +1,23 @@
-use ::diag::errors::CompileTimeError;
-use ast::ast::*;
+use std::rc::Rc;
+
 use ast::token::*;
-use diag::ParserErrorType;
+use ast::*;
+use diagcentral::Diag;
+use diagcentral::DiagLevel;
+use diagcentral::DiagLoc;
+use diagcentral::reporter::DiagReporter;
 use lexer::*;
 use utils::fs::read_file;
 
+use crate::diagnostics::ParserDiagKind;
+
 mod common;
-mod diag;
+mod diagnostics;
 mod exprs;
 mod prec;
 mod stmts;
 
-pub type ParseError = CompileTimeError<ParserErrorType>;
+pub type ParserError = Diag<ParserDiagKind>;
 
 /// Parses the program from the given file path.
 ///
@@ -51,7 +57,7 @@ pub struct Parser<'a> {
     lexer: &'a mut Lexer,
     current_token: Token,
     peek_token: Token,
-    errors: Vec<ParseError>,
+    errors: Vec<ParserError>,
 }
 
 impl<'a> Parser<'a> {
@@ -68,7 +74,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses the entire input program and returns it as a `Node::ProgramTree`.
-    pub fn parse(&mut self) -> Result<Node, Vec<ParseError>> {
+    pub fn parse(&mut self) -> Result<Node, Vec<ParserError>> {
         let program = self.parse_program()?;
         Ok(Node::ProgramTree(program))
     }
@@ -77,34 +83,34 @@ impl<'a> Parser<'a> {
     ///
     /// It processes each statement and adds it to the program body. If any errors occur during parsing,
     /// they are accumulated and returned after the entire program has been parsed.
-    pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<ParseError>> {
-        let mut program = ProgramTree::new();
+    pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<ParserError>> {
+        let mut body: Vec<Statement> = Vec::new();
 
         while self.current_token.kind != TokenKind::EOF {
-            self.parse_and_add_statement(&mut program);
+            match self.parse_statement(true) {
+                Ok(statement) => body.push(statement),
+                Err(error) => self.errors.push(error),
+            }
             self.next_token();
         }
 
+        let program = ProgramTree { body: Rc::new(body) };
         self.finalize_program_parse(program)
     }
 
-    /// Parses a statement and adds it to the program, accumulating errors if any.
-    pub fn parse_and_add_statement(&mut self, program: &mut ProgramTree) {
-        match self.parse_statement(true) {
-            Ok(statement) => program.body.push(statement),
-            Err(error) => self.errors.push(error),
-        }
-    }
-
-    pub fn display_parser_errors(&mut self, errors: Vec<CompileTimeError<ParserErrorType>>) {
-        if errors.len() > 0 {
-            errors[0].print();
-            std::process::exit(1);
+    pub fn display_parser_errors(&mut self, errors: Vec<ParserError>) {
+        let len = errors.len();
+        if len > 0 {
+            // Take last 3 errors or fewer if less than 3
+            let start_index = if len > 3 { len - 3 } else { 0 };
+            for error in &errors[start_index..] {
+                DiagReporter::display_single(error.clone());
+            }
         }
     }
 
     /// Finalizes the program parse by checking for errors.
-    pub fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<ParseError>> {
+    pub fn finalize_program_parse(&self, program: ProgramTree) -> Result<ProgramTree, Vec<ParserError>> {
         if self.errors.is_empty() {
             Ok(program)
         } else {
@@ -129,37 +135,41 @@ impl<'a> Parser<'a> {
     /// This function peeks at the next token without advancing the lexer. If the token matches
     /// the expected kind, it consumes the token and returns `Ok`. Otherwise, it returns an error
     /// with a message indicating the mismatch.
-    pub fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), ParseError> {
+    pub fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
         if self.peek_token_is(token_kind.clone()) {
             self.next_token(); // consume current token
             return Ok(());
         }
 
-        Err(CompileTimeError {
-            location: self.peek_token.loc.clone(),
-            etype: ParserErrorType::ExpectedToken(token_kind),
-            file_name: Some(self.lexer.file_name.clone()),
-            source_content: Box::new(self.lexer.input.clone()),
-            verbose: None,
-            caret: Some(self.current_token.span.clone()),
+        Err(Diag {
+            kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+            level: DiagLevel::Error,
+            location: Some(DiagLoc::new(
+                self.lexer.file_name.clone(),
+                self.current_token.loc.clone(),
+                self.current_token.span.end,
+            )),
+            hint: Some(String::from("Invalid token inside an anonymous struct definition.")),
         })
     }
 
     /// This function checks the current token and consumes it if it matches the expected kind.
     /// If the current token does not match, it returns an error indicating the mismatch.
-    pub fn expect_current(&mut self, token_kind: TokenKind) -> Result<(), ParseError> {
+    pub fn expect_current(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
         if self.current_token_is(token_kind.clone()) {
             self.next_token(); // consume current token
             return Ok(());
         }
 
-        Err(CompileTimeError {
-            location: self.current_token.loc.clone(),
-            etype: ParserErrorType::UnexpectedToken(self.current_token.kind.clone(), token_kind),
-            file_name: Some(self.lexer.file_name.clone()),
-            source_content: Box::new(self.lexer.input.clone()),
-            verbose: None,
-            caret: Some(self.current_token.span.clone()),
+        Err(Diag {
+            kind: ParserDiagKind::UnexpectedToken(self.current_token.kind.clone(), token_kind),
+            level: DiagLevel::Error,
+            location: Some(DiagLoc::new(
+                self.lexer.file_name.clone(),
+                self.current_token.loc.clone(),
+                self.current_token.span.end,
+            )),
+            hint: None,
         })
     }
 }

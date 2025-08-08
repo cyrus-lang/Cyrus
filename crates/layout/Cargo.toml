@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-codegen_llvm = { path = "../codegen_llvm", version = "*" }
+codegen = { path = "../codegen", version = "*" }

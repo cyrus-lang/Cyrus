@@ -1,11 +1,11 @@
 use ::parser::{Parser as CyrusParser, parse_program};
 use ast::token::TokenKind;
-use clap::*;
-use codegen_llvm::build::OutputKind;
-use codegen_llvm::context::CodeGenLLVM;
-use codegen_llvm::diag::*;
-use codegen_llvm::opts::{BuildDir, CodeModelOptions, RelocModeOptions};
+use clap::{Parser, ValueEnum};
+use codegen::build::OutputKind;
+use codegen::context::CodeGenLLVM;
+use codegen::opts::{BuildDir, CodeModelOptions, RelocModeOptions};
 use lexer::Lexer;
+use resolver::{Resolver, generate_module_id};
 use utils::fs::{get_directory_of_file, read_file};
 
 const PROJECT_FILE_PATH: &str = "Project.toml";
@@ -81,8 +81,8 @@ struct CompilerOptions {
 }
 
 impl CompilerOptions {
-    pub fn to_compiler_options(&self) -> codegen_llvm::opts::Options {
-        codegen_llvm::opts::Options {
+    pub fn to_compiler_options(&self) -> codegen::opts::Options {
+        codegen::opts::Options {
             opt_level: match self.optimize {
                 OptimizeLevel::None => None,
                 OptimizeLevel::O1 => Some(1),
@@ -254,7 +254,7 @@ macro_rules! init_compiler {
             };
 
             let (program, file_name) = parse_program(file_path.clone());
-            let codegen_llvm = match CodeGenLLVM::new(
+            let codegen = match CodeGenLLVM::new(
                 $context,
                 file_path,
                 file_name.clone(),
@@ -273,11 +273,11 @@ macro_rules! init_compiler {
                     std::process::exit(1);
                 }
             };
-            codegen_llvm
+            codegen
         } else {
             project_file_required();
 
-            match codegen_llvm::opts::Options::read_toml(PROJECT_FILE_PATH.to_string()) {
+            match codegen::opts::Options::read_toml(PROJECT_FILE_PATH.to_string()) {
                 Ok(mut options) => {
                     if !std::path::Path::new("src/main.cyr").exists() {
                         display_single_diag(Diag {
@@ -325,7 +325,7 @@ macro_rules! init_compiler {
                     options.override_options($opts);
 
                     let (program, file_name) = parse_program(main_file_path.clone());
-                    let codegen_llvm = match CodeGenLLVM::new(
+                    let codegen = match CodeGenLLVM::new(
                         $context,
                         main_file_path,
                         file_name.clone(),
@@ -348,7 +348,7 @@ macro_rules! init_compiler {
                         }
                     };
 
-                    codegen_llvm
+                    codegen
                 }
                 Err(err) => {
                     display_single_diag(Diag {
@@ -401,15 +401,15 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(
+            let mut codegen = init_compiler!(
                 &context,
                 file_path.clone(),
                 compiler_options.to_compiler_options(),
                 OutputKind::None
             );
-            codegen_llvm.compile();
-            codegen_llvm.compilation_process_finished();
-            codegen_llvm.execute();
+            codegen.compile();
+            codegen.compilation_process_finished();
+            codegen.execute();
         }
         Commands::EmitLLVM {
             file_path,
@@ -420,14 +420,14 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(
+            let mut codegen = init_compiler!(
                 &context,
                 file_path.clone(),
                 compiler_options.to_compiler_options(),
                 OutputKind::LlvmIr(output_path)
             );
-            codegen_llvm.compile();
-            codegen_llvm.compilation_process_finished();
+            codegen.compile();
+            codegen.compilation_process_finished();
         }
         Commands::EmitASM {
             file_path,
@@ -438,14 +438,14 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(
+            let mut codegen = init_compiler!(
                 &context,
                 file_path.clone(),
                 compiler_options.to_compiler_options(),
                 OutputKind::Asm(output_path)
             );
-            codegen_llvm.compile();
-            codegen_llvm.compilation_process_finished();
+            codegen.compile();
+            codegen.compilation_process_finished();
         }
         Commands::Build {
             file_path,
@@ -456,15 +456,15 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(
+            let mut codegen = init_compiler!(
                 &context,
                 file_path.clone(),
                 compiler_options.to_compiler_options(),
                 OutputKind::None
             );
-            codegen_llvm.compile();
-            codegen_llvm.generate_executable_file(output_path);
-            codegen_llvm.compilation_process_finished();
+            codegen.compile();
+            codegen.generate_executable_file(output_path);
+            codegen.compilation_process_finished();
         }
         Commands::Object {
             file_path,
@@ -475,14 +475,14 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(
+            let mut codegen = init_compiler!(
                 &context,
                 file_path.clone(),
                 compiler_options.to_compiler_options(),
                 OutputKind::ObjectFile(output_path)
             );
-            codegen_llvm.compile();
-            codegen_llvm.compilation_process_finished();
+            codegen.compile();
+            codegen.compilation_process_finished();
         }
         Commands::Dylib {
             file_path,
@@ -493,14 +493,14 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen_llvm = init_compiler!(
+            let mut codegen = init_compiler!(
                 &context,
                 file_path.clone(),
                 compiler_options.to_compiler_options(),
                 OutputKind::Dylib(output_path)
             );
-            codegen_llvm.compile();
-            codegen_llvm.compilation_process_finished();
+            codegen.compile();
+            codegen.compilation_process_finished();
         }
         Commands::Version => {
             println!("Cyrus {}", version)
@@ -545,14 +545,20 @@ fn syntactic_only_command(file_path: String) {
     let (file_content, file_name) = read_file(file_path.clone());
     let mut lexer = Lexer::new(file_content, file_name);
 
-    match CyrusParser::new(&mut lexer).parse() {
-        Ok(_) => {
-            println!("Program is correct grammatically.");
-        }
+    let program_tree = match CyrusParser::new(&mut lexer).parse() {
+        Ok(node) => node.as_program(),
         Err(errors) => {
             for err in errors {
                 err.print();
             }
         }
-    }
+    };
+
+    let resolver = Resolver::new();
+    let module_id = generate_module_id();
+    let typed_program_tree = resolver.resolve_module(module_id, program_tree);
+
+    dbg!(typed_program_tree);
+
+    println!("Program is correct grammatically.");
 }

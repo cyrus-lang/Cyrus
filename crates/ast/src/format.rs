@@ -1,4 +1,4 @@
-use crate::ast::*;
+use crate::*;
 use core::fmt;
 
 impl fmt::Display for BlockStatement {
@@ -34,13 +34,13 @@ impl fmt::Display for Literal {
     }
 }
 
-impl fmt::Display for UnaryOperatorType {
+impl fmt::Display for UnaryOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UnaryOperatorType::PreIncrement => write!(f, "++"),
-            UnaryOperatorType::PreDecrement => write!(f, "--"),
-            UnaryOperatorType::PostIncrement => write!(f, "++"),
-            UnaryOperatorType::PostDecrement => write!(f, "--"),
+            UnaryOperator::PreIncrement => write!(f, "++"),
+            UnaryOperator::PreDecrement => write!(f, "--"),
+            UnaryOperator::PostIncrement => write!(f, "++"),
+            UnaryOperator::PostDecrement => write!(f, "--"),
         }
     }
 }
@@ -57,7 +57,7 @@ impl fmt::Display for FuncCall {
             f,
             "{}({})",
             self.operand,
-            expression_series_to_string(self.arguments.clone())
+            expression_series_to_string(self.args.clone())
         )
     }
 }
@@ -134,24 +134,49 @@ impl fmt::Display for UnnamedStructType {
     }
 }
 
+impl fmt::Display for PrefixOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PrefixOperator::SizeOf => write!(f, "sizeof"),
+            PrefixOperator::Bang => write!(f, "&"),
+            PrefixOperator::Minus => write!(f, "-"),
+        }
+    }
+}
+
+impl fmt::Display for InfixOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InfixOperator::Add => write!(f, "+"),
+            InfixOperator::Sub => write!(f, "-"),
+            InfixOperator::Mul => write!(f, "*"),
+            InfixOperator::Div => write!(f, "/"),
+            InfixOperator::Rem => write!(f, "%"),
+            InfixOperator::Equal => write!(f, "=="),
+            InfixOperator::NotEqual => write!(f, "!="),
+            InfixOperator::LessThan => write!(f, "<"),
+            InfixOperator::GreaterThan => write!(f, ">"),
+            InfixOperator::LessEqual => write!(f, "<="),
+            InfixOperator::GreaterEqual => write!(f, ">="),
+            InfixOperator::And => write!(f, "&&"),
+            InfixOperator::Or => write!(f, "||"),
+        }
+    }
+}
+
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::UnaryOperator(unary_operator) => write!(
-                f,
-                "{}{}",
-                Expression::ModuleImport(unary_operator.module_import.clone()).to_string(),
-                unary_operator.ty
-            ),
+            Expression::Unary(unary_expr) => {
+                write!(f, "{}{}", unary_expr.op.clone(), unary_expr.operand)
+            }
             Expression::Identifier(identifier) => write!(f, "{}", identifier.name),
             Expression::Literal(literal) => write!(f, "{}", literal.to_string()),
-            Expression::Prefix(UnaryExpression { operand, operator, .. }) => {
-                write!(f, "({}{})", operator.kind, operand)
+            Expression::Prefix(prefix_expr) => {
+                write!(f, "({}{})", prefix_expr.op.clone(), prefix_expr.operand.clone())
             }
-            Expression::Infix(BinaryExpression {
-                operator, left, right, ..
-            }) => {
-                write!(f, "({} {} {})", left, operator.kind, right)
+            Expression::Infix(infix_expr) => {
+                write!(f, "({} {} {})", infix_expr.lhs, infix_expr.op, infix_expr.rhs)
             }
             Expression::FuncCall(func_call) => {
                 write!(f, "{}", func_call)
@@ -169,17 +194,17 @@ impl fmt::Display for Expression {
                     "{}.{}({})",
                     method_call.operand,
                     method_call.method_name,
-                    expression_series_to_string(method_call.arguments.clone())
+                    expression_series_to_string(method_call.args.clone())
                 )
             }
             Expression::Array(array) => {
                 write!(f, "[{}]", expression_series_to_string(array.elements.clone()))
             }
             Expression::ArrayIndex(array_index) => {
-                write!(f, "{}[{}]", array_index.expr.to_string(), array_index.index)
+                write!(f, "{}[{}]", array_index.operand, array_index.index)
             }
             Expression::Assignment(assignment) => {
-                write!(f, "{} = {}", assignment.assign_to.to_string(), assignment.expr)
+                write!(f, "{} = {}", assignment.lhs, assignment.rhs)
             }
             Expression::AddressOf(address_of) => write!(f, "&({})", address_of.expr),
             Expression::Dereference(dereference) => write!(f, "(*{})", dereference.expr),
@@ -190,7 +215,7 @@ impl fmt::Display for Expression {
                     Expression::ModuleImport(struct_init.struct_name.clone()).to_string()
                 )?;
                 for field in &struct_init.field_inits {
-                    write!(f, "{}: {};", field.name, field.value)?;
+                    write!(f, "{}: {};", field.identifier, field.value)?;
                 }
                 write!(f, "}}")
             }
@@ -304,4 +329,12 @@ pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
     }
 
     format
+}
+
+pub fn format_expressions(exprs: &Vec<Expression>) -> String {
+    exprs.iter().map(|expr| expr.to_string()).collect()
+}
+
+pub fn format_statements(stmts: &Vec<Statement>) -> String {
+    stmts.iter().map(|stmt| stmt.to_string()).collect()
 }

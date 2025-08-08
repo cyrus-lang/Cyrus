@@ -1,0 +1,21 @@
+[package]
+name = "codegen"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+inkwell = { version = "0.5.0", features = ["llvm18-0"] }
+clap = { version = "4.5.41", features = ["derive"] }
+ast = { path = "../ast", version = "*" }
+utils = { path = "../utils", version = "*" }
+parser = { path = "../parser", version = "*" }
+colorized = "1.0.0"
+serde = { version = "1.0.219", features = ["derive"] }
+toml = "0.8.20"
+crc32fast = "1.4.2"
+serde_json = "1.0.140"
+rand = "0.9.0"
+console = "0.15.11"
+
+[build-dependencies]
+cc = "1.2.19"

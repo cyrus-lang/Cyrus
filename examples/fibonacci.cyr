@@ -1,7 +1,7 @@
-extern fn printf(format: const char*, ...);
-extern fn exit(status: int);
+extern func printf(format: const char*, ...);
+extern func exit(status: int);
 
-fn fibonacci(n: int32): int32 {
+func fibonacci(n: int32) int32 {
     if (n == 0) {
         return 0;
     }
@@ -13,7 +13,7 @@ fn fibonacci(n: int32): int32 {
     }
 }
 
-fn main() {
+func main() {
     for (#i = 0; i < 30; i++) {
         printf("%d\n", fibonacci(i));
     }

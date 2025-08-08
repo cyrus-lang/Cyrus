@@ -1,4 +1,4 @@
-use crate::ast::Literal;
+use crate::Literal;
 use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -54,6 +54,7 @@ pub enum TokenKind {
     And,
     Or,
     // Keywords
+    Interface,
     Function,
     Typedef,
     Switch,
@@ -169,6 +170,7 @@ impl fmt::Display for TokenKind {
             Self::Semicolon => write!(f, ";"),
             Self::Colon => write!(f, ":"),
             // Keywords
+            Self::Interface => write!(f, "interface"),
             Self::Typedef => write!(f, "type"),
             Self::Function => write!(f, "func"),
             Self::Switch => write!(f, "switch"),
@@ -256,6 +258,12 @@ pub struct Location {
 impl Location {
     pub fn new(line: usize, column: usize) -> Self {
         Self { line, column }
+    }
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
     }
 }
 
