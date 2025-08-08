@@ -11,7 +11,9 @@ use ast::{
     Identifier, LiteralKind, ProgramTree, Statement, Struct, TypeSpecifier, Typedef, Variable,
     token::{Location, Span, Token, TokenKind},
 };
-use ast::{GlobalVariable, Import, Interface, ModuleImport, ModuleSegment, SelfModifierKind, SwitchCasePattern};
+use ast::{
+    GlobalVariable, Import, Interface, ModuleImport, ModulePath, ModuleSegment, SelfModifierKind, SwitchCasePattern,
+};
 use diagcentral::{reporter::DiagReporter, *};
 use rand::Rng;
 use std::collections::HashSet;
@@ -35,6 +37,7 @@ pub struct Resolver {
     pub reporter: DiagReporter<ResolverDiagKind>,
     pub module_loader: ModuleLoader,
     pub master_module_file_path: String,
+    already_imported_modules: Vec<ModulePath>,
     current_module: Option<ModuleID>,
 }
 
@@ -50,6 +53,7 @@ impl Resolver {
             analyzed_modules: Arc::new(Mutex::new(HashSet::new())),
             module_aliases: Arc::new(Mutex::new(HashMap::new())),
             file_paths: Arc::new(Mutex::new(HashMap::new())),
+            already_imported_modules: Vec::new(),
             reporter: DiagReporter::new(),
             module_loader: ModuleLoader::new(opts),
             current_module: None,
@@ -109,21 +113,39 @@ impl Resolver {
     }
 
     fn resolve_import(&mut self, import: Import, mut visiting: &mut Visiting) {
+        let mut duplicate_import = false;
+        for module_path in &import.paths {
+            let already_loaded = self
+                .already_imported_modules
+                .iter()
+                .find(|loaded_module_path| **loaded_module_path == *module_path);
+
+            if already_loaded.is_some() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ImportTwice {
+                        module_name: module_segments_as_string(module_path.segments.clone()),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.get_current_module_file_path(),
+                        import.loc.clone(),
+                        import.span.end,
+                    )),
+                    hint: Some("Consider to remove previous declaration.".to_string()),
+                });
+                duplicate_import = true;
+            }
+
+            self.already_imported_modules.push(module_path.clone());
+        }
+
+        if duplicate_import {
+            return;
+        }
+
         let loaded_modules_list = self
             .module_loader
             .load_module(import.clone(), self.get_current_module_file_path());
-
-        let report_if_imports_twice = |this: &mut Resolver, module_file_path: String| -> bool {
-            let file_paths = this.file_paths.lock().unwrap();
-            let imported_before = file_paths
-                .values()
-                .into_iter()
-                .find(|file_path| **file_path == module_file_path)
-                .is_some();
-            drop(file_paths);
-
-            if imported_before { true } else { false }
-        };
 
         for loaded_module in loaded_modules_list {
             let (module_alias, module_file_path, program_tree) = match loaded_module {
@@ -160,21 +182,6 @@ impl Resolver {
                     location: None,
                     hint: None,
                 });
-                continue;
-            } else if report_if_imports_twice(self, module_file_path.clone()) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ImportTwice {
-                        module_name: module_alias,
-                    },
-                    location: Some(DiagLoc::new(
-                        self.get_current_module_file_path(),
-                        import.loc.clone(),
-                        import.span.end,
-                    )),
-                    hint: Some("Consider to remove previous declaration.".to_string()),
-                });
-
                 continue;
             }
 

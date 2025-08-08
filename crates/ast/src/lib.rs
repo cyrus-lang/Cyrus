@@ -416,6 +416,36 @@ pub struct ModulePath {
     pub span: Span,
 }
 
+impl PartialEq for ModulePath {
+    fn eq(&self, other: &Self) -> bool {
+        let self_submodules: Vec<&String> = self
+            .segments
+            .iter()
+            .filter_map(|segment| {
+                if let ModuleSegment::SubModule(identifier) = segment {
+                    Some(&identifier.name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let other_submodules: Vec<&String> = other
+            .segments
+            .iter()
+            .filter_map(|segment| {
+                if let ModuleSegment::SubModule(identifier) = segment {
+                    Some(&identifier.name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        self_submodules == other_submodules
+    }
+}
+
 impl ModulePath {
     pub fn as_module_import(&self) -> ModuleImport {
         ModuleImport {
