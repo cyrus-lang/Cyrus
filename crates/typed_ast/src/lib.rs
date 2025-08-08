@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::types::ConcreteType;
 use ast::{
-    AccessSpecifier, Literal, SelfModifier,
+    AccessSpecifier, Identifier, Literal, SelfModifier,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::Location,
 };
@@ -235,15 +235,16 @@ pub struct TypedEnum {
 
 #[derive(Debug, Clone)]
 pub enum TypedEnumVariant {
-    Identifier(String),
-    Valued(String, Box<TypedExpression>),
-    Variant(String, Vec<TypedEnumValuedField>),
+    Identifier(Identifier),
+    Valued(Identifier, Box<TypedExpression>),
+    Variant(Identifier, Vec<TypedEnumValuedField>),
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedEnumValuedField {
     pub name: String,
     pub field_type: ConcreteType,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone)]

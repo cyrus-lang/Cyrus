@@ -1,5 +1,19 @@
 func main() {
-    #a: bool = true;
+    
+}
 
-    #addr = &a;
+enum Color {
+    Red,
+    Blue,
+    Custom(a: int32, a: int32)
+
+    func to_string() {
+
+    }
+}
+
+struct Person {
+    field: int32;
+    
+    func to_string() {}
 }

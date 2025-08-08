@@ -208,6 +208,13 @@ impl SymbolEntry {
             _ => None,
         }
     }
+
+    pub fn as_method(&self) -> Option<&ResolvedMethod> {
+        match self {
+            SymbolEntry::Method(method) => Some(method),
+            _ => None,
+        }
+    }
 }
 
 pub fn generate_symbol_id() -> SymbolID {

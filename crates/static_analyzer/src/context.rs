@@ -64,17 +64,17 @@ impl<'a> AnalysisContext<'a> {
         for typed_stmt in &self.ast.body {
             match typed_stmt {
                 TypedStatement::FuncDef(typed_func_def) => self.analyze_block_statement(&typed_func_def.body),
-                TypedStatement::Import(typed_import) => todo!(),
-                TypedStatement::GlobalVariable(typed_global_variable) => todo!(),
-                TypedStatement::Variable(typed_variable) => todo!(),
-                TypedStatement::FuncDecl(typed_func_decl) => todo!(),
-                TypedStatement::BlockStatement(typed_block_statement) => todo!(),
-                TypedStatement::Struct(typed_struct) => todo!(),
-                TypedStatement::Enum(typed_enum) => todo!(),
+                TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
+                TypedStatement::Import(typed_import) => todo!(),
+                TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct),
+                TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum),
+                TypedStatement::GlobalVariable(_) => {}
                 // Not analyzed
                 TypedStatement::Typedef(_) => continue,
                 // Invalid top-level statements
+                TypedStatement::Variable(_) => todo!(),
+                TypedStatement::BlockStatement(_) => unreachable!(),
                 TypedStatement::If(_) => unreachable!(),
                 TypedStatement::Return(_) => unreachable!(),
                 TypedStatement::Break(_) => unreachable!(),
@@ -87,6 +87,150 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         }
+    }
+
+    pub(crate) fn analyze_struct(&mut self, typed_struct: &TypedStruct) {
+        let mut field_names: Vec<String> = Vec::new();
+
+        for field in &typed_struct.fields {
+            if field_names.contains(&field.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::DuplicateFieldName {
+                        struct_name: typed_struct.name.clone(),
+                        field_name: field.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field.loc.clone(),
+                        0,
+                    )),
+                    hint: Some("Consider to rename the field to a different name.".to_string()),
+                });
+                continue;
+            }
+
+            field_names.push(field.name.clone());
+        }
+    }
+
+    pub(crate) fn analyze_enum(&mut self, typed_enum: &TypedEnum) {
+        let mut variant_names: Vec<String> = Vec::new();
+
+        for variant in &typed_enum.variants {
+            let variant_identifier = match variant {
+                TypedEnumVariant::Identifier(identifier) => identifier,
+                TypedEnumVariant::Valued(identifier, _) => identifier,
+                TypedEnumVariant::Variant(identifier, typed_enum_valued_fields) => {
+                    let mut field_names: Vec<String> = Vec::new();
+
+                    for field in typed_enum_valued_fields {
+                        if field_names.contains(&field.name) {
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: AnalyzerDiagKind::DuplicateEnumFieldName {
+                                    enum_name: typed_enum.name.clone(),
+                                    field_name: field.name.clone(),
+                                    variant_name: identifier.name.clone()
+                                },
+                                location: Some(DiagLoc::new(
+                                    self.resolver.get_current_module_file_path(),
+                                    field.loc.clone(),
+                                    0,
+                                )),
+                                hint: Some("Consider to rename the field to a different name.".to_string()),
+                            });
+                            continue;
+                        }
+
+                        field_names.push(field.name.clone());
+                    }
+                    identifier
+                }
+            };
+
+            if variant_names.contains(&variant_identifier.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::DuplicateEnumVariantName {
+                        enum_name: typed_enum.name.clone(),
+                        variant_name: variant_identifier.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        variant_identifier.loc.clone(),
+                        0,
+                    )),
+                    hint: Some("Consider to rename the variant to a different name.".to_string()),
+                });
+                continue;
+            }
+
+            variant_names.push(variant_identifier.name.clone());
+        }
+    }
+
+    pub(crate) fn check_duplicate_param_names(
+        &mut self,
+        params: &[TypedFuncParamKind],
+        variadic: Option<&TypedFuncVariadicParams>,
+        location: DiagLoc,
+    ) {
+        let mut param_names: Vec<String> = Vec::new();
+
+        for (param_idx, param) in params.iter().enumerate() {
+            match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => {
+                    if param_names.contains(&typed_func_param.name) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::DuplicateFuncParameter {
+                                param_name: typed_func_param.name.clone(),
+                                param_idx: param_idx.try_into().unwrap(),
+                            },
+                            location: Some(location.clone()),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                        continue;
+                    }
+
+                    param_names.push(typed_func_param.name.clone());
+                }
+                TypedFuncParamKind::SelfModifier(_) => {
+                    param_names.push("self".to_string());
+                }
+            }
+        }
+
+        if let Some(variadic_param) = variadic {
+            match variadic_param {
+                TypedFuncVariadicParams::Typed(identifier, _) => {
+                    if param_names.contains(identifier) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::DuplicateFuncVariadicParameter {
+                                param_name: identifier.clone(),
+                            },
+                            location: Some(location.clone()),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                    }
+                }
+                TypedFuncVariadicParams::UntypedCStyle => {}
+            }
+        }
+    }
+
+    fn analyze_func_decl(&mut self, typed_func_decl: &TypedFuncDecl) {
+        self.check_duplicate_param_names(
+            &typed_func_decl.params.list,
+            typed_func_decl.params.variadic.as_ref(),
+            DiagLoc::new(
+                self.resolver.get_current_module_file_path(),
+                typed_func_decl.loc.clone(),
+                0,
+            ),
+        );
     }
 
     fn analyze_interface(&mut self, typed_interface: &TypedInterface) {
@@ -114,6 +258,7 @@ impl<'a> AnalysisContext<'a> {
                     )),
                     hint: None,
                 });
+                continue;
             }
 
             name_list.push(method.name.clone());

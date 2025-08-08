@@ -56,7 +56,21 @@ pub enum AnalyzerDiagKind {
     DuplicateFuncVariadicParameter {
         param_name: String,
     },
+    DuplicateFieldName {
+        struct_name: String,
+        field_name: String,
+    },
+    DuplicateEnumVariantName {
+        enum_name: String,
+        variant_name: String,
+    },
+    DuplicateEnumFieldName {
+        enum_name: String,
+        field_name: String,
+        variant_name: String,
+    },
     AddressOfRvalue,
+    DerefNonPointerValue,
 }
 
 impl fmt::Display for AnalyzerDiagKind {
@@ -65,11 +79,46 @@ impl fmt::Display for AnalyzerDiagKind {
             AnalyzerDiagKind::AddressOfRvalue => {
                 write!(f, "Cannot take the address of a temporary value.")
             }
+            AnalyzerDiagKind::DerefNonPointerValue => {
+                write!(f, "Cannot dereference non-pointer value.")
+            }
             AnalyzerDiagKind::DuplicateFuncParameter { param_idx, param_name } => {
                 write!(f, "Duplicate parameter name '{}' at index {}.", param_name, param_idx)
             }
             AnalyzerDiagKind::DuplicateFuncVariadicParameter { param_name } => {
                 write!(f, "Duplicate declaration of variadic parameter '{}'.", param_name)
+            }
+            AnalyzerDiagKind::DuplicateEnumVariantName {
+                enum_name,
+                variant_name,
+            } => {
+                write!(
+                    f,
+                    "Duplicate declaration of enum variant '{}' in enum '{}'.",
+                    variant_name, enum_name
+                )
+            }
+            AnalyzerDiagKind::DuplicateEnumFieldName {
+                enum_name,
+                field_name,
+                variant_name,
+            } => {
+                write!(
+                    f,
+                    "Duplicate field name '{}' in variant '{}' of enum '{}'.",
+                    field_name, variant_name, enum_name
+                )
+            }
+
+            AnalyzerDiagKind::DuplicateFieldName {
+                struct_name,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "Duplicate declaration of field '{}' in struct '{}'.",
+                    field_name, struct_name
+                )
             }
             AnalyzerDiagKind::FuncCallArgsCountMismatch {
                 args,
