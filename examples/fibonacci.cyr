@@ -1,7 +1,7 @@
 extern func printf(format: const char*, ...);
 extern func exit(status: int);
 
-func fibonacci(n: int32): int32 {
+func fibonacci(n: int32) int32 {
     if (n == 0) {
         return 0;
     }

@@ -4,7 +4,7 @@ use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::SymbolEntry;
 use typed_ast::{
     ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedCast, TypedDereference, TypedExpression, TypedFuncCall,
-    TypedFuncParamKind, TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression, TypedUnaryExpression,
+    TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression, TypedUnaryExpression,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
