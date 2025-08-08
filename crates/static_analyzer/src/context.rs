@@ -1,30 +1,61 @@
 use crate::diagnostics::AnalyzerDiagKind;
-use ast::{LiteralKind, operators::PrefixOperator};
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use resolver::{
     Resolver,
     scope::{LocalOrGlobalSymbol, LocalSymbol, SymbolEntry},
 };
-use typed_ast::{
-    format::format_concrete_type,
-    types::{BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayType},
-    *,
-};
+use typed_ast::{format::format_concrete_type, *};
 
 pub struct AnalysisContext<'a> {
     pub ast: &'a TypedProgramTree,
     pub resolver: &'a Resolver,
     pub reporter: DiagReporter<AnalyzerDiagKind>,
     pub module_id: ModuleID,
+    pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
 }
 
 impl<'a> AnalysisContext<'a> {
     pub fn new(resolver: &'a Resolver, module_id: ModuleID, ast: &'a TypedProgramTree) -> Self {
+        let symbol_formatter = Box::new(
+            move |scope_id_opt: Option<ScopeID>| -> Box<dyn Fn(SymbolID) -> String> {
+                Box::new(move |symbol_id: SymbolID| -> String {
+                    let local_scope_opt =
+                        scope_id_opt.and_then(|scope_id| resolver.get_scope_ref(module_id, scope_id).clone());
+
+                    let local_or_global_symbol = resolver
+                        .resolve_local_or_global_symbol(module_id, local_scope_opt.clone(), symbol_id)
+                        .unwrap();
+
+                    match local_or_global_symbol {
+                        LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol {
+                            LocalSymbol::Variable(resolved_variable) => resolved_variable.typed_variable.name.clone(),
+                            LocalSymbol::Struct(resolved_struct) => resolved_struct.struct_sig.name.clone(),
+                            LocalSymbol::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
+                            LocalSymbol::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
+                            LocalSymbol::Interface(resolved_interface) => resolved_interface.interface_sig.name.clone(),
+                        },
+                        LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry {
+                            SymbolEntry::Method(resolved_method) => resolved_method.func_sig.name.clone(),
+                            SymbolEntry::Func(resolved_function) => resolved_function.func_sig.name.clone(),
+                            SymbolEntry::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
+                            SymbolEntry::GlobalVar(resolved_global_var) => {
+                                resolved_global_var.global_var_sig.name.clone()
+                            }
+                            SymbolEntry::Struct(resolved_struct) => resolved_struct.struct_sig.name.clone(),
+                            SymbolEntry::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
+                            SymbolEntry::Interface(resolved_interface) => resolved_interface.interface_sig.name.clone(),
+                        },
+                    }
+                })
+            },
+        );
+
         Self {
             ast,
             resolver,
             reporter: DiagReporter::new(),
             module_id,
+            symbol_formatter,
         }
     }
 
@@ -122,6 +153,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &TypedVariable) {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
         if typed_variable.ty.is_none() && typed_variable.rhs.is_none() {
             return;
         }
@@ -132,13 +165,13 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if let Some(var_type) = &typed_variable.ty {
+            let lhs_type = format_concrete_type(var_type.clone(), &formatter_closure);
+            let rhs_type = format_concrete_type(value_type.clone(), &formatter_closure);
+
             if !self.check_type_mismatch(value_type.clone(), var_type.clone()) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::AssignmentTypeMismatch {
-                        lhs_type: format_concrete_type(var_type.clone(), self.get_symbol_formatter()),
-                        rhs_type: format_concrete_type(value_type, self.get_symbol_formatter()),
-                    },
+                    kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
                     location: Some(DiagLoc::new(
                         self.resolver.get_current_module_file_path(),
                         typed_variable.loc.clone(),
@@ -151,6 +184,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, typed_assignment: &TypedAssignment) {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
         let lhs_type = match self.get_typed_expr_type(scope_id_opt, &typed_assignment.lhs) {
             Some(concrete_type) => concrete_type,
             None => return,
@@ -162,12 +197,12 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if !self.check_type_mismatch(rhs_type.clone(), lhs_type.clone()) {
+            let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
+            let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
+
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::AssignmentTypeMismatch {
-                    lhs_type: format_concrete_type(lhs_type, self.get_symbol_formatter()),
-                    rhs_type: format_concrete_type(rhs_type, self.get_symbol_formatter()),
-                },
+                kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
                 location: Some(DiagLoc::new(
                     self.resolver.get_current_module_file_path(),
                     typed_assignment.loc.clone(),

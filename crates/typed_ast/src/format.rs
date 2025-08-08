@@ -3,7 +3,7 @@ use crate::{
     types::{BasicConcreteType, ConcreteType, TypedArrayCapacity},
 };
 
-pub fn format_concrete_type(concrete_type: ConcreteType, format_symbol: Box<&dyn Fn(SymbolID) -> String>) -> String {
+pub fn format_concrete_type<'a>(concrete_type: ConcreteType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
     match concrete_type {
         ConcreteType::Symbol(symbol_id) => return format_symbol(symbol_id),
         ConcreteType::BasicType(basic_concrete_type) => match basic_concrete_type {

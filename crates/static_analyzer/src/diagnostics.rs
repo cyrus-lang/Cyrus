@@ -10,6 +10,16 @@ pub enum AnalyzerDiagKind {
         elements: u32,
         expected: u32,
     },
+    FuncCallArgsCountMismatch {
+        args: u32,
+        expected: u32,
+        func_name: String,
+    },
+    FuncCallVariadicParamTypeMismatch {
+        param_type: String,
+        argument_idx: u32,
+        argument_type: String,
+    },
     ArrayElementTypeMismatch {
         element_type: String,
         element_index: u32,
@@ -36,11 +46,56 @@ pub enum AnalyzerDiagKind {
         interface_name: String,
         method_name: String,
     },
+    NonFunctionSymbol {
+        symbol_name: String,
+    },
+    DuplicateFuncParameter {
+        param_name: String,
+        param_idx: u32,
+    },
+    DuplicateFuncVariadicParameter {
+        param_name: String,
+    },
+    AddressOfRvalue,
 }
 
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::AddressOfRvalue => {
+                write!(f, "Cannot take the address of a temporary value.")
+            }
+            AnalyzerDiagKind::DuplicateFuncParameter { param_idx, param_name } => {
+                write!(f, "Duplicate parameter name '{}' at index {}.", param_name, param_idx)
+            }
+            AnalyzerDiagKind::DuplicateFuncVariadicParameter { param_name } => {
+                write!(f, "Duplicate declaration of variadic parameter '{}'.", param_name)
+            }
+            AnalyzerDiagKind::FuncCallArgsCountMismatch {
+                args,
+                expected,
+                func_name,
+            } => {
+                write!(
+                    f,
+                    "Function '{}' expects {} arguments, but {} was provided..",
+                    func_name, expected, args
+                )
+            }
+            AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
+                param_type,
+                argument_idx,
+                argument_type,
+            } => {
+                write!(
+                    f,
+                    "Argument at index {} has type '{}', but the variadic parameter expects type '{}'.",
+                    argument_idx, argument_type, param_type
+                )
+            }
+            AnalyzerDiagKind::NonFunctionSymbol { symbol_name } => {
+                write!(f, "Symbol '{}' is not a function.", symbol_name)
+            }
             AnalyzerDiagKind::ArrayElementsCountMismatch { elements, expected } => {
                 write!(f, "Cannot use {} elements in an array of size {}.", elements, expected)
             }

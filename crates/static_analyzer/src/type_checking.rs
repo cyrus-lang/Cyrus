@@ -1,9 +1,10 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::{LiteralKind, operators::PrefixOperator};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
+use resolver::scope::SymbolEntry;
 use typed_ast::{
-    ScopeID, SymbolID, TypedArray, TypedCast, TypedExpression, TypedInfixExpression, TypedPrefixExpression,
-    TypedUnaryExpression,
+    ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedCast, TypedDereference, TypedExpression, TypedFuncCall,
+    TypedFuncParamKind, TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression, TypedUnaryExpression,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
@@ -151,12 +152,6 @@ impl<'a> AnalysisContext<'a> {
         )
     }
 
-    pub(crate) fn get_symbol_formatter(&self) -> Box<&dyn Fn(SymbolID) -> String> {
-        Box::new(&move |symbol_id: SymbolID| -> String {
-            todo!();
-        })
-    }
-
     pub(crate) fn get_typed_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -209,17 +204,243 @@ impl<'a> AnalysisContext<'a> {
             TypedExpression::Cast(typed_cast) => self.get_cast_expr_type(scope_id_opt, typed_cast),
             TypedExpression::Array(typed_array) => self.get_array_expr_type(scope_id_opt, typed_array),
             TypedExpression::ArrayIndex(typed_array_index) => todo!(),
-            TypedExpression::AddressOf(typed_address_of) => todo!(),
-            TypedExpression::Dereference(typed_dereference) => todo!(),
+            TypedExpression::AddressOf(typed_address_of) => {
+                self.get_address_of_expr_type(scope_id_opt, typed_address_of)
+            }
+            TypedExpression::Dereference(typed_dereference) => {
+                self.get_dereference_expr_type(scope_id_opt, typed_dereference)
+            }
             TypedExpression::StructInit(typed_struct_init) => todo!(),
-            TypedExpression::FuncCall(typed_func_call) => todo!(),
+            TypedExpression::FuncCall(typed_func_call) => self.get_func_call_expr_type(scope_id_opt, typed_func_call),
             TypedExpression::FieldAccess(typed_field_access) => todo!(),
             TypedExpression::MethodCall(typed_method_call) => todo!(),
             TypedExpression::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
         }
     }
 
+    fn get_address_of_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        address_of: &TypedAddressOf,
+    ) -> Option<ConcreteType> {
+        if !address_of.operand.is_lvalue() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::AddressOfRvalue,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    address_of.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        }
+
+        let operand_type = match self.get_typed_expr_type(scope_id_opt, &address_of.operand) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
+
+        Some(ConcreteType::Pointer(Box::new(operand_type)))
+    }
+
+    fn get_dereference_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        dereference: &TypedDereference,
+    ) -> Option<ConcreteType> {
+        let operand_type = match self.get_typed_expr_type(scope_id_opt, &dereference.operand) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
+
+        Some(ConcreteType::Pointer(Box::new(operand_type)))
+    }
+
+    fn check_func_call(&mut self, scope_id_opt: Option<ScopeID>, func_call: &TypedFuncCall) -> Option<ConcreteType> {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
+        let local_scope_opt = {
+            if let Some(scope_id) = scope_id_opt {
+                Some(self.resolver.get_scope_ref(self.module_id, scope_id).unwrap())
+            } else {
+                None
+            }
+        };
+
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(self.module_id, local_scope_opt, func_call.symbol_id)
+            .unwrap();
+
+        let func_sig_opt = match local_or_global_symbol {
+            resolver::scope::LocalOrGlobalSymbol::LocalSymbol(_) => None,
+            resolver::scope::LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry {
+                SymbolEntry::Func(resolved_function) => Some(resolved_function.func_sig),
+                _ => None,
+            },
+        };
+
+        let func_sig = match func_sig_opt {
+            Some(func_sig) => func_sig,
+            None => {
+                let func_name = formatter_closure(func_call.symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::NonFunctionSymbol { symbol_name: func_name },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        func_call.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let is_variadic = func_sig.params.variadic.is_some();
+
+        if !is_variadic && func_call.args.len() != func_sig.params.list.len() {
+            let func_name = formatter_closure(func_call.symbol_id);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::FuncCallArgsCountMismatch {
+                    args: func_call.args.len() as u32,
+                    expected: func_sig.params.list.len() as u32,
+                    func_name,
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    func_call.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        } else if is_variadic && func_call.args.len() < func_sig.params.list.len() {
+            let func_name = formatter_closure(func_call.symbol_id);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::FuncCallArgsCountMismatch {
+                    args: func_call.args.len() as u32,
+                    expected: func_sig.params.list.len() as u32,
+                    func_name,
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    func_call.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        }
+
+        if is_variadic {
+            match func_sig.params.variadic.clone().unwrap() {
+                TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
+                    let static_params_len = func_sig.params.list.len();
+                    let variadic_args = &func_call.args[static_params_len..];
+
+                    for (argument_idx, argument) in variadic_args.iter().enumerate() {
+                        let argument_type = match self.get_typed_expr_type(scope_id_opt, argument) {
+                            Some(concrete_type) => concrete_type,
+                            None => continue,
+                        };
+
+                        if !self.check_type_mismatch(argument_type.clone(), variadic_param_type.clone()) {
+                            let param_type = format_concrete_type(variadic_param_type.clone(), &formatter_closure);
+                            let argument_type = format_concrete_type(argument_type, &formatter_closure);
+
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
+                                    param_type,
+                                    argument_type,
+                                    argument_idx: (argument_idx + static_params_len) as u32,
+                                },
+                                location: Some(DiagLoc::new(
+                                    self.resolver.get_current_module_file_path(),
+                                    func_call.loc.clone(),
+                                    0,
+                                )),
+                                hint: None,
+                            });
+                        }
+                    }
+                }
+                TypedFuncVariadicParams::UntypedCStyle => {}
+            }
+        }
+
+        let mut param_names: Vec<String> = Vec::new();
+
+        for (param_idx, param) in func_sig.params.list.iter().enumerate() {
+            match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => {
+                    if param_names.contains(&typed_func_param.name) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::DuplicateFuncParameter {
+                                param_name: typed_func_param.name.clone(),
+                                param_idx: param_idx.try_into().unwrap(),
+                            },
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_current_module_file_path(),
+                                func_call.loc.clone(),
+                                0,
+                            )),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                    }
+
+                    param_names.push(typed_func_param.name.clone());
+                }
+                TypedFuncParamKind::SelfModifier(_) => {
+                    param_names.push("self".to_string());
+                }
+            }
+        }
+
+        if is_variadic {
+            match func_sig.params.variadic.unwrap() {
+                TypedFuncVariadicParams::Typed(identifier, _) => {
+                    if param_names.contains(&identifier) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::DuplicateFuncVariadicParameter { param_name: identifier },
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_current_module_file_path(),
+                                func_call.loc.clone(),
+                                0,
+                            )),
+                            hint: Some("Consider to rename the parameter to a different name.".to_string()),
+                        });
+                    }
+                }
+                TypedFuncVariadicParams::UntypedCStyle => {}
+            }
+        }
+
+        Some(func_sig.return_type)
+    }
+
+    fn get_func_call_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        func_call: &TypedFuncCall,
+    ) -> Option<ConcreteType> {
+        self.check_func_call(scope_id_opt, func_call)
+    }
+
     fn get_array_expr_type(&mut self, scope_id_opt: Option<ScopeID>, typed_array: &TypedArray) -> Option<ConcreteType> {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
         let typed_array_type = match &typed_array.array_type {
             ConcreteType::Array(typed_array_type) => typed_array_type,
             _ => unreachable!(),
@@ -236,15 +457,15 @@ impl<'a> AnalysisContext<'a> {
             };
 
             if !self.check_type_mismatch(element_type.clone(), *typed_array_type.element_type.clone()) {
+                let element_type = format_concrete_type(element_type, &formatter_closure);
+                let expected_type = format_concrete_type(*typed_array_type.element_type.clone(), &formatter_closure);
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::ArrayElementTypeMismatch {
-                        element_type: format_concrete_type(element_type, self.get_symbol_formatter()),
+                        element_type,
                         element_index: element_index.try_into().unwrap(),
-                        expected_type: format_concrete_type(
-                            *typed_array_type.element_type.clone(),
-                            self.get_symbol_formatter(),
-                        ),
+                        expected_type,
                     },
                     location: Some(DiagLoc::new(
                         self.resolver.get_current_module_file_path(),
@@ -260,18 +481,20 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn get_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &TypedCast) -> Option<ConcreteType> {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
         let operand = match self.get_typed_expr_type(scope_id_opt, &cast.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
 
         if !self.check_type_mismatch(operand.clone(), cast.target_type.clone()) {
+            let lhs_type = format_concrete_type(cast.target_type.clone(), &formatter_closure);
+            let rhs_type = format_concrete_type(operand, &formatter_closure);
+
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::CastTypeMismatch {
-                    lhs_type: format_concrete_type(cast.target_type.clone(), self.get_symbol_formatter()),
-                    rhs_type: format_concrete_type(operand, self.get_symbol_formatter()),
-                },
+                kind: AnalyzerDiagKind::CastTypeMismatch { lhs_type, rhs_type },
                 location: Some(DiagLoc::new(
                     self.resolver.get_current_module_file_path(),
                     cast.loc.clone(),
@@ -290,6 +513,8 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         infix_expr: &TypedInfixExpression,
     ) -> Option<ConcreteType> {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
         let lhs_type = match self.get_typed_expr_type(scope_id_opt, &infix_expr.lhs) {
             Some(concrete_type) => concrete_type,
             None => return None,
@@ -318,12 +543,12 @@ impl<'a> AnalysisContext<'a> {
         match valid_concrete_type {
             Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type)),
             None => {
+                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
+                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidInfix {
-                        lhs_type: format_concrete_type(lhs_type, self.get_symbol_formatter()),
-                        rhs_type: format_concrete_type(rhs_type, self.get_symbol_formatter()),
-                    },
+                    kind: AnalyzerDiagKind::InvalidInfix { lhs_type, rhs_type },
                     location: Some(DiagLoc::new(
                         self.resolver.get_current_module_file_path(),
                         infix_expr.loc.clone(),
@@ -341,6 +566,8 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         prefix_expr: &TypedPrefixExpression,
     ) -> Option<ConcreteType> {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
         let operand_type = match self.get_typed_expr_type(scope_id_opt, &prefix_expr.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
@@ -360,11 +587,11 @@ impl<'a> AnalysisContext<'a> {
                 match valid_concrete_type {
                     Some(concrete_type) => Some(concrete_type),
                     None => {
+                        let operand_type = format_concrete_type(operand_type, &formatter_closure);
+
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::PrefixBangOnNonBool {
-                                operand_type: format_concrete_type(operand_type, self.get_symbol_formatter()),
-                            },
+                            kind: AnalyzerDiagKind::PrefixBangOnNonBool { operand_type },
                             location: Some(DiagLoc::new(
                                 self.resolver.get_current_module_file_path(),
                                 prefix_expr.loc.clone(),
@@ -406,11 +633,11 @@ impl<'a> AnalysisContext<'a> {
                 match valid_concrete_type {
                     Some(concrete_type) => Some(concrete_type),
                     None => {
+                        let operand_type = format_concrete_type(operand_type, &formatter_closure);
+
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::PrefixMinusOnNonInteger {
-                                operand_type: format_concrete_type(operand_type, self.get_symbol_formatter()),
-                            },
+                            kind: AnalyzerDiagKind::PrefixMinusOnNonInteger { operand_type },
                             location: Some(DiagLoc::new(
                                 self.resolver.get_current_module_file_path(),
                                 prefix_expr.loc.clone(),
@@ -430,6 +657,8 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         unary_expr: &TypedUnaryExpression,
     ) -> Option<ConcreteType> {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
         let operand_type = match self.get_typed_expr_type(scope_id_opt, &unary_expr.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
@@ -449,11 +678,11 @@ impl<'a> AnalysisContext<'a> {
         match valid_operand_type {
             Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type.clone())),
             None => {
+                let operand_type = format_concrete_type(operand_type, &formatter_closure);
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidUnary {
-                        operand_type: format_concrete_type(operand_type, self.get_symbol_formatter()),
-                    },
+                    kind: AnalyzerDiagKind::InvalidUnary { operand_type },
                     location: Some(DiagLoc::new(
                         self.resolver.get_current_module_file_path(),
                         unary_expr.loc.clone(),
