@@ -1,5 +1,7 @@
-import fibonacci;
+import models;
+
+// TODO Add access_specifier for struct fields.
 
 func main() {
-    
+    #my_user = models::PersonModel;
 }
