@@ -2,6 +2,20 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    StructHasNoFieldNamed {
+        struct_name: String,
+        field_name: String,
+    },
+    StructMissingFields {
+        struct_name: String,
+        missing_field_names: Vec<String>,
+    },
+    StructFieldTypeMismatch {
+        struct_name: String,
+        field_name: String,
+        expected_type: String,
+        found_type: String,
+    },
     AssignmentTypeMismatch {
         lhs_type: String,
         rhs_type: String,
@@ -49,6 +63,9 @@ pub enum AnalyzerDiagKind {
     NonFunctionSymbol {
         symbol_name: String,
     },
+    NonStructSymbol {
+        symbol_name: String,
+    },
     DuplicateFuncParameter {
         param_name: String,
         param_idx: u32,
@@ -76,6 +93,39 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::StructMissingFields {
+                struct_name,
+                missing_field_names,
+            } => {
+                write!(
+                    f,
+                    "Missing required fields {} in struct '{}'.",
+                    missing_field_names
+                        .iter()
+                        .map(|f| format!("'{}'", f))
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                    struct_name
+                )
+            }
+            AnalyzerDiagKind::StructHasNoFieldNamed {
+                struct_name,
+                field_name,
+            } => {
+                write!(f, "Struct '{}' has no field named '{}'.", struct_name, field_name)
+            }
+            AnalyzerDiagKind::StructFieldTypeMismatch {
+                struct_name,
+                field_name,
+                expected_type,
+                found_type,
+            } => {
+                write!(
+                    f,
+                    "Type mismatch for field '{}' in struct '{}' (expected '{}', found '{}').",
+                    field_name, struct_name, expected_type, found_type
+                )
+            }
             AnalyzerDiagKind::AddressOfRvalue => {
                 write!(f, "Cannot take the address of a temporary value.")
             }
@@ -144,6 +194,9 @@ impl fmt::Display for AnalyzerDiagKind {
             }
             AnalyzerDiagKind::NonFunctionSymbol { symbol_name } => {
                 write!(f, "Symbol '{}' is not a function.", symbol_name)
+            }
+            AnalyzerDiagKind::NonStructSymbol { symbol_name } => {
+                write!(f, "Symbol '{}' is not a struct.", symbol_name)
             }
             AnalyzerDiagKind::ArrayElementsCountMismatch { elements, expected } => {
                 write!(f, "Cannot use {} elements in an array of size {}.", elements, expected)

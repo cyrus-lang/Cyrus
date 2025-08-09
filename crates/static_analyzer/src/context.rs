@@ -66,11 +66,11 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::FuncDef(typed_func_def) => self.analyze_block_statement(&typed_func_def.body),
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
-                TypedStatement::Import(typed_import) => todo!(),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct),
                 TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum),
                 TypedStatement::GlobalVariable(_) => {}
                 // Not analyzed
+                TypedStatement::Import(_) => continue,
                 TypedStatement::Typedef(_) => continue,
                 // Invalid top-level statements
                 TypedStatement::Variable(_) => todo!(),
@@ -131,7 +131,7 @@ impl<'a> AnalysisContext<'a> {
                                 kind: AnalyzerDiagKind::DuplicateEnumFieldName {
                                     enum_name: typed_enum.name.clone(),
                                     field_name: field.name.clone(),
-                                    variant_name: identifier.name.clone()
+                                    variant_name: identifier.name.clone(),
                                 },
                                 location: Some(DiagLoc::new(
                                     self.resolver.get_current_module_file_path(),
@@ -304,26 +304,31 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
-        let value_type = match self.get_typed_expr_type(scope_id_opt, &typed_variable.rhs.clone().unwrap()) {
-            Some(concrete_type) => concrete_type,
-            None => return,
+        let value_type_opt = {
+            if let Some(typed_expr) = typed_variable.rhs.clone() {
+                self.get_typed_expr_type(scope_id_opt, &typed_expr)
+            } else {
+                None
+            }
         };
 
         if let Some(var_type) = &typed_variable.ty {
-            let lhs_type = format_concrete_type(var_type.clone(), &formatter_closure);
-            let rhs_type = format_concrete_type(value_type.clone(), &formatter_closure);
+            if let Some(value_type) = value_type_opt {
+                let lhs_type = format_concrete_type(var_type.clone(), &formatter_closure);
+                let rhs_type = format_concrete_type(value_type.clone(), &formatter_closure);
 
-            if !self.check_type_mismatch(value_type.clone(), var_type.clone()) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        typed_variable.loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
+                if !self.check_type_mismatch(value_type.clone(), var_type.clone()) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            typed_variable.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                }
             }
         }
     }
