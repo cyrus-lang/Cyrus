@@ -23,7 +23,7 @@ impl<'a> AnalysisContext<'a> {
                         scope_id_opt.and_then(|scope_id| resolver.get_scope_ref(module_id, scope_id).clone());
 
                     let local_or_global_symbol = resolver
-                        .resolve_local_or_global_symbol(module_id, local_scope_opt.clone(), symbol_id)
+                        .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
                         .unwrap();
 
                     match local_or_global_symbol {

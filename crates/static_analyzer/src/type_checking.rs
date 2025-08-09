@@ -1,5 +1,5 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use ast::{LiteralKind, operators::PrefixOperator};
+use ast::{AccessSpecifier, LiteralKind, operators::PrefixOperator};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::SymbolEntry;
 use typed_ast::{
@@ -164,7 +164,7 @@ impl<'a> AnalysisContext<'a> {
                 let local_scope_ref = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
                 let local_or_global_symbol = self
                     .resolver
-                    .resolve_local_or_global_symbol(self.module_id, Some(local_scope_ref), *symbol_id)
+                    .resolve_local_or_global_symbol(Some(local_scope_ref), *symbol_id)
                     .unwrap();
 
                 self.get_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
@@ -286,7 +286,7 @@ impl<'a> AnalysisContext<'a> {
 
         let local_or_global_symbol = self
             .resolver
-            .resolve_local_or_global_symbol(self.module_id, local_scope_opt, func_call.symbol_id)
+            .resolve_local_or_global_symbol(local_scope_opt, func_call.symbol_id)
             .unwrap();
 
         let func_sig_opt = match local_or_global_symbol {

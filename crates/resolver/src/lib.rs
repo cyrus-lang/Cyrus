@@ -2343,6 +2343,22 @@ impl Resolver {
         }
     }
 
+    fn lookup_symbol_id_in_modules(&self, symbol_id: SymbolID) -> Option<ModuleID> {
+        let global_symbols = self.global_symbols.lock().unwrap();
+        for (module_id, symbol_table) in global_symbols.iter() {
+            match symbol_table
+                .names
+                .iter()
+                .find(|(_, table_symbol_id)| **table_symbol_id == symbol_id)
+            {
+                Some(_) => return Some(*module_id),
+                None => continue,
+            }
+        }
+        drop(global_symbols);
+        None
+    }
+
     fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
         let global_symbols = self.global_symbols.lock().unwrap();
         let option = match global_symbols.get(&module_id) {
@@ -2374,10 +2390,11 @@ impl Resolver {
 
     pub fn resolve_local_or_global_symbol(
         &self,
-        module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<LocalOrGlobalSymbol> {
+        let module_id = self.lookup_symbol_id_in_modules(symbol_id)?;
+
         let option = {
             if let Some(local_scope) = local_scope_opt {
                 let local_scope = local_scope.borrow();

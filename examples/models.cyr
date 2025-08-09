@@ -1,0 +1,4 @@
+public struct PersonModel {
+    name: char*;
+    age: uint32;
+}
