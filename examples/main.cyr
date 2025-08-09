@@ -1,9 +1,9 @@
 import models;
 
-// TODO Add access_specifier for struct fields.
-
-
+type IntInt = Int;
+type Int = int;
 
 func main() {
-    #my_user: models::PersonModel;
+    #arr: IntInt[3];
+    arr[1];
 }

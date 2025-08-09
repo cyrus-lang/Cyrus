@@ -2,6 +2,10 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    ArrayNonIntegerIndex {
+        found_type: String,
+    },
+    ArrayIndexOnNonArrayOperand,
     StructHasNoFieldNamed {
         struct_name: String,
         field_name: String,
@@ -61,6 +65,9 @@ pub enum AnalyzerDiagKind {
         method_name: String,
     },
     NonFunctionSymbol {
+        symbol_name: String,
+    },
+    NonTypeSymbol {
         symbol_name: String,
     },
     NonStructSymbol {
@@ -125,6 +132,12 @@ impl fmt::Display for AnalyzerDiagKind {
                     "Type mismatch for field '{}' in struct '{}' (expected '{}', found '{}').",
                     field_name, struct_name, expected_type, found_type
                 )
+            }
+            AnalyzerDiagKind::ArrayNonIntegerIndex { found_type } => {
+                write!(f, "Array index must be an integer (found '{}').", found_type)
+            }
+            AnalyzerDiagKind::ArrayIndexOnNonArrayOperand => {
+                write!(f, "Cannot index non-array value.")
             }
             AnalyzerDiagKind::AddressOfRvalue => {
                 write!(f, "Cannot take the address of a temporary value.")
@@ -197,6 +210,9 @@ impl fmt::Display for AnalyzerDiagKind {
             }
             AnalyzerDiagKind::NonStructSymbol { symbol_name } => {
                 write!(f, "Symbol '{}' is not a struct.", symbol_name)
+            }
+            AnalyzerDiagKind::NonTypeSymbol { symbol_name } => {
+                write!(f, "Symbol '{}' is not a type.", symbol_name)
             }
             AnalyzerDiagKind::ArrayElementsCountMismatch { elements, expected } => {
                 write!(f, "Cannot use {} elements in an array of size {}.", elements, expected)

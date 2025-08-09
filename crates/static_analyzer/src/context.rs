@@ -68,8 +68,8 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct),
                 TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum),
-                TypedStatement::GlobalVariable(_) => {}
                 // Not analyzed
+                TypedStatement::GlobalVariable(_) => continue,
                 TypedStatement::Import(_) => continue,
                 TypedStatement::Typedef(_) => continue,
                 // Invalid top-level statements
@@ -271,7 +271,6 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Variable(typed_variable) => {
                     self.analyze_variable(Some(block_stmt.scope_id), typed_variable)
                 }
-                TypedStatement::Typedef(typed_typedef) => todo!(),
                 TypedStatement::BlockStatement(typed_block_statement) => {
                     self.analyze_block_statement(typed_block_statement)
                 }
@@ -282,12 +281,14 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::For(typed_for) => todo!(),
                 TypedStatement::Foreach(typed_foreach) => todo!(),
                 TypedStatement::Switch(typed_switch) => todo!(),
-                TypedStatement::Struct(typed_struct) => todo!(),
-                TypedStatement::Enum(typed_enum) => todo!(),
-                TypedStatement::Interface(typed_interface) => todo!(),
+                TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct),
+                TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum),
+                TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Expression(typed_expression) => {
                     self.get_typed_expr_type(Some(block_stmt.scope_id), typed_expression);
                 }
+                // Not analyzed
+                TypedStatement::Typedef(_) => continue,
                 // Invalid statements
                 TypedStatement::FuncDef(_) => unreachable!(),
                 TypedStatement::FuncDecl(_) => unreachable!(),
