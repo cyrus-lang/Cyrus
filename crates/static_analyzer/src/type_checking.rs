@@ -1,10 +1,11 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use ast::{LiteralKind, operators::PrefixOperator};
+use ast::{LiteralKind, operators::PrefixOperator, token::Location};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, SymbolEntry};
 use typed_ast::{
-    ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedCast, TypedDereference, TypedExpression, TypedFuncCall,
-    TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression, TypedStructInit, TypedUnaryExpression,
+    ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedCast, TypedDereference, TypedExpression,
+    TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression, TypedStructInit,
+    TypedUnaryExpression,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
@@ -159,8 +160,7 @@ impl<'a> AnalysisContext<'a> {
                 let local_scope_ref = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
                 let local_or_global_symbol = self
                     .resolver
-                    .resolve_local_or_global_symbol(Some(local_scope_ref), *symbol_id)
-                    .unwrap();
+                    .resolve_local_or_global_symbol(Some(local_scope_ref), *symbol_id)?;
 
                 self.get_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
             }
@@ -198,7 +198,9 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExpression::Cast(typed_cast) => self.get_cast_expr_type(scope_id_opt, typed_cast),
             TypedExpression::Array(typed_array) => self.get_array_expr_type(scope_id_opt, typed_array),
-            TypedExpression::ArrayIndex(typed_array_index) => todo!(),
+            TypedExpression::ArrayIndex(typed_array_index) => {
+                self.get_array_index_expr_type(scope_id_opt, typed_array_index)
+            }
             TypedExpression::AddressOf(typed_address_of) => {
                 self.get_address_of_expr_type(scope_id_opt, typed_address_of)
             }
@@ -213,6 +215,152 @@ impl<'a> AnalysisContext<'a> {
             TypedExpression::MethodCall(typed_method_call) => todo!(),
             TypedExpression::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
         }
+    }
+
+    fn get_concrete_type_by_symbol_id(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        symbol_id: SymbolID,
+        loc: Location,
+    ) -> Option<ConcreteType> {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
+        let local_scope_opt = {
+            if let Some(scope_id) = scope_id_opt {
+                self.resolver.get_scope_ref(self.module_id, scope_id)
+            } else {
+                None
+            }
+        };
+
+        let local_or_global_symbol = match self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) {
+            Some(local_or_global_symbol) => local_or_global_symbol,
+            None => {
+                let type_name = formatter_closure(symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::NonTypeSymbol { symbol_name: type_name },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                todo!();
+            }
+        };
+
+        self.get_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
+    }
+
+    fn get_definite_basic_concrete_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        symbol_id: SymbolID,
+        loc: Location,
+    ) -> Option<BasicConcreteType> {
+        match self.get_concrete_type_by_symbol_id(scope_id_opt, symbol_id, loc.clone())? {
+            ConcreteType::BasicType(basic_concrete_type) => Some(basic_concrete_type),
+            ConcreteType::Symbol(inner_symbol_id) => {
+                self.get_definite_basic_concrete_type(scope_id_opt, inner_symbol_id, loc.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn get_definite_array_concrete_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        symbol_id: SymbolID,
+        loc: Location,
+    ) -> Option<TypedArrayType> {
+        match self.get_concrete_type_by_symbol_id(scope_id_opt, symbol_id, loc.clone())? {
+            ConcreteType::Array(typed_array_type) => Some(typed_array_type),
+            ConcreteType::Symbol(inner_symbol_id) => {
+                self.get_definite_array_concrete_type(scope_id_opt, inner_symbol_id, loc.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn get_array_index_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        array_index: &TypedArrayIndex,
+    ) -> Option<ConcreteType> {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
+        let is_operand_array = match *array_index.operand {
+            TypedExpression::Symbol(symbol_id) => {
+                self.get_definite_array_concrete_type(scope_id_opt, symbol_id, array_index.loc.clone())
+            }
+            _ => match self.get_typed_expr_type(scope_id_opt, &array_index.operand) {
+                Some(concrete_type) => match concrete_type {
+                    ConcreteType::Symbol(symbol_id) => {
+                        self.get_definite_array_concrete_type(scope_id_opt, symbol_id, array_index.loc.clone())
+                    }
+                    ConcreteType::Array(typed_array_type) => Some(typed_array_type),
+                    _ => None,
+                },
+                None => None,
+            },
+        }
+        .is_some();
+
+        if !is_operand_array {
+            // FIXME Show the exact type of the array-index operand.
+            
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::ArrayIndexOnNonArrayOperand,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    array_index.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
+
+        let index_concrete_type = match self.get_typed_expr_type(scope_id_opt, &array_index.index) {
+            Some(concrete_type) => Some(concrete_type),
+            None => None,
+        };
+
+        let is_index_integer_value = match &index_concrete_type {
+            Some(concrete_type) => {
+                match match concrete_type {
+                    ConcreteType::Symbol(symbol_id) => {
+                        self.get_definite_basic_concrete_type(scope_id_opt, *symbol_id, array_index.loc.clone())
+                    }
+                    ConcreteType::BasicType(basic_concrete_type) => Some(basic_concrete_type.clone()),
+                    _ => None,
+                } {
+                    Some(basic_concrete_type) => self.is_basic_concrete_type_integer(basic_concrete_type.clone()),
+                    None => false,
+                }
+            }
+            None => false,
+        };
+
+        if !is_index_integer_value {
+            let found_type = format_concrete_type(index_concrete_type.unwrap(), &formatter_closure);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::ArrayNonIntegerIndex { found_type },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    array_index.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
+
+        None
     }
 
     fn get_struct_init_expr_type(

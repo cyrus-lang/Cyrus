@@ -2393,11 +2393,9 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<LocalOrGlobalSymbol> {
-        let module_id = self.lookup_symbol_id_in_modules(symbol_id)?;
-
         let option = {
-            if let Some(local_scope) = local_scope_opt {
-                let local_scope = local_scope.borrow();
+            if let Some(local_scope_rc) = local_scope_opt {
+                let local_scope = local_scope_rc.borrow();
                 let local_option = match local_scope
                     .symbols
                     .values()
@@ -2408,7 +2406,6 @@ impl Resolver {
                     None => None,
                 };
                 drop(local_scope);
-                // option
                 local_option
             } else {
                 None
@@ -2417,10 +2414,14 @@ impl Resolver {
 
         match option {
             Some(local_or_global_symbol) => Some(local_or_global_symbol),
-            None => match self.lookup_symbol_entry_with_id(module_id, symbol_id) {
-                Some(global_symbol) => Some(LocalOrGlobalSymbol::GlobalSymbol(global_symbol)),
-                None => None,
-            },
+            None => {
+                let module_id = self.lookup_symbol_id_in_modules(symbol_id)?;
+
+                match self.lookup_symbol_entry_with_id(module_id, symbol_id) {
+                    Some(global_symbol) => Some(LocalOrGlobalSymbol::GlobalSymbol(global_symbol)),
+                    None => None,
+                }
+            }
         }
     }
 
