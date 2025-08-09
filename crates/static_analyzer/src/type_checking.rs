@@ -1,10 +1,10 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use ast::{AccessSpecifier, LiteralKind, operators::PrefixOperator};
+use ast::{LiteralKind, operators::PrefixOperator};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::scope::SymbolEntry;
+use resolver::scope::{LocalOrGlobalSymbol, SymbolEntry};
 use typed_ast::{
     ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedCast, TypedDereference, TypedExpression, TypedFuncCall,
-    TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression, TypedUnaryExpression,
+    TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression, TypedStructInit, TypedUnaryExpression,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
@@ -52,12 +52,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 packed && fields
             }
-            (ConcreteType::Symbol(symbol_id), concrete_type) => {
-                todo!();
-            }
-            (concrete_type, ConcreteType::Symbol(symbol_id)) => {
-                todo!();
-            }
+            (ConcreteType::Symbol(symbol_id1), ConcreteType::Symbol(symbol_id2)) => symbol_id1 == symbol_id2,
             _ => false,
         }
     }
@@ -210,12 +205,179 @@ impl<'a> AnalysisContext<'a> {
             TypedExpression::Dereference(typed_dereference) => {
                 self.get_dereference_expr_type(scope_id_opt, typed_dereference)
             }
-            TypedExpression::StructInit(typed_struct_init) => todo!(),
+            TypedExpression::StructInit(typed_struct_init) => {
+                self.get_struct_init_expr_type(scope_id_opt, typed_struct_init)
+            }
             TypedExpression::FuncCall(typed_func_call) => self.get_func_call_expr_type(scope_id_opt, typed_func_call),
             TypedExpression::FieldAccess(typed_field_access) => todo!(),
             TypedExpression::MethodCall(typed_method_call) => todo!(),
             TypedExpression::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
         }
+    }
+
+    fn get_struct_init_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_struct_init: &TypedStructInit,
+    ) -> Option<ConcreteType> {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+
+        let local_scope_opt = {
+            if let Some(scope_id) = scope_id_opt {
+                Some(self.resolver.get_scope_ref(self.module_id, scope_id).unwrap())
+            } else {
+                None
+            }
+        };
+
+        let local_or_global_symbol = match self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, typed_struct_init.symbol_id)
+        {
+            Some(local_or_global_symbol) => local_or_global_symbol,
+            None => return None,
+        };
+
+        let resolved_struct = match match local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.as_struct().cloned(),
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.as_struct().cloned(),
+        } {
+            Some(resolved_struct) => resolved_struct,
+            None => {
+                let struct_name = formatter_closure(typed_struct_init.symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::NonStructSymbol {
+                        symbol_name: struct_name,
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_struct_init.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        // check duplicate field inits
+        let mut field_names: Vec<String> = Vec::new();
+        for field_init in &typed_struct_init.fields {
+            let struct_name = formatter_closure(typed_struct_init.symbol_id);
+
+            if field_names.contains(&field_init.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::DuplicateFieldName {
+                        struct_name,
+                        field_name: field_init.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_init.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                continue;
+            }
+
+            field_names.push(field_init.name.clone());
+        }
+
+        let mut missing_fields: Vec<String> = resolved_struct
+            .struct_sig
+            .fields
+            .iter()
+            .map(|field| field.name.clone())
+            .collect();
+
+        for field_init in &typed_struct_init.fields {
+            let field = resolved_struct
+                .struct_sig
+                .fields
+                .iter()
+                .find(|field| field.name == field_init.name);
+
+            if field.is_none() {
+                let struct_name = formatter_closure(typed_struct_init.symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::StructHasNoFieldNamed {
+                        struct_name,
+                        field_name: field_init.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_init.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                continue;
+            }
+
+            let field_value_type = match self.get_typed_expr_type(scope_id_opt, &field_init.value) {
+                Some(concrete_type) => concrete_type,
+                None => continue,
+            };
+
+            let field_target_type = field.unwrap().ty.clone();
+
+            if !self.check_type_mismatch(field_value_type.clone(), field_target_type.clone()) {
+                let struct_name = formatter_closure(typed_struct_init.symbol_id);
+                let expected_type = format_concrete_type(field_target_type, &formatter_closure);
+                let found_type = format_concrete_type(field_value_type, &formatter_closure);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::StructFieldTypeMismatch {
+                        struct_name,
+                        field_name: field_init.name.clone(),
+                        expected_type,
+                        found_type,
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_struct_init.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+            }
+
+            let missing_fields_idx = match missing_fields
+                .iter()
+                .position(|field_name| *field_name == field_init.name.clone())
+            {
+                Some(idx) => idx,
+                None => continue,
+            };
+            missing_fields.remove(missing_fields_idx);
+        }
+
+        if !missing_fields.is_empty() {
+            let struct_name = formatter_closure(typed_struct_init.symbol_id);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::StructMissingFields {
+                    struct_name,
+                    missing_field_names: missing_fields,
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_struct_init.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
+
+        Some(ConcreteType::Symbol(typed_struct_init.symbol_id))
     }
 
     fn get_address_of_expr_type(

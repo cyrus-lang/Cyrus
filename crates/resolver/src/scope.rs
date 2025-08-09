@@ -154,6 +154,15 @@ impl SymbolTable {
     }
 }
 
+impl LocalSymbol {
+    pub fn as_struct(&self) -> Option<&ResolvedStruct> {
+        match self {
+            LocalSymbol::Struct(resolved_struct) => Some(resolved_struct),
+            _ => None
+        }
+    }
+}
+
 impl SymbolEntry {
     pub fn get_symbol_id(&self) -> SymbolID {
         match self {

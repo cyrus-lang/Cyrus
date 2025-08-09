@@ -2343,7 +2343,7 @@ impl Resolver {
         }
     }
 
-    fn lookup_symbol_id_in_modules(&self, symbol_id: SymbolID) -> Option<ModuleID> {
+    pub fn lookup_symbol_id_in_modules(&self, symbol_id: SymbolID) -> Option<ModuleID> {
         let global_symbols = self.global_symbols.lock().unwrap();
         for (module_id, symbol_table) in global_symbols.iter() {
             match symbol_table
