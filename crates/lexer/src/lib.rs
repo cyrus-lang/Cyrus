@@ -35,6 +35,18 @@ impl Lexer {
         lexer
     }
 
+    pub fn tokenize(&mut self) -> Vec<Token> {
+        let mut tokens: Vec<Token> = Vec::new();
+
+        let mut token = self.next_token();
+        while token.kind != TokenKind::EOF {
+            tokens.push(token.clone());
+            token = self.next_token();
+        }
+
+        tokens
+    }
+
     fn peek_char(&self) -> char {
         self.input[self.next_pos..].chars().next().unwrap_or('\0')
     }
@@ -789,19 +801,6 @@ impl Lexer {
                 name: ident.to_string(),
             },
         }
-    }
-}
-
-impl Iterator for Lexer {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let token = self.next_token();
-        if token.kind == TokenKind::EOF {
-            return None;
-        }
-
-        Some(token)
     }
 }
 

@@ -51,12 +51,13 @@ impl ModuleLoader {
             };
 
             let alias = sub_import
-                .alias.clone()
+                .alias
+                .clone()
                 .unwrap_or(module_segments_as_string(sub_import.segments.clone()));
 
             let file_content = std::fs::read_to_string(module_file_path.clone()).unwrap();
             let mut lexer = Lexer::new(file_content, module_file_path.clone());
-            let mut parser = Parser::new(&mut lexer);
+            let mut parser = Parser::new(lexer.tokenize(), module_file_path.clone());
             match parser.parse() {
                 Ok(node) => {
                     let program_tree = node.as_program();

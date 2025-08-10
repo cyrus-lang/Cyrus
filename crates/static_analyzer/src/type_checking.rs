@@ -290,6 +290,8 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         array_index: &TypedArrayIndex,
     ) -> Option<ConcreteType> {
+        todo!(); // uncompleted due to parser errors
+
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
         let is_operand_array = match *array_index.operand {
@@ -311,7 +313,7 @@ impl<'a> AnalysisContext<'a> {
 
         if !is_operand_array {
             // FIXME Show the exact type of the array-index operand.
-            
+
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::ArrayIndexOnNonArrayOperand,
@@ -360,7 +362,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        None
+        None // FIXME
     }
 
     fn get_struct_init_expr_type(
