@@ -8,22 +8,22 @@ use diagcentral::Diag;
 use diagcentral::DiagLevel;
 use diagcentral::DiagLoc;
 
-impl<'a> Parser<'a> {
+impl Parser {
     pub fn parse_identifier(&mut self) -> Result<Identifier, Diag<ParserDiagKind>> {
-        match self.current_token.kind.clone() {
+        match self.current_token().kind.clone() {
             TokenKind::Identifier { name } => Ok(Identifier {
                 name,
-                span: self.current_token.span.clone(),
-                loc: self.current_token.loc.clone(),
+                span: self.current_token().span.clone(),
+                loc: self.current_token().loc.clone(),
             }),
             _ => {
                 return Err(Diag {
                     kind: ParserDiagKind::ExpectedIdentifier,
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(
-                        self.lexer.file_name.clone(),
-                        self.current_token.loc.clone(),
-                        self.current_token.span.end,
+                        self.file_name.clone(),
+                        self.current_token().loc.clone(),
+                        self.current_token().span.end,
                     )),
                     hint: None,
                 });
@@ -63,7 +63,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, ParserError> {
-        let current = self.current_token.clone();
+        let current = self.current_token().clone();
 
         let parsed_kind = match current.kind.clone() {
             token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
@@ -87,7 +87,7 @@ impl<'a> Parser<'a> {
                             }
                         },
                         span: current.span,
-                        loc: self.current_token.loc.clone(),
+                        loc: self.current_token().loc.clone(),
                     }))
                 }
             }
@@ -95,9 +95,9 @@ impl<'a> Parser<'a> {
                 kind: ParserDiagKind::InvalidTypeToken(current.kind.clone()),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(
-                    self.lexer.file_name.clone(),
-                    self.current_token.loc.clone(),
-                    self.current_token.span.end,
+                    self.file_name.clone(),
+                    self.current_token().loc.clone(),
+                    self.current_token().span.end,
                 )),
                 hint: None,
             }),
@@ -134,7 +134,7 @@ impl<'a> Parser<'a> {
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
         }
-        let capacity = self.current_token.kind.clone();
+        let capacity = self.current_token().kind.clone();
         self.expect_peek(TokenKind::RightBracket)?;
         Ok(ArrayCapacity::Fixed(capacity))
     }
@@ -144,12 +144,12 @@ impl<'a> Parser<'a> {
 
         if self.current_token_is(TokenKind::RightBracket) {
             return Err(Diag {
-                kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(
-                    self.lexer.file_name.clone(),
-                    self.current_token.loc.clone(),
-                    self.current_token.span.end,
+                    self.file_name.clone(),
+                    self.current_token().loc.clone(),
+                    self.current_token().span.end,
                 )),
                 hint: None,
             });
@@ -182,7 +182,7 @@ impl<'a> Parser<'a> {
                 return Err(Diag {
                     kind: ParserDiagKind::InvalidToken(token.kind),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(self.lexer.file_name.clone(), token.loc, token.span.end)),
+                    location: Some(DiagLoc::new(self.file_name.clone(), token.loc, token.span.end)),
                     hint: None,
                 });
             }
@@ -192,8 +192,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_struct_type(&mut self) -> Result<TypeSpecifier, ParserError> {
-        let start = self.current_token.span.start;
-        let loc = self.current_token.loc.clone();
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
 
         let packed = {
             if self.current_token_is(TokenKind::Bits) {
@@ -204,12 +204,12 @@ impl<'a> Parser<'a> {
                 false
             } else {
                 return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                    kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(
-                        self.lexer.file_name.clone(),
-                        self.current_token.loc.clone(),
-                        self.current_token.span.end,
+                        self.file_name.clone(),
+                        self.current_token().loc.clone(),
+                        self.current_token().span.end,
                     )),
                     hint: None,
                 });
@@ -220,7 +220,7 @@ impl<'a> Parser<'a> {
         let mut fields: Vec<UnnamedStructTypeField> = Vec::new();
 
         loop {
-            match self.current_token.kind.clone() {
+            match self.current_token().kind.clone() {
                 TokenKind::RightBrace => {
                     break;
                 }
@@ -229,16 +229,16 @@ impl<'a> Parser<'a> {
                         kind: ParserDiagKind::MissingClosingBrace,
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(
-                            self.lexer.file_name.clone(),
-                            self.current_token.loc.clone(),
-                            self.current_token.span.end,
+                            self.file_name.clone(),
+                            self.current_token().loc.clone(),
+                            self.current_token().span.end,
                         )),
                         hint: None,
                     });
                 }
                 TokenKind::Identifier { .. } => {
-                    let start = self.current_token.span.start;
-                    let loc = self.current_token.loc.clone();
+                    let start = self.current_token().span.start;
+                    let loc = self.current_token().loc.clone();
 
                     let field_name = self.parse_identifier()?;
                     self.next_token(); // consume identifier
@@ -254,7 +254,7 @@ impl<'a> Parser<'a> {
                         loc,
                         span: Span {
                             start,
-                            end: self.current_token.span.end,
+                            end: self.current_token().span.end,
                         },
                     });
 
@@ -266,12 +266,12 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(
-                            self.lexer.file_name.clone(),
-                            self.current_token.loc.clone(),
-                            self.current_token.span.end,
+                            self.file_name.clone(),
+                            self.current_token().loc.clone(),
+                            self.current_token().span.end,
                         )),
                         hint: None,
                     });
@@ -283,7 +283,7 @@ impl<'a> Parser<'a> {
             fields,
             packed,
             loc,
-            span: Span::new(start, self.current_token.span.end),
+            span: Span::new(start, self.current_token().span.end),
         }))
     }
 }

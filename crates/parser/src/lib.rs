@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use ast::token::*;
 use ast::*;
 use diagcentral::Diag;
@@ -7,6 +5,7 @@ use diagcentral::DiagLevel;
 use diagcentral::DiagLoc;
 use diagcentral::reporter::DiagReporter;
 use lexer::*;
+use std::rc::Rc;
 use utils::fs::read_file;
 
 use crate::diagnostics::ParserDiagKind;
@@ -33,7 +32,7 @@ pub fn parse_program(file_path: String) -> (ProgramTree, String) {
     let code = file.0;
 
     let mut lexer = Lexer::new(code, file_path.clone());
-    let mut parser = Parser::new(&mut lexer);
+    let mut parser = Parser::new(lexer.tokenize(), file_path);
 
     let program = match parser.parse() {
         Ok(result) => {
@@ -52,24 +51,20 @@ pub fn parse_program(file_path: String) -> (ProgramTree, String) {
     (program, file.1)
 }
 
-#[derive(Debug)]
-pub struct Parser<'a> {
-    lexer: &'a mut Lexer,
-    current_token: Token,
-    peek_token: Token,
+pub struct Parser {
+    tokens: Vec<Token>,
+    cur_token_idx: usize,
+    file_name: String,
     errors: Vec<ParserError>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(lexer: &'a mut Lexer) -> Self {
-        let current_token = lexer.next_token();
-        let peek_token = lexer.next_token();
-
+impl Parser {
+    pub fn new(tokens: Vec<Token>, file_name: String) -> Self {
         Parser {
-            lexer,
-            current_token,
-            peek_token,
-            errors: vec![],
+            tokens,
+            cur_token_idx: 0,
+            file_name,
+            errors: Vec::new(),
         }
     }
 
@@ -86,7 +81,7 @@ impl<'a> Parser<'a> {
     pub fn parse_program(&mut self) -> Result<ProgramTree, Vec<ParserError>> {
         let mut body: Vec<Statement> = Vec::new();
 
-        while self.current_token.kind != TokenKind::EOF {
+        while self.current_token().kind != TokenKind::EOF {
             match self.parse_statement(true) {
                 Ok(statement) => body.push(statement),
                 Err(error) => self.errors.push(error),
@@ -119,17 +114,41 @@ impl<'a> Parser<'a> {
     }
 
     pub fn next_token(&mut self) -> Token {
-        self.current_token = self.peek_token.clone();
-        self.peek_token = self.lexer.next_token();
-        self.peek_token.clone()
+        let peek_token = self.tokens.get(self.cur_token_idx).unwrap();
+        self.cur_token_idx += 1;
+        peek_token.clone()
     }
 
     pub fn current_token_is(&self, token_kind: TokenKind) -> bool {
-        self.current_token.kind == token_kind
+        let current_token = self.tokens.get(self.cur_token_idx).unwrap();
+        current_token.kind == token_kind
     }
 
     pub fn peek_token_is(&self, token_kind: TokenKind) -> bool {
-        self.peek_token.kind == token_kind
+        let peek_token = self.tokens.get(self.cur_token_idx + 1).unwrap();
+        peek_token.kind == token_kind
+    }
+
+    pub fn current_token(&self) -> Token {
+        match self.tokens.get(self.cur_token_idx).cloned() {
+            Some(token) => token,
+            None => Token {
+                kind: TokenKind::EOF,
+                span: Span::default(),
+                loc: Location::default(),
+            },
+        }
+    }
+
+    pub fn peek_token(&self) -> Token {
+        self.tokens.get(self.cur_token_idx + 1).unwrap().clone()
+    }
+
+    pub fn peek_peek_token_is(&self, token_kind: TokenKind) -> Option<bool> {
+        match self.tokens.get(self.cur_token_idx + 2) {
+            Some(token) => Some(token.kind == token_kind),
+            None => None,
+        }
     }
 
     /// This function peeks at the next token without advancing the lexer. If the token matches
@@ -142,12 +161,12 @@ impl<'a> Parser<'a> {
         }
 
         Err(Diag {
-            kind: ParserDiagKind::InvalidToken(self.current_token.kind.clone()),
+            kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
             level: DiagLevel::Error,
             location: Some(DiagLoc::new(
-                self.lexer.file_name.clone(),
-                self.current_token.loc.clone(),
-                self.current_token.span.end,
+                self.file_name.clone(),
+                self.current_token().loc.clone(),
+                self.current_token().span.end,
             )),
             hint: Some(String::from("Invalid token inside an anonymous struct definition.")),
         })
@@ -162,12 +181,12 @@ impl<'a> Parser<'a> {
         }
 
         Err(Diag {
-            kind: ParserDiagKind::UnexpectedToken(self.current_token.kind.clone(), token_kind),
+            kind: ParserDiagKind::UnexpectedToken(self.current_token().kind.clone(), token_kind),
             level: DiagLevel::Error,
             location: Some(DiagLoc::new(
-                self.lexer.file_name.clone(),
-                self.current_token.loc.clone(),
-                self.current_token.span.end,
+                self.file_name.clone(),
+                self.current_token().loc.clone(),
+                self.current_token().span.end,
             )),
             hint: None,
         })
