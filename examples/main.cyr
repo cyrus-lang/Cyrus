@@ -1,3 +1,13 @@
+func closure() {}
+func foo() {}
+func bar() {}
+
 func main() {
-    #a = (aaa)();
+    // #a = (closure)();              
+    // #b = (foo() + bar());          
+    // #d = (closure) == closure;     
+    // #e = (closure);
+    // #f = int32[3] {1, (closure + 1), 3};
+
+    #c = typecast(const char*, my_foo()); 
 }

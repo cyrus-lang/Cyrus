@@ -32,9 +32,7 @@ impl Parser {
             return Ok((expr, Span::new(left_start, self.current_token().span.end)));
         }
 
-        while self.current_token().kind != TokenKind::EOF
-            && precedence < token_precedence_of(self.peek_token().kind.clone())
-        {
+        while self.current_token().kind != TokenKind::EOF && precedence < token_precedence_of(self.peek_token().kind) {
             match self.parse_infix_expression(left.clone(), left_start) {
                 Some(infix) => {
                     left = infix?;
@@ -64,6 +62,7 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         let expr = match &self.current_token().clone().kind {
+            TokenKind::Typecast => self.parse_cast_expression()?,
             TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value()?,
             TokenKind::Identifier { .. } => {
                 let module_import = self.parse_module_import()?;
@@ -131,7 +130,7 @@ impl Parser {
 
                 self.next_token(); // consume the operator
 
-                match self.current_token().kind.clone() {
+                match self.current_token().kind {
                     TokenKind::Identifier { .. } => {
                         let module_import = self.parse_module_import()?;
 
@@ -194,43 +193,14 @@ impl Parser {
                 })
             }
             TokenKind::LeftParen => {
-                // c-style casting
-                // self.next_token();
-                // let expr = self.parse_expression(Precedence::Lowest)?.0;
-
-                // // these tokens determines that expression is not a typed cast!
-                // if self.peek_peek_token_is(TokenKind::LeftParen) {
-                //     let func_call = self.parse_func_call(expr)?;
-                //     func_call
-                // } else {
-                //     self.expect_peek(TokenKind::RightParen)?;
-
-                //     // here does not matter what is the kind of the expression,
-                //     // we consider any identifier or module_import as type_id and prepare a cast expr for result.
-                //     let type_specifier_opt = match &expr {
-                //         Expression::Identifier(identifier) => Some(TypeSpecifier::Identifier(identifier.clone())),
-                //         Expression::TypeSpecifier(type_specifier) => Some(type_specifier.clone()),
-                //         Expression::ModuleImport(module_import) => {
-                //             Some(TypeSpecifier::ModuleImport(module_import.clone()))
-                //         }
-                //         _ => None,
-                //     };
-
-                //     if let Some(type_specifier) = type_specifier_opt {
-                //         Expression::Cast(Cast {
-                //             expr: Box::new(expr),
-                //             target_type: type_specifier,
-                //             span: Span::new(start, self.current_token().span.end),
-                //             loc: loc.clone(),
-                //         })
-                //     } else {
-                //         expr
-                //     }
-                // }
-                todo!();
+                // grouped expression
+                self.next_token();
+                let expr = self.parse_expression(Precedence::Lowest)?.0;
+                self.next_token(); // consume last token of expr
+                expr
             }
             _ => {
-                if self.matches_type_token(self.current_token().kind.clone()) {
+                if self.matches_type_token(self.current_token().kind) {
                     let type_specifier = self.parse_type_specifier()?;
 
                     if self.peek_token_is(TokenKind::LeftBrace) {
@@ -241,7 +211,7 @@ impl Parser {
                     Expression::TypeSpecifier(type_specifier)
                 } else {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                         hint: None,
@@ -257,7 +227,7 @@ impl Parser {
                 return Ok(struct_init);
             } else {
                 return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                    kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                     hint: None,
@@ -277,7 +247,7 @@ impl Parser {
     ) -> Option<Result<Expression, ParserError>> {
         let loc = self.current_token().loc.clone();
 
-        match self.peek_token().kind.clone() {
+        match self.peek_token().kind {
             TokenKind::Plus
             | TokenKind::Minus
             | TokenKind::Asterisk
@@ -293,7 +263,7 @@ impl Parser {
             | TokenKind::Or
             | TokenKind::Identifier { .. } => {
                 self.next_token(); // consume left expression
-                let op_token = self.current_token().kind.clone();
+                let op_token = self.current_token().kind;
                 let precedence = token_precedence_of(op_token.clone());
                 self.next_token(); // consume the operator
 
@@ -313,7 +283,7 @@ impl Parser {
                     TokenKind::And => InfixOperator::And,
                     _ => {
                         return Some(Err(Diag {
-                            kind: ParserDiagKind::InvalidInfixOperator(self.current_token().kind.clone()),
+                            kind: ParserDiagKind::InvalidInfixOperator(self.current_token().kind),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                             hint: None,
@@ -372,7 +342,7 @@ impl Parser {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        let mut segments = match self.current_token().kind.clone() {
+        let mut segments = match self.current_token().kind {
             TokenKind::Identifier { name } => {
                 vec![ModuleSegment::SubModule(Identifier {
                     name,
@@ -410,7 +380,7 @@ impl Parser {
         loop {
             if self.current_token_is(TokenKind::DoubleColon) {
                 self.next_token(); // consume double colon
-            } else if let TokenKind::Identifier { name } = self.current_token().kind.clone() {
+            } else if let TokenKind::Identifier { name } = self.current_token().kind {
                 segments.push(ModuleSegment::SubModule(Identifier {
                     name,
                     span: Span {
@@ -450,7 +420,7 @@ impl Parser {
         };
 
         while !self.current_token_is(TokenKind::Semicolon) {
-            match self.current_token().kind.clone() {
+            match self.current_token().kind {
                 TokenKind::Identifier { name: identifier } => {
                     let span = self.current_token().span.clone();
                     self.next_token(); // consume identifier
@@ -464,7 +434,7 @@ impl Parser {
                             return Err(Diag {
                                 kind: ParserDiagKind::UnexpectedToken(
                                     TokenKind::DoubleColon,
-                                    self.current_token().kind.clone(),
+                                    self.current_token().kind,
                                 ),
                                 level: DiagLevel::Error,
                                 location: Some(DiagLoc::new(
@@ -515,15 +485,30 @@ impl Parser {
         Ok(module_path)
     }
 
-    pub fn parse_cast_expression(&mut self, start: usize) -> Result<Expression, ParserError> {
+    fn parse_cast_expression(&mut self) -> Result<Expression, ParserError> {
+        let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
+        self.next_token(); // consume typecast token
         self.expect_current(TokenKind::LeftParen)?;
         let target_type = self.parse_type_specifier()?;
         self.next_token(); // consume target_type
-        self.expect_current(TokenKind::RightParen)?;
-
+        self.expect_current(TokenKind::Comma)?;
         let expr = self.parse_expression(Precedence::Lowest)?.0;
+        self.next_token();
+
+         if !self.current_token_is(TokenKind::RightParen) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingClosingParen,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.file_name.clone(),
+                    loc.clone(),
+                    self.current_token().span.end,
+                )),
+                hint: None,
+            });
+        }
 
         Ok(Expression::Cast(Cast {
             expr: Box::new(expr),
@@ -591,7 +576,7 @@ impl Parser {
                 false
             } else {
                 return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                    kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(
                         self.file_name.clone(),
@@ -627,7 +612,7 @@ impl Parser {
         let args = self.parse_expression_series(TokenKind::RightParen)?.0;
         if !(self.current_token_is(TokenKind::RightParen)) {
             return Err(Diag {
-                kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(
                     self.file_name.clone(),
@@ -681,7 +666,7 @@ impl Parser {
                 loc: field_loc,
             });
 
-            match self.current_token().kind.clone() {
+            match self.current_token().kind {
                 TokenKind::EOF => {
                     return Err(Diag {
                         kind: ParserDiagKind::MissingClosingBrace,
@@ -705,7 +690,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(
                             self.file_name.clone(),
@@ -833,7 +818,7 @@ impl Parser {
                         break;
                     } else {
                         return Err(Diag {
-                            kind: ParserDiagKind::InvalidToken(self.peek_token().kind.clone()),
+                            kind: ParserDiagKind::InvalidToken(self.peek_token().kind),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(
                                 self.file_name.clone(),
@@ -902,7 +887,7 @@ impl Parser {
                 true
             } else {
                 return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                    kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(
                         self.file_name.clone(),
@@ -918,7 +903,7 @@ impl Parser {
         let mut fields: Vec<UnnamedStructValueField> = Vec::new();
 
         loop {
-            match self.current_token().kind.clone() {
+            match self.current_token().kind {
                 TokenKind::RightBrace => {
                     break;
                 }
@@ -980,7 +965,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(
                             self.file_name.clone(),

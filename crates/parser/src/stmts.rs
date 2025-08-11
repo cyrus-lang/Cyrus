@@ -28,7 +28,7 @@ impl Parser {
                 return self.parse_enum(Some(vis));
             } else if self.current_token_is(TokenKind::Typedef) {
                 return self.parse_typedef(Some(vis));
-            } else if let TokenKind::Identifier { .. } = self.current_token().kind.clone() {
+            } else if let TokenKind::Identifier { .. } = self.current_token().kind {
                 return self.parse_global_variable(Some(vis));
             } else if self.current_token_is(TokenKind::Interface) {
                 return self.parse_interface(Some(vis));
@@ -45,7 +45,7 @@ impl Parser {
             return self.parse_typedef(None);
         } else if self.current_token_is(TokenKind::Interface) {
             return self.parse_interface(None);
-        } else if let TokenKind::Identifier { .. } = self.current_token().kind.clone() {
+        } else if let TokenKind::Identifier { .. } = self.current_token().kind {
             if toplevel && (self.peek_token_is(TokenKind::Colon) || self.peek_token_is(TokenKind::Assign)) {
                 return self.parse_global_variable(None);
             }
@@ -72,7 +72,7 @@ impl Parser {
                 TokenKind::Import => self.parse_import(),
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(
                             self.file_name.clone(),
@@ -113,7 +113,7 @@ impl Parser {
             loop {
                 if self.current_token_is(TokenKind::RightParen) {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(
                             self.file_name.clone(),
@@ -205,7 +205,7 @@ impl Parser {
         let mut methods: Vec<FuncDef> = Vec::new();
 
         loop {
-            match self.current_token().kind.clone() {
+            match self.current_token().kind {
                 TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
                     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
                     if let Statement::FuncDef(method) = self.parse_func(Some(vis))? {
@@ -255,7 +255,7 @@ impl Parser {
             self.next_token();
 
             loop {
-                match self.current_token().kind.clone() {
+                match self.current_token().kind {
                     TokenKind::LeftBrace => {
                         self.next_token();
                         break;
@@ -306,7 +306,7 @@ impl Parser {
         let mut methods: Vec<FuncDef> = Vec::new();
 
         loop {
-            match self.current_token().kind.clone() {
+            match self.current_token().kind {
                 TokenKind::RightBrace => {
                     break;
                 }
@@ -366,7 +366,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(
                             self.file_name.clone(),
@@ -510,14 +510,14 @@ impl Parser {
         }
 
         loop {
-            match self.current_token().kind.clone() {
+            match self.current_token().kind {
                 TokenKind::Function => {
                     let func_decl = match self.parse_func(Some(vis.clone()))? {
                         Statement::FuncDecl(func_decl) => func_decl,
                         _ => {
                             return Err(Diag {
                                 level: DiagLevel::Error,
-                                kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                                 location: Some(DiagLoc::new(
                                     self.file_name.clone(),
                                     self.current_token().loc.clone(),
@@ -582,7 +582,7 @@ impl Parser {
                     }
                     _ => {
                         return Err(Diag {
-                            kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(
                                 self.file_name.clone(),
@@ -623,13 +623,13 @@ impl Parser {
         let mut self_modifier_count: u32 = 0;
 
         while self.current_token().kind != TokenKind::RightParen {
-            match self.current_token().kind.clone() {
+            match self.current_token().kind {
                 TokenKind::TripleDot => {
                     self.next_token(); // consume triple_dot
 
                     if self.current_token_is(TokenKind::Comma) {
                         return Err(Diag {
-                            kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                             level: DiagLevel::Error,
                             location: Some(DiagLoc::new(
                                 self.file_name.clone(),
@@ -1061,7 +1061,7 @@ impl Parser {
                 self.next_token();
             } else if self.peek_token_is(TokenKind::LeftBrace) {
                 return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(self.peek_token().kind.clone()),
+                    kind: ParserDiagKind::InvalidToken(self.peek_token().kind),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(
                         self.file_name.clone(),
@@ -1324,7 +1324,7 @@ impl Parser {
 
                 self.expect_current(TokenKind::Colon)?;
                 let case_body;
-                if SWITCH_ENDING_TOKENS.contains(&self.current_token().kind.clone()) {
+                if SWITCH_ENDING_TOKENS.contains(&self.current_token().kind) {
                     case_body = BlockStatement {
                         exprs: Vec::new(),
                         span: Span::new(case_start, self.current_token().span.end),
