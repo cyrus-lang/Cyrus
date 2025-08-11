@@ -249,7 +249,7 @@ impl Resolver {
         span_end: usize,
     ) -> Option<ConcreteType> {
         let resolving_result = match type_specifier {
-            TypeSpecifier::TypeToken(token) => Ok(ConcreteType::from(token.kind.clone())),
+            TypeSpecifier::TypeToken(token) => Ok(ConcreteType::from(token.kind)),
             TypeSpecifier::Const(type_specifier) => Ok(ConcreteType::Const(Box::new(self.resolve_type(
                 module_id,
                 *type_specifier,

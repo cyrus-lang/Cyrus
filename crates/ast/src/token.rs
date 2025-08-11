@@ -57,6 +57,7 @@ pub enum TokenKind {
     Interface,
     Function,
     Typedef,
+    Typecast,
     Switch,
     Case,
     Default,
@@ -172,6 +173,7 @@ impl fmt::Display for TokenKind {
             // Keywords
             Self::Interface => write!(f, "interface"),
             Self::Typedef => write!(f, "type"),
+            Self::Typecast => write!(f, "typecast"),
             Self::Function => write!(f, "func"),
             Self::Switch => write!(f, "switch"),
             Self::Case => write!(f, "case"),

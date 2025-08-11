@@ -120,12 +120,18 @@ impl Parser {
     }
 
     pub fn current_token_is(&self, token_kind: TokenKind) -> bool {
-        let current_token = self.tokens.get(self.cur_token_idx).unwrap();
+        let current_token = match self.tokens.get(self.cur_token_idx) {
+            Some(token) => token,
+            None => return false,
+        };
         current_token.kind == token_kind
     }
 
     pub fn peek_token_is(&self, token_kind: TokenKind) -> bool {
-        let peek_token = self.tokens.get(self.cur_token_idx + 1).unwrap();
+        let peek_token = match self.tokens.get(self.cur_token_idx + 1) {
+            Some(token) => token,
+            None => return false,
+        };
         peek_token.kind == token_kind
     }
 
@@ -141,7 +147,14 @@ impl Parser {
     }
 
     pub fn peek_token(&self) -> Token {
-        self.tokens.get(self.cur_token_idx + 1).unwrap().clone()
+        match self.tokens.get(self.cur_token_idx + 1).cloned() {
+            Some(token) => token,
+            None => Token {
+                kind: TokenKind::EOF,
+                span: Span::default(),
+                loc: Location::default(),
+            },
+        }
     }
 
     pub fn peek_peek_token_is(&self, token_kind: TokenKind) -> Option<bool> {
@@ -155,20 +168,20 @@ impl Parser {
     /// the expected kind, it consumes the token and returns `Ok`. Otherwise, it returns an error
     /// with a message indicating the mismatch.
     pub fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
-        if self.peek_token_is(token_kind.clone()) {
+        if self.peek_token_is(token_kind) {
             self.next_token(); // consume current token
             return Ok(());
         }
 
         Err(Diag {
-            kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
             level: DiagLevel::Error,
             location: Some(DiagLoc::new(
                 self.file_name.clone(),
                 self.current_token().loc.clone(),
                 self.current_token().span.end,
             )),
-            hint: Some(String::from("Invalid token inside an anonymous struct definition.")),
+            hint: None,
         })
     }
 
@@ -181,7 +194,7 @@ impl Parser {
         }
 
         Err(Diag {
-            kind: ParserDiagKind::UnexpectedToken(self.current_token().kind.clone(), token_kind),
+            kind: ParserDiagKind::UnexpectedToken(self.current_token().kind, token_kind),
             level: DiagLevel::Error,
             location: Some(DiagLoc::new(
                 self.file_name.clone(),

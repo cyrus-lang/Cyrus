@@ -183,7 +183,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
             compiler_invoked_single: self.compiler_invoked_single,
             block_registry: BlockRegistry::new(),
             imported_modules: Vec::new(),
-            output_kind: self.output_kind.clone(),
+            output_kind: self.output_kind,
             final_build_dir: self.final_build_dir.clone(),
             module_metadata_registry: Rc::clone(&self.module_metadata_registry),
             local_ir_value_registry: Rc::new(RefCell::new(HashMap::new())),

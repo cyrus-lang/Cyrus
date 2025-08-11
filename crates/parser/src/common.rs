@@ -10,7 +10,7 @@ use diagcentral::DiagLoc;
 
 impl Parser {
     pub fn parse_identifier(&mut self) -> Result<Identifier, Diag<ParserDiagKind>> {
-        match self.current_token().kind.clone() {
+        match self.current_token().kind {
             TokenKind::Identifier { name } => Ok(Identifier {
                 name,
                 span: self.current_token().span.clone(),
@@ -32,13 +32,13 @@ impl Parser {
     }
 
     pub fn matches_type_token(&mut self, token_kind: TokenKind) -> bool {
-        if PRIMITIVE_TYPES.contains(&token_kind.clone()) {
+        if PRIMITIVE_TYPES.contains(&token_kind) {
             true
-        } else if let TokenKind::Identifier { .. } = token_kind.clone() {
+        } else if let TokenKind::Identifier { .. } = token_kind {
             true
         } else {
             matches!(
-                token_kind.clone(),
+                token_kind,
                 TokenKind::Asterisk | TokenKind::Ampersand | TokenKind::Const
             )
         }
@@ -65,8 +65,8 @@ impl Parser {
     fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, ParserError> {
         let current = self.current_token().clone();
 
-        let parsed_kind = match current.kind.clone() {
-            token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
+        let parsed_kind = match current.kind {
+            ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
             TokenKind::Struct | TokenKind::Bits => self.parse_struct_type(),
             TokenKind::Const => {
                 self.next_token(); // consume const
@@ -92,7 +92,7 @@ impl Parser {
                 }
             }
             _ => Err(Diag {
-                kind: ParserDiagKind::InvalidTypeToken(current.kind.clone()),
+                kind: ParserDiagKind::InvalidTypeToken(current.kind),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(
                     self.file_name.clone(),
@@ -134,7 +134,7 @@ impl Parser {
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
         }
-        let capacity = self.current_token().kind.clone();
+        let capacity = self.current_token().kind;
         self.expect_peek(TokenKind::RightBracket)?;
         Ok(ArrayCapacity::Fixed(capacity))
     }
@@ -144,7 +144,7 @@ impl Parser {
 
         if self.current_token_is(TokenKind::RightBracket) {
             return Err(Diag {
-                kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                 level: DiagLevel::Error,
                 location: Some(DiagLoc::new(
                     self.file_name.clone(),
@@ -204,7 +204,7 @@ impl Parser {
                 false
             } else {
                 return Err(Diag {
-                    kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                    kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                     level: DiagLevel::Error,
                     location: Some(DiagLoc::new(
                         self.file_name.clone(),
@@ -220,7 +220,7 @@ impl Parser {
         let mut fields: Vec<UnnamedStructTypeField> = Vec::new();
 
         loop {
-            match self.current_token().kind.clone() {
+            match self.current_token().kind {
                 TokenKind::RightBrace => {
                     break;
                 }
@@ -266,7 +266,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind.clone()),
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
                         location: Some(DiagLoc::new(
                             self.file_name.clone(),

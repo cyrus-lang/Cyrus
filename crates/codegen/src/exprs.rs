@@ -721,7 +721,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
     }
 
     pub(crate) fn build_integer_literal(&self, value: i64, token: Token) -> InternalValue<'ctx> {
-        let sign_extend = self.is_integer_signed(token.kind.clone());
+        let sign_extend = self.is_integer_signed(token.kind);
         let internal_type = self.build_type_token(token.clone(), token.loc);
         InternalValue::IntValue(
             internal_type
@@ -783,7 +783,7 @@ impl<'ctx> CodeGenLLVM<'ctx> {
                     })
                 }
                 InternalType::IntType(internal_int_type) => {
-                    let is_signed = self.is_integer_signed(internal_int_type.int_kind.clone());
+                    let is_signed = self.is_integer_signed(internal_int_type.int_kind);
 
                     InternalValue::IntValue(
                         self.builder
