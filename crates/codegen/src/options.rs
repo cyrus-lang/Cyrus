@@ -1,9 +1,9 @@
-use clap::ValueEnum;
 use core::fmt;
 use inkwell::targets::{CodeModel, RelocMode};
 use serde::Deserialize;
+use std::env;
 
-#[derive(Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+#[derive(Deserialize, Debug, Clone)]
 pub enum RelocModeOptions {
     Default,
     Static,
@@ -11,7 +11,7 @@ pub enum RelocModeOptions {
     DynamicNoPic,
 }
 
-#[derive(Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+#[derive(Deserialize, Debug, Clone)]
 pub enum CodeModelOptions {
     Default,
     Tiny,
@@ -22,7 +22,7 @@ pub enum CodeModelOptions {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct Options {
+pub struct CodeGenOptions {
     pub project_type: Option<String>,
     pub project_name: Option<String>,
     pub project_version: Option<String>,
@@ -42,13 +42,32 @@ pub struct Options {
     pub target_triple: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub enum OutputKind {
+    None,
+    LlvmIr(Option<String>),
+    Asm(Option<String>),
+    ObjectFile(Option<String>),
+    Dylib(Option<String>),
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub enum BuildDir {
     Default,
     Provided(String),
 }
 
-impl Options {
+pub fn get_final_build_dir(build_dir: BuildDir) -> String {
+    match build_dir.clone() {
+        BuildDir::Default => {
+            // specify a tmp directory to be used as build_dir
+            env::temp_dir().to_str().unwrap().to_string()
+        }
+        BuildDir::Provided(path) => path,
+    }
+}
+
+impl CodeGenOptions {
     pub fn default() -> Self {
         Self {
             project_type: None,
@@ -114,8 +133,8 @@ impl Options {
         };
     }
 
-    pub fn read_toml(file_path: String) -> Result<Options, String> {
-        let mut options = Options::default();
+    pub fn read_toml(file_path: String) -> Result<CodeGenOptions, String> {
+        let mut options = CodeGenOptions::default();
 
         let file_content =
             std::fs::read_to_string(file_path).map_err(|_| "Failed to read file 'Project.toml' content.")?;

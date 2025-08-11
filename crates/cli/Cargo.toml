@@ -5,8 +5,11 @@ edition = "2024"
 
 [dependencies]
 codegen = { path = "../codegen", version = "*" }
-layout = { path = "../layout", version = "*" }
+project_layout = { path = "../project_layout", version = "*" }
 parser = { path = "../parser", version = "*" }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+diagcentral = { path = "../diagcentral", version = "*" }
 clap = { version = "4.5.41", features = ["derive"] }
 lexer = { path = "../lexer", version = "*" }
 utils = { path = "../utils", version = "*" }

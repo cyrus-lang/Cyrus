@@ -1,9 +1,13 @@
-use codegen::diag::{Diag, DiagKind, DiagLevel, display_single_diag};
+use diagcentral::{Diag, DiagLevel, display_single_diag};
 use std::{
     fs::{self, File},
     io::Write,
     path::Path,
 };
+
+use crate::diagnostics::ProjectLayoutDiagKind;
+
+mod diagnostics;
 
 fn cyrus_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -11,12 +15,12 @@ fn cyrus_version() -> String {
 
 fn create_common_files(output: String) -> Result<(), String> {
     if fs::exists(output.clone()).map_err(|err| err.to_string())? {
-        display_single_diag(Diag {
+        display_single_diag!(Diag {
             level: DiagLevel::Error,
-            kind: DiagKind::Custom(format!("A project named '{}' already exists in this location.", output)),
+            kind: ProjectLayoutDiagKind::DuplicateProjectName { name: output.clone() },
             location: None,
+            hint: None
         });
-        std::process::exit(1);
     }
 
     fs::create_dir(output.clone()).map_err(|_| format!("Failed to create '{}' directory.", output))?;
@@ -155,7 +159,7 @@ Happy coding!
         .map_err(|err| err.to_string())?;
 
     main_file
-        .write("// extern fn some_library(): *void;\n".as_bytes())
+        .write("// extern func foo() void;\n".as_bytes())
         .map_err(|err| err.to_string())?;
 
     Ok(())

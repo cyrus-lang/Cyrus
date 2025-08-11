@@ -5,7 +5,7 @@ members = [
     "crates/parser",
     "crates/ast",
     "crates/utils",
-    "crates/layout",
+    "crates/project_layout",
     "crates/diagcentral",
     "crates/typed_ast",
     "crates/cli",

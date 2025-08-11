@@ -1,7 +1,7 @@
 use crate::{Diag, DiagLevel};
 use colorized::{Color, Colors};
 use console::user_attended;
-use std::fmt::Display;
+use std::fmt::{self, Display};
 use std::fs;
 use utils::escaping::{saturating_sub, spaces};
 
@@ -86,6 +86,33 @@ impl<K: Display> DiagReporter<K> {
 macro_rules! display_single_diag {
     ($diag:expr) => {
         diagcentral::reporter::DiagReporter::display_single($diag);
+        std::process::exit(1);
+    };
+}
+
+pub enum CustomDiagKind {
+    Custom(String),
+}
+
+impl fmt::Display for CustomDiagKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CustomDiagKind::Custom(message) => {
+                write!(f, "{}", message)
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! display_single_cusotm_diag {
+    ($msg:expr) => {
+        diagcentral::reporter::DiagReporter::display_single(diagcentral::Diag {
+            level: diagcentral::DiagLevel::Error,
+            kind: diagcentral::reporter::CustomDiagKind::Custom($msg),
+            location: None,
+            hint: None,
+        });
         std::process::exit(1);
     };
 }
