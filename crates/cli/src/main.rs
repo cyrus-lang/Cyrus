@@ -1,14 +1,12 @@
-use ::parser::{Parser as CyrusParser, parse_program};
-use ast::token::TokenKind;
 use clap::{Parser, ValueEnum};
-use codegen::build::OutputKind;
-use codegen::context::CodeGenLLVM;
-use codegen::opts::{BuildDir, CodeModelOptions, RelocModeOptions};
-use lexer::Lexer;
-use resolver::{Resolver, generate_module_id};
-use utils::fs::{get_directory_of_file, read_file};
+use codegen::options::{BuildDir, CodeGenOptions, CodeModelOptions, RelocModeOptions};
+use commands::*;
+use compiler::project_file_required;
+use diagcentral::display_single_cusotm_diag;
+use serde::Deserialize;
 
-const PROJECT_FILE_PATH: &str = "Project.toml";
+mod commands;
+mod compiler;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum OptimizeLevel {
@@ -69,20 +67,62 @@ struct CompilerOptions {
     #[clap(long = "target-machine", help = "Display Target Machine information.")]
     display_target_machine: bool,
 
-    #[clap(long, value_enum, default_value_t = RelocModeOptions::Default,
+    #[clap(long, value_enum, default_value_t = RelocMode::Default,
     help = "Set the relocation model for code generation."
     )]
-    reloc_mode: RelocModeOptions,
+    reloc_mode: RelocMode,
 
-    #[clap(long, value_enum, default_value_t = CodeModelOptions::Default,
+    #[clap(long, value_enum, default_value_t = CodeModel::Default,
     help = "Set the code model for code generation."
     )]
-    code_model: CodeModelOptions,
+    code_model: CodeModel,
+}
+
+#[derive(Deserialize, Debug, Clone, ValueEnum)]
+pub enum RelocMode {
+    Default,
+    Static,
+    PIC,
+    DynamicNoPic,
+}
+
+impl RelocMode {
+    pub fn as_compiler_reloc_mode(&self) -> RelocModeOptions {
+        match self {
+            RelocMode::Default => RelocModeOptions::Default,
+            RelocMode::Static => RelocModeOptions::Static,
+            RelocMode::PIC => RelocModeOptions::PIC,
+            RelocMode::DynamicNoPic => RelocModeOptions::DynamicNoPic,
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, ValueEnum)]
+pub enum CodeModel {
+    Default,
+    Tiny,
+    Small,
+    Kernel,
+    Medium,
+    Large,
+}
+
+impl CodeModel {
+    pub fn as_compiler_code_model(&self) -> CodeModelOptions {
+        match self {
+            CodeModel::Default => CodeModelOptions::Default,
+            CodeModel::Tiny => CodeModelOptions::Tiny,
+            CodeModel::Small => CodeModelOptions::Small,
+            CodeModel::Kernel => CodeModelOptions::Kernel,
+            CodeModel::Medium => CodeModelOptions::Medium,
+            CodeModel::Large => CodeModelOptions::Large,
+        }
+    }
 }
 
 impl CompilerOptions {
-    pub fn to_compiler_options(&self) -> codegen::opts::Options {
-        codegen::opts::Options {
+    pub fn to_compiler_options(&self) -> CodeGenOptions {
+        CodeGenOptions {
             opt_level: match self.optimize {
                 OptimizeLevel::None => None,
                 OptimizeLevel::O1 => Some(1),
@@ -106,8 +146,8 @@ impl CompilerOptions {
             quiet: self.quiet,
             stdlib_path: self.stdlib.clone(),
             display_target_machine: self.display_target_machine,
-            reloc_mode: self.reloc_mode.clone(),
-            code_model: self.code_model.clone(),
+            reloc_mode: self.reloc_mode.as_compiler_reloc_mode(),
+            code_model: self.code_model.as_compiler_code_model(),
             target_triple: {
                 if self.target_triple.trim() == "" {
                     None
@@ -210,161 +250,21 @@ enum Commands {
     Version,
 }
 
-fn project_file_required() {
-    if !std::path::Path::new(PROJECT_FILE_PATH).exists() {
-        display_single_diag(Diag {
-            level: DiagLevel::Error,
-            kind: DiagKind::Custom(format!("'{}' not found in current directory.", PROJECT_FILE_PATH)),
-            location: None,
-        });
-        std::process::exit(1);
+fn command_new(project_name: String, lib: bool) {
+    let result = {
+        if lib {
+            project_layout::create_library_project(project_name)
+        } else {
+            project_layout::create_project(project_name)
+        }
+    };
+
+    if let Err(err) = result {
+        display_single_cusotm_diag!(err);
     }
 }
 
-macro_rules! init_compiler {
-    ($context:expr, $file_path:expr, $opts:expr, $output_kind:expr) => {{
-        if let Some(file_path) = $file_path {
-            if !file_path.ends_with(".cyr") {
-                display_single_diag(Diag {
-                    level: DiagLevel::Error,
-                    kind: DiagKind::Custom("Invalid file extension.".to_string()),
-                    location: None,
-                });
-                std::process::exit(1);
-            }
-
-            let mut opts = $opts.clone();
-
-            opts.source_dirs = {
-                if $opts.source_dirs.len() > 0 {
-                    $opts.source_dirs.clone()
-                } else {
-                    match get_directory_of_file(file_path.clone()) {
-                        Some(source_dir) => [source_dir].to_vec(),
-                        None => {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom("Could not get directory path of the input file.".to_string()),
-                                location: None,
-                            });
-                            std::process::exit(1);
-                        }
-                    }
-                }
-            };
-
-            let (program, file_name) = parse_program(file_path.clone());
-            let codegen = match CodeGenLLVM::new(
-                $context,
-                file_path,
-                file_name.clone(),
-                program,
-                opts,
-                true,
-                $output_kind,
-            ) {
-                Ok(instance) => instance,
-                Err(err) => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(format!("Creating CodeGenLLVM instance failed:{}", err.to_string())),
-                        location: None,
-                    });
-                    std::process::exit(1);
-                }
-            };
-            codegen
-        } else {
-            project_file_required();
-
-            match codegen::opts::Options::read_toml(PROJECT_FILE_PATH.to_string()) {
-                Ok(mut options) => {
-                    if !std::path::Path::new("src/main.cyr").exists() {
-                        display_single_diag(Diag {
-                            level: DiagLevel::Error,
-                            kind: DiagKind::Custom("'src/main.cyr' file not found.".to_string()),
-                            location: None,
-                        });
-                        std::process::exit(1);
-                    }
-
-                    let main_file_path = std::path::Path::new("src/main.cyr")
-                        .canonicalize()
-                        .unwrap_or_else(|_| {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom("Failed to get absolute path for 'src/main.cyr'.".to_string()),
-                                location: None,
-                            });
-                            std::process::exit(1);
-                        })
-                        .to_str()
-                        .unwrap()
-                        .to_string();
-
-                    options.source_dirs = {
-                        if $opts.source_dirs.len() > 0 {
-                            $opts.source_dirs.clone()
-                        } else {
-                            match get_directory_of_file(main_file_path.clone()) {
-                                Some(source_dir) => [source_dir].to_vec(),
-                                None => {
-                                    display_single_diag(Diag {
-                                        level: DiagLevel::Error,
-                                        kind: DiagKind::Custom(
-                                            "Could not get directory path of the input file.".to_string(),
-                                        ),
-                                        location: None,
-                                    });
-                                    std::process::exit(1);
-                                }
-                            }
-                        }
-                    };
-
-                    options.override_options($opts);
-
-                    let (program, file_name) = parse_program(main_file_path.clone());
-                    let codegen = match CodeGenLLVM::new(
-                        $context,
-                        main_file_path,
-                        file_name.clone(),
-                        program,
-                        options,
-                        false,
-                        $output_kind,
-                    ) {
-                        Ok(instance) => instance,
-                        Err(err) => {
-                            display_single_diag(Diag {
-                                level: DiagLevel::Error,
-                                kind: DiagKind::Custom(format!(
-                                    "Creating CodeGenLLVM instance failed:{}",
-                                    err.to_string()
-                                )),
-                                location: None,
-                            });
-                            std::process::exit(1);
-                        }
-                    };
-
-                    codegen
-                }
-                Err(err) => {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(err.to_string()),
-                        location: None,
-                    });
-                    std::process::exit(1);
-                }
-            }
-        }
-    }};
-}
-
 pub fn main() {
-    let context = CodeGenLLVM::new_context();
     let version = env!("CARGO_PKG_VERSION");
     let args = Args::parse();
 
@@ -373,43 +273,13 @@ pub fn main() {
             todo!();
         }
         Commands::New { project_name, lib } => {
-            if lib {
-                if let Err(err) = layout::create_library_project(project_name) {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(err),
-                        location: None,
-                    });
-                    std::process::exit(1);
-                }
-            } else {
-                if let Err(err) = layout::create_project(project_name) {
-                    display_single_diag(Diag {
-                        level: DiagLevel::Error,
-                        kind: DiagKind::Custom(err),
-                        location: None,
-                    });
-                    std::process::exit(1);
-                }
-            }
+            command_new(project_name, lib);
         }
         Commands::Run {
             file_path,
             compiler_options,
         } => {
-            if file_path.is_none() {
-                project_file_required();
-            }
-
-            let mut codegen = init_compiler!(
-                &context,
-                file_path.clone(),
-                compiler_options.to_compiler_options(),
-                OutputKind::None
-            );
-            codegen.compile();
-            codegen.compilation_process_finished();
-            codegen.execute();
+            command_run(compiler_options, file_path);
         }
         Commands::EmitLLVM {
             file_path,
@@ -420,14 +290,7 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen = init_compiler!(
-                &context,
-                file_path.clone(),
-                compiler_options.to_compiler_options(),
-                OutputKind::LlvmIr(output_path)
-            );
-            codegen.compile();
-            codegen.compilation_process_finished();
+            command_emit_llvm(compiler_options, file_path, output_path);
         }
         Commands::EmitASM {
             file_path,
@@ -438,14 +301,7 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen = init_compiler!(
-                &context,
-                file_path.clone(),
-                compiler_options.to_compiler_options(),
-                OutputKind::Asm(output_path)
-            );
-            codegen.compile();
-            codegen.compilation_process_finished();
+            command_emit_asm(compiler_options, file_path, output_path);
         }
         Commands::Build {
             file_path,
@@ -456,15 +312,7 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen = init_compiler!(
-                &context,
-                file_path.clone(),
-                compiler_options.to_compiler_options(),
-                OutputKind::None
-            );
-            codegen.compile();
-            codegen.generate_executable_file(output_path);
-            codegen.compilation_process_finished();
+            command_build(compiler_options, file_path, output_path);
         }
         Commands::Object {
             file_path,
@@ -475,14 +323,7 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen = init_compiler!(
-                &context,
-                file_path.clone(),
-                compiler_options.to_compiler_options(),
-                OutputKind::ObjectFile(output_path)
-            );
-            codegen.compile();
-            codegen.compilation_process_finished();
+            command_object(compiler_options, file_path, output_path);
         }
         Commands::Dylib {
             file_path,
@@ -493,72 +334,13 @@ pub fn main() {
                 project_file_required();
             }
 
-            let mut codegen = init_compiler!(
-                &context,
-                file_path.clone(),
-                compiler_options.to_compiler_options(),
-                OutputKind::Dylib(output_path)
-            );
-            codegen.compile();
-            codegen.compilation_process_finished();
+            command_dylib(compiler_options, file_path, output_path);
         }
         Commands::Version => {
             println!("Cyrus {}", version)
         }
-        Commands::LexOnly { file_path } => lex_only_command(file_path),
-        Commands::ParseOnly { file_path } => parse_only_command(file_path),
-        Commands::SyntacticOnly { file_path } => syntactic_only_command(file_path),
+        Commands::LexOnly { file_path } => command_lex_only(file_path),
+        Commands::ParseOnly { file_path } => command_parse_only(file_path),
+        Commands::SyntacticOnly { file_path } => command_syntactic_only(file_path),
     }
-}
-
-fn lex_only_command(file_path: String) {
-    let (file_content, file_name) = read_file(file_path.clone());
-    let mut lexer = Lexer::new(file_content, file_name);
-    loop {
-        let token = lexer.next_token();
-        if token.kind == TokenKind::EOF {
-            break;
-        }
-
-        println!(
-            "{:?} Span({}, {}) Line({}) Column({})",
-            token.kind, token.span.start, token.span.end, token.loc.line, token.loc.column
-        );
-    }
-}
-
-fn parse_only_command(file_path: String) {
-    let (file_content, file_name) = read_file(file_path.clone());
-    let mut lexer = Lexer::new(file_content, file_name);
-
-    match CyrusParser::new(&mut lexer).parse() {
-        Ok(result) => println!("{:#?}", result),
-        Err(errors) => {
-            for err in errors {
-                err.print();
-            }
-        }
-    }
-}
-
-fn syntactic_only_command(file_path: String) {
-    let (file_content, file_name) = read_file(file_path.clone());
-    let mut lexer = Lexer::new(file_content, file_name);
-
-    let program_tree = match CyrusParser::new(&mut lexer).parse() {
-        Ok(node) => node.as_program(),
-        Err(errors) => {
-            for err in errors {
-                err.print();
-            }
-        }
-    };
-
-    let resolver = Resolver::new();
-    let module_id = generate_module_id();
-    let typed_program_tree = resolver.resolve_module(module_id, program_tree);
-
-    dbg!(typed_program_tree);
-
-    println!("Program is correct grammatically.");
 }
