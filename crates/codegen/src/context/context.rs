@@ -4,13 +4,13 @@ use crate::{
     options::{CodeGenOptions, OutputKind, get_final_build_dir},
 };
 use std::{
-    collections::HashMap,
+    rc::Rc,
     sync::{Arc, Mutex},
 };
 use typed_ast::TypedProgramTree;
 
 pub struct CodeGenContext {
-    pub options: CodeGenOptions,
+    pub opts: CodeGenOptions,
     pub build_manifest: Arc<Mutex<BuildManifest>>,
     pub compiled_objects: Arc<Mutex<Vec<ObjectFileInfo>>>,
     output_kind: OutputKind,
@@ -18,32 +18,43 @@ pub struct CodeGenContext {
 }
 
 impl CodeGenContext {
-    pub fn new(options: CodeGenOptions, output_kind: OutputKind) -> Self {
+    pub fn new(opts: CodeGenOptions, output_kind: OutputKind) -> Self {
         let build_manifest = Arc::new(Mutex::new(BuildManifest::default()));
-        let final_build_dir = get_final_build_dir(options.build_dir.clone());
+        let final_build_dir = get_final_build_dir(opts.build_dir.clone());
         let compiled_objects = Arc::new(Mutex::new(Vec::<ObjectFileInfo>::new()));
 
         Self {
             build_manifest,
             compiled_objects,
-            options,
+            opts,
             output_kind,
             final_build_dir,
         }
     }
 
-    pub fn compile_executable(compiled_objects: HashMap<String, ObjectFileInfo>) {
-        todo!();
+    pub fn emit_exec(&self, output_path: String) {
+        todo!()
     }
 
-    fn compile_modules(&self, typed_modules: Vec<TypedProgramTree>) {
-        typed_modules.iter().for_each(|program_tree| {
-            let codegen_module = CodeGenModule::new(program_tree);
-            let emit_object_result = codegen_module.emit_object_file();
+    pub fn compile_modules(&self, typed_modules: Vec<(String, Rc<TypedProgramTree>)>) {
+        typed_modules.iter().for_each(|(module_name, program_tree)| {
+            let codegen_module = CodeGenModule::new(&self.opts, program_tree.clone());
+            let codegen_output = codegen_module.codegen(module_name.to_string());
 
-            let mut compiled_objects = self.compiled_objects.lock().unwrap();
-            compiled_objects.push(ObjectFileInfo::new(emit_object_result.file_path));
-            drop(compiled_objects);
+            match self.output_kind.clone() {
+                OutputKind::LlvmIr(output_path) => codegen_output.emit_llvm_ir(output_path),
+                OutputKind::Asm(_) => todo!(),
+                OutputKind::ObjectFile(_) => todo!(),
+                OutputKind::Dylib(_) => todo!(),
+                OutputKind::Run => {}
+                OutputKind::None => {}
+            }
+
+            // let bytecode_path = Path::new("");
+            // codegen_output.emit_bitcode(bytecode_path);
+            // let mut compiled_objects = self.compiled_objects.lock().unwrap();
+            // compiled_objects.push(ObjectFileInfo::new(emit_object_result.file_path));
+            // drop(compiled_objects);
         });
     }
 

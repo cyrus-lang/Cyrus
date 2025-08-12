@@ -1,12 +1,12 @@
 use clap::{Parser, ValueEnum};
 use codegen::options::{BuildDir, CodeGenOptions, CodeModelOptions, RelocModeOptions};
 use commands::*;
-use compiler::project_file_required;
 use diagcentral::display_single_cusotm_diag;
 use serde::Deserialize;
+use trigger::project_file_required;
 
 mod commands;
-mod compiler;
+mod trigger;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum OptimizeLevel {

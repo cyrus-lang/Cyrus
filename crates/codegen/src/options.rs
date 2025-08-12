@@ -45,10 +45,11 @@ pub struct CodeGenOptions {
 #[derive(Debug, Clone)]
 pub enum OutputKind {
     None,
-    LlvmIr(Option<String>),
-    Asm(Option<String>),
-    ObjectFile(Option<String>),
-    Dylib(Option<String>),
+    Run,
+    LlvmIr(String),
+    Asm(String),
+    ObjectFile(String),
+    Dylib(String),
 }
 
 #[derive(Deserialize, Debug, Clone)]

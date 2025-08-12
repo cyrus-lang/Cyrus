@@ -34,7 +34,9 @@ pub fn read_file(file_path: String) -> (String, String) {
     (contents, file_name.to_string())
 }
 
-pub fn ensure_output_dir(output_dir: &Path) {
+pub fn ensure_output_dir(output_dir: String) {
+    let output_dir = Path::new(&output_dir);
+
     if !output_dir.exists() {
         fs::create_dir_all(output_dir).unwrap_or_else(|_| {
             tui_error(format!("Failed to create output directory: {}", output_dir.display()));

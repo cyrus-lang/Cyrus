@@ -17,6 +17,8 @@ use ast::{
 use diagcentral::{reporter::DiagReporter, *};
 use rand::Rng;
 use std::collections::HashSet;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::types::{
@@ -33,6 +35,7 @@ pub struct Resolver {
     pub global_symbols: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
     pub module_aliases: Arc<Mutex<HashMap<ModuleAlias, ModuleID>>>,
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
+    pub program_trees: Arc<Mutex<Vec<(String, Rc<TypedProgramTree>)>>>,
     pub file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
     pub reporter: DiagReporter<ResolverDiagKind>,
     pub module_loader: ModuleLoader,
@@ -53,6 +56,7 @@ impl Resolver {
             analyzed_modules: Arc::new(Mutex::new(HashSet::new())),
             module_aliases: Arc::new(Mutex::new(HashMap::new())),
             file_paths: Arc::new(Mutex::new(HashMap::new())),
+            program_trees: Arc::new(Mutex::new(Vec::new())),
             already_imported_modules: Vec::new(),
             reporter: DiagReporter::new(),
             module_loader: ModuleLoader::new(opts),
@@ -189,7 +193,14 @@ impl Resolver {
             self.insert_module_file_path(module_id, module_file_path);
 
             match self.resolve_module(module_id, program_tree.as_ref(), &mut visiting, false) {
-                Some(..) => {}
+                Some(typed_program_tree) => {
+                    let module_file_path = self.get_current_module_file_path();
+
+                    let mut program_trees = self.program_trees.lock().unwrap();
+                    let module_name = get_module_name(module_file_path);
+                    program_trees.push((module_name, typed_program_tree));
+                    drop(program_tree);
+                }
                 None => continue,
             };
 
@@ -203,7 +214,7 @@ impl Resolver {
         ast: &ProgramTree,
         mut visiting: &mut Visiting,
         is_master: bool,
-    ) -> Option<TypedProgramTree> {
+    ) -> Option<Rc<TypedProgramTree>> {
         self.current_module = Some(module_id);
 
         if is_master {
@@ -237,8 +248,18 @@ impl Resolver {
 
         // Collect exact definitions and details of the symbols (second pass).
         let typed_body = self.resolve_definitions(module_id, &ast);
+        let typed_program_tree = Rc::new(TypedProgramTree { body: typed_body });
 
-        Some(TypedProgramTree { body: typed_body })
+        if is_master {
+            let module_file_path = self.get_current_module_file_path();
+
+            let mut program_trees = self.program_trees.lock().unwrap();
+            let module_name = get_module_name(module_file_path);
+            program_trees.push((module_name, typed_program_tree.clone()));
+            drop(program_trees);
+        }
+
+        Some(typed_program_tree.clone())
     }
 
     fn resolve_type(
@@ -589,7 +610,7 @@ impl Resolver {
         interface: &Interface,
     ) -> Option<TypedStatement> {
         let interface_symbol_id = if local_scope_opt.is_some() {
-            generate_symbol_id() // new symbol 
+            generate_symbol_id() // new symbol
         } else {
             self.lookup_symbol_id(module_id, &interface.identifier.name).unwrap()
         };
@@ -671,7 +692,7 @@ impl Resolver {
         enum_decl: &Enum,
     ) -> Option<TypedStatement> {
         let enum_symbol_id = if local_scope_opt.is_some() {
-            generate_symbol_id() // new symbol 
+            generate_symbol_id() // new symbol
         } else {
             self.lookup_symbol_id(module_id, &enum_decl.identifier.name).unwrap()
         };
@@ -952,7 +973,7 @@ impl Resolver {
         struct_decl: &Struct,
     ) -> Option<TypedStatement> {
         let struct_symbol_id = if local_scope_opt.is_some() {
-            generate_symbol_id() // new symbol 
+            generate_symbol_id() // new symbol
         } else {
             self.lookup_symbol_id(module_id, &struct_decl.identifier.name).unwrap()
         };
@@ -2492,6 +2513,18 @@ impl Resolver {
         drop(global_symbols);
         option
     }
+}
+
+fn get_module_name(module_file_path: String) -> String {
+    let path = Path::new(&module_file_path);
+    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("module");
+
+    // Hash the full path for uniqueness
+    let mut hasher = DefaultHasher::new();
+    path.to_string_lossy().hash(&mut hasher);
+    let hash = hasher.finish();
+
+    format!("{}_{}", file_stem, format!("{:x}", hash))
 }
 
 pub fn generate_module_id() -> ModuleID {

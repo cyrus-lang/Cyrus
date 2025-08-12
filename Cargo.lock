@@ -139,6 +139,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+ "typed_ast",
  "utils",
 ]
 
@@ -146,6 +147,7 @@ dependencies = [
 name = "codegen"
 version = "0.1.0"
 dependencies = [
+ "ast",
  "diagcentral",
  "inkwell",
  "serde",
