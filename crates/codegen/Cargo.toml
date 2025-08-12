@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 utils = { path = "../utils", version = "*" }
 typed_ast = { path = "../typed_ast", version = "*" }
+ast = { path = "../ast", version = "*" }
 diagcentral = { path = "../diagcentral", version = "*" }
 inkwell = { version = "0.5.0", features = ["llvm18-0"] }
 serde = { version = "1.0.219", features = ["derive"] }

@@ -260,34 +260,4 @@ impl ModuleLoader {
             },
         }
     }
-
-    // Local means it only make sense in this module.
-    // It may be aliased or not.
-    pub(crate) fn get_local_module_name(&self, module_path: ModulePath, current_module_file_path: String) -> String {
-        let last_segment = module_path.segments.last().unwrap();
-
-        match last_segment {
-            ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
-            ModuleSegment::Single(_) => {
-                if module_path.alias.is_some() {
-                    display_single_diag!(Diag {
-                        level: DiagLevel::Error,
-                        kind: ResolverDiagKind::InvalidRenameWhenImportingModule,
-                        location: Some(DiagLoc {
-                            file: current_module_file_path,
-                            line: module_path.loc.line,
-                            column: module_path.loc.column,
-                            length: module_path.span.end,
-                        }),
-                        hint: None
-                    });
-                } else {
-                    match module_path.segments.iter().nth_back(1).unwrap() {
-                        ModuleSegment::SubModule(identifier) => module_path.alias.unwrap_or(identifier.name.clone()),
-                        ModuleSegment::Single(_) => unreachable!(),
-                    }
-                }
-            }
-        }
-    }
 }
