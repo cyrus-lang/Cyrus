@@ -35,7 +35,7 @@ pub struct Resolver {
     pub global_symbols: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
     pub module_aliases: Arc<Mutex<HashMap<ModuleAlias, ModuleID>>>,
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
-    pub program_trees: Arc<Mutex<Vec<(String, Rc<RefCell<TypedProgramTree>>)>>>,
+    pub program_trees: Arc<Mutex<Vec<(String, ModuleID, Rc<RefCell<TypedProgramTree>>)>>>,
     pub file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
     pub reporter: DiagReporter<ResolverDiagKind>,
     pub module_loader: ModuleLoader,
@@ -198,7 +198,7 @@ impl Resolver {
 
                     let mut program_trees = self.program_trees.lock().unwrap();
                     let module_name = get_module_name(module_file_path);
-                    program_trees.push((module_name, typed_program_tree));
+                    program_trees.push((module_name, module_id, typed_program_tree));
                     drop(program_tree);
                 }
                 None => continue,
@@ -255,7 +255,7 @@ impl Resolver {
 
             let mut program_trees = self.program_trees.lock().unwrap();
             let module_name = get_module_name(module_file_path);
-            program_trees.push((module_name, typed_program_tree.clone()));
+            program_trees.push((module_name, self.current_module.unwrap(), typed_program_tree.clone()));
             drop(program_trees);
         }
 

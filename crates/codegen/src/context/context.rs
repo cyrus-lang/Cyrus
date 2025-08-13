@@ -3,23 +3,25 @@ use crate::{
     builder::module::CodeGenModule,
     options::{CodeGenOptions, OutputKind, get_final_build_dir},
 };
+use resolver::Resolver;
 use std::{
     cell::RefCell,
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use typed_ast::TypedProgramTree;
+use typed_ast::{ModuleID, TypedProgramTree};
 
 pub struct CodeGenContext {
     pub opts: CodeGenOptions,
     pub build_manifest: Arc<Mutex<BuildManifest>>,
     pub compiled_objects: Arc<Mutex<Vec<ObjectFileInfo>>>,
+    resolver_rc: Rc<Resolver>,
     output_kind: OutputKind,
     final_build_dir: String,
 }
 
 impl CodeGenContext {
-    pub fn new(opts: CodeGenOptions, output_kind: OutputKind) -> Self {
+    pub fn new(opts: CodeGenOptions, output_kind: OutputKind, resolver_rc: Rc<Resolver>) -> Self {
         let build_manifest = Arc::new(Mutex::new(BuildManifest::default()));
         let final_build_dir = get_final_build_dir(opts.build_dir.clone());
         let compiled_objects = Arc::new(Mutex::new(Vec::<ObjectFileInfo>::new()));
@@ -30,6 +32,7 @@ impl CodeGenContext {
             opts,
             output_kind,
             final_build_dir,
+            resolver_rc,
         }
     }
 
@@ -37,10 +40,10 @@ impl CodeGenContext {
         todo!()
     }
 
-    pub fn compile_modules(&self, typed_modules: Vec<(String, Rc<RefCell<TypedProgramTree>>)>) {
-        typed_modules.iter().for_each(|(module_name, program_tree)| {
+    pub fn compile_modules(&self, typed_modules: Vec<(String, ModuleID, Rc<RefCell<TypedProgramTree>>)>) {
+        typed_modules.iter().for_each(|(module_name, module_id, program_tree)| {
             let codegen_module = CodeGenModule::new(&self.opts, program_tree.clone());
-            let codegen_output = codegen_module.codegen(module_name.to_string());
+            let codegen_output = codegen_module.codegen(self.resolver_rc.clone(), *module_id, module_name.to_string());
 
             match self.output_kind.clone() {
                 OutputKind::LlvmIr(output_path) => codegen_output.emit_llvm_ir(output_path),

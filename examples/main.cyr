@@ -1,6 +1,14 @@
 func main() {
-    #a = 10;
+    #a: int = 10;
 }
 
-func sample() {
+func sample() Person {
+}
+
+type MyPerson = Person;
+person: MyPerson;
+
+struct Person {
+    name: char*;
+    age: int;
 }

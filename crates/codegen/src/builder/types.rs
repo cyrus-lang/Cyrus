@@ -1,18 +1,51 @@
+use crate::builder::module::LocalIRValue;
+
 use super::module::CodeGenBuilder;
 use inkwell::{
     AddressSpace,
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
 };
-use typed_ast::types::{BasicConcreteType, ConcreteType, TypedArrayCapacity};
+use typed_ast::{
+    ScopeID, SymbolID,
+    types::{BasicConcreteType, ConcreteType, TypedArrayCapacity},
+};
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_conrete_type(&self, concrete_type: ConcreteType) -> AnyTypeEnum<'a> {
+    pub(crate) fn build_concrete_type_from_symbol_id(
+        &self,
+        local_scope_opt: Option<ScopeID>,
+        symbol_id: SymbolID,
+    ) -> AnyTypeEnum<'a> {
+        if let Some(local_scope) = local_scope_opt {
+            todo!();
+        } else {
+            let module_id = self.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
+            let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap();
+            let irreg = self.irreg.borrow();
+            let local_ir_value = irreg.get(&symbol_entry.get_symbol_id()).unwrap();
+
+            let any_type_enum = match local_ir_value {
+                LocalIRValue::Func(_) => unreachable!(),
+                LocalIRValue::GlobalValue(_) => unreachable!(),
+                LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
+            };
+
+            drop(irreg);
+            any_type_enum
+        }
+    }
+
+    pub(crate) fn build_concrete_type(
+        &self,
+        local_scope_opt: Option<ScopeID>,
+        concrete_type: ConcreteType,
+    ) -> AnyTypeEnum<'a> {
         match concrete_type {
-            ConcreteType::Symbol(_) => todo!(),
+            ConcreteType::Symbol(symbol_id) => self.build_concrete_type_from_symbol_id(local_scope_opt, symbol_id),
             ConcreteType::BasicType(basic_concrete_type) => self.build_basic_concrete_type(basic_concrete_type),
             ConcreteType::Array(typed_array_type) => {
                 let element_type: BasicTypeEnum = self
-                    .build_conrete_type(*typed_array_type.element_type)
+                    .build_concrete_type(local_scope_opt, *typed_array_type.element_type)
                     .try_into()
                     .unwrap();
 
@@ -22,7 +55,7 @@ impl<'a> CodeGenBuilder<'a> {
                 };
                 AnyTypeEnum::ArrayType(element_type.array_type(array_capacity))
             }
-            ConcreteType::Const(concrete_type) => self.build_conrete_type(*concrete_type),
+            ConcreteType::Const(concrete_type) => self.build_concrete_type(local_scope_opt, *concrete_type),
             ConcreteType::Pointer(_) => {
                 let ptr: PointerType<'a> = self.llvmctx.ptr_type(AddressSpace::default());
                 AnyTypeEnum::PointerType(ptr)
@@ -31,7 +64,11 @@ impl<'a> CodeGenBuilder<'a> {
                 let field_types: Vec<BasicTypeEnum<'_>> = typed_unnamed_struct_type
                     .fields
                     .iter()
-                    .map(|field| self.build_conrete_type(*field.field_type.clone()).try_into().unwrap())
+                    .map(|field| {
+                        self.build_concrete_type(local_scope_opt, *field.field_type.clone())
+                            .try_into()
+                            .unwrap()
+                    })
                     .collect();
 
                 AnyTypeEnum::StructType(self.llvmctx.struct_type(&field_types, typed_unnamed_struct_type.packed))

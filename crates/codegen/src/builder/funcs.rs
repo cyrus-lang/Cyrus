@@ -84,9 +84,10 @@ impl<'a> CodeGenBuilder<'a> {
             .iter()
             .map(|param| {
                 let basic_type_enum: BasicTypeEnum<'a> = match param {
-                    TypedFuncParamKind::FuncParam(typed_func_param) => {
-                        self.build_conrete_type(typed_func_param.ty.clone()).try_into().unwrap()
-                    }
+                    TypedFuncParamKind::FuncParam(typed_func_param) => self
+                        .build_concrete_type(None, typed_func_param.ty.clone())
+                        .try_into()
+                        .unwrap(),
                     TypedFuncParamKind::SelfModifier(self_modifier) => match self_modifier.kind {
                         SelfModifierKind::Copied => BasicTypeEnum::StructType(method_struct_type.unwrap()),
                         SelfModifierKind::Referenced => {
@@ -98,7 +99,7 @@ impl<'a> CodeGenBuilder<'a> {
             })
             .collect();
 
-        let return_type = self.build_conrete_type(return_type);
+        let return_type = self.build_concrete_type(None, return_type);
 
         let is_var_args = params.variadic.is_some();
         let fn_type = unsafe {
