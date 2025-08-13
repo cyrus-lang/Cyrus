@@ -1,4 +1,4 @@
-use crate::options::{CodeGenOptions, OutputKind};
+use crate::options::CodeGenOptions;
 use diagcentral::display_single_cusotm_diag;
 use inkwell::{
     OptimizationLevel,
@@ -6,7 +6,7 @@ use inkwell::{
     context::Context,
     module::Module,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
-    values::{FunctionValue, GlobalValue},
+    values::{FunctionValue, GlobalValue, StructValue},
 };
 use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
 use typed_ast::TypedProgramTree;
@@ -15,7 +15,7 @@ use utils::fs::ensure_output_dir;
 pub struct CodeGenModule<'module> {
     ctx: Rc<Context>,
     opts: &'module CodeGenOptions,
-    program_tree: Rc<TypedProgramTree>,
+    program_tree: Rc<RefCell<TypedProgramTree>>,
 }
 
 pub(crate) struct CodeGenBuilder<'a> {
@@ -27,7 +27,7 @@ pub(crate) struct CodeGenBuilder<'a> {
 }
 
 impl<'module> CodeGenModule<'module> {
-    pub fn new(opts: &'module CodeGenOptions, program_tree: Rc<TypedProgramTree>) -> Self {
+    pub fn new(opts: &'module CodeGenOptions, program_tree: Rc<RefCell<TypedProgramTree>>) -> Self {
         let ctx = Rc::new(Context::create());
 
         Self {
@@ -60,7 +60,8 @@ impl<'module> CodeGenModule<'module> {
             irreg,
         };
 
-        codegen_builder.build_toplevel_statements(&self.program_tree.body);
+        let program_tree_borrowed = self.program_tree.borrow();
+        codegen_builder.build_toplevel_statements(&program_tree_borrowed.body);
         CodeGenModuleOutput::new(module_name, llvmmodule)
     }
 
@@ -144,4 +145,5 @@ pub type LocalIRValueRegistry<'a> = HashMap<LocalIRValueID, LocalIRValue<'a>>;
 pub enum LocalIRValue<'a> {
     Func(FunctionValue<'a>),
     GlobalValue(GlobalValue<'a>),
+    Struct(StructValue<'a>),
 }

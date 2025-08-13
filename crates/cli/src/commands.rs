@@ -5,10 +5,10 @@ use diagcentral::display_single_cusotm_diag;
 use lexer::Lexer;
 use parser::Parser;
 use resolver::{Resolver, Visiting, generate_module_id, moduleloader::ModuleLoaderOptions};
-use std::{env, mem, process::exit, rc::Rc};
+use std::{cell::RefCell, env, mem, process::exit, rc::Rc};
 use typed_ast::TypedProgramTree;
 
-fn get_program_trees(options: &CompilerOptions, file_path: String) -> Vec<(String, Rc<TypedProgramTree>)> {
+fn get_program_trees(options: &CompilerOptions, file_path: String) -> Vec<(String, Rc<RefCell<TypedProgramTree>>)> {
     let file_content = utils::fs::read_file(file_path.clone()).0;
     let mut lexer = Lexer::new(file_content, file_path.clone());
     let mut parser = Parser::new(lexer.tokenize(), file_path.clone());
@@ -37,9 +37,9 @@ fn get_program_trees(options: &CompilerOptions, file_path: String) -> Vec<(Strin
         exit(1);
     }
 
-    let final_program_trees: Vec<(String, Rc<TypedProgramTree>)>;
-    let mut program_trees = resolver.program_trees.lock().unwrap();
-    final_program_trees = mem::take(&mut program_trees);
+    let final_program_trees: Vec<(String, Rc<RefCell<TypedProgramTree>>)>;
+    let program_trees = resolver.program_trees.lock().unwrap();
+    final_program_trees = program_trees.clone();
     drop(program_trees);
 
     final_program_trees

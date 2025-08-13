@@ -35,7 +35,7 @@ pub struct Resolver {
     pub global_symbols: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
     pub module_aliases: Arc<Mutex<HashMap<ModuleAlias, ModuleID>>>,
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
-    pub program_trees: Arc<Mutex<Vec<(String, Rc<TypedProgramTree>)>>>,
+    pub program_trees: Arc<Mutex<Vec<(String, Rc<RefCell<TypedProgramTree>>)>>>,
     pub file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
     pub reporter: DiagReporter<ResolverDiagKind>,
     pub module_loader: ModuleLoader,
@@ -214,7 +214,7 @@ impl Resolver {
         ast: &ProgramTree,
         mut visiting: &mut Visiting,
         is_master: bool,
-    ) -> Option<Rc<TypedProgramTree>> {
+    ) -> Option<Rc<RefCell<TypedProgramTree>>> {
         self.current_module = Some(module_id);
 
         if is_master {
@@ -248,7 +248,7 @@ impl Resolver {
 
         // Collect exact definitions and details of the symbols (second pass).
         let typed_body = self.resolve_definitions(module_id, &ast);
-        let typed_program_tree = Rc::new(TypedProgramTree { body: typed_body });
+        let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree { body: typed_body }));
 
         if is_master {
             let module_file_path = self.get_current_module_file_path();
@@ -635,6 +635,7 @@ impl Resolver {
                     }
 
                     let typed_func_decl = TypedFuncDecl {
+                        symbol_id: interface_symbol_id,
                         name: func_decl.identifier.name.clone(),
                         params: TypedFuncParams {
                             list: typed_func_params,
@@ -764,6 +765,7 @@ impl Resolver {
         };
 
         Some(TypedStatement::Enum(TypedEnum {
+            symbol_id: enum_symbol_id,
             name: enum_decl.identifier.name.clone(),
             variants,
             methods,
@@ -821,6 +823,7 @@ impl Resolver {
         );
 
         Some(TypedStatement::GlobalVariable(TypedGlobalVariable {
+            symbol_id,
             name: global_var.identifier.name.clone(),
             ty: concrete_type,
             expr: typed_expr,
@@ -1050,7 +1053,7 @@ impl Resolver {
         }
 
         let resolved_struct = ResolvedStruct {
-            module_id: module_id,
+            module_id,
             symbol_id: struct_symbol_id,
             struct_sig: StructSig {
                 name: struct_decl.identifier.name.clone(),
@@ -1073,6 +1076,7 @@ impl Resolver {
         }
 
         Some(TypedStatement::Struct(TypedStruct {
+            symbol_id: struct_symbol_id,
             name: struct_decl.identifier.name.clone(),
             fields: typed_struct_fields,
             methods,
@@ -1233,6 +1237,7 @@ impl Resolver {
                 );
 
                 Some(TypedStatement::FuncDecl(TypedFuncDecl {
+                    symbol_id,
                     name: func_decl.identifier.name.clone(),
                     params: TypedFuncParams {
                         list: typed_func_params,
@@ -1287,6 +1292,7 @@ impl Resolver {
                 };
 
                 Some(TypedStatement::FuncDef(TypedFuncDef {
+                    symbol_id,
                     name: func_def.identifier.name.clone(),
                     params: TypedFuncParams {
                         list: typed_func_params,
@@ -1973,8 +1979,8 @@ impl Resolver {
                     None => return None,
                 };
 
-                let symbol_id = match operand {
-                    TypedExpression::Symbol(symbol_id) => symbol_id,
+                let symbol_id = match operand.kind {
+                    TypedExpressionKind::Symbol(symbol_id) => symbol_id,
                     _ => {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -1990,11 +1996,14 @@ impl Resolver {
                     }
                 };
 
-                Some(TypedExpression::FieldAccess(TypedFieldAccess {
-                    symbol_id,
-                    field_name: field_access.field_name.name.clone(),
-                    loc: field_access.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::FieldAccess(TypedFieldAccess {
+                        symbol_id,
+                        field_name: field_access.field_name.name.clone(),
+                        loc: field_access.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::MethodCall(method_call) => {
                 let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &method_call.operand) {
@@ -2002,8 +2011,8 @@ impl Resolver {
                     None => return None,
                 };
 
-                let symbol_id = match operand {
-                    TypedExpression::Symbol(symbol_id) => symbol_id,
+                let symbol_id = match operand.kind {
+                    TypedExpressionKind::Symbol(symbol_id) => symbol_id,
                     _ => {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -2030,13 +2039,16 @@ impl Resolver {
                     args.push(typed_expr);
                 }
 
-                Some(TypedExpression::MethodCall(TypedMethodCall {
-                    symbol_id,
-                    method_name: method_call.method_name.name.clone(),
-                    is_fat_arrow: method_call.is_fat_arrow,
-                    loc: method_call.loc.clone(),
-                    args,
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::MethodCall(TypedMethodCall {
+                        symbol_id,
+                        method_name: method_call.method_name.name.clone(),
+                        is_fat_arrow: method_call.is_fat_arrow,
+                        loc: method_call.loc.clone(),
+                        args,
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::StructInit(struct_init) => {
                 if is_unscoped_expr!(struct_init.struct_name.loc.clone(), struct_init.struct_name.span.end) {
@@ -2082,26 +2094,38 @@ impl Resolver {
                     });
                 }
 
-                Some(TypedExpression::StructInit(TypedStructInit {
-                    symbol_id,
-                    fields: field_inits,
-                    loc: struct_init.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::StructInit(TypedStructInit {
+                        symbol_id,
+                        fields: field_inits,
+                        loc: struct_init.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::ModuleImport(module_import) => {
                 if let Some(identifier) = module_import.as_identifier() {
                     let symbol_id = resolve_local_identifier!(identifier);
-                    Some(TypedExpression::Symbol(symbol_id))
+                    Some(TypedExpression {
+                        kind: TypedExpressionKind::Symbol(symbol_id),
+                        concrete_type: None,
+                    })
                 } else {
                     match self.resolve_module_import(module_id, module_import.clone()) {
-                        Some(symbol_id) => Some(TypedExpression::Symbol(symbol_id)),
+                        Some(symbol_id) => Some(TypedExpression {
+                            kind: TypedExpressionKind::Symbol(symbol_id),
+                            concrete_type: None,
+                        }),
                         None => return None,
                     }
                 }
             }
             Expression::Identifier(identifier) => {
                 let symbol_id = resolve_local_identifier!(identifier);
-                Some(TypedExpression::Symbol(symbol_id))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Symbol(symbol_id),
+                    concrete_type: None,
+                })
             }
             Expression::FuncCall(func_call) => {
                 if is_unscoped_expr!(func_call.loc.clone(), func_call.span.end) {
@@ -2150,11 +2174,14 @@ impl Resolver {
                     }
                 }
 
-                Some(TypedExpression::FuncCall(TypedFuncCall {
-                    args: typed_args,
-                    symbol_id,
-                    loc: func_call.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::FuncCall(TypedFuncCall {
+                        args: typed_args,
+                        symbol_id,
+                        loc: func_call.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::Array(arr) => {
                 let array_type =
@@ -2172,31 +2199,40 @@ impl Resolver {
                     };
                 }
 
-                Some(TypedExpression::Array(TypedArray {
-                    array_type,
-                    elements: typed_elements,
-                    loc: arr.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Array(TypedArray {
+                        array_type,
+                        elements: typed_elements,
+                        loc: arr.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::Infix(bin) => {
                 let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.lhs.clone())?;
                 let rhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.rhs.clone())?;
 
-                Some(TypedExpression::Infix(TypedInfixExpression {
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                    op: bin.op.clone(),
-                    loc: bin.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Infix(TypedInfixExpression {
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                        op: bin.op.clone(),
+                        loc: bin.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::Prefix(prefix) => {
                 let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &*prefix.operand.clone())?;
 
-                Some(TypedExpression::Prefix(TypedPrefixExpression {
-                    operand: Box::new(operand),
-                    op: prefix.op.clone(),
-                    loc: prefix.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Prefix(TypedPrefixExpression {
+                        operand: Box::new(operand),
+                        op: prefix.op.clone(),
+                        loc: prefix.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::Cast(cast) => {
                 let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &*cast.expr.clone()) {
@@ -2210,11 +2246,14 @@ impl Resolver {
                         None => return None,
                     };
 
-                Some(TypedExpression::Cast(TypedCast {
-                    operand: Box::new(operand),
-                    target_type,
-                    loc: cast.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Cast(TypedCast {
+                        operand: Box::new(operand),
+                        target_type,
+                        loc: cast.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::TypeSpecifier(type_specifier) => {
                 let (loc, span_end) = type_specifier.get_loc();
@@ -2239,24 +2278,33 @@ impl Resolver {
                     None => return None,
                 };
 
-                Some(TypedExpression::Assignment(TypedAssignment {
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                    loc: assignment.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Assignment(TypedAssignment {
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                        loc: assignment.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
-            Expression::Literal(literal) => Some(TypedExpression::Literal(literal.clone())),
+            Expression::Literal(literal) => Some(TypedExpression {
+                kind: TypedExpressionKind::Literal(literal.clone()),
+                concrete_type: None,
+            }),
             Expression::Unary(unary) => {
                 let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &*unary.operand) {
                     Some(typed_expr) => typed_expr,
                     None => return None,
                 };
 
-                Some(TypedExpression::Unary(TypedUnaryExpression {
-                    op: unary.op.clone(),
-                    operand: Box::new(operand),
-                    loc: unary.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Unary(TypedUnaryExpression {
+                        op: unary.op.clone(),
+                        operand: Box::new(operand),
+                        loc: unary.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::ArrayIndex(array_index) => {
                 let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &array_index.operand) {
@@ -2269,11 +2317,14 @@ impl Resolver {
                     None => return None,
                 };
 
-                Some(TypedExpression::ArrayIndex(TypedArrayIndex {
-                    operand: Box::new(operand),
-                    index: Box::new(index),
-                    loc: array_index.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::ArrayIndex(TypedArrayIndex {
+                        operand: Box::new(operand),
+                        index: Box::new(index),
+                        loc: array_index.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::AddressOf(address_of) => {
                 let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &address_of.expr) {
@@ -2281,10 +2332,13 @@ impl Resolver {
                     None => return None,
                 };
 
-                Some(TypedExpression::AddressOf(TypedAddressOf {
-                    operand: Box::new(operand),
-                    loc: address_of.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::AddressOf(TypedAddressOf {
+                        operand: Box::new(operand),
+                        loc: address_of.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::Dereference(dereference) => {
                 let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &dereference.expr) {
@@ -2292,10 +2346,13 @@ impl Resolver {
                     None => return None,
                 };
 
-                Some(TypedExpression::Dereference(TypedDereference {
-                    operand: Box::new(operand),
-                    loc: dereference.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Dereference(TypedDereference {
+                        operand: Box::new(operand),
+                        loc: dereference.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
             Expression::UnnamedStructValue(unnamed_struct_value) => {
                 let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
@@ -2331,11 +2388,14 @@ impl Resolver {
                     });
                 }
 
-                Some(TypedExpression::UnnamedStructValue(TypedUnnamedStructValue {
-                    fields,
-                    packed: unnamed_struct_value.packed,
-                    loc: unnamed_struct_value.loc.clone(),
-                }))
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::UnnamedStructValue(TypedUnnamedStructValue {
+                        fields,
+                        packed: unnamed_struct_value.packed,
+                        loc: unnamed_struct_value.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
             }
         }
     }

@@ -11,7 +11,5 @@ pub fn main() {
     let mut lexer = Lexer::new(file_content, file_path);
     let tokens = lexer.tokenize();
 
-    let mut peekable = tokens.iter().peekable();
-    
-    // dbg!(tokens.clone());
+    dbg!(tokens.clone());
 }

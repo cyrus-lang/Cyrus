@@ -4,6 +4,7 @@ use crate::{
     options::{CodeGenOptions, OutputKind, get_final_build_dir},
 };
 use std::{
+    cell::RefCell,
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -36,7 +37,7 @@ impl CodeGenContext {
         todo!()
     }
 
-    pub fn compile_modules(&self, typed_modules: Vec<(String, Rc<TypedProgramTree>)>) {
+    pub fn compile_modules(&self, typed_modules: Vec<(String, Rc<RefCell<TypedProgramTree>>)>) {
         typed_modules.iter().for_each(|(module_name, program_tree)| {
             let codegen_module = CodeGenModule::new(&self.opts, program_tree.clone());
             let codegen_output = codegen_module.codegen(module_name.to_string());

@@ -1,1 +1,6 @@
-extern func printf();
+func main() {
+    #a = 10;
+}
+
+func sample() {
+}
