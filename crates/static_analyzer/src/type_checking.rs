@@ -4,8 +4,8 @@ use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, SymbolEntry};
 use typed_ast::{
     ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedCast, TypedDereference, TypedExpression,
-    TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression, TypedStructInit,
-    TypedUnaryExpression,
+    TypedExpressionKind, TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression,
+    TypedStructInit, TypedUnaryExpression,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
@@ -151,12 +151,12 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn get_typed_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_expr: &TypedExpression,
+        typed_expr: &mut TypedExpression,
     ) -> Option<ConcreteType> {
         let scope_id = scope_id_opt.unwrap();
 
-        match typed_expr {
-            TypedExpression::Symbol(symbol_id) => {
+        let concrete_type = match &mut typed_expr.kind {
+            TypedExpressionKind::Symbol(symbol_id) => {
                 let local_scope_ref = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
                 let local_or_global_symbol = self
                     .resolver
@@ -164,7 +164,7 @@ impl<'a> AnalysisContext<'a> {
 
                 self.get_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
             }
-            TypedExpression::Literal(literal) => match &literal.kind {
+            TypedExpressionKind::Literal(literal) => match &literal.kind {
                 LiteralKind::Integer(_) => Some(ConcreteType::BasicType(BasicConcreteType::Int)),
                 LiteralKind::Float(_) => Some(ConcreteType::BasicType(BasicConcreteType::Float32)),
                 LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
@@ -189,32 +189,39 @@ impl<'a> AnalysisContext<'a> {
                 LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
                 LiteralKind::Null => Some(ConcreteType::BasicType(BasicConcreteType::Null)),
             },
-            TypedExpression::Prefix(typed_prefix_expr) => self.get_prefix_expr_type(scope_id_opt, typed_prefix_expr),
-            TypedExpression::Infix(typed_infix_expr) => self.get_infix_expr_type(scope_id_opt, typed_infix_expr),
-            TypedExpression::Unary(typed_unary_expr) => self.get_unary_expr_type(scope_id_opt, typed_unary_expr),
-            TypedExpression::Assignment(typed_assignment) => {
+            TypedExpressionKind::Prefix(typed_prefix_expr) => {
+                self.get_prefix_expr_type(scope_id_opt, typed_prefix_expr)
+            }
+            TypedExpressionKind::Infix(typed_infix_expr) => self.get_infix_expr_type(scope_id_opt, typed_infix_expr),
+            TypedExpressionKind::Unary(typed_unary_expr) => self.get_unary_expr_type(scope_id_opt, typed_unary_expr),
+            TypedExpressionKind::Assignment(typed_assignment) => {
                 self.analyze_assignment(scope_id_opt, typed_assignment);
                 None
             }
-            TypedExpression::Cast(typed_cast) => self.get_cast_expr_type(scope_id_opt, typed_cast),
-            TypedExpression::Array(typed_array) => self.get_array_expr_type(scope_id_opt, typed_array),
-            TypedExpression::ArrayIndex(typed_array_index) => {
+            TypedExpressionKind::Cast(typed_cast) => self.get_cast_expr_type(scope_id_opt, typed_cast),
+            TypedExpressionKind::Array(typed_array) => self.get_array_expr_type(scope_id_opt, typed_array),
+            TypedExpressionKind::ArrayIndex(typed_array_index) => {
                 self.get_array_index_expr_type(scope_id_opt, typed_array_index)
             }
-            TypedExpression::AddressOf(typed_address_of) => {
+            TypedExpressionKind::AddressOf(typed_address_of) => {
                 self.get_address_of_expr_type(scope_id_opt, typed_address_of)
             }
-            TypedExpression::Dereference(typed_dereference) => {
+            TypedExpressionKind::Dereference(typed_dereference) => {
                 self.get_dereference_expr_type(scope_id_opt, typed_dereference)
             }
-            TypedExpression::StructInit(typed_struct_init) => {
+            TypedExpressionKind::StructInit(typed_struct_init) => {
                 self.get_struct_init_expr_type(scope_id_opt, typed_struct_init)
             }
-            TypedExpression::FuncCall(typed_func_call) => self.get_func_call_expr_type(scope_id_opt, typed_func_call),
-            TypedExpression::FieldAccess(typed_field_access) => todo!(),
-            TypedExpression::MethodCall(typed_method_call) => todo!(),
-            TypedExpression::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
-        }
+            TypedExpressionKind::FuncCall(typed_func_call) => {
+                self.get_func_call_expr_type(scope_id_opt, typed_func_call)
+            }
+            TypedExpressionKind::FieldAccess(typed_field_access) => todo!(),
+            TypedExpressionKind::MethodCall(typed_method_call) => todo!(),
+            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
+        };
+
+        typed_expr.concrete_type = concrete_type.clone();
+        concrete_type.clone()
     }
 
     fn get_concrete_type_by_symbol_id(
@@ -288,17 +295,17 @@ impl<'a> AnalysisContext<'a> {
     fn get_array_index_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        array_index: &TypedArrayIndex,
+        array_index: &mut TypedArrayIndex,
     ) -> Option<ConcreteType> {
         todo!(); // uncompleted due to parser errors
 
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let is_operand_array = match *array_index.operand {
-            TypedExpression::Symbol(symbol_id) => {
-                self.get_definite_array_concrete_type(scope_id_opt, symbol_id, array_index.loc.clone())
+        let is_operand_array = match &array_index.operand.kind {
+            TypedExpressionKind::Symbol(symbol_id) => {
+                self.get_definite_array_concrete_type(scope_id_opt, *symbol_id, array_index.loc.clone())
             }
-            _ => match self.get_typed_expr_type(scope_id_opt, &array_index.operand) {
+            _ => match self.get_typed_expr_type(scope_id_opt, &mut array_index.operand) {
                 Some(concrete_type) => match concrete_type {
                     ConcreteType::Symbol(symbol_id) => {
                         self.get_definite_array_concrete_type(scope_id_opt, symbol_id, array_index.loc.clone())
@@ -326,7 +333,7 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let index_concrete_type = match self.get_typed_expr_type(scope_id_opt, &array_index.index) {
+        let index_concrete_type = match self.get_typed_expr_type(scope_id_opt, &mut array_index.index) {
             Some(concrete_type) => Some(concrete_type),
             None => None,
         };
@@ -368,7 +375,7 @@ impl<'a> AnalysisContext<'a> {
     fn get_struct_init_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_struct_init: &TypedStructInit,
+        typed_struct_init: &mut TypedStructInit,
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
@@ -444,7 +451,7 @@ impl<'a> AnalysisContext<'a> {
             .map(|field| field.name.clone())
             .collect();
 
-        for field_init in &typed_struct_init.fields {
+        for field_init in &mut typed_struct_init.fields {
             let field = resolved_struct
                 .struct_sig
                 .fields
@@ -470,7 +477,7 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            let field_value_type = match self.get_typed_expr_type(scope_id_opt, &field_init.value) {
+            let field_value_type = match self.get_typed_expr_type(scope_id_opt, &mut field_init.value) {
                 Some(concrete_type) => concrete_type,
                 None => continue,
             };
@@ -533,9 +540,9 @@ impl<'a> AnalysisContext<'a> {
     fn get_address_of_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        address_of: &TypedAddressOf,
+        address_of: &mut TypedAddressOf,
     ) -> Option<ConcreteType> {
-        if !address_of.operand.is_lvalue() {
+        if !address_of.operand.kind.is_lvalue() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::AddressOfRvalue,
@@ -549,7 +556,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let operand_type = match self.get_typed_expr_type(scope_id_opt, &address_of.operand) {
+        let operand_type = match self.get_typed_expr_type(scope_id_opt, &mut address_of.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -560,9 +567,9 @@ impl<'a> AnalysisContext<'a> {
     fn get_dereference_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        dereference: &TypedDereference,
+        dereference: &mut TypedDereference,
     ) -> Option<ConcreteType> {
-        let operand_type = match self.get_typed_expr_type(scope_id_opt, &dereference.operand) {
+        let operand_type = match self.get_typed_expr_type(scope_id_opt, &mut dereference.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -585,7 +592,11 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn check_func_call(&mut self, scope_id_opt: Option<ScopeID>, func_call: &TypedFuncCall) -> Option<ConcreteType> {
+    fn check_func_call(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        func_call: &mut TypedFuncCall,
+    ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
         let local_scope_opt = {
@@ -672,9 +683,9 @@ impl<'a> AnalysisContext<'a> {
             match func_sig.params.variadic.clone().unwrap() {
                 TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
                     let static_params_len = func_sig.params.list.len();
-                    let variadic_args = &func_call.args[static_params_len..];
+                    let variadic_args = &mut func_call.args[static_params_len..];
 
-                    for (argument_idx, argument) in variadic_args.iter().enumerate() {
+                    for (argument_idx, argument) in variadic_args.iter_mut().enumerate() {
                         let argument_type = match self.get_typed_expr_type(scope_id_opt, argument) {
                             Some(concrete_type) => concrete_type,
                             None => continue,
@@ -717,12 +728,16 @@ impl<'a> AnalysisContext<'a> {
     fn get_func_call_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        func_call: &TypedFuncCall,
+        func_call: &mut TypedFuncCall,
     ) -> Option<ConcreteType> {
         self.check_func_call(scope_id_opt, func_call)
     }
 
-    fn get_array_expr_type(&mut self, scope_id_opt: Option<ScopeID>, typed_array: &TypedArray) -> Option<ConcreteType> {
+    fn get_array_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_array: &mut TypedArray,
+    ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
         let typed_array_type = match &typed_array.array_type {
@@ -734,7 +749,7 @@ impl<'a> AnalysisContext<'a> {
             if typed_array.elements.len() != fixed_capacity.try_into().unwrap() {}
         }
 
-        for (element_index, element) in typed_array.elements.iter().enumerate() {
+        for (element_index, element) in typed_array.elements.iter_mut().enumerate() {
             let element_type = match self.get_typed_expr_type(scope_id_opt, element) {
                 Some(concrete_type) => concrete_type,
                 None => continue,
@@ -764,10 +779,10 @@ impl<'a> AnalysisContext<'a> {
         Some(ConcreteType::Array(typed_array_type.clone()))
     }
 
-    fn get_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &TypedCast) -> Option<ConcreteType> {
+    fn get_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCast) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let operand = match self.get_typed_expr_type(scope_id_opt, &cast.operand) {
+        let operand = match self.get_typed_expr_type(scope_id_opt, &mut cast.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -795,16 +810,16 @@ impl<'a> AnalysisContext<'a> {
     fn get_infix_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        infix_expr: &TypedInfixExpression,
+        infix_expr: &mut TypedInfixExpression,
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let lhs_type = match self.get_typed_expr_type(scope_id_opt, &infix_expr.lhs) {
+        let lhs_type = match self.get_typed_expr_type(scope_id_opt, &mut infix_expr.lhs) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
 
-        let rhs_type = match self.get_typed_expr_type(scope_id_opt, &infix_expr.rhs) {
+        let rhs_type = match self.get_typed_expr_type(scope_id_opt, &mut infix_expr.rhs) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -848,11 +863,11 @@ impl<'a> AnalysisContext<'a> {
     fn get_prefix_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        prefix_expr: &TypedPrefixExpression,
+        prefix_expr: &mut TypedPrefixExpression,
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let operand_type = match self.get_typed_expr_type(scope_id_opt, &prefix_expr.operand) {
+        let operand_type = match self.get_typed_expr_type(scope_id_opt, &mut prefix_expr.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -939,11 +954,11 @@ impl<'a> AnalysisContext<'a> {
     fn get_unary_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        unary_expr: &TypedUnaryExpression,
+        unary_expr: &mut TypedUnaryExpression,
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let operand_type = match self.get_typed_expr_type(scope_id_opt, &unary_expr.operand) {
+        let operand_type = match self.get_typed_expr_type(scope_id_opt, &mut unary_expr.operand) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };

@@ -1,11 +1,10 @@
-use std::collections::HashMap;
-
 use crate::types::ConcreteType;
 use ast::{
     AccessSpecifier, Identifier, Literal, SelfModifier,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::Location,
 };
+use std::collections::HashMap;
 
 pub mod format;
 pub mod types;
@@ -29,7 +28,13 @@ pub struct TypedProgramTree {
 // Expressions
 
 #[derive(Debug, Clone)]
-pub enum TypedExpression {
+pub struct TypedExpression {
+    pub kind: TypedExpressionKind,
+    pub concrete_type: Option<ConcreteType>,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedExpressionKind {
     Symbol(SymbolID),
     Literal(Literal),
     Prefix(TypedPrefixExpression),
@@ -48,25 +53,25 @@ pub enum TypedExpression {
     UnnamedStructValue(TypedUnnamedStructValue),
 }
 
-impl TypedExpression {
+impl TypedExpressionKind {
     pub fn is_lvalue(&self) -> bool {
         match self {
-            TypedExpression::Symbol(_) => true,
-            TypedExpression::ArrayIndex(_) => true,
-            TypedExpression::Dereference(_) => true,
-            TypedExpression::FieldAccess(_) => true,
-            TypedExpression::MethodCall(_) => false,
-            TypedExpression::FuncCall(_) => false,
-            TypedExpression::StructInit(_) => false,
-            TypedExpression::UnnamedStructValue(_) => false,
-            TypedExpression::Literal(_) => false,
-            TypedExpression::Prefix(_) => false,
-            TypedExpression::Infix(_) => false,
-            TypedExpression::Unary(_) => false,
-            TypedExpression::Assignment(_) => false,
-            TypedExpression::Cast(_) => false,
-            TypedExpression::AddressOf(_) => false,
-            TypedExpression::Array(_) => false,
+            TypedExpressionKind::Symbol(_) => true,
+            TypedExpressionKind::ArrayIndex(_) => true,
+            TypedExpressionKind::Dereference(_) => true,
+            TypedExpressionKind::FieldAccess(_) => true,
+            TypedExpressionKind::MethodCall(_) => false,
+            TypedExpressionKind::FuncCall(_) => false,
+            TypedExpressionKind::StructInit(_) => false,
+            TypedExpressionKind::UnnamedStructValue(_) => false,
+            TypedExpressionKind::Literal(_) => false,
+            TypedExpressionKind::Prefix(_) => false,
+            TypedExpressionKind::Infix(_) => false,
+            TypedExpressionKind::Unary(_) => false,
+            TypedExpressionKind::Assignment(_) => false,
+            TypedExpressionKind::Cast(_) => false,
+            TypedExpressionKind::AddressOf(_) => false,
+            TypedExpressionKind::Array(_) => false,
         }
     }
 }
@@ -226,6 +231,7 @@ pub struct TypedInterface {
 
 #[derive(Debug, Clone)]
 pub struct TypedEnum {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
     pub methods: HashMap<String, SymbolID>,
@@ -244,11 +250,12 @@ pub enum TypedEnumVariant {
 pub struct TypedEnumValuedField {
     pub name: String,
     pub field_type: ConcreteType,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedStruct {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub fields: Vec<TypedStructField>,
     pub methods: HashMap<String, SymbolID>,
@@ -272,6 +279,7 @@ pub struct TypedReturn {
 
 #[derive(Debug, Clone)]
 pub struct TypedGlobalVariable {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<ConcreteType>,
     pub expr: Option<TypedExpression>,
@@ -331,6 +339,7 @@ pub struct TypedIf {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDef {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub params: TypedFuncParams,
     pub body: Box<TypedBlockStatement>,
@@ -341,6 +350,7 @@ pub struct TypedFuncDef {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDecl {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub params: TypedFuncParams,
     pub return_type: ConcreteType,

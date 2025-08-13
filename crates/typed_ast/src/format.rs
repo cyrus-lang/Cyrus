@@ -3,7 +3,10 @@ use crate::{
     types::{BasicConcreteType, ConcreteType, TypedArrayCapacity},
 };
 
-pub fn format_concrete_type<'a>(concrete_type: ConcreteType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
+pub fn format_concrete_type<'a>(
+    concrete_type: ConcreteType,
+    format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
+) -> String {
     match concrete_type {
         ConcreteType::Symbol(symbol_id) => return format_symbol(symbol_id),
         ConcreteType::BasicType(basic_concrete_type) => match basic_concrete_type {
@@ -51,7 +54,30 @@ pub fn format_concrete_type<'a>(concrete_type: ConcreteType, format_symbol: &(dy
             format!("{}*", format_concrete_type(*concrete_type, format_symbol))
         }
         ConcreteType::UnnamedStruct(typed_unnamed_struct_type) => {
-            todo!();
+            let mut fmt = String::new();
+
+            if typed_unnamed_struct_type.packed {
+                fmt.push_str("bits");
+            } else {
+                fmt.push_str("struct");
+            };
+
+            fmt.push_str(
+                &typed_unnamed_struct_type
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        format!(
+                            "{}: {}",
+                            field.field_name,
+                            format_concrete_type(*field.field_type.clone(), format_symbol)
+                        )
+                    })
+                    .collect::<Vec<String>>()
+                    .join(", "),
+            );
+
+            fmt
         }
     }
 }

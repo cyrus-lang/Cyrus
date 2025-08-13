@@ -44,11 +44,16 @@ pub fn main() {
                 exit(1);
             }
 
-            let mut analyzer = AnalysisContext::new(&resolver, module_id, &typed_program_tree);
-            analyzer.analyze();
-            if analyzer.reporter.has_errors() {
-                DiagReporter::display(&analyzer.reporter);
+            {
+                let mut typed_program_tree_borrowed = typed_program_tree.borrow_mut();
+                let mut analyzer = AnalysisContext::new(&resolver, module_id, &mut typed_program_tree_borrowed);
+                analyzer.analyze();
+                if analyzer.reporter.has_errors() {
+                    DiagReporter::display(&analyzer.reporter);
+                }
             }
+
+            dbg!(typed_program_tree); // FIXME
         }
         Err(errors) => {
             parser.display_parser_errors(errors.clone());

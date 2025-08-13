@@ -4,10 +4,11 @@ use resolver::{
     Resolver,
     scope::{LocalOrGlobalSymbol, LocalSymbol, SymbolEntry},
 };
+use std::mem;
 use typed_ast::{format::format_concrete_type, *};
 
 pub struct AnalysisContext<'a> {
-    pub ast: &'a TypedProgramTree,
+    pub ast: &'a mut TypedProgramTree,
     pub resolver: &'a Resolver,
     pub reporter: DiagReporter<AnalyzerDiagKind>,
     pub module_id: ModuleID,
@@ -15,7 +16,7 @@ pub struct AnalysisContext<'a> {
 }
 
 impl<'a> AnalysisContext<'a> {
-    pub fn new(resolver: &'a Resolver, module_id: ModuleID, ast: &'a TypedProgramTree) -> Self {
+    pub fn new(resolver: &'a Resolver, module_id: ModuleID, ast: &'a mut TypedProgramTree) -> Self {
         let symbol_formatter = Box::new(
             move |scope_id_opt: Option<ScopeID>| -> Box<dyn Fn(SymbolID) -> String> {
                 Box::new(move |symbol_id: SymbolID| -> String {
@@ -61,9 +62,11 @@ impl<'a> AnalysisContext<'a> {
 
     // Traverse TypedAST
     pub fn analyze(&mut self) {
-        for typed_stmt in &self.ast.body {
-            match typed_stmt {
-                TypedStatement::FuncDef(typed_func_def) => self.analyze_block_statement(&typed_func_def.body),
+        let mut body = mem::take(&mut self.ast.body);
+
+        for mut typed_stmt in &mut body {
+            match &mut typed_stmt {
+                TypedStatement::FuncDef(typed_func_def) => self.analyze_block_statement(&mut typed_func_def.body),
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct),
@@ -87,6 +90,8 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         }
+
+        self.ast.body = body;
     }
 
     pub(crate) fn analyze_struct(&mut self, typed_struct: &TypedStruct) {
@@ -265,8 +270,8 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_block_statement(&mut self, block_stmt: &TypedBlockStatement) {
-        for typed_stmt in &block_stmt.exprs {
+    fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) {
+        for typed_stmt in &mut block_stmt.exprs {
             match typed_stmt {
                 TypedStatement::Variable(typed_variable) => {
                     self.analyze_variable(Some(block_stmt.scope_id), typed_variable)
@@ -298,7 +303,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &TypedVariable) {
+    fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVariable) {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
         if typed_variable.ty.is_none() && typed_variable.rhs.is_none() {
@@ -306,8 +311,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         let value_type_opt = {
-            if let Some(typed_expr) = typed_variable.rhs.clone() {
-                self.get_typed_expr_type(scope_id_opt, &typed_expr)
+            if let Some(typed_expr) = &mut typed_variable.rhs {
+                self.get_typed_expr_type(scope_id_opt, typed_expr)
             } else {
                 None
             }
@@ -334,15 +339,15 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, typed_assignment: &TypedAssignment) {
+    pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, typed_assignment: &mut TypedAssignment) {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let lhs_type = match self.get_typed_expr_type(scope_id_opt, &typed_assignment.lhs) {
+        let lhs_type = match self.get_typed_expr_type(scope_id_opt, &mut typed_assignment.lhs) {
             Some(concrete_type) => concrete_type,
             None => return,
         };
 
-        let rhs_type = match self.get_typed_expr_type(scope_id_opt, &typed_assignment.rhs) {
+        let rhs_type = match self.get_typed_expr_type(scope_id_opt, &mut typed_assignment.rhs) {
             Some(concrete_type) => concrete_type,
             None => return,
         };
