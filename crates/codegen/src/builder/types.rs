@@ -1,10 +1,10 @@
-use crate::builder::module::LocalIRValue;
-
 use super::module::CodeGenBuilder;
+use crate::builder::module::LocalIRValue;
 use inkwell::{
     AddressSpace,
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
 };
+use resolver::scope::SymbolEntry;
 use typed_ast::{
     ScopeID, SymbolID,
     types::{BasicConcreteType, ConcreteType, TypedArrayCapacity},
@@ -19,10 +19,25 @@ impl<'a> CodeGenBuilder<'a> {
         if let Some(local_scope) = local_scope_opt {
             todo!();
         } else {
-            let module_id = self.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
-            let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap();
+            fn resolve_final_symbol_entry(this: &CodeGenBuilder<'_>, symbol_id: SymbolID) -> SymbolEntry {
+                let module_id = this.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
+                let symbol_entry = this.resolver.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap();
+
+                match &symbol_entry {
+                    SymbolEntry::Typedef(resolved_typedef) => match &resolved_typedef.typedef_sig.ty {
+                        ConcreteType::Symbol(inner_type_symbol_id) => {
+                            resolve_final_symbol_entry(this, *inner_type_symbol_id)
+                        }
+                        _ => symbol_entry.clone(),
+                    },
+                    _ => symbol_entry.clone(),
+                }
+            }
+
+            let final_symbol_entry = resolve_final_symbol_entry(self, symbol_id);
+
             let irreg = self.irreg.borrow();
-            let local_ir_value = irreg.get(&symbol_entry.get_symbol_id()).unwrap();
+            let local_ir_value = irreg.get(&final_symbol_entry.get_symbol_id()).unwrap();
 
             let any_type_enum = match local_ir_value {
                 LocalIRValue::Func(_) => unreachable!(),

@@ -5,10 +5,7 @@ use inkwell::{
     types::{BasicTypeEnum, StructType},
     values::GlobalValue,
 };
-use typed_ast::{
-    SymbolID, TypedExpression, TypedFuncDef, TypedGlobalVariable, TypedStatement, TypedStruct,
-    types::{BasicConcreteType, ConcreteType},
-};
+use typed_ast::{SymbolID, TypedExpression, TypedFuncDef, TypedGlobalVariable, TypedStatement, TypedStruct};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_toplevel_statements(&self, stmts: &Vec<TypedStatement>) {
@@ -28,10 +25,6 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn get_basic_opaque_type(&self) -> ConcreteType {
-        ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Void)))
-    }
-
     fn build_forward_decls(&self, stmts: &Vec<TypedStatement>) {
         let insert_forward_decl_to_registry = |symbol_id: SymbolID, local_value: LocalIRValue<'a>| {
             let mut irreg = self.irreg.borrow_mut();
@@ -39,7 +32,6 @@ impl<'a> CodeGenBuilder<'a> {
             drop(irreg);
         };
 
-        // data types
         for stmt in stmts {
             match stmt {
                 TypedStatement::Struct(typed_struct) => {
@@ -55,12 +47,10 @@ impl<'a> CodeGenBuilder<'a> {
             }
         }
 
-        // declarations
-
         for stmt in stmts {
             match stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => {
-                    let global_value = self.build_global_var_decl(typed_global_var.clone());
+                    let global_value = self.build_global_var_decl(typed_global_var);
                     insert_forward_decl_to_registry(
                         typed_global_var.symbol_id,
                         LocalIRValue::GlobalValue(global_value),
@@ -74,7 +64,6 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_def.vis.clone(),
                         None,
                     );
-
                     insert_forward_decl_to_registry(typed_func_def.symbol_id, LocalIRValue::Func(fn_value));
                 }
                 TypedStatement::FuncDecl(typed_func_decl) => {
@@ -85,7 +74,6 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_decl.vis.clone(),
                         None,
                     );
-
                     insert_forward_decl_to_registry(typed_func_decl.symbol_id, LocalIRValue::Func(fn_value));
                 }
                 _ => continue,
@@ -127,9 +115,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_global_var_decl(&self, mut global_var: TypedGlobalVariable) -> GlobalValue<'a> {
-        global_var.ty = Some(self.get_basic_opaque_type());
-
+    fn build_global_var_decl(&self, global_var: &TypedGlobalVariable) -> GlobalValue<'a> {
         let linkage = self.build_global_variable_linkage(global_var.vis.clone());
 
         let mut global_var_type = {

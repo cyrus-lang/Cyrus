@@ -2,11 +2,13 @@ func main() {
     #a: int = 10;
 }
 
-func sample() Person {
+func sample() Another {
 }
 
 type MyPerson = Person;
-person: MyPerson;
+type Another = MyPerson;
+
+person: Another;
 
 struct Person {
     name: char*;
