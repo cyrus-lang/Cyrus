@@ -1,25 +1,35 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
 use ast::AccessSpecifier;
-use inkwell::{module::Linkage, types::BasicTypeEnum, values::GlobalValue};
-use typed_ast::{SymbolID, TypedFuncDecl, TypedGlobalVariable, TypedStatement};
+use inkwell::{
+    module::Linkage,
+    types::{BasicTypeEnum, StructType},
+    values::GlobalValue,
+};
+use typed_ast::{
+    SymbolID, TypedExpression, TypedFuncDef, TypedGlobalVariable, TypedStatement, TypedStruct,
+    types::{BasicConcreteType, ConcreteType},
+};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_toplevel_statements(&self, stmts: &Vec<TypedStatement>) {
         self.build_forward_decls(stmts);
 
-        // for stmt in stmts {
-        //     match stmt {
-        //         TypedStatement::GlobalVariable(typed_global_var) => todo!(),
-        //         TypedStatement::FuncDef(typed_func_def) => todo!(),
-        //         TypedStatement::FuncDecl(typed_func_decl) => {
-        //             self.build_func_decl_stmt(typed_func_decl);
-        //         }
-        //         TypedStatement::Struct(typed_struct) => todo!(),
-        //         TypedStatement::Enum(typed_enum) => todo!(),
-        //         TypedStatement::Interface(typed_interface) => todo!(),
-        //         _ => continue,
-        //     }
-        // }
+        for stmt in stmts {
+            match stmt {
+                TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
+                TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
+                TypedStatement::Enum(typed_enum) => todo!(),
+                TypedStatement::Interface(typed_interface) => todo!(),
+                // already handled in build_forward_decls
+                TypedStatement::GlobalVariable(_) => continue,
+                TypedStatement::FuncDecl(_) => continue,
+                _ => continue,
+            }
+        }
+    }
+
+    fn get_basic_opaque_type(&self) -> ConcreteType {
+        ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Void)))
     }
 
     fn build_forward_decls(&self, stmts: &Vec<TypedStatement>) {
@@ -29,10 +39,28 @@ impl<'a> CodeGenBuilder<'a> {
             drop(irreg);
         };
 
+        // data types
+        for stmt in stmts {
+            match stmt {
+                TypedStatement::Struct(typed_struct) => {
+                    let struct_type = self.build_struct_decl(&typed_struct.name);
+                    insert_forward_decl_to_registry(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
+                }
+                TypedStatement::Enum(typed_enum) => {
+                    let struct_type = self.build_enum_decl(&typed_enum.name);
+                    insert_forward_decl_to_registry(typed_enum.symbol_id, LocalIRValue::Struct(struct_type));
+                }
+                TypedStatement::Interface(typed_interface) => todo!(),
+                _ => continue,
+            }
+        }
+
+        // declarations
+
         for stmt in stmts {
             match stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => {
-                    let global_value = self.build_global_var_decl(typed_global_var);
+                    let global_value = self.build_global_var_decl(typed_global_var.clone());
                     insert_forward_decl_to_registry(
                         typed_global_var.symbol_id,
                         LocalIRValue::GlobalValue(global_value),
@@ -60,12 +88,32 @@ impl<'a> CodeGenBuilder<'a> {
 
                     insert_forward_decl_to_registry(typed_func_decl.symbol_id, LocalIRValue::Func(fn_value));
                 }
-                TypedStatement::Struct(typed_struct) => todo!(),
-                TypedStatement::Enum(typed_enum) => todo!(),
-                TypedStatement::Interface(typed_interface) => todo!(),
                 _ => continue,
             }
         }
+    }
+
+    fn build_struct_decl(&self, name: &String) -> StructType<'a> {
+        self.llvmctx.opaque_struct_type(name)
+    }
+
+    fn build_struct_def(&self, typed_struct: &TypedStruct) {
+        let field_types: Vec<BasicTypeEnum<'a>> = typed_struct
+            .fields
+            .iter()
+            .map(|field| self.build_concrete_type(None, field.ty.clone()).try_into().unwrap())
+            .collect();
+
+        let irreg = self.irreg.borrow();
+        let local_ir_value = irreg.get(&typed_struct.symbol_id).unwrap();
+
+        let struct_type = local_ir_value.as_struct().unwrap();
+        struct_type.set_body(&field_types, typed_struct.packed);
+        drop(irreg);
+    }
+
+    fn build_enum_decl(&self, name: &String) -> StructType<'a> {
+        self.llvmctx.opaque_struct_type(name)
     }
 
     fn build_global_variable_linkage(&self, vis: AccessSpecifier) -> Linkage {
@@ -79,21 +127,22 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_global_var_decl(&self, global_var: &TypedGlobalVariable) -> GlobalValue<'a> {
+    fn build_global_var_decl(&self, mut global_var: TypedGlobalVariable) -> GlobalValue<'a> {
+        global_var.ty = Some(self.get_basic_opaque_type());
+
         let linkage = self.build_global_variable_linkage(global_var.vis.clone());
 
         let mut global_var_type = {
             if let Some(concrete_type) = &global_var.ty {
-                Some(self.build_conrete_type(concrete_type.clone()))
+                Some(self.build_concrete_type(None, concrete_type.clone()))
             } else {
                 None
             }
         };
 
         if global_var_type.is_none() {
-            // global_var.expr.unwrap()
-            // global_var_type = Some(self.build_concrete_type());
-            todo!();
+            let typed_expr: TypedExpression = global_var.expr.clone().unwrap();
+            global_var_type = Some(self.build_concrete_type(None, typed_expr.concrete_type.unwrap()));
         }
 
         let global_var_type: BasicTypeEnum<'a> = global_var_type.unwrap().try_into().unwrap();
@@ -105,7 +154,17 @@ impl<'a> CodeGenBuilder<'a> {
         global_var_value
     }
 
-    fn build_func_def_stmt(&self, func_decl: &TypedFuncDecl) {
-        todo!()
+    fn build_func_def(&self, func_def: &TypedFuncDef) {
+        let irreg = self.irreg.borrow();
+        let local_ir_value = irreg.get(&func_def.symbol_id).unwrap();
+
+        let fn_value = local_ir_value.as_func().unwrap();
+
+        let entry_block = self.llvmctx.append_basic_block(*fn_value, "entry");
+        self.llvmbuilder.position_at_end(entry_block);
+
+        // TODO build body block
+
+        drop(irreg);
     }
 }

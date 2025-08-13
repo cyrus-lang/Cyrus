@@ -2,7 +2,7 @@ use codegen::{
     context::context::CodeGenContext,
     options::{CodeGenOptions, OutputKind},
 };
-use diagcentral::display_single_cusotm_diag;
+use diagcentral::display_single_custom_diag;
 
 const PROJECT_FILE_PATH: &str = "Project.toml";
 
@@ -88,6 +88,6 @@ pub fn get_codegen_context(
 
 pub(crate) fn project_file_required() {
     if !std::path::Path::new(PROJECT_FILE_PATH).exists() {
-        display_single_cusotm_diag!(format!("'{}' not found in current directory.", PROJECT_FILE_PATH));
+        display_single_custom_diag!(format!("'{}' not found in current directory.", PROJECT_FILE_PATH));
     }
 }

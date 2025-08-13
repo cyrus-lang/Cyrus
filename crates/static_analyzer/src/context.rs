@@ -66,13 +66,13 @@ impl<'a> AnalysisContext<'a> {
 
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
+                TypedStatement::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
                 TypedStatement::FuncDef(typed_func_def) => self.analyze_block_statement(&mut typed_func_def.body),
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct),
                 TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum),
                 // Not analyzed
-                TypedStatement::GlobalVariable(_) => continue,
                 TypedStatement::Import(_) => continue,
                 TypedStatement::Typedef(_) => continue,
                 // Invalid top-level statements
@@ -92,6 +92,12 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.ast.body = body;
+    }
+
+    pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVariable) {
+        if let Some(expr) = &mut typed_global_var.expr {
+            self.get_typed_expr_type(None, expr);
+        }
     }
 
     pub(crate) fn analyze_struct(&mut self, typed_struct: &TypedStruct) {

@@ -53,7 +53,7 @@ pub fn main() {
                 }
             }
 
-            dbg!(typed_program_tree); // FIXME
+            dbg!(typed_program_tree);
         }
         Err(errors) => {
             parser.display_parser_errors(errors.clone());

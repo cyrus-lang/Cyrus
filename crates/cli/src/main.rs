@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use codegen::options::{BuildDir, CodeGenOptions, CodeModelOptions, RelocModeOptions};
 use commands::*;
-use diagcentral::display_single_cusotm_diag;
+use diagcentral::display_single_custom_diag;
 use serde::Deserialize;
 use trigger::project_file_required;
 
@@ -260,7 +260,7 @@ fn command_new(project_name: String, lib: bool) {
     };
 
     if let Err(err) = result {
-        display_single_cusotm_diag!(err);
+        display_single_custom_diag!(err);
     }
 }
 

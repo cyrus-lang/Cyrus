@@ -1,15 +1,17 @@
 use crate::options::CodeGenOptions;
-use diagcentral::display_single_cusotm_diag;
+use diagcentral::display_single_custom_diag;
 use inkwell::{
     OptimizationLevel,
     builder::Builder,
     context::Context,
     module::Module,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
-    values::{FunctionValue, GlobalValue, StructValue},
+    types::StructType,
+    values::{FunctionValue, GlobalValue},
 };
+use resolver::Resolver;
 use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
-use typed_ast::TypedProgramTree;
+use typed_ast::{ModuleID, TypedProgramTree};
 use utils::fs::ensure_output_dir;
 
 pub struct CodeGenModule<'module> {
@@ -19,11 +21,13 @@ pub struct CodeGenModule<'module> {
 }
 
 pub(crate) struct CodeGenBuilder<'a> {
+    pub module_id: ModuleID,
     pub llvmmodule: Rc<RefCell<Module<'a>>>,
     pub llvmbuilder: Builder<'a>,
     pub llvmctx: &'a Context,
     pub llvmtm: TargetMachine,
     pub irreg: LocalIRValueRegistryRef<'a>,
+    pub resolver: Rc<Resolver>,
 }
 
 impl<'module> CodeGenModule<'module> {
@@ -37,7 +41,12 @@ impl<'module> CodeGenModule<'module> {
         }
     }
 
-    pub fn codegen<'a>(&'a self, module_name: String) -> CodeGenModuleOutput<'a> {
+    pub fn codegen<'a>(
+        &'a self,
+        resolver_rc: Rc<Resolver>,
+        module_id: ModuleID,
+        module_name: String,
+    ) -> CodeGenModuleOutput<'a> {
         let llvmmodule = self.ctx.create_module(&module_name);
         let builder = self.ctx.create_builder();
         let llvmtm = self.get_target_machine(
@@ -53,11 +62,13 @@ impl<'module> CodeGenModule<'module> {
         let llvmmodule = Rc::new(RefCell::new(llvmmodule));
 
         let codegen_builder = CodeGenBuilder {
+            module_id,
             llvmmodule: llvmmodule.clone(),
             llvmbuilder: builder,
             llvmctx: &self.ctx,
             llvmtm,
             irreg,
+            resolver: resolver_rc,
         };
 
         let program_tree_borrowed = self.program_tree.borrow();
@@ -98,7 +109,7 @@ impl<'module> CodeGenModule<'module> {
         ) {
             Some(target_machine) => target_machine,
             None => {
-                display_single_cusotm_diag!(
+                display_single_custom_diag!(
                     "Failed to create LLVM Target Machine with given target_triple, cpu, features.".to_string()
                 );
             }
@@ -145,5 +156,28 @@ pub type LocalIRValueRegistry<'a> = HashMap<LocalIRValueID, LocalIRValue<'a>>;
 pub enum LocalIRValue<'a> {
     Func(FunctionValue<'a>),
     GlobalValue(GlobalValue<'a>),
-    Struct(StructValue<'a>),
+    Struct(StructType<'a>),
+}
+
+impl<'a> LocalIRValue<'a> {
+    pub fn as_func(&self) -> Option<&FunctionValue<'a>> {
+        match self {
+            LocalIRValue::Func(func) => Some(func),
+            _ => None,
+        }
+    }
+
+    pub fn as_global_value(&self) -> Option<&GlobalValue<'a>> {
+        match self {
+            LocalIRValue::GlobalValue(global_value) => Some(global_value),
+            _ => None,
+        }
+    }
+
+    pub fn as_struct(&self) -> Option<&StructType<'a>> {
+        match self {
+            LocalIRValue::Struct(struct_type) => Some(struct_type),
+            _ => None,
+        }
+    }
 }

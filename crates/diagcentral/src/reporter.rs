@@ -105,7 +105,7 @@ impl fmt::Display for CustomDiagKind {
 }
 
 #[macro_export]
-macro_rules! display_single_cusotm_diag {
+macro_rules! display_single_custom_diag {
     ($msg:expr) => {
         diagcentral::reporter::DiagReporter::display_single(diagcentral::Diag {
             level: diagcentral::DiagLevel::Error,

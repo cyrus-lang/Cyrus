@@ -153,14 +153,19 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExpression,
     ) -> Option<ConcreteType> {
-        let scope_id = scope_id_opt.unwrap();
-
         let concrete_type = match &mut typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id) => {
-                let local_scope_ref = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
+                let local_scope_ref_opt = {
+                    if let Some(scope_id) = scope_id_opt {
+                        self.resolver.get_scope_ref(self.module_id, scope_id)
+                    } else {
+                        None
+                    }
+                };
+
                 let local_or_global_symbol = self
                     .resolver
-                    .resolve_local_or_global_symbol(Some(local_scope_ref), *symbol_id)?;
+                    .resolve_local_or_global_symbol(local_scope_ref_opt, *symbol_id)?;
 
                 self.get_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
             }
