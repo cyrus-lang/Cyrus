@@ -1,6 +1,6 @@
-use crate::types::ConcreteType;
+use crate::types::{BasicConcreteType, ConcreteType};
 use ast::{
-    AccessSpecifier, Identifier, Literal, SelfModifier,
+    AccessSpecifier, Identifier, LiteralKind, SelfModifier,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::Location,
 };
@@ -36,7 +36,7 @@ pub struct TypedExpression {
 #[derive(Debug, Clone)]
 pub enum TypedExpressionKind {
     Symbol(SymbolID),
-    Literal(Literal),
+    Literal(TypedLiteral),
     Prefix(TypedPrefixExpression),
     Infix(TypedInfixExpression),
     Unary(TypedUnaryExpression),
@@ -51,6 +51,13 @@ pub enum TypedExpressionKind {
     FieldAccess(TypedFieldAccess),
     MethodCall(TypedMethodCall),
     UnnamedStructValue(TypedUnnamedStructValue),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedLiteral {
+    pub ty: BasicConcreteType,
+    pub kind: LiteralKind,
+    pub loc: Location,
 }
 
 impl TypedExpressionKind {

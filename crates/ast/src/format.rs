@@ -16,7 +16,13 @@ impl fmt::Display for Identifier {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            LiteralKind::Integer(integer) => write!(f, "{}", integer),
+            LiteralKind::Integer(integer, integer_type_opt) => {
+                write!(f, "{}", integer)?;
+                if let Some(integer_type) = integer_type_opt {
+                    write!(f, "{}", (**integer_type).to_string())?
+                }
+                write!(f, "")
+            }
             LiteralKind::Bool(bool) => write!(f, "{}", bool),
             LiteralKind::String(string_type, prefix) => {
                 if let Some(prefix) = prefix {
@@ -27,7 +33,13 @@ impl fmt::Display for Literal {
                 }
                 write!(f, "\"{}\"", string_type)
             }
-            LiteralKind::Float(float) => write!(f, "{}", float),
+            LiteralKind::Float(float, float_type_opt) => {
+                write!(f, "{}", float)?;
+                if let Some(float_type) = float_type_opt {
+                    write!(f, "{}", (**float_type).to_string())?
+                }
+                write!(f, "")
+            }
             LiteralKind::Char(ch) => write!(f, "{}", ch),
             LiteralKind::Null => write!(f, "null"),
         }

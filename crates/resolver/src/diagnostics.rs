@@ -3,6 +3,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum ResolverDiagKind {
+    InvalidLiteralSuffix,
     SymbolAlreadyDefined {
         name: String,
         original: Location,
@@ -78,6 +79,9 @@ pub enum ResolverDiagKind {
 impl fmt::Display for ResolverDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ResolverDiagKind::InvalidLiteralSuffix => {
+                write!(f, "Invalid literal suffix.")
+            }
             ResolverDiagKind::DuplicateMethodName {
                 struct_name,
                 method_name,

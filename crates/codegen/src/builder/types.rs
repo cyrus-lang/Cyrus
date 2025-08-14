@@ -4,16 +4,16 @@ use inkwell::{
     AddressSpace,
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
 };
-use resolver::scope::SymbolEntry;
+use resolver::scope::{LocalScopeRef, SymbolEntry};
 use typed_ast::{
-    ScopeID, SymbolID,
+    SymbolID,
     types::{BasicConcreteType, ConcreteType, TypedArrayCapacity},
 };
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_concrete_type_from_symbol_id(
         &self,
-        local_scope_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> AnyTypeEnum<'a> {
         if let Some(local_scope) = local_scope_opt {
@@ -52,7 +52,7 @@ impl<'a> CodeGenBuilder<'a> {
 
     pub(crate) fn build_concrete_type(
         &self,
-        local_scope_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
         concrete_type: ConcreteType,
     ) -> AnyTypeEnum<'a> {
         match concrete_type {
@@ -80,7 +80,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .fields
                     .iter()
                     .map(|field| {
-                        self.build_concrete_type(local_scope_opt, *field.field_type.clone())
+                        self.build_concrete_type(local_scope_opt.clone(), *field.field_type.clone())
                             .try_into()
                             .unwrap()
                     })

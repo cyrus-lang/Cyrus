@@ -42,6 +42,35 @@ pub enum BasicConcreteType {
 }
 
 impl BasicConcreteType {
+    pub fn is_signed(&self) -> bool {
+        match self {
+            BasicConcreteType::UIntPtr
+            | BasicConcreteType::UInt
+            | BasicConcreteType::UInt8
+            | BasicConcreteType::UInt16
+            | BasicConcreteType::UInt32
+            | BasicConcreteType::UInt64
+            | BasicConcreteType::UInt128
+            | BasicConcreteType::SizeT
+            | BasicConcreteType::Bool
+            | BasicConcreteType::Char
+            | BasicConcreteType::Void
+            | BasicConcreteType::Null
+            | BasicConcreteType::Float16
+            | BasicConcreteType::Float32
+            | BasicConcreteType::Float64
+            | BasicConcreteType::Float128 => false,
+
+            BasicConcreteType::IntPtr
+            | BasicConcreteType::Int
+            | BasicConcreteType::Int8
+            | BasicConcreteType::Int16
+            | BasicConcreteType::Int32
+            | BasicConcreteType::Int64
+            | BasicConcreteType::Int128 => true,
+        }
+    }
+
     pub fn bigger_type(a: BasicConcreteType, b: BasicConcreteType) -> Option<BasicConcreteType> {
         use BasicConcreteType::*;
 
@@ -70,9 +99,11 @@ impl BasicConcreteType {
     }
 }
 
-impl From<TokenKind> for ConcreteType {
-    fn from(token_kind: TokenKind) -> Self {
-        ConcreteType::BasicType(match &token_kind {
+impl TryFrom<TokenKind> for ConcreteType {
+    type Error = ();
+
+    fn try_from(token_kind: TokenKind) -> Result<Self, Self::Error> {
+        let basic_type = match &token_kind {
             TokenKind::SizeT => BasicConcreteType::SizeT,
             TokenKind::IntPtr => BasicConcreteType::IntPtr,
             TokenKind::UIntPtr => BasicConcreteType::UIntPtr,
@@ -95,8 +126,10 @@ impl From<TokenKind> for ConcreteType {
             TokenKind::Bool => BasicConcreteType::Bool,
             TokenKind::Void => BasicConcreteType::Void,
             TokenKind::Char => BasicConcreteType::Char,
-            _ => panic!("Unexpected token kind"),
-        })
+            _ => return Err(()),
+        };
+
+        Ok(ConcreteType::BasicType(basic_type))
     }
 }
 
