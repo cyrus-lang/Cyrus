@@ -1,11 +1,6 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
-use ast::AccessSpecifier;
-use inkwell::{
-    module::Linkage,
-    types::{BasicTypeEnum, StructType},
-    values::GlobalValue,
-};
-use typed_ast::{SymbolID, TypedExpression, TypedFuncDef, TypedGlobalVariable, TypedStatement, TypedStruct};
+use inkwell::types::{BasicTypeEnum, StructType};
+use typed_ast::{SymbolID, TypedBlockStatement, TypedStatement, TypedStruct};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_toplevel_statements(&self, stmts: &Vec<TypedStatement>) {
@@ -15,7 +10,7 @@ impl<'a> CodeGenBuilder<'a> {
             match stmt {
                 TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
                 TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
-                TypedStatement::Enum(typed_enum) => todo!(),
+                TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
                 TypedStatement::Interface(typed_interface) => todo!(),
                 // already handled in build_forward_decls
                 TypedStatement::GlobalVariable(_) => continue,
@@ -104,53 +99,42 @@ impl<'a> CodeGenBuilder<'a> {
         self.llvmctx.opaque_struct_type(name)
     }
 
-    fn build_global_variable_linkage(&self, vis: AccessSpecifier) -> Linkage {
-        match vis {
-            AccessSpecifier::PublicExtern => Linkage::Common,
-            AccessSpecifier::Extern => Linkage::Common,
-            AccessSpecifier::Public => Linkage::External,
-            AccessSpecifier::Internal => Linkage::Private,
-            AccessSpecifier::Inline => unreachable!(),
-            AccessSpecifier::PublicInline => unreachable!(),
-        }
-    }
+    pub(crate) fn build_block_statement(&self, block_stmt: &TypedBlockStatement) {
+        let local_scope_opt = Some(
+            self.resolver
+                .get_scope_ref(self.module_id, block_stmt.scope_id)
+                .unwrap(),
+        );
 
-    fn build_global_var_decl(&self, global_var: &TypedGlobalVariable) -> GlobalValue<'a> {
-        let linkage = self.build_global_variable_linkage(global_var.vis.clone());
-
-        let mut global_var_type = {
-            if let Some(concrete_type) = &global_var.ty {
-                Some(self.build_concrete_type(None, concrete_type.clone()))
-            } else {
-                None
+        for stmt in &block_stmt.exprs {
+            match stmt {
+                TypedStatement::Variable(typed_variable) => {
+                    self.build_local_variable(local_scope_opt.clone(), typed_variable)
+                }
+                TypedStatement::If(typed_if) => todo!(),
+                TypedStatement::Return(typed_return) => todo!(),
+                TypedStatement::Break(typed_break) => todo!(),
+                TypedStatement::Continue(typed_continue) => todo!(),
+                TypedStatement::For(typed_for) => todo!(),
+                TypedStatement::Foreach(typed_foreach) => todo!(),
+                TypedStatement::Switch(typed_switch) => todo!(),
+                TypedStatement::Struct(typed_struct) => todo!(),
+                TypedStatement::Enum(typed_enum) => todo!(),
+                TypedStatement::Expression(typed_expr) => {
+                    self.build_expr(local_scope_opt.clone(), typed_expr);
+                }
+                TypedStatement::BlockStatement(typed_block_statement) => {
+                    self.build_block_statement(typed_block_statement);
+                }
+                TypedStatement::Interface(typed_interface) => todo!(),
+                // Skipped statements
+                TypedStatement::Typedef(_) => continue,
+                // Invalid statements
+                TypedStatement::FuncDef(_) => unreachable!(),
+                TypedStatement::FuncDecl(_) => unreachable!(),
+                TypedStatement::Import(_) => unreachable!(),
+                TypedStatement::GlobalVariable(_) => unreachable!(),
             }
-        };
-
-        if global_var_type.is_none() {
-            let typed_expr: TypedExpression = global_var.expr.clone().unwrap();
-            global_var_type = Some(self.build_concrete_type(None, typed_expr.concrete_type.unwrap()));
         }
-
-        let global_var_type: BasicTypeEnum<'a> = global_var_type.unwrap().try_into().unwrap();
-
-        let llvmmodule = self.llvmmodule.borrow();
-        let global_var_value = llvmmodule.add_global(global_var_type, None, &global_var.name);
-        global_var_value.set_linkage(linkage);
-        drop(llvmmodule);
-        global_var_value
-    }
-
-    fn build_func_def(&self, func_def: &TypedFuncDef) {
-        let irreg = self.irreg.borrow();
-        let local_ir_value = irreg.get(&func_def.symbol_id).unwrap();
-
-        let fn_value = local_ir_value.as_func().unwrap();
-
-        let entry_block = self.llvmctx.append_basic_block(*fn_value, "entry");
-        self.llvmbuilder.position_at_end(entry_block);
-
-        // TODO build body block
-
-        drop(irreg);
     }
 }

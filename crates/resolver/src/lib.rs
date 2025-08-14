@@ -12,7 +12,8 @@ use ast::{
     token::{Location, Span, Token, TokenKind},
 };
 use ast::{
-    GlobalVariable, Import, Interface, ModuleImport, ModulePath, ModuleSegment, SelfModifierKind, SwitchCasePattern,
+    GlobalVariable, Import, Interface, ModuleImport, ModulePath, ModuleSegment, SelfModifierKind, StringPrefix,
+    SwitchCasePattern,
 };
 use diagcentral::{reporter::DiagReporter, *};
 use rand::Rng;
@@ -22,7 +23,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::types::{
-    ConcreteType, TypedArrayCapacity, TypedArrayType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
+    BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayType, TypedUnnamedStructType,
+    TypedUnnamedStructTypeField,
 };
 use typed_ast::{SymbolID, *};
 
@@ -270,7 +272,12 @@ impl Resolver {
         span_end: usize,
     ) -> Option<ConcreteType> {
         let resolving_result = match type_specifier {
-            TypeSpecifier::TypeToken(token) => Ok(ConcreteType::from(token.kind)),
+            TypeSpecifier::TypeToken(token) => match ConcreteType::try_from(token.kind.clone()) {
+                Ok(concrete_type) => Ok(concrete_type),
+                Err(_) => Err(ResolverDiagKind::TypeNotFound {
+                    name: token.kind.to_string(),
+                }),
+            },
             TypeSpecifier::Const(type_specifier) => Ok(ConcreteType::Const(Box::new(self.resolve_type(
                 module_id,
                 *type_specifier,
@@ -294,7 +301,7 @@ impl Resolver {
                     ArrayCapacity::Fixed(token_kind) => {
                         let fixed_capacity = match match token_kind {
                             TokenKind::Literal(literal) => match &literal.kind {
-                                LiteralKind::Integer(integer_literal) => Some(integer_literal),
+                                LiteralKind::Integer(integer_literal, _) => Some(integer_literal),
                                 _ => None,
                             },
                             _ => None,
@@ -2287,10 +2294,95 @@ impl Resolver {
                     concrete_type: None,
                 })
             }
-            Expression::Literal(literal) => Some(TypedExpression {
-                kind: TypedExpressionKind::Literal(literal.clone()),
-                concrete_type: None,
-            }),
+            Expression::Literal(literal) => {
+                let literal_type = {
+                    let concrete_type = match &literal.kind {
+                        LiteralKind::Integer(_, suffix_opt) => {
+                            if let Some(token_kind) = suffix_opt {
+                                match ConcreteType::try_from(*token_kind.clone()) {
+                                    Ok(concrete_type) => concrete_type,
+                                    Err(_) => {
+                                        self.reporter.report(Diag {
+                                            level: DiagLevel::Error,
+                                            kind: ResolverDiagKind::InvalidLiteralSuffix,
+                                            location: Some(DiagLoc::new(
+                                                self.get_current_module_file_path(),
+                                                literal.loc.clone(),
+                                                literal.span.end,
+                                            )),
+                                            hint: None,
+                                        });
+                                        return None;
+                                    }
+                                }
+                            } else {
+                                ConcreteType::BasicType(BasicConcreteType::Int)
+                            }
+                        }
+                        LiteralKind::Float(_, suffix_opt) => {
+                            if let Some(token_kind) = suffix_opt {
+                                match ConcreteType::try_from(*token_kind.clone()) {
+                                    Ok(concrete_type) => concrete_type,
+                                    Err(_) => {
+                                        self.reporter.report(Diag {
+                                            level: DiagLevel::Error,
+                                            kind: ResolverDiagKind::InvalidLiteralSuffix,
+                                            location: Some(DiagLoc::new(
+                                                self.get_current_module_file_path(),
+                                                literal.loc.clone(),
+                                                literal.span.end,
+                                            )),
+                                            hint: None,
+                                        });
+                                        return None;
+                                    }
+                                }
+                            } else {
+                                ConcreteType::BasicType(BasicConcreteType::Float32)
+                            }
+                        }
+                        LiteralKind::String(string_value, string_prefix) => {
+                            if let Some(string_prefix) = string_prefix {
+                                match string_prefix {
+                                    StringPrefix::B => {
+                                        let len = string_value.len() + 1;
+                                        ConcreteType::Array(TypedArrayType {
+                                            element_type: Box::new(ConcreteType::BasicType(BasicConcreteType::Char)),
+                                            capacity: TypedArrayCapacity::Fixed(len.try_into().unwrap()),
+                                            loc: literal.loc.clone(),
+                                        })
+                                    }
+                                    StringPrefix::C => ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                                        BasicConcreteType::Char,
+                                    ))),
+                                }
+                            } else {
+                                ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)))
+                            }
+                        }
+                        LiteralKind::Bool(_) => ConcreteType::BasicType(BasicConcreteType::Bool),
+                        LiteralKind::Char(_) => ConcreteType::BasicType(BasicConcreteType::Char),
+                        LiteralKind::Null => {
+                            ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Void)))
+                        }
+                    };
+
+                    match concrete_type {
+                        ConcreteType::BasicType(basic_concrete_type) => basic_concrete_type,
+                        _ => unreachable!(),
+                    }
+                };
+                let typed_literal = TypedLiteral {
+                    ty: literal_type,
+                    kind: literal.kind.clone(),
+                    loc: literal.loc.clone(),
+                };
+
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Literal(typed_literal),
+                    concrete_type: None,
+                })
+            }
             Expression::Unary(unary) => {
                 let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &*unary.operand) {
                     Some(typed_expr) => typed_expr,

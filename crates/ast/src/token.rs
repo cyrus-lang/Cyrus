@@ -136,6 +136,11 @@ pub const PRIMITIVE_TYPES: &[TokenKind] = &[
     TokenKind::Void,
 ];
 
+#[derive(Debug, Clone)]
+pub enum LiteralSuffix {
+    PrimitiveType(TokenKind)
+}
+
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

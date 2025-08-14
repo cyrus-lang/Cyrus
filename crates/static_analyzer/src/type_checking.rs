@@ -1,11 +1,15 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use ast::{LiteralKind, operators::PrefixOperator, token::Location};
+use ast::{
+    LiteralKind,
+    operators::PrefixOperator,
+    token::{Location, PRIMITIVE_TYPES, TokenKind},
+};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, SymbolEntry};
 use typed_ast::{
     ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedCast, TypedDereference, TypedExpression,
-    TypedExpressionKind, TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedPrefixExpression,
-    TypedStructInit, TypedUnaryExpression,
+    TypedExpressionKind, TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedLiteral,
+    TypedPrefixExpression, TypedStructInit, TypedUnaryExpression,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
@@ -148,6 +152,82 @@ impl<'a> AnalysisContext<'a> {
         )
     }
 
+    pub(crate) fn get_typed_literal_type(&mut self, typed_literal: &TypedLiteral) -> Option<ConcreteType> {
+        let check_integer_invalid_suffix = |this: &mut AnalysisContext, suffix_opt: &Option<Box<TokenKind>>| {
+            if let Some(suffix) = suffix_opt {
+                let valid_integer_suffixes: &[TokenKind] = &[
+                    TokenKind::UIntPtr,
+                    TokenKind::IntPtr,
+                    TokenKind::SizeT,
+                    TokenKind::Int,
+                    TokenKind::Int8,
+                    TokenKind::Int16,
+                    TokenKind::Int32,
+                    TokenKind::Int64,
+                    TokenKind::Int128,
+                    TokenKind::UInt,
+                    TokenKind::UInt8,
+                    TokenKind::UInt16,
+                    TokenKind::UInt32,
+                    TokenKind::UInt64,
+                    TokenKind::UInt128,
+                ];
+
+                if !valid_integer_suffixes.contains(&suffix) {
+                    this.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::InvalidIntegerLiteralSuffix,
+                        location: Some(DiagLoc::new(
+                            this.resolver.get_current_module_file_path(),
+                            typed_literal.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                }
+            }
+        };
+
+        let check_float_invalid_suffix = |this: &mut AnalysisContext, suffix_opt: &Option<Box<TokenKind>>| {
+            if let Some(suffix) = suffix_opt {
+                let valid_float_suffixes: &[TokenKind] = &[
+                    TokenKind::Float16,
+                    TokenKind::Float32,
+                    TokenKind::Float64,
+                    TokenKind::Float128,
+                ];
+
+                if !valid_float_suffixes.contains(&suffix) {
+                    this.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::InvalidFloatLiteralSuffix,
+                        location: Some(DiagLoc::new(
+                            this.resolver.get_current_module_file_path(),
+                            typed_literal.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                }
+            }
+        };
+
+        match &typed_literal.kind {
+            LiteralKind::Integer(_, suffix_opt) => {
+                check_integer_invalid_suffix(self, suffix_opt);
+            }
+            LiteralKind::Float(_, suffix_opt) => {
+                check_float_invalid_suffix(self, suffix_opt);
+            }
+            LiteralKind::Bool(_) => {}
+            LiteralKind::String(_, _) => {}
+            LiteralKind::Char(_) => {}
+            LiteralKind::Null => {}
+        };
+
+        Some(ConcreteType::BasicType(typed_literal.ty.clone()))
+    }
+
     pub(crate) fn get_typed_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -169,31 +249,7 @@ impl<'a> AnalysisContext<'a> {
 
                 self.get_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
             }
-            TypedExpressionKind::Literal(literal) => match &literal.kind {
-                LiteralKind::Integer(_) => Some(ConcreteType::BasicType(BasicConcreteType::Int)),
-                LiteralKind::Float(_) => Some(ConcreteType::BasicType(BasicConcreteType::Float32)),
-                LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
-                LiteralKind::String(string_value, string_prefix) => {
-                    if let Some(string_prefix) = string_prefix {
-                        match string_prefix {
-                            ast::StringPrefix::B => {
-                                let len = string_value.len() + 1;
-                                return Some(ConcreteType::Array(TypedArrayType {
-                                    element_type: Box::new(ConcreteType::BasicType(BasicConcreteType::Char)),
-                                    capacity: TypedArrayCapacity::Fixed(len.try_into().unwrap()),
-                                    loc: literal.loc.clone(),
-                                }));
-                            }
-                            ast::StringPrefix::C => {}
-                        }
-                    }
-                    Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                        BasicConcreteType::Char,
-                    ))))
-                }
-                LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
-                LiteralKind::Null => Some(ConcreteType::BasicType(BasicConcreteType::Null)),
-            },
+            TypedExpressionKind::Literal(typed_literal) => self.get_typed_literal_type(typed_literal),
             TypedExpressionKind::Prefix(typed_prefix_expr) => {
                 self.get_prefix_expr_type(scope_id_opt, typed_prefix_expr)
             }

@@ -232,10 +232,10 @@ pub struct Literal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LiteralKind {
-    Integer(i64),
-    Float(f64),
-    Bool(bool),
+    Integer(i64, Option<Box<TokenKind>>),
+    Float(f64, Option<Box<TokenKind>>),
     String(String, Option<StringPrefix>),
+    Bool(bool),
     Char(char),
     Null,
 }

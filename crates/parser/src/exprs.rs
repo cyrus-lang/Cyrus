@@ -834,7 +834,7 @@ impl Parser {
                     elements.push(Expression::Array(Array {
                         data_type: TypeSpecifier::Array(ArrayTypeSpecifier {
                             size: ArrayCapacity::Fixed(TokenKind::Literal(Literal {
-                                kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap()),
+                                kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap(), None),
                                 span: Span::new(untyped_array_start, self.current_token().span.end),
                                 loc: loc.clone(),
                             })),

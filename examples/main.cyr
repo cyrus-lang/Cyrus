@@ -1,16 +1,14 @@
 func main() {
-    #a: int = 10;
+    #a: float32 = 3.14float32;
 }
 
-func sample() Another {
-}
+// func sample() {
+// }
 
-type MyPerson = Person;
-type Another = MyPerson;
+// type MyPerson = Person;
+// type Another = MyPerson;
 
-person: Another;
-
-struct Person {
-    name: char*;
-    age: int;
-}
+// struct Person {
+//     name: char*;
+//     age: int;
+// }

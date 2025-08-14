@@ -2,6 +2,8 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    InvalidIntegerLiteralSuffix,
+    InvalidFloatLiteralSuffix,
     ArrayNonIntegerIndex {
         found_type: String,
     },
@@ -120,6 +122,12 @@ impl fmt::Display for AnalyzerDiagKind {
                 field_name,
             } => {
                 write!(f, "Struct '{}' has no field named '{}'.", struct_name, field_name)
+            }
+            AnalyzerDiagKind::InvalidIntegerLiteralSuffix => {
+                write!(f, "Invalid integer literal suffix.")
+            }
+            AnalyzerDiagKind::InvalidFloatLiteralSuffix => {
+                write!(f, "Invalid float literal suffix.")
             }
             AnalyzerDiagKind::StructFieldTypeMismatch {
                 struct_name,

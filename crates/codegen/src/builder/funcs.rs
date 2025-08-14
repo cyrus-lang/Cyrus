@@ -11,9 +11,23 @@ use inkwell::{
     types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
     values::FunctionValue,
 };
-use typed_ast::{TypedFuncParamKind, TypedFuncParams, types::ConcreteType};
+use typed_ast::{TypedFuncDef, TypedFuncParamKind, TypedFuncParams, types::ConcreteType};
 
 impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn build_func_def(&self, func_def: &TypedFuncDef) {
+        let irreg = self.irreg.borrow();
+        let local_ir_value = irreg.get(&func_def.symbol_id).unwrap();
+
+        let fn_value = local_ir_value.as_func().unwrap();
+
+        let entry_block = self.llvmctx.append_basic_block(*fn_value, "entry");
+        self.llvmbuilder.position_at_end(entry_block);
+
+        self.build_block_statement(&func_def.body);
+
+        drop(irreg);
+    }
+
     pub(crate) fn build_func_decl(
         &self,
         func_name: String,

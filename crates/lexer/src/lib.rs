@@ -525,6 +525,16 @@ impl Lexer {
         }
     }
 
+    fn read_literal_suffix(&mut self) -> Option<Box<TokenKind>> {
+        if matches!(self.ch, 'f' | 'u' | 'i' | 's') {
+            let suffix_token_kind = self.read_identifier().kind;
+
+            Some(Box::new(suffix_token_kind))
+        } else {
+            None
+        }
+    }
+
     fn read_number(&mut self) -> Token {
         let start = self.pos;
         let mut number = String::new();
@@ -544,9 +554,11 @@ impl Lexer {
                 self.read_char();
             }
 
+            let suffix = self.read_literal_suffix();
+
             match i64::from_str_radix(&number[2..], 16) {
                 Ok(value) => TokenKind::Literal(Literal {
-                    kind: LiteralKind::Integer(value),
+                    kind: LiteralKind::Integer(value, suffix),
                     loc: Location::new(self.line, self.column),
                     span: Span::new(start, self.column),
                 }),
@@ -603,15 +615,12 @@ impl Lexer {
                 }
             }
 
-            if matches!(self.ch, 'f' | 'F' | 'l' | 'L') {
-                number.push(self.ch);
-                self.read_char();
-            }
+            let suffix = self.read_literal_suffix();
 
             if is_float {
                 match number.parse::<f64>() {
                     Ok(value) => TokenKind::Literal(Literal {
-                        kind: LiteralKind::Float(value),
+                        kind: LiteralKind::Float(value, suffix),
                         loc: Location::new(self.line, self.column),
                         span: Span::new(start, self.column),
                     }),
@@ -631,7 +640,7 @@ impl Lexer {
             } else {
                 match number.parse::<i64>() {
                     Ok(value) => TokenKind::Literal(Literal {
-                        kind: LiteralKind::Integer(value),
+                        kind: LiteralKind::Integer(value, suffix),
                         loc: Location::new(self.line, self.column),
                         span: Span::new(start, self.column),
                     }),
@@ -746,6 +755,33 @@ impl Lexer {
         }
     }
 
+    fn lookup_typename(&self, ident: String) -> Option<TokenKind> {
+        match ident.as_str() {
+            "uintptr" => Some(TokenKind::UIntPtr),
+            "intptr" => Some(TokenKind::IntPtr),
+            "size_t" => Some(TokenKind::SizeT),
+            "int" => Some(TokenKind::Int),
+            "int8" => Some(TokenKind::Int8),
+            "int16" => Some(TokenKind::Int16),
+            "int32" => Some(TokenKind::Int32),
+            "int64" => Some(TokenKind::Int64),
+            "int128" => Some(TokenKind::Int128),
+            "uint" => Some(TokenKind::UInt),
+            "uint8" => Some(TokenKind::UInt8),
+            "uint16" => Some(TokenKind::UInt16),
+            "uint32" => Some(TokenKind::UInt32),
+            "uint64" => Some(TokenKind::UInt64),
+            "uint128" => Some(TokenKind::UInt128),
+            "float16" => Some(TokenKind::Float16),
+            "float32" => Some(TokenKind::Float32),
+            "float64" => Some(TokenKind::Float64),
+            "float128" => Some(TokenKind::Float128),
+            "char" => Some(TokenKind::Char),
+            "bool" => Some(TokenKind::Bool),
+            _ => None,
+        }
+    }
+
     fn lookup_identifier(&mut self, ident: String) -> TokenKind {
         match ident.as_str() {
             "interface" => TokenKind::Interface,
@@ -769,27 +805,6 @@ impl Lexer {
             "false" => TokenKind::False,
             "null" => TokenKind::Null,
             "as" => TokenKind::As,
-            "uintptr" => TokenKind::UIntPtr,
-            "intptr" => TokenKind::IntPtr,
-            "size_t" => TokenKind::SizeT,
-            "int" => TokenKind::Int,
-            "int8" => TokenKind::Int8,
-            "int16" => TokenKind::Int16,
-            "int32" => TokenKind::Int32,
-            "int64" => TokenKind::Int64,
-            "int128" => TokenKind::Int128,
-            "uint" => TokenKind::UInt,
-            "uint8" => TokenKind::UInt8,
-            "uint16" => TokenKind::UInt16,
-            "uint32" => TokenKind::UInt32,
-            "uint64" => TokenKind::UInt64,
-            "uint128" => TokenKind::UInt128,
-            "float16" => TokenKind::Float16,
-            "float32" => TokenKind::Float32,
-            "float64" => TokenKind::Float64,
-            "float128" => TokenKind::Float128,
-            "char" => TokenKind::Char,
-            "bool" => TokenKind::Bool,
             "in" => TokenKind::In,
             "enum" => TokenKind::Enum,
             "void" => TokenKind::Void,
@@ -798,24 +813,9 @@ impl Lexer {
             "public" => TokenKind::Public,
             "const" => TokenKind::Const,
             "sizeof" => TokenKind::SizeOf,
-            _ => TokenKind::Identifier {
+            _ => self.lookup_typename(ident.clone()).unwrap_or(TokenKind::Identifier {
                 name: ident.to_string(),
-            },
+            }),
         }
-    }
-}
-
-pub fn new_lexer_debugger(input: String) {
-    let mut lexer = Lexer::new(input, "debug.cyr".to_string());
-    loop {
-        let token = lexer.next_token();
-        if token.kind == TokenKind::EOF {
-            break;
-        }
-
-        println!(
-            "{:?} Span({}, {}) Line({}) Column({})",
-            token.kind, token.span.start, token.span.end, token.loc.line, token.loc.column
-        );
     }
 }
