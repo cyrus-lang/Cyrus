@@ -1,4 +1,4 @@
-use crate::types::{BasicConcreteType, ConcreteType};
+use crate::types::{BasicConcreteType, ConcreteType, TypedUnnamedStructType};
 use ast::{
     AccessSpecifier, Identifier, LiteralKind, SelfModifier,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -192,6 +192,7 @@ pub struct TypedMethodCall {
 #[derive(Debug, Clone)]
 pub struct TypedUnnamedStructValue {
     pub fields: Vec<TypedUnnamedStructValueField>,
+    pub unnamed_struct_type: Option<TypedUnnamedStructType>,
     pub packed: bool,
     pub loc: Location,
 }

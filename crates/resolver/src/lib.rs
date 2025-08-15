@@ -340,7 +340,7 @@ impl Resolver {
                     match self.resolve_type(module_id, field.field_type.clone(), field.loc.clone(), field.span.end) {
                         Some(concrete_type) => {
                             fields.push(TypedUnnamedStructTypeField {
-                                field_name: field.field_name.clone(),
+                                field_name: field.field_name.name.clone(),
                                 field_type: Box::new(concrete_type),
                                 loc: field.loc.clone(),
                             });
@@ -2483,6 +2483,7 @@ impl Resolver {
                 Some(TypedExpression {
                     kind: TypedExpressionKind::UnnamedStructValue(TypedUnnamedStructValue {
                         fields,
+                        unnamed_struct_type: None, 
                         packed: unnamed_struct_value.packed,
                         loc: unnamed_struct_value.loc.clone(),
                     }),

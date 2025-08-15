@@ -9,11 +9,11 @@ use resolver::scope::{LocalOrGlobalSymbol, SymbolEntry};
 use typed_ast::{
     ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedCast, TypedDereference, TypedExpression,
     TypedExpressionKind, TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedLiteral,
-    TypedPrefixExpression, TypedStructInit, TypedUnaryExpression,
+    TypedPrefixExpression, TypedStructInit, TypedUnaryExpression, TypedUnnamedStructValue,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
-        ConcreteType, TypedArrayCapacity, TypedArrayType,
+        ConcreteType, TypedArrayCapacity, TypedArrayType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
 };
 
@@ -279,11 +279,43 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExpressionKind::FieldAccess(typed_field_access) => todo!(),
             TypedExpressionKind::MethodCall(typed_method_call) => todo!(),
-            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
+            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
+                self.get_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
+            }
         };
 
         typed_expr.concrete_type = concrete_type.clone();
         concrete_type.clone()
+    }
+
+    fn get_unnamed_struct_value_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_struct_value: &mut TypedUnnamedStructValue,
+    ) -> Option<ConcreteType> {
+        let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
+
+        for field in &mut unnamed_struct_value.fields {
+            let field_value_type = match self.get_typed_expr_type(scope_id_opt, &mut field.field_value) {
+                Some(concrete_type) => concrete_type,
+                None => continue,
+            };
+
+            fields.push(TypedUnnamedStructTypeField {
+                field_name: field.field_name.clone(),
+                field_type: Box::new(field.field_type.clone().unwrap_or(field_value_type)),
+                loc: field.loc.clone(),
+            });
+        }
+
+        let unnamed_struct_type = TypedUnnamedStructType {
+            fields,
+            packed: unnamed_struct_value.packed,
+            loc: unnamed_struct_value.loc.clone(),
+        };
+        
+        unnamed_struct_value.unnamed_struct_type = Some(unnamed_struct_type.clone());
+        Some(ConcreteType::UnnamedStruct(unnamed_struct_type))
     }
 
     fn get_concrete_type_by_symbol_id(

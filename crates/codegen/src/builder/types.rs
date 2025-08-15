@@ -11,11 +11,15 @@ use inkwell::{
 use resolver::scope::{LocalScopeRef, SymbolEntry};
 use typed_ast::{
     SymbolID,
-    types::{BasicConcreteType, ConcreteType, TypedArrayCapacity},
+    types::{BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedUnnamedStructType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
-    fn build_cast(&self, target_type: AnyTypeEnum<'a>, internal_value: InternalValue<'a>) -> AnyValueEnum<'a> {
+    pub(crate) fn build_cast(
+        &self,
+        target_type: AnyTypeEnum<'a>,
+        internal_value: InternalValue<'a>,
+    ) -> AnyValueEnum<'a> {
         let basic_value = internal_value.as_basic_value();
 
         match target_type {
@@ -54,8 +58,17 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> AnyTypeEnum<'a> {
-        if let Some(local_scope) = local_scope_opt {
-            todo!();
+        if local_scope_opt.is_some() {
+            let irreg = self.irreg.borrow();
+            let local_ir_value = irreg.get(&symbol_id).unwrap();
+
+            let any_type_enum = match local_ir_value {
+                LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
+                _ => unreachable!(),
+            };
+
+            drop(irreg);
+            any_type_enum
         } else {
             fn resolve_final_symbol_entry(this: &CodeGenBuilder<'_>, symbol_id: SymbolID) -> SymbolEntry {
                 let module_id = this.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
@@ -113,19 +126,27 @@ impl<'a> CodeGenBuilder<'a> {
                 AnyTypeEnum::PointerType(ptr)
             }
             ConcreteType::UnnamedStruct(typed_unnamed_struct_type) => {
-                let field_types: Vec<BasicTypeEnum<'_>> = typed_unnamed_struct_type
-                    .fields
-                    .iter()
-                    .map(|field| {
-                        self.build_concrete_type(local_scope_opt.clone(), *field.field_type.clone())
-                            .try_into()
-                            .unwrap()
-                    })
-                    .collect();
-
-                AnyTypeEnum::StructType(self.llvmctx.struct_type(&field_types, typed_unnamed_struct_type.packed))
+                self.build_unnamed_struct_type(local_scope_opt, &typed_unnamed_struct_type)
             }
         }
+    }
+
+    pub(crate) fn build_unnamed_struct_type(
+        &self,
+        local_scope_opt: Option<LocalScopeRef>,
+        unnamed_struct_type: &TypedUnnamedStructType,
+    ) -> AnyTypeEnum<'a> {
+        let field_types: Vec<BasicTypeEnum<'_>> = unnamed_struct_type
+            .fields
+            .iter()
+            .map(|field| {
+                self.build_concrete_type(local_scope_opt.clone(), *field.field_type.clone())
+                    .try_into()
+                    .unwrap()
+            })
+            .collect();
+
+        AnyTypeEnum::StructType(self.llvmctx.struct_type(&field_types, unnamed_struct_type.packed))
     }
 
     pub(crate) fn build_basic_concrete_type(&self, basic_concrete_type: BasicConcreteType) -> AnyTypeEnum<'a> {

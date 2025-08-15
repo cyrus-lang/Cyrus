@@ -29,6 +29,13 @@ impl ConcreteType {
             _ => None,
         }
     }
+
+    pub fn as_array_type(&self) -> Option<&TypedArrayType> {
+        match self {
+            ConcreteType::Array(ty) => Some(ty),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -176,7 +183,7 @@ pub struct TypedUnnamedStructType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructTypeField {
-    pub field_name: Identifier,
+    pub field_name: String,
     pub field_type: Box<ConcreteType>,
     pub loc: Location,
 }
