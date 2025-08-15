@@ -1,5 +1,9 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
-use inkwell::types::{BasicTypeEnum, StructType};
+use inkwell::{
+    types::{BasicTypeEnum, StructType},
+    values::FunctionValue,
+};
+use resolver::scope::ResolvedFunction;
 use typed_ast::{SymbolID, TypedBlockStatement, TypedStatement, TypedStruct};
 
 impl<'a> CodeGenBuilder<'a> {
@@ -11,13 +15,34 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
                 TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
                 TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
+                TypedStatement::GlobalVariable(typed_global_var) => self.build_global_var_def(typed_global_var),
                 TypedStatement::Interface(typed_interface) => todo!(),
-                // already handled in build_forward_decls
-                TypedStatement::GlobalVariable(_) => continue,
                 TypedStatement::FuncDecl(_) => continue,
                 _ => continue,
             }
         }
+    }
+
+    pub(crate) fn get_or_declare_func(
+        &self,
+        symbol_id: SymbolID,
+        resolved_func: &ResolvedFunction,
+    ) -> FunctionValue<'a> {
+        let irreg = self.irreg.borrow();
+        let fn_value = match irreg.get(&symbol_id) {
+            Some(local_ir_value) => local_ir_value.as_func().unwrap().clone(),
+            None => {
+                self.build_func_decl(
+                    resolved_func.func_sig.name.clone(),
+                    resolved_func.func_sig.params.clone(),
+                    resolved_func.func_sig.return_type.clone(),
+                    resolved_func.func_sig.vis.clone(),
+                    None,
+                )
+            }
+        };
+        drop(irreg);
+        fn_value
     }
 
     fn build_forward_decls(&self, stmts: &Vec<TypedStatement>) {
@@ -121,7 +146,8 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::Struct(typed_struct) => todo!(),
                 TypedStatement::Enum(typed_enum) => todo!(),
                 TypedStatement::Expression(typed_expr) => {
-                    self.build_expr(local_scope_opt.clone(), typed_expr);
+                    let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
+                    self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
                 }
                 TypedStatement::BlockStatement(typed_block_statement) => {
                     self.build_block_statement(typed_block_statement);

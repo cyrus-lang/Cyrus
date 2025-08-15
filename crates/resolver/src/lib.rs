@@ -933,6 +933,7 @@ impl Resolver {
                                 module_id,
                                 symbol_id: self_symbol_id,
                                 typed_variable: TypedVariable {
+                                    symbol_id: self_symbol_id,
                                     name: self_symbol_name.clone(),
                                     ty: Some(ConcreteType::Symbol(struct_symbol_id)),
                                     rhs: None,
@@ -943,6 +944,7 @@ impl Resolver {
                                 module_id,
                                 symbol_id: self_symbol_id,
                                 typed_variable: TypedVariable {
+                                    symbol_id: self_symbol_id,
                                     name: self_symbol_name.clone(),
                                     ty: Some(ConcreteType::Pointer(Box::new(ConcreteType::Symbol(struct_symbol_id)))),
                                     rhs: None,
@@ -1149,12 +1151,14 @@ impl Resolver {
 
                     if let Some(local_scope_rc) = &local_scope_opt {
                         let mut local_scope = local_scope_rc.borrow_mut();
+                        let symbol_id = generate_symbol_id();
                         local_scope.insert(
                             func_param.identifier.name.clone(),
                             LocalSymbol::Variable(ResolvedVariable {
                                 module_id,
-                                symbol_id: generate_symbol_id(),
+                                symbol_id,
                                 typed_variable: TypedVariable {
+                                    symbol_id,
                                     name: func_param.identifier.name.clone(),
                                     ty: Some(param_type.clone()),
                                     rhs: None,
@@ -1193,12 +1197,15 @@ impl Resolver {
 
                         if let Some(local_scope_rc) = &local_scope_opt {
                             let mut local_scope = local_scope_rc.borrow_mut();
+                            let symbol_id = generate_symbol_id();
+
                             local_scope.insert(
                                 identifier.name.clone(),
                                 LocalSymbol::Variable(ResolvedVariable {
                                     module_id,
-                                    symbol_id: generate_symbol_id(),
+                                    symbol_id,
                                     typed_variable: TypedVariable {
+                                        symbol_id,
                                         name: identifier.name.clone(),
                                         ty: Some(variadic_type.clone()),
                                         rhs: None,
@@ -1432,7 +1439,10 @@ impl Resolver {
             }
         };
 
+        let symbol_id = generate_symbol_id();
+
         let typed_variable = TypedVariable {
+            symbol_id,
             name: variable.identifier.name.clone(),
             ty: var_type,
             rhs: typed_rhs,
@@ -1441,7 +1451,7 @@ impl Resolver {
 
         let resolved_var = ResolvedVariable {
             module_id,
-            symbol_id: generate_symbol_id(),
+            symbol_id,
             typed_variable: typed_variable.clone(),
         };
 
@@ -1619,6 +1629,7 @@ impl Resolver {
                                 module_id,
                                 symbol_id: typed_identifier.symbol_id,
                                 typed_variable: TypedVariable {
+                                    symbol_id: typed_identifier.symbol_id,
                                     name: typed_identifier.name.clone(),
                                     ty: None,
                                     rhs: None,
@@ -1645,6 +1656,7 @@ impl Resolver {
                                     module_id,
                                     symbol_id: typed_identifier.symbol_id,
                                     typed_variable: TypedVariable {
+                                        symbol_id: typed_identifier.symbol_id,
                                         name: typed_identifier.name.clone(),
                                         ty: None,
                                         rhs: None,
@@ -1692,12 +1704,15 @@ impl Resolver {
                                 TypedSwitchCasePattern::Expression(typed_expr)
                             }
                             SwitchCasePattern::Identifier(identifier) => {
+                                let symbol_id = generate_symbol_id();
+
                                 case_scope.insert(
                                     identifier.name.clone(),
                                     LocalSymbol::Variable(ResolvedVariable {
                                         module_id,
-                                        symbol_id: generate_symbol_id(),
+                                        symbol_id,
                                         typed_variable: TypedVariable {
+                                            symbol_id,
                                             name: identifier.name.clone(),
                                             ty: None,
                                             rhs: None,
@@ -1708,6 +1723,8 @@ impl Resolver {
                                 TypedSwitchCasePattern::Identifier(identifier.name.clone())
                             }
                             SwitchCasePattern::EnumVariant(identifier, identifiers) => {
+                                let symbol_id = generate_symbol_id();
+
                                 TypedSwitchCasePattern::EnumVariant(
                                     identifier.name.clone(),
                                     identifiers
@@ -1717,8 +1734,9 @@ impl Resolver {
                                                 identifier.name.clone(),
                                                 LocalSymbol::Variable(ResolvedVariable {
                                                     module_id,
-                                                    symbol_id: generate_symbol_id(),
+                                                    symbol_id,
                                                     typed_variable: TypedVariable {
+                                                        symbol_id,
                                                         name: identifier.name.clone(),
                                                         ty: None,
                                                         rhs: None,
@@ -2069,19 +2087,6 @@ impl Resolver {
                 ) {
                     Some(symbol_id) => symbol_id,
                     None => {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: ResolverDiagKind::SymbolNotFound {
-                                name: module_segments_as_string(struct_init.struct_name.segments.clone()),
-                            },
-                            location: Some(DiagLoc::new(
-                                self.get_current_module_file_path(),
-                                struct_init.struct_name.loc.clone(),
-                                struct_init.struct_name.span.end,
-                            )),
-                            hint: None,
-                        });
-
                         return None;
                     }
                 };
@@ -2296,7 +2301,7 @@ impl Resolver {
             }
             Expression::Literal(literal) => {
                 let literal_type = {
-                    let concrete_type = match &literal.kind {
+                    match &literal.kind {
                         LiteralKind::Integer(_, suffix_opt) => {
                             if let Some(token_kind) = suffix_opt {
                                 match ConcreteType::try_from(*token_kind.clone()) {
@@ -2365,11 +2370,6 @@ impl Resolver {
                         LiteralKind::Null => {
                             ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Void)))
                         }
-                    };
-
-                    match concrete_type {
-                        ConcreteType::BasicType(basic_concrete_type) => basic_concrete_type,
-                        _ => unreachable!(),
                     }
                 };
                 let typed_literal = TypedLiteral {

@@ -22,10 +22,9 @@ impl<'a> CodeGenBuilder<'a> {
 
         let entry_block = self.llvmctx.append_basic_block(*fn_value, "entry");
         self.llvmbuilder.position_at_end(entry_block);
-
-        self.build_block_statement(&func_def.body);
-
         drop(irreg);
+        
+        self.build_block_statement(&func_def.body);
     }
 
     pub(crate) fn build_func_decl(

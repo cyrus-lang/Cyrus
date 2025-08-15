@@ -14,6 +14,23 @@ pub enum ConcreteType {
     UnnamedStruct(TypedUnnamedStructType),
 }
 
+impl ConcreteType {
+    pub fn is_const(&self) -> bool {
+        matches!(self, ConcreteType::Const(_))
+    }
+
+    pub fn is_void(&self) -> bool {
+        matches!(self, ConcreteType::BasicType(BasicConcreteType::Void))
+    }
+
+    pub fn as_basic_type(&self) -> Option<&BasicConcreteType> {
+        match self {
+            ConcreteType::BasicType(ty) => Some(ty),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BasicConcreteType {
     UIntPtr,
@@ -42,6 +59,10 @@ pub enum BasicConcreteType {
 }
 
 impl BasicConcreteType {
+    pub fn is_bool(&self) -> bool {
+        matches!(self, BasicConcreteType::Bool)
+    }
+
     pub fn is_signed(&self) -> bool {
         match self {
             BasicConcreteType::UIntPtr

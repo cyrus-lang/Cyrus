@@ -55,7 +55,7 @@ pub enum TypedExpressionKind {
 
 #[derive(Debug, Clone)]
 pub struct TypedLiteral {
-    pub ty: BasicConcreteType,
+    pub ty: ConcreteType,
     pub kind: LiteralKind,
     pub loc: Location,
 }
@@ -329,6 +329,7 @@ impl TypedBlockStatement {
 
 #[derive(Debug, Clone)]
 pub struct TypedVariable {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<ConcreteType>,
     pub rhs: Option<TypedExpression>,

@@ -117,6 +117,13 @@ impl LocalSymbol {
             LocalSymbol::Interface(resolved) => resolved.symbol_id,
         }
     }
+
+    pub fn as_struct(&self) -> Option<&ResolvedStruct> {
+        match self {
+            LocalSymbol::Struct(resolved_struct) => Some(resolved_struct),
+            _ => None,
+        }
+    }
 }
 
 impl LocalScope {
@@ -150,15 +157,6 @@ impl SymbolTable {
             names: HashMap::new(),
             scopes: HashMap::new(),
             locs: HashMap::new(),
-        }
-    }
-}
-
-impl LocalSymbol {
-    pub fn as_struct(&self) -> Option<&ResolvedStruct> {
-        match self {
-            LocalSymbol::Struct(resolved_struct) => Some(resolved_struct),
-            _ => None
         }
     }
 }
