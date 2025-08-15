@@ -7,11 +7,11 @@ use inkwell::{
     module::Module,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
     types::StructType,
-    values::{FunctionValue, GlobalValue},
+    values::{FunctionValue, GlobalValue, PointerValue},
 };
 use resolver::Resolver;
 use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
-use typed_ast::{ModuleID, TypedProgramTree};
+use typed_ast::{ModuleID, TypedProgramTree, types::ConcreteType};
 use utils::fs::ensure_output_dir;
 
 pub struct CodeGenModule<'module> {
@@ -157,6 +157,7 @@ pub enum LocalIRValue<'a> {
     Func(FunctionValue<'a>),
     GlobalValue(GlobalValue<'a>),
     Struct(StructType<'a>),
+    LValue(PointerValue<'a>, ConcreteType),
 }
 
 impl<'a> LocalIRValue<'a> {
@@ -177,6 +178,13 @@ impl<'a> LocalIRValue<'a> {
     pub fn as_struct(&self) -> Option<&StructType<'a>> {
         match self {
             LocalIRValue::Struct(struct_type) => Some(struct_type),
+            _ => None,
+        }
+    }
+
+    pub fn as_lvalue(&self) -> Option<(&PointerValue<'a>, &ConcreteType)> {
+        match self {
+            LocalIRValue::LValue(pointer, concrete_type) => Some((pointer, concrete_type)),
             _ => None,
         }
     }

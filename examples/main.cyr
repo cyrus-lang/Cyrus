@@ -1,14 +1,10 @@
+extern func printf(format: const char*, ...) void;
+
 func main() {
-    #a: float32 = 3.14float32;
+    printf(null);
+    sample();
 }
 
-// func sample() {
-// }
+func sample() {
 
-// type MyPerson = Person;
-// type Another = MyPerson;
-
-// struct Person {
-//     name: char*;
-//     age: int;
-// }
+}

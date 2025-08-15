@@ -1,8 +1,12 @@
 use super::module::CodeGenBuilder;
-use crate::builder::module::LocalIRValue;
+use crate::builder::{
+    module::LocalIRValue,
+    values::{InternalValue, InternalValueKind},
+};
 use inkwell::{
     AddressSpace,
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
+    values::AnyValueEnum,
 };
 use resolver::scope::{LocalScopeRef, SymbolEntry};
 use typed_ast::{
@@ -11,6 +15,40 @@ use typed_ast::{
 };
 
 impl<'a> CodeGenBuilder<'a> {
+    fn build_cast(&self, target_type: AnyTypeEnum<'a>, internal_value: InternalValue<'a>) -> AnyValueEnum<'a> {
+        let basic_value = internal_value.as_basic_value();
+
+        match target_type {
+            AnyTypeEnum::IntType(int_type) => AnyValueEnum::IntValue(
+                self.llvmbuilder
+                    .build_int_cast(basic_value.into_int_value(), int_type, "cast")
+                    .unwrap(),
+            ),
+            AnyTypeEnum::FloatType(float_type) => AnyValueEnum::FloatValue(
+                self.llvmbuilder
+                    .build_float_cast(basic_value.into_float_value(), float_type, "cast")
+                    .unwrap(),
+            ),
+            AnyTypeEnum::PointerType(ptr_type) => AnyValueEnum::PointerValue(
+                self.llvmbuilder
+                    .build_pointer_cast(basic_value.into_pointer_value(), ptr_type, "cast")
+                    .unwrap(),
+            ),
+            _ => panic!("Unsupported cast type."),
+        }
+    }
+
+    pub(crate) fn build_implicit_cast(
+        &self,
+        local_scope_opt: Option<LocalScopeRef>,
+        target_type: ConcreteType,
+        rvalue: InternalValue<'a>,
+    ) -> InternalValue<'a> {
+        let target_any_type = self.build_concrete_type(local_scope_opt, target_type.clone());
+        let any_value = self.build_cast(target_any_type, rvalue);
+        InternalValue::new(target_type, InternalValueKind::RValue(any_value.try_into().unwrap()))
+    }
+
     pub(crate) fn build_concrete_type_from_symbol_id(
         &self,
         local_scope_opt: Option<LocalScopeRef>,
@@ -40,9 +78,8 @@ impl<'a> CodeGenBuilder<'a> {
             let local_ir_value = irreg.get(&final_symbol_entry.get_symbol_id()).unwrap();
 
             let any_type_enum = match local_ir_value {
-                LocalIRValue::Func(_) => unreachable!(),
-                LocalIRValue::GlobalValue(_) => unreachable!(),
                 LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
+                _ => unreachable!(),
             };
 
             drop(irreg);
