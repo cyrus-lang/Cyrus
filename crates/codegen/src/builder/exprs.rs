@@ -5,19 +5,20 @@ use crate::builder::{
     values::{InternalValue, InternalValueKind},
 };
 use ast::{
-    LiteralKind,
+    FieldAccess, LiteralKind,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::Location,
 };
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    types::BasicTypeEnum,
-    values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum},
+    types::{BasicType, BasicTypeEnum},
+    values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum},
 };
 use resolver::scope::LocalScopeRef;
 use typed_ast::{
-    SymbolID, TypedExpression, TypedExpressionKind, TypedFuncCall, TypedInfixExpression, TypedLiteral,
-    TypedPrefixExpression, TypedUnaryExpression,
+    SymbolID, TypedAddressOf, TypedArray, TypedAssignment, TypedCast, TypedDereference, TypedExpression,
+    TypedExpressionKind, TypedFuncCall, TypedInfixExpression, TypedLiteral, TypedPrefixExpression, TypedStructInit,
+    TypedUnaryExpression, TypedUnnamedStructValue,
     types::{BasicConcreteType, ConcreteType},
 };
 
@@ -35,18 +36,228 @@ impl<'a> CodeGenBuilder<'a> {
             }
             TypedExpressionKind::Infix(typed_infix_expr) => self.build_infix_expr(local_scope_opt, typed_infix_expr),
             TypedExpressionKind::Unary(typed_unary_expr) => self.build_unary_expr(local_scope_opt, typed_unary_expr),
-            TypedExpressionKind::Assignment(typed_assignment) => todo!(),
-            TypedExpressionKind::Cast(typed_cast) => todo!(),
-            TypedExpressionKind::Array(typed_array) => todo!(),
+            TypedExpressionKind::Assignment(typed_assign) => self.build_assign(local_scope_opt, typed_assign),
+            TypedExpressionKind::Cast(typed_cast) => self.build_cast_expr(local_scope_opt, typed_cast),
+            TypedExpressionKind::Array(typed_array) => self.build_array_expr(local_scope_opt, typed_array),
             TypedExpressionKind::ArrayIndex(typed_array_index) => todo!(),
-            TypedExpressionKind::AddressOf(typed_address_of) => todo!(),
-            TypedExpressionKind::Dereference(typed_dereference) => todo!(),
-            TypedExpressionKind::StructInit(typed_struct_init) => todo!(),
+            TypedExpressionKind::AddressOf(typed_address_of) => {
+                self.build_address_of(local_scope_opt, typed_address_of)
+            }
+            TypedExpressionKind::Dereference(typed_dereference) => {
+                self.build_dereference(local_scope_opt, typed_dereference)
+            }
+            TypedExpressionKind::StructInit(typed_struct_init) => {
+                self.build_struct_init(local_scope_opt, typed_struct_init)
+            }
             TypedExpressionKind::FuncCall(typed_func_call) => self.build_func_call(local_scope_opt, typed_func_call),
             TypedExpressionKind::FieldAccess(typed_field_access) => todo!(),
             TypedExpressionKind::MethodCall(typed_method_call) => todo!(),
-            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
+            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
+                self.build_unnamed_struct_value(local_scope_opt, typed_unnamed_struct_value)
+            }
         }
+    }
+
+    fn build_unnamed_struct_value(
+        &self,
+        local_scope_opt: Option<LocalScopeRef>,
+        unnamed_struct_value: &TypedUnnamedStructValue,
+    ) -> InternalValue<'a> {
+        let struct_type = self
+            .build_unnamed_struct_type(
+                local_scope_opt.clone(),
+                &unnamed_struct_value.unnamed_struct_type.clone().unwrap(),
+            )
+            .into_struct_type();
+
+        let mut struct_value = struct_type.get_undef();
+
+        let mut all_const = true;
+        let field_values: Vec<BasicValueEnum<'a>> = unnamed_struct_value
+            .fields
+            .iter()
+            .map(|unnamed_struct_value_field| {
+                let field_lvalue = self.build_expr(local_scope_opt.clone(), &unnamed_struct_value_field.field_value);
+                let field_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), field_lvalue);
+                let field_basic_value = field_rvalue.as_basic_value();
+                if !self.is_basic_value_constant(field_basic_value) {
+                    all_const = false;
+                }
+                field_basic_value
+            })
+            .collect();
+
+        if all_const {
+            struct_value = struct_type.const_named_struct(&field_values);
+        } else {
+            field_values.iter().enumerate().for_each(|(index, field_value)| {
+                struct_value = self
+                    .llvmbuilder
+                    .build_insert_value(struct_value, *field_value, index.try_into().unwrap(), "insert")
+                    .unwrap()
+                    .into_struct_value();
+            });
+        }
+
+        InternalValue::new(
+            ConcreteType::UnnamedStruct(unnamed_struct_value.unnamed_struct_type.clone().unwrap()),
+            InternalValueKind::RValue(struct_value.as_basic_value_enum()),
+        )
+    }
+
+    fn build_struct_init(
+        &self,
+        local_scope_opt: Option<LocalScopeRef>,
+        typed_struct_init: &TypedStructInit,
+    ) -> InternalValue<'a> {
+        let struct_type = self
+            .build_concrete_type(
+                local_scope_opt.clone(),
+                ConcreteType::Symbol(typed_struct_init.symbol_id),
+            )
+            .into_struct_type();
+
+        let mut struct_value = struct_type.get_undef();
+
+        let mut all_const = true;
+        let field_values: Vec<BasicValueEnum<'a>> = typed_struct_init
+            .fields
+            .iter()
+            .map(|field_init| {
+                let field_lvalue = self.build_expr(local_scope_opt.clone(), &field_init.value);
+                let field_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), field_lvalue);
+                let field_basic_value = field_rvalue.as_basic_value();
+                if !self.is_basic_value_constant(field_basic_value) {
+                    all_const = false;
+                }
+                field_basic_value
+            })
+            .collect();
+
+        if all_const {
+            struct_value = struct_type.const_named_struct(&field_values);
+        } else {
+            field_values.iter().enumerate().for_each(|(index, field_value)| {
+                struct_value = self
+                    .llvmbuilder
+                    .build_insert_value(struct_value, *field_value, index.try_into().unwrap(), "insert")
+                    .unwrap()
+                    .into_struct_value();
+            });
+        }
+
+        InternalValue::new(
+            ConcreteType::Symbol(typed_struct_init.symbol_id),
+            InternalValueKind::RValue(struct_value.as_basic_value_enum()),
+        )
+    }
+
+    fn build_assign(&self, local_scope_opt: Option<LocalScopeRef>, assign: &TypedAssignment) -> InternalValue<'a> {
+        let lhs_lvalue = self.build_expr(local_scope_opt.clone(), &assign.lhs);
+        let rhs_lvalue = self.build_expr(local_scope_opt.clone(), &assign.rhs);
+        let rhs_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), rhs_lvalue);
+
+        assert!(lhs_lvalue.as_basic_value().is_pointer_value() == true);
+        let pointer_value = lhs_lvalue.as_basic_value().into_pointer_value();
+
+        self.llvmbuilder
+            .build_store(pointer_value, rhs_rvalue.as_basic_value())
+            .unwrap();
+        rhs_rvalue
+    }
+
+    fn build_dereference(&self, local_scope_opt: Option<LocalScopeRef>, deref: &TypedDereference) -> InternalValue<'a> {
+        let operand_type = deref.operand.concrete_type.clone().unwrap();
+        let lvalue = self.build_expr(local_scope_opt.clone(), &deref.operand);
+        let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+
+        InternalValue::new(operand_type, InternalValueKind::RValue(rvalue.as_basic_value()))
+    }
+
+    fn build_address_of(
+        &self,
+        local_scope_opt: Option<LocalScopeRef>,
+        address_of: &TypedAddressOf,
+    ) -> InternalValue<'a> {
+        let operand_type = address_of.operand.concrete_type.clone().unwrap();
+        let lvalue = self.build_expr(local_scope_opt.clone(), &address_of.operand);
+
+        InternalValue::new(
+            ConcreteType::Pointer(Box::new(operand_type)),
+            InternalValueKind::RValue(lvalue.as_basic_value()),
+        )
+    }
+
+    fn build_array_expr(&self, local_scope_opt: Option<LocalScopeRef>, array: &TypedArray) -> InternalValue<'a> {
+        let array_concrete_type = array.array_type.as_array_type().unwrap();
+        let element_type = array_concrete_type.element_type.clone();
+        let array_type = self
+            .build_concrete_type(local_scope_opt.clone(), array.array_type.clone())
+            .into_array_type();
+
+        let mut all_const = true;
+        let elements: Vec<BasicValueEnum<'a>> = array
+            .elements
+            .iter()
+            .map(|typed_expr| {
+                let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
+                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+                let casted_rvalue = self
+                    .build_implicit_cast(local_scope_opt.clone(), *element_type.clone(), rvalue)
+                    .as_basic_value();
+                if !self.is_basic_value_constant(casted_rvalue) {
+                    all_const = false;
+                }
+                casted_rvalue
+            })
+            .collect();
+
+        if all_const {
+            let array_value = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
+
+            InternalValue::new(
+                array.array_type.clone(),
+                InternalValueKind::RValue(array_value.as_basic_value_enum()),
+            )
+        } else {
+            let mut array_value = array_type.get_undef();
+
+            elements.iter().enumerate().for_each(|(index, element)| {
+                array_value = self
+                    .llvmbuilder
+                    .build_insert_value(array_value, *element, index.try_into().unwrap(), "insert")
+                    .unwrap()
+                    .into_array_value();
+            });
+
+            InternalValue::new(
+                array.array_type.clone(),
+                InternalValueKind::RValue(array_value.as_basic_value_enum()),
+            )
+        }
+    }
+
+    fn is_basic_value_constant(&self, basic_value: BasicValueEnum<'a>) -> bool {
+        match basic_value {
+            BasicValueEnum::IntValue(int_value) => int_value.is_const(),
+            BasicValueEnum::FloatValue(float_value) => float_value.is_const(),
+            BasicValueEnum::PointerValue(ptr_value) => ptr_value.is_const(),
+            BasicValueEnum::StructValue(struct_value) => struct_value.is_const(),
+            BasicValueEnum::ArrayValue(array_value) => array_value.is_const(),
+            BasicValueEnum::VectorValue(vector_value) => vector_value.is_const(),
+        }
+    }
+
+    fn build_cast_expr(&self, local_scope_opt: Option<LocalScopeRef>, cast: &TypedCast) -> InternalValue<'a> {
+        let lvalue = self.build_expr(local_scope_opt.clone(), &cast.operand);
+        let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+
+        let target_any_type = self.build_concrete_type(local_scope_opt, cast.target_type.clone());
+        let any_value = self.build_cast(target_any_type, rvalue);
+        InternalValue::new(
+            cast.target_type.clone(),
+            InternalValueKind::RValue(any_value.try_into().unwrap()),
+        )
     }
 
     fn build_func_call(&self, local_scope_opt: Option<LocalScopeRef>, func_call: &TypedFuncCall) -> InternalValue<'a> {

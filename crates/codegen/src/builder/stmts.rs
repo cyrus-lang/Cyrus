@@ -31,15 +31,13 @@ impl<'a> CodeGenBuilder<'a> {
         let irreg = self.irreg.borrow();
         let fn_value = match irreg.get(&symbol_id) {
             Some(local_ir_value) => local_ir_value.as_func().unwrap().clone(),
-            None => {
-                self.build_func_decl(
-                    resolved_func.func_sig.name.clone(),
-                    resolved_func.func_sig.params.clone(),
-                    resolved_func.func_sig.return_type.clone(),
-                    resolved_func.func_sig.vis.clone(),
-                    None,
-                )
-            }
+            None => self.build_func_decl(
+                resolved_func.func_sig.name.clone(),
+                resolved_func.func_sig.params.clone(),
+                resolved_func.func_sig.return_type.clone(),
+                resolved_func.func_sig.vis.clone(),
+                None,
+            ),
         };
         drop(irreg);
         fn_value
@@ -105,6 +103,20 @@ impl<'a> CodeGenBuilder<'a> {
         self.llvmctx.opaque_struct_type(name)
     }
 
+    fn build_local_struct_def(&self, typed_struct: &TypedStruct) {
+        let field_types: Vec<BasicTypeEnum<'a>> = typed_struct
+            .fields
+            .iter()
+            .map(|field| self.build_concrete_type(None, field.ty.clone()).try_into().unwrap())
+            .collect();
+
+        let struct_type = self.llvmctx.struct_type(&field_types, typed_struct.packed);
+
+        let mut irreg = self.irreg.borrow_mut();
+        irreg.insert(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
+        drop(irreg);
+    }
+
     fn build_struct_def(&self, typed_struct: &TypedStruct) {
         let field_types: Vec<BasicTypeEnum<'a>> = typed_struct
             .fields
@@ -143,8 +155,12 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::For(typed_for) => todo!(),
                 TypedStatement::Foreach(typed_foreach) => todo!(),
                 TypedStatement::Switch(typed_switch) => todo!(),
-                TypedStatement::Struct(typed_struct) => todo!(),
-                TypedStatement::Enum(typed_enum) => todo!(),
+                TypedStatement::Struct(typed_struct) => {
+                    self.build_local_struct_def(typed_struct);
+                }
+                TypedStatement::Enum(typed_enum) => {
+                    self.build_local_enum_def(typed_enum);
+                },
                 TypedStatement::Expression(typed_expr) => {
                     let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
                     self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);

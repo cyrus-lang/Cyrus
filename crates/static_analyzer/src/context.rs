@@ -358,6 +358,20 @@ impl<'a> AnalysisContext<'a> {
             None => return,
         };
 
+        if lhs_type.is_const() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::CannotAssignToConstLValue,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_assignment.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return;
+        }
+
         if !self.check_type_mismatch(rhs_type.clone(), lhs_type.clone()) {
             let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
             let rhs_type = format_concrete_type(rhs_type, &formatter_closure);

@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    CannotAssignToConstLValue,
     InvalidIntegerLiteralSuffix,
     InvalidFloatLiteralSuffix,
     ArrayNonIntegerIndex {
@@ -102,6 +103,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::CannotAssignToConstLValue => {
+                write!(f, "Cannot assign to immutable variable.")
+            }
             AnalyzerDiagKind::StructMissingFields {
                 struct_name,
                 missing_field_names,
