@@ -1,16 +1,20 @@
 extern func printf(format: const char*, ...) void;
 
 func main() {
-    struct localStruct {
-        a: int;
-        b: int;
-    }
+    #str: char* = c"Hello World";
+    printf(str);
 
-    #v = 10;
-    #a = localStruct {
-        a: 10,
-        b: 20,
-    };
+    // struct localStruct {
+    //     a: int;
+    //     b: int;
+    // }
 
-    #unnamed = struct { a = 10 };
+    // #v = 10;
+    // #a = localStruct {
+    //     a: 10,
+    //     b: 20,
+    // };
+
+    // #unnamed = struct { a = 10 };
+    // #value = unnamed
 }

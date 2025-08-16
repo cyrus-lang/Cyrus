@@ -1,11 +1,10 @@
+use crate::tui::tui_error;
 use std::{
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
     process::exit,
 };
-
-use crate::tui::tui_error;
 
 // Reads the file and returns the file content and the name of the file.
 pub fn read_file(file_path: String) -> (String, String) {

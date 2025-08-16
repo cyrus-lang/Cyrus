@@ -1,11 +1,12 @@
 use super::{build_manifest::BuildManifest, object_file_info::ObjectFileInfo};
 use crate::{
-    builder::module::CodeGenModule,
+    builder::module::{CodeGenModule, CodeGenModuleOutput},
     options::{CodeGenOptions, OutputKind, get_final_build_dir},
 };
-use resolver::Resolver;
+use resolver::{Resolver, moduleloader::ModuleFilePath};
 use std::{
     cell::RefCell,
+    path::Path,
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -22,8 +23,8 @@ pub struct CodeGenContext {
 
 impl CodeGenContext {
     pub fn new(opts: CodeGenOptions, output_kind: OutputKind, resolver_rc: Rc<Resolver>) -> Self {
-        let build_manifest = Arc::new(Mutex::new(BuildManifest::default()));
         let final_build_dir = get_final_build_dir(opts.build_dir.clone());
+        let build_manifest = Arc::new(Mutex::new(BuildManifest::new(final_build_dir.clone())));
         let compiled_objects = Arc::new(Mutex::new(Vec::<ObjectFileInfo>::new()));
 
         Self {
@@ -36,33 +37,55 @@ impl CodeGenContext {
         }
     }
 
-    pub fn emit_exec(&self, output_path: String) {
-        todo!()
+    fn emit_byte_code(&self, codegen_output: &CodeGenModuleOutput, output_path: String, module_name: String) {
+        let bytecode_path = Path::new(&output_path).join(format!("{}.bc", module_name));
+        codegen_output.emit_bitcode(&bytecode_path);
     }
 
-    pub fn compile_modules(&self, typed_modules: Vec<(String, ModuleID, Rc<RefCell<TypedProgramTree>>)>) {
-        typed_modules.iter().for_each(|(module_name, module_id, program_tree)| {
-            let codegen_module = CodeGenModule::new(&self.opts, program_tree.clone());
-            let codegen_output = codegen_module.codegen(self.resolver_rc.clone(), *module_id, module_name.to_string());
-
-            match self.output_kind.clone() {
-                OutputKind::LlvmIr(output_path) => codegen_output.emit_llvm_ir(output_path),
-                OutputKind::Asm(_) => todo!(),
-                OutputKind::ObjectFile(_) => todo!(),
-                OutputKind::Dylib(_) => todo!(),
-                OutputKind::Run => {}
-                OutputKind::None => {}
-            }
-
-            // let bytecode_path = Path::new("");
-            // codegen_output.emit_bitcode(bytecode_path);
-            // let mut compiled_objects = self.compiled_objects.lock().unwrap();
-            // compiled_objects.push(ObjectFileInfo::new(emit_object_result.file_path));
-            // drop(compiled_objects);
+    pub fn compile_modules(
+        &self,
+        typed_modules: Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
+    ) {
+        let build_manifest_guard = self.build_manifest.lock().unwrap();
+        let build_manifest = build_manifest_guard.read_manifest().unwrap_or_else(|| {
+            build_manifest_guard.save_manifest();
+            BuildManifest::new(self.final_build_dir.clone())
         });
+        drop(build_manifest_guard);
+
+        typed_modules
+            .iter()
+            .for_each(|(module_name, module_file_path, module_id, program_tree)| {
+                if build_manifest.check_source_code_changed(module_file_path.clone()) {
+                    utils::tui::tui_compiled(module_file_path.clone());
+
+                    let codegen_module = CodeGenModule::new(&self.opts, program_tree.clone());
+                    let codegen_output = codegen_module.codegen(
+                        self.resolver_rc.clone(),
+                        *module_id,
+                        module_name.to_string(),
+                        module_file_path.clone(),
+                    );
+
+                    match self.output_kind.clone() {
+                        OutputKind::LlvmIr(output_path) => codegen_output.emit_llvm_ir(output_path),
+                        OutputKind::ByteCode(output_path) => {
+                            self.emit_byte_code(&codegen_output, output_path, module_name.clone())
+                        }
+                        OutputKind::Asm(_) => todo!(),
+                        OutputKind::ObjectFile(_) => todo!(),
+                        OutputKind::Dylib(_) => todo!(),
+                        OutputKind::Executable(_) => todo!(),
+                        OutputKind::None => {}
+                    }
+                }
+            });
+
+        utils::tui::tui_compile_finished();
     }
 
-    fn compile_modules_in_paralell(&self, typed_modules: Vec<TypedProgramTree>) {
+    #[allow(unused)]
+    fn compile_modules_in_parallel(&self, typed_modules: Vec<TypedProgramTree>) {
         todo!();
     }
 }

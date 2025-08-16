@@ -3,10 +3,16 @@ use codegen::options::{BuildDir, CodeGenOptions, CodeModelOptions, RelocModeOpti
 use commands::*;
 use diagcentral::display_single_custom_diag;
 use serde::Deserialize;
-use trigger::project_file_required;
 
 mod commands;
-mod trigger;
+
+const PROJECT_FILE_PATH: &str = "Project.toml";
+
+pub(crate) fn project_file_required() {
+    if !std::path::Path::new(PROJECT_FILE_PATH).exists() {
+        display_single_custom_diag!(format!("'{}' not found in current directory.", PROJECT_FILE_PATH));
+    }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum OptimizeLevel {
@@ -57,6 +63,13 @@ struct CompilerOptions {
         help = "Specifies the directory where build artifacts will be stored."
     )]
     build_dir: Option<String>,
+
+    #[clap(
+        long = "base-path",
+        value_name = "PATH",
+        help = "Specifies the base path for running the command."
+    )]
+    base_path: Option<String>,
 
     #[clap(long, short = 'q', help = "Suppress unnecessary output messages.")]
     quiet: bool,
@@ -123,6 +136,7 @@ impl CodeModel {
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            base_path: self.base_path.clone(),
             opt_level: match self.optimize {
                 OptimizeLevel::None => None,
                 OptimizeLevel::O1 => Some(1),
@@ -237,16 +251,29 @@ enum Commands {
         compiler_options: CompilerOptions,
     },
 
-    #[clap(about = "Lexical analysis only.", display_order = 8)]
+    #[clap(
+        name = "emit-bytecode",
+        about = "Emit bytecode as a .bc file per module.",
+        display_order = 8
+    )]
+    EmitByteCode {
+        file_path: Option<String>,
+        #[clap(long, short)]
+        output_path: Option<String>,
+        #[clap(flatten)]
+        compiler_options: CompilerOptions,
+    },
+
+    #[clap(about = "Lexical analysis only.", display_order = 9)]
     LexOnly { file_path: String },
 
-    #[clap(about = "Display program tree.", display_order = 9)]
+    #[clap(about = "Display program tree.", display_order = 10)]
     ParseOnly { file_path: String },
 
-    #[clap(about = "Check program correctness syntactically.", display_order = 10)]
+    #[clap(about = "Check program correctness syntactically.", display_order = 11)]
     SyntacticOnly { file_path: String },
 
-    #[clap(about = "Print version information", display_order = 11)]
+    #[clap(about = "Print version information", display_order = 12)]
     Version,
 }
 
@@ -302,6 +329,17 @@ pub fn main() {
             }
 
             command_emit_asm(compiler_options, file_path, output_path);
+        }
+        Commands::EmitByteCode {
+            file_path,
+            output_path,
+            compiler_options,
+        } => {
+            if file_path.is_none() && output_path.is_none() {
+                project_file_required();
+            }
+
+            command_emit_bytecode(compiler_options, file_path, output_path);
         }
         Commands::Build {
             file_path,

@@ -4,9 +4,7 @@ use crate::builder::{
     values::{InternalValue, InternalValueKind},
 };
 use inkwell::{
-    AddressSpace,
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
-    values::AnyValueEnum,
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType}, values::{AnyValue, AnyValueEnum}, AddressSpace
 };
 use resolver::scope::{LocalScopeRef, SymbolEntry};
 use typed_ast::{
@@ -38,7 +36,7 @@ impl<'a> CodeGenBuilder<'a> {
                     .build_pointer_cast(basic_value.into_pointer_value(), ptr_type, "cast")
                     .unwrap(),
             ),
-            _ => panic!("Unsupported cast type."),
+            _ => internal_value.as_basic_value().as_any_value_enum(),
         }
     }
 
