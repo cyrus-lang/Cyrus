@@ -5,11 +5,11 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::Module,
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
+    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
     types::StructType,
     values::{FunctionValue, GlobalValue, PointerValue},
 };
-use resolver::{moduleloader::ModuleFilePath, Resolver};
+use resolver::{Resolver, moduleloader::ModuleFilePath};
 use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
 use typed_ast::{ModuleID, TypedProgramTree, types::ConcreteType};
 use utils::fs::ensure_output_dir;
@@ -26,7 +26,7 @@ pub(crate) struct CodeGenBuilder<'a> {
     pub llvmmodule: Rc<RefCell<Module<'a>>>,
     pub llvmbuilder: Builder<'a>,
     pub llvmctx: &'a Context,
-    pub llvmtm: TargetMachine,
+    pub llvmtm: Rc<TargetMachine>,
     pub irreg: LocalIRValueRegistryRef<'a>,
     pub resolver: Rc<Resolver>,
 }
@@ -51,12 +51,12 @@ impl<'module> CodeGenModule<'module> {
     ) -> CodeGenModuleOutput<'a> {
         let llvmmodule = self.ctx.create_module(&module_name);
         let builder = self.ctx.create_builder();
-        let llvmtm = self.get_target_machine(
+        let llvmtm = Rc::new(self.get_target_machine(
             self.opts.reloc_mode.to_llvm_reloc_mode(),
             self.opts.code_model.to_llvm_code_model(),
             self.opts.cpu.clone(),
             self.opts.target_triple.clone(),
-        );
+        ));
         let irreg: LocalIRValueRegistryRef = Rc::new(RefCell::new(HashMap::new()));
 
         llvmmodule.set_triple(&llvmtm.get_triple());
@@ -69,14 +69,14 @@ impl<'module> CodeGenModule<'module> {
             llvmmodule: llvmmodule.clone(),
             llvmbuilder: builder,
             llvmctx: &self.ctx,
-            llvmtm,
+            llvmtm: llvmtm.clone(),
             irreg,
             resolver: resolver_rc,
         };
 
         let program_tree_borrowed = self.program_tree.borrow();
         codegen_builder.build_toplevel_statements(&program_tree_borrowed.body);
-        CodeGenModuleOutput::new(module_name, llvmmodule)
+        CodeGenModuleOutput::new(module_name, llvmmodule, llvmtm.clone())
     }
 
     fn get_target_machine(
@@ -125,13 +125,15 @@ impl<'module> CodeGenModule<'module> {
 pub struct CodeGenModuleOutput<'a> {
     module_name: String,
     llvmmodule: Rc<RefCell<Module<'a>>>,
+    llvmtm: Rc<TargetMachine>,
 }
 
 impl<'a> CodeGenModuleOutput<'a> {
-    pub fn new(module_name: String, llvmmodule: Rc<RefCell<Module<'a>>>) -> Self {
+    pub fn new(module_name: String, llvmmodule: Rc<RefCell<Module<'a>>>, llvmtm: Rc<TargetMachine>) -> Self {
         Self {
             module_name,
             llvmmodule,
+            llvmtm,
         }
     }
 
@@ -144,9 +146,15 @@ impl<'a> CodeGenModuleOutput<'a> {
     pub fn emit_llvm_ir(&self, output_file_path: String) {
         let llvmmodule = self.llvmmodule.borrow();
         let llvmir_path = format!("{}/{}.ll", output_file_path, self.module_name);
-        ensure_output_dir(output_file_path.clone());
-        ensure_output_dir(output_file_path);
         llvmmodule.print_to_file(llvmir_path).unwrap();
+        drop(llvmmodule);
+    }
+
+    pub fn emit_asm(&self, output_file_path: &Path) {
+        let llvmmodule = self.llvmmodule.borrow();
+        self.llvmtm
+            .write_to_file(&llvmmodule, FileType::Assembly, &output_file_path)
+            .expect("Failed to write assembly file");
         drop(llvmmodule);
     }
 }

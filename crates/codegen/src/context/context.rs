@@ -49,6 +49,11 @@ impl CodeGenContext {
         codegen_output.emit_bitcode(&bytecode_path);
     }
 
+    fn emit_asm(&self, codegen_output: &CodeGenModuleOutput, output_path: String, module_name: String) {
+        let asm_path = Path::new(&output_path).join(format!("{}.s", module_name));
+        codegen_output.emit_asm(&asm_path);
+    }
+
     pub fn compile_modules(
         &self,
         typed_modules: Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
@@ -60,15 +65,28 @@ impl CodeGenContext {
         });
         drop(build_manifest_guard);
 
+        fn need_to_be_recompiled(
+            output_kind: OutputKind,
+            module_file_path: String,
+            disable_modulefs_cache: bool,
+            build_manifest: &BuildManifest,
+        ) -> bool {
+            matches!(
+                output_kind,
+                OutputKind::ByteCode(_) | OutputKind::Asm(_) | OutputKind::LlvmIr(_)
+            ) && build_manifest.check_source_code_changed(module_file_path.clone())
+                || disable_modulefs_cache
+        }
+
         typed_modules
             .iter()
             .for_each(|(module_name, module_file_path, module_id, program_tree)| {
-                if !build_manifest.check_source_code_hash_exists(module_file_path.clone()) {
-                    let source_code_hash = build_manifest.hash_source_code(module_file_path.clone());
-                    build_manifest.add_source_code(module_file_path.clone(), source_code_hash.to_string());
-                }
-
-                if build_manifest.check_source_code_changed(module_file_path.clone()) {
+                if need_to_be_recompiled(
+                    self.output_kind.clone(),
+                    module_file_path.clone(),
+                    self.opts.disable_modulefs_cache,
+                    &build_manifest,
+                ) {
                     let new_source_code_hash = build_manifest.hash_source_code(module_file_path.clone());
                     build_manifest.update_source_hash(module_file_path.clone(), new_source_code_hash);
                     utils::tui::tui_compiled(module_file_path.clone());
@@ -86,7 +104,9 @@ impl CodeGenContext {
                         OutputKind::ByteCode(output_path) => {
                             self.emit_byte_code(&codegen_output, output_path, module_name.clone())
                         }
-                        OutputKind::Asm(_) => todo!(),
+                        OutputKind::Asm(output_path) => {
+                            self.emit_asm(&codegen_output, output_path, module_name.clone());
+                        }
                         OutputKind::ObjectFile(_) => todo!(),
                         OutputKind::Dylib(_) => todo!(),
                         OutputKind::Executable(_) => todo!(),
@@ -94,6 +114,11 @@ impl CodeGenContext {
                     }
                 } else {
                     utils::tui::tui_skipped(module_file_path.clone());
+                }
+
+                if !build_manifest.check_source_code_hash_exists(module_file_path.clone()) {
+                    let source_code_hash = build_manifest.hash_source_code(module_file_path.clone());
+                    build_manifest.add_source_code(module_file_path.clone(), source_code_hash.to_string());
                 }
             });
 

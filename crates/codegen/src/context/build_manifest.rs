@@ -6,7 +6,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
 };
 use utils::{fs::read_file, generate_random_hex::generate_random_hex};
 
@@ -40,11 +40,7 @@ impl BuildManifest {
         blake3::hash(&file_content.as_bytes()).to_hex().to_string()
     }
 
-    pub fn update_source_hash(
-        &mut self,
-        source_file_path: String,
-        new_content_hash: String,
-    ) {
+    pub fn update_source_hash(&mut self, source_file_path: String, new_content_hash: String) {
         if let Some(source_hash_file_path) = self.sources.get_mut(&source_file_path) {
             let path = Path::new(source_hash_file_path);
             std::fs::write(path, new_content_hash).unwrap();
@@ -58,7 +54,8 @@ impl BuildManifest {
         let source_hash_file_path = Path::new(&self.base_path.clone().unwrap_or(String::new()))
             .join(&self.build_dir)
             .join(SOURCES_DIR_PATH)
-            .join(format!("{}.hash", source_hash_file_name));
+            .join(format!("{}", source_hash_file_name));
+
         std::fs::write(&source_hash_file_path, content_hash).unwrap();
 
         self.sources.insert(
