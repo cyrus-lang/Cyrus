@@ -1,7 +1,7 @@
 use super::{build_manifest::BuildManifest, object_file_info::ObjectFileInfo};
 use crate::{
     builder::module::{CodeGenModule, CodeGenModuleOutput},
-    options::{CodeGenOptions, OutputKind, get_final_build_dir},
+    options::{CodeGenOptions, OutputKind},
 };
 use resolver::{Resolver, moduleloader::ModuleFilePath};
 use std::{
@@ -22,9 +22,16 @@ pub struct CodeGenContext {
 }
 
 impl CodeGenContext {
-    pub fn new(opts: CodeGenOptions, output_kind: OutputKind, resolver_rc: Rc<Resolver>) -> Self {
-        let final_build_dir = get_final_build_dir(opts.build_dir.clone());
-        let build_manifest = Arc::new(Mutex::new(BuildManifest::new(final_build_dir.clone())));
+    pub fn new(
+        final_build_dir: String,
+        opts: CodeGenOptions,
+        output_kind: OutputKind,
+        resolver_rc: Rc<Resolver>,
+    ) -> Self {
+        let build_manifest = Arc::new(Mutex::new(BuildManifest::new(
+            opts.base_path.clone(),
+            final_build_dir.clone(),
+        )));
         let compiled_objects = Arc::new(Mutex::new(Vec::<ObjectFileInfo>::new()));
 
         Self {
@@ -47,16 +54,23 @@ impl CodeGenContext {
         typed_modules: Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
     ) {
         let build_manifest_guard = self.build_manifest.lock().unwrap();
-        let build_manifest = build_manifest_guard.read_manifest().unwrap_or_else(|| {
+        let mut build_manifest = build_manifest_guard.read_manifest().unwrap_or_else(|| {
             build_manifest_guard.save_manifest();
-            BuildManifest::new(self.final_build_dir.clone())
+            BuildManifest::new(self.opts.base_path.clone(), self.final_build_dir.clone())
         });
         drop(build_manifest_guard);
 
         typed_modules
             .iter()
             .for_each(|(module_name, module_file_path, module_id, program_tree)| {
+                if !build_manifest.check_source_code_hash_exists(module_file_path.clone()) {
+                    let source_code_hash = build_manifest.hash_source_code(module_file_path.clone());
+                    build_manifest.add_source_code(module_file_path.clone(), source_code_hash.to_string());
+                }
+
                 if build_manifest.check_source_code_changed(module_file_path.clone()) {
+                    let new_source_code_hash = build_manifest.hash_source_code(module_file_path.clone());
+                    build_manifest.update_source_hash(module_file_path.clone(), new_source_code_hash);
                     utils::tui::tui_compiled(module_file_path.clone());
 
                     let codegen_module = CodeGenModule::new(&self.opts, program_tree.clone());
@@ -78,9 +92,12 @@ impl CodeGenContext {
                         OutputKind::Executable(_) => todo!(),
                         OutputKind::None => {}
                     }
+                } else {
+                    utils::tui::tui_skipped(module_file_path.clone());
                 }
             });
 
+        build_manifest.save_manifest();
         utils::tui::tui_compile_finished();
     }
 
