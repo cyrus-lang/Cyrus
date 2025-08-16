@@ -2,11 +2,10 @@ use clap::{Parser, ValueEnum};
 use codegen::options::{BuildDir, CodeGenOptions, CodeModelOptions, RelocModeOptions};
 use commands::*;
 use diagcentral::display_single_custom_diag;
+use project_layout::PROJECT_FILE_PATH;
 use serde::Deserialize;
 
 mod commands;
-
-const PROJECT_FILE_PATH: &str = "Project.toml";
 
 pub(crate) fn project_file_required() {
     if !std::path::Path::new(PROJECT_FILE_PATH).exists() {

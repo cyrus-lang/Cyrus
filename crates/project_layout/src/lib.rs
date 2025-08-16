@@ -1,3 +1,4 @@
+use crate::diagnostics::ProjectLayoutDiagKind;
 use diagcentral::{Diag, DiagLevel, display_single_diag};
 use std::{
     fs::{self, File},
@@ -5,9 +6,13 @@ use std::{
     path::Path,
 };
 
-use crate::diagnostics::ProjectLayoutDiagKind;
-
 mod diagnostics;
+
+pub const SOURCES_DIR_PATH: &str = "sources";
+pub const OBJECTS_FILENAME: &str = "obj";
+pub const MANIFEST_FILENAME: &str = "manifest.json";
+pub const OUTPUT_FILENAME: &str = "output";
+pub const PROJECT_FILE_PATH: &str = "Project.toml";
 
 fn cyrus_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()

@@ -1,7 +1,6 @@
 use core::fmt;
 use inkwell::targets::{CodeModel, RelocMode};
 use serde::Deserialize;
-use std::env;
 
 #[derive(Deserialize, Debug, Clone)]
 pub enum RelocModeOptions {
@@ -58,16 +57,6 @@ pub enum OutputKind {
 pub enum BuildDir {
     Default,
     Provided(String),
-}
-
-pub fn get_final_build_dir(build_dir: BuildDir) -> String {
-    match build_dir.clone() {
-        BuildDir::Default => {
-            // specify a tmp directory to be used as build_dir
-            env::temp_dir().to_str().unwrap().to_string()
-        }
-        BuildDir::Provided(path) => path,
-    }
 }
 
 impl CodeGenOptions {
