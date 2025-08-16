@@ -13,7 +13,7 @@ use resolver::{
     moduleloader::{ModuleFilePath, ModuleLoaderOptions},
 };
 use static_analyzer::context::AnalysisContext;
-use std::{cell::RefCell, env, path::Path, process::exit, rc::Rc};
+use std::{cell::RefCell, env, process::exit, rc::Rc};
 use typed_ast::{ModuleID, TypedProgramTree};
 use utils::fs::ensure_output_dir;
 
@@ -72,12 +72,28 @@ fn get_program_trees(
     (final_program_trees, Rc::new(resolver))
 }
 
-pub(crate) fn command_run(options: CompilerOptions, file_path: Option<String>) {
+fn prepare_compilation(
+    options: &CompilerOptions,
+    file_path: Option<String>,
+) -> (
+    CodeGenOptions,
+    String,
+    String,
+    Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
+    Rc<Resolver>,
+) {
     let opts = options.to_compiler_options();
     let file_path = get_entry_source_code_path(options.base_path.clone(), file_path);
     let final_build_dir = get_final_build_directory_path(options.base_path.clone(), opts.build_dir.clone());
     ensure_build_dir_subs(options.base_path.clone(), final_build_dir.clone());
-    let (program_trees, resolver_rc) = get_program_trees(&options, file_path);
+
+    let (program_trees, resolver_rc) = get_program_trees(options, file_path.clone());
+
+    (opts, file_path, final_build_dir, program_trees, resolver_rc)
+}
+
+pub(crate) fn command_run(options: CompilerOptions, file_path: Option<String>) {
+    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
 
     let mut temp = env::temp_dir();
     temp.push("path");
@@ -97,45 +113,48 @@ pub(crate) fn command_run(options: CompilerOptions, file_path: Option<String>) {
 }
 
 pub(crate) fn command_emit_llvm(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let opts = options.to_compiler_options();
-    let file_path = get_entry_source_code_path(options.base_path.clone(), file_path);
-    let final_build_dir = get_final_build_directory_path(options.base_path.clone(), opts.build_dir.clone());
-    ensure_build_dir_subs(options.base_path.clone(), final_build_dir.clone());
+    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate llvm-ir.".to_string());
     });
 
     ensure_output_dir(output_path.clone());
-    let (program_trees, resolver_rc) = get_program_trees(&options, file_path);
 
     let context = CodeGenContext::new(final_build_dir, opts, OutputKind::LlvmIr(output_path), resolver_rc);
     context.compile_modules(program_trees);
 }
 
 pub(crate) fn command_emit_bytecode(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let opts = options.to_compiler_options();
-    let file_path = get_entry_source_code_path(options.base_path.clone(), file_path);
-    let final_build_dir = get_final_build_directory_path(options.base_path.clone(), opts.build_dir.clone());
-    ensure_build_dir_subs(options.base_path.clone(), final_build_dir.clone());
+    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
     });
 
     if let Some(build_dir) = &options.build_dir {
-        dbg!(build_dir.clone());
         ensure_output_dir(build_dir.clone());
     }
-
     ensure_output_dir(output_path.clone());
-    let (program_trees, resolver_rc) = get_program_trees(&options, file_path);
 
     let context = CodeGenContext::new(final_build_dir, opts, OutputKind::ByteCode(output_path), resolver_rc);
     context.compile_modules(program_trees);
 }
 
 pub(crate) fn command_emit_asm(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    // let context = CodeGenContext::new(options, output_kind);
-    todo!()
+    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+
+    let output_path = output_path.unwrap_or_else(|| {
+        display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
+    });
+
+    if let Some(build_dir) = &options.build_dir {
+        ensure_output_dir(build_dir.clone());
+    }
+    ensure_output_dir(output_path.clone());
+
+    let context = CodeGenContext::new(final_build_dir, opts, OutputKind::Asm(output_path), resolver_rc);
+    context.compile_modules(program_trees);
 }
 
 pub(crate) fn command_build(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
@@ -184,83 +203,58 @@ pub(crate) fn command_parse_only(file_path: String) {
 }
 
 pub(crate) fn command_syntactic_only(file_path: String) {
-    // let (file_content, file_name) = read_file(file_path.clone());
-    // let mut lexer = Lexer::new(file_content, file_name);
-
-    // let program_tree = match CyrusParser::new(&mut lexer).parse() {
-    //     Ok(node) => node.as_program(),
-    //     Err(errors) => {
-    //         for err in errors {
-    //             err.print();
-    //         }
-    //     }
-    // };
-
-    // let resolver = Resolver::new();
-    // let module_id = generate_module_id();
-    // let typed_program_tree = resolver.resolve_module(module_id, program_tree);
-
-    // dbg!(typed_program_tree);
-
-    // println!("Program is correct grammatically.");
+    todo!();
 }
 
 fn ensure_build_dir_subs(base_path: Option<String>, build_dir_path: String) {
-    let base_path = base_path.unwrap_or(String::new());
+    let base = base_path.unwrap_or_default();
+    let dirs = [SOURCES_DIR_PATH, OBJECTS_FILENAME, OUTPUT_FILENAME];
 
-    ensure_output_dir(format!("{}/{}/{}", base_path, build_dir_path, SOURCES_DIR_PATH));
-    ensure_output_dir(format!("{}/{}/{}", base_path, build_dir_path, OBJECTS_FILENAME));
-    ensure_output_dir(format!("{}/{}/{}", base_path, build_dir_path, OUTPUT_FILENAME));
+    for dir in dirs {
+        ensure_output_dir(format!("{}/{}/{}", base, build_dir_path, dir));
+    }
 }
 
 fn get_final_build_directory_path(base_path: Option<String>, build_dir: BuildDir) -> String {
-    let base_path = base_path.unwrap_or(String::new());
+    let base = base_path.unwrap_or_default();
 
     match build_dir {
         BuildDir::Default => {
-            let project_file = env::current_dir().unwrap().join(&base_path).join(PROJECT_FILE_PATH);
+            let project_file = env::current_dir().unwrap().join(&base).join(PROJECT_FILE_PATH);
 
-            if project_file.exists() {
-                let build_dir = CodeGenOptions::read_toml(project_file.to_str().unwrap().to_string())
-                    .unwrap_or_else(|err| {
-                        display_single_custom_diag!(err);
-                    })
-                    .build_dir;
+            if !project_file.exists() {
+                return env::temp_dir().to_str().unwrap().to_string();
+            }
 
-                match build_dir {
-                    BuildDir::Default => env::temp_dir().to_str().unwrap().to_string(),
-                    BuildDir::Provided(provided_path) => {
-                        ensure_output_dir(format!("{}/{}", base_path, provided_path));
-                        provided_path
-                    }
+            let build_dir = CodeGenOptions::read_toml(project_file.to_str().unwrap().to_string())
+                .unwrap_or_else(|err| {
+                    display_single_custom_diag!(err);
+                })
+                .build_dir;
+
+            match build_dir {
+                BuildDir::Default => env::temp_dir().to_str().unwrap().to_string(),
+                BuildDir::Provided(path) => {
+                    ensure_output_dir(format!("{}/{}", base, path));
+                    path
                 }
-            } else {
-                env::temp_dir().to_str().unwrap().to_string()
             }
         }
-        BuildDir::Provided(provided_path) => provided_path,
+        BuildDir::Provided(path) => path,
     }
 }
 
 fn get_entry_source_code_path(base_path: Option<String>, input_file_path: Option<String>) -> String {
-    input_file_path.clone().unwrap_or({
-        let base_path = base_path.unwrap_or(String::new());
+    if let Some(path) = input_file_path {
+        return path;
+    }
 
-        let file_path_str = {
-            if let Some(file_path) = &input_file_path {
-                file_path.clone()
-            } else {
-                let main_file = env::current_dir().unwrap().join(&base_path).join("src/main.cyr");
-                main_file.to_str().unwrap().to_string()
-            }
-        };
+    let base = base_path.unwrap_or_default();
+    let main_file = env::current_dir().unwrap().join(&base).join("src/main.cyr");
 
-        let file_path = Path::new(&file_path_str);
+    if !main_file.exists() {
+        display_single_custom_diag!("Project.toml not found in the current directory.".to_string());
+    }
 
-        if !file_path.exists() {
-            display_single_custom_diag!("Project.toml not found in the current directory.".to_string());
-        }
-
-        file_path_str
-    })
+    main_file.to_str().unwrap().to_string()
 }

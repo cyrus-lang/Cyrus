@@ -40,6 +40,7 @@ pub struct CodeGenOptions {
     pub code_model: CodeModelOptions,
     pub cpu: Option<String>,
     pub target_triple: Option<String>,
+    pub disable_modulefs_cache: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +81,7 @@ impl CodeGenOptions {
             code_model: CodeModelOptions::Default,
             target_triple: None,
             cpu: None,
+            disable_modulefs_cache: false,
         }
     }
 
@@ -112,6 +114,7 @@ impl CodeGenOptions {
                 sources
             },
             quiet: instance.quiet || self.quiet,
+            disable_modulefs_cache: instance.disable_modulefs_cache || self.disable_modulefs_cache,
             stdlib_path: instance.stdlib_path.or(self.stdlib_path.clone()),
             display_target_machine: instance.display_target_machine || self.display_target_machine,
             reloc_mode: match instance.reloc_mode {

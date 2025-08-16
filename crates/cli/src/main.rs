@@ -73,6 +73,9 @@ struct CompilerOptions {
     #[clap(long, short = 'q', help = "Suppress unnecessary output messages.")]
     quiet: bool,
 
+    #[clap(long, help = "Disables module filesystem cache.")]
+    disable_modulefs_cache: bool,
+
     #[clap(long, help = "Set cyrus standard library path.")]
     stdlib: Option<String>,
 
@@ -135,6 +138,7 @@ impl CodeModel {
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            disable_modulefs_cache: self.disable_modulefs_cache,
             base_path: self.base_path.clone(),
             opt_level: match self.optimize {
                 OptimizeLevel::None => None,
