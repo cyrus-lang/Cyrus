@@ -1,17 +1,14 @@
-use std::ops::Add;
-
 use crate::builder::{
     module::CodeGenBuilder,
     values::{InternalValue, InternalValueKind},
 };
 use ast::{
-    FieldAccess, LiteralKind,
+    LiteralKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
-    token::Location,
 };
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    types::{BasicType, BasicTypeEnum},
+    types::BasicTypeEnum,
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum},
 };
 use resolver::scope::LocalScopeRef;
@@ -681,7 +678,16 @@ impl<'a> CodeGenBuilder<'a> {
             LiteralKind::Null => {
                 BasicValueEnum::PointerValue(self.llvmctx.ptr_type(AddressSpace::default()).const_null())
             }
-            LiteralKind::String(_, string_prefix) => todo!(),
+            LiteralKind::String(value, string_prefix) => {
+                if let Some(prefix) = string_prefix {
+                    match prefix {
+                        StringPrefix::C => self.build_c_style_string(value.clone(), literal.loc.clone(), 0),
+                        StringPrefix::B => self.build_byte_string(value.clone(), literal.loc.clone(), 0),
+                    }
+                } else {
+                    self.build_string_literal(value.clone(), literal.loc.clone(), 0)
+                }
+            }
         };
 
         InternalValue::new(literal.ty.clone(), InternalValueKind::RValue(basic_value))

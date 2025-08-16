@@ -5,6 +5,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::Write,
+    path::Path,
 };
 
 const SOURCES_DIR_PATH: &str = "sources";
@@ -14,13 +15,16 @@ const OUTPUT_FILENAME: &str = "output";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildManifest {
+    // The directory where the build-manifest and other artifacts are stored.
+    pub build_dir: String,
     pub sources: HashMap<String, String>,
     pub objects: HashMap<String, String>,
 }
 
-impl Default for BuildManifest {
-    fn default() -> Self {
+impl BuildManifest {
+    pub fn new(build_dir: String) -> Self {
         Self {
+            build_dir,
             sources: HashMap::new(),
             objects: HashMap::new(),
         }
@@ -28,19 +32,35 @@ impl Default for BuildManifest {
 }
 
 impl BuildManifest {
-    fn save_file(&self, build_dir: String) {
-        let manifest_filepath = format!("{}/{}", build_dir, MANIFEST_FILENAME);
+    pub fn check_source_code_changed(&self, input_source_file_path: String) -> bool {
+        match self
+            .sources
+            .iter()
+            .find(|(source_file_path, _)| **source_file_path == input_source_file_path)
+        {
+            Some((source_file)) => {
+                todo!();
+            },
+            None => true,
+        }
+    }
 
-        fs::remove_file(manifest_filepath.clone()).unwrap();
+    pub fn save_manifest(&self) {
+        let manifest_filepath = format!("{}/{}", self.build_dir, MANIFEST_FILENAME);
+
+        if Path::new(&manifest_filepath).exists() {
+            fs::remove_file(manifest_filepath.clone()).unwrap();
+        }
         let mut file = File::create(manifest_filepath).unwrap();
         file.write(serde_json::to_string(&self).unwrap().as_bytes()).unwrap();
     }
 
-    fn read_file(&self, build_dir: String) -> Self {
-        let manifest_filepath = format!("{}/{}", build_dir, MANIFEST_FILENAME);
+    pub fn read_manifest(&self) -> Option<Self> {
+        let manifest_filepath = format!("{}/{}", self.build_dir, MANIFEST_FILENAME);
+        let file_content = std::fs::read_to_string(manifest_filepath.to_string()).ok()?;
 
-        match serde_json::from_str::<BuildManifest>(&utils::fs::read_file(manifest_filepath.to_string()).0) {
-            Ok(manifest) => manifest,
+        match serde_json::from_str::<BuildManifest>(&file_content) {
+            Ok(manifest) => Some(manifest),
             Err(err) => {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,

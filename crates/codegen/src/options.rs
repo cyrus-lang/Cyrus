@@ -23,6 +23,7 @@ pub enum CodeModelOptions {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct CodeGenOptions {
+    pub base_path: Option<String>,
     pub project_type: Option<String>,
     pub project_name: Option<String>,
     pub project_version: Option<String>,
@@ -45,7 +46,8 @@ pub struct CodeGenOptions {
 #[derive(Debug, Clone)]
 pub enum OutputKind {
     None,
-    Run,
+    ByteCode(String),
+    Executable(String),
     LlvmIr(String),
     Asm(String),
     ObjectFile(String),
@@ -71,6 +73,7 @@ pub fn get_final_build_dir(build_dir: BuildDir) -> String {
 impl CodeGenOptions {
     pub fn default() -> Self {
         Self {
+            base_path: None,
             project_type: None,
             project_name: None,
             authors: None,
@@ -131,6 +134,7 @@ impl CodeGenOptions {
                 code_model @ _ => code_model,
             },
             target_triple: instance.target_triple.or(self.target_triple.clone()),
+            base_path: instance.base_path.or(self.base_path.clone()),
         };
     }
 

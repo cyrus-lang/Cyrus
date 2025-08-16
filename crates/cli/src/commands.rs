@@ -1,18 +1,25 @@
-use crate::CompilerOptions;
+use crate::{CompilerOptions, PROJECT_FILE_PATH};
 use ast::token::TokenKind;
 use codegen::{context::context::CodeGenContext, options::OutputKind};
 use diagcentral::{display_single_custom_diag, reporter::DiagReporter};
 use lexer::Lexer;
 use parser::Parser;
-use resolver::{Resolver, Visiting, generate_module_id, moduleloader::ModuleLoaderOptions};
+use resolver::{
+    Resolver, Visiting, generate_module_id,
+    moduleloader::{ModuleFilePath, ModuleLoaderOptions},
+};
 use static_analyzer::context::AnalysisContext;
-use std::{cell::RefCell, env, process::exit, rc::Rc};
+use std::{cell::RefCell, env, path::Path, process::exit, rc::Rc};
 use typed_ast::{ModuleID, TypedProgramTree};
+use utils::fs::ensure_output_dir;
 
 fn get_program_trees(
     options: &CompilerOptions,
     file_path: String,
-) -> (Vec<(String, ModuleID, Rc<RefCell<TypedProgramTree>>)>, Rc<Resolver>) {
+) -> (
+    Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
+    Rc<Resolver>,
+) {
     let file_content = utils::fs::read_file(file_path.clone()).0;
     let mut lexer = Lexer::new(file_content, file_path.clone());
     let mut parser = Parser::new(lexer.tokenize(), file_path.clone());
@@ -41,11 +48,11 @@ fn get_program_trees(
         exit(1);
     }
 
-    let final_program_trees: Vec<(String, ModuleID, Rc<RefCell<TypedProgramTree>>)>;
+    let final_program_trees: Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>;
     let program_trees = resolver.program_trees.lock().unwrap();
 
     {
-        for (_, _, typed_program_tree) in program_trees.iter() {
+        for (_, _, _, typed_program_tree) in program_trees.iter() {
             let mut typed_program_tree_borrowed = typed_program_tree.borrow_mut();
             let mut analyzer = AnalysisContext::new(&resolver, module_id, &mut typed_program_tree_borrowed);
             analyzer.analyze();
@@ -62,31 +69,59 @@ fn get_program_trees(
 }
 
 pub(crate) fn command_run(options: CompilerOptions, file_path: Option<String>) {
-    let (program_trees, resolver_rc) = get_program_trees(&options, file_path.unwrap());
-
-    let context = CodeGenContext::new(options.to_compiler_options(), OutputKind::None, resolver_rc);
-    context.compile_modules(program_trees);
+    let file_path = get_entry_source_code_path(options.base_path.clone(), file_path);
+    let (program_trees, resolver_rc) = get_program_trees(&options, file_path);
 
     let mut temp = env::temp_dir();
     temp.push("path");
     let temp_file_path = temp.to_str().unwrap().to_string();
 
-    context.emit_exec(temp_file_path.clone());
+    let context = CodeGenContext::new(
+        options.to_compiler_options(),
+        OutputKind::Executable(temp_file_path.clone()),
+        resolver_rc,
+    );
+    context.compile_modules(program_trees);
+
     if temp.exists() {
         std::fs::remove_file(temp_file_path).unwrap();
     }
 }
 
 pub(crate) fn command_emit_llvm(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    let file_path = get_entry_source_code_path(options.base_path.clone(), file_path);
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate llvm-ir.".to_string());
     });
 
-    let (program_trees, resolver_rc) = get_program_trees(&options, file_path.unwrap());
+    ensure_output_dir(output_path.clone());
+    let (program_trees, resolver_rc) = get_program_trees(&options, file_path);
 
     let context = CodeGenContext::new(
         options.to_compiler_options(),
         OutputKind::LlvmIr(output_path),
+        resolver_rc,
+    );
+    context.compile_modules(program_trees);
+}
+
+pub(crate) fn command_emit_bytecode(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    let file_path = get_entry_source_code_path(options.base_path.clone(), file_path);
+    let output_path = output_path.unwrap_or_else(|| {
+        display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
+    });
+
+    if let Some(build_dir) = &options.build_dir {
+        dbg!(build_dir.clone());
+        ensure_output_dir(build_dir.clone());
+    }
+
+    ensure_output_dir(output_path.clone());
+    let (program_trees, resolver_rc) = get_program_trees(&options, file_path);
+
+    let context = CodeGenContext::new(
+        options.to_compiler_options(),
+        OutputKind::ByteCode(output_path),
         resolver_rc,
     );
     context.compile_modules(program_trees);
@@ -162,4 +197,33 @@ pub(crate) fn command_syntactic_only(file_path: String) {
     // dbg!(typed_program_tree);
 
     // println!("Program is correct grammatically.");
+}
+
+fn get_entry_source_code_path(base_path: Option<String>, input_file_path: Option<String>) -> String {
+    input_file_path.clone().unwrap_or({
+        let base_path = {
+            if let Some(base_path) = base_path {
+                base_path
+            } else {
+                String::new()
+            }
+        };
+
+        let file_path_str = {
+            if let Some(file_path) = &input_file_path {
+                file_path.clone()
+            } else {
+                let project_file = env::current_dir().unwrap().join(&base_path).join("src/main.cyr");
+                project_file.to_str().unwrap().to_string()
+            }
+        };
+
+        let file_path = Path::new(&file_path_str);
+
+        if !file_path.exists() {
+            display_single_custom_diag!("Project.toml not found in the current directory.".to_string());
+        }
+
+        file_path_str
+    })
 }

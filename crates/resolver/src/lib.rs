@@ -37,7 +37,7 @@ pub struct Resolver {
     pub global_symbols: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
     pub module_aliases: Arc<Mutex<HashMap<ModuleAlias, ModuleID>>>,
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
-    pub program_trees: Arc<Mutex<Vec<(String, ModuleID, Rc<RefCell<TypedProgramTree>>)>>>,
+    pub program_trees: Arc<Mutex<Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>>>,
     pub file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
     pub reporter: DiagReporter<ResolverDiagKind>,
     pub module_loader: ModuleLoader,
@@ -199,8 +199,8 @@ impl Resolver {
                     let module_file_path = self.get_current_module_file_path();
 
                     let mut program_trees = self.program_trees.lock().unwrap();
-                    let module_name = get_module_name(module_file_path);
-                    program_trees.push((module_name, module_id, typed_program_tree));
+                    let module_name = get_module_name(module_file_path.clone());
+                    program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
                     drop(program_tree);
                 }
                 None => continue,
@@ -256,8 +256,8 @@ impl Resolver {
             let module_file_path = self.get_current_module_file_path();
 
             let mut program_trees = self.program_trees.lock().unwrap();
-            let module_name = get_module_name(module_file_path);
-            program_trees.push((module_name, self.current_module.unwrap(), typed_program_tree.clone()));
+            let module_name = get_module_name(module_file_path.clone());
+            program_trees.push((module_name, module_file_path, self.current_module.unwrap(), typed_program_tree.clone()));
             drop(program_trees);
         }
 
@@ -2483,7 +2483,7 @@ impl Resolver {
                 Some(TypedExpression {
                     kind: TypedExpressionKind::UnnamedStructValue(TypedUnnamedStructValue {
                         fields,
-                        unnamed_struct_type: None, 
+                        unnamed_struct_type: None,
                         packed: unnamed_struct_value.packed,
                         loc: unnamed_struct_value.loc.clone(),
                     }),
