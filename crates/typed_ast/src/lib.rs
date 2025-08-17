@@ -33,9 +33,34 @@ pub struct TypedExpression {
     pub concrete_type: Option<ConcreteType>,
 }
 
+impl TypedExpression {
+    pub fn get_loc(&self) -> Location {
+        match &self.kind {
+            TypedExpressionKind::Symbol(_, loc) => loc.clone(),
+            TypedExpressionKind::Literal(typed_literal) => typed_literal.loc.clone(),
+            TypedExpressionKind::Prefix(typed_prefix_expression) => typed_prefix_expression.loc.clone(),
+            TypedExpressionKind::Infix(typed_infix_expression) => typed_infix_expression.loc.clone(),
+            TypedExpressionKind::Unary(typed_unary_expression) => typed_unary_expression.loc.clone(),
+            TypedExpressionKind::Assignment(typed_assignment) => typed_assignment.loc.clone(),
+            TypedExpressionKind::Cast(typed_cast) => typed_cast.loc.clone(),
+            TypedExpressionKind::Array(typed_array) => typed_array.loc.clone(),
+            TypedExpressionKind::ArrayIndex(typed_array_index) => typed_array_index.loc.clone(),
+            TypedExpressionKind::AddressOf(typed_address_of) => typed_address_of.loc.clone(),
+            TypedExpressionKind::Dereference(typed_dereference) => typed_dereference.loc.clone(),
+            TypedExpressionKind::StructInit(typed_struct_init) => typed_struct_init.loc.clone(),
+            TypedExpressionKind::FuncCall(typed_func_call) => typed_func_call.loc.clone(),
+            TypedExpressionKind::FieldAccess(typed_field_access) => typed_field_access.loc.clone(),
+            TypedExpressionKind::MethodCall(typed_method_call) => typed_method_call.loc.clone(),
+            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
+                typed_unnamed_struct_value.loc.clone()
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum TypedExpressionKind {
-    Symbol(SymbolID),
+    Symbol(SymbolID, Location),
     Literal(TypedLiteral),
     Prefix(TypedPrefixExpression),
     Infix(TypedInfixExpression),
@@ -84,7 +109,7 @@ impl TypedExpressionKind {
                 .all(|typed_unnamed_struct_value_field| {
                     typed_unnamed_struct_value_field.field_value.kind.is_comptime_valid()
                 }),
-            TypedExpressionKind::Symbol(_)
+            TypedExpressionKind::Symbol(..)
             | TypedExpressionKind::ArrayIndex(_)
             | TypedExpressionKind::Dereference(_)
             | TypedExpressionKind::FieldAccess(_)
@@ -97,7 +122,7 @@ impl TypedExpressionKind {
 
     pub fn is_lvalue(&self) -> bool {
         match self {
-            TypedExpressionKind::Symbol(_) => true,
+            TypedExpressionKind::Symbol(..) => true,
             TypedExpressionKind::ArrayIndex(_) => true,
             TypedExpressionKind::Dereference(_) => true,
             TypedExpressionKind::FieldAccess(_) => true,
@@ -261,6 +286,31 @@ pub enum TypedStatement {
     Enum(TypedEnum),
     Interface(TypedInterface),
     Expression(TypedExpression),
+}
+
+impl TypedStatement {
+    pub fn get_loc(&self) -> Location {
+        match self {
+            TypedStatement::Import(typed_import) => typed_import.loc.clone(),
+            TypedStatement::Variable(typed_variable) => typed_variable.loc.clone(),
+            TypedStatement::Typedef(typed_typedef) => typed_typedef.loc.clone(),
+            TypedStatement::GlobalVariable(typed_global_variable) => typed_global_variable.loc.clone(),
+            TypedStatement::FuncDef(typed_func_def) => typed_func_def.loc.clone(),
+            TypedStatement::FuncDecl(typed_func_decl) => typed_func_decl.loc.clone(),
+            TypedStatement::BlockStatement(typed_block_statement) => typed_block_statement.loc.clone(),
+            TypedStatement::If(typed_if) => typed_if.loc.clone(),
+            TypedStatement::Return(typed_return) => typed_return.loc.clone(),
+            TypedStatement::Break(typed_break) => typed_break.loc.clone(),
+            TypedStatement::Continue(typed_continue) => typed_continue.loc.clone(),
+            TypedStatement::For(typed_for) => typed_for.loc.clone(),
+            TypedStatement::Foreach(typed_foreach) => typed_foreach.loc.clone(),
+            TypedStatement::Switch(typed_switch) => typed_switch.loc.clone(),
+            TypedStatement::Struct(typed_struct) => typed_struct.loc.clone(),
+            TypedStatement::Enum(typed_enum) => typed_enum.loc.clone(),
+            TypedStatement::Interface(typed_interface) => typed_interface.loc.clone(),
+            TypedStatement::Expression(typed_expression) => typed_expression.get_loc(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

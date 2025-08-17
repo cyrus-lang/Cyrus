@@ -26,7 +26,7 @@ impl<'a> CodeGenBuilder<'a> {
         typed_expr: &TypedExpression,
     ) -> InternalValue<'a> {
         match &typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id) => self.build_lvalue_with_symbol_id(*symbol_id),
+            TypedExpressionKind::Symbol(symbol_id, ..) => self.build_lvalue_with_symbol_id(*symbol_id),
             TypedExpressionKind::Literal(typed_literal) => self.build_literal(local_scope_opt, typed_literal),
             TypedExpressionKind::Prefix(typed_prefix_expr) => {
                 self.build_prefix_expr(local_scope_opt, typed_prefix_expr)

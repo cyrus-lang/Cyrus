@@ -25,7 +25,7 @@ impl<'a> AnalysisContext<'a> {
                 NamingConvDeclKind::Interface => "Interface",
             };
 
-            self.report_name_error(kind_str.to_string(), name.to_string(), loc, is_local);
+            self.report_nameconv_diag(kind_str.to_string(), name.to_string(), loc, is_local);
         }
     }
 
@@ -60,7 +60,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn report_name_error(&mut self, kind: String, name: String, loc: Location, is_local: bool) {
+    fn report_nameconv_diag(&mut self, kind: String, name: String, loc: Location, is_local: bool) {
         let expected = if is_local { "camelCase" } else { "PascalCase" };
 
         self.reporter.report(Diag {

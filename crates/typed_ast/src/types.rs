@@ -15,6 +15,10 @@ pub enum ConcreteType {
 }
 
 impl ConcreteType {
+    pub fn is_bool(&self) -> bool {
+        matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
+    }
+
     pub fn is_const(&self) -> bool {
         matches!(self, ConcreteType::Const(_))
     }

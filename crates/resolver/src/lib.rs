@@ -1589,6 +1589,10 @@ impl Resolver {
                     }));
                 }
                 Statement::For(for_stmt) => {
+                    let body_scope_id = generate_scope_id();
+                    let body_scope = LocalScope::deep_clone(&local_scope);
+                    self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
+
                     let initializer = {
                         if let Some(variable) = &for_stmt.initializer {
                             match self.declare_local_variable(module_id, Rc::clone(&local_scope), &variable) {
@@ -1621,10 +1625,6 @@ impl Resolver {
                             None
                         }
                     };
-
-                    let body_scope_id = generate_scope_id();
-                    let body_scope = LocalScope::deep_clone(&local_scope);
-                    self.insert_scope_ref(module_id, scope_id, body_scope.clone());
 
                     let for_typed_body =
                         match self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*for_stmt.body) {
@@ -1962,7 +1962,7 @@ impl Resolver {
             },
         };
 
-        self.mark_local_symbol_used_once(local_scope_opt.clone(), symbol_id);
+        self.mark_local_symbol_used_once(local_scope_opt.clone(), module_id, symbol_id);
         Some(symbol_id)
     }
 
@@ -2001,7 +2001,11 @@ impl Resolver {
 
                         match symbol_id_opt {
                             Some(local_symbol) => {
-                                self.mark_local_symbol_used_once(local_scope_opt.clone(), local_symbol.get_symbol_id());
+                                self.mark_local_symbol_used_once(
+                                    local_scope_opt.clone(),
+                                    module_id,
+                                    local_symbol.get_symbol_id(),
+                                );
                                 Some(local_symbol.get_symbol_id())
                             }
                             None => None,
@@ -2053,7 +2057,7 @@ impl Resolver {
                 };
 
                 let symbol_id = match operand.kind {
-                    TypedExpressionKind::Symbol(symbol_id) => symbol_id,
+                    TypedExpressionKind::Symbol(symbol_id, ..) => symbol_id,
                     _ => {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -2085,7 +2089,7 @@ impl Resolver {
                 };
 
                 let symbol_id = match operand.kind {
-                    TypedExpressionKind::Symbol(symbol_id) => symbol_id,
+                    TypedExpressionKind::Symbol(symbol_id, ..) => symbol_id,
                     _ => {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -2167,13 +2171,13 @@ impl Resolver {
                 if let Some(identifier) = module_import.as_identifier() {
                     let symbol_id = resolve_local_identifier!(identifier);
                     Some(TypedExpression {
-                        kind: TypedExpressionKind::Symbol(symbol_id),
+                        kind: TypedExpressionKind::Symbol(symbol_id, identifier.loc.clone()),
                         concrete_type: None,
                     })
                 } else {
                     match self.resolve_module_import(module_id, module_import.clone()) {
                         Some(symbol_id) => Some(TypedExpression {
-                            kind: TypedExpressionKind::Symbol(symbol_id),
+                            kind: TypedExpressionKind::Symbol(symbol_id, module_import.loc.clone()),
                             concrete_type: None,
                         }),
                         None => return None,
@@ -2183,7 +2187,7 @@ impl Resolver {
             Expression::Identifier(identifier) => {
                 let symbol_id = resolve_local_identifier!(identifier);
                 Some(TypedExpression {
-                    kind: TypedExpressionKind::Symbol(symbol_id),
+                    kind: TypedExpressionKind::Symbol(symbol_id, identifier.loc.clone()),
                     concrete_type: None,
                 })
             }
@@ -2579,15 +2583,24 @@ impl Resolver {
         drop(global_symbols);
     }
 
-    pub(crate) fn mark_local_symbol_used_once(&mut self, local_scope_opt: Option<LocalScopeRef>, symbol_id: SymbolID) {
+    pub(crate) fn mark_local_symbol_used_once(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        module_id: ModuleID,
+        symbol_id: SymbolID,
+    ) {
         let local_scope_rc = local_scope_opt.unwrap();
         let mut local_scope = local_scope_rc.borrow_mut();
-        let local_symbol = local_scope
+        let local_symbol = match local_scope
             .symbols
             .iter_mut()
             .find(|local_symbol| local_symbol.1.get_symbol_id() == symbol_id)
-            .unwrap()
-            .1;
+        {
+            Some((_, local_symbol)) => local_symbol,
+            None => {
+                return self.mark_symbol_used_once(module_id, symbol_id);
+            }
+        };
         local_symbol.used = true;
         drop(local_scope);
     }

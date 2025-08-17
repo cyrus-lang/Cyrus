@@ -2,10 +2,15 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    VoidFunctionReturnsValue,
+    UnreachableCode,
+    InvalidBreakStatement,
+    InvalidContinueStatement,
+    ConditionExprMustBeOfTypeBool,
     InternalInterfaceIsNotValid,
     NamingConv {
         kind: String,
-        name: String, 
+        name: String,
         expected: String,
     },
     UnusedSymbol {
@@ -32,6 +37,13 @@ pub enum AnalyzerDiagKind {
         field_name: String,
         expected_type: String,
         found_type: String,
+    },
+    ReturnStatementTypeMismatch {
+        expected: String,
+        got: String,
+    },
+    ReturnStatementNeedsAnArgument {
+        argument_type: String,
     },
     AssignmentTypeMismatch {
         lhs_type: String,
@@ -113,6 +125,37 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::ReturnStatementNeedsAnArgument { argument_type } => {
+                write!(f, "Return statement requires an argument of type '{}'.", argument_type)
+            }
+            AnalyzerDiagKind::ReturnStatementTypeMismatch { expected, got } => {
+                write!(
+                    f,
+                    "Return statement argument must be a value of type '{}' but got '{}'.",
+                    expected, got
+                )
+            }
+            AnalyzerDiagKind::VoidFunctionReturnsValue => {
+                write!(f, "Function with void return type cannot return a value.")
+            }
+            AnalyzerDiagKind::UnreachableCode => {
+                write!(f, "Unreachable code.")
+            }
+            AnalyzerDiagKind::InvalidContinueStatement => {
+                write!(
+                    f,
+                    "Invalid usage of the continue statement. It must be inside a loop statement."
+                )
+            }
+            AnalyzerDiagKind::InvalidBreakStatement => {
+                write!(
+                    f,
+                    "Invalid usage of the break statement. It must be inside a loop/switch statement."
+                )
+            }
+            AnalyzerDiagKind::ConditionExprMustBeOfTypeBool => {
+                write!(f, "Condition expression must be of type 'bool'.")
+            }
             AnalyzerDiagKind::InternalInterfaceIsNotValid => {
                 write!(f, "Interfaces must be declared globally.")
             }
