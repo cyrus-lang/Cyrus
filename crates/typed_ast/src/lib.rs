@@ -61,6 +61,40 @@ pub struct TypedLiteral {
 }
 
 impl TypedExpressionKind {
+    pub fn is_comptime_valid(&self) -> bool {
+        match self {
+            TypedExpressionKind::Literal(_) => true,
+            TypedExpressionKind::Prefix(prefix) => prefix.operand.kind.is_comptime_valid(),
+            TypedExpressionKind::Infix(infix) => {
+                infix.lhs.kind.is_comptime_valid() && infix.rhs.kind.is_comptime_valid()
+            }
+            TypedExpressionKind::Unary(unary) => unary.operand.kind.is_comptime_valid(),
+            TypedExpressionKind::Cast(cast) => cast.operand.kind.is_comptime_valid(),
+            TypedExpressionKind::Array(typed_array) => typed_array
+                .elements
+                .iter()
+                .all(|typed_expr| typed_expr.kind.is_comptime_valid()),
+            TypedExpressionKind::StructInit(typed_struct_init) => typed_struct_init
+                .fields
+                .iter()
+                .all(|field_init| field_init.value.kind.is_comptime_valid()),
+            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => typed_unnamed_struct_value
+                .fields
+                .iter()
+                .all(|typed_unnamed_struct_value_field| {
+                    typed_unnamed_struct_value_field.field_value.kind.is_comptime_valid()
+                }),
+            TypedExpressionKind::Symbol(_)
+            | TypedExpressionKind::ArrayIndex(_)
+            | TypedExpressionKind::Dereference(_)
+            | TypedExpressionKind::FieldAccess(_)
+            | TypedExpressionKind::MethodCall(_)
+            | TypedExpressionKind::FuncCall(_)
+            | TypedExpressionKind::Assignment(_)
+            | TypedExpressionKind::AddressOf(_) => false,
+        }
+    }
+
     pub fn is_lvalue(&self) -> bool {
         match self {
             TypedExpressionKind::Symbol(_) => true,
@@ -231,6 +265,7 @@ pub enum TypedStatement {
 
 #[derive(Debug, Clone)]
 pub struct TypedInterface {
+    pub name: String,
     pub symbol_id: SymbolID,
     pub methods: Vec<TypedFuncDecl>,
     pub vis: AccessSpecifier,

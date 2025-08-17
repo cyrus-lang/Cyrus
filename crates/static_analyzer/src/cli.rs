@@ -48,8 +48,9 @@ pub fn main() {
                 let mut typed_program_tree_borrowed = typed_program_tree.borrow_mut();
                 let mut analyzer = AnalysisContext::new(&resolver, module_id, &mut typed_program_tree_borrowed);
                 analyzer.analyze();
+                DiagReporter::display(&analyzer.reporter);
                 if analyzer.reporter.has_errors() {
-                    DiagReporter::display(&analyzer.reporter);
+                    return;
                 }
             }
 

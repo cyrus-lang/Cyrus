@@ -1,4 +1,4 @@
-use resolver::scope::{LocalOrGlobalSymbol, LocalSymbol};
+use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind};
 use typed_ast::{ScopeID, types::ConcreteType};
 
 use crate::context::AnalysisContext;
@@ -10,8 +10,8 @@ impl<'a> AnalysisContext<'a> {
         local_or_global_symbol: LocalOrGlobalSymbol,
     ) -> Option<ConcreteType> {
         match local_or_global_symbol {
-            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol {
-                LocalSymbol::Variable(resolved_variable) => match resolved_variable.typed_variable.ty {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
+                LocalSymbolKind::Variable(resolved_variable) => match resolved_variable.typed_variable.ty {
                     Some(concrete_type) => Some(concrete_type),
                     None => self.get_typed_expr_type(scope_id_opt, &mut resolved_variable.typed_variable.rhs.unwrap()),
                 },
