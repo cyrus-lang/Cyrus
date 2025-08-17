@@ -1,15 +1,7 @@
-// func sample(a: int) {}
+func main() int {
+    for (#i = 0; i < 10; i++) {
+        break;
+    }
 
-struct Sample {
-    name: char*;
-
-    func to_string() {}
-}
-
-func main() int32 {
-    
-
-    // sample(b);
-    // #b = a;
-	// return 0;
+    return 0;
 }

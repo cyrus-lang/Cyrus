@@ -2,10 +2,17 @@ use crate::diagnostics::AnalyzerDiagKind;
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use resolver::{
     Resolver,
-    scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, SymbolEntry, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntry, SymbolEntryKind},
 };
 use std::mem;
 use typed_ast::{format::format_concrete_type, *};
+
+#[derive(Debug)]
+enum ControlContext {
+    For(TypedFor),
+    Foreach(TypedForeach),
+    Switch(TypedSwitch),
+}
 
 pub struct AnalysisContext<'a> {
     pub ast: &'a mut TypedProgramTree,
@@ -13,6 +20,16 @@ pub struct AnalysisContext<'a> {
     pub reporter: DiagReporter<AnalyzerDiagKind>,
     pub module_id: ModuleID,
     pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
+    control_stack: Vec<ControlContext>,
+    cur_func_symbol_id: Option<SymbolID>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum FlowState {
+    /// Execution can continue normally
+    Reachable,
+    /// Execution cannot reach further statements (after return/break/continue)
+    Unreachable,
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -63,6 +80,8 @@ impl<'a> AnalysisContext<'a> {
             reporter: DiagReporter::new(),
             module_id,
             symbol_formatter,
+            control_stack: Vec::new(),
+            cur_func_symbol_id: None,
         }
     }
 
@@ -73,7 +92,10 @@ impl<'a> AnalysisContext<'a> {
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
-                TypedStatement::FuncDef(typed_func_def) => self.analyze_block_statement(&mut typed_func_def.body),
+                TypedStatement::FuncDef(typed_func_def) => {
+                    self.cur_func_symbol_id = Some(typed_func_def.symbol_id);
+                    self.analyze_block_statement(&mut typed_func_def.body);
+                }
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
@@ -82,16 +104,16 @@ impl<'a> AnalysisContext<'a> {
                 // Not analyzed
                 TypedStatement::Import(_) => continue,
                 // Invalid top-level statements
-                TypedStatement::Variable(_) => todo!(),
-                TypedStatement::BlockStatement(_) => unreachable!(),
-                TypedStatement::If(_) => unreachable!(),
-                TypedStatement::Return(_) => unreachable!(),
-                TypedStatement::Break(_) => unreachable!(),
-                TypedStatement::Continue(_) => unreachable!(),
-                TypedStatement::For(_) => unreachable!(),
-                TypedStatement::Foreach(_) => unreachable!(),
-                TypedStatement::Switch(_) => unreachable!(),
-                TypedStatement::Expression(_) => {
+                TypedStatement::Variable(_)
+                | TypedStatement::BlockStatement(_)
+                | TypedStatement::If(_)
+                | TypedStatement::Return(_)
+                | TypedStatement::Break(_)
+                | TypedStatement::Continue(_)
+                | TypedStatement::For(_)
+                | TypedStatement::Foreach(_)
+                | TypedStatement::Switch(_)
+                | TypedStatement::Expression(_) => {
                     unreachable!()
                 }
             }
@@ -99,6 +121,214 @@ impl<'a> AnalysisContext<'a> {
 
         self.analyze_unused_symbols();
         self.ast.body = body;
+    }
+
+    // Traverse BlockStatement
+    fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) -> FlowState {
+        let mut state = FlowState::Reachable;
+
+        for typed_stmt in &mut block_stmt.exprs {
+            if state == FlowState::Unreachable {
+                self.report_unreachable_block_diag(typed_stmt);
+                break;
+            }
+
+            state = match typed_stmt {
+                TypedStatement::Variable(typed_variable) => {
+                    self.analyze_variable(Some(block_stmt.scope_id), typed_variable);
+                    FlowState::Reachable
+                }
+                TypedStatement::BlockStatement(typed_block_statement) => {
+                    self.analyze_block_statement(typed_block_statement)
+                }
+                TypedStatement::If(typed_if) => todo!(),
+                TypedStatement::Return(typed_return) => {
+                    self.analyze_return(block_stmt.scope_id, typed_return);
+                    FlowState::Unreachable
+                }
+                TypedStatement::Break(typed_break) => {
+                    self.analyze_break(typed_break);
+                    FlowState::Unreachable
+                }
+                TypedStatement::Continue(typed_continue) => {
+                    self.analyze_continue(typed_continue);
+                    FlowState::Unreachable
+                }
+                TypedStatement::For(typed_for) => self.analyze_for_loop(Some(typed_for.body.scope_id), typed_for),
+                TypedStatement::Foreach(typed_foreach) => todo!(),
+                TypedStatement::Switch(typed_switch) => todo!(),
+                TypedStatement::Struct(typed_struct) => {
+                    self.analyze_struct(typed_struct, true);
+                    FlowState::Reachable
+                }
+                TypedStatement::Enum(typed_enum) => {
+                    self.analyze_enum(typed_enum, true);
+                    FlowState::Reachable
+                }
+                TypedStatement::Expression(typed_expression) => {
+                    self.get_typed_expr_type(Some(block_stmt.scope_id), typed_expression);
+                    FlowState::Reachable
+                }
+                TypedStatement::Interface(typed_interface) => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Warning,
+                        kind: AnalyzerDiagKind::InternalInterfaceIsNotValid,
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            typed_interface.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    FlowState::Reachable
+                }
+                TypedStatement::Typedef(typed_typedef) => {
+                    self.analyze_typedef(typed_typedef, false);
+                    FlowState::Reachable
+                }
+                // Invalid statements
+                TypedStatement::FuncDef(_)
+                | TypedStatement::FuncDecl(_)
+                | TypedStatement::Import(_)
+                | TypedStatement::GlobalVariable(_) => unreachable!(),
+            }
+        }
+
+        self.analyze_local_unused_symbols(block_stmt.scope_id);
+        state
+    }
+
+    fn analyze_for_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_for: &mut TypedFor) -> FlowState {
+        if let Some(initializer) = &mut typed_for.initializer {
+            self.analyze_variable(scope_id_opt, initializer);
+        }
+
+        if let Some(typed_expr) = &mut typed_for.condition {
+            if let Some(concrete_type) = self.get_typed_expr_type(scope_id_opt, typed_expr) {
+                self.check_expr_type_must_be_condition(concrete_type, typed_for.loc.clone());
+            }
+        }
+
+        if let Some(typed_expr) = &mut typed_for.increment {
+            self.get_typed_expr_type(scope_id_opt, typed_expr);
+        }
+
+        self.control_stack.push(ControlContext::For(typed_for.clone()));
+        self.analyze_block_statement(&mut typed_for.body);
+        self.control_stack.pop();
+
+        FlowState::Reachable
+    }
+
+    fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturn) {
+        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(Some(scope_id));
+
+        let resolved_func = self.get_cur_func_symbol_id();
+        let return_type = resolved_func.func_sig.return_type;
+
+        if return_type.is_void() && typed_return.argument.is_some() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::VoidFunctionReturnsValue,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_return.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        } else if let Some(typed_expr) = &mut typed_return.argument {
+            if let Some(concrete_type) = self.get_typed_expr_type(Some(scope_id), typed_expr) {
+                let expected = format_concrete_type(return_type.clone(), &formatter_closure);
+                let got = format_concrete_type(concrete_type.clone(), &formatter_closure);
+
+                if !self.check_type_mismatch(concrete_type, return_type) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::ReturnStatementTypeMismatch { expected, got },
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            typed_return.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                }
+            }
+        } else if !return_type.is_void() && typed_return.argument.is_none() {
+            let argument_type = format_concrete_type(return_type.clone(), &formatter_closure);
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::ReturnStatementNeedsAnArgument { argument_type },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_return.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
+    }
+
+    fn analyze_break(&mut self, typed_break: &TypedBreak) {
+        if self.control_stack.len() == 0 {
+            // break cannot be used outside of a for/switch statement
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidBreakStatement,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_break.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
+    }
+
+    fn analyze_continue(&mut self, typed_continue: &TypedContinue) {
+        let inside_loop = self
+            .control_stack
+            .iter()
+            .rev()
+            .any(|ctx| matches!(ctx, ControlContext::For(_) | ControlContext::Foreach(_)));
+
+        if !inside_loop {
+            // continue cannot be used outside of a loop
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidContinueStatement,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_continue.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
+    }
+
+    fn report_unreachable_block_diag(&mut self, typed_stmt: &TypedStatement) {
+        self.reporter.report(Diag {
+            level: DiagLevel::Warning,
+            kind: AnalyzerDiagKind::UnreachableCode,
+            location: Some(DiagLoc::new(
+                self.resolver.get_current_module_file_path(),
+                typed_stmt.get_loc(),
+                0,
+            )),
+            hint: None,
+        });
+    }
+
+    fn get_cur_func_symbol_id(&self) -> ResolvedFunction {
+        let symbol_id = self.cur_func_symbol_id.unwrap();
+        let symbol_entry = self
+            .resolver
+            .lookup_symbol_entry_with_id(self.module_id, symbol_id)
+            .unwrap();
+        symbol_entry.as_func().unwrap().clone()
     }
 
     pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVariable) {
@@ -424,51 +654,6 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_typedef(&mut self, typed_typedef: &TypedTypedef, is_local: bool) {
         self.check_typedef_name(typed_typedef.name.clone(), typed_typedef.loc.clone(), is_local);
-    }
-
-    fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) {
-        for typed_stmt in &mut block_stmt.exprs {
-            match typed_stmt {
-                TypedStatement::Variable(typed_variable) => {
-                    self.analyze_variable(Some(block_stmt.scope_id), typed_variable)
-                }
-                TypedStatement::BlockStatement(typed_block_statement) => {
-                    self.analyze_block_statement(typed_block_statement)
-                }
-                TypedStatement::If(typed_if) => todo!(),
-                TypedStatement::Return(typed_return) => todo!(),
-                TypedStatement::Break(typed_break) => todo!(),
-                TypedStatement::Continue(typed_continue) => todo!(),
-                TypedStatement::For(typed_for) => todo!(),
-                TypedStatement::Foreach(typed_foreach) => todo!(),
-                TypedStatement::Switch(typed_switch) => todo!(),
-                TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, true),
-                TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum, true),
-                TypedStatement::Expression(typed_expression) => {
-                    self.get_typed_expr_type(Some(block_stmt.scope_id), typed_expression);
-                }
-                TypedStatement::Interface(typed_interface) => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Warning,
-                        kind: AnalyzerDiagKind::InternalInterfaceIsNotValid,
-                        location: Some(DiagLoc::new(
-                            self.resolver.get_current_module_file_path(),
-                            typed_interface.loc.clone(),
-                            0,
-                        )),
-                        hint: None,
-                    });
-                }
-                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(typed_typedef, false),
-                // Invalid statements
-                TypedStatement::FuncDef(_)
-                | TypedStatement::FuncDecl(_)
-                | TypedStatement::Import(_)
-                | TypedStatement::GlobalVariable(_) => unreachable!(),
-            }
-        }
-
-        self.analyze_local_unused_symbols(block_stmt.scope_id);
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVariable) {

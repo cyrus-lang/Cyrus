@@ -235,7 +235,7 @@ impl<'a> AnalysisContext<'a> {
         typed_expr: &mut TypedExpression,
     ) -> Option<ConcreteType> {
         let concrete_type = match &mut typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id) => {
+            TypedExpressionKind::Symbol(symbol_id, ..) => {
                 let local_scope_ref_opt = {
                     if let Some(scope_id) = scope_id_opt {
                         self.resolver.get_scope_ref(self.module_id, scope_id)
@@ -286,6 +286,21 @@ impl<'a> AnalysisContext<'a> {
 
         typed_expr.concrete_type = concrete_type.clone();
         concrete_type.clone()
+    }
+
+    pub(crate) fn check_expr_type_must_be_condition(&mut self, concrete_type: ConcreteType, loc: Location) {
+        if !concrete_type.is_bool() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::ConditionExprMustBeOfTypeBool,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
     }
 
     fn get_unnamed_struct_value_expr_type(
@@ -396,7 +411,7 @@ impl<'a> AnalysisContext<'a> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
         let is_operand_array = match &array_index.operand.kind {
-            TypedExpressionKind::Symbol(symbol_id) => {
+            TypedExpressionKind::Symbol(symbol_id, ..) => {
                 self.get_definite_array_concrete_type(scope_id_opt, *symbol_id, array_index.loc.clone())
             }
             _ => match self.get_typed_expr_type(scope_id_opt, &mut array_index.operand) {
@@ -996,7 +1011,11 @@ impl<'a> AnalysisContext<'a> {
                 if cmp_eq {
                     match (lhs_type.clone(), rhs_type.clone()) {
                         (ConcreteType::Pointer(inner_concrete_type1), ConcreteType::Pointer(inner_concrete_type2)) => {
-                            Some(BasicConcreteType::Bool)
+                            if self.check_type_mismatch(*inner_concrete_type1, *inner_concrete_type2) {
+                                Some(BasicConcreteType::Bool)
+                            } else {
+                                None
+                            }
                         }
                         _ => None,
                     }
