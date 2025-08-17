@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    MissingReturn,
     VoidFunctionReturnsValue,
     UnreachableCode,
     InvalidBreakStatement,
@@ -125,6 +126,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::MissingReturn => {
+                write!(f, "Missing return statement.")
+            }
             AnalyzerDiagKind::ReturnStatementNeedsAnArgument { argument_type } => {
                 write!(f, "Return statement requires an argument of type '{}'.", argument_type)
             }

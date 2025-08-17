@@ -26,10 +26,12 @@ pub struct AnalysisContext<'a> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum FlowState {
-    /// Execution can continue normally
+    // Execution can continue normally
     Reachable,
-    /// Execution cannot reach further statements (after return/break/continue)
+    // Execution cannot reach further statements (after return/break/continue)
     Unreachable,
+    // This path definitely returned from the function
+    Returns,
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -94,7 +96,20 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
                 TypedStatement::FuncDef(typed_func_def) => {
                     self.cur_func_symbol_id = Some(typed_func_def.symbol_id);
-                    self.analyze_block_statement(&mut typed_func_def.body);
+                    let state = self.analyze_block_statement(&mut typed_func_def.body);
+
+                    if !typed_func_def.return_type.is_void() && state != FlowState::Returns {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::MissingReturn,
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_current_module_file_path(),
+                                typed_func_def.loc.clone(),
+                                0,
+                            )),
+                            hint: Some("not all control paths return a value.".to_string()),
+                        });
+                    }
                 }
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
@@ -141,11 +156,8 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::BlockStatement(typed_block_statement) => {
                     self.analyze_block_statement(typed_block_statement)
                 }
-                TypedStatement::If(typed_if) => todo!(),
-                TypedStatement::Return(typed_return) => {
-                    self.analyze_return(block_stmt.scope_id, typed_return);
-                    FlowState::Unreachable
-                }
+                TypedStatement::If(typed_if) => self.analyze_if_stmt(block_stmt.scope_id, typed_if),
+                TypedStatement::Return(typed_return) => self.analyze_return(block_stmt.scope_id, typed_return),
                 TypedStatement::Break(typed_break) => {
                     self.analyze_break(typed_break);
                     FlowState::Unreachable
@@ -198,6 +210,27 @@ impl<'a> AnalysisContext<'a> {
         state
     }
 
+    fn merge_flow_state(&self, a: FlowState, b: FlowState) -> FlowState {
+        match (a, b) {
+            (FlowState::Returns, FlowState::Returns) => FlowState::Returns,
+            (FlowState::Unreachable, FlowState::Unreachable) => FlowState::Unreachable,
+            _ => FlowState::Reachable,
+        }
+    }
+    fn analyze_if_stmt(&mut self, scope_id: ScopeID, typed_if: &mut TypedIf) -> FlowState {
+        let consequent_state = self.analyze_block_statement(&mut typed_if.consequent);
+
+        let alternate_state = {
+            if let Some(block_stmt) = &mut typed_if.alternate {
+                self.analyze_block_statement(&mut *block_stmt)
+            } else {
+                FlowState::Reachable
+            }
+        };
+
+        self.merge_flow_state(consequent_state, alternate_state)
+    }
+
     fn analyze_for_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_for: &mut TypedFor) -> FlowState {
         if let Some(initializer) = &mut typed_for.initializer {
             self.analyze_variable(scope_id_opt, initializer);
@@ -220,7 +253,7 @@ impl<'a> AnalysisContext<'a> {
         FlowState::Reachable
     }
 
-    fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturn) {
+    fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturn) -> FlowState {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(Some(scope_id));
 
         let resolved_func = self.get_cur_func_symbol_id();
@@ -269,6 +302,8 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         }
+
+        FlowState::Returns
     }
 
     fn analyze_break(&mut self, typed_break: &TypedBreak) {
