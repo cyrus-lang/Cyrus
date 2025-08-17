@@ -15,7 +15,13 @@ pub struct SymbolTable {
 }
 
 #[derive(Debug, Clone)]
-pub enum SymbolEntry {
+pub struct SymbolEntry {
+    pub used: bool,
+    pub kind: SymbolEntryKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum SymbolEntryKind {
     Method(ResolvedMethod),
     Func(ResolvedFunction),
     Typedef(ResolvedTypedef),
@@ -93,7 +99,13 @@ pub struct LocalScope {
 }
 
 #[derive(Debug, Clone)]
-pub enum LocalSymbol {
+pub struct LocalSymbol {
+    pub used: bool,
+    pub kind: LocalSymbolKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum LocalSymbolKind {
     Variable(ResolvedVariable),
     Struct(ResolvedStruct),
     Enum(ResolvedEnum),
@@ -108,19 +120,23 @@ pub enum LocalOrGlobalSymbol {
 }
 
 impl LocalSymbol {
+    pub fn new(kind: LocalSymbolKind) -> Self {
+        Self { used: false, kind }
+    }
+
     pub fn get_symbol_id(&self) -> SymbolID {
-        match self {
-            LocalSymbol::Variable(resolved) => resolved.symbol_id,
-            LocalSymbol::Struct(resolved) => resolved.symbol_id,
-            LocalSymbol::Enum(resolved) => resolved.symbol_id,
-            LocalSymbol::Typedef(resolved) => resolved.symbol_id,
-            LocalSymbol::Interface(resolved) => resolved.symbol_id,
+        match &self.kind {
+            LocalSymbolKind::Variable(resolved) => resolved.symbol_id,
+            LocalSymbolKind::Struct(resolved) => resolved.symbol_id,
+            LocalSymbolKind::Enum(resolved) => resolved.symbol_id,
+            LocalSymbolKind::Typedef(resolved) => resolved.symbol_id,
+            LocalSymbolKind::Interface(resolved) => resolved.symbol_id,
         }
     }
 
     pub fn as_struct(&self) -> Option<&ResolvedStruct> {
-        match self {
-            LocalSymbol::Struct(resolved_struct) => Some(resolved_struct),
+        match &self.kind {
+            LocalSymbolKind::Struct(resolved_struct) => Some(resolved_struct),
             _ => None,
         }
     }
@@ -162,63 +178,67 @@ impl SymbolTable {
 }
 
 impl SymbolEntry {
+    pub fn new(kind: SymbolEntryKind) -> Self {
+        Self { used: false, kind }
+    }
+
     pub fn get_symbol_id(&self) -> SymbolID {
-        match self {
-            SymbolEntry::Method(resolved_method) => resolved_method.symbol_id,
-            SymbolEntry::Func(resolved_func) => resolved_func.symbol_id,
-            SymbolEntry::Typedef(resolved_typedef) => resolved_typedef.symbol_id,
-            SymbolEntry::GlobalVar(resolved_global_var) => resolved_global_var.symbol_id,
-            SymbolEntry::Struct(resolved_struct) => resolved_struct.symbol_id,
-            SymbolEntry::Enum(resolved_enum) => resolved_enum.symbol_id,
-            SymbolEntry::Interface(resolved_interface) => resolved_interface.symbol_id,
+        match &self.kind {
+            SymbolEntryKind::Method(resolved_method) => resolved_method.symbol_id,
+            SymbolEntryKind::Func(resolved_func) => resolved_func.symbol_id,
+            SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.symbol_id,
+            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.symbol_id,
+            SymbolEntryKind::Struct(resolved_struct) => resolved_struct.symbol_id,
+            SymbolEntryKind::Enum(resolved_enum) => resolved_enum.symbol_id,
+            SymbolEntryKind::Interface(resolved_interface) => resolved_interface.symbol_id,
         }
     }
 
     pub fn as_struct(&self) -> Option<&ResolvedStruct> {
-        match self {
-            SymbolEntry::Struct(struct_) => Some(struct_),
+        match &self.kind {
+            SymbolEntryKind::Struct(struct_) => Some(struct_),
             _ => None,
         }
     }
 
     pub fn as_enum(&self) -> Option<&ResolvedEnum> {
-        match self {
-            SymbolEntry::Enum(enum_) => Some(enum_),
+        match &self.kind {
+            SymbolEntryKind::Enum(enum_) => Some(enum_),
             _ => None,
         }
     }
 
     pub fn as_typedef(&self) -> Option<&ResolvedTypedef> {
-        match self {
-            SymbolEntry::Typedef(typedef) => Some(typedef),
+        match &self.kind {
+            SymbolEntryKind::Typedef(typedef) => Some(typedef),
             _ => None,
         }
     }
 
     pub fn as_func(&self) -> Option<&ResolvedFunction> {
-        match self {
-            SymbolEntry::Func(func) => Some(func),
+        match &self.kind {
+            SymbolEntryKind::Func(func) => Some(func),
             _ => None,
         }
     }
 
     pub fn as_global_var(&self) -> Option<&ResolvedGlobalVar> {
-        match self {
-            SymbolEntry::GlobalVar(global_var) => Some(global_var),
+        match &self.kind {
+            SymbolEntryKind::GlobalVar(global_var) => Some(global_var),
             _ => None,
         }
     }
 
     pub fn as_interface(&self) -> Option<&ResolvedInterface> {
-        match self {
-            SymbolEntry::Interface(interface) => Some(interface),
+        match &self.kind {
+            SymbolEntryKind::Interface(interface) => Some(interface),
             _ => None,
         }
     }
 
     pub fn as_method(&self) -> Option<&ResolvedMethod> {
-        match self {
-            SymbolEntry::Method(method) => Some(method),
+        match &self.kind {
+            SymbolEntryKind::Method(method) => Some(method),
             _ => None,
         }
     }

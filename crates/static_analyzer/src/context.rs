@@ -2,7 +2,7 @@ use crate::diagnostics::AnalyzerDiagKind;
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use resolver::{
     Resolver,
-    scope::{LocalOrGlobalSymbol, LocalSymbol, SymbolEntry},
+    scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, SymbolEntry, SymbolEntryKind},
 };
 use std::mem;
 use typed_ast::{format::format_concrete_type, *};
@@ -28,23 +28,29 @@ impl<'a> AnalysisContext<'a> {
                         .unwrap();
 
                     match local_or_global_symbol {
-                        LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol {
-                            LocalSymbol::Variable(resolved_variable) => resolved_variable.typed_variable.name.clone(),
-                            LocalSymbol::Struct(resolved_struct) => resolved_struct.struct_sig.name.clone(),
-                            LocalSymbol::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
-                            LocalSymbol::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
-                            LocalSymbol::Interface(resolved_interface) => resolved_interface.interface_sig.name.clone(),
+                        LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                            LocalSymbolKind::Variable(resolved_variable) => {
+                                resolved_variable.typed_variable.name.clone()
+                            }
+                            LocalSymbolKind::Struct(resolved_struct) => resolved_struct.struct_sig.name.clone(),
+                            LocalSymbolKind::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
+                            LocalSymbolKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
+                            LocalSymbolKind::Interface(resolved_interface) => {
+                                resolved_interface.interface_sig.name.clone()
+                            }
                         },
-                        LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry {
-                            SymbolEntry::Method(resolved_method) => resolved_method.func_sig.name.clone(),
-                            SymbolEntry::Func(resolved_function) => resolved_function.func_sig.name.clone(),
-                            SymbolEntry::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
-                            SymbolEntry::GlobalVar(resolved_global_var) => {
+                        LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.name.clone(),
+                            SymbolEntryKind::Func(resolved_function) => resolved_function.func_sig.name.clone(),
+                            SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
+                            SymbolEntryKind::GlobalVar(resolved_global_var) => {
                                 resolved_global_var.global_var_sig.name.clone()
                             }
-                            SymbolEntry::Struct(resolved_struct) => resolved_struct.struct_sig.name.clone(),
-                            SymbolEntry::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
-                            SymbolEntry::Interface(resolved_interface) => resolved_interface.interface_sig.name.clone(),
+                            SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.name.clone(),
+                            SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
+                            SymbolEntryKind::Interface(resolved_interface) => {
+                                resolved_interface.interface_sig.name.clone()
+                            }
                         },
                     }
                 })
@@ -70,11 +76,11 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::FuncDef(typed_func_def) => self.analyze_block_statement(&mut typed_func_def.body),
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
-                TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct),
-                TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum),
+                TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
+                TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum, false),
+                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(typed_typedef, false),
                 // Not analyzed
                 TypedStatement::Import(_) => continue,
-                TypedStatement::Typedef(_) => continue,
                 // Invalid top-level statements
                 TypedStatement::Variable(_) => todo!(),
                 TypedStatement::BlockStatement(_) => unreachable!(),
@@ -91,16 +97,139 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        self.analyze_unused_symbols();
         self.ast.body = body;
     }
 
     pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVariable) {
         if let Some(expr) = &mut typed_global_var.expr {
+            if !expr.kind.is_comptime_valid() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_global_var.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return;
+            }
+
             self.get_typed_expr_type(None, expr);
         }
     }
 
-    pub(crate) fn analyze_struct(&mut self, typed_struct: &TypedStruct) {
+    fn analyze_local_unused_symbols(&mut self, scope_id: ScopeID) {
+        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
+        let local_scope = local_scope_rc.borrow();
+        let symbols_clone = local_scope.symbols.clone();
+        let symbols_iter = symbols_clone.values().into_iter();
+        drop(local_scope);
+
+        for local_symbol in symbols_iter {
+            if !local_symbol.used {
+                let (symbol_name, loc) = match &local_symbol.kind {
+                    LocalSymbolKind::Variable(resolved_variable) => (
+                        resolved_variable.typed_variable.name.clone(),
+                        resolved_variable.typed_variable.loc.clone(),
+                    ),
+                    LocalSymbolKind::Struct(resolved_struct) => (
+                        resolved_struct.struct_sig.name.clone(),
+                        resolved_struct.struct_sig.loc.clone(),
+                    ),
+                    LocalSymbolKind::Enum(resolved_enum) => {
+                        (resolved_enum.enum_sig.name.clone(), resolved_enum.enum_sig.loc.clone())
+                    }
+                    LocalSymbolKind::Typedef(resolved_typedef) => (
+                        resolved_typedef.typedef_sig.name.clone(),
+                        resolved_typedef.typedef_sig.loc.clone(),
+                    ),
+                    LocalSymbolKind::Interface(resolved_interface) => (
+                        resolved_interface.interface_sig.name.clone(),
+                        resolved_interface.interface_sig.loc.clone(),
+                    ),
+                };
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Warning,
+                    kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
+                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+                    hint: None,
+                });
+            }
+        }
+    }
+
+    fn analyze_unused_symbols(&mut self) {
+        let global_symbols = self.resolver.global_symbols.lock().unwrap();
+        let symbol_table = global_symbols.get(&self.module_id).unwrap();
+
+        for symbol_entry in symbol_table.entries.values() {
+            if !symbol_entry.used {
+                let (symbol_name, loc) = match &symbol_entry.kind {
+                    SymbolEntryKind::Method(resolved_method) => (
+                        resolved_method.func_sig.name.clone(),
+                        resolved_method.func_sig.loc.clone(),
+                    ),
+                    SymbolEntryKind::Func(resolved_func) => {
+                        // allow unused for main function
+                        if resolved_func.func_sig.name == "main" {
+                            continue;
+                        }
+
+                        (resolved_func.func_sig.name.clone(), resolved_func.func_sig.loc.clone())
+                    }
+                    SymbolEntryKind::Typedef(resolved_typedef) => (
+                        resolved_typedef.typedef_sig.name.clone(),
+                        resolved_typedef.typedef_sig.loc.clone(),
+                    ),
+                    SymbolEntryKind::GlobalVar(resolved_global_var) => (
+                        resolved_global_var.global_var_sig.name.clone(),
+                        resolved_global_var.global_var_sig.loc.clone(),
+                    ),
+                    SymbolEntryKind::Struct(resolved_struct) => (
+                        resolved_struct.struct_sig.name.clone(),
+                        resolved_struct.struct_sig.loc.clone(),
+                    ),
+                    SymbolEntryKind::Enum(resolved_enum) => {
+                        (resolved_enum.enum_sig.name.clone(), resolved_enum.enum_sig.loc.clone())
+                    }
+                    SymbolEntryKind::Interface(resolved_interface) => (
+                        resolved_interface.interface_sig.name.clone(),
+                        resolved_interface.interface_sig.loc.clone(),
+                    ),
+                };
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Warning,
+                    kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
+                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+                    hint: None,
+                });
+            }
+        }
+
+        drop(global_symbols);
+    }
+
+    pub(crate) fn analyze_struct(&mut self, typed_struct: &TypedStruct, is_local: bool) {
+        self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
+
+        for symbol_id in typed_struct.methods.values() {
+            let symbol_entry = self
+                .resolver
+                .lookup_symbol_entry_with_id(self.module_id, *symbol_id)
+                .unwrap();
+            let resolved_method = symbol_entry.as_method().unwrap();
+
+            self.check_method_name(
+                resolved_method.func_sig.name.clone(),
+                resolved_method.func_sig.loc.clone(),
+            );
+        }
+
         let mut field_names: Vec<String> = Vec::new();
 
         for field in &typed_struct.fields {
@@ -125,7 +254,22 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_enum(&mut self, typed_enum: &TypedEnum) {
+    pub(crate) fn analyze_enum(&mut self, typed_enum: &TypedEnum, is_local: bool) {
+        self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
+
+        for symbol_id in typed_enum.methods.values() {
+            let symbol_entry = self
+                .resolver
+                .lookup_symbol_entry_with_id(self.module_id, *symbol_id)
+                .unwrap();
+            let resolved_method = symbol_entry.as_method().unwrap();
+
+            self.check_method_name(
+                resolved_method.func_sig.name.clone(),
+                resolved_method.func_sig.loc.clone(),
+            );
+        }
+
         let mut variant_names: Vec<String> = Vec::new();
 
         for variant in &typed_enum.variants {
@@ -245,6 +389,8 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_interface(&mut self, typed_interface: &TypedInterface) {
+        self.check_interface_name(typed_interface.name.clone(), typed_interface.loc.clone(), false);
+
         let mut name_list: Vec<String> = Vec::new();
 
         let resolved_interface = self
@@ -276,6 +422,10 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn analyze_typedef(&mut self, typed_typedef: &TypedTypedef, is_local: bool) {
+        self.check_typedef_name(typed_typedef.name.clone(), typed_typedef.loc.clone(), is_local);
+    }
+
     fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) {
         for typed_stmt in &mut block_stmt.exprs {
             match typed_stmt {
@@ -292,21 +442,33 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::For(typed_for) => todo!(),
                 TypedStatement::Foreach(typed_foreach) => todo!(),
                 TypedStatement::Switch(typed_switch) => todo!(),
-                TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct),
-                TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum),
-                TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
+                TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, true),
+                TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum, true),
                 TypedStatement::Expression(typed_expression) => {
                     self.get_typed_expr_type(Some(block_stmt.scope_id), typed_expression);
                 }
-                // Not analyzed
-                TypedStatement::Typedef(_) => continue,
+                TypedStatement::Interface(typed_interface) => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Warning,
+                        kind: AnalyzerDiagKind::InternalInterfaceIsNotValid,
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            typed_interface.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                }
+                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(typed_typedef, false),
                 // Invalid statements
-                TypedStatement::FuncDef(_) => unreachable!(),
-                TypedStatement::FuncDecl(_) => unreachable!(),
-                TypedStatement::Import(_) => unreachable!(),
-                TypedStatement::GlobalVariable(_) => unreachable!(),
+                TypedStatement::FuncDef(_)
+                | TypedStatement::FuncDecl(_)
+                | TypedStatement::Import(_)
+                | TypedStatement::GlobalVariable(_) => unreachable!(),
             }
         }
+
+        self.analyze_local_unused_symbols(block_stmt.scope_id);
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVariable) {

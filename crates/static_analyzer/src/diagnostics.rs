@@ -2,6 +2,16 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    InternalInterfaceIsNotValid,
+    NamingConv {
+        kind: String,
+        name: String, 
+        expected: String,
+    },
+    UnusedSymbol {
+        symbol_name: String,
+    },
+    GlobalVariableExprNotComptimeValid,
     CannotAssignToConstLValue,
     InvalidIntegerLiteralSuffix,
     InvalidFloatLiteralSuffix,
@@ -103,6 +113,18 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::InternalInterfaceIsNotValid => {
+                write!(f, "Interfaces must be declared globally.")
+            }
+            AnalyzerDiagKind::NamingConv { kind, name, expected } => {
+                write!(f, "{} '{}' does not follow {} naming convention.", kind, name, expected)
+            }
+            AnalyzerDiagKind::UnusedSymbol { symbol_name } => {
+                write!(f, "'{}' is declared but never used.", symbol_name)
+            }
+            AnalyzerDiagKind::GlobalVariableExprNotComptimeValid => {
+                write!(f, "Global variable expression is not valid at compile time.")
+            }
             AnalyzerDiagKind::CannotAssignToConstLValue => {
                 write!(f, "Cannot assign to immutable variable.")
             }

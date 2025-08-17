@@ -2,10 +2,10 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::{
     LiteralKind,
     operators::{InfixOperator, PrefixOperator},
-    token::{Location, PRIMITIVE_TYPES, TokenKind},
+    token::{Location, TokenKind},
 };
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::scope::{LocalOrGlobalSymbol, SymbolEntry};
+use resolver::scope::{LocalOrGlobalSymbol, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedCast, TypedDereference, TypedExpression,
     TypedExpressionKind, TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedLiteral,
@@ -313,7 +313,7 @@ impl<'a> AnalysisContext<'a> {
             packed: unnamed_struct_value.packed,
             loc: unnamed_struct_value.loc.clone(),
         };
-        
+
         unnamed_struct_value.unnamed_struct_type = Some(unnamed_struct_type.clone());
         Some(ConcreteType::UnnamedStruct(unnamed_struct_type))
     }
@@ -708,8 +708,8 @@ impl<'a> AnalysisContext<'a> {
 
         let func_sig_opt = match local_or_global_symbol {
             resolver::scope::LocalOrGlobalSymbol::LocalSymbol(_) => None,
-            resolver::scope::LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry {
-                SymbolEntry::Func(resolved_function) => Some(resolved_function.func_sig),
+            resolver::scope::LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
+                SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig),
                 _ => None,
             },
         };
@@ -1113,6 +1113,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
     }
+
     fn check_and_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,

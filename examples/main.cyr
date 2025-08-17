@@ -1,20 +1,15 @@
-extern func printf(format: const char*, ...) void;
+// func sample(a: int) {}
 
-func main() {
-    #str: char* = c"Hello World";
-    printf(str);
+struct Sample {
+    name: char*;
 
-    // struct localStruct {
-    //     a: int;
-    //     b: int;
-    // }
+    func to_string() {}
+}
 
-    // #v = 10;
-    // #a = localStruct {
-    //     a: 10,
-    //     b: 20,
-    // };
+func main() int32 {
+    
 
-    // #unnamed = struct { a = 10 };
-    // #value = unnamed
+    // sample(b);
+    // #b = a;
+	// return 0;
 }

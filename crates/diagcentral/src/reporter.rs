@@ -46,9 +46,18 @@ impl<K: Display> DiagReporter<K> {
     pub fn format_panel(diag: &Diag<K>) -> String {
         let mut formatted = String::new();
 
+        macro_rules! get_highlight_color {
+            () => {
+                match diag.level {
+                    DiagLevel::Error => Colors::RedFg,
+                    DiagLevel::Warning => Colors::YellowFg,
+                }
+            };
+        }
+
         let level_text = match diag.level {
-            DiagLevel::Error => "error".color(Colors::RedFg),
-            DiagLevel::Warning => "warning".color(Colors::YellowFg),
+            DiagLevel::Error => "error".color(get_highlight_color!()),
+            DiagLevel::Warning => "warning".color(get_highlight_color!()),
         };
 
         formatted.push_str(&format!("{}: {}\n", level_text, diag.kind));
@@ -64,7 +73,7 @@ impl<K: Display> DiagReporter<K> {
                 if let Some(content) = lines.get(line_no) {
                     if line_no + 1 == loc.line && user_attended() {
                         formatted
-                            .push_str(&format!("{}{}  |  {}", spaces(2), line_no + 1, content).color(Colors::RedFg));
+                            .push_str(&format!("{}{}  |  {}", spaces(2), line_no + 1, content).color(get_highlight_color!()));
                     } else {
                         formatted.push_str(&format!("{}{}  |  {}", spaces(2), line_no + 1, content));
                     }

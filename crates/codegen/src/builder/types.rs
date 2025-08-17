@@ -6,7 +6,7 @@ use crate::builder::{
 use inkwell::{
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType}, values::{AnyValue, AnyValueEnum}, AddressSpace
 };
-use resolver::scope::{LocalScopeRef, SymbolEntry};
+use resolver::scope::{LocalScopeRef, SymbolEntry, SymbolEntryKind};
 use typed_ast::{
     SymbolID,
     types::{BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedUnnamedStructType},
@@ -72,8 +72,8 @@ impl<'a> CodeGenBuilder<'a> {
                 let module_id = this.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
                 let symbol_entry = this.resolver.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap();
 
-                match &symbol_entry {
-                    SymbolEntry::Typedef(resolved_typedef) => match &resolved_typedef.typedef_sig.ty {
+                match &symbol_entry.kind {
+                    SymbolEntryKind::Typedef(resolved_typedef) => match &resolved_typedef.typedef_sig.ty {
                         ConcreteType::Symbol(inner_type_symbol_id) => {
                             resolve_final_symbol_entry(this, *inner_type_symbol_id)
                         }
