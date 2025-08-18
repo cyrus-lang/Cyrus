@@ -1,22 +1,14 @@
 extern func printf(format: const char*, ...);
 
 func main() {
-    #a = 6;
+    // #i = 0;
+    // printf("value: %d, %d, %d\n", i++, ++i, i);
 
-    if (a == 10) {
-        printf("Hello World\n");
-    } 
-    else if (a == 5) {
-        printf("blblblblbl\n");
-    }
-    else {
-        printf("here we are\n");
-
-        if (a == 6) {
-            printf("a is 6\n");
-        } 
-        else {
-            printf("unknown\n");
-        }
+    for (#i = 0; i < 10; i++) {
+        // if (i >= 6) {
+        //     continue;
+        // } else {
+        // }
+        printf("i: %d\n", i);
     }
 }

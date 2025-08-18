@@ -1601,6 +1601,7 @@ impl Resolver {
                         loc: return_stmt.loc.clone(),
                     }));
                 }
+                Statement::Foreach(foreach) => todo!(),
                 Statement::For(for_stmt) => {
                     let body_scope_id = generate_scope_id();
                     let body_scope = LocalScope::deep_clone(&local_scope);
@@ -1608,7 +1609,7 @@ impl Resolver {
 
                     let initializer = {
                         if let Some(variable) = &for_stmt.initializer {
-                            match self.declare_local_variable(module_id, Rc::clone(&local_scope), &variable) {
+                            match self.declare_local_variable(module_id, Rc::clone(&body_scope), &variable) {
                                 Some(typed_var) => Some(typed_var),
                                 None => continue,
                             }
@@ -1619,7 +1620,7 @@ impl Resolver {
 
                     let condition = {
                         if let Some(expr) = &for_stmt.condition {
-                            match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), expr) {
+                            match self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), expr) {
                                 Some(typed_expr) => Some(typed_expr),
                                 None => continue,
                             }
@@ -1630,7 +1631,7 @@ impl Resolver {
 
                     let increment = {
                         if let Some(expr) = &for_stmt.increment {
-                            match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), expr) {
+                            match self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), expr) {
                                 Some(typed_expr) => Some(typed_expr),
                                 None => continue,
                             }
@@ -1651,84 +1652,6 @@ impl Resolver {
                         increment,
                         body: for_typed_body,
                         loc: for_stmt.loc.clone(),
-                    }));
-                }
-                Statement::Foreach(foreach) => {
-                    let typed_expr = self.resolve_expr(module_id, Some(local_scope.clone()), &foreach.expr)?;
-
-                    let body_scope_id = generate_scope_id();
-                    let body_scope = LocalScope::deep_clone(&local_scope);
-                    self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
-
-                    let foreach_typed_body =
-                        match self.resolve_block_statement(body_scope_id, body_scope.clone(), &*foreach.body) {
-                            Some(typed_block) => Box::new(typed_block),
-                            None => continue,
-                        };
-
-                    let typed_item = {
-                        let typed_identifier = TypedIdentifier {
-                            name: foreach.item.name.clone(),
-                            symbol_id: generate_symbol_id(),
-                            loc: foreach.item.loc.clone(),
-                        };
-
-                        let mut local_scope = body_scope.borrow_mut();
-                        local_scope.insert(
-                            typed_identifier.name.clone(),
-                            LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
-                                module_id,
-                                symbol_id: typed_identifier.symbol_id,
-                                typed_variable: TypedVariable {
-                                    symbol_id: typed_identifier.symbol_id,
-                                    name: typed_identifier.name.clone(),
-                                    ty: None,
-                                    rhs: None,
-                                    loc: typed_identifier.loc.clone(),
-                                },
-                            })),
-                        );
-                        drop(local_scope);
-                        typed_identifier
-                    };
-
-                    let typed_index = {
-                        if let Some(index) = &foreach.index {
-                            let typed_identifier = TypedIdentifier {
-                                name: index.name.clone(),
-                                symbol_id: generate_symbol_id(),
-                                loc: index.loc.clone(),
-                            };
-
-                            let mut local_scope = body_scope.borrow_mut();
-                            local_scope.insert(
-                                index.name.clone(),
-                                LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
-                                    module_id,
-                                    symbol_id: typed_identifier.symbol_id,
-                                    typed_variable: TypedVariable {
-                                        symbol_id: typed_identifier.symbol_id,
-                                        name: typed_identifier.name.clone(),
-                                        ty: None,
-                                        rhs: None,
-                                        loc: typed_identifier.loc.clone(),
-                                    },
-                                })),
-                            );
-                            drop(local_scope);
-
-                            Some(typed_identifier)
-                        } else {
-                            None
-                        }
-                    };
-
-                    typed_body.push(TypedStatement::Foreach(TypedForeach {
-                        expr: typed_expr,
-                        item: typed_item,
-                        index: typed_index,
-                        body: foreach_typed_body,
-                        loc: foreach.loc.clone(),
                     }));
                 }
                 Statement::Switch(switch) => {

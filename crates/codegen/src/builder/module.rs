@@ -13,7 +13,6 @@ use inkwell::{
 use resolver::{Resolver, moduleloader::ModuleFilePath};
 use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
 use typed_ast::{ModuleID, TypedProgramTree, types::ConcreteType};
-use utils::fs::ensure_output_dir;
 
 pub struct CodeGenModule<'module> {
     ctx: Rc<Context>,
@@ -237,6 +236,7 @@ impl<'a> BlockRegistry<'a> {
 pub struct LoopBlockRefs<'a> {
     pub cond_block: BasicBlock<'a>,
     pub end_block: BasicBlock<'a>,
+    pub inc_block: BasicBlock<'a>,
 }
 
 #[derive(Debug, Clone)]

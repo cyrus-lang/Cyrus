@@ -280,7 +280,6 @@ pub enum TypedStatement {
     Break(TypedBreak),
     Continue(TypedContinue),
     For(TypedFor),
-    Foreach(TypedForeach),
     Switch(TypedSwitch),
     Struct(TypedStruct),
     Enum(TypedEnum),
@@ -303,7 +302,6 @@ impl TypedStatement {
             TypedStatement::Break(typed_break) => typed_break.loc.clone(),
             TypedStatement::Continue(typed_continue) => typed_continue.loc.clone(),
             TypedStatement::For(typed_for) => typed_for.loc.clone(),
-            TypedStatement::Foreach(typed_foreach) => typed_foreach.loc.clone(),
             TypedStatement::Switch(typed_switch) => typed_switch.loc.clone(),
             TypedStatement::Struct(typed_struct) => typed_struct.loc.clone(),
             TypedStatement::Enum(typed_enum) => typed_enum.loc.clone(),
@@ -483,15 +481,6 @@ pub struct TypedFor {
     pub initializer: Option<TypedVariable>,
     pub condition: Option<TypedExpression>,
     pub increment: Option<TypedExpression>,
-    pub body: Box<TypedBlockStatement>,
-    pub loc: Location,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypedForeach {
-    pub item: TypedIdentifier,
-    pub index: Option<TypedIdentifier>,
-    pub expr: TypedExpression,
     pub body: Box<TypedBlockStatement>,
     pub loc: Location,
 }

@@ -1,12 +1,99 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
-use crate::builder::module::TerminatedBlockMetadata;
+use crate::builder::{
+    module::{LoopBlockRefs, TerminatedBlockMetadata},
+    values::InternalValue,
+};
+use ast::token::Location;
 use inkwell::{
     basic_block::BasicBlock,
     types::{BasicTypeEnum, StructType},
     values::FunctionValue,
 };
 use resolver::scope::{LocalScopeRef, ResolvedFunction};
-use typed_ast::{SymbolID, TypedBlockStatement, TypedIf, TypedStatement, TypedStruct};
+use typed_ast::{
+    SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor, TypedIf, TypedStatement,
+    TypedStruct,
+};
+
+/// A macro to build the LLVM IR for a loop structure.
+///
+/// This macro abstracts the common logic for creating loop-related basic blocks
+/// (`cond`, `body`, `end`), handling the loop condition, iterating over the body's
+/// statements, and optionally building an increment expression.
+///
+/// # Arguments
+///
+/// * `$self`: The mutable compiler state instance.
+/// * `$scope`: The current variable scope (`ScopeRef`).
+/// * `$condition`: The `BasicMetadataValueEnum` to be evaluated as the loop's condition.
+/// * `$body`: An iterable of statements that form the loop's body.
+/// * `$increment`: An `Option<Expression>` for the loop's increment step.
+/// * `$loc`: The source code location for error reporting.
+/// * `$span_end`: The end of the source code span for error reporting.
+#[macro_export]
+macro_rules! build_loop_statement {
+    (
+        $self:expr,
+        $scope:expr,
+        $condition:tt,
+        $body:tt,
+        $increment:tt
+    ) => {{
+        let current_block = $self.blockreg.current_block_ref.unwrap();
+        let current_func = $self.blockreg.current_func_ref.unwrap();
+
+        let cond_block = $self.llvmctx.append_basic_block(current_func, "loop.cond");
+        let body_block = $self.llvmctx.append_basic_block(current_func, "loop.body");
+        let inc_block = $self.llvmctx.append_basic_block(current_func, "loop.inc");
+        let end_block = $self.llvmctx.append_basic_block(current_func, "loop.end");
+
+        let previous_loop_ref = $self.blockreg.current_loop_ref.clone();
+        $self.blockreg.current_loop_ref = Some(LoopBlockRefs { cond_block, end_block, inc_block });
+
+        $self.llvmbuilder.position_at_end(current_block);
+        $self.llvmbuilder.build_unconditional_branch(cond_block).unwrap();
+        $self.mark_block_terminated(current_block, false);
+
+        // cond block
+        {
+            $self.llvmbuilder.position_at_end(cond_block);
+
+            $self
+                .llvmbuilder
+                .build_conditional_branch($condition, body_block, end_block)
+                .unwrap();
+
+            $self.mark_block_terminated(cond_block, false);
+        }
+
+        // increment block
+        {
+            $self.llvmbuilder.position_at_end(inc_block);
+            $increment
+            $self.llvmbuilder.build_unconditional_branch(cond_block).unwrap();
+        }
+
+        // body block
+        {
+            $self.blockreg.current_block_ref = Some(body_block);
+            $self.llvmbuilder.position_at_end(body_block);
+            $body
+        }
+
+        let after_body_block = $self.blockreg.current_block_ref.unwrap();
+
+        if !$self.is_block_terminated(after_body_block) {
+            $self.blockreg.current_block_ref = Some(after_body_block);
+            $self.llvmbuilder.position_at_end(after_body_block);
+            $self.llvmbuilder.build_unconditional_branch(inc_block).unwrap();
+            $self.mark_block_terminated(after_body_block, false);
+        }
+
+        $self.blockreg.current_block_ref = Some(end_block);
+        $self.llvmbuilder.position_at_end(end_block);
+        $self.blockreg.current_loop_ref = previous_loop_ref;
+    }};
+}
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_toplevel_statements(&mut self, stmts: &Vec<TypedStatement>) {
@@ -151,11 +238,10 @@ impl<'a> CodeGenBuilder<'a> {
                     self.build_local_variable(local_scope_opt.clone(), typed_variable)
                 }
                 TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
+                TypedStatement::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
                 TypedStatement::Return(typed_return) => todo!(),
-                TypedStatement::Break(typed_break) => todo!(),
-                TypedStatement::Continue(typed_continue) => todo!(),
-                TypedStatement::For(typed_for) => todo!(),
-                TypedStatement::Foreach(typed_foreach) => todo!(),
+                TypedStatement::Break(typed_break) => self.build_break(typed_break),
+                TypedStatement::Continue(typed_continue) => self.build_continue(typed_continue),
                 TypedStatement::Switch(typed_switch) => todo!(),
                 TypedStatement::Struct(typed_struct) => {
                     self.build_local_struct_def(typed_struct);
@@ -182,18 +268,109 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn is_block_terminated(&self, basic_block: BasicBlock<'a>) -> bool {
-        self.blockreg
-            .terminated_blocks
-            .iter()
-            .find(|metadata| metadata.basic_block == basic_block)
-            .is_some()
+    fn build_continue(&mut self, _: &TypedContinue) {
+        let current_block = self.blockreg.current_block_ref.unwrap();
+
+        let loop_end_block = match &self.blockreg.current_loop_ref {
+            Some(loop_block_refs) => loop_block_refs.inc_block,
+            None => {
+                panic!("Invalid continue statement.");
+            }
+        };
+
+        self.mark_block_terminated(current_block, false);
+        self.llvmbuilder.build_unconditional_branch(loop_end_block).unwrap();
+        self.llvmbuilder.position_at_end(loop_end_block);
     }
-    pub(crate) fn mark_block_terminated(&mut self, basic_block: BasicBlock<'a>, terminated_with_return: bool) {
-        self.blockreg.terminated_blocks.push(TerminatedBlockMetadata {
-            basic_block,
-            terminated_with_return,
-        });
+
+    fn build_break(&mut self, _: &TypedBreak) {
+        let current_block = self.blockreg.current_block_ref.unwrap();
+        self.mark_block_terminated(current_block, false);
+
+        let target_block = match match &self.blockreg.current_loop_ref {
+            Some(loop_block_refs) => Some(loop_block_refs.end_block),
+            None => match &self.blockreg.current_switch {
+                Some(switch_block_refs) => Some(switch_block_refs.exit_block),
+                None => None,
+            },
+        } {
+            Some(basic_block) => basic_block,
+            None => {
+                panic!("Invalid break statement.");
+            }
+        };
+
+        self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+        self.llvmbuilder.position_at_end(target_block);
+    }
+
+    fn build_infinite_for_statement(&mut self, for_stmt: &TypedFor) {
+        let always_true_condition = self.llvmctx.bool_type().const_int(1, false);
+
+        build_loop_statement!(
+            self,
+            scope,
+            always_true_condition,
+            {
+                self.build_block_statement(&for_stmt.body);
+            },
+            {}
+        );
+    }
+
+    pub(crate) fn build_conditional_for_statement(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        unevaluated_cond_value: &TypedExpression,
+        body: &TypedBlockStatement,
+        increment: Option<TypedExpression>,
+    ) {
+        build_loop_statement!(
+            self,
+            scope,
+            {
+                let cond_value = self.build_expr(local_scope_opt.clone(), &unevaluated_cond_value);
+                cond_value.as_basic_value().into_int_value()
+            },
+            {
+                self.build_block_statement(body);
+            },
+            {
+                if let Some(increment_expr) = increment {
+                    self.build_expr(local_scope_opt.clone(), &increment_expr);
+                }
+            }
+        );
+    }
+
+    fn build_for(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_for: &TypedFor) {
+        // unconditional for loop
+        if typed_for.condition.is_none() && typed_for.increment.is_none() {
+            if let Some(initializer) = &typed_for.initializer {
+                self.build_local_variable(local_scope_opt.clone(), initializer);
+                self.build_infinite_for_statement(typed_for);
+            } else {
+                self.build_infinite_for_statement(typed_for);
+            }
+        } else if typed_for.increment.is_none() {
+            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap());
+
+            self.build_conditional_for_statement(
+                local_scope_opt,
+                &typed_for.condition.clone().unwrap(),
+                &typed_for.body,
+                None,
+            );
+        } else {
+            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap());
+
+            self.build_conditional_for_statement(
+                local_scope_opt,
+                &typed_for.condition.clone().unwrap(),
+                &typed_for.body,
+                Some(typed_for.increment.clone().unwrap()),
+            );
+        }
     }
 
     fn build_if(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_if: &TypedIf) {
@@ -224,7 +401,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         let mut current_else_block = else_block;
-        
+
         for else_if in &typed_if.branches {
             let new_else_block = self.llvmctx.append_basic_block(current_func, "else_if");
             let new_then_block = self.llvmctx.append_basic_block(current_func, "else_if.then");
@@ -270,5 +447,19 @@ impl<'a> CodeGenBuilder<'a> {
 
         self.llvmbuilder.position_at_end(end_block);
         self.blockreg.current_block_ref = Some(end_block);
+    }
+
+    pub(crate) fn is_block_terminated(&self, basic_block: BasicBlock<'a>) -> bool {
+        self.blockreg
+            .terminated_blocks
+            .iter()
+            .find(|metadata| metadata.basic_block == basic_block)
+            .is_some()
+    }
+    pub(crate) fn mark_block_terminated(&mut self, basic_block: BasicBlock<'a>, terminated_with_return: bool) {
+        self.blockreg.terminated_blocks.push(TerminatedBlockMetadata {
+            basic_block,
+            terminated_with_return,
+        });
     }
 }

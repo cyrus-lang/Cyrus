@@ -302,17 +302,49 @@ impl<'a> CodeGenBuilder<'a> {
         unary_expr: &TypedUnaryExpression,
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &unary_expr.operand);
+        let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, lvalue);
+        let rvalue_basic_type = rvalue.value_type.as_basic_type().unwrap();
+        let signed = rvalue_basic_type.is_signed();
+        let unit_type = self
+            .build_basic_concrete_type(rvalue_basic_type.clone())
+            .into_int_type();
+        let unit_value = InternalValue::new(
+            rvalue.value_type.clone(),
+            InternalValueKind::RValue(BasicValueEnum::IntValue(unit_type.const_int(1, signed))),
+        );
 
         match unary_expr.op {
             UnaryOperator::PreIncrement => {
-                // let rvalue_clone = rvalue.clone();
-                // rvalue_clone
-                todo!();
+                let new_rhs_rvalue = self.build_add(rvalue, unit_value);
+                self.llvmbuilder
+                    .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
+                    .unwrap();
+                new_rhs_rvalue
             }
-            UnaryOperator::PreDecrement => todo!(),
-            UnaryOperator::PostIncrement => todo!(),
-            UnaryOperator::PostDecrement => todo!(),
+            UnaryOperator::PreDecrement => {
+                let new_rhs_rvalue = self.build_sub(rvalue, unit_value);
+                self.llvmbuilder
+                    .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
+                    .unwrap();
+                new_rhs_rvalue
+            }
+            UnaryOperator::PostIncrement => {
+                let rhs_rvalue_clone = rvalue.clone();
+                let new_rhs_rvalue = self.build_add(rvalue, unit_value);
+                self.llvmbuilder
+                    .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
+                    .unwrap();
+                rhs_rvalue_clone
+            }
+            UnaryOperator::PostDecrement => {
+                let rhs_rvalue_clone = rvalue.clone();
+                let new_rhs_rvalue = self.build_sub(rvalue, unit_value);
+                self.llvmbuilder
+                    .build_store(lvalue_pointer, new_rhs_rvalue.as_basic_value())
+                    .unwrap();
+                rhs_rvalue_clone
+            }
         }
     }
 

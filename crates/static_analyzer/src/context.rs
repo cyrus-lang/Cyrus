@@ -15,7 +15,6 @@ use typed_ast::{format::format_concrete_type, *};
 #[derive(Debug)]
 enum ControlContext {
     For(TypedFor),
-    Foreach(TypedForeach),
     Switch(TypedSwitch),
 }
 
@@ -144,7 +143,6 @@ impl<'a> AnalysisContext<'a> {
                 | TypedStatement::Break(_)
                 | TypedStatement::Continue(_)
                 | TypedStatement::For(_)
-                | TypedStatement::Foreach(_)
                 | TypedStatement::Switch(_)
                 | TypedStatement::Expression(_) => {
                     unreachable!()
@@ -185,7 +183,6 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Unreachable
                 }
                 TypedStatement::For(typed_for) => self.analyze_for_loop(Some(typed_for.body.scope_id), typed_for),
-                TypedStatement::Foreach(typed_foreach) => todo!(),
                 TypedStatement::Switch(typed_switch) => todo!(),
                 TypedStatement::Struct(typed_struct) => {
                     self.analyze_struct(typed_struct, true);
@@ -383,7 +380,7 @@ impl<'a> AnalysisContext<'a> {
             .control_stack
             .iter()
             .rev()
-            .any(|ctx| matches!(ctx, ControlContext::For(_) | ControlContext::Foreach(_)));
+            .any(|ctx| matches!(ctx, ControlContext::For(_)));
 
         if !inside_loop {
             // continue cannot be used outside of a loop

@@ -10,7 +10,7 @@ parser:
 	cargo run -j24 -p parser -- ./examples/main.cyr  --stdlib=./stdlib
 
 run:
-	cargo run -j24 -- run ./examples/main.cyr --stdlib=./stdlib
+	cargo run -j24 -p cli -- run ./examples/main.cyr --stdlib=./stdlib
 
 test: 
 	cargo test -j24 --all
