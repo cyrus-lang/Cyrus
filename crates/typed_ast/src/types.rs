@@ -1,17 +1,27 @@
 use crate::SymbolID;
-use ast::{
-    Identifier,
-    token::{Location, TokenKind},
-};
+use ast::token::{Location, TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConcreteType {
-    Symbol(SymbolID),
+    UnresolvedSymbol(SymbolID),
+    ResolvedSymbol(ResolvedSymbol),
     BasicType(BasicConcreteType),
     Array(TypedArrayType),
     Const(Box<ConcreteType>),
     Pointer(Box<ConcreteType>),
     UnnamedStruct(TypedUnnamedStructType),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResolvedSymbol {
+    Enum(SymbolID),
+    Typedef(SymbolID),
+    NamedStruct(SymbolID),
+    Interface(SymbolID),
+    GlobalVar(SymbolID),
+    Variable(SymbolID),
+    Func(SymbolID),
+    Method(SymbolID),
 }
 
 impl ConcreteType {
@@ -37,6 +47,18 @@ impl ConcreteType {
     pub fn as_array_type(&self) -> Option<&TypedArrayType> {
         match self {
             ConcreteType::Array(ty) => Some(ty),
+            _ => None,
+        }
+    }
+
+    pub fn as_struct_symbol_id(&self) -> Option<SymbolID> {
+        match self {
+            ConcreteType::ResolvedSymbol(resolved_symbol) => {
+                match resolved_symbol {
+                    ResolvedSymbol::NamedStruct(symbol_id) => Some(*symbol_id),
+                    _ => None
+                }
+            },
             _ => None,
         }
     }

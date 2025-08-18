@@ -2,6 +2,9 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    CyclicTypeDefinition {
+        symbol: String,
+    },
     MissingReturn,
     VoidFunctionReturnsValue,
     UnreachableCode,
@@ -128,6 +131,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::CyclicTypeDefinition { symbol } => {
+                write!(f, "Cyclic type definition found for type '{}'.", symbol)
+            }
             AnalyzerDiagKind::MissingEntryPoint => {
                 write!(f, "No entry point found (missing 'main' function).")
             }

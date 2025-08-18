@@ -1,9 +1,5 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
-use crate::builder::{
-    module::{LoopBlockRefs, TerminatedBlockMetadata},
-    values::InternalValue,
-};
-use ast::token::Location;
+use crate::builder::module::{LoopBlockRefs, TerminatedBlockMetadata};
 use inkwell::{
     basic_block::BasicBlock,
     types::{BasicTypeEnum, StructType},
@@ -11,8 +7,8 @@ use inkwell::{
 };
 use resolver::scope::{LocalScopeRef, ResolvedFunction};
 use typed_ast::{
-    SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor, TypedIf, TypedStatement,
-    TypedStruct,
+    SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor, TypedIf, TypedReturn,
+    TypedStatement, TypedStruct,
 };
 
 /// A macro to build the LLVM IR for a loop structure.
@@ -54,23 +50,25 @@ macro_rules! build_loop_statement {
         $self.llvmbuilder.build_unconditional_branch(cond_block).unwrap();
         $self.mark_block_terminated(current_block, false);
 
-        // cond block
-        {
-            $self.llvmbuilder.position_at_end(cond_block);
-
-            $self
-                .llvmbuilder
-                .build_conditional_branch($condition, body_block, end_block)
-                .unwrap();
-
-            $self.mark_block_terminated(cond_block, false);
-        }
-
         // increment block
         {
             $self.llvmbuilder.position_at_end(inc_block);
             $increment
             $self.llvmbuilder.build_unconditional_branch(cond_block).unwrap();
+        }
+
+        // cond block
+        {
+            $self.llvmbuilder.position_at_end(cond_block);
+
+            let cond_value = $condition;
+            
+            $self
+                .llvmbuilder
+                .build_conditional_branch(cond_value, body_block, end_block)
+                .unwrap();
+
+            $self.mark_block_terminated(cond_block, false);
         }
 
         // body block
@@ -113,12 +111,15 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn get_or_declare_func(
-        &self,
+        &mut self,
         symbol_id: SymbolID,
         resolved_func: &ResolvedFunction,
     ) -> FunctionValue<'a> {
         let irreg = self.irreg.borrow();
-        let fn_value = match irreg.get(&symbol_id) {
+        let local_ir_value = irreg.get(&symbol_id).cloned();
+        drop(irreg);
+
+        let fn_value = match local_ir_value {
             Some(local_ir_value) => local_ir_value.as_func().unwrap().clone(),
             None => self.build_func_decl(
                 resolved_func.func_sig.name.clone(),
@@ -128,13 +129,13 @@ impl<'a> CodeGenBuilder<'a> {
                 None,
             ),
         };
-        drop(irreg);
+
         fn_value
     }
 
-    fn build_forward_decls(&self, stmts: &Vec<TypedStatement>) {
-        let insert_forward_decl_to_registry = |symbol_id: SymbolID, local_value: LocalIRValue<'a>| {
-            let mut irreg = self.irreg.borrow_mut();
+    fn build_forward_decls(&mut self, stmts: &Vec<TypedStatement>) {
+        let insert_forward_decl_to_registry = |this: &Self, symbol_id: SymbolID, local_value: LocalIRValue<'a>| {
+            let mut irreg = this.irreg.borrow_mut();
             irreg.insert(symbol_id, local_value);
             drop(irreg);
         };
@@ -143,11 +144,11 @@ impl<'a> CodeGenBuilder<'a> {
             match stmt {
                 TypedStatement::Struct(typed_struct) => {
                     let struct_type = self.build_struct_decl(&typed_struct.name);
-                    insert_forward_decl_to_registry(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
+                    insert_forward_decl_to_registry(self, typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
                 }
                 TypedStatement::Enum(typed_enum) => {
                     let struct_type = self.build_enum_decl(&typed_enum.name);
-                    insert_forward_decl_to_registry(typed_enum.symbol_id, LocalIRValue::Struct(struct_type));
+                    insert_forward_decl_to_registry(self, typed_enum.symbol_id, LocalIRValue::Struct(struct_type));
                 }
                 TypedStatement::Interface(typed_interface) => todo!(),
                 _ => continue,
@@ -159,6 +160,7 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::GlobalVariable(typed_global_var) => {
                     let global_value = self.build_global_var_decl(typed_global_var);
                     insert_forward_decl_to_registry(
+                        self,
                         typed_global_var.symbol_id,
                         LocalIRValue::GlobalValue(global_value),
                     );
@@ -171,7 +173,7 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_def.vis.clone(),
                         None,
                     );
-                    insert_forward_decl_to_registry(typed_func_def.symbol_id, LocalIRValue::Func(fn_value));
+                    insert_forward_decl_to_registry(self, typed_func_def.symbol_id, LocalIRValue::Func(fn_value));
                 }
                 TypedStatement::FuncDecl(typed_func_decl) => {
                     let fn_value = self.build_func_decl(
@@ -181,7 +183,7 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_decl.vis.clone(),
                         None,
                     );
-                    insert_forward_decl_to_registry(typed_func_decl.symbol_id, LocalIRValue::Func(fn_value));
+                    insert_forward_decl_to_registry(self, typed_func_decl.symbol_id, LocalIRValue::Func(fn_value));
                 }
                 _ => continue,
             }
@@ -192,7 +194,7 @@ impl<'a> CodeGenBuilder<'a> {
         self.llvmctx.opaque_struct_type(name)
     }
 
-    fn build_local_struct_def(&self, typed_struct: &TypedStruct) {
+    fn build_local_struct_def(&mut self, typed_struct: &TypedStruct) {
         let field_types: Vec<BasicTypeEnum<'a>> = typed_struct
             .fields
             .iter()
@@ -206,7 +208,7 @@ impl<'a> CodeGenBuilder<'a> {
         drop(irreg);
     }
 
-    fn build_struct_def(&self, typed_struct: &TypedStruct) {
+    fn build_struct_def(&mut self, typed_struct: &TypedStruct) {
         let field_types: Vec<BasicTypeEnum<'a>> = typed_struct
             .fields
             .iter()
@@ -239,7 +241,7 @@ impl<'a> CodeGenBuilder<'a> {
                 }
                 TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
                 TypedStatement::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
-                TypedStatement::Return(typed_return) => todo!(),
+                TypedStatement::Return(typed_return) => self.build_return(local_scope_opt.clone(), typed_return),
                 TypedStatement::Break(typed_break) => self.build_break(typed_break),
                 TypedStatement::Continue(typed_continue) => self.build_continue(typed_continue),
                 TypedStatement::Switch(typed_switch) => todo!(),
@@ -264,6 +266,19 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::FuncDecl(_) => unreachable!(),
                 TypedStatement::Import(_) => unreachable!(),
                 TypedStatement::GlobalVariable(_) => unreachable!(),
+            }
+        }
+    }
+
+    fn build_return(&mut self, local_scope_opt: Option<LocalScopeRef>, return_stmt: &TypedReturn) {
+        match &return_stmt.argument {
+            Some(argument) => {
+                let lvalue = self.build_expr(local_scope_opt.clone(), argument);
+                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, lvalue);
+                self.llvmbuilder.build_return(Some(&rvalue.as_basic_value())).unwrap();
+            }
+            None => {
+                self.llvmbuilder.build_return(None).unwrap();
             }
         }
     }
@@ -456,6 +471,7 @@ impl<'a> CodeGenBuilder<'a> {
             .find(|metadata| metadata.basic_block == basic_block)
             .is_some()
     }
+
     pub(crate) fn mark_block_terminated(&mut self, basic_block: BasicBlock<'a>, terminated_with_return: bool) {
         self.blockreg.terminated_blocks.push(TerminatedBlockMetadata {
             basic_block,

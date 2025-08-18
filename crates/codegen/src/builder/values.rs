@@ -8,7 +8,7 @@ use typed_ast::types::ConcreteType;
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_load_lvalue_to_rvalue(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         internal_value: InternalValue<'a>,
     ) -> InternalValue<'a> {

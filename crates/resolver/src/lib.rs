@@ -362,7 +362,7 @@ impl Resolver {
                 }))
             }
             TypeSpecifier::ModuleImport(module_import) => match self.resolve_module_import(module_id, module_import) {
-                Some(symbol_id) => Ok(ConcreteType::Symbol(symbol_id)),
+                Some(symbol_id) => Ok(ConcreteType::UnresolvedSymbol(symbol_id)),
                 None => return None,
             },
             TypeSpecifier::Identifier(identifier) => {
@@ -370,7 +370,7 @@ impl Resolver {
                     Some(symbol_entry) => Some(symbol_entry),
                     None => None,
                 } {
-                    Some(symbol_id) => Ok(ConcreteType::Symbol(symbol_id)),
+                    Some(symbol_id) => Ok(ConcreteType::UnresolvedSymbol(symbol_id)),
                     None => Err(ResolverDiagKind::TypeNotFound {
                         name: identifier.name.clone(),
                     }),
@@ -950,7 +950,7 @@ impl Resolver {
                                 typed_variable: TypedVariable {
                                     symbol_id: self_symbol_id,
                                     name: self_symbol_name.clone(),
-                                    ty: Some(ConcreteType::Symbol(struct_symbol_id)),
+                                    ty: Some(ConcreteType::UnresolvedSymbol(struct_symbol_id)),
                                     rhs: None,
                                     loc: resolved_method.func_sig.loc.clone(),
                                 },
@@ -962,7 +962,7 @@ impl Resolver {
                                     typed_variable: TypedVariable {
                                         symbol_id: self_symbol_id,
                                         name: self_symbol_name.clone(),
-                                        ty: Some(ConcreteType::Pointer(Box::new(ConcreteType::Symbol(
+                                        ty: Some(ConcreteType::Pointer(Box::new(ConcreteType::UnresolvedSymbol(
                                             struct_symbol_id,
                                         )))),
                                         rhs: None,
@@ -2584,6 +2584,30 @@ impl Resolver {
         };
         drop(global_symbols);
         option
+    }
+
+    pub fn resolve_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
+        let module_id = self.lookup_symbol_id_in_modules(symbol_id)?;
+
+        match self.lookup_symbol_entry_with_id(module_id, symbol_id) {
+            Some(global_symbol) => Some(global_symbol),
+            None => None,
+        }
+    }
+
+    pub fn resolve_symbol_from_local_scope(&self, local_scope_rc: LocalScopeRef, symbol_id: SymbolID) -> Option<LocalSymbol> {
+        let local_scope = local_scope_rc.borrow();
+        let local_option = match local_scope
+            .symbols
+            .values()
+            .find(|symbol| symbol.get_symbol_id() == symbol_id)
+            .cloned()
+        {
+            Some(local_symbol) => Some(local_symbol),
+            None => None,
+        };
+        drop(local_scope);
+        local_option
     }
 
     pub fn resolve_local_or_global_symbol(

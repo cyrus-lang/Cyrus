@@ -1,14 +1,13 @@
-extern func printf(format: const char*, ...);
+// extern func printf(format: const char*, ...);
+
+type Int = int;
+type Bool = bool;
+
+func cmp(x: Int, y: Int) Bool {
+    // return x == y;
+    return true;
+}
 
 func main() {
-    // #i = 0;
-    // printf("value: %d, %d, %d\n", i++, ++i, i);
-
-    for (#i = 0; i < 10; i++) {
-        // if (i >= 6) {
-        //     continue;
-        // } else {
-        // }
-        printf("i: %d\n", i);
-    }
+    // #b = MyMyPerson {};
 }
