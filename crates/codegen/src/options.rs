@@ -2,7 +2,7 @@ use core::fmt;
 use inkwell::targets::{CodeModel, RelocMode};
 use serde::Deserialize;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub enum RelocModeOptions {
     Default,
     Static,
@@ -10,7 +10,7 @@ pub enum RelocModeOptions {
     DynamicNoPic,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub enum CodeModelOptions {
     Default,
     Tiny,
@@ -22,6 +22,7 @@ pub enum CodeModelOptions {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct CodeGenOptions {
+    pub linker: Option<String>,
     pub base_path: Option<String>,
     pub project_type: Option<String>,
     pub project_name: Option<String>,
@@ -63,6 +64,7 @@ pub enum BuildDir {
 impl CodeGenOptions {
     pub fn default() -> Self {
         Self {
+            linker: None,
             base_path: None,
             project_type: None,
             project_name: None,
@@ -87,6 +89,7 @@ impl CodeGenOptions {
 
     pub fn override_options(&mut self, instance: Self) {
         *self = Self {
+            linker: instance.linker.or(self.linker.clone()),
             project_type: instance.project_type.or(self.project_type.clone()),
             project_name: instance.project_name.or(self.project_name.clone()),
             project_version: instance.project_version.or(self.project_version.clone()),

@@ -14,17 +14,24 @@ use inkwell::{
 use typed_ast::{TypedFuncDef, TypedFuncParamKind, TypedFuncParams, types::ConcreteType};
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_func_def(&self, func_def: &TypedFuncDef) {
+    pub(crate) fn build_func_def(&mut self, func_def: &TypedFuncDef) {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&func_def.symbol_id).unwrap();
 
         let fn_value = local_ir_value.as_func().unwrap();
+        self.blockreg.current_func_ref = Some(fn_value.clone());
 
         let entry_block = self.llvmctx.append_basic_block(*fn_value, "entry");
+        self.blockreg.current_block_ref = Some(entry_block);
         self.llvmbuilder.position_at_end(entry_block);
         drop(irreg);
-        
+
         self.build_block_statement(&func_def.body);
+
+        let current_block = self.blockreg.current_block_ref.unwrap();
+        if !self.is_block_terminated(current_block) {
+            self.llvmbuilder.build_return(None).unwrap();
+        }
     }
 
     pub(crate) fn build_func_decl(
@@ -35,7 +42,13 @@ impl<'a> CodeGenBuilder<'a> {
         vis: AccessSpecifier,
         method_struct_type: Option<StructType<'a>>,
     ) -> FunctionValue<'a> {
-        let linkage = self.build_func_linkage(vis);
+        let linkage = {
+            if func_name == "main" {
+                Linkage::External
+            } else {
+                self.build_func_linkage(vis)
+            }
+        };
         let fn_type = self.build_func_type(params, return_type, method_struct_type);
 
         let llvmmodule = self.llvmmodule.borrow();

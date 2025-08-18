@@ -2,6 +2,7 @@ use crate::options::CodeGenOptions;
 use diagcentral::display_single_custom_diag;
 use inkwell::{
     OptimizationLevel,
+    basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     module::Module,
@@ -28,6 +29,7 @@ pub(crate) struct CodeGenBuilder<'a> {
     pub llvmctx: &'a Context,
     pub llvmtm: Rc<TargetMachine>,
     pub irreg: LocalIRValueRegistryRef<'a>,
+    pub blockreg: BlockRegistry<'a>,
     pub resolver: Rc<Resolver>,
 }
 
@@ -63,7 +65,7 @@ impl<'module> CodeGenModule<'module> {
         llvmmodule.set_data_layout(&llvmtm.get_target_data().get_data_layout());
         let llvmmodule = Rc::new(RefCell::new(llvmmodule));
 
-        let codegen_builder = CodeGenBuilder {
+        let mut codegen_builder = CodeGenBuilder {
             module_id,
             module_file_path,
             llvmmodule: llvmmodule.clone(),
@@ -72,6 +74,7 @@ impl<'module> CodeGenModule<'module> {
             llvmtm: llvmtm.clone(),
             irreg,
             resolver: resolver_rc,
+            blockreg: BlockRegistry::new(),
         };
 
         let program_tree_borrowed = self.program_tree.borrow();
@@ -157,6 +160,14 @@ impl<'a> CodeGenModuleOutput<'a> {
             .expect("Failed to write assembly file");
         drop(llvmmodule);
     }
+
+    pub fn emit_obj(&self, output_file_path: &Path) {
+        let llvmmodule = self.llvmmodule.borrow();
+        self.llvmtm
+            .write_to_file(&llvmmodule, FileType::Object, output_file_path)
+            .expect("Failed to write object file");
+        drop(llvmmodule);
+    }
 }
 
 pub type LocalIRValueID = u32;
@@ -199,4 +210,42 @@ impl<'a> LocalIRValue<'a> {
             _ => None,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockRegistry<'a> {
+    pub current_func_ref: Option<FunctionValue<'a>>,
+    pub current_block_ref: Option<BasicBlock<'a>>,
+    pub terminated_blocks: Vec<TerminatedBlockMetadata<'a>>,
+    pub current_loop_ref: Option<LoopBlockRefs<'a>>,
+    pub current_switch: Option<SwitchBlockRefs<'a>>,
+}
+
+impl<'a> BlockRegistry<'a> {
+    pub fn new() -> Self {
+        Self {
+            current_func_ref: None,
+            current_block_ref: None,
+            current_loop_ref: None,
+            current_switch: None,
+            terminated_blocks: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LoopBlockRefs<'a> {
+    pub cond_block: BasicBlock<'a>,
+    pub end_block: BasicBlock<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SwitchBlockRefs<'a> {
+    pub exit_block: BasicBlock<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TerminatedBlockMetadata<'a> {
+    pub basic_block: BasicBlock<'a>,
+    pub terminated_with_return: bool,
 }

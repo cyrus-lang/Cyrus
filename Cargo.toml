@@ -9,11 +9,10 @@ members = [
     "crates/diagcentral",
     "crates/typed_ast",
     "crates/cli",
-    "crates/static_analyzer", "crates/resolver",
+    "crates/static_analyzer",
+    "crates/resolver",
 ]
 default-members = ["crates/cli"]
 
 resolver = "3"
 
-[profile.dev]
-codegen-units = 1024

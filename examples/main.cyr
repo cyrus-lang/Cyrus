@@ -1,8 +1,22 @@
-func main() int {
-    if (true) {
-        return 0;
+extern func printf(format: const char*, ...);
+
+func main() {
+    #a = 6;
+
+    if (a == 10) {
+        printf("Hello World\n");
+    } 
+    else if (a == 5) {
+        printf("blblblblbl\n");
     }
     else {
-        return 0;
+        printf("here we are\n");
+
+        if (a == 6) {
+            printf("a is 6\n");
+        } 
+        else {
+            printf("unknown\n");
+        }
     }
 }

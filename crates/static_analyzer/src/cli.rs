@@ -3,7 +3,7 @@ use lexer::Lexer;
 use parser::Parser;
 use resolver::{Resolver, Visiting, generate_module_id, moduleloader::ModuleLoaderOptions};
 use static_analyzer::context::AnalysisContext;
-use std::{env, process::exit, vec};
+use std::{env, process::exit, sync::{Arc, Mutex}, vec};
 use utils::fs::read_file;
 
 pub fn main() {
@@ -45,13 +45,16 @@ pub fn main() {
             }
 
             {
+                let entry_points = Arc::new(Mutex::new(Vec::new()));
                 let mut typed_program_tree_borrowed = typed_program_tree.borrow_mut();
-                let mut analyzer = AnalysisContext::new(&resolver, module_id, &mut typed_program_tree_borrowed);
+                let mut analyzer = AnalysisContext::new(&resolver, module_id, &mut typed_program_tree_borrowed, entry_points.clone());
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
                 if analyzer.reporter.has_errors() {
                     return;
                 }
+
+                AnalysisContext::check_entry_points(entry_points);
             }
 
             dbg!(typed_program_tree);

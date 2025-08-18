@@ -12,7 +12,7 @@ use ast::{
     token::{Location, Span, Token, TokenKind},
 };
 use ast::{
-    GlobalVariable, Import, Interface, ModuleImport, ModulePath, ModuleSegment, SelfModifierKind, StringPrefix,
+    GlobalVariable, If, Import, Interface, ModuleImport, ModulePath, ModuleSegment, SelfModifierKind, StringPrefix,
     SwitchCasePattern,
 };
 use diagcentral::{reporter::DiagReporter, *};
@@ -1500,6 +1500,57 @@ impl Resolver {
         Some(typed_variable)
     }
 
+    fn resolve_if_stmt(&mut self, module_id: ModuleID, local_scope: LocalScopeRef, if_stmt: &If) -> Option<TypedIf> {
+        let typed_condition = match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &if_stmt.condition) {
+            Some(typed_expr) => typed_expr,
+            None => return None,
+        };
+
+        let consequent_scope_id = generate_scope_id();
+        let consequent_scope = LocalScope::deep_clone(&local_scope);
+        self.insert_scope_ref(module_id, consequent_scope_id, consequent_scope.clone());
+
+        let typed_consequent =
+            match self.resolve_block_statement(consequent_scope_id, consequent_scope, &if_stmt.consequent) {
+                Some(typed_block) => Box::new(typed_block),
+                None => return None,
+            };
+
+        let typed_alternate = {
+            if let Some(alternate) = &if_stmt.alternate {
+                let alternate_scope_id = generate_scope_id();
+                let alternate_scope = LocalScope::deep_clone(&local_scope);
+                self.insert_scope_ref(module_id, alternate_scope_id, alternate_scope.clone());
+
+                match self.resolve_block_statement(alternate_scope_id, Rc::clone(&local_scope), &*alternate) {
+                    Some(typed_block) => Some(Box::new(typed_block)),
+                    None => return None,
+                }
+            } else {
+                None
+            }
+        };
+
+        let mut branches: Vec<TypedIf> = Vec::new();
+
+        for else_if_stmt in &if_stmt.branches {
+            let typed_if = match self.resolve_if_stmt(module_id, local_scope.clone(), else_if_stmt) {
+                Some(typed_if) => typed_if,
+                None => continue,
+            };
+
+            branches.push(typed_if);
+        }
+
+        Some(TypedIf {
+            condition: typed_condition,
+            consequent: typed_consequent,
+            alternate: typed_alternate,
+            branches,
+            loc: if_stmt.loc.clone(),
+        })
+    }
+
     fn resolve_block_statement(
         &mut self,
         scope_id: ScopeID,
@@ -1527,50 +1578,12 @@ impl Resolver {
                         None => continue,
                     }
                 }
-                Statement::If(if_stmt) => {
-                    let typed_condition =
-                        match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &if_stmt.condition) {
-                            Some(typed_expr) => typed_expr,
-                            None => continue,
-                        };
-
-                    let consequent_scope_id = generate_scope_id();
-                    let consequent_scope = LocalScope::deep_clone(&local_scope);
-                    self.insert_scope_ref(module_id, consequent_scope_id, consequent_scope.clone());
-
-                    let typed_consequent = match self.resolve_block_statement(
-                        consequent_scope_id,
-                        consequent_scope,
-                        &if_stmt.consequent,
-                    ) {
-                        Some(typed_block) => Box::new(typed_block),
-                        None => continue,
-                    };
-
-                    let typed_alternate = {
-                        if let Some(alternate) = &if_stmt.alternate {
-                            let alternate_scope_id = generate_scope_id();
-                            let alternate_scope = LocalScope::deep_clone(&local_scope);
-                            self.insert_scope_ref(module_id, alternate_scope_id, alternate_scope.clone());
-
-                            match self.resolve_block_statement(alternate_scope_id, Rc::clone(&local_scope), &*alternate)
-                            {
-                                Some(typed_block) => Some(Box::new(typed_block)),
-                                None => continue,
-                            }
-                        } else {
-                            None
-                        }
-                    };
-
-                    typed_body.push(TypedStatement::If(TypedIf {
-                        condition: typed_condition,
-                        consequent: typed_consequent,
-                        branches: Vec::new(),
-                        alternate: typed_alternate,
-                        loc: if_stmt.loc.clone(),
-                    }));
-                }
+                Statement::If(if_stmt) => match self.resolve_if_stmt(module_id, Rc::clone(&local_scope), if_stmt) {
+                    Some(typed_if) => {
+                        typed_body.push(TypedStatement::If(typed_if));
+                    }
+                    None => continue,
+                },
                 Statement::Return(return_stmt) => {
                     let argument = {
                         if let Some(argument) = &return_stmt.argument {
