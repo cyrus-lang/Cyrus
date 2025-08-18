@@ -1,6 +1,7 @@
 pub mod context;
 mod diagnostics;
-mod resolvingtools;
+mod fullyresolving;
+mod naming;
+pub mod type_cache;
 mod type_checking;
 mod unused;
-mod naming;

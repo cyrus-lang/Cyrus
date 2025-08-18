@@ -4,9 +4,11 @@ use crate::builder::{
     values::{InternalValue, InternalValueKind},
 };
 use inkwell::{
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType}, values::{AnyValue, AnyValueEnum}, AddressSpace
+    AddressSpace,
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
+    values::{AnyValue, AnyValueEnum},
 };
-use resolver::scope::{LocalScopeRef, SymbolEntry, SymbolEntryKind};
+use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntry, SymbolEntryKind};
 use typed_ast::{
     SymbolID,
     types::{BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedUnnamedStructType},
@@ -41,7 +43,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn build_implicit_cast(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         target_type: ConcreteType,
         rvalue: InternalValue<'a>,
@@ -52,13 +54,43 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn build_concrete_type_from_symbol_id(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> AnyTypeEnum<'a> {
         if local_scope_opt.is_some() {
+            let local_or_global_symbol = match self.resolver.resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+            {
+                Some(local_or_global_symbol) => local_or_global_symbol,
+                None => {
+                    panic!("Undefined type symbol.")
+                }
+            };
+
+            dbg!(local_or_global_symbol.clone());
+            todo!();
+
+            let type_symbol_id = match local_or_global_symbol {
+                LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
+                    LocalSymbolKind::Variable(resolved_variable) => {
+                        todo!();
+                        // self.build_concrete_type(local_scope_opt, resolved_variable.typed_variable.ty.clone().unwrap())
+                    }
+                    LocalSymbolKind::Typedef(resolved_typedef) => {
+                        return self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty);
+                    },
+                    _ => local_symbol.get_symbol_id(),
+                },
+                LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
+                    SymbolEntryKind::Typedef(resolved_typedef) => {
+                        return self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty);
+                    },
+                    _ => symbol_entry.get_symbol_id(),
+                },
+            };
+
             let irreg = self.irreg.borrow();
-            let local_ir_value = irreg.get(&symbol_id).unwrap();
+            let local_ir_value = irreg.get(&type_symbol_id).unwrap();
 
             let any_type_enum = match local_ir_value {
                 LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
@@ -85,21 +117,28 @@ impl<'a> CodeGenBuilder<'a> {
 
             let final_symbol_entry = resolve_final_symbol_entry(self, symbol_id);
 
-            let irreg = self.irreg.borrow();
-            let local_ir_value = irreg.get(&final_symbol_entry.get_symbol_id()).unwrap();
-
-            let any_type_enum = match local_ir_value {
-                LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
-                _ => unreachable!(),
+            let any_type_enum = {
+                match final_symbol_entry.kind {
+                    SymbolEntryKind::Typedef(resolved_typedef) => {
+                        self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty)
+                    }
+                    _ => {
+                        let irreg = self.irreg.borrow();
+                        let local_ir_value = irreg.get(&final_symbol_entry.get_symbol_id()).unwrap();
+                        match local_ir_value {
+                            LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
+                            _ => unreachable!(),
+                        }
+                    }
+                }
             };
 
-            drop(irreg);
             any_type_enum
         }
     }
 
     pub(crate) fn build_concrete_type(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         concrete_type: ConcreteType,
     ) -> AnyTypeEnum<'a> {
@@ -130,7 +169,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn build_unnamed_struct_type(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         unnamed_struct_type: &TypedUnnamedStructType,
     ) -> AnyTypeEnum<'a> {

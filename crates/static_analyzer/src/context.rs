@@ -1,10 +1,10 @@
-use crate::diagnostics::AnalyzerDiagKind;
+use crate::{diagnostics::AnalyzerDiagKind, type_cache::TypeResolverCaches};
 use ast::token::Location;
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
     moduleloader::ModuleFilePath,
-    scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntry, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntryKind},
 };
 use std::{
     mem,
@@ -24,6 +24,7 @@ pub struct AnalysisContext<'a> {
     pub reporter: DiagReporter<AnalyzerDiagKind>,
     pub module_id: ModuleID,
     pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
+    pub ty_caches: TypeResolverCaches,
     control_stack: Vec<ControlContext>,
     cur_func_symbol_id: Option<SymbolID>,
     pub entry_points: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>,
@@ -95,6 +96,7 @@ impl<'a> AnalysisContext<'a> {
             control_stack: Vec::new(),
             cur_func_symbol_id: None,
             entry_points,
+            ty_caches: TypeResolverCaches::default(),
         }
     }
 
@@ -105,29 +107,7 @@ impl<'a> AnalysisContext<'a> {
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
-                TypedStatement::FuncDef(typed_func_def) => {
-                    if typed_func_def.name == "main" {
-                        let mut entry_points = self.entry_points.lock().unwrap();
-                        entry_points.push((self.resolver.get_current_module_file_path(), typed_func_def.loc.clone()));
-                        drop(entry_points);
-                    }
-
-                    self.cur_func_symbol_id = Some(typed_func_def.symbol_id);
-                    let state = self.analyze_block_statement(&mut typed_func_def.body);
-
-                    if !typed_func_def.return_type.is_void() && state != FlowState::Returns {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::MissingReturn,
-                            location: Some(DiagLoc::new(
-                                self.resolver.get_current_module_file_path(),
-                                typed_func_def.loc.clone(),
-                                0,
-                            )),
-                            hint: Some("not all control paths return a value.".to_string()),
-                        });
-                    }
-                }
+                TypedStatement::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
@@ -193,7 +173,7 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Reachable
                 }
                 TypedStatement::Expression(typed_expression) => {
-                    self.get_typed_expr_type(Some(block_stmt.scope_id), typed_expression);
+                    self.analyze_typed_expr_type(Some(block_stmt.scope_id), typed_expression);
                     FlowState::Reachable
                 }
                 TypedStatement::Interface(typed_interface) => {
@@ -290,13 +270,13 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(typed_expr) = &mut typed_for.condition {
-            if let Some(concrete_type) = self.get_typed_expr_type(scope_id_opt, typed_expr) {
+            if let Some(concrete_type) = self.analyze_typed_expr_type(scope_id_opt, typed_expr) {
                 self.check_expr_type_must_be_condition(concrete_type, typed_for.loc.clone());
             }
         }
 
         if let Some(typed_expr) = &mut typed_for.increment {
-            self.get_typed_expr_type(scope_id_opt, typed_expr);
+            self.analyze_typed_expr_type(scope_id_opt, typed_expr);
         }
 
         self.control_stack.push(ControlContext::For(typed_for.clone()));
@@ -324,11 +304,11 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         } else if let Some(typed_expr) = &mut typed_return.argument {
-            if let Some(concrete_type) = self.get_typed_expr_type(Some(scope_id), typed_expr) {
+            if let Some(concrete_type) = self.analyze_typed_expr_type(Some(scope_id), typed_expr) {
                 let expected = format_concrete_type(return_type.clone(), &formatter_closure);
                 let got = format_concrete_type(concrete_type.clone(), &formatter_closure);
 
-                if !self.check_type_mismatch(concrete_type, return_type) {
+                if !self.check_type_mismatch(Some(scope_id), concrete_type, return_type, typed_return.loc.clone()) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::ReturnStatementTypeMismatch { expected, got },
@@ -435,7 +415,7 @@ impl<'a> AnalysisContext<'a> {
                 return;
             }
 
-            self.get_typed_expr_type(None, expr);
+            self.analyze_typed_expr_type(None, expr);
         }
     }
 
@@ -694,6 +674,30 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDef) {
+        if typed_func_def.name == "main" {
+            let mut entry_points = self.entry_points.lock().unwrap();
+            entry_points.push((self.resolver.get_current_module_file_path(), typed_func_def.loc.clone()));
+            drop(entry_points);
+        }
+
+        self.cur_func_symbol_id = Some(typed_func_def.symbol_id);
+        let state = self.analyze_block_statement(&mut typed_func_def.body);
+
+        if !typed_func_def.return_type.is_void() && state != FlowState::Returns {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::MissingReturn,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_func_def.loc.clone(),
+                    0,
+                )),
+                hint: Some("not all control paths return a value.".to_string()),
+            });
+        }
+    }
+
     fn analyze_func_decl(&mut self, typed_func_decl: &TypedFuncDecl) {
         self.check_duplicate_param_names(
             &typed_func_decl.params.list,
@@ -753,7 +757,7 @@ impl<'a> AnalysisContext<'a> {
 
         let value_type_opt = {
             if let Some(typed_expr) = &mut typed_variable.rhs {
-                self.get_typed_expr_type(scope_id_opt, typed_expr)
+                self.analyze_typed_expr_type(scope_id_opt, typed_expr)
             } else {
                 None
             }
@@ -764,7 +768,12 @@ impl<'a> AnalysisContext<'a> {
                 let lhs_type = format_concrete_type(var_type.clone(), &formatter_closure);
                 let rhs_type = format_concrete_type(value_type.clone(), &formatter_closure);
 
-                if !self.check_type_mismatch(value_type.clone(), var_type.clone()) {
+                if !self.check_type_mismatch(
+                    scope_id_opt,
+                    value_type.clone(),
+                    var_type.clone(),
+                    typed_variable.loc.clone(),
+                ) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
@@ -783,12 +792,12 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, typed_assignment: &mut TypedAssignment) {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let lhs_type = match self.get_typed_expr_type(scope_id_opt, &mut typed_assignment.lhs) {
+        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.lhs) {
             Some(concrete_type) => concrete_type,
             None => return,
         };
 
-        let rhs_type = match self.get_typed_expr_type(scope_id_opt, &mut typed_assignment.rhs) {
+        let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.rhs) {
             Some(concrete_type) => concrete_type,
             None => return,
         };
@@ -807,7 +816,12 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
-        if !self.check_type_mismatch(rhs_type.clone(), lhs_type.clone()) {
+        if !self.check_type_mismatch(
+            scope_id_opt,
+            rhs_type.clone(),
+            lhs_type.clone(),
+            typed_assignment.loc.clone(),
+        ) {
             let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
             let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
 

@@ -21,7 +21,7 @@ use typed_ast::{
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_expr(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         typed_expr: &TypedExpression,
     ) -> InternalValue<'a> {
@@ -56,7 +56,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_unnamed_struct_value(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         unnamed_struct_value: &TypedUnnamedStructValue,
     ) -> InternalValue<'a> {
@@ -103,7 +103,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_struct_init(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         typed_struct_init: &TypedStructInit,
     ) -> InternalValue<'a> {
@@ -149,7 +149,7 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    fn build_assign(&self, local_scope_opt: Option<LocalScopeRef>, assign: &TypedAssignment) -> InternalValue<'a> {
+    fn build_assign(&mut self, local_scope_opt: Option<LocalScopeRef>, assign: &TypedAssignment) -> InternalValue<'a> {
         let lhs_lvalue = self.build_expr(local_scope_opt.clone(), &assign.lhs);
         let rhs_lvalue = self.build_expr(local_scope_opt.clone(), &assign.rhs);
         let rhs_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), rhs_lvalue);
@@ -163,7 +163,7 @@ impl<'a> CodeGenBuilder<'a> {
         rhs_rvalue
     }
 
-    fn build_dereference(&self, local_scope_opt: Option<LocalScopeRef>, deref: &TypedDereference) -> InternalValue<'a> {
+    fn build_dereference(&mut self, local_scope_opt: Option<LocalScopeRef>, deref: &TypedDereference) -> InternalValue<'a> {
         let operand_type = deref.operand.concrete_type.clone().unwrap();
         let lvalue = self.build_expr(local_scope_opt.clone(), &deref.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
@@ -172,7 +172,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_address_of(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         address_of: &TypedAddressOf,
     ) -> InternalValue<'a> {
@@ -185,7 +185,7 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    fn build_array_expr(&self, local_scope_opt: Option<LocalScopeRef>, array: &TypedArray) -> InternalValue<'a> {
+    fn build_array_expr(&mut self, local_scope_opt: Option<LocalScopeRef>, array: &TypedArray) -> InternalValue<'a> {
         let array_concrete_type = array.array_type.as_array_type().unwrap();
         let element_type = array_concrete_type.element_type.clone();
         let array_type = self
@@ -245,7 +245,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_cast_expr(&self, local_scope_opt: Option<LocalScopeRef>, cast: &TypedCast) -> InternalValue<'a> {
+    fn build_cast_expr(&mut self, local_scope_opt: Option<LocalScopeRef>, cast: &TypedCast) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &cast.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
 
@@ -257,7 +257,7 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    fn build_func_call(&self, local_scope_opt: Option<LocalScopeRef>, func_call: &TypedFuncCall) -> InternalValue<'a> {
+    fn build_func_call(&mut self, local_scope_opt: Option<LocalScopeRef>, func_call: &TypedFuncCall) -> InternalValue<'a> {
         let module_id = self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id).unwrap();
         let symbol_entry = self
             .resolver
@@ -297,7 +297,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_unary_expr(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         unary_expr: &TypedUnaryExpression,
     ) -> InternalValue<'a> {
@@ -562,7 +562,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_infix_expr(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         infix_expr: &TypedInfixExpression,
     ) -> InternalValue<'a> {
@@ -644,7 +644,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_sizeof(&self, local_scope_opt: Option<LocalScopeRef>, rvalue: InternalValue<'a>) -> InternalValue<'a> {
+    fn build_sizeof(&mut self, local_scope_opt: Option<LocalScopeRef>, rvalue: InternalValue<'a>) -> InternalValue<'a> {
         let any_type = self.build_concrete_type(local_scope_opt.clone(), rvalue.value_type);
         let size_internal_value = InternalValue::new(
             ConcreteType::BasicType(BasicConcreteType::SizeT),
@@ -658,7 +658,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_prefix_expr(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         prefix_expr: &TypedPrefixExpression,
     ) -> InternalValue<'a> {
@@ -682,7 +682,7 @@ impl<'a> CodeGenBuilder<'a> {
         internal_value
     }
 
-    fn build_literal(&self, local_scope_opt: Option<LocalScopeRef>, literal: &TypedLiteral) -> InternalValue<'a> {
+    fn build_literal(&mut self, local_scope_opt: Option<LocalScopeRef>, literal: &TypedLiteral) -> InternalValue<'a> {
         let basic_type_enum: BasicTypeEnum<'a> = self
             .build_concrete_type(local_scope_opt, literal.ty.clone())
             .try_into()

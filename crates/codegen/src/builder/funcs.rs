@@ -35,7 +35,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn build_func_decl(
-        &self,
+        &mut self,
         func_name: String,
         params: TypedFuncParams,
         return_type: ConcreteType,
@@ -100,7 +100,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn build_func_type(
-        &self,
+        &mut self,
         params: TypedFuncParams,
         return_type: ConcreteType,
         method_struct_type: Option<StructType<'a>>,

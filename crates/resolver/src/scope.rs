@@ -140,6 +140,20 @@ impl LocalSymbol {
             _ => None,
         }
     }
+
+    pub fn as_typedef(&self) -> Option<&ResolvedTypedef> {
+        match &self.kind {
+            LocalSymbolKind::Typedef(resolved_typedef) => Some(resolved_typedef),
+            _ => None,
+        }
+    }
+
+    pub fn as_variable(&self) -> Option<&ResolvedVariable> {
+        match &self.kind {
+            LocalSymbolKind::Variable(resolved_variable) => Some(resolved_variable),
+            _ => None,
+        }
+    }
 }
 
 impl LocalScope {
@@ -157,6 +171,13 @@ impl LocalScope {
     pub fn resolve(&self, name: &str) -> Option<&LocalSymbol> {
         self.symbols.get(name).or_else(|| self.parent.as_ref()?.resolve(name))
     }
+
+    pub fn resolve_with_symbol_id(&self, symbol_id: SymbolID) -> Option<&LocalSymbol> {
+        match self.symbols.iter().find(|(_, local_symbol)| local_symbol.get_symbol_id() == symbol_id) {
+            Some((_, local_symbol)) => Some(local_symbol),
+            None => None,
+        }
+    } 
 
     pub fn deep_clone(scope_ref: &LocalScopeRef) -> LocalScopeRef {
         let borrowed = scope_ref.borrow();

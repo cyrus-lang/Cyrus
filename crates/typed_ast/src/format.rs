@@ -1,6 +1,6 @@
 use crate::{
     SymbolID,
-    types::{BasicConcreteType, ConcreteType, TypedArrayCapacity},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity},
 };
 
 pub fn format_concrete_type<'a>(
@@ -8,7 +8,17 @@ pub fn format_concrete_type<'a>(
     format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
 ) -> String {
     match concrete_type {
-        ConcreteType::Symbol(symbol_id) => return format_symbol(symbol_id),
+        ConcreteType::UnresolvedSymbol(..) => unreachable!(),
+        ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+            ResolvedSymbol::Enum(symbol_id) => format_symbol(symbol_id),
+            ResolvedSymbol::Typedef(symbol_id) => format_symbol(symbol_id),
+            ResolvedSymbol::NamedStruct(symbol_id) => format_symbol(symbol_id),
+            ResolvedSymbol::Interface(symbol_id) => format_symbol(symbol_id),
+            ResolvedSymbol::GlobalVar(symbol_id) => format_symbol(symbol_id),
+            ResolvedSymbol::Variable(symbol_id) => format_symbol(symbol_id),
+            ResolvedSymbol::Func(symbol_id) => format_symbol(symbol_id),
+            ResolvedSymbol::Method(symbol_id) => format_symbol(symbol_id),
+        },
         ConcreteType::BasicType(basic_concrete_type) => match basic_concrete_type {
             BasicConcreteType::UIntPtr => "uintptr".to_string(),
             BasicConcreteType::IntPtr => "intptr".to_string(),
