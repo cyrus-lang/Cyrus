@@ -1,10 +1,15 @@
 use crate::diagnostics::AnalyzerDiagKind;
-use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
+use ast::token::Location;
+use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
+    moduleloader::ModuleFilePath,
     scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntry, SymbolEntryKind},
 };
-use std::mem;
+use std::{
+    mem,
+    sync::{Arc, Mutex},
+};
 use typed_ast::{format::format_concrete_type, *};
 
 #[derive(Debug)]
@@ -22,6 +27,7 @@ pub struct AnalysisContext<'a> {
     pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     control_stack: Vec<ControlContext>,
     cur_func_symbol_id: Option<SymbolID>,
+    pub entry_points: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -35,7 +41,12 @@ enum FlowState {
 }
 
 impl<'a> AnalysisContext<'a> {
-    pub fn new(resolver: &'a Resolver, module_id: ModuleID, ast: &'a mut TypedProgramTree) -> Self {
+    pub fn new(
+        resolver: &'a Resolver,
+        module_id: ModuleID,
+        ast: &'a mut TypedProgramTree,
+        entry_points: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>,
+    ) -> Self {
         let symbol_formatter = Box::new(
             move |scope_id_opt: Option<ScopeID>| -> Box<dyn Fn(SymbolID) -> String> {
                 Box::new(move |symbol_id: SymbolID| -> String {
@@ -84,6 +95,7 @@ impl<'a> AnalysisContext<'a> {
             symbol_formatter,
             control_stack: Vec::new(),
             cur_func_symbol_id: None,
+            entry_points,
         }
     }
 
@@ -95,6 +107,12 @@ impl<'a> AnalysisContext<'a> {
             match &mut typed_stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
                 TypedStatement::FuncDef(typed_func_def) => {
+                    if typed_func_def.name == "main" {
+                        let mut entry_points = self.entry_points.lock().unwrap();
+                        entry_points.push((self.resolver.get_current_module_file_path(), typed_func_def.loc.clone()));
+                        drop(entry_points);
+                    }
+
                     self.cur_func_symbol_id = Some(typed_func_def.symbol_id);
                     let state = self.analyze_block_statement(&mut typed_func_def.body);
 
@@ -156,7 +174,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::BlockStatement(typed_block_statement) => {
                     self.analyze_block_statement(typed_block_statement)
                 }
-                TypedStatement::If(typed_if) => self.analyze_if_stmt(block_stmt.scope_id, typed_if),
+                TypedStatement::If(typed_if) => self.analyze_if_stmt(typed_if),
                 TypedStatement::Return(typed_return) => self.analyze_return(block_stmt.scope_id, typed_return),
                 TypedStatement::Break(typed_break) => {
                     self.analyze_break(typed_break);
@@ -210,6 +228,40 @@ impl<'a> AnalysisContext<'a> {
         state
     }
 
+    pub fn check_entry_points(entry_points_arc: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>) {
+        let entry_points = entry_points_arc.lock().unwrap();
+        let mut entry_points_clone = entry_points.clone();
+
+        if entry_points.len() == 0 {
+            display_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::MissingEntryPoint,
+                location: None,
+                hint: None,
+            });
+        } else if entry_points.len() > 1 {
+            let (module_file_path, loc) = entry_points_clone.pop().unwrap();
+
+            display_single_diag!(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::MultipleEntryPoints,
+                location: Some(DiagLoc::new(module_file_path.clone(), loc.clone(), 0,)),
+                hint: {
+                    if let Some(another_decl) = entry_points_clone.pop() {
+                        Some(format!(
+                            "Another declaration is at {}:{}.",
+                            another_decl.0, another_decl.1
+                        ))
+                    } else {
+                        None
+                    }
+                },
+            });
+        }
+
+        drop(entry_points);
+    }
+
     fn merge_flow_state(&self, a: FlowState, b: FlowState) -> FlowState {
         match (a, b) {
             (FlowState::Returns, FlowState::Returns) => FlowState::Returns,
@@ -217,7 +269,7 @@ impl<'a> AnalysisContext<'a> {
             _ => FlowState::Reachable,
         }
     }
-    fn analyze_if_stmt(&mut self, scope_id: ScopeID, typed_if: &mut TypedIf) -> FlowState {
+    fn analyze_if_stmt(&mut self, typed_if: &mut TypedIf) -> FlowState {
         let consequent_state = self.analyze_block_statement(&mut typed_if.consequent);
 
         let alternate_state = {
@@ -227,6 +279,10 @@ impl<'a> AnalysisContext<'a> {
                 FlowState::Reachable
             }
         };
+
+        typed_if.branches.iter_mut().for_each(|branch| {
+            self.analyze_if_stmt(branch);
+        });
 
         self.merge_flow_state(consequent_state, alternate_state)
     }

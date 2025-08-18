@@ -1,3 +1,4 @@
+#[derive(Debug, Clone)]
 pub struct ObjectFileInfo {
     pub file_path: String,
 }

@@ -121,11 +121,19 @@ pub enum AnalyzerDiagKind {
     },
     AddressOfRvalue,
     DerefNonPointerValue,
+    MultipleEntryPoints,
+    MissingEntryPoint,
 }
 
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::MissingEntryPoint => {
+                write!(f, "No entry point found (missing 'main' function).")
+            }
+            AnalyzerDiagKind::MultipleEntryPoints => {
+                write!(f, "Multiple entry points are not allowed.")
+            }
             AnalyzerDiagKind::MissingReturn => {
                 write!(f, "Missing return statement.")
             }

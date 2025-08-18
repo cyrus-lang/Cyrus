@@ -1,13 +1,15 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
+use crate::builder::module::TerminatedBlockMetadata;
 use inkwell::{
+    basic_block::BasicBlock,
     types::{BasicTypeEnum, StructType},
     values::FunctionValue,
 };
-use resolver::scope::ResolvedFunction;
-use typed_ast::{SymbolID, TypedBlockStatement, TypedStatement, TypedStruct};
+use resolver::scope::{LocalScopeRef, ResolvedFunction};
+use typed_ast::{SymbolID, TypedBlockStatement, TypedIf, TypedStatement, TypedStruct};
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_toplevel_statements(&self, stmts: &Vec<TypedStatement>) {
+    pub(crate) fn build_toplevel_statements(&mut self, stmts: &Vec<TypedStatement>) {
         self.build_forward_decls(stmts);
 
         for stmt in stmts {
@@ -136,7 +138,7 @@ impl<'a> CodeGenBuilder<'a> {
         self.llvmctx.opaque_struct_type(name)
     }
 
-    pub(crate) fn build_block_statement(&self, block_stmt: &TypedBlockStatement) {
+    pub(crate) fn build_block_statement(&mut self, block_stmt: &TypedBlockStatement) {
         let local_scope_opt = Some(
             self.resolver
                 .get_scope_ref(self.module_id, block_stmt.scope_id)
@@ -148,7 +150,7 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::Variable(typed_variable) => {
                     self.build_local_variable(local_scope_opt.clone(), typed_variable)
                 }
-                TypedStatement::If(typed_if) => todo!(),
+                TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
                 TypedStatement::Return(typed_return) => todo!(),
                 TypedStatement::Break(typed_break) => todo!(),
                 TypedStatement::Continue(typed_continue) => todo!(),
@@ -160,7 +162,7 @@ impl<'a> CodeGenBuilder<'a> {
                 }
                 TypedStatement::Enum(typed_enum) => {
                     self.build_local_enum_def(typed_enum);
-                },
+                }
                 TypedStatement::Expression(typed_expr) => {
                     let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
                     self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
@@ -178,5 +180,95 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::GlobalVariable(_) => unreachable!(),
             }
         }
+    }
+
+    pub(crate) fn is_block_terminated(&self, basic_block: BasicBlock<'a>) -> bool {
+        self.blockreg
+            .terminated_blocks
+            .iter()
+            .find(|metadata| metadata.basic_block == basic_block)
+            .is_some()
+    }
+    pub(crate) fn mark_block_terminated(&mut self, basic_block: BasicBlock<'a>, terminated_with_return: bool) {
+        self.blockreg.terminated_blocks.push(TerminatedBlockMetadata {
+            basic_block,
+            terminated_with_return,
+        });
+    }
+
+    fn build_if(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_if: &TypedIf) {
+        let current_block = self.blockreg.current_block_ref.unwrap();
+        let current_func = self.blockreg.current_func_ref.unwrap();
+
+        let then_block = self.llvmctx.append_basic_block(current_func, "if.then");
+        let else_block = self.llvmctx.append_basic_block(current_func, "if.else");
+        let end_block = self.llvmctx.append_basic_block(current_func, "if.end");
+
+        let cond = self.build_expr(local_scope_opt.clone(), &typed_if.condition);
+
+        self.llvmbuilder.position_at_end(current_block);
+        if !self.is_block_terminated(current_block) {
+            self.llvmbuilder
+                .build_conditional_branch(cond.as_basic_value().into_int_value(), then_block, else_block)
+                .unwrap();
+            self.mark_block_terminated(current_block, false);
+        }
+
+        // build then block
+        self.llvmbuilder.position_at_end(then_block);
+        self.blockreg.current_block_ref = Some(then_block);
+        self.build_block_statement(&typed_if.consequent);
+        if !self.is_block_terminated(then_block) {
+            self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
+            self.mark_block_terminated(then_block, false);
+        }
+
+        let mut current_else_block = else_block;
+        
+        for else_if in &typed_if.branches {
+            let new_else_block = self.llvmctx.append_basic_block(current_func, "else_if");
+            let new_then_block = self.llvmctx.append_basic_block(current_func, "else_if.then");
+
+            self.llvmbuilder.position_at_end(current_else_block);
+            let else_if_cond = self.build_expr(local_scope_opt.clone(), &else_if.condition);
+
+            if !self.is_block_terminated(current_else_block) {
+                self.llvmbuilder
+                    .build_conditional_branch(
+                        else_if_cond.as_basic_value().into_int_value(),
+                        new_then_block,
+                        new_else_block,
+                    )
+                    .unwrap();
+
+                self.mark_block_terminated(current_else_block, false);
+            }
+
+            self.llvmbuilder.position_at_end(new_then_block);
+            self.blockreg.current_block_ref = Some(new_then_block);
+            self.build_block_statement(&else_if.consequent);
+            if !self.is_block_terminated(new_then_block) {
+                self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
+                self.mark_block_terminated(new_then_block, false);
+            }
+
+            current_else_block = new_else_block;
+        }
+
+        // build else block
+        self.llvmbuilder.position_at_end(current_else_block);
+        self.blockreg.current_block_ref = Some(current_else_block);
+        if let Some(alternate) = &typed_if.alternate {
+            self.build_block_statement(&alternate);
+        }
+
+        let current_block = self.blockreg.current_block_ref.unwrap();
+        if !self.is_block_terminated(current_block) {
+            self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
+            self.mark_block_terminated(current_block, false);
+        }
+
+        self.llvmbuilder.position_at_end(end_block);
+        self.blockreg.current_block_ref = Some(end_block);
     }
 }

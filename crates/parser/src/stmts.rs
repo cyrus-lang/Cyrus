@@ -115,11 +115,7 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
-                            self.file_name.clone(),
-                            loc,
-                            self.current_token().span.end,
-                        )),
+                        location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                         hint: Some(String::from(
                             "Consider to add a field to enum variant or remove the parenthesis.",
                         )),
@@ -264,11 +260,7 @@ impl Parser {
                         return Err(Diag {
                             kind: ParserDiagKind::MissingOpeningBrace,
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(
-                                self.file_name.clone(),
-                                loc,
-                                self.current_token().span.end,
-                            )),
+                            location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                             hint: None,
                         });
                     }
@@ -288,11 +280,7 @@ impl Parser {
                         return Err(Diag {
                             kind: ParserDiagKind::ExpectedIdentifier,
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(
-                                self.file_name.clone(),
-                                loc,
-                                self.current_token().span.end,
-                            )),
+                            location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                             hint: None,
                         });
                     }
@@ -403,11 +391,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingSemicolon,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc,
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                 hint: None,
             });
         } else {
@@ -427,11 +411,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingSemicolon,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc,
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                 hint: None,
             });
         } else {
@@ -758,11 +738,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::SeveralSelfModifierDefinition,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc,
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                 hint: None,
             });
         }
@@ -786,11 +762,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingOpeningBrace,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc,
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                 hint: None,
             });
         }
@@ -853,11 +825,7 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::MissingOpeningBrace,
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
-                        loc,
-                        self.current_token().span.end,
-                    )),
+                    location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                     hint: None,
                 });
             }
@@ -1063,11 +1031,7 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::InvalidToken(self.peek_token().kind),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
-                        loc,
-                        self.current_token().span.end,
-                    )),
+                    location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                     hint: Some(String::from(
                         "FuncDecl does not accept a body. Use a semicolon `;` instead of a body `{ ... }`.",
                     )),
@@ -1123,11 +1087,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingSemicolon,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc,
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                 hint: None,
             });
         }
@@ -1357,11 +1317,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingClosingBrace,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc,
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                 hint: None,
             });
         }
@@ -1399,7 +1355,7 @@ impl Parser {
             self.next_token(); // consume else token
 
             if self.current_token_is(TokenKind::If) {
-                let start = self.current_token().span.start;
+                let else_if_start = self.current_token().span.start;
                 self.next_token(); // consume if token
 
                 self.expect_current(TokenKind::LeftParen)?;
@@ -1418,9 +1374,12 @@ impl Parser {
                 branches.push(If {
                     condition,
                     consequent,
-                    branches: vec![],
+                    branches: Vec::new(),
                     alternate: None,
-                    span: Span { start, end },
+                    span: Span {
+                        start: else_if_start,
+                        end,
+                    },
                     loc: loc.clone(),
                 });
             } else {
@@ -1431,11 +1390,7 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::MissingClosingBrace,
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
-                            self.file_name.clone(),
-                            loc,
-                            self.current_token().span.end,
-                        )),
+                        location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                         hint: None,
                     });
                 }
@@ -1446,11 +1401,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingClosingBrace,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc,
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
                 hint: None,
             });
         }

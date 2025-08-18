@@ -13,7 +13,9 @@ use resolver::{
     moduleloader::{ModuleFilePath, ModuleLoaderOptions},
 };
 use static_analyzer::context::AnalysisContext;
-use std::{cell::RefCell, env, process::exit, rc::Rc};
+use std::{
+    cell::RefCell, env, io::{self, Write}, process::exit, rc::Rc, sync::{Arc, Mutex}
+};
 use typed_ast::{ModuleID, TypedProgramTree};
 use utils::fs::ensure_output_dir;
 
@@ -52,13 +54,19 @@ fn get_program_trees(
         exit(1);
     }
 
+    let entry_points = Arc::new(Mutex::new(Vec::new()));
     let final_program_trees: Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>;
     let program_trees = resolver.program_trees.lock().unwrap();
 
     {
         for (_, _, _, typed_program_tree) in program_trees.iter() {
             let mut typed_program_tree_borrowed = typed_program_tree.borrow_mut();
-            let mut analyzer = AnalysisContext::new(&resolver, module_id, &mut typed_program_tree_borrowed);
+            let mut analyzer = AnalysisContext::new(
+                &resolver,
+                module_id,
+                &mut typed_program_tree_borrowed,
+                entry_points.clone(),
+            );
             analyzer.analyze();
             DiagReporter::display(&analyzer.reporter);
             if analyzer.reporter.has_errors() {
@@ -66,6 +74,8 @@ fn get_program_trees(
             }
         }
     }
+
+    AnalysisContext::check_entry_points(entry_points);
     final_program_trees = program_trees.clone();
     drop(program_trees);
 
@@ -106,6 +116,11 @@ pub(crate) fn command_run(options: CompilerOptions, file_path: Option<String>) {
         resolver_rc,
     );
     context.compile_modules(program_trees);
+
+    let mut executable_command = std::process::Command::new(&temp_file_path);
+    let output = executable_command.output().unwrap();
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stderr().write_all(&output.stderr).unwrap();
 
     if temp.exists() {
         std::fs::remove_file(temp_file_path).unwrap();
@@ -158,8 +173,14 @@ pub(crate) fn command_emit_asm(options: CompilerOptions, file_path: Option<Strin
 }
 
 pub(crate) fn command_build(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    // let context = CodeGenContext::new(options, output_kind);
-    todo!()
+    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+
+    let output_path = output_path.unwrap_or_else(|| {
+        display_single_custom_diag!("Output must be specified to generate executable.".to_string());
+    });
+
+    let context = CodeGenContext::new(final_build_dir, opts, OutputKind::Executable(output_path), resolver_rc);
+    context.compile_modules(program_trees);
 }
 
 pub(crate) fn command_object(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {

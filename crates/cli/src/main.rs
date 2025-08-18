@@ -70,6 +70,13 @@ struct CompilerOptions {
     )]
     base_path: Option<String>,
 
+    #[clap(
+        long = "linker",
+        value_name = "LINKER_NAMe",
+        help = "Specifies the linker for linking the object files."
+    )]
+    linker: Option<String>,
+
     #[clap(long, short = 'q', help = "Suppress unnecessary output messages.")]
     quiet: bool,
 
@@ -138,6 +145,7 @@ impl CodeModel {
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            linker: self.linker.clone().or(Some("cc".to_string())),
             disable_modulefs_cache: self.disable_modulefs_cache,
             base_path: self.base_path.clone(),
             opt_level: match self.optimize {
@@ -295,6 +303,10 @@ fn command_new(project_name: String, lib: bool) {
 }
 
 pub fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("Compiler panic: {info}");
+    }));
+
     let version = env!("CARGO_PKG_VERSION");
     let args = Args::parse();
 
