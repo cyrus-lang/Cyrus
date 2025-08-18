@@ -103,7 +103,8 @@ fn prepare_compilation(
 }
 
 pub(crate) fn command_run(options: CompilerOptions, file_path: Option<String>) {
-    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+    let (mut opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+    opts.disable_modulefs_cache = true;
 
     let mut temp = env::temp_dir();
     temp.push("path");
