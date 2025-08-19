@@ -20,6 +20,37 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
 
+        match &ty {
+            ConcreteType::UnresolvedSymbol(symbol_id)
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id))
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id))
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id))
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::Interface(symbol_id))
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::GlobalVar(symbol_id))
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::Variable(symbol_id))
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::Func(symbol_id))
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::Method(symbol_id)) => {
+                let local_or_global_symbol = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)?;
+
+                // mark symbol used
+                match &local_or_global_symbol {
+                    LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
+                        let local_scope_opt = self
+                            .resolver
+                            .get_scope_ref(self.module_id, local_symbol.get_symbol_id());
+
+                        self.mark_local_symbol_used_once(local_scope_opt, self.module_id, *symbol_id);
+                    }
+                    LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
+                        self.mark_symbol_used_once(self.module_id, symbol_entry.get_symbol_id());
+                    }
+                }
+            }
+            _ => {}
+        }
+
         match ty {
             ConcreteType::UnresolvedSymbol(symbol_id) => {
                 self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
@@ -27,7 +58,6 @@ impl<'a> AnalysisContext<'a> {
                 let resolved = self.resolve_symbol_type(scope_id_opt, symbol_id, loc.clone())?;
                 self.normalize_type(scope_id_opt, resolved, loc)
             }
-
             ConcreteType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id)) => {
                 let local_or_global_symbol =
                     match self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id) {

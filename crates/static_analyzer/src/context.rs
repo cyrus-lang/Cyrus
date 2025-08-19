@@ -4,7 +4,7 @@ use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagR
 use resolver::{
     Resolver,
     moduleloader::ModuleFilePath,
-    scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntryKind},
 };
 use std::{
     mem,
@@ -142,7 +142,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
                 TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum, false),
-                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(typed_typedef, false),
+                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef, false),
                 // Not analyzed
                 TypedStatement::Import(_) => continue,
                 // Invalid top-level statements
@@ -220,7 +220,7 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Reachable
                 }
                 TypedStatement::Typedef(typed_typedef) => {
-                    self.analyze_typedef(typed_typedef, false);
+                    self.analyze_typedef(Some(block_stmt.scope_id), typed_typedef, false);
                     FlowState::Reachable
                 }
                 // Invalid statements
@@ -809,7 +809,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_func_decl(&mut self, typed_func_decl: &TypedFuncDecl) {
+    fn analyze_func_decl(&mut self, typed_func_decl: &mut TypedFuncDecl) {
         self.check_duplicate_param_names(
             &typed_func_decl.params.list,
             typed_func_decl.params.variadic.as_ref(),
@@ -819,6 +819,14 @@ impl<'a> AnalysisContext<'a> {
                 0,
             ),
         );
+
+        typed_func_decl.return_type =
+            match self.normalize_type(None, typed_func_decl.return_type.clone(), typed_func_decl.loc.clone()) {
+                Some(concrete_type) => concrete_type,
+                None => return,
+            };
+
+        self.normalize_func_params(&mut typed_func_decl.params, typed_func_decl.loc.clone());
     }
 
     fn analyze_interface(&mut self, typed_interface: &TypedInterface) {
@@ -855,8 +863,13 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_typedef(&mut self, typed_typedef: &TypedTypedef, is_local: bool) {
+    fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedef, is_local: bool) {
         self.check_typedef_name(typed_typedef.name.clone(), typed_typedef.loc.clone(), is_local);
+        typed_typedef.ty = match self.normalize_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone())
+        {
+            Some(concrete_type) => concrete_type,
+            None => return,
+        };
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVariable) {

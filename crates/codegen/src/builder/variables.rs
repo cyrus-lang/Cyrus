@@ -1,6 +1,6 @@
 use crate::builder::module::{CodeGenBuilder, LocalIRValue};
 use ast::AccessSpecifier;
-use inkwell::{module::Linkage, types::BasicTypeEnum, values::GlobalValue};
+use inkwell::{module::Linkage, types::BasicTypeEnum, values::{GlobalValue, PointerValue}};
 use resolver::scope::LocalScopeRef;
 use typed_ast::{TypedExpression, TypedGlobalVariable, TypedVariable, types::ConcreteType};
 
@@ -64,7 +64,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_local_variable(&mut self, local_scope_opt: Option<LocalScopeRef>, variable: &TypedVariable) {
+    pub(crate) fn build_local_variable(&mut self, local_scope_opt: Option<LocalScopeRef>, variable: &TypedVariable) -> PointerValue<'a> {
         let (basic_type, concrete_type): (BasicTypeEnum<'a>, ConcreteType) = {
             if let Some(concrete_type) = &variable.ty {
                 (
@@ -102,5 +102,7 @@ impl<'a> CodeGenBuilder<'a> {
             let basic_rvalue = rvalue.as_basic_value();
             self.llvmbuilder.build_store(alloca, basic_rvalue).unwrap();
         }
+
+        alloca
     }
 }

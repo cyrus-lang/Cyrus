@@ -1,3 +1,5 @@
+use crate::builder::module::LocalIRValue;
+
 use super::module::CodeGenBuilder;
 use ast::{AccessSpecifier, SelfModifierKind};
 use inkwell::{
@@ -11,20 +13,64 @@ use inkwell::{
     types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
     values::FunctionValue,
 };
-use typed_ast::{TypedFuncDef, TypedFuncParamKind, TypedFuncParams, types::ConcreteType};
+use typed_ast::{
+    TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParams, TypedVariable, types::ConcreteType,
+};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_func_def(&mut self, func_def: &TypedFuncDef) {
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, func_def.body.scope_id);
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&func_def.symbol_id).unwrap();
 
-        let fn_value = local_ir_value.as_func().unwrap();
+        let fn_value = local_ir_value.as_func().unwrap().clone();
         self.blockreg.current_func_ref = Some(fn_value.clone());
 
-        let entry_block = self.llvmctx.append_basic_block(*fn_value, "entry");
+        let entry_block = self.llvmctx.append_basic_block(fn_value, "entry");
         self.blockreg.current_block_ref = Some(entry_block);
         self.llvmbuilder.position_at_end(entry_block);
         drop(irreg);
+
+        func_def
+            .params
+            .list
+            .iter()
+            .enumerate()
+            .for_each(|(param_idx, param_kind)| {
+                if let TypedFuncParamKind::FuncParam(func_param) = param_kind {
+                    let local_scope_rc = local_scope_opt.clone().unwrap();
+                    let local_scope = local_scope_rc.borrow();
+                    let local_param_symbol_id = local_scope.resolve(&func_param.name).unwrap().get_symbol_id();
+                    drop(local_scope);
+
+                    let lvalue_pointer = self.build_local_variable(
+                        local_scope_opt.clone(),
+                        &TypedVariable {
+                            symbol_id: local_param_symbol_id,
+                            name: func_param.name.clone(),
+                            ty: Some(func_param.ty.clone()),
+                            rhs: None,
+                            loc: func_param.loc.clone(),
+                        },
+                    );
+
+                    let basic_value = fn_value.get_nth_param(param_idx.try_into().unwrap()).unwrap();
+                    self.llvmbuilder.build_store(lvalue_pointer, basic_value).unwrap();
+
+                    let mut irreg = self.irreg.borrow_mut();
+                    irreg.insert(
+                        local_param_symbol_id,
+                        LocalIRValue::LValue(lvalue_pointer, func_param.ty.clone()),
+                    );
+                    drop(irreg);
+                }
+            });
+
+        if let Some(variadic_params) = &func_def.params.variadic {
+            if let TypedFuncVariadicParams::Typed(_, _) = variadic_params {
+                todo!();
+            }
+        }
 
         self.build_block_statement(&func_def.body);
 

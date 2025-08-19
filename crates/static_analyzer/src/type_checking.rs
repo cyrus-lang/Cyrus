@@ -5,7 +5,7 @@ use ast::{
     token::{Location, TokenKind},
 };
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::scope::SymbolEntryKind;
+use resolver::scope::{LocalOrGlobalSymbol, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedCast, TypedDereference, TypedExpression,
     TypedExpressionKind, TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedLiteral,
@@ -25,8 +25,6 @@ impl<'a> AnalysisContext<'a> {
         target_type: ConcreteType,
         loc: Location,
     ) -> bool {
-        dbg!((value_type.clone(), target_type.clone()));
-
         match (value_type, target_type) {
             (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
                 self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
@@ -258,6 +256,17 @@ impl<'a> AnalysisContext<'a> {
                 let local_or_global_symbol = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_ref_opt, *symbol_id)?;
+
+                // mark symbol used
+                match &local_or_global_symbol {
+                    LocalOrGlobalSymbol::LocalSymbol(..) => {
+                        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt?);
+                        self.mark_local_symbol_used_once(local_scope_opt, self.module_id, *symbol_id);
+                    }
+                    LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
+                        self.mark_symbol_used_once(self.module_id, symbol_entry.get_symbol_id());
+                    }
+                }
 
                 self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
             }

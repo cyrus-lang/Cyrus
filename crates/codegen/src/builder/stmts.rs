@@ -62,7 +62,7 @@ macro_rules! build_loop_statement {
             $self.llvmbuilder.position_at_end(cond_block);
 
             let cond_value = $condition;
-            
+
             $self
                 .llvmbuilder
                 .build_conditional_branch(cond_value, body_block, end_block)
@@ -237,7 +237,7 @@ impl<'a> CodeGenBuilder<'a> {
         for stmt in &block_stmt.exprs {
             match stmt {
                 TypedStatement::Variable(typed_variable) => {
-                    self.build_local_variable(local_scope_opt.clone(), typed_variable)
+                    self.build_local_variable(local_scope_opt.clone(), typed_variable);
                 }
                 TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
                 TypedStatement::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
