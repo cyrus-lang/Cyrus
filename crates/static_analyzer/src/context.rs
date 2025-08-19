@@ -4,7 +4,7 @@ use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagR
 use resolver::{
     Resolver,
     moduleloader::ModuleFilePath,
-    scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntryKind},
 };
 use std::{
     mem,
@@ -16,6 +16,36 @@ use typed_ast::{format::format_concrete_type, *};
 enum ControlContext {
     For(TypedFor),
     Switch(TypedSwitch),
+}
+
+macro_rules! update_local_symbol_type {
+    ($self:expr, $local_scope_rc:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
+        let mut local_scope = $local_scope_rc.borrow_mut();
+        let mut_ref = local_scope.resolve_with_symbol_id_mut($symbol_id).unwrap();
+
+        match &mut mut_ref.kind {
+            $pattern => {
+                let $var = $var;
+                $body
+            }
+            _ => unreachable!(),
+        }
+        drop(local_scope);
+    }};
+}
+
+macro_rules! update_global_symbol_type {
+    ($self:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
+        let mut global_symbols = $self.resolver.global_symbols.lock().unwrap();
+        let symbol_table = global_symbols.get_mut(&$self.module_id).unwrap();
+        match &mut symbol_table.entries.get_mut(&$symbol_id).unwrap().kind {
+            $pattern => {
+                let $var = $var;
+                $body
+            }
+            _ => unreachable!(),
+        }
+    }};
 }
 
 pub struct AnalysisContext<'a> {
@@ -246,6 +276,7 @@ impl<'a> AnalysisContext<'a> {
             _ => FlowState::Reachable,
         }
     }
+
     fn analyze_if_stmt(&mut self, typed_if: &mut TypedIf) -> FlowState {
         let consequent_state = self.analyze_block_statement(&mut typed_if.consequent);
 
@@ -290,7 +321,13 @@ impl<'a> AnalysisContext<'a> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(Some(scope_id));
 
         let resolved_func = self.get_cur_func_symbol_id();
-        let return_type = resolved_func.func_sig.return_type;
+        let return_type = self
+            .normalize_type(
+                Some(scope_id),
+                resolved_func.func_sig.return_type,
+                typed_return.loc.clone(),
+            )
+            .unwrap();
 
         if return_type.is_void() && typed_return.argument.is_some() {
             self.reporter.report(Diag {
@@ -415,7 +452,47 @@ impl<'a> AnalysisContext<'a> {
                 return;
             }
 
-            self.analyze_typed_expr_type(None, expr);
+            expr.concrete_type = match self.analyze_typed_expr_type(None, expr) {
+                Some(concrete_type) => Some(concrete_type),
+                None => return,
+            };
+        }
+
+        typed_global_var.ty = match &typed_global_var.ty {
+            Some(concrete_type) => self.normalize_type(None, concrete_type.clone(), typed_global_var.loc.clone()),
+            None => Some(typed_global_var.expr.clone().unwrap().concrete_type.unwrap()),
+        };
+
+        update_global_symbol_type!(self, typed_global_var.symbol_id,
+            SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
+                resolved_var.global_var_sig.ty = typed_global_var.ty.clone();
+            }
+        );
+
+        if let Some(expr) = &mut typed_global_var.expr {
+            if let Some(target_type) = &typed_global_var.ty {
+                if !self.check_type_mismatch(
+                    None,
+                    expr.concrete_type.clone().unwrap(),
+                    target_type.clone(),
+                    typed_global_var.loc.clone(),
+                ) {
+                    let lhs_type = format_concrete_type(target_type.clone(), &(self.symbol_formatter)(None));
+                    let rhs_type =
+                        format_concrete_type(expr.concrete_type.clone().unwrap(), &(self.symbol_formatter)(None));
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            typed_global_var.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                }
+            }
         }
     }
 
@@ -693,8 +770,42 @@ impl<'a> AnalysisContext<'a> {
                     typed_func_def.loc.clone(),
                     0,
                 )),
-                hint: Some("not all control paths return a value.".to_string()),
+                hint: Some("Not all control paths return a value.".to_string()),
             });
+        }
+
+        typed_func_def.return_type =
+            match self.normalize_type(None, typed_func_def.return_type.clone(), typed_func_def.loc.clone()) {
+                Some(concrete_type) => concrete_type,
+                None => return,
+            };
+
+        self.normalize_func_params(&mut typed_func_def.params, typed_func_def.loc.clone());
+    }
+
+    fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: Location) {
+        for param in &mut params.list {
+            match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => {
+                    typed_func_param.ty =
+                        match self.normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone()) {
+                            Some(concrete_type) => concrete_type,
+                            None => continue,
+                        };
+                }
+                TypedFuncParamKind::SelfModifier(..) => continue,
+            }
+        }
+
+        if let Some(variadic_params) = &mut params.variadic {
+            if let TypedFuncVariadicParams::Typed(identifier, concrete_type) = variadic_params {
+                let normalized_concrete_type = match self.normalize_type(None, concrete_type.clone(), loc.clone()) {
+                    Some(concrete_type) => concrete_type,
+                    None => return,
+                };
+
+                *variadic_params = TypedFuncVariadicParams::Typed(identifier.clone(), normalized_concrete_type);
+            }
         }
     }
 
@@ -749,8 +860,6 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_variable(&mut self, scope_id_opt: Option<ScopeID>, typed_variable: &mut TypedVariable) {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
-
         if typed_variable.ty.is_none() && typed_variable.rhs.is_none() {
             return;
         }
@@ -763,15 +872,33 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        if let Some(var_type) = &typed_variable.ty {
+        let local_scope_rc = self
+            .resolver
+            .get_scope_ref(self.module_id, scope_id_opt.unwrap())
+            .unwrap();
+
+        if typed_variable.ty.is_some() {
+            typed_variable.ty = self.normalize_type(
+                scope_id_opt,
+                typed_variable.ty.clone().unwrap(),
+                typed_variable.loc.clone(),
+            );
+
+            update_local_symbol_type!(self, local_scope_rc, typed_variable.symbol_id, LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                resolved_variable.typed_variable.ty = typed_variable.ty.clone();
+            });
+
             if let Some(value_type) = value_type_opt {
-                let lhs_type = format_concrete_type(var_type.clone(), &formatter_closure);
-                let rhs_type = format_concrete_type(value_type.clone(), &formatter_closure);
+                let lhs_type = format_concrete_type(
+                    typed_variable.ty.clone().unwrap(),
+                    &(self.symbol_formatter)(scope_id_opt),
+                );
+                let rhs_type = format_concrete_type(value_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
                 if !self.check_type_mismatch(
                     scope_id_opt,
                     value_type.clone(),
-                    var_type.clone(),
+                    typed_variable.ty.clone().unwrap(),
                     typed_variable.loc.clone(),
                 ) {
                     self.reporter.report(Diag {

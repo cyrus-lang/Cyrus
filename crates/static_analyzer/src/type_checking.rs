@@ -25,6 +25,8 @@ impl<'a> AnalysisContext<'a> {
         target_type: ConcreteType,
         loc: Location,
     ) -> bool {
+        dbg!((value_type.clone(), target_type.clone()));
+
         match (value_type, target_type) {
             (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
                 self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
@@ -124,6 +126,8 @@ impl<'a> AnalysisContext<'a> {
 
             // Bool to Int
             (Bool, Int8 | UInt8) => true,
+
+            (Bool, Bool) => true,
 
             _ => false,
         }
@@ -295,15 +299,17 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
+        let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.get_loc());
+        typed_expr.concrete_type = normalized_type;
+
         if cfg!(debug_assertions) {
-            if let Some(concrete_type_clone) = concrete_type.clone() {
+            if let Some(concrete_type_clone) = typed_expr.concrete_type.clone() {
                 let is_unresolved_symbol = matches!(concrete_type_clone, ConcreteType::UnresolvedSymbol(..));
                 assert!(is_unresolved_symbol == false);
             }
         }
 
-        typed_expr.concrete_type = concrete_type.clone();
-        concrete_type.clone()
+        typed_expr.concrete_type.clone()
     }
 
     pub(crate) fn check_expr_type_must_be_condition(&mut self, concrete_type: ConcreteType, loc: Location) {

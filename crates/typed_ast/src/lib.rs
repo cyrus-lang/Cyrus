@@ -1,8 +1,6 @@
 use crate::types::{BasicConcreteType, ConcreteType, TypedUnnamedStructType};
 use ast::{
-    AccessSpecifier, Identifier, LiteralKind, SelfModifier,
-    operators::{InfixOperator, PrefixOperator, UnaryOperator},
-    token::Location,
+    operators::{InfixOperator, PrefixOperator, UnaryOperator}, token::Location, AccessSpecifier, Identifier, LiteralKind, SelfModifier, SelfModifierKind
 };
 use std::collections::HashMap;
 
@@ -466,7 +464,15 @@ pub enum TypedFuncVariadicParams {
 #[derive(Debug, Clone)]
 pub enum TypedFuncParamKind {
     FuncParam(TypedFuncParam),
-    SelfModifier(SelfModifier),
+    SelfModifier(TypedSelfModifier),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedSelfModifier {
+    pub symbol_id: Option<SymbolID>,
+    pub ty: Option<ConcreteType>,
+    pub kind: SelfModifierKind,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]

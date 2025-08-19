@@ -16,7 +16,7 @@ use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedAssignment, TypedCast, TypedDereference, TypedExpression,
     TypedExpressionKind, TypedFuncCall, TypedInfixExpression, TypedLiteral, TypedPrefixExpression, TypedStructInit,
     TypedUnaryExpression, TypedUnnamedStructValue,
-    types::{BasicConcreteType, ConcreteType},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -110,7 +110,7 @@ impl<'a> CodeGenBuilder<'a> {
         let struct_type = self
             .build_concrete_type(
                 local_scope_opt.clone(),
-                ConcreteType::Symbol(typed_struct_init.symbol_id),
+                ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(typed_struct_init.symbol_id)),
             )
             .into_struct_type();
 
@@ -144,7 +144,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         InternalValue::new(
-            ConcreteType::Symbol(typed_struct_init.symbol_id),
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(typed_struct_init.symbol_id)),
             InternalValueKind::RValue(struct_value.as_basic_value_enum()),
         )
     }
@@ -163,7 +163,11 @@ impl<'a> CodeGenBuilder<'a> {
         rhs_rvalue
     }
 
-    fn build_dereference(&mut self, local_scope_opt: Option<LocalScopeRef>, deref: &TypedDereference) -> InternalValue<'a> {
+    fn build_dereference(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        deref: &TypedDereference,
+    ) -> InternalValue<'a> {
         let operand_type = deref.operand.concrete_type.clone().unwrap();
         let lvalue = self.build_expr(local_scope_opt.clone(), &deref.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
@@ -257,7 +261,11 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    fn build_func_call(&mut self, local_scope_opt: Option<LocalScopeRef>, func_call: &TypedFuncCall) -> InternalValue<'a> {
+    fn build_func_call(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        func_call: &TypedFuncCall,
+    ) -> InternalValue<'a> {
         let module_id = self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id).unwrap();
         let symbol_entry = self
             .resolver

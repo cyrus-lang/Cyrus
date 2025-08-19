@@ -1,13 +1,22 @@
 // extern func printf(format: const char*, ...);
 
-type Int = int;
 type Bool = bool;
+type Int = int;
 
-func cmp(x: Int, y: Int) Bool {
-    // return x == y;
-    return true;
+func sample(x: Int, y: Bool) Int {
+    return 0;
 }
 
+// func cmp(x: Int, y: Int) Bool {
+//     // return x == y;
+//     return true;
+// }
+
 func main() {
-    // #b = MyMyPerson {};
+    // #v: Bool = true;
+    // #a = sample();
+    // #c: Int = 0;
+    
+    // #c: Bool;
+    // c = sample();
 }
