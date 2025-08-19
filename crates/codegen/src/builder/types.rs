@@ -8,7 +8,7 @@ use inkwell::{
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
     values::{AnyValue, AnyValueEnum},
 };
-use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntry, SymbolEntryKind};
+use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind};
 use typed_ast::{
     SymbolID,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType},
@@ -69,38 +69,21 @@ impl<'a> CodeGenBuilder<'a> {
                 }
             };
 
-            dbg!(local_or_global_symbol.clone());
-            todo!();
+            let irreg_symbol_id = match local_or_global_symbol {
+                LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.get_symbol_id(),
+                LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.get_symbol_id(),
+            };
 
-            // let type_symbol_id = match local_or_global_symbol {
-            //     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
-            //         LocalSymbolKind::Variable(resolved_variable) => {
-            //             todo!();
-            //             // self.build_concrete_type(local_scope_opt, resolved_variable.typed_variable.ty.clone().unwrap())
-            //         }
-            //         LocalSymbolKind::Typedef(resolved_typedef) => {
-            //             return self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty);
-            //         }
-            //         _ => local_symbol.get_symbol_id(),
-            //     },
-            //     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
-            //         SymbolEntryKind::Typedef(resolved_typedef) => {
-            //             return self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty);
-            //         }
-            //         _ => symbol_entry.get_symbol_id(),
-            //     },
-            // };
+            let irreg = self.irreg.borrow();
+            let local_ir_value = irreg.get(&irreg_symbol_id).unwrap();
 
-            // let irreg = self.irreg.borrow();
-            // let local_ir_value = irreg.get(&type_symbol_id).unwrap();
+            let any_type_enum = match local_ir_value {
+                LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
+                _ => unreachable!(),
+            };
 
-            // let any_type_enum = match local_ir_value {
-            //     LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
-            //     _ => unreachable!(),
-            // };
-
-            // drop(irreg);
-            // any_type_enum
+            drop(irreg);
+            any_type_enum
         } else {
             let module_id = self.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
             let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap();

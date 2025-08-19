@@ -1,8 +1,10 @@
-type A = int;
+struct Sample {
+    a: int;    
+}
 
 func main() {
-    #a: A;
-    a;
+    #s: Sample = Sample { a: 0 };
+    s;
 }
 
 // type ConstStr = char*;

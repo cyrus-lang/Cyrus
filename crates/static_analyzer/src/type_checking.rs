@@ -26,6 +26,9 @@ impl<'a> AnalysisContext<'a> {
         loc: Location,
     ) -> bool {
         match (value_type, target_type) {
+            (ConcreteType::ResolvedSymbol(resolved_symbol1), ConcreteType::ResolvedSymbol(resolved_symbol2)) => {
+                resolved_symbol1 == resolved_symbol2
+            }
             (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
                 self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
             }
