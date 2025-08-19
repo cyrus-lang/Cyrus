@@ -117,7 +117,6 @@ impl Resolver {
             }
         };
 
-        self.mark_symbol_used_once(module_id, symbol_id);
         Some(symbol_id)
     }
 
@@ -1860,7 +1859,6 @@ impl Resolver {
     ) -> Option<u32> {
         match self.lookup_symbol_id(module_id, &identifier.name) {
             Some(symbol_id) => {
-                self.mark_symbol_used_once(module_id, symbol_id);
                 Some(symbol_id)
             }
             None => {
@@ -1921,7 +1919,6 @@ impl Resolver {
             },
         };
 
-        self.mark_local_symbol_used_once(local_scope_opt.clone(), module_id, symbol_id);
         Some(symbol_id)
     }
 
@@ -1960,11 +1957,6 @@ impl Resolver {
 
                         match symbol_id_opt {
                             Some(local_symbol) => {
-                                self.mark_local_symbol_used_once(
-                                    local_scope_opt.clone(),
-                                    module_id,
-                                    local_symbol.get_symbol_id(),
-                                );
                                 Some(local_symbol.get_symbol_id())
                             }
                             None => None,
@@ -2197,7 +2189,6 @@ impl Resolver {
                     }
                 }
 
-                self.mark_symbol_used_once(module_id, symbol_id);
                 Some(TypedExpression {
                     kind: TypedExpressionKind::FuncCall(TypedFuncCall {
                         args: typed_args,
@@ -2527,41 +2518,6 @@ impl Resolver {
             }
             None => false,
         }
-    }
-
-    pub(crate) fn mark_symbol_used_once(&mut self, module_id: ModuleID, symbol_id: SymbolID) {
-        let mut global_symbols = self.global_symbols.lock().unwrap();
-        let symbol_table = global_symbols.get_mut(&module_id).unwrap();
-        let symbol_entry = symbol_table
-            .entries
-            .iter_mut()
-            .find(|(entry_symbol_id, _)| **entry_symbol_id == symbol_id)
-            .unwrap()
-            .1;
-        symbol_entry.used = true;
-        drop(global_symbols);
-    }
-
-    pub(crate) fn mark_local_symbol_used_once(
-        &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
-        module_id: ModuleID,
-        symbol_id: SymbolID,
-    ) {
-        let local_scope_rc = local_scope_opt.unwrap();
-        let mut local_scope = local_scope_rc.borrow_mut();
-        let local_symbol = match local_scope
-            .symbols
-            .iter_mut()
-            .find(|local_symbol| local_symbol.1.get_symbol_id() == symbol_id)
-        {
-            Some((_, local_symbol)) => local_symbol,
-            None => {
-                return self.mark_symbol_used_once(module_id, symbol_id);
-            }
-        };
-        local_symbol.used = true;
-        drop(local_scope);
     }
 
     pub fn lookup_symbol_id_in_modules(&self, symbol_id: SymbolID) -> Option<ModuleID> {
