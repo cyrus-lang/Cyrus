@@ -11,7 +11,7 @@ use inkwell::{
 use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntry, SymbolEntryKind};
 use typed_ast::{
     SymbolID,
-    types::{BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedUnnamedStructType},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -59,7 +59,9 @@ impl<'a> CodeGenBuilder<'a> {
         symbol_id: SymbolID,
     ) -> AnyTypeEnum<'a> {
         if local_scope_opt.is_some() {
-            let local_or_global_symbol = match self.resolver.resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+            let local_or_global_symbol = match self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
             {
                 Some(local_or_global_symbol) => local_or_global_symbol,
                 None => {
@@ -70,61 +72,47 @@ impl<'a> CodeGenBuilder<'a> {
             dbg!(local_or_global_symbol.clone());
             todo!();
 
-            let type_symbol_id = match local_or_global_symbol {
-                LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
-                    LocalSymbolKind::Variable(resolved_variable) => {
-                        todo!();
-                        // self.build_concrete_type(local_scope_opt, resolved_variable.typed_variable.ty.clone().unwrap())
-                    }
-                    LocalSymbolKind::Typedef(resolved_typedef) => {
-                        return self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty);
-                    },
-                    _ => local_symbol.get_symbol_id(),
-                },
-                LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
-                    SymbolEntryKind::Typedef(resolved_typedef) => {
-                        return self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty);
-                    },
-                    _ => symbol_entry.get_symbol_id(),
-                },
-            };
+            // let type_symbol_id = match local_or_global_symbol {
+            //     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
+            //         LocalSymbolKind::Variable(resolved_variable) => {
+            //             todo!();
+            //             // self.build_concrete_type(local_scope_opt, resolved_variable.typed_variable.ty.clone().unwrap())
+            //         }
+            //         LocalSymbolKind::Typedef(resolved_typedef) => {
+            //             return self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty);
+            //         }
+            //         _ => local_symbol.get_symbol_id(),
+            //     },
+            //     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
+            //         SymbolEntryKind::Typedef(resolved_typedef) => {
+            //             return self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty);
+            //         }
+            //         _ => symbol_entry.get_symbol_id(),
+            //     },
+            // };
 
-            let irreg = self.irreg.borrow();
-            let local_ir_value = irreg.get(&type_symbol_id).unwrap();
+            // let irreg = self.irreg.borrow();
+            // let local_ir_value = irreg.get(&type_symbol_id).unwrap();
 
-            let any_type_enum = match local_ir_value {
-                LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
-                _ => unreachable!(),
-            };
+            // let any_type_enum = match local_ir_value {
+            //     LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
+            //     _ => unreachable!(),
+            // };
 
-            drop(irreg);
-            any_type_enum
+            // drop(irreg);
+            // any_type_enum
         } else {
-            fn resolve_final_symbol_entry(this: &CodeGenBuilder<'_>, symbol_id: SymbolID) -> SymbolEntry {
-                let module_id = this.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
-                let symbol_entry = this.resolver.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap();
-
-                match &symbol_entry.kind {
-                    SymbolEntryKind::Typedef(resolved_typedef) => match &resolved_typedef.typedef_sig.ty {
-                        ConcreteType::Symbol(inner_type_symbol_id) => {
-                            resolve_final_symbol_entry(this, *inner_type_symbol_id)
-                        }
-                        _ => symbol_entry.clone(),
-                    },
-                    _ => symbol_entry.clone(),
-                }
-            }
-
-            let final_symbol_entry = resolve_final_symbol_entry(self, symbol_id);
+            let module_id = self.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
+            let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap();
 
             let any_type_enum = {
-                match final_symbol_entry.kind {
+                match symbol_entry.kind {
                     SymbolEntryKind::Typedef(resolved_typedef) => {
                         self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty)
                     }
                     _ => {
                         let irreg = self.irreg.borrow();
-                        let local_ir_value = irreg.get(&final_symbol_entry.get_symbol_id()).unwrap();
+                        let local_ir_value = irreg.get(&symbol_entry.get_symbol_id()).unwrap();
                         match local_ir_value {
                             LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
                             _ => unreachable!(),
@@ -143,7 +131,19 @@ impl<'a> CodeGenBuilder<'a> {
         concrete_type: ConcreteType,
     ) -> AnyTypeEnum<'a> {
         match concrete_type {
-            ConcreteType::Symbol(symbol_id) => self.build_concrete_type_from_symbol_id(local_scope_opt, symbol_id),
+            ConcreteType::UnresolvedSymbol(..) => unreachable!(),
+            ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+                ResolvedSymbol::Enum(symbol_id)
+                | ResolvedSymbol::Typedef(symbol_id)
+                | ResolvedSymbol::NamedStruct(symbol_id)
+                | ResolvedSymbol::Interface(symbol_id)
+                | ResolvedSymbol::GlobalVar(symbol_id)
+                | ResolvedSymbol::Variable(symbol_id)
+                | ResolvedSymbol::Func(symbol_id)
+                | ResolvedSymbol::Method(symbol_id) => {
+                    self.build_concrete_type_from_symbol_id(local_scope_opt, symbol_id)
+                }
+            },
             ConcreteType::BasicType(basic_concrete_type) => self.build_basic_concrete_type(basic_concrete_type),
             ConcreteType::Array(typed_array_type) => {
                 let element_type: BasicTypeEnum = self

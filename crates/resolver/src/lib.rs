@@ -33,8 +33,10 @@ mod diagnostics;
 pub mod moduleloader;
 pub mod scope;
 
+pub type GlobalSymbolsMutex = Mutex<HashMap<ModuleID, SymbolTable>>;
+
 pub struct Resolver {
-    pub global_symbols: Arc<Mutex<HashMap<ModuleID, SymbolTable>>>,
+    pub global_symbols: Arc<GlobalSymbolsMutex>,
     pub module_aliases: Arc<Mutex<HashMap<ModuleAlias, ModuleID>>>,
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
     pub program_trees: Arc<Mutex<Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>>>,
@@ -896,10 +898,24 @@ impl Resolver {
             self.insert_scope_ref(module_id, scope_id, local_scope_rc.clone());
 
             match self.resolve_func(module_id, Some(local_scope_rc.clone()), &func_def.as_func_decl()) {
-                Some((return_type, typed_func_params, typed_variadic_param)) => {
+                Some((return_type, mut typed_func_params, typed_variadic_param)) => {
                     let symbol_id = generate_symbol_id();
                     let method_name = func_def.identifier.name.clone();
                     let method_id = self.make_method_id(struct_symbol_id, method_name.clone());
+
+                    // resolve self modifier
+                    typed_func_params = typed_func_params
+                        .iter()
+                        .map(|typed_func_param_kind| match typed_func_param_kind.clone() {
+                            TypedFuncParamKind::FuncParam(typed_func_param) => {
+                                TypedFuncParamKind::FuncParam(typed_func_param)
+                            }
+                            TypedFuncParamKind::SelfModifier(mut typed_self_modifier) => {
+                                typed_self_modifier.symbol_id = Some(struct_symbol_id);
+                                TypedFuncParamKind::SelfModifier(typed_self_modifier)
+                            }
+                        })
+                        .collect();
 
                     methods.insert(method_id, symbol_id);
                     self.insert_symbol_name(module_id, &method_name, func_def.loc.clone(), func_def.span.end);
@@ -1204,7 +1220,14 @@ impl Resolver {
                     }));
                 }
                 FuncParamKind::SelfModifier(self_modifier) => {
-                    typed_func_params.push(TypedFuncParamKind::SelfModifier(self_modifier.clone()));
+                    let typed_self_modifier = TypedSelfModifier {
+                        symbol_id: None,
+                        ty: None,
+                        kind: self_modifier.kind.clone(),
+                        loc: self_modifier.loc.clone(),
+                    };
+
+                    typed_func_params.push(TypedFuncParamKind::SelfModifier(typed_self_modifier));
                 }
             }
         }
@@ -2595,7 +2618,11 @@ impl Resolver {
         }
     }
 
-    pub fn resolve_symbol_from_local_scope(&self, local_scope_rc: LocalScopeRef, symbol_id: SymbolID) -> Option<LocalSymbol> {
+    pub fn resolve_symbol_from_local_scope(
+        &self,
+        local_scope_rc: LocalScopeRef,
+        symbol_id: SymbolID,
+    ) -> Option<LocalSymbol> {
         let local_scope = local_scope_rc.borrow();
         let local_option = match local_scope
             .symbols
