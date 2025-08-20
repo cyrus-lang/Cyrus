@@ -10,8 +10,10 @@ use std::{
     mem,
     sync::{Arc, Mutex},
 };
-use typed_ast::{format::format_concrete_type, *};
+use typed_ast::{format::format_concrete_type, types::ConcreteType, *};
 
+// FIXME Remove later
+#[allow(unused)]
 #[derive(Debug)]
 enum ControlContext {
     For(TypedFor),
@@ -436,6 +438,36 @@ impl<'a> AnalysisContext<'a> {
         symbol_entry.as_func().unwrap().clone()
     }
 
+    fn check_global_var_assignment_type(
+        &mut self,
+        global_var_type: ConcreteType,
+        expr_type: ConcreteType,
+        loc: Location,
+    ) {
+        let compatible_type = match (global_var_type.clone(), expr_type.clone()) {
+            (ConcreteType::Const(concrete_type1), concrete_type2) => *concrete_type1 == concrete_type2,
+            (concrete_type1, ConcreteType::Const(concrete_type2)) => concrete_type1 == *concrete_type2,
+            (concrete_type1, concrete_type2) => concrete_type1 == concrete_type2,
+            _ => false,
+        };
+
+        if !compatible_type {
+            let lhs_type = format_concrete_type(global_var_type, &(self.symbol_formatter)(None));
+            let rhs_type = format_concrete_type(expr_type, &(self.symbol_formatter)(None));
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
+    }
+
     pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVariable) {
         if let Some(expr) = &mut typed_global_var.expr {
             if !expr.kind.is_comptime_valid() {
@@ -462,6 +494,14 @@ impl<'a> AnalysisContext<'a> {
             Some(concrete_type) => self.normalize_type(None, concrete_type.clone(), typed_global_var.loc.clone()),
             None => Some(typed_global_var.expr.clone().unwrap().concrete_type.unwrap()),
         };
+
+        if let Some(typed_expr) = &typed_global_var.expr {
+            self.check_global_var_assignment_type(
+                typed_global_var.ty.clone().unwrap(),
+                typed_expr.concrete_type.clone().unwrap(),
+                typed_global_var.loc.clone(),
+            );
+        }
 
         update_global_symbol_type!(self, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {

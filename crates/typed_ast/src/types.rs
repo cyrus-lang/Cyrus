@@ -53,11 +53,9 @@ impl ConcreteType {
 
     pub fn as_struct_symbol_id(&self) -> Option<SymbolID> {
         match self {
-            ConcreteType::ResolvedSymbol(resolved_symbol) => {
-                match resolved_symbol {
-                    ResolvedSymbol::NamedStruct(symbol_id) => Some(*symbol_id),
-                    _ => None
-                }
+            ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+                ResolvedSymbol::NamedStruct(symbol_id) => Some(*symbol_id),
+                _ => None,
             },
             _ => None,
         }
@@ -187,11 +185,17 @@ impl TryFrom<TokenKind> for ConcreteType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypedArrayType {
     pub element_type: Box<ConcreteType>,
     pub capacity: TypedArrayCapacity,
     pub loc: Location,
+}
+
+impl PartialEq for TypedArrayType {
+    fn eq(&self, other: &Self) -> bool {
+        self.element_type == other.element_type && self.capacity == other.capacity
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -200,16 +204,28 @@ pub enum TypedArrayCapacity {
     Dynamic,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypedUnnamedStructType {
     pub fields: Vec<TypedUnnamedStructTypeField>,
     pub packed: bool,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl PartialEq for TypedUnnamedStructType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields && self.packed == other.packed
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct TypedUnnamedStructTypeField {
     pub field_name: String,
     pub field_type: Box<ConcreteType>,
     pub loc: Location,
+}
+
+impl PartialEq for TypedUnnamedStructTypeField {
+    fn eq(&self, other: &Self) -> bool {
+        self.field_name == other.field_name && self.field_type == other.field_type
+    }
 }

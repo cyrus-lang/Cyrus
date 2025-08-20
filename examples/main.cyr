@@ -1,39 +1,19 @@
 extern func printf(format: const char*, ...);
 
-// type PIType = float64;
+/*
+  Outer comment start
+  /* Nested comment inside */
+  Outer comment end
 
-PI: const int = 10;
+  NOTE: Multi-line comments can also be nested!
+*/
 
 func main() {
-    // PI = 5;
-    printf("%d", PI);
-    // printf("result: %d\n", sum(5, 7));
-    // printf("result: %s\n", format_bool(cmp(5, 7)));
+   #a = "Hello
+  A
+  
+  ";
+
+   printf(a);
+   printf("H");
 }
-
-// struct Sample {
-//     a: int;    
-// }
-
-// type ConstStr = char*;
-// type CString = const ConstStr;
-// type Bool = bool;
-// type Int = int;
-
-// func sum(x: Int, y: Int) Int {
-//     return x + y;
-// }
-
-
-// func cmp(x: Int, y: Int) Bool {
-//     return x == y;
-// }
-
-// func format_bool(v: bool) ConstStr {
-//     if (v == true) {
-//         return "true";
-//     } else {
-//         return "false";
-//     }
-// }
-
