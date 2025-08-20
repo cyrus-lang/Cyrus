@@ -829,7 +829,8 @@ impl Resolver {
             }
         };
 
-        let symbol_id = generate_symbol_id();
+        let symbol_id = self.lookup_symbol_id(module_id, &global_var.identifier.name).unwrap();
+
         self.insert_symbol_entry(
             module_id,
             symbol_id,
@@ -1858,9 +1859,7 @@ impl Resolver {
         span_end: usize,
     ) -> Option<u32> {
         match self.lookup_symbol_id(module_id, &identifier.name) {
-            Some(symbol_id) => {
-                Some(symbol_id)
-            }
+            Some(symbol_id) => Some(symbol_id),
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -1956,9 +1955,7 @@ impl Resolver {
                         };
 
                         match symbol_id_opt {
-                            Some(local_symbol) => {
-                                Some(local_symbol.get_symbol_id())
-                            }
+                            Some(local_symbol) => Some(local_symbol.get_symbol_id()),
                             None => None,
                         }
                     } else {

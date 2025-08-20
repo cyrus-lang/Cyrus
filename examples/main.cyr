@@ -1,27 +1,29 @@
-struct Sample {
-    a: int;    
-}
+extern func printf(format: const char*, ...);
+
+// type PIType = float64;
+
+PI: const int = 10;
 
 func main() {
-    #s: Sample = Sample { a: 0 };
-    s;
+    // PI = 5;
+    printf("%d", PI);
+    // printf("result: %d\n", sum(5, 7));
+    // printf("result: %s\n", format_bool(cmp(5, 7)));
 }
+
+// struct Sample {
+//     a: int;    
+// }
 
 // type ConstStr = char*;
 // type CString = const ConstStr;
 // type Bool = bool;
 // type Int = int;
 
-// extern func printf(format: CString, ...);
-
 // func sum(x: Int, y: Int) Int {
 //     return x + y;
 // }
 
-// func main() {
-//     printf("result: %d\n", sum(5, 7));
-//     printf("result: %s\n", format_bool(cmp(5, 7)));
-// }
 
 // func cmp(x: Int, y: Int) Bool {
 //     return x == y;
@@ -34,3 +36,4 @@ func main() {
 //         return "false";
 //     }
 // }
+

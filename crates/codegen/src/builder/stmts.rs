@@ -99,10 +99,10 @@ impl<'a> CodeGenBuilder<'a> {
 
         for stmt in stmts {
             match stmt {
+                TypedStatement::GlobalVariable(typed_global_var) => self.build_global_var_def(typed_global_var),
                 TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
                 TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
                 TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
-                TypedStatement::GlobalVariable(typed_global_var) => self.build_global_var_def(typed_global_var),
                 TypedStatement::Interface(typed_interface) => todo!(),
                 TypedStatement::FuncDecl(_) => continue,
                 _ => continue,
@@ -162,7 +162,7 @@ impl<'a> CodeGenBuilder<'a> {
                     insert_forward_decl_to_registry(
                         self,
                         typed_global_var.symbol_id,
-                        LocalIRValue::GlobalValue(global_value),
+                        LocalIRValue::GlobalValue(global_value, typed_global_var.ty.clone().unwrap()),
                     );
                 }
                 TypedStatement::FuncDef(typed_func_def) => {

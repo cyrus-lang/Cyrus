@@ -19,11 +19,10 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn mark_local_symbol_used_once(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
+        local_scope_rc: LocalScopeRef,
         module_id: ModuleID,
         symbol_id: SymbolID,
     ) {
-        let local_scope_rc = local_scope_opt.unwrap();
         let mut local_scope = local_scope_rc.borrow_mut();
         let local_symbol = match local_scope
             .symbols
@@ -37,5 +36,21 @@ impl<'a> AnalysisContext<'a> {
         };
         local_symbol.used = true;
         drop(local_scope);
+    }
+
+    pub(crate) fn mark_func_used(
+        &mut self,
+        local_scope_rc: LocalScopeRef,
+        module_id: ModuleID,
+        symbol_id: SymbolID,
+    ) {
+        match self.resolver.resolve_symbol_from_local_scope(local_scope_rc.clone(), symbol_id) {
+            Some(..) => {
+                self.mark_local_symbol_used_once(local_scope_rc, module_id, symbol_id);
+            },
+            None => {
+                self.mark_symbol_used_once(module_id, symbol_id);
+            },
+        }
     }
 }
