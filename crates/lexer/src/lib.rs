@@ -706,30 +706,39 @@ impl Lexer {
         while self.ch == '/' && (self.peek_char() == '/' || self.peek_char() == '*') {
             if self.peek_char() == '/' {
                 // handle single-line comment
-                self.read_char();
-                self.read_char();
+                self.read_char(); // consume '/'
+                self.read_char(); // consume second '/'
 
                 while !self.is_eof() && self.ch != '\n' {
                     self.read_char();
                 }
 
-                // Consume the newline character, if present
                 if !self.is_eof() && self.ch == '\n' {
                     self.read_char();
                 }
             } else if self.peek_char() == '*' {
-                // handle multi-line comment
+                // handle multi-line (possibly nested) comment
+                self.read_char(); // consume '/'
+                self.read_char(); // consume '*'
 
-                self.read_char();
-                self.read_char();
-                while self.peek_char() != '\0' {
-                    if self.ch == '*' && self.peek_char() == '/' {
-                        break;
+                let mut depth = 1;
+                while !self.is_eof() && depth > 0 {
+                    if self.ch == '/' && self.peek_char() == '*' {
+                        // new nested comment
+                        self.read_char();
+                        self.read_char();
+                        depth += 1;
+                    } else if self.ch == '*' && self.peek_char() == '/' {
+                        // closing comment
+                        self.read_char();
+                        self.read_char();
+                        depth -= 1;
+                    } else {
+                        self.read_char();
                     }
-                    self.read_char();
                 }
 
-                if !(self.ch == '*' && self.peek_char() == '/') {
+                if depth > 0 {
                     display_single_diag!(Diag {
                         level: DiagLevel::Error,
                         kind: LexicalDiagKind::UnterminatedMultiLineComment,
@@ -741,16 +750,12 @@ impl Lexer {
                         hint: None,
                     });
                 }
-                self.read_char();
-                self.read_char();
 
-                // skip any trailing newlines after the comment
                 while !self.is_eof() && self.ch == '\n' {
                     self.read_char();
                 }
             }
 
-            // skip whitespace to advance to the next valid character
             self.skip_whitespace();
         }
     }
