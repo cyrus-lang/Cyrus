@@ -11,28 +11,36 @@ pub enum LexicalDiagKind {
     UnterminatedMultiLineComment,
     InvalidChar(char),
     EmptyCharLiteral,
+    CharLiteralMustBeASingleUnit,
+    InvalidEscapeSequence,
 }
 
 impl fmt::Display for LexicalDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            LexicalDiagKind::InvalidEscapeSequence => {
+                write!(f, "Invalid escape sequence.")
+            }
+            LexicalDiagKind::CharLiteralMustBeASingleUnit => {
+                write!(f, "Character literal must be a single unit.")
+            }
             LexicalDiagKind::UnterminatedStringLiteral => {
-                write!(f, "unterminated string literal, expected a closing quote")
+                write!(f, "Unterminated string literal, expected a closing quote.")
             }
             LexicalDiagKind::InvalidFloatLiteral => {
-                write!(f, "invalid float literal")
+                write!(f, "Invalid float literal.")
             }
             LexicalDiagKind::InvalidIntegerLiteral => {
-                write!(f, "invalid integer literal")
+                write!(f, "Invalid integer literal.")
             }
             LexicalDiagKind::UnterminatedMultiLineComment => {
-                write!(f, "unterminated multi-line comment")
+                write!(f, "Unterminated multi-line comment.")
             }
             LexicalDiagKind::EmptyCharLiteral => {
-                write!(f, "empty char literal is invalid")
+                write!(f, "Empty char literal is invalid.")
             }
             LexicalDiagKind::InvalidChar(c) => {
-                write!(f, "invalid character: '{}'", c)
+                write!(f, "Invalid character: '{}'.", c)
             }
         }
     }

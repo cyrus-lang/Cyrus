@@ -6,15 +6,29 @@ pub enum UnescapeError {
     InvalidHexEscape(String),
     InvalidOctalEscape(String),
     TrailingBackslash,
+    InvalidUnicodeEscape(String),
+    IncompleteUnicodeEscape(String),
+    InvalidUnicodeCodePoint(u32),
 }
 
 impl fmt::Display for UnescapeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::IncompleteHexEscape => write!(f, "Incomplete hex escape: \\x was not followed by two hex digits"),
-            Self::InvalidHexEscape(hex) => write!(f, "Invalid hex escape sequence: \\x{}", hex),
-            Self::InvalidOctalEscape(oct) => write!(f, "Invalid octal escape sequence: \\{}", oct),
-            Self::TrailingBackslash => write!(f, "Unexpected end of input after a backslash"),
+            Self::IncompleteHexEscape => {
+                write!(f, "Incomplete hex escape: \\x was not followed by two hex digits.")
+            }
+            Self::InvalidHexEscape(hex) => write!(f, "Invalid hex escape sequence: '\\x{}'.", hex),
+            Self::InvalidOctalEscape(oct) => write!(f, "Invalid octal escape sequence: '\\{}'.", oct),
+            Self::TrailingBackslash => write!(f, "Unexpected end of input after a backslash."),
+            Self::InvalidUnicodeEscape(hex) => {
+                write!(f, "Invalid Unicode escape sequence: '\\u{}';", hex)
+            }
+            Self::IncompleteUnicodeEscape(hex) => {
+                write!(f, "Incomplete Unicode escape sequence: '\\u{}'.", hex)
+            }
+            Self::InvalidUnicodeCodePoint(code) => {
+                write!(f, "Invalid Unicode code point: 'U+{:X}'.", code)
+            }
         }
     }
 }
@@ -31,19 +45,18 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
                 Some('n') => result.push('\n'),
                 Some('t') => result.push('\t'),
                 Some('r') => result.push('\r'),
-                Some('b') => result.push('\x08'), // backspace
-                Some('a') => result.push('\x07'), // bell
-                Some('v') => result.push('\x0B'), // vertical tab
-                Some('f') => result.push('\x0C'), // form feed
+                Some('b') => result.push('\x08'),
+                Some('a') => result.push('\x07'),
+                Some('v') => result.push('\x0B'),
+                Some('f') => result.push('\x0C'),
                 Some('\\') => result.push('\\'),
                 Some('"') => result.push('"'),
                 Some('\'') => result.push('\''),
 
-                // Hex escape like \x1B
+                // Hex escape: \xNN
                 Some('x') => {
                     let h1 = chars.next();
                     let h2 = chars.next();
-
                     if let (Some(h1), Some(h2)) = (h1, h2) {
                         let hex = format!("{}{}", h1, h2);
                         if let Ok(byte) = u8::from_str_radix(&hex, 16) {
@@ -56,21 +69,18 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
                     }
                 }
 
-                // Octal escape like \033
+                // Octal escape: \NNN
                 Some(d @ '0'..='7') => {
                     let mut oct = String::new();
                     oct.push(d);
-
-                    // Read up to 2 more octal digits
                     for _ in 0..2 {
                         if let Some(c @ '0'..='7') = chars.peek() {
                             oct.push(*c);
-                            chars.next(); // consume the peeked char
+                            chars.next();
                         } else {
                             break;
                         }
                     }
-
                     if let Ok(byte) = u8::from_str_radix(&oct, 8) {
                         result.push(byte as char);
                     } else {
@@ -78,7 +88,86 @@ pub fn unescape_string(input: &str) -> Result<String, UnescapeError> {
                     }
                 }
 
-                // Unrecognized escape sequence — push literally
+                // 16-bit Unicode: \uNNNN or variable-length \u{...}
+                Some('u') => {
+                    if let Some('{') = chars.peek() {
+                        chars.next(); // consume '{'
+                        let mut hex = String::new();
+                        while let Some(&ch) = chars.peek() {
+                            if ch == '}' {
+                                break;
+                            }
+                            if ch.is_ascii_hexdigit() {
+                                hex.push(ch);
+                                chars.next();
+                            } else {
+                                return Err(UnescapeError::InvalidUnicodeEscape(hex));
+                            }
+                        }
+                        if chars.next() != Some('}') {
+                            return Err(UnescapeError::IncompleteUnicodeEscape(hex));
+                        }
+                        if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                            if let Some(ch) = std::char::from_u32(code) {
+                                result.push(ch);
+                            } else {
+                                return Err(UnescapeError::InvalidUnicodeCodePoint(code));
+                            }
+                        } else {
+                            return Err(UnescapeError::InvalidUnicodeEscape(hex));
+                        }
+                    } else {
+                        // fixed-length \uNNNN
+                        let mut hex = String::new();
+                        for _ in 0..4 {
+                            if let Some(ch) = chars.next() {
+                                if ch.is_ascii_hexdigit() {
+                                    hex.push(ch);
+                                } else {
+                                    return Err(UnescapeError::InvalidUnicodeEscape(hex));
+                                }
+                            } else {
+                                return Err(UnescapeError::IncompleteUnicodeEscape(hex));
+                            }
+                        }
+                        if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                            if let Some(ch) = std::char::from_u32(code) {
+                                result.push(ch);
+                            } else {
+                                return Err(UnescapeError::InvalidUnicodeCodePoint(code));
+                            }
+                        } else {
+                            return Err(UnescapeError::InvalidUnicodeEscape(hex));
+                        }
+                    }
+                }
+
+                // 32-bit Unicode: \UNNNNNNNN
+                Some('U') => {
+                    let mut hex = String::new();
+                    for _ in 0..8 {
+                        if let Some(ch) = chars.next() {
+                            if ch.is_ascii_hexdigit() {
+                                hex.push(ch);
+                            } else {
+                                return Err(UnescapeError::InvalidUnicodeEscape(hex));
+                            }
+                        } else {
+                            return Err(UnescapeError::IncompleteUnicodeEscape(hex));
+                        }
+                    }
+                    if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                        if let Some(ch) = std::char::from_u32(code) {
+                            result.push(ch);
+                        } else {
+                            return Err(UnescapeError::InvalidUnicodeCodePoint(code));
+                        }
+                    } else {
+                        return Err(UnescapeError::InvalidUnicodeEscape(hex));
+                    }
+                }
+
+                // Unrecognized escape sequence
                 Some(other) => {
                     result.push('\\');
                     result.push(other);
