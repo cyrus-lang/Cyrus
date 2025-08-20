@@ -264,7 +264,7 @@ impl<'a> AnalysisContext<'a> {
                 match &local_or_global_symbol {
                     LocalOrGlobalSymbol::LocalSymbol(..) => {
                         let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt?);
-                        self.mark_local_symbol_used_once(local_scope_opt, self.module_id, *symbol_id);
+                        self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
                         self.mark_symbol_used_once(self.module_id, symbol_entry.get_symbol_id());
@@ -645,14 +645,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let local_scope_opt = {
-            if let Some(scope_id) = scope_id_opt {
-                Some(self.resolver.get_scope_ref(self.module_id, scope_id).unwrap())
-            } else {
-                None
-            }
-        };
-
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
         let local_or_global_symbol = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, func_call.symbol_id)
@@ -767,6 +760,10 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        for typed_expr in &mut func_call.args {
+            self.analyze_typed_expr_type(scope_id_opt, typed_expr);
+        }
+
         self.check_duplicate_param_names(
             &func_sig.params.list,
             func_sig.params.variadic.as_ref(),
@@ -781,6 +778,8 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
     ) -> Option<ConcreteType> {
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt?);
+        self.mark_func_used(local_scope_opt?, self.module_id, func_call.symbol_id);
         self.check_func_call(scope_id_opt, func_call)
     }
 

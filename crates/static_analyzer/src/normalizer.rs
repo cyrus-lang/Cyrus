@@ -41,7 +41,7 @@ impl<'a> AnalysisContext<'a> {
                             .resolver
                             .get_scope_ref(self.module_id, local_symbol.get_symbol_id());
 
-                        self.mark_local_symbol_used_once(local_scope_opt, self.module_id, *symbol_id);
+                        self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
                         self.mark_symbol_used_once(self.module_id, symbol_entry.get_symbol_id());

@@ -1,6 +1,10 @@
 use crate::builder::module::{CodeGenBuilder, LocalIRValue};
 use ast::AccessSpecifier;
-use inkwell::{module::Linkage, types::BasicTypeEnum, values::{GlobalValue, PointerValue}};
+use inkwell::{
+    module::Linkage,
+    types::BasicTypeEnum,
+    values::{GlobalValue, PointerValue},
+};
 use resolver::scope::LocalScopeRef;
 use typed_ast::{TypedExpression, TypedGlobalVariable, TypedVariable, types::ConcreteType};
 
@@ -33,7 +37,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_global_var_def(&mut self, global_var: &TypedGlobalVariable) {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&global_var.symbol_id).unwrap();
-        let global_value = local_ir_value.as_global_value().cloned().unwrap();
+        let global_value = local_ir_value.as_global_value().unwrap().0.clone();
         drop(irreg);
 
         if global_var.expr.is_some() {
@@ -49,7 +53,10 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(global_var.symbol_id, LocalIRValue::GlobalValue(global_value));
+        irreg.insert(
+            global_var.symbol_id,
+            LocalIRValue::GlobalValue(global_value, global_var.ty.clone().unwrap()),
+        );
         drop(irreg);
     }
 
@@ -64,7 +71,11 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_local_variable(&mut self, local_scope_opt: Option<LocalScopeRef>, variable: &TypedVariable) -> PointerValue<'a> {
+    pub(crate) fn build_local_variable(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        variable: &TypedVariable,
+    ) -> PointerValue<'a> {
         let (basic_type, concrete_type): (BasicTypeEnum<'a>, ConcreteType) = {
             if let Some(concrete_type) = &variable.ty {
                 (

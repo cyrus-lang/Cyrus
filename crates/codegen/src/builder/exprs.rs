@@ -683,8 +683,14 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_lvalue_with_symbol_id(&self, symbol_id: SymbolID) -> InternalValue<'a> {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&symbol_id).unwrap();
-        let (pointer, concrete_type) = local_ir_value.as_lvalue().unwrap();
-        let internal_value = InternalValue::new(concrete_type.clone().clone(), InternalValueKind::LValue(*pointer));
+        let (pointer, concrete_type) = match local_ir_value.as_lvalue() {
+            Some((pointer, concrete_type)) => (pointer.clone(), concrete_type.clone()),
+            None => match local_ir_value.as_global_value() {
+                Some((global_value, concrete_type)) => (global_value.as_pointer_value().clone(), concrete_type.clone()),
+                None => panic!("Couldn't find any lvalue with this symbol id."),
+            },
+        };
+        let internal_value = InternalValue::new(concrete_type.clone().clone(), InternalValueKind::LValue(pointer));
 
         drop(irreg);
         internal_value
