@@ -1,19 +1,6 @@
 extern func printf(format: const char*, ...);
 
-/*
-  Outer comment start
-  /* Nested comment inside */
-  Outer comment end
-
-  NOTE: Multi-line comments can also be nested!
-*/
-
 func main() {
-   #a = "Hello
-  A
-  
-  ";
-
-   printf(a);
-   printf("H");
+    #rocket: char* = "Let's go! \u{1F680}";
+    printf("%s\n", rocket);
 }
