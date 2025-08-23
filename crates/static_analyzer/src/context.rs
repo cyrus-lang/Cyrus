@@ -195,7 +195,7 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Unreachable
                 }
                 TypedStatement::For(typed_for) => self.analyze_for_loop(Some(typed_for.body.scope_id), typed_for),
-                TypedStatement::Switch(typed_switch) => todo!(),
+                TypedStatement::Switch(..) => todo!(),
                 TypedStatement::Struct(typed_struct) => {
                     self.analyze_struct(typed_struct, true);
                     FlowState::Reachable
@@ -448,7 +448,6 @@ impl<'a> AnalysisContext<'a> {
             (ConcreteType::Const(concrete_type1), concrete_type2) => *concrete_type1 == concrete_type2,
             (concrete_type1, ConcreteType::Const(concrete_type2)) => concrete_type1 == *concrete_type2,
             (concrete_type1, concrete_type2) => concrete_type1 == concrete_type2,
-            _ => false,
         };
 
         if !compatible_type {
@@ -966,6 +965,21 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
+        }
+
+        if typed_variable.ty.is_some()
+            && (typed_variable.ty.clone().unwrap().is_const() && typed_variable.rhs.is_none())
+        {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::ConstVariableMustBeInitialized,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_variable.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
         }
     }
 

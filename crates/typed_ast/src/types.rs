@@ -29,6 +29,10 @@ impl ConcreteType {
         matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
     }
 
+    pub fn is_array(&self) -> bool {
+        matches!(self, ConcreteType::Array(..))
+    }
+
     pub fn is_const(&self) -> bool {
         matches!(self, ConcreteType::Const(_))
     }
@@ -92,6 +96,37 @@ pub enum BasicConcreteType {
 impl BasicConcreteType {
     pub fn is_bool(&self) -> bool {
         matches!(self, BasicConcreteType::Bool)
+    }
+
+    pub fn is_float(&self) -> bool {
+        match self {
+            BasicConcreteType::Float16
+            | BasicConcreteType::Float32
+            | BasicConcreteType::Float64
+            | BasicConcreteType::Float128 => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_integer(&self) -> bool {
+        match self {
+            BasicConcreteType::UIntPtr
+            | BasicConcreteType::UInt
+            | BasicConcreteType::UInt8
+            | BasicConcreteType::UInt16
+            | BasicConcreteType::UInt32
+            | BasicConcreteType::UInt64
+            | BasicConcreteType::UInt128
+            | BasicConcreteType::SizeT
+            | BasicConcreteType::IntPtr
+            | BasicConcreteType::Int
+            | BasicConcreteType::Int8
+            | BasicConcreteType::Int16
+            | BasicConcreteType::Int32
+            | BasicConcreteType::Int64
+            | BasicConcreteType::Int128 => true,
+            _ => false,
+        }
     }
 
     pub fn is_signed(&self) -> bool {

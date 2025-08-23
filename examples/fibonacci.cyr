@@ -1,7 +1,7 @@
 extern func printf(format: const char*, ...);
 extern func exit(status: int);
 
-public func eval_fibonacci(n: int32) int32 {
+public func fibonacci(n: int) int {
     if (n == 0) {
         return 0;
     }
@@ -9,12 +9,12 @@ public func eval_fibonacci(n: int32) int32 {
         return 1;
     }
     else {
-        return eval_fibonacci(n - 1) + eval_fibonacci(n - 2);
+        return fibonacci(n - 1) + fibonacci(n - 2);
     }
 }
 
 func main() {
     for (#i = 0; i < 30; i++) {
-        printf("%d\n", eval_fibonacci(i));
+        printf("%d\n", foo(i));
     }
 }

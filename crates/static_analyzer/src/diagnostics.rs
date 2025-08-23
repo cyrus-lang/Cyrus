@@ -126,11 +126,15 @@ pub enum AnalyzerDiagKind {
     DerefNonPointerValue,
     MultipleEntryPoints,
     MissingEntryPoint,
+    ConstVariableMustBeInitialized,
 }
 
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::ConstVariableMustBeInitialized => {
+                write!(f, "Constant variable must be initialized with a value.")
+            }
             AnalyzerDiagKind::CyclicTypeDefinition { symbol } => {
                 write!(f, "Cyclic type definition found for type '{}'.", symbol)
             }

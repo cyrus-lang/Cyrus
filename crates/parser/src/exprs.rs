@@ -168,12 +168,16 @@ impl Parser {
                 })
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
-            token_kind @ TokenKind::Minus | token_kind @ TokenKind::Bang | token_kind @ TokenKind::SizeOf => {
+            token_kind @ TokenKind::Minus
+            | token_kind @ TokenKind::Bang
+            | token_kind @ TokenKind::SizeOf
+            | token_kind @ TokenKind::Tilde => {
                 let start = self.current_token().span.start;
                 let prefix_operator = match token_kind {
                     TokenKind::Minus => PrefixOperator::Minus,
                     TokenKind::Bang => PrefixOperator::Bang,
                     TokenKind::SizeOf => PrefixOperator::SizeOf,
+                    TokenKind::Tilde => PrefixOperator::BitwiseNot,
                     _ => {
                         return Err(Diag {
                             kind: ParserDiagKind::InvalidPrefixOperator(token_kind.clone()),
@@ -261,6 +265,11 @@ impl Parser {
             | TokenKind::GreaterThan
             | TokenKind::And
             | TokenKind::Or
+            | TokenKind::Ampersand
+            | TokenKind::Pipe
+            | TokenKind::Tilde
+            | TokenKind::AmpTilde
+            | TokenKind::Caret
             | TokenKind::Identifier { .. } => {
                 self.next_token(); // consume left expression
                 let op_token = self.current_token().kind;
@@ -281,6 +290,10 @@ impl Parser {
                     TokenKind::NotEqual => InfixOperator::NotEqual,
                     TokenKind::Or => InfixOperator::Or,
                     TokenKind::And => InfixOperator::And,
+                    TokenKind::Ampersand => InfixOperator::BitwiseAnd,
+                    TokenKind::Pipe => InfixOperator::BitwiseOr,
+                    TokenKind::Caret => InfixOperator::BitwiseXor,
+                    TokenKind::AmpTilde => InfixOperator::BitwiseAndNot,
                     _ => {
                         return Some(Err(Diag {
                             kind: ParserDiagKind::InvalidInfixOperator(self.current_token().kind),
@@ -497,7 +510,7 @@ impl Parser {
         let expr = self.parse_expression(Precedence::Lowest)?.0;
         self.next_token();
 
-         if !self.current_token_is(TokenKind::RightParen) {
+        if !self.current_token_is(TokenKind::RightParen) {
             return Err(Diag {
                 kind: ParserDiagKind::MissingClosingParen,
                 level: DiagLevel::Error,

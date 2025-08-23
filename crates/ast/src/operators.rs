@@ -13,6 +13,12 @@ pub enum InfixOperator {
     NotEqual,
     Or,
     And,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseAndNot,
+    LeftShift,
+    RightShift,
 }
 
 #[derive(Debug, Clone)]
@@ -20,6 +26,7 @@ pub enum PrefixOperator {
     SizeOf,
     Bang,
     Minus,
+    BitwiseNot
 }
 
 #[derive(Debug, Clone)]

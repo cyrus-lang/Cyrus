@@ -11,16 +11,12 @@ pub enum LexicalDiagKind {
     UnterminatedMultiLineComment,
     InvalidChar(char),
     EmptyCharLiteral,
-    CharLiteralMustBeASingleUnit,
-    InvalidEscapeSequence,
+    CharLiteralMustBeASingleUnit
 }
 
 impl fmt::Display for LexicalDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LexicalDiagKind::InvalidEscapeSequence => {
-                write!(f, "Invalid escape sequence.")
-            }
             LexicalDiagKind::CharLiteralMustBeASingleUnit => {
                 write!(f, "Character literal must be a single unit.")
             }

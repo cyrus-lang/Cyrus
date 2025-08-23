@@ -467,7 +467,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let cmp = self
                     .llvmbuilder
-                    .build_int_compare(IntPredicate::EQ, lhs, rhs, "cmp")
+                    .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
                 InternalValue::new(
                     ConcreteType::BasicType(BasicConcreteType::Bool),
@@ -477,7 +477,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let cmp = self
                     .llvmbuilder
-                    .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "cmp")
+                    .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "eq")
                     .unwrap();
                 InternalValue::new(
                     ConcreteType::BasicType(BasicConcreteType::Bool),
@@ -487,7 +487,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
                 let cmp = self
                     .llvmbuilder
-                    .build_int_compare(IntPredicate::EQ, lhs, rhs, "cmp")
+                    .build_int_compare(IntPredicate::EQ, lhs, rhs, "eq")
                     .unwrap();
                 InternalValue::new(
                     ConcreteType::BasicType(BasicConcreteType::Bool),
@@ -503,7 +503,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let cmp = self
                     .llvmbuilder
-                    .build_int_compare(IntPredicate::NE, lhs, rhs, "cmp")
+                    .build_int_compare(IntPredicate::NE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(
                     ConcreteType::BasicType(BasicConcreteType::Bool),
@@ -513,7 +513,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::FloatValue(lhs), BasicValueEnum::FloatValue(rhs)) => {
                 let cmp = self
                     .llvmbuilder
-                    .build_float_compare(FloatPredicate::ONE, lhs, rhs, "cmp")
+                    .build_float_compare(FloatPredicate::ONE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(
                     ConcreteType::BasicType(BasicConcreteType::Bool),
@@ -523,7 +523,7 @@ impl<'a> CodeGenBuilder<'a> {
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
                 let cmp = self
                     .llvmbuilder
-                    .build_int_compare(IntPredicate::NE, lhs, rhs, "cmp")
+                    .build_int_compare(IntPredicate::NE, lhs, rhs, "neq")
                     .unwrap();
                 InternalValue::new(
                     ConcreteType::BasicType(BasicConcreteType::Bool),
@@ -537,7 +537,7 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_logical_or(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                let or_value = self.llvmbuilder.build_or(lhs, rhs, "cmp").unwrap();
+                let or_value = self.llvmbuilder.build_or(lhs, rhs, "lor").unwrap();
                 InternalValue::new(
                     ConcreteType::BasicType(BasicConcreteType::Bool),
                     InternalValueKind::RValue(or_value.as_basic_value_enum()),
@@ -559,10 +559,68 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_logical_and(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
-                let and_value = self.llvmbuilder.build_and(lhs, rhs, "cmp").unwrap();
+                let and_value = self.llvmbuilder.build_and(lhs, rhs, "land").unwrap();
                 InternalValue::new(
                     ConcreteType::BasicType(BasicConcreteType::Bool),
                     InternalValueKind::RValue(and_value.as_basic_value_enum()),
+                )
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn build_xor(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
+        match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
+            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+                let and_value = self.llvmbuilder.build_xor(lhs, rhs, "xor").unwrap();
+                InternalValue::new(
+                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    InternalValueKind::RValue(and_value.as_basic_value_enum()),
+                )
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn build_bitwise_and(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
+        match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
+            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+                let and_value = self.llvmbuilder.build_and(lhs, rhs, "xor").unwrap();
+                InternalValue::new(
+                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    InternalValueKind::RValue(and_value.as_basic_value_enum()),
+                )
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn build_bitwise_or(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
+        match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
+            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+                let and_value = self.llvmbuilder.build_or(lhs, rhs, "or").unwrap();
+                InternalValue::new(
+                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    InternalValueKind::RValue(and_value.as_basic_value_enum()),
+                )
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn build_bitwise_and_not(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
+        match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
+            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+                // ~rhs = rhs XOR all ones
+                let all_ones = rhs.get_type().const_all_ones();
+                let not_rhs = self.llvmbuilder.build_xor(rhs, all_ones, "not_rhs").unwrap();
+
+                // lhs AND (~rhs)
+                let and_not_value = self.llvmbuilder.build_and(lhs, not_rhs, "and_not").unwrap();
+
+                InternalValue::new(
+                    ConcreteType::BasicType(BasicConcreteType::Int), // result is integer, not Bool
+                    InternalValueKind::RValue(and_not_value.as_basic_value_enum()),
                 )
             }
             _ => unreachable!(),
@@ -624,6 +682,22 @@ impl<'a> CodeGenBuilder<'a> {
             InfixOperator::NotEqual => self.build_cmp_neq(lhs_rvalue, rhs_rvalue),
             InfixOperator::Or => self.build_logical_or(lhs_rvalue, rhs_rvalue),
             InfixOperator::And => self.build_logical_and(lhs_rvalue, rhs_rvalue),
+            InfixOperator::BitwiseAnd => self.build_bitwise_and(lhs_rvalue, rhs_rvalue),
+            InfixOperator::BitwiseOr => self.build_bitwise_or(lhs_rvalue, rhs_rvalue),
+            InfixOperator::BitwiseXor => self.build_xor(lhs_rvalue, rhs_rvalue),
+            InfixOperator::BitwiseAndNot => self.build_bitwise_and_not(lhs_rvalue, rhs_rvalue),
+            InfixOperator::LeftShift => todo!(),
+            InfixOperator::RightShift => todo!(),
+        }
+    }
+
+    fn build_bitwise_not(&self, rvalue: InternalValue<'a>) -> InternalValue<'a> {
+        match rvalue.as_basic_value() {
+            BasicValueEnum::IntValue(int_value) => {
+                let basic_value = BasicValueEnum::IntValue(self.llvmbuilder.build_not(int_value, "neg").unwrap());
+                InternalValue::new(rvalue.value_type.clone(), InternalValueKind::RValue(basic_value))
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -676,6 +750,7 @@ impl<'a> CodeGenBuilder<'a> {
         match prefix_expr.op {
             PrefixOperator::Bang => self.build_logical_not(rvalue),
             PrefixOperator::Minus => self.build_negate(rvalue),
+            PrefixOperator::BitwiseNot => self.build_bitwise_not(rvalue),
             PrefixOperator::SizeOf => self.build_sizeof(local_scope_opt, rvalue),
         }
     }
