@@ -1,6 +1,9 @@
 extern func printf(format: const char*, ...);
 
 func main() {
-    #rocket: char* = "Let's go! \u{1F680}";
-    printf("%s\n", rocket);
+    #a = 6uint;             // int (default, pointer-sized)
+    #b = 3;             // int
+    #x = a &~ b;        // bitwise AND-NOT: a & (~b)
+
+    printf("%d\n", x);
 }

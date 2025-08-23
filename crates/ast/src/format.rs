@@ -152,6 +152,7 @@ impl fmt::Display for PrefixOperator {
             PrefixOperator::SizeOf => write!(f, "sizeof"),
             PrefixOperator::Bang => write!(f, "&"),
             PrefixOperator::Minus => write!(f, "-"),
+            PrefixOperator::BitwiseNot => write!(f, "~"),
         }
     }
 }
@@ -172,6 +173,12 @@ impl fmt::Display for InfixOperator {
             InfixOperator::GreaterEqual => write!(f, ">="),
             InfixOperator::And => write!(f, "&&"),
             InfixOperator::Or => write!(f, "||"),
+            InfixOperator::BitwiseAnd => write!(f, "&"),
+            InfixOperator::BitwiseOr => write!(f, "|"),
+            InfixOperator::BitwiseXor => write!(f, "~"),
+            InfixOperator::BitwiseAndNot => write!(f, "&~"),
+            InfixOperator::LeftShift => write!(f, "<<"),
+            InfixOperator::RightShift => write!(f, ">>"),
         }
     }
 }

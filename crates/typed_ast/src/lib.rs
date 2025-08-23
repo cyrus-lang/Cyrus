@@ -1,6 +1,8 @@
-use crate::types::{BasicConcreteType, ConcreteType, TypedUnnamedStructType};
+use crate::types::{ConcreteType, TypedUnnamedStructType};
 use ast::{
-    operators::{InfixOperator, PrefixOperator, UnaryOperator}, token::Location, AccessSpecifier, Identifier, LiteralKind, SelfModifier, SelfModifierKind
+    AccessSpecifier, Identifier, LiteralKind, SelfModifierKind,
+    operators::{InfixOperator, PrefixOperator, UnaryOperator},
+    token::Location,
 };
 use std::collections::HashMap;
 

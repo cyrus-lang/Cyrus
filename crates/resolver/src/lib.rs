@@ -1624,7 +1624,7 @@ impl Resolver {
                         loc: return_stmt.loc.clone(),
                     }));
                 }
-                Statement::Foreach(foreach) => todo!(),
+                Statement::Foreach(..) => todo!(),
                 Statement::For(for_stmt) => {
                     let body_scope_id = generate_scope_id();
                     let body_scope = LocalScope::deep_clone(&local_scope);

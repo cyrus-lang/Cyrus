@@ -1,9 +1,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::token::Location;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::scope::{
-    LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind,
-};
+use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID,
     types::{ConcreteType, ResolvedSymbol},
@@ -116,8 +114,8 @@ impl<'a> AnalysisContext<'a> {
                 None
             }
 
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::Func(symbol_id))
-            | ConcreteType::ResolvedSymbol(ResolvedSymbol::Method(symbol_id)) => {
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::Func(..))
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::Method(..)) => {
                 // Convert function symbol to its function TYPE (signature) and normalize it.
                 // let f = self.resolver.get_function(self.module_id, symbol_id);
                 // if let Some(f) = f {

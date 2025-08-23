@@ -95,7 +95,7 @@ impl Lexer {
                 self.next_token(); // consume whitespace
                 return self.next_token(); // recurse to get the next non-whitespace token
             }
-            '`' => TokenKind::BackTick,
+            '~' => TokenKind::Tilde,
             '+' => {
                 if self.peek_char() == '+' {
                     self.read_char();
@@ -212,6 +212,7 @@ impl Lexer {
                 };
             }
             '#' => TokenKind::Hashtag,
+            '^' => TokenKind::Caret,
             '"' => return self.read_string(None),
             '\'' => return self.read_char_literal(),
             '=' => {
@@ -316,6 +317,17 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::And,
+                        span: Span {
+                            start: self.pos - 2,
+                            end: self.pos - 1,
+                        },
+                        loc,
+                    };
+                } else if self.peek_char() == '~' {
+                    self.read_char();
+                    self.read_char();
+                    return Token {
+                        kind: TokenKind::AmpTilde,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,
@@ -513,74 +525,6 @@ impl Lexer {
             span,
             loc: Location::new(self.line, self.column),
         }
-    }
-
-    fn read_escape_sequence(&mut self) -> char {
-        self.read_char(); // skip the backslash
-
-        match self.ch {
-            'n' => '\n',
-            't' => '\t',
-            'r' => '\r',
-            'b' => '\x08',
-            'a' => '\x07',
-            'v' => '\x0B',
-            'f' => '\x0C',
-            '\\' => '\\',
-            '"' => '"',
-            '\'' => '\'',
-            'x' => {
-                // \xNN - 2 hex digits
-                let hex = self.read_n_hex_digits(2);
-                std::char::from_u32(u32::from_str_radix(&hex, 16).unwrap()).unwrap_or('\u{FFFD}')
-            }
-            'u' => {
-                // \uNNNN - 4 hex digits
-                let hex = self.read_n_hex_digits(4);
-                std::char::from_u32(u32::from_str_radix(&hex, 16).unwrap()).unwrap_or('\u{FFFD}')
-            }
-            'U' => {
-                // \UNNNNNNNN - 8 hex digits
-                let hex = self.read_n_hex_digits(8);
-                std::char::from_u32(u32::from_str_radix(&hex, 16).unwrap()).unwrap_or('\u{FFFD}')
-            }
-            '0'..='7' => {
-                // \NNN - octal, 3 digits
-                let mut oct = self.ch.to_string();
-                for _ in 0..2 {
-                    self.read_char();
-                    if !self.ch.is_digit(8) {
-                        break;
-                    }
-                    oct.push(self.ch);
-                }
-                std::char::from_u32(u32::from_str_radix(&oct, 8).unwrap()).unwrap_or('\u{FFFD}')
-            }
-            _ => self.ch, // unknown escape
-        }
-    }
-
-    fn read_n_hex_digits(&mut self, n: usize) -> String {
-        let mut s = String::new();
-        for _ in 0..n {
-            self.read_char();
-            if self.ch.is_ascii_hexdigit() {
-                s.push(self.ch);
-            } else {
-                display_single_diag!(Diag {
-                    level: DiagLevel::Error,
-                    kind: LexicalDiagKind::InvalidEscapeSequence,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
-                        Location::new(self.line, self.column),
-                        self.column,
-                    )),
-                    hint: Some(format!("Expected {} hex digits", n)),
-                });
-                break;
-            }
-        }
-        s
     }
 
     fn read_identifier(&mut self) -> Token {
