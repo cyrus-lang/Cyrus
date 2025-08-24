@@ -29,9 +29,13 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
         TokenKind::Asterisk | TokenKind::Slash | TokenKind::Percent => Precedence::Product,
 
         // Bitwise
-        TokenKind::Ampersand | TokenKind::Pipe | TokenKind::Tilde | TokenKind::AmpTilde | TokenKind::Caret => {
-            Precedence::Bitwise
-        }
+        TokenKind::Ampersand
+        | TokenKind::Pipe
+        | TokenKind::Tilde
+        | TokenKind::AmpTilde
+        | TokenKind::Caret
+        | TokenKind::ShiftLeft
+        | TokenKind::ShiftRight => Precedence::Bitwise,
 
         // Calls and indexing
         TokenKind::LeftParen => Precedence::Call,

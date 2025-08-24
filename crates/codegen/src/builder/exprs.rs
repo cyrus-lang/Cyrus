@@ -686,8 +686,8 @@ impl<'a> CodeGenBuilder<'a> {
             InfixOperator::BitwiseOr => self.build_bitwise_or(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseXor => self.build_xor(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseAndNot => self.build_bitwise_and_not(lhs_rvalue, rhs_rvalue),
-            InfixOperator::LeftShift => todo!(),
-            InfixOperator::RightShift => todo!(),
+            InfixOperator::ShiftLeft => todo!(),
+            InfixOperator::ShiftRight => todo!(),
         }
     }
 

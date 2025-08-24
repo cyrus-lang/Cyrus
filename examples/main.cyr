@@ -1,9 +1,8 @@
 extern func printf(format: const char*, ...);
 
 func main() {
-    #a = 6uint;             // int (default, pointer-sized)
-    #b = 3;             // int
-    #x = a &~ b;        // bitwise AND-NOT: a & (~b)
+    #x = -8uint8;
+    #y = x >> 2uint;
 
-    printf("%d\n", x);
+    printf("value: %b\n", x);
 }

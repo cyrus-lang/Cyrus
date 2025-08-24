@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    RhsOfShiftMustBeUnsignedInteger,
     CyclicTypeDefinition {
         symbol: String,
     },
@@ -132,6 +133,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger => {
+                write!(f, "Rhs of the shift must be unsigned integer.")
+            }
             AnalyzerDiagKind::ConstVariableMustBeInitialized => {
                 write!(f, "Constant variable must be initialized with a value.")
             }
