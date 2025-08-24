@@ -626,7 +626,7 @@ impl<'a> CodeGenBuilder<'a> {
             _ => unreachable!(),
         }
     }
-
+  
     fn build_shift_left(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
@@ -655,7 +655,7 @@ impl<'a> CodeGenBuilder<'a> {
             _ => unreachable!(),
         }
     }
-
+  
     fn build_infix_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,

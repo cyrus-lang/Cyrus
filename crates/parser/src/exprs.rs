@@ -250,7 +250,7 @@ impl Parser {
         left_start: usize,
     ) -> Option<Result<Expression, ParserError>> {
         let loc = self.current_token().loc.clone();
-
+      
         match self.peek_token().kind {
             TokenKind::Plus
             | TokenKind::Minus
