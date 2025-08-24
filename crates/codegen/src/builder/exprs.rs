@@ -9,7 +9,7 @@ use ast::{
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     types::BasicTypeEnum,
-    values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum},
+    values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
 };
 use resolver::scope::LocalScopeRef;
 use typed_ast::{
@@ -168,11 +168,24 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         deref: &TypedDereference,
     ) -> InternalValue<'a> {
-        let operand_type = deref.operand.concrete_type.clone().unwrap();
+        let pointer_type = deref.operand.concrete_type.clone().unwrap();
         let lvalue = self.build_expr(local_scope_opt.clone(), &deref.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
 
-        InternalValue::new(operand_type, InternalValueKind::RValue(rvalue.as_basic_value()))
+        let pointee_ty: BasicTypeEnum<'a> = self
+            .build_concrete_type(local_scope_opt, pointer_type.get_pointer_inner().unwrap())
+            .try_into()
+            .unwrap();
+
+        let loaded = self
+            .llvmbuilder
+            .build_load(pointee_ty, rvalue.as_basic_value().into_pointer_value(), "deref")
+            .unwrap();
+
+        InternalValue::new(
+            pointer_type.get_pointer_inner().unwrap(),
+            InternalValueKind::RValue(loaded),
+        )
     }
 
     fn build_address_of(
@@ -534,6 +547,25 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
+    fn build_null_coalescing_pointers(&self, lhs: PointerValue<'a>, rhs: PointerValue<'a>) -> InternalValue<'a> {
+        // cond: lhs == null
+        let is_null = self
+            .llvmbuilder
+            .build_is_null(lhs, "lhs_is_null")
+            .expect("icmp eq null");
+
+        let selected = self
+            .llvmbuilder
+            .build_select(is_null, rhs, lhs, "null_coalesce")
+            .expect("select")
+            .into_pointer_value();
+
+        InternalValue::new(
+            ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Void))),
+            InternalValueKind::RValue(selected.as_basic_value_enum()),
+        )
+    }
+
     fn build_logical_or(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
@@ -544,13 +576,7 @@ impl<'a> CodeGenBuilder<'a> {
                 )
             }
             (BasicValueEnum::PointerValue(lhs), BasicValueEnum::PointerValue(rhs)) => {
-                // Use LLVM PHI to implement this feature.
-                // func main() {
-                //     #ptr1: int* = null;
-                //     #ptr2: int* = null;
-                //     #result = ptr1 || ptr2;
-                // }
-                todo!();
+                self.build_null_coalescing_pointers(lhs, rhs)
             }
             _ => unreachable!(),
         }
@@ -811,7 +837,14 @@ impl<'a> CodeGenBuilder<'a> {
                 BasicValueEnum::IntValue(self.llvmctx.bool_type().const_int(*value as u64, false))
             }
             LiteralKind::Integer(value, _) => {
-                let signed = literal.ty.clone().unwrap().get_const_inner().as_basic_type().unwrap().is_signed();
+                let signed = literal
+                    .ty
+                    .clone()
+                    .unwrap()
+                    .get_const_inner()
+                    .as_basic_type()
+                    .unwrap()
+                    .is_signed();
 
                 BasicValueEnum::IntValue(
                     basic_type_enum

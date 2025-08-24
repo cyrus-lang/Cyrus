@@ -1,13 +1,20 @@
 func main() {
-    // #a: uint32 = 3 + 2;
-    // #c: int32 = 2;
+    #val1: int64 = 10;
+    #val2: int64 = 10;
 
-    // typecast(uint32, c);
-    // #v = a + c;
-    // printf("value: %d\n", v);
+    #ptr1: int64* = &val1;
+    #ptr2: int64* = &val2;
+    #ptr3: int64* = null;
 
-    #a: int*;
-    #b: int* = null || a;
+    printf("value: %d\n", *(ptr1 || ptr2));
+    printf("value: %d\n", *(ptr1 || ptr3));
+
+    if ((null || ptr3) == null) {
+        printf("null || null\n");
+    } else {
+        #result = null || ptr3;
+        printf("value: %d\n", *(null || ptr3));
+    }
 }
 
 extern func printf(format: const char*, ...);

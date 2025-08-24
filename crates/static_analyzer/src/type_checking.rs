@@ -25,18 +25,15 @@ impl<'a> AnalysisContext<'a> {
         target_type: ConcreteType,
         loc: Location,
     ) -> bool {
-        match (value_type, target_type) {
+        match (
+            value_type.get_const_inner().clone(),
+            target_type.get_const_inner().clone(),
+        ) {
             (ConcreteType::ResolvedSymbol(resolved_symbol1), ConcreteType::ResolvedSymbol(resolved_symbol2)) => {
                 resolved_symbol1 == resolved_symbol2
             }
             (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
                 self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
-            }
-            (ConcreteType::Const(inner_concrete_type1), ConcreteType::Const(inner_concrete_type2)) => {
-                self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
-            }
-            (ConcreteType::Const(inner_concrete_type1), concrete_type2) => {
-                self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, concrete_type2, loc)
             }
             (concrete_type1, ConcreteType::Const(inner_concrete_type2)) => {
                 self.check_type_mismatch(scope_id_opt, concrete_type1, *inner_concrete_type2, loc)
@@ -68,7 +65,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 packed && fields
             }
-
+            (ConcreteType::BasicType(BasicConcreteType::Null), ConcreteType::Pointer(..)) => true,
             _ => false,
         }
     }
@@ -701,7 +698,7 @@ impl<'a> AnalysisContext<'a> {
             };
 
         match operand_type {
-            ConcreteType::Pointer(concrete_type) => Some(ConcreteType::Pointer(concrete_type)),
+            ConcreteType::Pointer(concrete_type) => Some(*concrete_type),
             _ => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,

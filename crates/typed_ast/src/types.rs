@@ -51,14 +51,15 @@ impl ConcreteType {
     pub fn get_const_inner(&self) -> &ConcreteType {
         match self {
             ConcreteType::UnresolvedSymbol(_) => unreachable!(),
-            concrete_type @ ConcreteType::ResolvedSymbol(..) |
-            concrete_type @ ConcreteType::BasicType(..) |
-            concrete_type @ ConcreteType::Array(..) |
-            concrete_type @ ConcreteType::Pointer(..) |
-            concrete_type @ ConcreteType::UnnamedStruct(..) => {
-                concrete_type
-            },
             ConcreteType::Const(concrete_type) => concrete_type,
+            concrete_type @ _ => concrete_type,
+        }
+    }
+
+    pub fn get_pointer_inner(&self) -> Option<ConcreteType> {
+        match self {
+            ConcreteType::Pointer(concrete_type) => Some(*concrete_type.clone()),
+            _ => None
         }
     }
 
