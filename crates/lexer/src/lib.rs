@@ -275,6 +275,18 @@ impl Lexer {
                         },
                         loc,
                     };
+                }
+                if self.peek_char() == '<' {
+                    self.read_char();
+                    self.read_char();
+                    return Token {
+                        kind: TokenKind::ShiftLeft,
+                        span: Span {
+                            start: self.pos - 2,
+                            end: self.pos - 1,
+                        },
+                        loc,
+                    };
                 } else {
                     self.read_char();
                     return Token {
@@ -293,6 +305,18 @@ impl Lexer {
                     self.read_char();
                     return Token {
                         kind: TokenKind::GreaterEqual,
+                        span: Span {
+                            start: self.pos - 2,
+                            end: self.pos - 1,
+                        },
+                        loc,
+                    };
+                }
+                if self.peek_char() == '>' {
+                    self.read_char();
+                    self.read_char();
+                    return Token {
+                        kind: TokenKind::ShiftRight,
                         span: Span {
                             start: self.pos - 2,
                             end: self.pos - 1,

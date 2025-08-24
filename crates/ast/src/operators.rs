@@ -17,8 +17,8 @@ pub enum InfixOperator {
     BitwiseOr,
     BitwiseXor,
     BitwiseAndNot,
-    LeftShift,
-    RightShift,
+    ShiftRight,
+    ShiftLeft,
 }
 
 #[derive(Debug, Clone)]

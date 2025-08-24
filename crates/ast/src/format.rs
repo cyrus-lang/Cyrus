@@ -177,8 +177,8 @@ impl fmt::Display for InfixOperator {
             InfixOperator::BitwiseOr => write!(f, "|"),
             InfixOperator::BitwiseXor => write!(f, "~"),
             InfixOperator::BitwiseAndNot => write!(f, "&~"),
-            InfixOperator::LeftShift => write!(f, "<<"),
-            InfixOperator::RightShift => write!(f, ">>"),
+            InfixOperator::ShiftLeft => write!(f, "<<"),
+            InfixOperator::ShiftRight => write!(f, ">>"),
         }
     }
 }

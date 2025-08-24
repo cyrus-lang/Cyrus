@@ -251,6 +251,8 @@ impl Parser {
     ) -> Option<Result<Expression, ParserError>> {
         let loc = self.current_token().loc.clone();
 
+        dbg!(self.current_token());
+        
         match self.peek_token().kind {
             TokenKind::Plus
             | TokenKind::Minus
@@ -270,6 +272,8 @@ impl Parser {
             | TokenKind::Tilde
             | TokenKind::AmpTilde
             | TokenKind::Caret
+            | TokenKind::ShiftLeft
+            | TokenKind::ShiftRight
             | TokenKind::Identifier { .. } => {
                 self.next_token(); // consume left expression
                 let op_token = self.current_token().kind;
@@ -294,6 +298,8 @@ impl Parser {
                     TokenKind::Pipe => InfixOperator::BitwiseOr,
                     TokenKind::Caret => InfixOperator::BitwiseXor,
                     TokenKind::AmpTilde => InfixOperator::BitwiseAndNot,
+                    TokenKind::ShiftLeft => InfixOperator::ShiftLeft,
+                    TokenKind::ShiftRight => InfixOperator::ShiftRight,
                     _ => {
                         return Some(Err(Diag {
                             kind: ParserDiagKind::InvalidInfixOperator(self.current_token().kind),
