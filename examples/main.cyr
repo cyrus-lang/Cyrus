@@ -1,8 +1,9 @@
 extern func printf(format: const char*, ...);
 
 func main() {
-    #x = -8uint8;
-    #y = x >> 2uint;
+    #a = 3uint;
+    #y = a << 2uint;
+    printf("value: %d\n", y);
 
-    printf("value: %b\n", x);
+    printf("value: %d\n", 12uint >> 2uint);
 }

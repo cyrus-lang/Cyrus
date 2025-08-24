@@ -627,6 +627,35 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
+    fn build_shift_left(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
+        match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
+            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+                let shift_value = self.llvmbuilder.build_left_shift(lhs, rhs, "lshift").unwrap();
+                InternalValue::new(
+                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    InternalValueKind::RValue(shift_value.as_basic_value_enum()),
+                )
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn build_shift_right(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
+        match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
+            (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
+                let rhs_basic_type = rhs_rvalue.value_type.as_basic_type().unwrap();
+                let signed = rhs_basic_type.is_signed();
+
+                let shift_value = self.llvmbuilder.build_right_shift(lhs, rhs, signed, "lshift").unwrap();
+                InternalValue::new(
+                    ConcreteType::BasicType(BasicConcreteType::Bool),
+                    InternalValueKind::RValue(shift_value.as_basic_value_enum()),
+                )
+            }
+            _ => unreachable!(),
+        }
+    }
+
     fn build_infix_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
@@ -686,8 +715,8 @@ impl<'a> CodeGenBuilder<'a> {
             InfixOperator::BitwiseOr => self.build_bitwise_or(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseXor => self.build_xor(lhs_rvalue, rhs_rvalue),
             InfixOperator::BitwiseAndNot => self.build_bitwise_and_not(lhs_rvalue, rhs_rvalue),
-            InfixOperator::ShiftLeft => todo!(),
-            InfixOperator::ShiftRight => todo!(),
+            InfixOperator::ShiftLeft => self.build_shift_left(lhs_rvalue, rhs_rvalue),
+            InfixOperator::ShiftRight => self.build_shift_right(lhs_rvalue, rhs_rvalue),
         }
     }
 

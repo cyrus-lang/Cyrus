@@ -251,8 +251,6 @@ impl Parser {
     ) -> Option<Result<Expression, ParserError>> {
         let loc = self.current_token().loc.clone();
 
-        dbg!(self.current_token());
-        
         match self.peek_token().kind {
             TokenKind::Plus
             | TokenKind::Minus
