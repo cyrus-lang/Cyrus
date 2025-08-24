@@ -41,6 +41,10 @@ impl ConcreteType {
         matches!(self, ConcreteType::BasicType(BasicConcreteType::Void))
     }
 
+    pub fn is_pointer(&self) -> bool {
+        matches!(self, ConcreteType::Pointer(..))
+    }
+
     pub fn as_basic_type(&self) -> Option<&BasicConcreteType> {
         match self {
             ConcreteType::BasicType(ty) => Some(ty),

@@ -646,6 +646,11 @@ impl<'a> AnalysisContext<'a> {
                 resolved_method.func_sig.name.clone(),
                 resolved_method.func_sig.loc.clone(),
             );
+
+            // allow unused (no warning for public methods)
+            if resolved_method.func_sig.vis.is_public() {
+                self.mark_symbol_used_once(self.module_id, resolved_method.symbol_id);
+            }
         }
 
         let mut field_names: Vec<String> = Vec::new();

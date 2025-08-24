@@ -2,6 +2,11 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    InvalidFatArrow,
+    StructMethodNotDefined {
+        struct_name: String,
+        method_name: String,
+    },
     RhsOfShiftMustBeUnsignedInteger,
     CyclicTypeDefinition {
         symbol: String,
@@ -133,6 +138,15 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::InvalidFatArrow => {
+                write!(f, "Invalid usage of the fat arrow.")
+            }
+            AnalyzerDiagKind::StructMethodNotDefined {
+                struct_name,
+                method_name,
+            } => {
+                write!(f, "Method '{}' not defined for struct '{}'.", method_name, struct_name)
+            }
             AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger => {
                 write!(f, "Rhs of the shift must be unsigned integer.")
             }

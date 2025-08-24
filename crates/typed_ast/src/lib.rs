@@ -227,6 +227,7 @@ pub struct TypedStructFieldInit {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncCall {
+    pub module_id: Option<ModuleID>,
     pub symbol_id: SymbolID,
     pub args: Vec<TypedExpression>,
     pub loc: Location,
@@ -242,6 +243,7 @@ pub struct TypedFieldAccess {
 #[derive(Debug, Clone)]
 pub struct TypedMethodCall {
     pub symbol_id: SymbolID,
+    pub operand: Box<TypedExpression>,
     pub method_name: String,
     pub args: Vec<TypedExpression>,
     pub is_fat_arrow: bool,

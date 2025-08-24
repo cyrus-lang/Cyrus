@@ -11,7 +11,7 @@ use inkwell::{
     types::BasicTypeEnum,
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
 };
-use resolver::scope::LocalScopeRef;
+use resolver::scope::{LocalScopeRef, SymbolEntryKind};
 use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedAssignment, TypedCast, TypedDereference, TypedExpression,
     TypedExpressionKind, TypedFuncCall, TypedInfixExpression, TypedLiteral, TypedPrefixExpression, TypedStructInit,
@@ -279,14 +279,18 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         func_call: &TypedFuncCall,
     ) -> InternalValue<'a> {
-        let module_id = self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id).unwrap();
         let symbol_entry = self
             .resolver
-            .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
+            .lookup_symbol_entry_with_id(func_call.module_id.unwrap(), func_call.symbol_id)
             .unwrap();
-        let resolved_func = symbol_entry.as_func().unwrap();
-        let return_type = resolved_func.func_sig.return_type.clone();
-        let fn_value = self.get_or_declare_func(func_call.symbol_id, resolved_func);
+
+        let func_sig = match symbol_entry.kind {
+            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig,
+            SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig,
+            _=> unreachable!()
+        };
+        let return_type = func_sig.return_type.clone();
+        let fn_value = self.get_or_declare_func(func_call.symbol_id, func_sig);
 
         let args: Vec<BasicMetadataValueEnum<'a>> = func_call
             .args

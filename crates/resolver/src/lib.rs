@@ -797,7 +797,7 @@ impl Resolver {
         }))
     }
 
-    fn make_method_id(&self, struct_symbol_id: SymbolID, method_name: String) -> String {
+    pub fn make_method_id(struct_symbol_id: SymbolID, method_name: String) -> String {
         format!("{}{}", struct_symbol_id, method_name)
     }
 
@@ -901,7 +901,7 @@ impl Resolver {
                 Some((return_type, mut typed_func_params, typed_variadic_param)) => {
                     let symbol_id = generate_symbol_id();
                     let method_name = func_def.identifier.name.clone();
-                    let method_id = self.make_method_id(struct_symbol_id, method_name.clone());
+                    let method_id = Resolver::make_method_id(struct_symbol_id, method_name.clone());
 
                     // resolve self modifier
                     typed_func_params = typed_func_params
@@ -2067,6 +2067,7 @@ impl Resolver {
                 Some(TypedExpression {
                     kind: TypedExpressionKind::MethodCall(TypedMethodCall {
                         symbol_id,
+                        operand: Box::new(operand),
                         method_name: method_call.method_name.name.clone(),
                         is_fat_arrow: method_call.is_fat_arrow,
                         loc: method_call.loc.clone(),
@@ -2188,8 +2189,9 @@ impl Resolver {
 
                 Some(TypedExpression {
                     kind: TypedExpressionKind::FuncCall(TypedFuncCall {
-                        args: typed_args,
+                        module_id: None,
                         symbol_id,
+                        args: typed_args,
                         loc: func_call.loc.clone(),
                     }),
                     concrete_type: None,
@@ -2362,14 +2364,16 @@ impl Resolver {
                                     )))),
                                 }
                             } else {
-                                Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char))))
+                                Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                                    BasicConcreteType::Char,
+                                ))))
                             }
                         }
                         LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
                         LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
-                        LiteralKind::Null => {
-                            Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Void))))
-                        }
+                        LiteralKind::Null => Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                            BasicConcreteType::Void,
+                        )))),
                     }
                 };
                 let typed_literal = TypedLiteral {
