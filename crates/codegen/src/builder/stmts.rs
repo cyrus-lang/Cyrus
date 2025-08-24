@@ -5,7 +5,7 @@ use inkwell::{
     types::{BasicTypeEnum, StructType},
     values::FunctionValue,
 };
-use resolver::scope::{LocalScopeRef, ResolvedFunction};
+use resolver::{declsign::FuncSig, scope::{LocalScopeRef, ResolvedFunction}};
 use typed_ast::{
     SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor, TypedIf, TypedReturn,
     TypedStatement, TypedStruct,
@@ -113,7 +113,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn get_or_declare_func(
         &mut self,
         symbol_id: SymbolID,
-        resolved_func: &ResolvedFunction,
+        func_sig: FuncSig
     ) -> FunctionValue<'a> {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&symbol_id).cloned();
@@ -122,10 +122,10 @@ impl<'a> CodeGenBuilder<'a> {
         let fn_value = match local_ir_value {
             Some(local_ir_value) => local_ir_value.as_func().unwrap().clone(),
             None => self.build_func_decl(
-                resolved_func.func_sig.name.clone(),
-                resolved_func.func_sig.params.clone(),
-                resolved_func.func_sig.return_type.clone(),
-                resolved_func.func_sig.vis.clone(),
+                func_sig.name.clone(),
+                func_sig.params.clone(),
+                func_sig.return_type.clone(),
+                func_sig.vis.clone(),
                 None,
             ),
         };

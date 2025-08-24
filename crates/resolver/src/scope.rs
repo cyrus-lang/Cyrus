@@ -2,7 +2,7 @@ use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, T
 use ast::token::Location;
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use typed_ast::{ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedVariable};
+use typed_ast::{ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedFuncParamKind, TypedVariable};
 
 // Symbol Table (Per Module)
 
@@ -173,17 +173,25 @@ impl LocalScope {
     }
 
     pub fn resolve_with_symbol_id(&self, symbol_id: SymbolID) -> Option<&LocalSymbol> {
-        match self.symbols.iter().find(|(_, local_symbol)| local_symbol.get_symbol_id() == symbol_id) {
+        match self
+            .symbols
+            .iter()
+            .find(|(_, local_symbol)| local_symbol.get_symbol_id() == symbol_id)
+        {
             Some((_, local_symbol)) => Some(local_symbol),
             None => None,
         }
-    } 
+    }
     pub fn resolve_with_symbol_id_mut(&mut self, symbol_id: SymbolID) -> Option<&mut LocalSymbol> {
-        match self.symbols.iter_mut().find(|(_, local_symbol)| local_symbol.get_symbol_id() == symbol_id) {
+        match self
+            .symbols
+            .iter_mut()
+            .find(|(_, local_symbol)| local_symbol.get_symbol_id() == symbol_id)
+        {
             Some((_, local_symbol)) => Some(local_symbol),
             None => None,
         }
-    } 
+    }
 
     pub fn deep_clone(scope_ref: &LocalScopeRef) -> LocalScopeRef {
         let borrowed = scope_ref.borrow();
@@ -218,6 +226,18 @@ impl SymbolEntry {
             SymbolEntryKind::Struct(resolved_struct) => resolved_struct.symbol_id,
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.symbol_id,
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.symbol_id,
+        }
+    }
+
+    pub fn get_module_id(&self) -> ModuleID {
+        match &self.kind {
+            SymbolEntryKind::Method(resolved_method) => resolved_method.module_id,
+            SymbolEntryKind::Func(resolved_func) => resolved_func.module_id,
+            SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.module_id,
+            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.module_id,
+            SymbolEntryKind::Struct(resolved_struct) => resolved_struct.module_id,
+            SymbolEntryKind::Enum(resolved_enum) => resolved_enum.module_id,
+            SymbolEntryKind::Interface(resolved_interface) => resolved_interface.module_id,
         }
     }
 
@@ -267,6 +287,18 @@ impl SymbolEntry {
         match &self.kind {
             SymbolEntryKind::Method(method) => Some(method),
             _ => None,
+        }
+    }
+}
+
+impl ResolvedMethod {
+    pub fn is_instance_method(&self) -> bool {
+        match self.func_sig.params.list.first() {
+            Some(typed_func_param_kind) => match typed_func_param_kind {
+                TypedFuncParamKind::FuncParam(..) => false,
+                TypedFuncParamKind::SelfModifier(..) => true,
+            },
+            None => false,
         }
     }
 }
