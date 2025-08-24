@@ -1,9 +1,13 @@
-extern func printf(format: const char*, ...);
-
 func main() {
-    #a = 3uint;
-    #y = a << 2uint;
-    printf("value: %d\n", y);
+    // #a: uint32 = 3 + 2;
+    // #c: int32 = 2;
 
-    printf("value: %d\n", 12uint >> 2uint);
+    // typecast(uint32, c);
+    // #v = a + c;
+    // printf("value: %d\n", v);
+
+    #a: int*;
+    #b: int* = null || a;
 }
+
+extern func printf(format: const char*, ...);

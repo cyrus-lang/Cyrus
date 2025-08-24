@@ -80,7 +80,7 @@ pub enum TypedExpressionKind {
 
 #[derive(Debug, Clone)]
 pub struct TypedLiteral {
-    pub ty: ConcreteType,
+    pub ty: Option<ConcreteType>,
     pub kind: LiteralKind,
     pub loc: Location,
 }

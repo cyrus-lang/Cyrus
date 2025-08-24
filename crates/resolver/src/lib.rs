@@ -2300,12 +2300,12 @@ impl Resolver {
                 })
             }
             Expression::Literal(literal) => {
-                let literal_type = {
+                let literal_type: Option<ConcreteType> = {
                     match &literal.kind {
                         LiteralKind::Integer(_, suffix_opt) => {
                             if let Some(token_kind) = suffix_opt {
                                 match ConcreteType::try_from(*token_kind.clone()) {
-                                    Ok(concrete_type) => concrete_type,
+                                    Ok(concrete_type) => Some(concrete_type),
                                     Err(_) => {
                                         self.reporter.report(Diag {
                                             level: DiagLevel::Error,
@@ -2321,13 +2321,13 @@ impl Resolver {
                                     }
                                 }
                             } else {
-                                ConcreteType::BasicType(BasicConcreteType::Int)
+                                None
                             }
                         }
                         LiteralKind::Float(_, suffix_opt) => {
                             if let Some(token_kind) = suffix_opt {
                                 match ConcreteType::try_from(*token_kind.clone()) {
-                                    Ok(concrete_type) => concrete_type,
+                                    Ok(concrete_type) => Some(concrete_type),
                                     Err(_) => {
                                         self.reporter.report(Diag {
                                             level: DiagLevel::Error,
@@ -2343,7 +2343,7 @@ impl Resolver {
                                     }
                                 }
                             } else {
-                                ConcreteType::BasicType(BasicConcreteType::Float32)
+                                None
                             }
                         }
                         LiteralKind::String(string_value, string_prefix) => {
@@ -2351,24 +2351,24 @@ impl Resolver {
                                 match string_prefix {
                                     StringPrefix::B => {
                                         let len = string_value.len() + 1;
-                                        ConcreteType::Array(TypedArrayType {
+                                        Some(ConcreteType::Array(TypedArrayType {
                                             element_type: Box::new(ConcreteType::BasicType(BasicConcreteType::Char)),
                                             capacity: TypedArrayCapacity::Fixed(len.try_into().unwrap()),
                                             loc: literal.loc.clone(),
-                                        })
+                                        }))
                                     }
-                                    StringPrefix::C => ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                                    StringPrefix::C => Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
                                         BasicConcreteType::Char,
-                                    ))),
+                                    )))),
                                 }
                             } else {
-                                ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)))
+                                Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char))))
                             }
                         }
-                        LiteralKind::Bool(_) => ConcreteType::BasicType(BasicConcreteType::Bool),
-                        LiteralKind::Char(_) => ConcreteType::BasicType(BasicConcreteType::Char),
+                        LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
+                        LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
                         LiteralKind::Null => {
-                            ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Void)))
+                            Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Void))))
                         }
                     }
                 };

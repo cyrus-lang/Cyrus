@@ -626,7 +626,7 @@ impl<'a> CodeGenBuilder<'a> {
             _ => unreachable!(),
         }
     }
-  
+
     fn build_shift_left(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
@@ -655,7 +655,7 @@ impl<'a> CodeGenBuilder<'a> {
             _ => unreachable!(),
         }
     }
-  
+
     fn build_infix_expr(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
@@ -802,7 +802,7 @@ impl<'a> CodeGenBuilder<'a> {
 
     fn build_literal(&mut self, local_scope_opt: Option<LocalScopeRef>, literal: &TypedLiteral) -> InternalValue<'a> {
         let basic_type_enum: BasicTypeEnum<'a> = self
-            .build_concrete_type(local_scope_opt, literal.ty.clone())
+            .build_concrete_type(local_scope_opt, literal.ty.clone().unwrap())
             .try_into()
             .unwrap();
 
@@ -811,7 +811,7 @@ impl<'a> CodeGenBuilder<'a> {
                 BasicValueEnum::IntValue(self.llvmctx.bool_type().const_int(*value as u64, false))
             }
             LiteralKind::Integer(value, _) => {
-                let signed = literal.ty.clone().as_basic_type().unwrap().is_signed();
+                let signed = literal.ty.clone().unwrap().get_const_inner().as_basic_type().unwrap().is_signed();
 
                 BasicValueEnum::IntValue(
                     basic_type_enum
@@ -840,6 +840,6 @@ impl<'a> CodeGenBuilder<'a> {
             }
         };
 
-        InternalValue::new(literal.ty.clone(), InternalValueKind::RValue(basic_value))
+        InternalValue::new(literal.ty.clone().unwrap(), InternalValueKind::RValue(basic_value))
     }
 }

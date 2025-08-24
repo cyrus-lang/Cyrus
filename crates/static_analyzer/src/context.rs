@@ -205,7 +205,11 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Reachable
                 }
                 TypedStatement::Expression(typed_expression) => {
-                    self.analyze_typed_expr_type(Some(block_stmt.scope_id), typed_expression);
+                    self.analyze_typed_expr_type(
+                        Some(block_stmt.scope_id),
+                        typed_expression,
+                        typed_expression.concrete_type.clone(),
+                    );
                     FlowState::Reachable
                 }
                 TypedStatement::Interface(typed_interface) => {
@@ -303,13 +307,13 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(typed_expr) = &mut typed_for.condition {
-            if let Some(concrete_type) = self.analyze_typed_expr_type(scope_id_opt, typed_expr) {
+            if let Some(concrete_type) = self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone()) {
                 self.check_expr_type_must_be_condition(concrete_type, typed_for.loc.clone());
             }
         }
 
         if let Some(typed_expr) = &mut typed_for.increment {
-            self.analyze_typed_expr_type(scope_id_opt, typed_expr);
+            self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone());
         }
 
         self.control_stack.push(ControlContext::For(typed_for.clone()));
@@ -343,7 +347,7 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         } else if let Some(typed_expr) = &mut typed_return.argument {
-            if let Some(concrete_type) = self.analyze_typed_expr_type(Some(scope_id), typed_expr) {
+            if let Some(concrete_type) = self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone())) {
                 let expected = format_concrete_type(return_type.clone(), &formatter_closure);
                 let got = format_concrete_type(concrete_type.clone(), &formatter_closure);
 
@@ -483,7 +487,7 @@ impl<'a> AnalysisContext<'a> {
                 return;
             }
 
-            expr.concrete_type = match self.analyze_typed_expr_type(None, expr) {
+            expr.concrete_type = match self.analyze_typed_expr_type(None, expr, typed_global_var.ty.clone()) {
                 Some(concrete_type) => Some(concrete_type),
                 None => return,
             };
@@ -918,7 +922,7 @@ impl<'a> AnalysisContext<'a> {
 
         let value_type_opt = {
             if let Some(typed_expr) = &mut typed_variable.rhs {
-                self.analyze_typed_expr_type(scope_id_opt, typed_expr)
+                self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone())
             } else {
                 None
             }
@@ -986,15 +990,16 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, typed_assignment: &mut TypedAssignment) {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.lhs) {
+        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.lhs, None) {
             Some(concrete_type) => concrete_type,
             None => return,
         };
 
-        let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.rhs) {
-            Some(concrete_type) => concrete_type,
-            None => return,
-        };
+        let rhs_type =
+            match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.rhs, Some(lhs_type.clone())) {
+                Some(concrete_type) => concrete_type,
+                None => return,
+            };
 
         if lhs_type.is_const() {
             self.reporter.report(Diag {

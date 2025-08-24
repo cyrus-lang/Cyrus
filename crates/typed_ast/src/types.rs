@@ -48,6 +48,20 @@ impl ConcreteType {
         }
     }
 
+    pub fn get_const_inner(&self) -> &ConcreteType {
+        match self {
+            ConcreteType::UnresolvedSymbol(_) => unreachable!(),
+            concrete_type @ ConcreteType::ResolvedSymbol(..) |
+            concrete_type @ ConcreteType::BasicType(..) |
+            concrete_type @ ConcreteType::Array(..) |
+            concrete_type @ ConcreteType::Pointer(..) |
+            concrete_type @ ConcreteType::UnnamedStruct(..) => {
+                concrete_type
+            },
+            ConcreteType::Const(concrete_type) => concrete_type,
+        }
+    }
+
     pub fn as_array_type(&self) -> Option<&TypedArrayType> {
         match self {
             ConcreteType::Array(ty) => Some(ty),
