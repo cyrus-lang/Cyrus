@@ -134,117 +134,215 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn is_basic_concrete_type_integer(&self, basic_concrete_type: BasicConcreteType) -> bool {
-        matches!(
-            basic_concrete_type,
-            BasicConcreteType::UIntPtr
-                | BasicConcreteType::IntPtr
-                | BasicConcreteType::SizeT
-                | BasicConcreteType::Int
-                | BasicConcreteType::Int8
-                | BasicConcreteType::Int16
-                | BasicConcreteType::Int32
-                | BasicConcreteType::Int64
-                | BasicConcreteType::Int128
-                | BasicConcreteType::UInt
-                | BasicConcreteType::UInt8
-                | BasicConcreteType::UInt16
-                | BasicConcreteType::UInt32
-                | BasicConcreteType::UInt64
-                | BasicConcreteType::UInt128
-        )
-    }
+    pub(crate) fn is_integer_type(&self, concrete_type: ConcreteType) -> bool {
+        fn is_integer_basic(basic: &BasicConcreteType) -> bool {
+            matches!(
+                basic,
+                BasicConcreteType::UIntPtr
+                    | BasicConcreteType::IntPtr
+                    | BasicConcreteType::SizeT
+                    | BasicConcreteType::Int
+                    | BasicConcreteType::Int8
+                    | BasicConcreteType::Int16
+                    | BasicConcreteType::Int32
+                    | BasicConcreteType::Int64
+                    | BasicConcreteType::Int128
+                    | BasicConcreteType::UInt
+                    | BasicConcreteType::UInt8
+                    | BasicConcreteType::UInt16
+                    | BasicConcreteType::UInt32
+                    | BasicConcreteType::UInt64
+                    | BasicConcreteType::UInt128
+            )
+        }
 
-    pub(crate) fn is_basic_concrete_type_float(&self, basic_concrete_type: BasicConcreteType) -> bool {
-        matches!(
-            basic_concrete_type,
-            BasicConcreteType::Float16
-                | BasicConcreteType::Float32
-                | BasicConcreteType::Float64
-                | BasicConcreteType::Float128
-        )
-    }
-
-    pub(crate) fn analyze_typed_literal_type(&mut self, typed_literal: &TypedLiteral) -> Option<ConcreteType> {
-        let check_integer_invalid_suffix = |this: &mut AnalysisContext, suffix_opt: &Option<Box<TokenKind>>| {
-            if let Some(suffix) = suffix_opt {
-                let valid_integer_suffixes: &[TokenKind] = &[
-                    TokenKind::UIntPtr,
-                    TokenKind::IntPtr,
-                    TokenKind::SizeT,
-                    TokenKind::Int,
-                    TokenKind::Int8,
-                    TokenKind::Int16,
-                    TokenKind::Int32,
-                    TokenKind::Int64,
-                    TokenKind::Int128,
-                    TokenKind::UInt,
-                    TokenKind::UInt8,
-                    TokenKind::UInt16,
-                    TokenKind::UInt32,
-                    TokenKind::UInt64,
-                    TokenKind::UInt128,
-                ];
-
-                if !valid_integer_suffixes.contains(&suffix) {
-                    this.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::InvalidIntegerLiteralSuffix,
-                        location: Some(DiagLoc::new(
-                            this.resolver.get_current_module_file_path(),
-                            typed_literal.loc.clone(),
-                            0,
-                        )),
-                        hint: None,
-                    });
+        match concrete_type {
+            ConcreteType::BasicType(basic) => is_integer_basic(&basic),
+            ConcreteType::Const(inner_boxed) => {
+                if let ConcreteType::BasicType(basic) = *inner_boxed {
+                    is_integer_basic(&basic)
+                } else {
+                    false
                 }
             }
-        };
+            _ => false,
+        }
+    }
 
-        let check_float_invalid_suffix = |this: &mut AnalysisContext, suffix_opt: &Option<Box<TokenKind>>| {
-            if let Some(suffix) = suffix_opt {
-                let valid_float_suffixes: &[TokenKind] = &[
-                    TokenKind::Float16,
-                    TokenKind::Float32,
-                    TokenKind::Float64,
-                    TokenKind::Float128,
-                ];
+    pub(crate) fn is_float_type(&self, concrete_type: ConcreteType) -> bool {
+        fn is_float_basic(basic: &BasicConcreteType) -> bool {
+            matches!(
+                basic,
+                BasicConcreteType::Float16
+                    | BasicConcreteType::Float32
+                    | BasicConcreteType::Float64
+                    | BasicConcreteType::Float128
+            )
+        }
 
-                if !valid_float_suffixes.contains(&suffix) {
-                    this.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::InvalidFloatLiteralSuffix,
-                        location: Some(DiagLoc::new(
-                            this.resolver.get_current_module_file_path(),
-                            typed_literal.loc.clone(),
-                            0,
-                        )),
-                        hint: None,
-                    });
+        match concrete_type {
+            ConcreteType::BasicType(basic) => is_float_basic(&basic),
+            ConcreteType::Const(inner_boxed) => {
+                if let ConcreteType::BasicType(basic) = *inner_boxed {
+                    is_float_basic(&basic)
+                } else {
+                    false
                 }
             }
-        };
+            _ => false,
+        }
+    }
 
+    pub(crate) fn analyze_literal_type(
+        &mut self,
+        typed_literal: &mut TypedLiteral,
+        expected_type: Option<ConcreteType>,
+    ) -> Option<ConcreteType> {
         match &typed_literal.kind {
             LiteralKind::Integer(_, suffix_opt) => {
-                check_integer_invalid_suffix(self, suffix_opt);
+                let inferred = self.infer_integer_type(typed_literal, suffix_opt, expected_type);
+                typed_literal.ty = Some(inferred.clone());
+                Some(inferred)
             }
             LiteralKind::Float(_, suffix_opt) => {
-                check_float_invalid_suffix(self, suffix_opt);
+                let inferred = self.infer_float_type(typed_literal, suffix_opt, expected_type);
+                typed_literal.ty = Some(inferred.clone());
+                Some(inferred)
             }
-            LiteralKind::Bool(_) => {}
-            LiteralKind::String(_, _) => {}
-            LiteralKind::Char(_) => {}
-            LiteralKind::Null => {}
+            LiteralKind::Bool(_) => {
+                let ty = ConcreteType::BasicType(BasicConcreteType::Bool);
+                typed_literal.ty = Some(ty.clone());
+                Some(ty)
+            }
+            LiteralKind::String(_, _) => {
+                let ty = ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)));
+                typed_literal.ty = Some(ty.clone());
+                Some(ty)
+            }
+            LiteralKind::Char(_) => {
+                let ty = ConcreteType::BasicType(BasicConcreteType::Char);
+                typed_literal.ty = Some(ty.clone());
+                Some(ty)
+            }
+            LiteralKind::Null => {
+                let ty = ConcreteType::BasicType(BasicConcreteType::Null);
+                typed_literal.ty = Some(ty.clone());
+                Some(ty)
+            }
+        }
+    }
+
+    fn infer_integer_type(
+        &mut self,
+        literal: &TypedLiteral,
+        suffix_opt: &Option<Box<TokenKind>>,
+        expected: Option<ConcreteType>,
+    ) -> ConcreteType {
+        if let Some(suffix) = suffix_opt {
+            match self.map_integer_suffix_to_type(&suffix) {
+                Some(ty) => ty,
+                None => {
+                    self.report_invalid_integer_suffix(&suffix, literal.loc.clone());
+                    ConcreteType::BasicType(BasicConcreteType::Int)
+                }
+            }
+        } else if let Some(ctx_ty) = expected {
+            ctx_ty
+        } else {
+            ConcreteType::BasicType(BasicConcreteType::Int)
+        }
+    }
+
+    fn infer_float_type(
+        &mut self,
+        literal: &TypedLiteral,
+        suffix_opt: &Option<Box<TokenKind>>,
+        expected: Option<ConcreteType>,
+    ) -> ConcreteType {
+        if let Some(suffix) = suffix_opt {
+            match self.map_float_suffix_to_type(&suffix) {
+                Some(ty) => ty,
+                None => {
+                    self.report_invalid_float_suffix(&suffix, literal.loc.clone());
+                    ConcreteType::BasicType(BasicConcreteType::Float64)
+                }
+            }
+        } else if let Some(ctx_ty) = expected {
+            ctx_ty
+        } else {
+            ConcreteType::BasicType(BasicConcreteType::Float64)
+        }
+    }
+
+    fn map_integer_suffix_to_type(&self, suffix: &TokenKind) -> Option<ConcreteType> {
+        let ty = match suffix {
+            TokenKind::UIntPtr => BasicConcreteType::UIntPtr,
+            TokenKind::IntPtr => BasicConcreteType::IntPtr,
+            TokenKind::SizeT => BasicConcreteType::SizeT,
+
+            TokenKind::Int => BasicConcreteType::Int,
+            TokenKind::Int8 => BasicConcreteType::Int8,
+            TokenKind::Int16 => BasicConcreteType::Int16,
+            TokenKind::Int32 => BasicConcreteType::Int32,
+            TokenKind::Int64 => BasicConcreteType::Int64,
+            TokenKind::Int128 => BasicConcreteType::Int128,
+
+            TokenKind::UInt => BasicConcreteType::UInt,
+            TokenKind::UInt8 => BasicConcreteType::UInt8,
+            TokenKind::UInt16 => BasicConcreteType::UInt16,
+            TokenKind::UInt32 => BasicConcreteType::UInt32,
+            TokenKind::UInt64 => BasicConcreteType::UInt64,
+            TokenKind::UInt128 => BasicConcreteType::UInt128,
+
+            _ => return None,
         };
 
-        Some(typed_literal.ty.clone())
+        Some(ConcreteType::BasicType(ty))
+    }
+
+    fn map_float_suffix_to_type(&self, suffix: &TokenKind) -> Option<ConcreteType> {
+        let ty = match suffix {
+            TokenKind::Float16 => BasicConcreteType::Float16,
+            TokenKind::Float32 => BasicConcreteType::Float32,
+            TokenKind::Float64 => BasicConcreteType::Float64,
+            TokenKind::Float128 => BasicConcreteType::Float128,
+            _ => return None,
+        };
+
+        Some(ConcreteType::BasicType(ty))
+    }
+
+    fn report_invalid_integer_suffix(&mut self, suffix: &TokenKind, loc: Location) {
+        self.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: AnalyzerDiagKind::InvalidIntegerLiteralSuffix,
+            location: Some(DiagLoc::new(
+                self.resolver.get_current_module_file_path(),
+                loc.clone(),
+                0,
+            )),
+            hint: Some(format!("Invalid suffix {:?} for integer literal.", suffix)),
+        });
+    }
+
+    fn report_invalid_float_suffix(&mut self, suffix: &TokenKind, loc: Location) {
+        self.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: AnalyzerDiagKind::InvalidFloatLiteralSuffix,
+            location: Some(DiagLoc::new(
+                self.resolver.get_current_module_file_path(),
+                loc.clone(),
+                0,
+            )),
+            hint: Some(format!("Invalid suffix {:?} for float literal.", suffix)),
+        });
     }
 
     pub(crate) fn analyze_typed_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExpression,
+        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         let concrete_type = match &mut typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => {
@@ -273,12 +371,12 @@ impl<'a> AnalysisContext<'a> {
 
                 self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
             }
-            TypedExpressionKind::Literal(typed_literal) => self.analyze_typed_literal_type(typed_literal),
+            TypedExpressionKind::Literal(typed_literal) => self.analyze_literal_type(typed_literal, expected_type),
             TypedExpressionKind::Prefix(typed_prefix_expr) => {
-                self.analyze_prefix_expr_type(scope_id_opt, typed_prefix_expr)
+                self.analyze_prefix_expr_type(scope_id_opt, typed_prefix_expr, expected_type)
             }
             TypedExpressionKind::Infix(typed_infix_expr) => {
-                self.analyze_infix_expr_type(scope_id_opt, typed_infix_expr)
+                self.analyze_infix_expr_type(scope_id_opt, typed_infix_expr, expected_type)
             }
             TypedExpressionKind::Unary(typed_unary_expr) => {
                 self.analyze_unary_expr_type(scope_id_opt, typed_unary_expr)
@@ -347,10 +445,11 @@ impl<'a> AnalysisContext<'a> {
         let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
         for field in &mut unnamed_struct_value.fields {
-            let field_value_type = match self.analyze_typed_expr_type(scope_id_opt, &mut field.field_value) {
-                Some(concrete_type) => concrete_type,
-                None => continue,
-            };
+            let field_value_type =
+                match self.analyze_typed_expr_type(scope_id_opt, &mut field.field_value, field.field_type.clone()) {
+                    Some(concrete_type) => concrete_type,
+                    None => continue,
+                };
 
             fields.push(TypedUnnamedStructTypeField {
                 field_name: field.field_name.clone(),
@@ -376,7 +475,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut array_index.operand) {
+        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut array_index.operand, None) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -394,10 +493,12 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let index_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, &mut array_index.index) {
-            Some(concrete_type) => concrete_type,
-            None => return None,
-        };
+        let index_inner_type = array_index.index.concrete_type.clone();
+        let index_concrete_type =
+            match self.analyze_typed_expr_type(scope_id_opt, &mut array_index.index, index_inner_type) {
+                Some(concrete_type) => concrete_type,
+                None => return None,
+            };
 
         if !index_concrete_type
             .as_basic_type()
@@ -488,12 +589,15 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
-            let field_value_type = match self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value) {
+            let field_target_type = field.unwrap().ty.clone();
+            let field_value_type = match self.analyze_typed_expr_type(
+                scope_id_opt,
+                &mut field_init.value,
+                Some(field_target_type.clone()),
+            ) {
                 Some(concrete_type) => concrete_type,
                 None => continue,
             };
-
-            let field_target_type = field.unwrap().ty.clone();
 
             if !self.check_type_mismatch(
                 scope_id_opt,
@@ -574,7 +678,9 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut address_of.operand) {
+        let operand_inner_type = address_of.operand.concrete_type.clone();
+        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut address_of.operand, operand_inner_type)
+        {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -587,10 +693,12 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         dereference: &mut TypedDereference,
     ) -> Option<ConcreteType> {
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut dereference.operand) {
-            Some(concrete_type) => concrete_type,
-            None => return None,
-        };
+        let operand_inner_type = dereference.operand.concrete_type.clone();
+        let operand_type =
+            match self.analyze_typed_expr_type(scope_id_opt, &mut dereference.operand, operand_inner_type) {
+                Some(concrete_type) => concrete_type,
+                None => return None,
+            };
 
         match operand_type {
             ConcreteType::Pointer(concrete_type) => Some(ConcreteType::Pointer(concrete_type)),
@@ -697,7 +805,11 @@ impl<'a> AnalysisContext<'a> {
                     let variadic_args = &mut func_call.args[static_params_len..];
 
                     for (argument_idx, argument) in variadic_args.iter_mut().enumerate() {
-                        let argument_type = match self.analyze_typed_expr_type(scope_id_opt, argument) {
+                        let argument_type = match self.analyze_typed_expr_type(
+                            scope_id_opt,
+                            argument,
+                            argument.concrete_type.clone(),
+                        ) {
                             Some(concrete_type) => concrete_type,
                             None => continue,
                         };
@@ -733,7 +845,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for typed_expr in &mut func_call.args {
-            self.analyze_typed_expr_type(scope_id_opt, typed_expr);
+            self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone());
         }
 
         self.check_duplicate_param_names(
@@ -772,10 +884,12 @@ impl<'a> AnalysisContext<'a> {
         }
 
         for (element_index, element) in typed_array.elements.iter_mut().enumerate() {
-            let element_type = match self.analyze_typed_expr_type(scope_id_opt, element) {
-                Some(concrete_type) => concrete_type,
-                None => continue,
-            };
+            let element_type =
+                match self.analyze_typed_expr_type(scope_id_opt, element, Some(*typed_array_type.element_type.clone()))
+                {
+                    Some(concrete_type) => concrete_type,
+                    None => continue,
+                };
 
             if !self.check_type_mismatch(
                 scope_id_opt,
@@ -809,10 +923,11 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCast) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let operand = match self.analyze_typed_expr_type(scope_id_opt, &mut cast.operand) {
-            Some(concrete_type) => concrete_type,
-            None => return None,
-        };
+        let operand =
+            match self.analyze_typed_expr_type(scope_id_opt, &mut cast.operand, Some(cast.target_type.clone())) {
+                Some(concrete_type) => concrete_type,
+                None => return None,
+            };
 
         if !self.check_type_mismatch(
             scope_id_opt,
@@ -846,43 +961,26 @@ impl<'a> AnalysisContext<'a> {
         rhs_type: ConcreteType,
         loc: Location,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+        self.analyze_binary_expr(
+            scope_id_opt,
+            lhs_type.clone(),
+            rhs_type.clone(),
+            loc,
+            |this, lhs, rhs| {
+                let valid = (this.is_integer_type(lhs.clone()) && this.is_integer_type(rhs.clone()))
+                    || (this.is_float_type(lhs.clone()) && this.is_float_type(rhs.clone()));
 
-        let valid_concrete_type = match (lhs_type.clone(), rhs_type.clone()) {
-            (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
-                if (self.is_basic_concrete_type_integer(basic_concrete_type1.clone())
-                    && self.is_basic_concrete_type_integer(basic_concrete_type2.clone()))
-                    || (self.is_basic_concrete_type_float(basic_concrete_type1.clone())
-                        && self.is_basic_concrete_type_float(basic_concrete_type2.clone()))
-                {
-                    Some(BasicConcreteType::bigger_type(basic_concrete_type1, basic_concrete_type2).unwrap())
+                if valid {
+                    if let (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic)) = (lhs, rhs) {
+                        BasicConcreteType::bigger_type(lhs_basic, rhs_basic)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
-            }
-
-            _ => None,
-        };
-
-        match valid_concrete_type {
-            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type)),
-            None => {
-                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidInfix { lhs_type, rhs_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
-                return None;
-            }
-        }
+            },
+        )
     }
 
     fn analyze_compare_expr(
@@ -893,83 +991,84 @@ impl<'a> AnalysisContext<'a> {
         cmp_eq: bool,
         loc: Location,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+        let lhs_type = lhs_type.get_const_inner();
+        let rhs_type = rhs_type.get_const_inner();
 
-        let valid_concrete_type = match (lhs_type.clone(), rhs_type.clone()) {
-            (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
-                if self.is_basic_concrete_type_integer(basic_concrete_type1.clone())
-                    && self.is_basic_concrete_type_integer(basic_concrete_type2.clone())
+        if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
+            return None;
+        }
+
+        self.analyze_binary_expr(
+            scope_id_opt,
+            lhs_type.clone(),
+            rhs_type.clone(),
+            loc,
+            |this, lhs, rhs| {
+                if (this.is_integer_type(lhs.clone()) && this.is_integer_type(rhs.clone()))
+                    || (this.is_float_type(lhs.clone()) && this.is_float_type(rhs.clone()))
                 {
                     Some(BasicConcreteType::Bool)
-                } else if self.is_basic_concrete_type_float(basic_concrete_type1.clone())
-                    && self.is_basic_concrete_type_float(basic_concrete_type2.clone())
-                {
-                    Some(BasicConcreteType::Bool)
-                } else {
-                    None
-                }
-            }
-            (ConcreteType::Const(inner_concrete_type1), ConcreteType::Const(inner_concrete_type2)) => {
-                if *inner_concrete_type1 == *inner_concrete_type2 {
-                    Some(BasicConcreteType::Bool)
-                } else {
-                    None
-                }
-            }
-            (ConcreteType::Const(inner_concrete_type), concrete_type) => {
-                if *inner_concrete_type == concrete_type {
-                    Some(BasicConcreteType::Bool)
-                } else {
-                    None
-                }
-            }
-            (concrete_type, ConcreteType::Const(inner_concrete_type)) => {
-                if *inner_concrete_type == concrete_type {
-                    Some(BasicConcreteType::Bool)
-                } else {
-                    None
-                }
-            }
-            _ => {
-                if cmp_eq {
-                    match (lhs_type.clone(), rhs_type.clone()) {
-                        (ConcreteType::Pointer(inner_concrete_type1), ConcreteType::Pointer(inner_concrete_type2)) => {
-                            if self.check_type_mismatch(
-                                scope_id_opt,
-                                *inner_concrete_type1,
-                                *inner_concrete_type2,
-                                loc.clone(),
-                            ) {
-                                Some(BasicConcreteType::Bool)
-                            } else {
-                                None
-                            }
-                        }
-                        _ => None,
+                } else if cmp_eq {
+                    // allow pointer comparisons
+                    if let (ConcreteType::Pointer(_), ConcreteType::Pointer(_)) = (&lhs, &rhs) {
+                        Some(BasicConcreteType::Bool)
+                    } else {
+                        None
                     }
                 } else {
                     None
                 }
-            }
-        };
+            },
+        )
+    }
 
-        match valid_concrete_type {
-            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type)),
+    fn analyze_binary_expr(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        lhs_type: ConcreteType,
+        rhs_type: ConcreteType,
+        loc: Location,
+        type_checker: impl Fn(&mut Self, ConcreteType, ConcreteType) -> Option<BasicConcreteType>,
+    ) -> Option<ConcreteType> {
+        let lhs_type = lhs_type.get_const_inner();
+        let rhs_type = rhs_type.get_const_inner();
+
+        if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
+            let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidInfix {
+                    lhs_type: lhs_type_str,
+                    rhs_type: rhs_type_str,
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    loc.clone(),
+                    0,
+                )),
+                hint: Some("Consider adding an explicit cast to either the left-hand or right-hand operand to make their types compatible.".to_string()),
+            });
+            return None;
+        }
+
+        match type_checker(self, lhs_type.clone(), rhs_type.clone()) {
+            Some(result_basic) => Some(ConcreteType::BasicType(result_basic)),
             None => {
-                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
+                let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidInfix { lhs_type, rhs_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        loc.clone(),
-                        0,
-                    )),
+                    kind: AnalyzerDiagKind::InvalidInfix {
+                        lhs_type: lhs_type_str,
+                        rhs_type: rhs_type_str,
+                    },
+                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
                     hint: None,
                 });
-                return None;
+                None
             }
         }
     }
@@ -981,83 +1080,32 @@ impl<'a> AnalysisContext<'a> {
         rhs_type: ConcreteType,
         loc: Location,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
-
-        let valid_concrete_type = match (lhs_type.clone(), rhs_type.clone()) {
-            (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
-                if basic_concrete_type1.is_bool() && basic_concrete_type2.is_bool() {
-                    Some(BasicConcreteType::Bool)
+        match (lhs_type.clone(), rhs_type.clone()) {
+            (ConcreteType::BasicType(BasicConcreteType::Null), ConcreteType::Pointer(inner_pointer_type)) => {
+                Some(ConcreteType::Pointer(inner_pointer_type))
+            }
+            (ConcreteType::Pointer(inner_pointer_type), ConcreteType::BasicType(BasicConcreteType::Null)) => {
+                Some(ConcreteType::Pointer(inner_pointer_type))
+            }
+            (ConcreteType::Pointer(inner_pointer_type1), ConcreteType::Pointer(inner_pointer_type2)) => {
+                if *inner_pointer_type1 == *inner_pointer_type2 {
+                    Some(ConcreteType::Pointer(inner_pointer_type1))
                 } else {
                     None
                 }
             }
-            (ConcreteType::Const(inner_concrete_type1), ConcreteType::Const(inner_concrete_type2)) => {
-                match (
-                    inner_concrete_type1.as_basic_type(),
-                    inner_concrete_type2.as_basic_type(),
-                ) {
-                    (Some(basic_concrete_type1), Some(basic_concrete_type2)) => {
-                        if basic_concrete_type1.is_bool() && basic_concrete_type2.is_bool() {
-                            Some(BasicConcreteType::Bool)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            (ConcreteType::Const(inner_concrete_type), concrete_type) => {
-                match (inner_concrete_type.as_basic_type(), concrete_type.as_basic_type()) {
-                    (Some(basic_concrete_type1), Some(basic_concrete_type2)) => {
-                        if basic_concrete_type1.is_bool() && basic_concrete_type2.is_bool() {
-                            Some(BasicConcreteType::Bool)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            (concrete_type, ConcreteType::Const(inner_concrete_type)) => {
-                match (inner_concrete_type.as_basic_type(), concrete_type.as_basic_type()) {
-                    (Some(basic_concrete_type1), Some(basic_concrete_type2)) => {
-                        if basic_concrete_type1.is_bool() && basic_concrete_type2.is_bool() {
-                            Some(BasicConcreteType::Bool)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            (ConcreteType::Pointer(inner_concrete_type1), ConcreteType::Pointer(inner_concrete_type2)) => {
-                if self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc.clone()) {
+            (
+                null_concrete_type @ ConcreteType::BasicType(BasicConcreteType::Null),
+                ConcreteType::BasicType(BasicConcreteType::Null),
+            ) => Some(null_concrete_type),
+            _ => self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
+                (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic))
+                    if lhs_basic.is_bool() && rhs_basic.is_bool() =>
+                {
                     Some(BasicConcreteType::Bool)
-                } else {
-                    None
                 }
-            }
-            _ => None,
-        };
-
-        match valid_concrete_type {
-            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type)),
-            None => {
-                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidInfix { lhs_type, rhs_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
-                return None;
-            }
+                _ => None,
+            }),
         }
     }
 
@@ -1068,77 +1116,14 @@ impl<'a> AnalysisContext<'a> {
         rhs_type: ConcreteType,
         loc: Location,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
-
-        let valid_concrete_type = match (lhs_type.clone(), rhs_type.clone()) {
-            (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
-                if basic_concrete_type1.is_bool() && basic_concrete_type2.is_bool() {
-                    Some(BasicConcreteType::Bool)
-                } else {
-                    None
-                }
-            }
-            (ConcreteType::Const(inner_concrete_type1), ConcreteType::Const(inner_concrete_type2)) => {
-                match (
-                    inner_concrete_type1.as_basic_type(),
-                    inner_concrete_type2.as_basic_type(),
-                ) {
-                    (Some(basic_concrete_type1), Some(basic_concrete_type2)) => {
-                        if basic_concrete_type1.is_bool() && basic_concrete_type2.is_bool() {
-                            Some(BasicConcreteType::Bool)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            (ConcreteType::Const(inner_concrete_type), concrete_type) => {
-                match (inner_concrete_type.as_basic_type(), concrete_type.as_basic_type()) {
-                    (Some(basic_concrete_type1), Some(basic_concrete_type2)) => {
-                        if basic_concrete_type1.is_bool() && basic_concrete_type2.is_bool() {
-                            Some(BasicConcreteType::Bool)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            (concrete_type, ConcreteType::Const(inner_concrete_type)) => {
-                match (inner_concrete_type.as_basic_type(), concrete_type.as_basic_type()) {
-                    (Some(basic_concrete_type1), Some(basic_concrete_type2)) => {
-                        if basic_concrete_type1.is_bool() && basic_concrete_type2.is_bool() {
-                            Some(BasicConcreteType::Bool)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
+        self.analyze_binary_expr(scope_id_opt, lhs_type, rhs_type, loc, |_, lhs, rhs| match (lhs, rhs) {
+            (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic))
+                if lhs_basic.is_bool() && rhs_basic.is_bool() =>
+            {
+                Some(BasicConcreteType::Bool)
             }
             _ => None,
-        };
-
-        match valid_concrete_type {
-            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type)),
-            None => {
-                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidInfix { lhs_type, rhs_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
-                return None;
-            }
-        }
+        })
     }
 
     fn analyze_left_shift_expr(
@@ -1148,40 +1133,17 @@ impl<'a> AnalysisContext<'a> {
         rhs_type: ConcreteType,
         loc: Location,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
-
-        let valid_concrete_type = match (lhs_type.clone(), rhs_type.clone()) {
-            (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
-                if self.is_basic_concrete_type_integer(basic_concrete_type1.clone())
-                    && self.is_basic_concrete_type_integer(basic_concrete_type2.clone())
-                {
-                    Some(BasicConcreteType::bigger_type(basic_concrete_type1, basic_concrete_type2).unwrap())
+        self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
+            if let (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic)) = (&lhs, &rhs) {
+                if lhs_basic.is_integer() && rhs_basic.is_integer() {
+                    Some(BasicConcreteType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
                 } else {
                     None
                 }
+            } else {
+                None
             }
-            _ => None,
-        };
-
-        match valid_concrete_type {
-            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type)),
-            None => {
-                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidInfix { lhs_type, rhs_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
-                return None;
-            }
-        }
+        })
     }
 
     fn analyze_right_shift_expr(
@@ -1191,53 +1153,38 @@ impl<'a> AnalysisContext<'a> {
         rhs_type: ConcreteType,
         loc: Location,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+        self.analyze_binary_expr(
+            scope_id_opt,
+            lhs_type.clone(),
+            rhs_type.clone(),
+            loc.clone(),
+            |this, lhs, rhs| {
+                if let (ConcreteType::BasicType(lhs_basic), ConcreteType::BasicType(rhs_basic)) = (&lhs, &rhs) {
+                    // rhs must be unsigned
+                    if rhs_basic.is_signed() {
+                        this.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger,
+                            location: Some(DiagLoc::new(
+                                this.resolver.get_current_module_file_path(),
+                                loc.clone(),
+                                0,
+                            )),
+                            hint: None,
+                        });
+                        return None;
+                    }
 
-        let valid_concrete_type = match (lhs_type.clone(), rhs_type.clone()) {
-            (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
-                if self.is_basic_concrete_type_integer(basic_concrete_type1.clone())
-                    && self.is_basic_concrete_type_integer(basic_concrete_type2.clone())
-                {
-                    Some(BasicConcreteType::bigger_type(basic_concrete_type1, basic_concrete_type2).unwrap())
+                    if lhs_basic.is_integer() && rhs_basic.is_integer() {
+                        Some(BasicConcreteType::bigger_type(lhs_basic.clone(), rhs_basic.clone())?)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
-            }
-            _ => None,
-        };
-
-        if valid_concrete_type.is_some() && rhs_type.as_basic_type().unwrap().is_signed() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger,
-                location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
-                    loc.clone(),
-                    0,
-                )),
-                hint: None,
-            });
-        }
-
-        match valid_concrete_type {
-            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type)),
-            None => {
-                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidInfix { lhs_type, rhs_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
-                return None;
-            }
-        }
+            },
+        )
     }
 
     fn analyze_bitwise_expr(
@@ -1247,90 +1194,34 @@ impl<'a> AnalysisContext<'a> {
         rhs_type: ConcreteType,
         loc: Location,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+        self.analyze_binary_expr(scope_id_opt, lhs_type.clone(), rhs_type.clone(), loc, |_, lhs, rhs| {
+            // only allow integer types
+            if let (Some(lhs_basic), Some(rhs_basic)) = (lhs.as_basic_type(), rhs.as_basic_type()) {
+                if lhs_basic.is_integer() && rhs_basic.is_integer() {
+                    return Some(BasicConcreteType::bigger_type(lhs_basic.clone(), rhs_basic.clone()).unwrap());
+                }
+            }
 
-        let valid_concrete_type = match (lhs_type.clone(), rhs_type.clone()) {
-            (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
-                if basic_concrete_type1.is_integer() && basic_concrete_type2.is_integer() {
-                    Some(BasicConcreteType::Bool)
-                } else {
-                    None
-                }
-            }
-            (ConcreteType::Const(inner_concrete_type1), ConcreteType::Const(inner_concrete_type2)) => {
-                match (
-                    inner_concrete_type1.as_basic_type(),
-                    inner_concrete_type2.as_basic_type(),
-                ) {
-                    (Some(basic_concrete_type1), Some(basic_concrete_type2)) => {
-                        if basic_concrete_type1.is_integer() && basic_concrete_type2.is_integer() {
-                            Some(BasicConcreteType::Bool)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            (ConcreteType::Const(inner_concrete_type), concrete_type) => {
-                match (inner_concrete_type.as_basic_type(), concrete_type.as_basic_type()) {
-                    (Some(basic_concrete_type1), Some(basic_concrete_type2)) => {
-                        if basic_concrete_type1.is_integer() && basic_concrete_type2.is_integer() {
-                            Some(BasicConcreteType::Bool)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            (concrete_type, ConcreteType::Const(inner_concrete_type)) => {
-                match (inner_concrete_type.as_basic_type(), concrete_type.as_basic_type()) {
-                    (Some(basic_concrete_type1), Some(basic_concrete_type2)) => {
-                        if basic_concrete_type1.is_integer() && basic_concrete_type2.is_integer() {
-                            Some(BasicConcreteType::Bool)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            _ => None,
-        };
-
-        match valid_concrete_type {
-            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type)),
-            None => {
-                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidInfix { lhs_type, rhs_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
-                return None;
-            }
-        }
+            None
+        })
     }
 
     fn analyze_infix_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         infix_expr: &mut TypedInfixExpression,
+        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut infix_expr.lhs) {
+        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut infix_expr.lhs, expected_type.clone()) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
 
-        let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut infix_expr.rhs) {
+        let rhs_type = match self.analyze_typed_expr_type(
+            scope_id_opt,
+            &mut infix_expr.rhs,
+            expected_type.or(Some(lhs_type.clone())),
+        ) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -1345,10 +1236,7 @@ impl<'a> AnalysisContext<'a> {
             | InfixOperator::GreaterEqual => {
                 self.analyze_compare_expr(scope_id_opt, lhs_type, rhs_type, false, infix_expr.loc.clone())
             }
-            InfixOperator::Equal => {
-                self.analyze_compare_expr(scope_id_opt, lhs_type, rhs_type, true, infix_expr.loc.clone())
-            }
-            InfixOperator::NotEqual => {
+            InfixOperator::Equal | InfixOperator::NotEqual => {
                 self.analyze_compare_expr(scope_id_opt, lhs_type, rhs_type, true, infix_expr.loc.clone())
             }
             InfixOperator::Or => self.analyze_or_expr(scope_id_opt, lhs_type, rhs_type, infix_expr.loc.clone()),
@@ -1372,10 +1260,11 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         prefix_expr: &mut TypedPrefixExpression,
+        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut prefix_expr.operand) {
+        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut prefix_expr.operand, expected_type) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
@@ -1485,39 +1374,29 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut unary_expr.operand) {
+        let operand_inner_type = unary_expr.operand.concrete_type.clone();
+        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut unary_expr.operand, operand_inner_type)
+        {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
 
-        let valid_operand_type = match &operand_type {
-            ConcreteType::BasicType(basic_concrete_type) => {
-                if self.is_basic_concrete_type_integer(basic_concrete_type.clone()) {
-                    Some(basic_concrete_type)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
+        if self.is_integer_type(operand_type.get_const_inner().clone()) {
+            let operand_type = format_concrete_type(operand_type, &formatter_closure);
 
-        match valid_operand_type {
-            Some(concrete_type) => Some(ConcreteType::BasicType(concrete_type.clone())),
-            None => {
-                let operand_type = format_concrete_type(operand_type, &formatter_closure);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InvalidUnary { operand_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        unary_expr.loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
-                return None;
-            }
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidUnary { operand_type },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    unary_expr.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
         }
+
+        Some(operand_type)
     }
 }

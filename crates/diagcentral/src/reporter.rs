@@ -84,6 +84,7 @@ impl<K: Display> DiagReporter<K> {
             if let Some(hint) = &diag.hint {
                 formatted.push_str("\n");
                 formatted.push_str(&format!(" {}: {}", "hint".color(Colors::BlueFg), hint));
+                formatted.push_str("\n");
             }
         }
 

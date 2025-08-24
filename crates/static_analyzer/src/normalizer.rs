@@ -92,7 +92,11 @@ impl<'a> AnalysisContext<'a> {
                     if let Some(t) = &resolved_variable.typed_variable.ty {
                         return self.normalize_type(scope_id_opt, t.clone(), loc);
                     } else if let Some(rhs) = &resolved_variable.typed_variable.rhs {
-                        let rhs_ty = self.analyze_typed_expr_type(scope_id_opt, &mut rhs.clone())?;
+                        let rhs_ty = self.analyze_typed_expr_type(
+                            scope_id_opt,
+                            &mut rhs.clone(),
+                            resolved_variable.typed_variable.ty.clone(),
+                        )?;
                         return self.normalize_type(scope_id_opt, rhs_ty, loc);
                     }
                 }
@@ -155,12 +159,16 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         match local_or_global_symbol {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
-                LocalSymbolKind::Variable(var) => {
-                    if let Some(t) = &var.typed_variable.ty {
-                        self.normalize_type(scope_id_opt, t.clone(), var.typed_variable.loc.clone())
-                    } else if let Some(rhs) = &var.typed_variable.rhs {
-                        let rhs_ty = self.analyze_typed_expr_type(scope_id_opt, &mut rhs.clone())?;
-                        self.normalize_type(scope_id_opt, rhs_ty, var.typed_variable.loc.clone())
+                LocalSymbolKind::Variable(resolved_variable) => {
+                    if let Some(t) = &resolved_variable.typed_variable.ty {
+                        self.normalize_type(scope_id_opt, t.clone(), resolved_variable.typed_variable.loc.clone())
+                    } else if let Some(rhs) = &resolved_variable.typed_variable.rhs {
+                        let rhs_ty = self.analyze_typed_expr_type(
+                            scope_id_opt,
+                            &mut rhs.clone(),
+                            resolved_variable.typed_variable.ty.clone(),
+                        )?;
+                        self.normalize_type(scope_id_opt, rhs_ty, resolved_variable.typed_variable.loc.clone())
                     } else {
                         panic!("Cannot resolve variable type.")
                     }
