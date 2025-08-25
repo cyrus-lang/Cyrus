@@ -7,7 +7,9 @@ use resolver::{
     scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntryKind},
 };
 use std::{
+    cell::RefCell,
     mem,
+    rc::Rc,
     sync::{Arc, Mutex},
 };
 use typed_ast::{format::format_concrete_type, types::ConcreteType, *};
@@ -51,7 +53,7 @@ macro_rules! update_global_symbol_type {
 }
 
 pub struct AnalysisContext<'a> {
-    pub ast: &'a mut TypedProgramTree,
+    pub ast: Rc<RefCell<TypedProgramTree>>,
     pub resolver: &'a Resolver,
     pub reporter: DiagReporter<AnalyzerDiagKind>,
     pub module_id: ModuleID,
@@ -76,7 +78,7 @@ impl<'a> AnalysisContext<'a> {
     pub fn new(
         resolver: &'a Resolver,
         module_id: ModuleID,
-        ast: &'a mut TypedProgramTree,
+        ast: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>,
     ) -> Self {
         let symbol_formatter = Box::new(
@@ -134,7 +136,10 @@ impl<'a> AnalysisContext<'a> {
 
     // Traverse TypedAST
     pub fn analyze(&mut self) {
-        let mut body = mem::take(&mut self.ast.body);
+        let mut body = {
+            let mut ast_borrowed = self.ast.borrow_mut();
+            mem::take(&mut ast_borrowed.body)
+        };
 
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
@@ -163,7 +168,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_unused_symbols();
-        self.ast.body = body;
+        self.ast.borrow_mut().body = body;
     }
 
     // Traverse BlockStatement
@@ -307,7 +312,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(typed_expr) = &mut typed_for.condition {
-            if let Some(concrete_type) = self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone()) {
+            if let Some(concrete_type) =
+                self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone())
+            {
                 self.check_expr_type_must_be_condition(concrete_type, typed_for.loc.clone());
             }
         }
@@ -347,7 +354,9 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         } else if let Some(typed_expr) = &mut typed_return.argument {
-            if let Some(concrete_type) = self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone())) {
+            if let Some(concrete_type) =
+                self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone()))
+            {
                 let expected = format_concrete_type(return_type.clone(), &formatter_closure);
                 let got = format_concrete_type(concrete_type.clone(), &formatter_closure);
 
@@ -640,6 +649,7 @@ impl<'a> AnalysisContext<'a> {
                 .resolver
                 .lookup_symbol_entry_with_id(self.module_id, *symbol_id)
                 .unwrap();
+
             let resolved_method = symbol_entry.as_method().unwrap();
 
             self.check_method_name(

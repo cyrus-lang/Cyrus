@@ -85,13 +85,23 @@ impl<'a> CodeGenBuilder<'a> {
                     concrete_type.clone(),
                 )
             } else {
-                let concrete_type = variable.rhs.clone().unwrap().concrete_type.unwrap();
-                (
-                    self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone())
-                        .try_into()
-                        .unwrap(),
-                    concrete_type,
-                )
+                match variable.rhs.clone().unwrap().concrete_type {
+                    Some(concrete_type) => (
+                        self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone())
+                            .try_into()
+                            .unwrap(),
+                        concrete_type,
+                    ),
+                    None => {
+                        let concrete_type = variable.rhs.clone().unwrap().concrete_type.unwrap();
+                        (
+                            self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone())
+                                .try_into()
+                                .unwrap(),
+                            concrete_type,
+                        )
+                    }
+                }
             }
         };
 

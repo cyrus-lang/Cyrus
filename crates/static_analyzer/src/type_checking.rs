@@ -342,9 +342,18 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_typed_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        mut typed_expr: &mut TypedExpression,
+        typed_expr: &mut TypedExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
+        if let TypedExpressionKind::MethodCall(method_call) = &mut typed_expr.kind {
+            let (concrete_type, lowered_func_call) =
+                self.analyze_and_lower_method_call_expr_type(scope_id_opt, method_call)?;
+
+            typed_expr.concrete_type = Some(concrete_type.clone());
+            typed_expr.kind = TypedExpressionKind::FuncCall(lowered_func_call);
+            return Some(concrete_type);
+        }
+
         let concrete_type = match &mut typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => {
                 let local_scope_ref_opt = {
@@ -403,21 +412,11 @@ impl<'a> AnalysisContext<'a> {
             TypedExpressionKind::FuncCall(typed_func_call) => {
                 self.analyze_func_call_expr_type(scope_id_opt, typed_func_call)
             }
-            TypedExpressionKind::FieldAccess(..) => todo!(),
-            TypedExpressionKind::MethodCall(method_call) => Some({
-                let (concrete_type, lowered_func_call) =
-                    self.analyze_and_lower_method_call_expr_type(scope_id_opt, method_call)?;
-
-                *typed_expr = TypedExpression {
-                    kind: TypedExpressionKind::FuncCall(lowered_func_call),
-                    concrete_type: Some(concrete_type.clone()),
-                };
-
-                concrete_type
-            }),
             TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.analyze_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
             }
+            TypedExpressionKind::FieldAccess(..) => todo!(),
+            TypedExpressionKind::MethodCall(..) => unreachable!(), // lowered to func call
         };
 
         let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.get_loc());
@@ -733,7 +732,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_sig: FuncSig,
-        mut args: Vec<TypedExpression>,
+        args: &mut Vec<TypedExpression>,
         loc: Location,
     ) -> Option<ConcreteType> {
         let is_variadic = func_sig.params.variadic.is_some();
@@ -822,7 +821,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        for typed_expr in &mut args {
+        for typed_expr in args {
             self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone());
         }
 
@@ -892,7 +891,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         self.mark_func_used(local_scope_opt?, self.module_id, func_call.symbol_id);
-        self.check_func_call(scope_id_opt, func_sig, func_call.args.clone(), func_call.loc.clone())
+        self.check_func_call(scope_id_opt, func_sig, &mut func_call.args, func_call.loc.clone())
     }
 
     fn analyze_and_lower_method_call_expr_type(
@@ -915,9 +914,12 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let method_opt = resolved_struct.struct_sig.methods.iter().find(|(method_id, _)| {
-            **method_id == Resolver::make_method_id(resolved_struct.symbol_id, method_call.method_name.clone())
-        });
+        let method_opt = resolved_struct
+            .struct_sig
+            .methods
+            .iter()
+            .find(|(method_name, _)| **method_name == method_call.method_name.clone());
+
         let method_exists = method_opt.is_some();
 
         if !method_exists {
@@ -942,6 +944,7 @@ impl<'a> AnalysisContext<'a> {
             .resolver
             .lookup_symbol_entry_with_id(struct_module_id, *method_symbol_id)
             .unwrap();
+
         let resolved_method = method_symbol_entry.as_method().unwrap();
 
         if !resolved_method.is_instance_method() && method_call.is_fat_arrow {
@@ -970,15 +973,12 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        dbg!(method_symbol_id.clone());
-
-        let func_call = {
+        let mut func_call = {
             if resolved_method.is_instance_method() {
                 todo!();
             } else {
                 TypedFuncCall {
-                    module_id: Some(struct_module_id),
-                    symbol_id: resolved_method.symbol_id,
+                    symbol_id: *method_symbol_id,
                     args: method_call.args.clone(),
                     loc: method_call.loc.clone(),
                 }
@@ -986,8 +986,15 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt?);
-        self.mark_func_used(local_scope_opt?, self.module_id, func_call.symbol_id);
-        let concrete_type = self.check_func_call(scope_id_opt, resolved_method.func_sig.clone(), func_call.args.clone(), func_call.loc.clone())?;
+        self.mark_func_used(local_scope_opt?, self.module_id, *method_symbol_id);
+
+        let concrete_type = self.check_func_call(
+            scope_id_opt,
+            resolved_method.func_sig.clone(),
+            &mut func_call.args,
+            func_call.loc.clone(),
+        )?;
+
         Some((concrete_type, func_call))
     }
 
