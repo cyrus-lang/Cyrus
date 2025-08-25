@@ -25,6 +25,7 @@ pub struct FuncSig {
 #[derive(Debug, Clone)]
 pub struct EnumSig {
     pub name: String,
+    pub methods: HashMap<String, SymbolID>,
     pub variants: Vec<TypedEnumVariant>,
     pub vis: AccessSpecifier,
     pub loc: Location,

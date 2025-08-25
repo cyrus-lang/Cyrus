@@ -755,11 +755,19 @@ impl Resolver {
             variants.push(typed_variant);
         }
 
+        self.check_duplicate_method_names(&enum_decl.identifier.name, enum_decl.methods.clone());
+
+        let methods = match self.resolve_methods(module_id, &enum_decl.methods, enum_symbol_id) {
+            Some(methods) => methods,
+            None => return None,
+        };
+
         let resolved_enum = ResolvedEnum {
             module_id,
             symbol_id: enum_symbol_id,
             enum_sig: EnumSig {
                 name: enum_decl.identifier.name.clone(),
+                methods: methods.clone(),
                 variants: variants.clone(),
                 vis: enum_decl.vis.clone(),
                 loc: enum_decl.loc.clone(),
@@ -780,13 +788,6 @@ impl Resolver {
                 SymbolEntry::new(SymbolEntryKind::Enum(resolved_enum)),
             );
         }
-
-        self.check_duplicate_method_names(&enum_decl.identifier.name, enum_decl.methods.clone());
-
-        let methods = match self.resolve_methods(module_id, &enum_decl.methods, enum_symbol_id) {
-            Some(methods) => methods,
-            None => return None,
-        };
 
         Some(TypedStatement::Enum(TypedEnum {
             symbol_id: enum_symbol_id,
@@ -944,7 +945,10 @@ impl Resolver {
                         })),
                     );
 
-                    method_bodies.insert(symbol_id, (Rc::clone(&local_scope_rc), func_def.body.clone(), method_scope_id));
+                    method_bodies.insert(
+                        symbol_id,
+                        (Rc::clone(&local_scope_rc), func_def.body.clone(), method_scope_id),
+                    );
                 }
                 None => continue,
             }

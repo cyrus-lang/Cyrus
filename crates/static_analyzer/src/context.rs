@@ -964,7 +964,13 @@ impl<'a> AnalysisContext<'a> {
 
         let value_type_opt = {
             if let Some(typed_expr) = &mut typed_variable.rhs {
-                self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone())
+                let concrete_type =
+                    match self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone()) {
+                        Some(concrete_type) => concrete_type,
+                        None => return,
+                    };
+                typed_expr.concrete_type = Some(concrete_type.clone());
+                Some(concrete_type)
             } else {
                 None
             }

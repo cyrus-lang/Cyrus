@@ -1,15 +1,15 @@
 extern func printf(format: const char*, ...);
 
-struct Sample {
-    public func sum(a: int, b: int) int {
-        return a + b;
+struct Person {
+    public name: char*;
+    public age: int32;
+
+    public func display(&self) {
+        printf("value: %s", self.name);
     }
 }
 
 func main() {
-    printf("result: %d\n", Sample.sum(1, 2));
-    // #hello = "Hello, ";
-    // #world = "Cyrus!";
-    // #combined = concat(hello, world);
-    // printf("%s\n", combined);
+    #person = Person { name: "Taha", age: 18 };
+    person.display();
 }

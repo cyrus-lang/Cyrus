@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    ObjectNotSupportsMethods, 
     InvalidFatArrow,
     StructMethodNotDefined {
         struct_name: String,
@@ -138,6 +139,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::ObjectNotSupportsMethods => {
+                write!(f, "Invalid method call (not supported for this symbol).")
+            }
             AnalyzerDiagKind::InvalidFatArrow => {
                 write!(f, "Invalid usage of the fat arrow.")
             }
