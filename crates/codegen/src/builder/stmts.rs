@@ -7,7 +7,6 @@ use crate::builder::{
 };
 use inkwell::{
     basic_block::BasicBlock,
-    object_file::Symbol,
     types::{BasicTypeEnum, StructType},
     values::FunctionValue,
 };

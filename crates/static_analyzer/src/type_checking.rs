@@ -1,24 +1,21 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::{
-    FuncCall, LiteralKind,
+    LiteralKind,
     operators::{InfixOperator, PrefixOperator},
     token::{Location, TokenKind},
 };
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
-    Resolver,
     declsign::FuncSig,
     scope::{LocalOrGlobalSymbol, SymbolEntryKind},
 };
 use typed_ast::{
-    ModuleID, ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedCast, TypedDereference,
-    TypedExpression, TypedExpressionKind, TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedLiteral,
-    TypedMethodCall, TypedPrefixExpression, TypedStructInit, TypedUnaryExpression, TypedUnnamedStructValue,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
         ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
+    *,
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -907,10 +904,19 @@ impl<'a> AnalysisContext<'a> {
 
         let (resolved_struct, struct_module_id) = match local_or_global_symbol {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
-                (local_symbol.as_struct().unwrap().clone(), self.module_id)
+                let resolved_struct = local_symbol.as_struct().unwrap().clone();
+                let local_scope_rc = self
+                    .resolver
+                    .get_scope_ref(self.module_id, scope_id_opt.unwrap())
+                    .unwrap();
+                self.mark_local_symbol_used_once(local_scope_rc, self.module_id, resolved_struct.symbol_id);
+
+                (resolved_struct, self.module_id)
             }
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
-                (symbol_entry.as_struct().unwrap().clone(), symbol_entry.get_module_id())
+                let resolved_struct = symbol_entry.as_struct().unwrap().clone();
+                self.mark_symbol_used_once(symbol_entry.get_module_id(), resolved_struct.symbol_id);
+                (resolved_struct, symbol_entry.get_module_id())
             }
         };
 
