@@ -400,7 +400,7 @@ impl Resolver {
         drop(global_symbols);
     }
 
-    fn insert_symbol_name(&mut self, module_id: ModuleID, name: &String, loc: Location, span_end: usize) {
+    fn insert_symbol_name(&mut self, module_id: ModuleID, name: &String, loc: Location, span_end: usize) -> SymbolID {
         let symbol_id = generate_symbol_id();
         let mut global_symbols = self.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get_mut(&module_id).unwrap();
@@ -408,6 +408,7 @@ impl Resolver {
         let module_file_path = self.get_module_file_path(module_id).unwrap();
         symbol_table.locs.insert(symbol_id, (module_file_path, loc, span_end));
         drop(global_symbols);
+        symbol_id
     }
 
     fn get_symbol_loc(&self, module_id: ModuleID, symbol_id: SymbolID) -> Option<(String, Location, usize)> {
@@ -797,10 +798,6 @@ impl Resolver {
         }))
     }
 
-    pub fn make_method_id(struct_symbol_id: SymbolID, method_name: String) -> String {
-        format!("{}{}", struct_symbol_id, method_name)
-    }
-
     fn resolve_global_var(&mut self, module_id: ModuleID, global_var: &GlobalVariable) -> Option<TypedStatement> {
         let concrete_type = {
             if let Some(type_specifier) = &global_var.type_specifier {
@@ -883,6 +880,10 @@ impl Resolver {
         }
     }
 
+    pub fn make_method_resolve_name(struct_symbol_id: SymbolID, method_name: String) -> String {
+        format!("{}{}", struct_symbol_id, method_name)
+    }
+
     fn resolve_methods(
         &mut self,
         module_id: ModuleID,
@@ -890,18 +891,17 @@ impl Resolver {
         struct_symbol_id: SymbolID,
     ) -> Option<HashMap<String, SymbolID>> {
         let mut methods: HashMap<String, SymbolID> = HashMap::new();
-        let mut method_bodies: HashMap<SymbolID, (LocalScopeRef, Box<BlockStatement>)> = HashMap::new();
+        let mut method_bodies: HashMap<SymbolID, (LocalScopeRef, Box<BlockStatement>, ScopeID)> = HashMap::new();
 
         for func_def in methods_list {
-            let scope_id = generate_scope_id();
+            let method_scope_id = generate_scope_id();
             let local_scope_rc = Rc::new(RefCell::new(LocalScope::new(None)));
-            self.insert_scope_ref(module_id, scope_id, local_scope_rc.clone());
+            self.insert_scope_ref(module_id, method_scope_id, local_scope_rc.clone());
 
             match self.resolve_func(module_id, Some(local_scope_rc.clone()), &func_def.as_func_decl()) {
                 Some((return_type, mut typed_func_params, typed_variadic_param)) => {
-                    let symbol_id = generate_symbol_id();
                     let method_name = func_def.identifier.name.clone();
-                    let method_id = Resolver::make_method_id(struct_symbol_id, method_name.clone());
+                    let method_resolve_name = Resolver::make_method_resolve_name(struct_symbol_id, method_name.clone());
 
                     // resolve self modifier
                     typed_func_params = typed_func_params
@@ -917,8 +917,13 @@ impl Resolver {
                         })
                         .collect();
 
-                    methods.insert(method_id, symbol_id);
-                    self.insert_symbol_name(module_id, &method_name, func_def.loc.clone(), func_def.span.end);
+                    let symbol_id = self.insert_symbol_name(
+                        module_id,
+                        &method_resolve_name,
+                        func_def.loc.clone(),
+                        func_def.span.end,
+                    );
+                    methods.insert(method_name.clone(), symbol_id);
                     self.insert_symbol_entry(
                         module_id,
                         symbol_id,
@@ -926,7 +931,7 @@ impl Resolver {
                             module_id,
                             symbol_id,
                             func_sig: FuncSig {
-                                name: method_name.clone(),
+                                name: method_name,
                                 params: TypedFuncParams {
                                     list: typed_func_params,
                                     variadic: typed_variadic_param,
@@ -939,7 +944,7 @@ impl Resolver {
                         })),
                     );
 
-                    method_bodies.insert(symbol_id, (Rc::clone(&local_scope_rc), func_def.body.clone()));
+                    method_bodies.insert(symbol_id, (Rc::clone(&local_scope_rc), func_def.body.clone(), method_scope_id));
                 }
                 None => continue,
             }
@@ -951,7 +956,7 @@ impl Resolver {
                 _ => unreachable!(),
             };
 
-            let (local_scope_rc, method_body) = method_bodies.get(symbol_id).unwrap();
+            let (local_scope_rc, method_body, method_scope_id) = method_bodies.get(symbol_id).unwrap();
 
             for typed_param_kind in &resolved_method.func_sig.params.list {
                 let self_symbol_name = "self".to_string();
@@ -996,12 +1001,10 @@ impl Resolver {
                 }
             }
 
-            let method_scope_id = generate_scope_id();
             let method_scope = LocalScope::deep_clone(&local_scope_rc);
-            self.insert_scope_ref(module_id, method_scope_id, method_scope.clone());
 
             let typed_func_body =
-                match self.resolve_block_statement(method_scope_id, method_scope.clone(), &method_body) {
+                match self.resolve_block_statement(*method_scope_id, method_scope.clone(), &method_body) {
                     Some(typed_block_statement) => typed_block_statement,
                     None => return None,
                 };
@@ -1129,6 +1132,7 @@ impl Resolver {
         }
 
         Some(TypedStatement::Struct(TypedStruct {
+            module_id: self.current_module.unwrap(),
             symbol_id: struct_symbol_id,
             name: struct_decl.identifier.name.clone(),
             fields: typed_struct_fields,
@@ -2189,7 +2193,6 @@ impl Resolver {
 
                 Some(TypedExpression {
                     kind: TypedExpressionKind::FuncCall(TypedFuncCall {
-                        module_id: None,
                         symbol_id,
                         args: typed_args,
                         loc: func_call.loc.clone(),
@@ -2537,7 +2540,7 @@ impl Resolver {
         None
     }
 
-    fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
+    pub fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
         let global_symbols = self.global_symbols.lock().unwrap();
         let option = match global_symbols.get(&module_id) {
             Some(symbol_table) => match symbol_table.names.get(name) {

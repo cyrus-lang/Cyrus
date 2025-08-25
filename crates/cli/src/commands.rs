@@ -14,7 +14,12 @@ use resolver::{
 };
 use static_analyzer::context::AnalysisContext;
 use std::{
-    cell::RefCell, env, io::{self, Write}, process::exit, rc::Rc, sync::{Arc, Mutex}
+    cell::RefCell,
+    env,
+    io::{self, Write},
+    process::exit,
+    rc::Rc,
+    sync::{Arc, Mutex},
 };
 use typed_ast::{ModuleID, TypedProgramTree};
 use utils::fs::ensure_output_dir;
@@ -60,17 +65,18 @@ fn get_program_trees(
 
     {
         for (_, _, _, typed_program_tree) in program_trees.iter() {
-            let mut typed_program_tree_borrowed = typed_program_tree.borrow_mut();
-            let mut analyzer = AnalysisContext::new(
-                &resolver,
-                module_id,
-                &mut typed_program_tree_borrowed,
-                entry_points.clone(),
-            );
-            analyzer.analyze();
-            DiagReporter::display(&analyzer.reporter);
-            if analyzer.reporter.has_errors() {
-                exit(1);
+            {
+                let mut analyzer = AnalysisContext::new(
+                    &resolver,
+                    module_id,
+                    typed_program_tree.clone(),
+                    entry_points.clone(),
+                );
+                analyzer.analyze();
+                DiagReporter::display(&analyzer.reporter);
+                if analyzer.reporter.has_errors() {
+                    exit(1);
+                }
             }
         }
     }

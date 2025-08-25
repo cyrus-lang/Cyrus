@@ -1,14 +1,20 @@
+use std::collections::HashMap;
+
 use super::module::{CodeGenBuilder, LocalIRValue};
-use crate::builder::module::{LoopBlockRefs, TerminatedBlockMetadata};
+use crate::builder::{
+    abi::make_method_abi_name,
+    module::{LoopBlockRefs, TerminatedBlockMetadata, make_module_name},
+};
 use inkwell::{
     basic_block::BasicBlock,
+    object_file::Symbol,
     types::{BasicTypeEnum, StructType},
     values::FunctionValue,
 };
-use resolver::{declsign::FuncSig, scope::{LocalScopeRef, ResolvedFunction}};
+use resolver::{declsign::FuncSig, scope::LocalScopeRef};
 use typed_ast::{
-    SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor, TypedIf, TypedReturn,
-    TypedStatement, TypedStruct,
+    ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor,
+    TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct,
 };
 
 /// A macro to build the LLVM IR for a loop structure.
@@ -110,11 +116,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn get_or_declare_func(
-        &mut self,
-        symbol_id: SymbolID,
-        func_sig: FuncSig
-    ) -> FunctionValue<'a> {
+    pub(crate) fn get_or_declare_func(&mut self, symbol_id: SymbolID, func_sig: FuncSig) -> FunctionValue<'a> {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&symbol_id).cloned();
         drop(irreg);
@@ -208,6 +210,53 @@ impl<'a> CodeGenBuilder<'a> {
         drop(irreg);
     }
 
+    fn build_methods(&mut self, module_id: ModuleID, struct_name: String, methods: &HashMap<String, SymbolID>) {
+        for method_symbol_id in methods.values() {
+            let symbol_entry = self
+                .resolver
+                .lookup_symbol_entry_with_id(module_id, *method_symbol_id)
+                .unwrap();
+            let mut resolved_method = symbol_entry.as_method().unwrap().clone();
+
+            let module_name = make_module_name(
+                self.resolver.master_module_file_path.clone(),
+                self.module_file_path.clone(),
+            );
+            resolved_method.func_sig.name =
+                make_method_abi_name(module_name, struct_name.clone(), resolved_method.func_sig.name.clone());
+
+            let fn_value = self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone());
+            let mut irreg = self.irreg.borrow_mut();
+            irreg.insert(*method_symbol_id, LocalIRValue::Func(fn_value));
+            drop(irreg);
+
+            self.blockreg.current_func_ref = Some(fn_value.clone());
+
+            let entry_block = self.llvmctx.append_basic_block(fn_value, "entry");
+            self.blockreg.current_block_ref = Some(entry_block);
+            self.llvmbuilder.position_at_end(entry_block);
+
+            let local_scope_opt = self
+                .resolver
+                .get_scope_ref(module_id, resolved_method.func_body.clone().unwrap().scope_id);
+
+            self.build_func_params(local_scope_opt, &resolved_method.func_sig.params, fn_value);
+
+            if let Some(variadic_params) = &resolved_method.func_sig.params.variadic {
+                if let TypedFuncVariadicParams::Typed(_, _) = variadic_params {
+                    todo!();
+                }
+            }
+
+            self.build_block_statement(&resolved_method.func_body.clone().unwrap());
+
+            let current_block = self.blockreg.current_block_ref.unwrap();
+            if !self.is_block_terminated(current_block) {
+                self.llvmbuilder.build_return(None).unwrap();
+            }
+        }
+    }
+
     fn build_struct_def(&mut self, typed_struct: &TypedStruct) {
         let field_types: Vec<BasicTypeEnum<'a>> = typed_struct
             .fields
@@ -221,6 +270,8 @@ impl<'a> CodeGenBuilder<'a> {
         let struct_type = local_ir_value.as_struct().unwrap();
         struct_type.set_body(&field_types, typed_struct.packed);
         drop(irreg);
+
+        self.build_methods(typed_struct.module_id, typed_struct.name.clone(), &typed_struct.methods);
     }
 
     fn build_enum_decl(&self, name: &String) -> StructType<'a> {
@@ -271,6 +322,9 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_return(&mut self, local_scope_opt: Option<LocalScopeRef>, return_stmt: &TypedReturn) {
+        let current_block = self.blockreg.current_block_ref.unwrap();
+        self.mark_block_terminated(current_block, true);
+
         match &return_stmt.argument {
             Some(argument) => {
                 let lvalue = self.build_expr(local_scope_opt.clone(), argument);

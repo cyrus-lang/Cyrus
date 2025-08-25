@@ -227,7 +227,6 @@ pub struct TypedStructFieldInit {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncCall {
-    pub module_id: Option<ModuleID>,
     pub symbol_id: SymbolID,
     pub args: Vec<TypedExpression>,
     pub loc: Location,
@@ -348,6 +347,7 @@ pub struct TypedEnumValuedField {
 
 #[derive(Debug, Clone)]
 pub struct TypedStruct {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub fields: Vec<TypedStructField>,

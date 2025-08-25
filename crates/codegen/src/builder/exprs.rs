@@ -36,7 +36,6 @@ impl<'a> CodeGenBuilder<'a> {
             TypedExpressionKind::Assignment(typed_assign) => self.build_assign(local_scope_opt, typed_assign),
             TypedExpressionKind::Cast(typed_cast) => self.build_cast_expr(local_scope_opt, typed_cast),
             TypedExpressionKind::Array(typed_array) => self.build_array_expr(local_scope_opt, typed_array),
-            TypedExpressionKind::ArrayIndex(typed_array_index) => todo!(),
             TypedExpressionKind::AddressOf(typed_address_of) => {
                 self.build_address_of(local_scope_opt, typed_address_of)
             }
@@ -48,9 +47,13 @@ impl<'a> CodeGenBuilder<'a> {
             }
             TypedExpressionKind::FuncCall(typed_func_call) => self.build_func_call(local_scope_opt, typed_func_call),
             TypedExpressionKind::FieldAccess(typed_field_access) => todo!(),
-            TypedExpressionKind::MethodCall(typed_method_call) => todo!(),
+            TypedExpressionKind::ArrayIndex(typed_array_index) => todo!(),
             TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.build_unnamed_struct_value(local_scope_opt, typed_unnamed_struct_value)
+            }
+            TypedExpressionKind::MethodCall(..) => {
+                // lowered to func call in analyzer layer
+                unreachable!()
             }
         }
     }
@@ -279,15 +282,17 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         func_call: &TypedFuncCall,
     ) -> InternalValue<'a> {
+        let module_id = self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id).unwrap();
+
         let symbol_entry = self
             .resolver
-            .lookup_symbol_entry_with_id(func_call.module_id.unwrap(), func_call.symbol_id)
+            .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
             .unwrap();
 
         let func_sig = match symbol_entry.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig,
             SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig,
-            _=> unreachable!()
+            _ => unreachable!(),
         };
         let return_type = func_sig.return_type.clone();
         let fn_value = self.get_or_declare_func(func_call.symbol_id, func_sig);
