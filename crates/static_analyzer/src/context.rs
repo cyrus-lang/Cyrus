@@ -3,11 +3,13 @@ use ast::token::Location;
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
+    declsign::FuncSig,
     moduleloader::ModuleFilePath,
     scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntryKind},
 };
 use std::{
     cell::RefCell,
+    collections::HashMap,
     mem,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -333,13 +335,9 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturn) -> FlowState {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(Some(scope_id));
 
-        let resolved_func = self.get_cur_func_symbol_id();
+        let func_sig = self.get_cur_func_sig();
         let return_type = self
-            .normalize_type(
-                Some(scope_id),
-                resolved_func.func_sig.return_type,
-                typed_return.loc.clone(),
-            )
+            .normalize_type(Some(scope_id), func_sig.return_type, typed_return.loc.clone())
             .unwrap();
 
         if return_type.is_void() && typed_return.argument.is_some() {
@@ -442,13 +440,16 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
-    fn get_cur_func_symbol_id(&self) -> ResolvedFunction {
+    fn get_cur_func_sig(&self) -> FuncSig {
         let symbol_id = self.cur_func_symbol_id.unwrap();
         let symbol_entry = self
             .resolver
             .lookup_symbol_entry_with_id(self.module_id, symbol_id)
             .unwrap();
-        symbol_entry.as_func().unwrap().clone()
+        match symbol_entry.as_func() {
+            Some(resolved_func) => resolved_func.func_sig.clone(),
+            None => symbol_entry.as_method().unwrap().func_sig.clone(),
+        }
     }
 
     fn check_global_var_assignment_type(
@@ -643,25 +644,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_struct(&mut self, typed_struct: &TypedStruct, is_local: bool) {
         self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
-
-        for symbol_id in typed_struct.methods.values() {
-            let symbol_entry = self
-                .resolver
-                .lookup_symbol_entry_with_id(self.module_id, *symbol_id)
-                .unwrap();
-
-            let resolved_method = symbol_entry.as_method().unwrap();
-
-            self.check_method_name(
-                resolved_method.func_sig.name.clone(),
-                resolved_method.func_sig.loc.clone(),
-            );
-
-            // allow unused (no warning for public methods)
-            if resolved_method.func_sig.vis.is_public() {
-                self.mark_symbol_used_once(self.module_id, resolved_method.symbol_id);
-            }
-        }
+        self.analyze_methods(self.module_id, &typed_struct.methods);
 
         let mut field_names: Vec<String> = Vec::new();
 
@@ -689,19 +672,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_enum(&mut self, typed_enum: &TypedEnum, is_local: bool) {
         self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
-
-        for symbol_id in typed_enum.methods.values() {
-            let symbol_entry = self
-                .resolver
-                .lookup_symbol_entry_with_id(self.module_id, *symbol_id)
-                .unwrap();
-            let resolved_method = symbol_entry.as_method().unwrap();
-
-            self.check_method_name(
-                resolved_method.func_sig.name.clone(),
-                resolved_method.func_sig.loc.clone(),
-            );
-        }
+        self.analyze_methods(self.module_id, &typed_enum.methods);
 
         let mut variant_names: Vec<String> = Vec::new();
 
@@ -809,36 +780,92 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDef) {
-        if typed_func_def.name == "main" {
-            let mut entry_points = self.entry_points.lock().unwrap();
-            entry_points.push((self.resolver.get_current_module_file_path(), typed_func_def.loc.clone()));
-            drop(entry_points);
-        }
+    fn analyze_any_func_def(
+        &mut self,
+        symbol_id: SymbolID,
+        return_type: &mut ConcreteType,
+        params: &mut TypedFuncParams,
+        body: &mut TypedBlockStatement,
+        loc: Location,
+    ) {
+        self.cur_func_symbol_id = Some(symbol_id);
+        let state = self.analyze_block_statement(body);
 
-        self.cur_func_symbol_id = Some(typed_func_def.symbol_id);
-        let state = self.analyze_block_statement(&mut typed_func_def.body);
-
-        if !typed_func_def.return_type.is_void() && state != FlowState::Returns {
+        if !return_type.is_void() && state != FlowState::Returns {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::MissingReturn,
                 location: Some(DiagLoc::new(
                     self.resolver.get_current_module_file_path(),
-                    typed_func_def.loc.clone(),
+                    loc.clone(),
                     0,
                 )),
                 hint: Some("Not all control paths return a value.".to_string()),
             });
         }
 
-        typed_func_def.return_type =
-            match self.normalize_type(None, typed_func_def.return_type.clone(), typed_func_def.loc.clone()) {
-                Some(concrete_type) => concrete_type,
-                None => return,
+        *return_type = match self.normalize_type(None, return_type.clone(), loc.clone()) {
+            Some(concrete_type) => concrete_type,
+            None => return,
+        };
+
+        self.normalize_func_params(params, loc);
+    }
+
+    fn analyze_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
+        for symbol_id in methods.values() {
+            let (symbol_id, mut func_sig, func_body) = {
+                let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+                let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+                let symbol_entry = symbol_table.entries.get_mut(symbol_id).unwrap();
+
+                match &mut symbol_entry.kind {
+                    SymbolEntryKind::Method(m) => (m.symbol_id, m.func_sig.clone(), m.func_body.take()),
+                    _ => unreachable!(),
+                }
             };
 
-        self.normalize_func_params(&mut typed_func_def.params, typed_func_def.loc.clone());
+            self.cur_func_symbol_id = Some(symbol_id);
+
+            self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
+
+            if func_sig.vis.is_public() {
+                self.mark_symbol_used_once(self.module_id, symbol_id);
+            }
+
+            if let Some(mut body) = func_body {
+                self.analyze_any_func_def(
+                    symbol_id,
+                    &mut func_sig.return_type,
+                    &mut func_sig.params,
+                    &mut body,
+                    func_sig.loc.clone(),
+                );
+
+                let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+                let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+                let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
+                if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
+                    m.func_sig = func_sig;
+                    m.func_body = Some(body);
+                }
+            }
+        }
+    }
+
+    fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDef) {
+        if typed_func_def.name == "main" {
+            let mut entry_points = self.entry_points.lock().unwrap();
+            entry_points.push((self.resolver.get_current_module_file_path(), typed_func_def.loc.clone()));
+        }
+
+        self.analyze_any_func_def(
+            typed_func_def.symbol_id,
+            &mut typed_func_def.return_type,
+            &mut typed_func_def.params,
+            &mut typed_func_def.body,
+            typed_func_def.loc.clone(),
+        );
     }
 
     fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: Location) {

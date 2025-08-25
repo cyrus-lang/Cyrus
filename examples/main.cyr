@@ -1,30 +1,15 @@
 extern func printf(format: const char*, ...);
-extern func strlen(s: const char*) size_t;
-extern func malloc(size: size_t) void*;
-extern func strcpy(dest: char*, src: const char*) char*;
-extern func strcat(dest: char*, src: const char*) char*;
 
-public func concat(s1: const char*, s2: const char*) const char* {
-    #len1: size_t = strlen(s1);
-    #len2: size_t = strlen(s2);
-
-    // +1 for null terminator
-    #total: size_t = len1 + len2 + 1;
-
-    // Allocate memory (raw C malloc)
-    #result = typecast(char*, malloc(total));
-
-    strcpy(result, s1);
-    strcat(result, s2);
-
-    return result;
+struct Sample {
+    public func sum(a: int, b: int) int {
+        return a + b;
+    }
 }
 
 func main() {
-    #hello = "Hello, ";
-    #world = "Cyrus!";
-
-    #combined = concat(hello, world);
-
-    printf("%s\n", combined);
+    printf("result: %d\n", Sample.sum(1, 2));
+    // #hello = "Hello, ";
+    // #world = "Cyrus!";
+    // #combined = concat(hello, world);
+    // printf("%s\n", combined);
 }
