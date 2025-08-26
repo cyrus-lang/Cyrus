@@ -814,33 +814,46 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
         for symbol_id in methods.values() {
-            let (symbol_id, mut func_sig, func_body) = {
+            let (mut func_sig, func_body) = {
                 let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
                 let symbol_table = global_symbols.get_mut(&module_id).unwrap();
                 let symbol_entry = symbol_table.entries.get_mut(symbol_id).unwrap();
 
                 match &mut symbol_entry.kind {
-                    SymbolEntryKind::Method(m) => (m.symbol_id, m.func_sig.clone(), m.func_body.take()),
+                    SymbolEntryKind::Method(m) => (m.func_sig.clone(), m.func_body.take()),
                     _ => unreachable!(),
                 }
             };
 
-            self.cur_func_symbol_id = Some(symbol_id);
+            self.cur_func_symbol_id = Some(*symbol_id);
 
             self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
 
             if func_sig.vis.is_public() {
-                self.mark_symbol_used_once(self.module_id, symbol_id);
+                self.mark_symbol_used_once(self.module_id, *symbol_id);
             }
 
             if let Some(mut body) = func_body {
+                let scope_id_opt = Some(body.scope_id);
+
                 self.analyze_any_func_def(
-                    symbol_id,
+                    *symbol_id,
                     &mut func_sig.return_type,
                     &mut func_sig.params,
                     &mut body,
                     func_sig.loc.clone(),
                 );
+
+                if let Some(typed_func_param_kind) = func_sig.params.list.first() {
+                    if let TypedFuncParamKind::SelfModifier(mut typed_self_modifier) = typed_func_param_kind.clone() {
+                        typed_self_modifier.ty = self.normalize_type(
+                            scope_id_opt,
+                            ConcreteType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
+                            typed_self_modifier.loc.clone(),
+                        );
+                        func_sig.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
+                    }
+                }
 
                 let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
                 let symbol_table = global_symbols.get_mut(&module_id).unwrap();

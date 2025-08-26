@@ -11,11 +11,11 @@ use inkwell::{
     types::BasicTypeEnum,
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
 };
-use resolver::scope::{LocalScopeRef, SymbolEntryKind};
+use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind};
 use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedAssignment, TypedCast, TypedDereference, TypedExpression,
-    TypedExpressionKind, TypedFuncCall, TypedInfixExpression, TypedLiteral, TypedPrefixExpression, TypedStructInit,
-    TypedUnaryExpression, TypedUnnamedStructValue,
+    TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedInfixExpression, TypedLiteral, TypedPrefixExpression,
+    TypedStructInit, TypedUnaryExpression, TypedUnnamedStructValue,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
 };
 
@@ -46,7 +46,9 @@ impl<'a> CodeGenBuilder<'a> {
                 self.build_struct_init(local_scope_opt, typed_struct_init)
             }
             TypedExpressionKind::FuncCall(typed_func_call) => self.build_func_call(local_scope_opt, typed_func_call),
-            TypedExpressionKind::FieldAccess(typed_field_access) => todo!(),
+            TypedExpressionKind::FieldAccess(typed_field_access) => {
+                self.build_field_access(local_scope_opt, typed_field_access)
+            }
             TypedExpressionKind::ArrayIndex(typed_array_index) => todo!(),
             TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.build_unnamed_struct_value(local_scope_opt, typed_unnamed_struct_value)
@@ -56,6 +58,57 @@ impl<'a> CodeGenBuilder<'a> {
                 unreachable!()
             }
         }
+    }
+
+    fn build_field_access(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        typed_field_access: &TypedFieldAccess,
+    ) -> InternalValue<'a> {
+        let lvalue = self.build_expr(local_scope_opt.clone(), &typed_field_access.operand);
+        let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
+
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, typed_field_access.object_symbol_id.unwrap())
+            .unwrap();
+
+        let resolved_struct = match &local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_struct() {
+                Some(resolved_struct) => resolved_struct,
+                None => {
+                    let _resolved_enum = local_symbol.as_enum().unwrap();
+                    todo!();
+                }
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.as_struct() {
+                Some(resolved_struct) => resolved_struct,
+                None => {
+                    let _resolved_enum = symbol_entry.as_enum().unwrap();
+                    todo!();
+                }
+            },
+        };
+
+        let struct_type = self.get_or_declare_struct(
+            typed_field_access.object_symbol_id.unwrap(),
+            &resolved_struct.struct_sig,
+        );
+
+        let extracted_value = self
+            .llvmbuilder
+            .build_struct_gep(
+                struct_type,
+                lvalue_pointer,
+                typed_field_access.field_index.unwrap().try_into().unwrap(),
+                "struct_gep",
+            )
+            .unwrap();
+
+        InternalValue::new(
+            typed_field_access.field_ty.clone().unwrap(),
+            InternalValueKind::LValue(extracted_value),
+        )
     }
 
     fn build_unnamed_struct_value(
@@ -295,7 +348,7 @@ impl<'a> CodeGenBuilder<'a> {
             _ => unreachable!(),
         };
         let return_type = func_sig.return_type.clone();
-        let fn_value = self.get_or_declare_func(func_call.symbol_id, func_sig);
+        let fn_value = self.get_or_declare_func(func_call.symbol_id, func_sig, None);
 
         let args: Vec<BasicMetadataValueEnum<'a>> = func_call
             .args

@@ -10,7 +10,10 @@ use inkwell::{
     types::{BasicTypeEnum, StructType},
     values::FunctionValue,
 };
-use resolver::{declsign::FuncSig, scope::LocalScopeRef};
+use resolver::{
+    declsign::{FuncSig, StructSig},
+    scope::LocalScopeRef,
+};
 use typed_ast::{
     ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor,
     TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct,
@@ -115,7 +118,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn get_or_declare_func(&mut self, symbol_id: SymbolID, func_sig: FuncSig) -> FunctionValue<'a> {
+    pub(crate) fn get_or_declare_func(&mut self, symbol_id: SymbolID, func_sig: FuncSig, method_struct_type: Option<StructType<'a>>) -> FunctionValue<'a> {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&symbol_id).cloned();
         drop(irreg);
@@ -127,11 +130,22 @@ impl<'a> CodeGenBuilder<'a> {
                 func_sig.params.clone(),
                 func_sig.return_type.clone(),
                 func_sig.vis.clone(),
-                None,
+                method_struct_type,
             ),
         };
 
         fn_value
+    }
+
+    pub(crate) fn get_or_declare_struct(&mut self, symbol_id: SymbolID, struct_sig: &StructSig) -> StructType<'a> {
+        let irreg = self.irreg.borrow();
+        let local_ir_value_opt = irreg.get(&symbol_id).cloned();
+        drop(irreg);
+
+        match local_ir_value_opt {
+            Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
+            None => self.build_struct_only_type(struct_sig),
+        }
     }
 
     fn build_forward_decls(&mut self, stmts: &Vec<TypedStatement>) {
@@ -209,7 +223,7 @@ impl<'a> CodeGenBuilder<'a> {
         drop(irreg);
     }
 
-    fn build_methods(&mut self, module_id: ModuleID, struct_name: String, methods: &HashMap<String, SymbolID>) {
+    fn build_methods(&mut self, module_id: ModuleID, struct_name: String, struct_type: StructType<'a>, methods: &HashMap<String, SymbolID>) {
         for method_symbol_id in methods.values() {
             let symbol_entry = self
                 .resolver
@@ -224,7 +238,7 @@ impl<'a> CodeGenBuilder<'a> {
             resolved_method.func_sig.name =
                 make_method_abi_name(module_name, struct_name.clone(), resolved_method.func_sig.name.clone());
 
-            let fn_value = self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone());
+            let fn_value = self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone(), Some(struct_type));
             let mut irreg = self.irreg.borrow_mut();
             irreg.insert(*method_symbol_id, LocalIRValue::Func(fn_value));
             drop(irreg);
@@ -256,6 +270,18 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
+    fn build_struct_only_type(&mut self, struct_sig: &StructSig) -> StructType<'a> {
+        let field_types: Vec<BasicTypeEnum<'a>> = struct_sig
+            .fields
+            .iter()
+            .map(|field| self.build_concrete_type(None, field.ty.clone()).try_into().unwrap())
+            .collect();
+
+        let struct_type = self.llvmctx.struct_type(&field_types, struct_sig.packed);
+        struct_type.set_body(&field_types, struct_sig.packed);
+        struct_type
+    }
+
     fn build_struct_def(&mut self, typed_struct: &TypedStruct) {
         let field_types: Vec<BasicTypeEnum<'a>> = typed_struct
             .fields
@@ -266,11 +292,11 @@ impl<'a> CodeGenBuilder<'a> {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&typed_struct.symbol_id).unwrap();
 
-        let struct_type = local_ir_value.as_struct().unwrap();
-        struct_type.set_body(&field_types, typed_struct.packed);
+        let struct_type = local_ir_value.as_struct().unwrap().clone();
         drop(irreg);
 
-        self.build_methods(typed_struct.module_id, typed_struct.name.clone(), &typed_struct.methods);
+        struct_type.set_body(&field_types, typed_struct.packed);
+        self.build_methods(typed_struct.module_id, typed_struct.name.clone(), struct_type.clone(), &typed_struct.methods);
     }
 
     fn build_enum_decl(&self, name: &String) -> StructType<'a> {
