@@ -414,7 +414,9 @@ impl<'a> AnalysisContext<'a> {
             TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.analyze_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
             }
-            TypedExpressionKind::FieldAccess(..) => todo!(),
+            TypedExpressionKind::FieldAccess(field_access) => {
+                self.analyze_field_access_type(scope_id_opt, field_access)
+            }
             TypedExpressionKind::MethodCall(..) => unreachable!(), // lowered to func call
         };
 
@@ -530,6 +532,145 @@ impl<'a> AnalysisContext<'a> {
         }
 
         None
+    }
+
+    fn analyze_field_access_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        field_access: &mut TypedFieldAccess,
+    ) -> Option<ConcreteType> {
+        let instance_symbol_id = match &field_access.operand.kind {
+            TypedExpressionKind::Symbol(symbol_id, ..) => symbol_id,
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::ObjectNotSupportsFields,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_access.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), *instance_symbol_id)
+            .unwrap();
+
+        self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *instance_symbol_id);
+
+        let mut resolved_var_type = match match &local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
+                let typed_variable = &local_symbol.as_variable().unwrap().typed_variable;
+
+                match &typed_variable.ty {
+                    Some(concrete_type) => {
+                        self.normalize_type(scope_id_opt, concrete_type.clone(), field_access.loc.clone())
+                    }
+                    None => {
+                        let rhs = typed_variable.rhs.clone()?;
+                        self.analyze_typed_expr_type(scope_id_opt, &mut rhs.clone(), None)
+                    }
+                }
+            }
+            LocalOrGlobalSymbol::GlobalSymbol(global_symbol) => match global_symbol.as_global_var() {
+                Some(resolved_global_var) => Some(resolved_global_var.global_var_sig.ty.clone().unwrap()),
+                None => None,
+            },
+        } {
+            Some(resolved_var) => resolved_var,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::ObjectNotSupportsFields,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_access.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        resolved_var_type = self.normalize_type(scope_id_opt, resolved_var_type.clone(), field_access.loc.clone())?;
+
+        let symbol_id = match resolved_var_type {
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id)) => symbol_id,
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id)) => symbol_id,
+            ConcreteType::Pointer(inner_concrete_type) => {
+                inner_concrete_type.as_struct_symbol_id().or(inner_concrete_type.as_enum_symbol_id()).unwrap()
+            },
+            _ => unreachable!(),
+        };
+
+        let module_id = self.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
+        let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap();
+
+        let (struct_name, struct_fields, struct_symbol_id) = match match symbol_entry.as_struct() {
+            Some(resolved_struct) => Some((
+                resolved_struct.struct_sig.name.clone(),
+                resolved_struct.struct_sig.fields.clone(),
+                resolved_struct.symbol_id,
+            )),
+            None => match symbol_entry.as_enum() {
+                Some(..) => todo!(),
+                None => None,
+            },
+        } {
+            Some(result) => result,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::ObjectNotSupportsMethods,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_access.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let field_index = match struct_fields
+            .iter()
+            .position(|typed_struct_field| typed_struct_field.name == field_access.field_name)
+        {
+            Some(typed_struct_field) => typed_struct_field,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::StructHasNoFieldNamed {
+                        struct_name,
+                        field_name: field_access.field_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_access.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let typed_struct_field = struct_fields.get(field_index).unwrap();
+
+        field_access.field_index = Some(field_index);
+        field_access.field_ty = Some(typed_struct_field.ty.clone());
+        field_access.object_symbol_id = Some(struct_symbol_id);
+
+        Some(typed_struct_field.ty.clone())
     }
 
     fn analyze_struct_init_expr_type(
@@ -1077,7 +1218,7 @@ impl<'a> AnalysisContext<'a> {
                 loc.clone(),
                 0,
             )),
-            hint: Some("The fat arrow operator '->' can only be applied to pointers to structs.".to_string()),
+            hint: Some("The fat arrow operator '->' can only be applied to pointers.".to_string()),
         });
     }
 
@@ -1103,7 +1244,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> TypedFuncCall {
         if resolved_method.is_instance_method() {
             // self modifier value
-            method_call.args.insert(0, *method_call.operand.clone()); 
+            method_call.args.insert(0, *method_call.operand.clone());
 
             TypedFuncCall {
                 symbol_id: method_symbol_id,

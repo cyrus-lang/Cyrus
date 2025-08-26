@@ -234,8 +234,11 @@ pub struct TypedFuncCall {
 
 #[derive(Debug, Clone)]
 pub struct TypedFieldAccess {
-    pub symbol_id: SymbolID,
+    pub operand: Box<TypedExpression>,
     pub field_name: String,
+    pub field_index: Option<usize>,       
+    pub field_ty: Option<ConcreteType>, 
+    pub object_symbol_id: Option<SymbolID>,
     pub loc: Location,
 }
 
@@ -474,6 +477,7 @@ pub enum TypedFuncParamKind {
 #[derive(Debug, Clone)]
 pub struct TypedSelfModifier {
     pub symbol_id: Option<SymbolID>,
+    pub self_symbol_id: Option<SymbolID>,
     pub ty: Option<ConcreteType>,
     pub kind: SelfModifierKind,
     pub loc: Location,

@@ -19,35 +19,51 @@ use typed_ast::{
 };
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_func_params(&mut self, local_scope_opt: Option<LocalScopeRef>, params: &TypedFuncParams, fn_value: FunctionValue<'a>) {
+    pub(crate) fn build_func_params(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        params: &TypedFuncParams,
+        fn_value: FunctionValue<'a>,
+    ) {
         params.list.iter().enumerate().for_each(|(param_idx, param_kind)| {
-            if let TypedFuncParamKind::FuncParam(func_param) = param_kind {
-                let local_scope_rc = local_scope_opt.clone().unwrap();
-                let local_scope = local_scope_rc.borrow();
-                let local_param_symbol_id = local_scope.resolve(&func_param.name).unwrap().get_symbol_id();
-                drop(local_scope);
+            let (name, concrete_type, loc) = match param_kind {
+                TypedFuncParamKind::FuncParam(typed_func_param) => (
+                    typed_func_param.name.clone(),
+                    typed_func_param.ty.clone(),
+                    typed_func_param.loc.clone(),
+                ),
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => (
+                    "self".to_string(),
+                    typed_self_modifier.ty.clone().unwrap(),
+                    typed_self_modifier.loc.clone(),
+                ),
+            };
 
-                let lvalue_pointer = self.build_local_variable(
-                    local_scope_opt.clone(),
-                    &TypedVariable {
-                        symbol_id: local_param_symbol_id,
-                        name: func_param.name.clone(),
-                        ty: Some(func_param.ty.clone()),
-                        rhs: None,
-                        loc: func_param.loc.clone(),
-                    },
-                );
+            let local_scope_rc = local_scope_opt.clone().unwrap();
+            let local_scope = local_scope_rc.borrow();
+            let local_param_symbol_id = local_scope.resolve(&name).unwrap().get_symbol_id();
+            drop(local_scope);
 
-                let basic_value = fn_value.get_nth_param(param_idx.try_into().unwrap()).unwrap();
-                self.llvmbuilder.build_store(lvalue_pointer, basic_value).unwrap();
+            let lvalue_pointer = self.build_local_variable(
+                local_scope_opt.clone(),
+                &TypedVariable {
+                    symbol_id: local_param_symbol_id,
+                    name: name.clone(),
+                    ty: Some(concrete_type.clone()),
+                    rhs: None,
+                    loc,
+                },
+            );
 
-                let mut irreg = self.irreg.borrow_mut();
-                irreg.insert(
-                    local_param_symbol_id,
-                    LocalIRValue::LValue(lvalue_pointer, func_param.ty.clone()),
-                );
-                drop(irreg);
-            }
+            let basic_value = fn_value.get_nth_param(param_idx.try_into().unwrap()).unwrap();
+            self.llvmbuilder.build_store(lvalue_pointer, basic_value).unwrap();
+
+            let mut irreg = self.irreg.borrow_mut();
+            irreg.insert(
+                local_param_symbol_id,
+                LocalIRValue::LValue(lvalue_pointer, concrete_type),
+            );
+            drop(irreg);
         })
     }
 

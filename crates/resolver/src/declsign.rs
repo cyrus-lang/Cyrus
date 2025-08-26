@@ -9,6 +9,7 @@ pub struct StructSig {
     pub fields: Vec<TypedStructField>,
     pub impls: Vec<LocalOrGlobalSymbol>,
     pub methods: HashMap<String, SymbolID>,
+    pub packed: bool,
     pub vis: AccessSpecifier,
     pub loc: Location,
 }

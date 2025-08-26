@@ -962,12 +962,14 @@ impl Resolver {
 
             let (local_scope_rc, method_body, method_scope_id) = method_bodies.get(symbol_id).unwrap();
 
-            for typed_param_kind in &resolved_method.func_sig.params.list {
+            for typed_param_kind in &mut resolved_method.func_sig.params.list {
                 let self_symbol_name = "self".to_string();
                 let self_symbol_id = generate_symbol_id();
 
                 match typed_param_kind {
                     TypedFuncParamKind::SelfModifier(self_modifier) => {
+                        self_modifier.self_symbol_id = Some(self_symbol_id);
+
                         let local_symbol = match self_modifier.kind {
                             SelfModifierKind::Copied => LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
                                 module_id,
@@ -1114,6 +1116,7 @@ impl Resolver {
                 name: struct_decl.identifier.name.clone(),
                 fields: typed_struct_fields.clone(),
                 impls,
+                packed: struct_decl.packed,
                 methods: methods.clone(),
                 vis: struct_decl.vis.clone(),
                 loc: struct_decl.loc.clone(),
@@ -1230,6 +1233,7 @@ impl Resolver {
                 FuncParamKind::SelfModifier(self_modifier) => {
                     let typed_self_modifier = TypedSelfModifier {
                         symbol_id: None,
+                        self_symbol_id: None,
                         ty: None,
                         kind: self_modifier.kind.clone(),
                         loc: self_modifier.loc.clone(),
@@ -2012,27 +2016,13 @@ impl Resolver {
                     None => return None,
                 };
 
-                let symbol_id = match operand.kind {
-                    TypedExpressionKind::Symbol(symbol_id, ..) => symbol_id,
-                    _ => {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: ResolverDiagKind::InvalidOperandForMethodCall,
-                            location: Some(DiagLoc::new(
-                                self.get_current_module_file_path(),
-                                field_access.loc.clone(),
-                                field_access.span.end,
-                            )),
-                            hint: None,
-                        });
-                        return None;
-                    }
-                };
-
                 Some(TypedExpression {
                     kind: TypedExpressionKind::FieldAccess(TypedFieldAccess {
-                        symbol_id,
+                        operand: Box::new(operand),
                         field_name: field_access.field_name.name.clone(),
+                        field_index: None,
+                        field_ty: None,
+                        object_symbol_id: None,
                         loc: field_access.loc.clone(),
                     }),
                     concrete_type: None,

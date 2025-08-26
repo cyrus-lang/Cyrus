@@ -3,6 +3,7 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
     ObjectNotSupportsMethods, 
+    ObjectNotSupportsFields, 
     InvalidFatArrow,
     StructMethodNotDefined {
         struct_name: String,
@@ -139,6 +140,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::ObjectNotSupportsFields => {
+                write!(f, "Invalid field access (not supported for this symbol).")
+            }
             AnalyzerDiagKind::ObjectNotSupportsMethods => {
                 write!(f, "Invalid method call (not supported for this symbol).")
             }

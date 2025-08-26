@@ -83,6 +83,16 @@ impl ConcreteType {
             _ => None,
         }
     }
+
+    pub fn as_enum_symbol_id(&self) -> Option<SymbolID> {
+        match self {
+            ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+                ResolvedSymbol::Enum(symbol_id) => Some(*symbol_id),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

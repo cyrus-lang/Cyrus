@@ -141,6 +141,13 @@ impl LocalSymbol {
         }
     }
 
+    pub fn as_enum(&self) -> Option<&ResolvedEnum> {
+        match &self.kind {
+            LocalSymbolKind::Enum(resolved_enum) => Some(resolved_enum),
+            _ => None,
+        }
+    }
+
     pub fn as_typedef(&self) -> Option<&ResolvedTypedef> {
         match &self.kind {
             LocalSymbolKind::Typedef(resolved_typedef) => Some(resolved_typedef),
