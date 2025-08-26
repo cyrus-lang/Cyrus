@@ -982,6 +982,7 @@ impl<'a> AnalysisContext<'a> {
                         Some(concrete_type) => concrete_type,
                         None => return,
                     };
+                typed_variable.ty = Some(concrete_type.clone());
                 typed_expr.concrete_type = Some(concrete_type.clone());
                 Some(concrete_type)
             } else {
@@ -993,42 +994,40 @@ impl<'a> AnalysisContext<'a> {
             .resolver
             .get_scope_ref(self.module_id, scope_id_opt.unwrap())
             .unwrap();
+        
+        typed_variable.ty = self.normalize_type(
+            scope_id_opt,
+            typed_variable.ty.clone().unwrap(),
+            typed_variable.loc.clone(),
+        );
 
-        if typed_variable.ty.is_some() {
-            typed_variable.ty = self.normalize_type(
+        update_local_symbol_type!(self, local_scope_rc, typed_variable.symbol_id, LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+            resolved_variable.typed_variable.ty = typed_variable.ty.clone();
+        });
+
+        if let Some(value_type) = value_type_opt {
+            let lhs_type = format_concrete_type(
+                typed_variable.ty.clone().unwrap(),
+                &(self.symbol_formatter)(scope_id_opt),
+            );
+            let rhs_type = format_concrete_type(value_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+            if !self.check_type_mismatch(
                 scope_id_opt,
+                value_type.clone(),
                 typed_variable.ty.clone().unwrap(),
                 typed_variable.loc.clone(),
-            );
-
-            update_local_symbol_type!(self, local_scope_rc, typed_variable.symbol_id, LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                resolved_variable.typed_variable.ty = typed_variable.ty.clone();
-            });
-
-            if let Some(value_type) = value_type_opt {
-                let lhs_type = format_concrete_type(
-                    typed_variable.ty.clone().unwrap(),
-                    &(self.symbol_formatter)(scope_id_opt),
-                );
-                let rhs_type = format_concrete_type(value_type.clone(), &(self.symbol_formatter)(scope_id_opt));
-
-                if !self.check_type_mismatch(
-                    scope_id_opt,
-                    value_type.clone(),
-                    typed_variable.ty.clone().unwrap(),
-                    typed_variable.loc.clone(),
-                ) {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
-                        location: Some(DiagLoc::new(
-                            self.resolver.get_current_module_file_path(),
-                            typed_variable.loc.clone(),
-                            0,
-                        )),
-                        hint: None,
-                    });
-                }
+            ) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_variable.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
             }
         }
 

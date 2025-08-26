@@ -73,7 +73,7 @@ impl<'a> CodeGenBuilder<'a> {
                 LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.get_symbol_id(),
                 LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.get_symbol_id(),
             };
-
+            
             let irreg = self.irreg.borrow();
             let local_ir_value = irreg.get(&irreg_symbol_id).unwrap();
 
