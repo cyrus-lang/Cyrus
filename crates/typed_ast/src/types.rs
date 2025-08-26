@@ -24,6 +24,21 @@ pub enum ResolvedSymbol {
     Method(SymbolID),
 }
 
+impl ResolvedSymbol {
+    pub fn get_symbol_id(&self) -> SymbolID {
+        match self {
+            ResolvedSymbol::Enum(symbol_id) => *symbol_id,
+            ResolvedSymbol::Typedef(symbol_id) => *symbol_id,
+            ResolvedSymbol::NamedStruct(symbol_id) => *symbol_id,
+            ResolvedSymbol::Interface(symbol_id) => *symbol_id,
+            ResolvedSymbol::GlobalVar(symbol_id) => *symbol_id,
+            ResolvedSymbol::Variable(symbol_id) => *symbol_id,
+            ResolvedSymbol::Func(symbol_id) => *symbol_id,
+            ResolvedSymbol::Method(symbol_id) => *symbol_id,
+        }
+    }
+}
+
 impl ConcreteType {
     pub fn is_bool(&self) -> bool {
         matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))

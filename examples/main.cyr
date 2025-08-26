@@ -1,17 +1,22 @@
 extern func printf(format: const char*, ...);
 
+type MyPerson = Person;
+
 struct Person {
     name: char*;
     age: int32;
 
-    public func display(&self) {
-        self.name = "Hello";
-        printf("value: %s", self.name);
+    public func get_name(self) char* {
+        return self.name;
+    }
+
+    public func get_age(self) int32 {
+        return self.age;
     }
 }
 
 func main() {
-    #person = Person { name: "Taha", age: 18 };
-    printf("value: %s\n", person.name);
-    person.display();
+    #person = MyPerson { name: "Taha", age: 18 };
+    printf("Name: %s\n", person.get_name());
+    printf("Age: %d\n", person.get_age());
 }

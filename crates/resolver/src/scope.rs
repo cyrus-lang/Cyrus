@@ -119,6 +119,15 @@ pub enum LocalOrGlobalSymbol {
     GlobalSymbol(SymbolEntry),
 }
 
+impl LocalOrGlobalSymbol {
+    pub fn get_symbol_id(&self) -> SymbolID {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.get_symbol_id(),
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.get_symbol_id(),
+        }
+    }
+}
+
 impl LocalSymbol {
     pub fn new(kind: LocalSymbolKind) -> Self {
         Self { used: false, kind }

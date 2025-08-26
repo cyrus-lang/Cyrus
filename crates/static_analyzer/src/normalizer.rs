@@ -264,7 +264,7 @@ impl<'a> AnalysisContext<'a> {
         Some(resolved_typedef.typedef_sig.ty.clone())
     }
 
-    fn resolve_symbol_type(
+    pub(crate) fn resolve_symbol_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,

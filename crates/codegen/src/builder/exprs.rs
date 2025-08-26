@@ -162,7 +162,7 @@ impl<'a> CodeGenBuilder<'a> {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         typed_struct_init: &TypedStructInit,
-    ) -> InternalValue<'a> {
+    ) -> InternalValue<'a> { 
         let struct_type = self
             .build_concrete_type(
                 local_scope_opt.clone(),
