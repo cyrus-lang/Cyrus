@@ -63,6 +63,7 @@ pub struct AnalysisContext<'a> {
     pub ty_caches: TypeResolverCaches,
     control_stack: Vec<ControlContext>,
     cur_func_symbol_id: Option<SymbolID>,
+    pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>,
 }
 
@@ -82,6 +83,7 @@ impl<'a> AnalysisContext<'a> {
         module_id: ModuleID,
         ast: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>,
+        disable_warnings: bool,
     ) -> Self {
         let symbol_formatter = Box::new(
             move |scope_id_opt: Option<ScopeID>| -> Box<dyn Fn(SymbolID) -> String> {
@@ -133,6 +135,7 @@ impl<'a> AnalysisContext<'a> {
             cur_func_symbol_id: None,
             entry_points,
             ty_caches: TypeResolverCaches::default(),
+            disable_warnings,
         }
     }
 
@@ -221,7 +224,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedStatement::Interface(typed_interface) => {
                     self.reporter.report(Diag {
-                        level: DiagLevel::Warning,
+                        level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::InternalInterfaceIsNotValid,
                         location: Some(DiagLoc::new(
                             self.resolver.get_current_module_file_path(),
@@ -428,16 +431,18 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn report_unreachable_block_diag(&mut self, typed_stmt: &TypedStatement) {
-        self.reporter.report(Diag {
-            level: DiagLevel::Warning,
-            kind: AnalyzerDiagKind::UnreachableCode,
-            location: Some(DiagLoc::new(
-                self.resolver.get_current_module_file_path(),
-                typed_stmt.get_loc(),
-                0,
-            )),
-            hint: None,
-        });
+        if !self.disable_warnings {
+            self.reporter.report(Diag {
+                level: DiagLevel::Warning,
+                kind: AnalyzerDiagKind::UnreachableCode,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_stmt.get_loc(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
     }
 
     fn get_cur_func_sig(&self) -> FuncSig {
@@ -580,12 +585,14 @@ impl<'a> AnalysisContext<'a> {
                     ),
                 };
 
+                if !self.disable_warnings {
                 self.reporter.report(Diag {
                     level: DiagLevel::Warning,
                     kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
                     location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
                     hint: None,
                 });
+            }
             }
         }
     }
@@ -635,12 +642,14 @@ impl<'a> AnalysisContext<'a> {
                     .get_module_file_path(symbol_entry.get_module_id())
                     .unwrap();
 
-                self.reporter.report(Diag {
-                    level: DiagLevel::Warning,
-                    kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
-                    location: Some(DiagLoc::new(file_path, loc, 0)),
-                    hint: None,
-                });
+                if !self.disable_warnings {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Warning,
+                        kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
+                        location: Some(DiagLoc::new(file_path, loc, 0)),
+                        hint: None,
+                    });
+                }
             }
         }
 

@@ -83,6 +83,9 @@ struct CompilerOptions {
     #[clap(long, help = "Disables module filesystem cache.")]
     disable_modulefs_cache: bool,
 
+    #[clap(long, help = "Disables all warnings.")]
+    disable_warnings: bool,
+
     #[clap(long, help = "Set cyrus standard library path.")]
     stdlib: Option<String>,
 
