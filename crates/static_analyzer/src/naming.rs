@@ -46,33 +46,37 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn check_method_name(&mut self, name: String, loc: Location) {
-        if !is_snake_case(&name) {
+        if !self.disable_warnings {
+            if !is_snake_case(&name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Warning,
+                    kind: AnalyzerDiagKind::NamingConv {
+                        name,
+                        kind: "Method".to_string(),
+                        expected: "snake_case".to_string(),
+                    },
+                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+                    hint: None,
+                });
+            }
+        }
+    }
+
+    fn report_nameconv_diag(&mut self, kind: String, name: String, loc: Location, is_local: bool) {
+        if !self.disable_warnings {
+            let expected = if is_local { "camelCase" } else { "PascalCase" };
+
             self.reporter.report(Diag {
                 level: DiagLevel::Warning,
                 kind: AnalyzerDiagKind::NamingConv {
+                    kind,
                     name,
-                    kind: "Method".to_string(),
-                    expected: "snake_case".to_string(),
+                    expected: expected.to_string(),
                 },
                 location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
                 hint: None,
             });
         }
-    }
-
-    fn report_nameconv_diag(&mut self, kind: String, name: String, loc: Location, is_local: bool) {
-        let expected = if is_local { "camelCase" } else { "PascalCase" };
-
-        self.reporter.report(Diag {
-            level: DiagLevel::Warning,
-            kind: AnalyzerDiagKind::NamingConv {
-                kind,
-                name,
-                expected: expected.to_string(),
-            },
-            location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
-            hint: None,
-        });
     }
 }
 

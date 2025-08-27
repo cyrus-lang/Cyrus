@@ -4,5 +4,4 @@ public type CChar = char;
 public type CBool = bool;
 public type CVoid = void;
 public type CSizeT = size_t;
-
-
+public type CInt = int;

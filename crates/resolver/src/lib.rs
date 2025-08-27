@@ -265,6 +265,11 @@ impl Resolver {
                 symbol_table.names.insert(single_name, symbol_id);
                 symbol_table.locs.insert(symbol_id, (loc_file, symbol_entry.get_loc(), 0));
                 symbol_table.entries.insert(symbol_id, symbol_entry);
+
+                // FIXME Duplicate check not works with import singles
+                dbg!(symbol_table.names.clone());
+                todo!();
+
                 drop(global_symbols);
             }
         }

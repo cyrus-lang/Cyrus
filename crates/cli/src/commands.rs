@@ -70,7 +70,7 @@ fn get_program_trees(
         for (_, _, module_id, typed_program_tree) in program_trees.iter() {
             {
                 let mut analyzer =
-                    AnalysisContext::new(&resolver, *module_id, typed_program_tree.clone(), entry_points.clone());
+                    AnalysisContext::new(&resolver, *module_id, typed_program_tree.clone(), entry_points.clone(), options.disable_warnings);
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
                 if analyzer.reporter.has_errors() {

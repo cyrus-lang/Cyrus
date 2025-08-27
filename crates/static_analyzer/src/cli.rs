@@ -46,7 +46,7 @@ pub fn main() {
 
             {
                 let entry_points = Arc::new(Mutex::new(Vec::new()));
-                let mut analyzer = AnalysisContext::new(&resolver, module_id, typed_program_tree.clone(), entry_points.clone());
+                let mut analyzer = AnalysisContext::new(&resolver, module_id, typed_program_tree.clone(), entry_points.clone(), false);
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
                 if analyzer.reporter.has_errors() {

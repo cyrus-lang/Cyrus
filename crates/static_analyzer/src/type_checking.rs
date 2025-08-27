@@ -998,8 +998,14 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        for typed_expr in args {
-            self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone());
+        // analyze static arguments
+        for (param, arg) in func_sig.params.list.iter().zip(args.iter_mut()) {
+            let param_type = match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.ty.clone().unwrap(),
+            };
+
+            self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type));
         }
 
         self.check_duplicate_param_names(
@@ -1022,18 +1028,17 @@ impl<'a> AnalysisContext<'a> {
         let local_or_global_symbol = {
             match self
                 .resolver
-                .resolve_symbol_from_local_scope(local_scope_opt.clone()?, func_call.symbol_id)
+                .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
             {
-                Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol)),
+                Some(symbol_entry) => Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry)),
                 None => {
                     match self
-                        .resolver
-                        .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
-                    {
-                        Some(symbol_entry) => Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry)),
+                    .resolver
+                    .resolve_symbol_from_local_scope(local_scope_opt.clone().unwrap(), func_call.symbol_id) {
+                        Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol)),
                         None => None,
                     }
-                }
+                },
             }
         }
         .unwrap();
@@ -1068,8 +1073,8 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
         };
-
-        self.mark_func_used(local_scope_opt?, module_id, func_call.symbol_id);
+        
+        self.mark_func_used(local_scope_opt, module_id, func_call.symbol_id);
         self.check_func_call(scope_id_opt, func_sig, &mut func_call.args, func_call.loc.clone())
     }
 
@@ -1155,7 +1160,7 @@ impl<'a> AnalysisContext<'a> {
 
         let mut func_call = self.lower_to_func_call(resolved_method, method_call, method_symbol_id);
 
-        self.mark_func_used(local_scope_opt?, module_id, method_symbol_id);
+        self.mark_func_used(local_scope_opt, module_id, method_symbol_id);
 
         let concrete_type = self.check_func_call(
             scope_id_opt,
