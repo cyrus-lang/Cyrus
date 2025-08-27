@@ -1,22 +1,35 @@
-extern func printf(format: const char*, ...);
-
-type MyPerson = Person;
-
-struct Person {
-    name: char*;
-    age: int32;
-
-    public func get_name(self) char* {
-        return self.name;
-    }
-
-    public func get_age(self) int32 {
-        return self.age;
-    }
-}
+import sample;
 
 func main() {
-    #person = MyPerson { name: "Taha", age: 18 };
-    printf("Name: %s\n", person.get_name());
-    printf("Age: %d\n", person.get_age());
+    #person = sample::MyPerson { name: "Taha", age: 10 };
+    printf("Name: %s\n", person.name);
+
+    printf("MY PI: %f\n", sample::PI);
+
+    sample::sample();
+    sample::hello();
+    sample::hello();
 }
+
+extern func printf(format: const char*, ...);
+
+// type MyPerson = Person;
+
+// struct Person {
+//     name: char*;
+//     age: int32;
+
+//     public func get_name(self) char* {
+//         return self.name;
+//     }
+
+//     public func get_age(self) int32 {
+//         return self.age;
+//     }
+// }
+
+// func main() {
+//     #person = MyPerson { name: "Taha", age: 18 };
+//     printf("Name: %s\n", person.get_name());
+//     printf("Age: %d\n", person.get_age());
+// }

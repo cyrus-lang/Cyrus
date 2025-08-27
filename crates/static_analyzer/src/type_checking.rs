@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::{
     LiteralKind,
@@ -9,10 +7,7 @@ use ast::{
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
     declsign::FuncSig,
-    scope::{
-        LocalOrGlobalSymbol, LocalScopeRef, LocalSymbol, LocalSymbolKind, ResolvedMethod, ResolvedVariable,
-        SymbolEntryKind,
-    },
+    scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, SymbolEntryKind},
 };
 use typed_ast::{
     format::format_concrete_type,
@@ -377,7 +372,7 @@ impl<'a> AnalysisContext<'a> {
                         self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
-                        self.mark_symbol_used_once(self.module_id, symbol_entry.get_symbol_id());
+                        self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
                     }
                 }
 
@@ -569,7 +564,7 @@ impl<'a> AnalysisContext<'a> {
         let concrete_type = match match &local_or_global_symbol {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
                 let typed_variable = &local_symbol.as_variable().unwrap().typed_variable;
-                
+
                 match &typed_variable.ty {
                     Some(concrete_type) => self.normalize_type(scope_id_opt, concrete_type.clone(), loc.clone()),
                     None => {
@@ -632,8 +627,14 @@ impl<'a> AnalysisContext<'a> {
         let struct_or_enum_symbol_id =
             self.extract_struct_or_enum_symbol_id(scope_id_opt, resolved_var_type, field_access.loc.clone())?;
 
-        let module_id = self.resolver.lookup_symbol_id_in_modules(struct_or_enum_symbol_id).unwrap();
-        let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, struct_or_enum_symbol_id).unwrap();
+        let module_id = self
+            .resolver
+            .lookup_symbol_id_in_modules(struct_or_enum_symbol_id)
+            .unwrap();
+        let symbol_entry = self
+            .resolver
+            .lookup_symbol_entry_with_id(module_id, struct_or_enum_symbol_id)
+            .unwrap();
 
         let (struct_name, struct_fields, struct_symbol_id) = match match symbol_entry.as_struct() {
             Some(resolved_struct) => Some((
@@ -699,10 +700,21 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         typed_struct_init: &mut TypedStructInit,
     ) -> Option<ConcreteType> {
-        let normalized = self.normalize_type(scope_id_opt, ConcreteType::UnresolvedSymbol(typed_struct_init.symbol_id), typed_struct_init.loc.clone()).unwrap();
+        let normalized = self
+            .normalize_type(
+                scope_id_opt,
+                ConcreteType::UnresolvedSymbol(typed_struct_init.symbol_id),
+                typed_struct_init.loc.clone(),
+            )
+            .unwrap();
 
-        let resolved_struct =
-            self.resolve_symbol_as_struct(scope_id_opt, normalized.as_struct_symbol_id().unwrap(), typed_struct_init.loc.clone()).unwrap();
+        let resolved_struct = self
+            .resolve_symbol_as_struct(
+                scope_id_opt,
+                normalized.as_struct_symbol_id().unwrap(),
+                typed_struct_init.loc.clone(),
+            )
+            .unwrap();
 
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
@@ -1055,7 +1067,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        self.mark_func_used(local_scope_opt?, self.module_id, func_call.symbol_id);
+        self.mark_func_used(local_scope_opt?, module_id, func_call.symbol_id);
         self.check_func_call(scope_id_opt, func_sig, &mut func_call.args, func_call.loc.clone())
     }
 

@@ -1,7 +1,9 @@
 use crate::scope::LocalOrGlobalSymbol;
 use ast::{AccessSpecifier, token::Location};
 use std::collections::HashMap;
-use typed_ast::{SymbolID, TypedEnumVariant, TypedFuncDecl, TypedFuncParams, TypedStructField, types::ConcreteType};
+use typed_ast::{
+    ModuleID, SymbolID, TypedEnumVariant, TypedFuncDecl, TypedFuncParams, TypedStructField, types::ConcreteType,
+};
 
 #[derive(Debug, Clone)]
 pub struct StructSig {
@@ -16,9 +18,11 @@ pub struct StructSig {
 
 #[derive(Debug, Clone)]
 pub struct FuncSig {
+    pub module_id: ModuleID,
     pub name: String,
     pub params: TypedFuncParams,
     pub return_type: ConcreteType,
+    pub is_func_decl: bool,
     pub vis: AccessSpecifier,
     pub loc: Location,
 }
@@ -50,6 +54,7 @@ pub struct InterfaceSig {
 
 #[derive(Debug, Clone)]
 pub struct GlobalVarSig {
+    pub module_id: ModuleID,
     pub name: String,
     pub ty: Option<ConcreteType>,
     pub vis: AccessSpecifier,

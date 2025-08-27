@@ -836,6 +836,7 @@ impl Resolver {
                 module_id,
                 symbol_id,
                 global_var_sig: GlobalVarSig {
+                    module_id,
                     name: global_var.identifier.name.clone(),
                     ty: concrete_type.clone(),
                     vis: global_var.vis.clone(),
@@ -845,6 +846,7 @@ impl Resolver {
         );
 
         Some(TypedStatement::GlobalVariable(TypedGlobalVariable {
+            module_id,
             symbol_id,
             name: global_var.identifier.name.clone(),
             ty: concrete_type,
@@ -932,7 +934,9 @@ impl Resolver {
                             module_id,
                             symbol_id,
                             func_sig: FuncSig {
+                                module_id,
                                 name: method_name,
+                                is_func_decl: false,
                                 params: TypedFuncParams {
                                     list: typed_func_params,
                                     variadic: typed_variadic_param,
@@ -1304,7 +1308,9 @@ impl Resolver {
                         module_id,
                         symbol_id,
                         func_sig: FuncSig {
+                            module_id,
                             name: func_decl.identifier.name.clone(),
+                            is_func_decl: true,
                             params: TypedFuncParams {
                                 list: typed_func_params.clone(),
                                 variadic: typed_variadic_param.clone(),
@@ -1354,7 +1360,9 @@ impl Resolver {
                         module_id,
                         symbol_id,
                         func_sig: FuncSig {
+                            module_id,
                             name: func_def.identifier.name.clone(),
+                            is_func_decl: false,
                             params: TypedFuncParams {
                                 list: typed_func_params.clone(),
                                 variadic: typed_variadic_param.clone(),
@@ -1373,6 +1381,7 @@ impl Resolver {
 
                 Some(TypedStatement::FuncDef(TypedFuncDef {
                     symbol_id,
+                    module_id,
                     name: func_def.identifier.name.clone(),
                     params: TypedFuncParams {
                         list: typed_func_params,
@@ -2665,7 +2674,7 @@ impl Resolver {
         file_path
     }
 
-    fn get_module_file_path(&self, module_id: ModuleID) -> Option<ModuleFilePath> {
+    pub fn get_module_file_path(&self, module_id: ModuleID) -> Option<ModuleFilePath> {
         let file_paths = self.file_paths.lock().unwrap();
         let file_path = match file_paths.get(&module_id) {
             Some(module_file_path) => Some(module_file_path.clone()),

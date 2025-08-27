@@ -1,5 +1,5 @@
 use crate::builder::{
-    module::CodeGenBuilder,
+    module::{CodeGenBuilder, LocalIRValue},
     values::{InternalValue, InternalValueKind},
 };
 use ast::{
@@ -26,7 +26,7 @@ impl<'a> CodeGenBuilder<'a> {
         typed_expr: &TypedExpression,
     ) -> InternalValue<'a> {
         match &typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id, ..) => self.build_lvalue_with_symbol_id(*symbol_id),
+            TypedExpressionKind::Symbol(symbol_id, ..) => self.build_lvalue_with_symbol_id(local_scope_opt, *symbol_id),
             TypedExpressionKind::Literal(typed_literal) => self.build_literal(local_scope_opt, typed_literal),
             TypedExpressionKind::Prefix(typed_prefix_expr) => {
                 self.build_prefix_expr(local_scope_opt, typed_prefix_expr)
@@ -162,7 +162,7 @@ impl<'a> CodeGenBuilder<'a> {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         typed_struct_init: &TypedStructInit,
-    ) -> InternalValue<'a> { 
+    ) -> InternalValue<'a> {
         let struct_type = self
             .build_concrete_type(
                 local_scope_opt.clone(),
@@ -872,9 +872,45 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_lvalue_with_symbol_id(&self, symbol_id: SymbolID) -> InternalValue<'a> {
+    fn get_or_declare_lvalue(&mut self, local_scope_opt: Option<LocalScopeRef>, symbol_id: SymbolID) -> LocalIRValue<'a> {
+        let local_or_global_symbol = match self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+        {
+            Some(local_or_global_symbol) => local_or_global_symbol,
+            None => {
+                panic!("Undefined type symbol.")
+            }
+        };
+
+        match local_or_global_symbol {
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
+                SymbolEntryKind::GlobalVar(resolved_global_var) => {
+                    let concrete_type = resolved_global_var.global_var_sig.ty.clone().unwrap();
+                    let global_value = self.get_or_declare_global_var(resolved_global_var.global_var_sig);
+
+                    LocalIRValue::GlobalValue(global_value, concrete_type)
+                }
+                _ => unreachable!(),
+            },
+            LocalOrGlobalSymbol::LocalSymbol(..) => unreachable!(),
+        }
+    }
+
+    fn build_lvalue_with_symbol_id(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        symbol_id: SymbolID,
+    ) -> InternalValue<'a> {
         let irreg = self.irreg.borrow();
-        let local_ir_value = irreg.get(&symbol_id).unwrap();
+        let local_ir_value_opt = irreg.get(&symbol_id).cloned();
+        drop(irreg);
+        
+        let local_ir_value = match local_ir_value_opt {
+            Some(local_ir_value) => local_ir_value,
+            None => self.get_or_declare_lvalue(local_scope_opt, symbol_id),
+        };
+
         let (pointer, concrete_type) = match local_ir_value.as_lvalue() {
             Some((pointer, concrete_type)) => (pointer.clone(), concrete_type.clone()),
             None => match local_ir_value.as_global_value() {
@@ -884,7 +920,6 @@ impl<'a> CodeGenBuilder<'a> {
         };
         let internal_value = InternalValue::new(concrete_type.clone().clone(), InternalValueKind::LValue(pointer));
 
-        drop(irreg);
         internal_value
     }
 
