@@ -97,10 +97,7 @@ impl<'a> CodeGenBuilder<'a> {
                 }
             };
 
-            let irreg_symbol_id = match &local_or_global_symbol {
-                LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.get_symbol_id(),
-                LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.get_symbol_id(),
-            };
+            let irreg_symbol_id = local_or_global_symbol.get_symbol_id();
 
             let irreg = self.irreg.borrow();
             let local_ir_value_opt = irreg.get(&irreg_symbol_id).cloned();
@@ -110,8 +107,6 @@ impl<'a> CodeGenBuilder<'a> {
                 Some(local_ir_value) => local_ir_value,
                 None => self.build_concrete_type_declare_fresh(local_or_global_symbol),
             };
-
-            // self.get_or_declare_struct(symbol_id, struct_sig)
 
             let any_type_enum = match local_ir_value {
                 LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
@@ -129,8 +124,27 @@ impl<'a> CodeGenBuilder<'a> {
                         self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty)
                     }
                     _ => {
+                        let local_or_global_symbol = match self
+                            .resolver
+                            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                        {
+                            Some(local_or_global_symbol) => local_or_global_symbol,
+                            None => {
+                                panic!("Undefined type symbol.")
+                            }
+                        };
+
+                        let irreg_symbol_id = local_or_global_symbol.get_symbol_id();
+
                         let irreg = self.irreg.borrow();
-                        let local_ir_value = irreg.get(&symbol_entry.get_symbol_id()).unwrap();
+                        let local_ir_value_opt = irreg.get(&irreg_symbol_id).cloned();
+                        drop(irreg);
+
+                        let local_ir_value = match local_ir_value_opt {
+                            Some(local_ir_value) => local_ir_value,
+                            None => self.build_concrete_type_declare_fresh(local_or_global_symbol),
+                        };
+
                         match local_ir_value {
                             LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
                             _ => unreachable!(),

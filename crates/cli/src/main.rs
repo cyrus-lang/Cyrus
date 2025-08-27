@@ -281,8 +281,12 @@ enum Commands {
     #[clap(about = "Display program tree.", display_order = 10)]
     ParseOnly { file_path: String },
 
-    #[clap(about = "Check program correctness syntactically.", display_order = 11)]
-    SyntacticOnly { file_path: String },
+    #[clap(about = "Check program correctness semantically.", display_order = 11)]
+    SemanticOnly {
+        file_path: String,
+        #[clap(flatten)]
+        compiler_options: CompilerOptions,
+    },
 
     #[clap(about = "Print version information", display_order = 12)]
     Version,
@@ -304,7 +308,7 @@ fn command_new(project_name: String, lib: bool) {
 
 pub fn main() {
     std::panic::set_hook(Box::new(|info| {
-        eprintln!("Compiler panic: {info}");
+        eprintln!("Compiler panic:\n{info}");
     }));
 
     let version = env!("CARGO_PKG_VERSION");
@@ -389,11 +393,16 @@ pub fn main() {
 
             command_dylib(compiler_options, file_path, output_path);
         }
+        Commands::SemanticOnly {
+            compiler_options,
+            file_path,
+        } => {
+            command_semantic_only(compiler_options, file_path)
+        },
         Commands::Version => {
             println!("Cyrus {}", version)
         }
         Commands::LexOnly { file_path } => command_lex_only(file_path),
         Commands::ParseOnly { file_path } => command_parse_only(file_path),
-        Commands::SyntacticOnly { file_path } => command_syntactic_only(file_path),
     }
 }

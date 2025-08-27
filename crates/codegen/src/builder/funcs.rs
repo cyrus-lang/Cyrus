@@ -1,16 +1,14 @@
-use crate::builder::{abi::make_func_abi_name, module::LocalIRValue};
-
 use super::module::CodeGenBuilder;
-use ast::{AccessSpecifier, SelfModifierKind};
+use crate::builder::{abi::make_func_abi_name, module::LocalIRValue};
+use ast::AccessSpecifier;
 use inkwell::{
-    AddressSpace,
     attributes::{Attribute, AttributeLoc},
     llvm_sys::{
         core::LLVMFunctionType,
         prelude::{LLVMBool, LLVMTypeRef},
     },
     module::Linkage,
-    types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
+    types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
     values::FunctionValue,
 };
 use resolver::scope::LocalScopeRef;
@@ -103,7 +101,6 @@ impl<'a> CodeGenBuilder<'a> {
         params: TypedFuncParams,
         return_type: ConcreteType,
         vis: AccessSpecifier,
-        method_struct_type: Option<StructType<'a>>,
     ) -> FunctionValue<'a> {
         let linkage = {
             if func_name == "main" {
@@ -113,7 +110,7 @@ impl<'a> CodeGenBuilder<'a> {
             }
         };
 
-        let fn_type = self.build_func_type(params, return_type, method_struct_type);
+        let fn_type = self.build_func_type(params, return_type);
 
         let func_abi_name = {
             if func_name == "main" || use_func_real_name {
@@ -172,12 +169,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_func_type(
-        &mut self,
-        params: TypedFuncParams,
-        return_type: ConcreteType,
-        method_struct_type: Option<StructType<'a>>,
-    ) -> FunctionType<'a> {
+    pub(crate) fn build_func_type(&mut self, params: TypedFuncParams, return_type: ConcreteType) -> FunctionType<'a> {
         let param_types: Vec<BasicMetadataTypeEnum<'a>> = params
             .list
             .iter()
@@ -187,12 +179,11 @@ impl<'a> CodeGenBuilder<'a> {
                         .build_concrete_type(None, typed_func_param.ty.clone())
                         .try_into()
                         .unwrap(),
-                    TypedFuncParamKind::SelfModifier(self_modifier) => match self_modifier.kind {
-                        SelfModifierKind::Copied => BasicTypeEnum::StructType(method_struct_type.unwrap()),
-                        SelfModifierKind::Referenced => {
-                            BasicTypeEnum::PointerType(self.llvmctx.ptr_type(AddressSpace::default()))
-                        }
-                    },
+                    TypedFuncParamKind::SelfModifier(self_modifier) => {
+                        let concrete_type =
+                            self.build_concrete_type_from_symbol_id(None, self_modifier.symbol_id.unwrap());
+                        concrete_type.try_into().unwrap()
+                    }
                 };
                 BasicMetadataTypeEnum::from(basic_type_enum.clone())
             })

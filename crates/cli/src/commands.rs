@@ -69,12 +69,8 @@ fn get_program_trees(
     {
         for (_, _, module_id, typed_program_tree) in program_trees.iter() {
             {
-                let mut analyzer = AnalysisContext::new(
-                    &resolver,
-                    *module_id,
-                    typed_program_tree.clone(),
-                    entry_points.clone(),
-                );
+                let mut analyzer =
+                    AnalysisContext::new(&resolver, *module_id, typed_program_tree.clone(), entry_points.clone());
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
                 if analyzer.reporter.has_errors() {
@@ -112,7 +108,8 @@ fn prepare_compilation(
 }
 
 pub(crate) fn command_run(mut options: CompilerOptions, file_path: Option<String>) {
-    let (mut opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    let (mut opts, file_path, final_build_dir, program_trees, resolver_rc) =
+        prepare_compilation(&mut options, file_path);
     opts.disable_modulefs_cache = true;
 
     let mut temp = env::temp_dir();
@@ -124,6 +121,7 @@ pub(crate) fn command_run(mut options: CompilerOptions, file_path: Option<String
         opts,
         OutputKind::Executable(temp_file_path.clone()),
         resolver_rc,
+        file_path,
     );
     context.compile_modules(program_trees);
 
@@ -138,20 +136,31 @@ pub(crate) fn command_run(mut options: CompilerOptions, file_path: Option<String
 }
 
 pub(crate) fn command_emit_llvm(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    options.disable_modulefs_cache = true;
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate llvm-ir.".to_string());
     });
 
     ensure_output_dir(output_path.clone());
-
-    let context = CodeGenContext::new(final_build_dir, opts, OutputKind::LlvmIr(output_path), resolver_rc);
+    let context = CodeGenContext::new(
+        final_build_dir,
+        opts,
+        OutputKind::LlvmIr(output_path),
+        resolver_rc,
+        file_path,
+    );
     context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_emit_bytecode(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+pub(crate) fn command_emit_bytecode(
+    mut options: CompilerOptions,
+    file_path: Option<String>,
+    output_path: Option<String>,
+) {
+    options.disable_modulefs_cache = true;
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
@@ -160,14 +169,21 @@ pub(crate) fn command_emit_bytecode(mut options: CompilerOptions, file_path: Opt
     if let Some(build_dir) = &options.build_dir {
         ensure_output_dir(build_dir.clone());
     }
-    ensure_output_dir(output_path.clone());
 
-    let context = CodeGenContext::new(final_build_dir, opts, OutputKind::ByteCode(output_path), resolver_rc);
+    ensure_output_dir(output_path.clone());
+    let context = CodeGenContext::new(
+        final_build_dir,
+        opts,
+        OutputKind::ByteCode(output_path),
+        resolver_rc,
+        file_path,
+    );
     context.compile_modules(program_trees);
 }
 
 pub(crate) fn command_emit_asm(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    options.disable_modulefs_cache = true;
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
@@ -176,31 +192,71 @@ pub(crate) fn command_emit_asm(mut options: CompilerOptions, file_path: Option<S
     if let Some(build_dir) = &options.build_dir {
         ensure_output_dir(build_dir.clone());
     }
-    ensure_output_dir(output_path.clone());
 
-    let context = CodeGenContext::new(final_build_dir, opts, OutputKind::Asm(output_path), resolver_rc);
+    ensure_output_dir(output_path.clone());
+    let context = CodeGenContext::new(
+        final_build_dir,
+        opts,
+        OutputKind::Asm(output_path),
+        resolver_rc,
+        file_path,
+    );
     context.compile_modules(program_trees);
 }
 
 pub(crate) fn command_build(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output must be specified to generate executable.".to_string());
     });
 
-    let context = CodeGenContext::new(final_build_dir, opts, OutputKind::Executable(output_path), resolver_rc);
+    let context = CodeGenContext::new(
+        final_build_dir,
+        opts,
+        OutputKind::Executable(output_path),
+        resolver_rc,
+        file_path,
+    );
     context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_object(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    // let context = CodeGenContext::new(options, output_kind);
-    todo!()
+pub(crate) fn command_object(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    options.disable_modulefs_cache = true;
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+
+    let output_path = output_path.unwrap_or_else(|| {
+        display_single_custom_diag!("Output must be specified to generate object files.".to_string());
+    });
+
+    ensure_output_dir(output_path.clone());
+    let context = CodeGenContext::new(
+        final_build_dir,
+        opts,
+        OutputKind::ObjectFile(output_path),
+        resolver_rc,
+        file_path,
+    );
+    context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_dylib(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    // let context = CodeGenContext::new(options, output_kind);
-    todo!()
+pub(crate) fn command_dylib(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    options.disable_modulefs_cache = true;
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+
+    let output_path = output_path.unwrap_or_else(|| {
+        display_single_custom_diag!("Output must be specified to generate object files.".to_string());
+    });
+
+    ensure_output_dir(output_path.clone());
+    let context = CodeGenContext::new(
+        final_build_dir,
+        opts,
+        OutputKind::Dylib(output_path),
+        resolver_rc,
+        file_path,
+    );
+    context.compile_modules(program_trees);
 }
 
 pub(crate) fn command_lex_only(file_path: String) {
@@ -233,8 +289,37 @@ pub(crate) fn command_parse_only(file_path: String) {
     }
 }
 
-pub(crate) fn command_syntactic_only(file_path: String) {
-    todo!();
+pub(crate) fn command_semantic_only(mut options: CompilerOptions, file_path: String) {
+    let file_content = utils::fs::read_file(file_path.clone()).0;
+    let mut lexer = Lexer::new(file_content, file_path.clone());
+    let mut parser = Parser::new(lexer.tokenize(), file_path.clone());
+
+    let node = match parser.parse() {
+        Ok(node) => node,
+        Err(errors) => {
+            parser.display_parser_errors(errors.clone());
+            exit(1);
+        }
+    };
+
+    let entry_module_dir_path = get_directory_of_file(file_path.clone()).unwrap();
+    options.source_dirs.push(entry_module_dir_path);
+
+    let module_loader_opts = ModuleLoaderOptions {
+        stdlib_path: options.stdlib.clone(),
+        source_dirs: options.source_dirs.clone(),
+    };
+
+    let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
+    let module_id = generate_module_id();
+    match resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true) {
+        Some(..) => {}
+        None => unreachable!(),
+    };
+    if resolver.reporter.has_errors() {
+        resolver.reporter.display();
+        exit(1);
+    }
 }
 
 fn ensure_build_dir_subs(base_path: Option<String>, build_dir_path: String) {
