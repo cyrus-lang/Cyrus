@@ -12,8 +12,8 @@ use ast::{
     token::{Location, Span, Token, TokenKind},
 };
 use ast::{
-    GlobalVariable, If, Import, Interface, ModuleImport, ModulePath, ModuleSegment, SelfModifierKind, StringPrefix,
-    SwitchCasePattern,
+    GlobalVariable, If, Import, Interface, ModuleImport, ModulePath, ModuleSegment, ModuleSegmentSingle,
+    SelfModifierKind, StringPrefix, SwitchCasePattern,
 };
 use diagcentral::{reporter::DiagReporter, *};
 use rand::Rng;
@@ -34,7 +34,8 @@ pub mod moduleloader;
 pub mod scope;
 
 pub type GlobalSymbolsMutex = Mutex<HashMap<ModuleID, SymbolTable>>;
-type ImportedModules = HashMap<ModuleAlias, ModuleID>;
+type ModuleGroupName = String;
+type ImportedModules = HashMap<ModuleGroupName, ModuleID>;
 
 pub struct Resolver {
     pub global_symbols: Arc<GlobalSymbolsMutex>,
@@ -154,9 +155,7 @@ impl Resolver {
             return;
         }
 
-        let loaded_modules_list = self
-            .module_loader
-            .load_module(import.clone(), self.get_current_module_file_path());
+        let loaded_modules_list = self.module_loader.load_module(import.clone());
 
         for loaded_module in loaded_modules_list {
             let (module_alias, module_file_path, program_tree) = match loaded_module {
@@ -207,11 +206,67 @@ impl Resolver {
                     let module_name = get_module_name(module_file_path.clone());
                     program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
                     drop(program_tree);
+                    drop(program_trees);
 
-                    self.insert_module_alias(parent_module_id, module_alias, module_id);
+                    match module_alias {
+                        ModuleAlias::Group(group_name) => {
+                            self.insert_module_alias(parent_module_id, group_name, module_id);
+                        }
+                        ModuleAlias::Single(ref module_segment_singles) => {
+                            self.load_module_import_singles(
+                                parent_module_id,
+                                module_id,
+                                module_segment_singles,
+                                import.loc.clone(),
+                            );
+                        }
+                    }
                 }
                 None => continue,
             };
+        }
+    }
+
+    fn load_module_import_singles(
+        &mut self,
+        parent_module_id: ModuleID,
+        imported_module_id: ModuleID,
+        singles: &Vec<ModuleSegmentSingle>,
+        loc: Location,
+    ) {
+        // move symbol and it's metadata from imported module to parent module
+
+        for single in singles {
+            let single_name = single.identifier.as_string();
+
+            let symbol_id = match self.lookup_symbol_id(imported_module_id, &single_name) {
+                Some(symbol_id) => symbol_id,
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: ResolverDiagKind::SymbolNotFound { name: single_name },
+                        location: Some(DiagLoc::new(
+                            self.get_module_file_path(parent_module_id).unwrap(),
+                            loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    continue;
+                }
+            };
+
+            let loc_file = self.get_module_file_path(imported_module_id).unwrap();
+
+            let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
+            {
+                let mut global_symbols = self.global_symbols.lock().unwrap();
+                let symbol_table = global_symbols.get_mut(&parent_module_id).unwrap();
+                symbol_table.names.insert(single_name, symbol_id);
+                symbol_table.locs.insert(symbol_id, (loc_file, symbol_entry.get_loc(), 0));
+                symbol_table.entries.insert(symbol_id, symbol_entry);
+                drop(global_symbols);
+            }
         }
     }
 
@@ -410,13 +465,19 @@ impl Resolver {
         drop(global_symbols);
     }
 
-    fn insert_symbol_name(&mut self, module_id: ModuleID, name: &String, loc: Location, span_end: usize) -> SymbolID {
+    fn insert_symbol_name(
+        &mut self,
+        module_id: ModuleID,
+        name: &String,
+        loc_file: String,
+        loc: Location,
+        span_end: usize,
+    ) -> SymbolID {
         let symbol_id = generate_symbol_id();
         let mut global_symbols = self.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         symbol_table.names.insert(name.clone(), symbol_id);
-        let module_file_path = self.get_module_file_path(module_id).unwrap();
-        symbol_table.locs.insert(symbol_id, (module_file_path, loc, span_end));
+        symbol_table.locs.insert(symbol_id, (loc_file, loc, span_end));
         drop(global_symbols);
         symbol_id
     }
@@ -447,6 +508,7 @@ impl Resolver {
                     self.insert_symbol_name(
                         module_id,
                         &interface.identifier.name.clone(),
+                        self.get_current_module_file_path(),
                         interface.loc.clone(),
                         interface.span.end,
                     );
@@ -464,6 +526,7 @@ impl Resolver {
                     self.insert_symbol_name(
                         module_id,
                         &typedef.identifier.name.clone(),
+                        self.get_current_module_file_path(),
                         typedef.loc.clone(),
                         typedef.span.end,
                     );
@@ -481,6 +544,7 @@ impl Resolver {
                     self.insert_symbol_name(
                         module_id,
                         &func_def.identifier.name.clone(),
+                        self.get_current_module_file_path(),
                         func_def.loc.clone(),
                         func_def.span.end,
                     );
@@ -498,6 +562,7 @@ impl Resolver {
                     self.insert_symbol_name(
                         module_id,
                         &func_decl.identifier.name.clone(),
+                        self.get_current_module_file_path(),
                         func_decl.loc.clone(),
                         func_decl.span.end,
                     );
@@ -515,6 +580,7 @@ impl Resolver {
                     self.insert_symbol_name(
                         module_id,
                         &global_variable.identifier.name.clone(),
+                        self.get_current_module_file_path(),
                         global_variable.loc.clone(),
                         global_variable.span.end,
                     );
@@ -532,6 +598,7 @@ impl Resolver {
                     self.insert_symbol_name(
                         module_id,
                         &struct_decl.identifier.name.clone(),
+                        self.get_current_module_file_path(),
                         struct_decl.loc.clone(),
                         struct_decl.span.end,
                     );
@@ -549,6 +616,7 @@ impl Resolver {
                     self.insert_symbol_name(
                         module_id,
                         &enum_decl.identifier.name.clone(),
+                        self.get_current_module_file_path(),
                         enum_decl.loc.clone(),
                         enum_decl.span.end,
                     );
@@ -933,6 +1001,7 @@ impl Resolver {
                     let symbol_id = self.insert_symbol_name(
                         module_id,
                         &method_resolve_name,
+                        self.get_current_module_file_path(),
                         func_def.loc.clone(),
                         func_def.span.end,
                     );
@@ -2660,17 +2729,22 @@ impl Resolver {
         option
     }
 
-    fn insert_module_alias(&self, parent_module_id: ModuleID, alias: ModuleAlias, imported_module_id: ModuleID) {
+    fn insert_module_alias(
+        &self,
+        parent_module_id: ModuleID,
+        group_name: ModuleGroupName,
+        imported_module_id: ModuleID,
+    ) {
         let mut module_aliases = self.module_aliases.lock().unwrap();
         let imported_modules = module_aliases.get_mut(&parent_module_id).unwrap();
-        imported_modules.insert(alias, imported_module_id);
+        imported_modules.insert(group_name, imported_module_id);
         drop(module_aliases);
     }
 
-    fn get_module_alias(&self, module_alias: ModuleAlias) -> Option<ModuleID> {
+    fn get_module_alias(&self, group_name: ModuleGroupName) -> Option<ModuleID> {
         let module_aliases = self.module_aliases.lock().unwrap();
         let imported_modules = module_aliases.get(&self.current_module.unwrap()).unwrap();
-        let option = imported_modules.get(&module_alias).cloned();
+        let option = imported_modules.get(&group_name).cloned();
         drop(module_aliases);
         option
     }

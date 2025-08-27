@@ -1018,20 +1018,22 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let module_id = self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id).unwrap();
 
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+        let local_scope_opt = self.resolver.get_scope_ref(module_id, scope_id_opt.unwrap());
         let local_or_global_symbol = {
             match self
                 .resolver
                 .resolve_symbol_from_local_scope(local_scope_opt.clone()?, func_call.symbol_id)
             {
                 Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol)),
-                None => match self
-                    .resolver
-                    .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
-                {
-                    Some(symbol_entry) => Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry)),
-                    None => None,
-                },
+                None => {
+                    match self
+                        .resolver
+                        .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
+                    {
+                        Some(symbol_entry) => Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry)),
+                        None => None,
+                    }
+                }
             }
         }
         .unwrap();

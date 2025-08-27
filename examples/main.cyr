@@ -1,8 +1,10 @@
-import std::libc;
-import std::libc::abi;
+import std::libc{printf, exit};
 
 func main() {
-    #a: abi::CBool = !true;
-    libc::printf("v: %d\n", a);
-    libc::exit(0);
+    // #a: CBool = !true;
+
+    printf("Hello");
+
+    exit(1);
+    // libc::exit(0);
 }
