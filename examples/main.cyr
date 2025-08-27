@@ -1,14 +1,8 @@
-import sample;
+import std::libc;
+import std::libc::abi;
 
 func main() {
-    #person = sample::MyPerson { name: "Taha", age: 10 };
-    printf("MY PI: %f\n", sample::PI);
-    
-    person.display();
-    
-    sample::sample();
-    sample::hello();
-    sample::hello();
+    #a: abi::CBool = !true;
+    libc::printf("v: %d\n", a);
+    libc::exit(0);
 }
-
-extern func printf(format: const char*, ...);

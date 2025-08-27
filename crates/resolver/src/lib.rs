@@ -34,10 +34,12 @@ pub mod moduleloader;
 pub mod scope;
 
 pub type GlobalSymbolsMutex = Mutex<HashMap<ModuleID, SymbolTable>>;
+type ImportedModules = HashMap<ModuleAlias, ModuleID>;
 
 pub struct Resolver {
     pub global_symbols: Arc<GlobalSymbolsMutex>,
-    pub module_aliases: Arc<Mutex<HashMap<ModuleAlias, ModuleID>>>,
+    // lists imported modules by current module by their alias
+    pub module_aliases: Arc<Mutex<HashMap<ModuleID, ImportedModules>>>,
     pub analyzed_modules: Arc<Mutex<HashSet<ModuleID>>>,
     pub program_trees: Arc<Mutex<Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>>>,
     pub file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
@@ -75,6 +77,7 @@ impl Resolver {
         }
 
         assert!(module_import.segments.len() >= 2);
+
         let symbol_name = module_import.segments.pop().unwrap().as_identifier().name;
 
         let module_import_alias = module_segments_as_string(module_import.segments.clone());
@@ -120,7 +123,7 @@ impl Resolver {
         Some(symbol_id)
     }
 
-    fn resolve_import(&mut self, import: Import, mut visiting: &mut Visiting) {
+    fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, mut visiting: &mut Visiting) {
         let mut duplicate_import = false;
         for module_path in &import.paths {
             let already_loaded = self
@@ -204,12 +207,18 @@ impl Resolver {
                     let module_name = get_module_name(module_file_path.clone());
                     program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
                     drop(program_tree);
+
+                    self.insert_module_alias(parent_module_id, module_alias, module_id);
                 }
                 None => continue,
             };
-
-            self.insert_module_alias(module_alias, module_id);
         }
+    }
+
+    fn init_imported_modules_for_module(&mut self) {
+        let mut module_aliases = self.module_aliases.lock().unwrap();
+        module_aliases.insert(self.current_module.unwrap(), HashMap::new());
+        drop(module_aliases);
     }
 
     pub fn resolve_module(
@@ -220,6 +229,7 @@ impl Resolver {
         is_master: bool,
     ) -> Option<Rc<RefCell<TypedProgramTree>>> {
         self.current_module = Some(module_id);
+        self.init_imported_modules_for_module();
 
         if is_master {
             self.insert_module_file_path(module_id, self.master_module_file_path.clone());
@@ -245,7 +255,7 @@ impl Resolver {
 
         // Analyze imports of this module
         for import in ast.get_imports() {
-            self.resolve_import(import, &mut visiting);
+            self.resolve_import(parent_module_id, import, &mut visiting);
         }
 
         self.current_module = Some(parent_module_id);
@@ -2650,15 +2660,17 @@ impl Resolver {
         option
     }
 
-    fn insert_module_alias(&self, alias: ModuleAlias, module_id: ModuleID) {
+    fn insert_module_alias(&self, parent_module_id: ModuleID, alias: ModuleAlias, imported_module_id: ModuleID) {
         let mut module_aliases = self.module_aliases.lock().unwrap();
-        module_aliases.insert(alias, module_id);
+        let imported_modules = module_aliases.get_mut(&parent_module_id).unwrap();
+        imported_modules.insert(alias, imported_module_id);
         drop(module_aliases);
     }
 
-    fn get_module_alias(&self, alias: ModuleAlias) -> Option<ModuleID> {
+    fn get_module_alias(&self, module_alias: ModuleAlias) -> Option<ModuleID> {
         let module_aliases = self.module_aliases.lock().unwrap();
-        let option = module_aliases.get(&alias).cloned();
+        let imported_modules = module_aliases.get(&self.current_module.unwrap()).unwrap();
+        let option = imported_modules.get(&module_alias).cloned();
         drop(module_aliases);
         option
     }

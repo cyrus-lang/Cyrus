@@ -1,8 +1,8 @@
-// public type c_signed_char = ichar;
-// public type c_unsigned_char = uchar;
-public type c_char = char;
-public type c_bool = bool;
-public type c_void = void;
-public type c_size_t = size_t;
+public type CSignedChar = int8;
+public type CUnsignedChar = uint8;
+public type CChar = char;
+public type CBool = bool;
+public type CVoid = void;
+public type CSizeT = size_t;
 
 
