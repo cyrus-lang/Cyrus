@@ -1,10 +1,8 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
-use crate::builder::{
-    abi::make_method_abi_name,
-    module::{LoopBlockRefs, TerminatedBlockMetadata},
-};
+use crate::builder::module::{LoopBlockRefs, TerminatedBlockMetadata};
 use inkwell::{
     basic_block::BasicBlock,
+    module::Linkage,
     types::{BasicTypeEnum, StructType},
     values::FunctionValue,
 };
@@ -51,11 +49,11 @@ macro_rules! build_loop_statement {
         let end_block = $self.llvmctx.append_basic_block(current_func, "loop.end");
 
         let previous_loop_ref = $self.blockreg.current_loop_ref.clone();
-        $self.blockreg.current_loop_ref = Some(LoopBlockRefs { cond_block, end_block, inc_block });
+        $self.blockreg.current_loop_ref = Some(LoopBlockRefs { end_block, inc_block });
 
         $self.llvmbuilder.position_at_end(current_block);
         $self.llvmbuilder.build_unconditional_branch(cond_block).unwrap();
-        $self.mark_block_terminated(current_block, false);
+        $self.mark_block_terminated(current_block);
 
         // increment block
         {
@@ -75,7 +73,7 @@ macro_rules! build_loop_statement {
                 .build_conditional_branch(cond_value, body_block, end_block)
                 .unwrap();
 
-            $self.mark_block_terminated(cond_block, false);
+            $self.mark_block_terminated(cond_block);
         }
 
         // body block
@@ -91,7 +89,7 @@ macro_rules! build_loop_statement {
             $self.blockreg.current_block_ref = Some(after_body_block);
             $self.llvmbuilder.position_at_end(after_body_block);
             $self.llvmbuilder.build_unconditional_branch(inc_block).unwrap();
-            $self.mark_block_terminated(after_body_block, false);
+            $self.mark_block_terminated(after_body_block);
         }
 
         $self.blockreg.current_block_ref = Some(end_block);
@@ -117,12 +115,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn get_or_declare_func(
-        &mut self,
-        symbol_id: SymbolID,
-        func_sig: FuncSig,
-        method_struct_type: Option<StructType<'a>>,
-    ) -> FunctionValue<'a> {
+    pub(crate) fn get_or_declare_func(&mut self, symbol_id: SymbolID, func_sig: FuncSig) -> FunctionValue<'a> {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&symbol_id).cloned();
         drop(irreg);
@@ -137,8 +130,8 @@ impl<'a> CodeGenBuilder<'a> {
                     func_sig.params.clone(),
                     func_sig.return_type.clone(),
                     func_sig.vis.clone(),
-                    method_struct_type,
                 );
+                fn_value.set_linkage(Linkage::External);
 
                 self.insert_forward_decl_to_registry(symbol_id, LocalIRValue::Func(fn_value));
                 fn_value
@@ -198,7 +191,6 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_def.params.clone(),
                         typed_func_def.return_type.clone(),
                         typed_func_def.vis.clone(),
-                        None,
                     );
                     self.insert_forward_decl_to_registry(typed_func_def.symbol_id, LocalIRValue::Func(fn_value));
                 }
@@ -210,7 +202,6 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_decl.params.clone(),
                         typed_func_decl.return_type.clone(),
                         typed_func_decl.vis.clone(),
-                        None,
                     );
                     self.insert_forward_decl_to_registry(typed_func_decl.symbol_id, LocalIRValue::Func(fn_value));
                 }
@@ -235,26 +226,16 @@ impl<'a> CodeGenBuilder<'a> {
         self.insert_forward_decl_to_registry(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
     }
 
-    fn build_methods(
-        &mut self,
-        module_id: ModuleID,
-        struct_name: String,
-        struct_type: StructType<'a>,
-        methods: &HashMap<String, SymbolID>,
-    ) {
+    fn build_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
         for method_symbol_id in methods.values() {
             let symbol_entry = self
                 .resolver
                 .lookup_symbol_entry_with_id(module_id, *method_symbol_id)
                 .unwrap();
-            let mut resolved_method = symbol_entry.as_method().unwrap().clone();
 
-            let module_name = self.get_module_name(module_id);
-            resolved_method.func_sig.name =
-                make_method_abi_name(module_name, struct_name.clone(), resolved_method.func_sig.name.clone());
+            let resolved_method = symbol_entry.as_method().unwrap().clone();
 
-            let fn_value =
-                self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone(), Some(struct_type));
+            let fn_value = self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone());
 
             self.insert_forward_decl_to_registry(*method_symbol_id, LocalIRValue::Func(fn_value));
 
@@ -311,12 +292,7 @@ impl<'a> CodeGenBuilder<'a> {
         drop(irreg);
 
         struct_type.set_body(&field_types, typed_struct.packed);
-        self.build_methods(
-            typed_struct.module_id,
-            typed_struct.name.clone(),
-            struct_type.clone(),
-            &typed_struct.methods,
-        );
+        self.build_methods(typed_struct.module_id, &typed_struct.methods);
     }
 
     fn build_enum_decl(&self, name: &String) -> StructType<'a> {
@@ -340,7 +316,7 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::Return(typed_return) => self.build_return(local_scope_opt.clone(), typed_return),
                 TypedStatement::Break(typed_break) => self.build_break(typed_break),
                 TypedStatement::Continue(typed_continue) => self.build_continue(typed_continue),
-                TypedStatement::Switch(typed_switch) => todo!(),
+                TypedStatement::Switch(_typed_switch) => todo!(),
                 TypedStatement::Struct(typed_struct) => {
                     self.build_local_struct_def(typed_struct);
                 }
@@ -354,7 +330,7 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::BlockStatement(typed_block_statement) => {
                     self.build_block_statement(typed_block_statement);
                 }
-                TypedStatement::Interface(typed_interface) => todo!(),
+                TypedStatement::Interface(_typed_interface) => todo!(),
                 // Skipped statements
                 TypedStatement::Typedef(_) => continue,
                 // Invalid statements
@@ -368,7 +344,7 @@ impl<'a> CodeGenBuilder<'a> {
 
     fn build_return(&mut self, local_scope_opt: Option<LocalScopeRef>, return_stmt: &TypedReturn) {
         let current_block = self.blockreg.current_block_ref.unwrap();
-        self.mark_block_terminated(current_block, true);
+        self.mark_block_terminated(current_block);
 
         match &return_stmt.argument {
             Some(argument) => {
@@ -392,14 +368,14 @@ impl<'a> CodeGenBuilder<'a> {
             }
         };
 
-        self.mark_block_terminated(current_block, false);
+        self.mark_block_terminated(current_block);
         self.llvmbuilder.build_unconditional_branch(loop_end_block).unwrap();
         self.llvmbuilder.position_at_end(loop_end_block);
     }
 
     fn build_break(&mut self, _: &TypedBreak) {
         let current_block = self.blockreg.current_block_ref.unwrap();
-        self.mark_block_terminated(current_block, false);
+        self.mark_block_terminated(current_block);
 
         let target_block = match match &self.blockreg.current_loop_ref {
             Some(loop_block_refs) => Some(loop_block_refs.end_block),
@@ -502,7 +478,7 @@ impl<'a> CodeGenBuilder<'a> {
             self.llvmbuilder
                 .build_conditional_branch(cond.as_basic_value().into_int_value(), then_block, else_block)
                 .unwrap();
-            self.mark_block_terminated(current_block, false);
+            self.mark_block_terminated(current_block);
         }
 
         // build then block
@@ -511,7 +487,7 @@ impl<'a> CodeGenBuilder<'a> {
         self.build_block_statement(&typed_if.consequent);
         if !self.is_block_terminated(then_block) {
             self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
-            self.mark_block_terminated(then_block, false);
+            self.mark_block_terminated(then_block);
         }
 
         let mut current_else_block = else_block;
@@ -532,7 +508,7 @@ impl<'a> CodeGenBuilder<'a> {
                     )
                     .unwrap();
 
-                self.mark_block_terminated(current_else_block, false);
+                self.mark_block_terminated(current_else_block);
             }
 
             self.llvmbuilder.position_at_end(new_then_block);
@@ -540,7 +516,7 @@ impl<'a> CodeGenBuilder<'a> {
             self.build_block_statement(&else_if.consequent);
             if !self.is_block_terminated(new_then_block) {
                 self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
-                self.mark_block_terminated(new_then_block, false);
+                self.mark_block_terminated(new_then_block);
             }
 
             current_else_block = new_else_block;
@@ -556,7 +532,7 @@ impl<'a> CodeGenBuilder<'a> {
         let current_block = self.blockreg.current_block_ref.unwrap();
         if !self.is_block_terminated(current_block) {
             self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
-            self.mark_block_terminated(current_block, false);
+            self.mark_block_terminated(current_block);
         }
 
         self.llvmbuilder.position_at_end(end_block);
@@ -571,10 +547,9 @@ impl<'a> CodeGenBuilder<'a> {
             .is_some()
     }
 
-    pub(crate) fn mark_block_terminated(&mut self, basic_block: BasicBlock<'a>, terminated_with_return: bool) {
-        self.blockreg.terminated_blocks.push(TerminatedBlockMetadata {
-            basic_block,
-            terminated_with_return,
-        });
+    pub(crate) fn mark_block_terminated(&mut self, basic_block: BasicBlock<'a>) {
+        self.blockreg
+            .terminated_blocks
+            .push(TerminatedBlockMetadata { basic_block });
     }
 }

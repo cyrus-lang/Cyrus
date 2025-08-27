@@ -14,6 +14,15 @@ public func sample() {
 struct Person {
     name: char*;
     age: uint;
+
+    func display(self) {
+        printf("name: %s\n", self.get_name());
+        printf("age: %d\n", self.age);
+    }
+
+    func get_name(self) char* {
+        return self.name;
+    }
 }
 
 type MyPerson = Person;

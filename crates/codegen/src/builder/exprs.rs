@@ -49,7 +49,7 @@ impl<'a> CodeGenBuilder<'a> {
             TypedExpressionKind::FieldAccess(typed_field_access) => {
                 self.build_field_access(local_scope_opt, typed_field_access)
             }
-            TypedExpressionKind::ArrayIndex(typed_array_index) => todo!(),
+            TypedExpressionKind::ArrayIndex(_typed_array_index) => todo!(),
             TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.build_unnamed_struct_value(local_scope_opt, typed_unnamed_struct_value)
             }
@@ -348,7 +348,7 @@ impl<'a> CodeGenBuilder<'a> {
             _ => unreachable!(),
         };
         let return_type = func_sig.return_type.clone();
-        let fn_value = self.get_or_declare_func(func_call.symbol_id, func_sig, None);
+        let fn_value = self.get_or_declare_func(func_call.symbol_id, func_sig);
 
         let args: Vec<BasicMetadataValueEnum<'a>> = func_call
             .args
@@ -872,7 +872,11 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn get_or_declare_lvalue(&mut self, local_scope_opt: Option<LocalScopeRef>, symbol_id: SymbolID) -> LocalIRValue<'a> {
+    fn get_or_declare_lvalue(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        symbol_id: SymbolID,
+    ) -> LocalIRValue<'a> {
         let local_or_global_symbol = match self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
@@ -905,7 +909,7 @@ impl<'a> CodeGenBuilder<'a> {
         let irreg = self.irreg.borrow();
         let local_ir_value_opt = irreg.get(&symbol_id).cloned();
         drop(irreg);
-        
+
         let local_ir_value = match local_ir_value_opt {
             Some(local_ir_value) => local_ir_value,
             None => self.get_or_declare_lvalue(local_scope_opt, symbol_id),

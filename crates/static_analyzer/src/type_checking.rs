@@ -1153,7 +1153,7 @@ impl<'a> AnalysisContext<'a> {
 
         let mut func_call = self.lower_to_func_call(resolved_method, method_call, method_symbol_id);
 
-        self.mark_func_used(local_scope_opt?, self.module_id, method_symbol_id);
+        self.mark_func_used(local_scope_opt?, module_id, method_symbol_id);
 
         let concrete_type = self.check_func_call(
             scope_id_opt,

@@ -1,4 +1,4 @@
-use crate::options::CodeGenOptions;
+use crate::{context::context::make_module_name, options::CodeGenOptions};
 use diagcentral::display_single_custom_diag;
 use inkwell::{
     OptimizationLevel,
@@ -241,7 +241,6 @@ impl<'a> BlockRegistry<'a> {
 
 #[derive(Debug, Clone)]
 pub struct LoopBlockRefs<'a> {
-    pub cond_block: BasicBlock<'a>,
     pub end_block: BasicBlock<'a>,
     pub inc_block: BasicBlock<'a>,
 }
@@ -254,29 +253,4 @@ pub struct SwitchBlockRefs<'a> {
 #[derive(Debug, Clone)]
 pub struct TerminatedBlockMetadata<'a> {
     pub basic_block: BasicBlock<'a>,
-    pub terminated_with_return: bool,
-}
-
-fn make_module_name(master_module_file_path: String, current_module_file_path: String) -> String {
-    let module_path = Path::new(&current_module_file_path);
-    let master_root = Path::new(&master_module_file_path).parent().unwrap();
-
-    let canonicalized = module_path.canonicalize().unwrap();
-    let rel = canonicalized.strip_prefix(master_root).unwrap_or(&module_path);
-
-    let stemmed: Vec<String> = rel
-        .with_extension("")
-        .components()
-        .filter_map(|c| {
-            let s = c.as_os_str().to_string_lossy().into_owned();
-            if s.is_empty() { None } else { Some(s) } // drop empties
-        })
-        .collect();
-
-    let mut name = stemmed.join(".");
-
-    while name.contains("..") {
-        name = name.replace("..", ".");
-    }
-    name.trim_start_matches('.').to_string()
 }
