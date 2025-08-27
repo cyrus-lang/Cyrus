@@ -233,6 +233,18 @@ impl SymbolEntry {
         Self { used: false, kind }
     }
 
+    pub fn get_loc(&self) -> Location {
+        match &self.kind {
+            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.loc.clone(),
+            SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.loc.clone(),
+            SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.loc.clone(),
+            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.global_var_sig.loc.clone(),
+            SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.loc.clone(),
+            SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.loc.clone(),
+            SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.loc.clone(),
+        }
+    }
+
     pub fn get_symbol_id(&self) -> SymbolID {
         match &self.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method.symbol_id,

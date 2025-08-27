@@ -1,7 +1,5 @@
 use crate::diagnostics::ResolverDiagKind;
-use ast::{
-    Identifier, Import, ModulePath, ModuleSegment, ProgramTree, format::module_segments_as_string, token::Location,
-};
+use ast::{Import, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string};
 use diagcentral::{Diag, DiagLevel, display_single_diag};
 use lexer::Lexer;
 use parser::Parser;
@@ -12,7 +10,12 @@ use std::{
 };
 use utils::fs::find_file_from_sources;
 
-pub type ModuleAlias = String;
+#[derive(Debug)]
+pub enum ModuleAlias {
+    Group(String),
+    Single(Vec<ModuleSegmentSingle>),
+}
+
 pub type ModuleFilePath = String;
 
 #[derive(Debug)]
@@ -32,39 +35,46 @@ impl ModuleLoader {
     }
 
     pub fn load_module(
-        &self,
+        &mut self,
         import: Import,
-        current_module_file_path: String,
     ) -> Vec<Result<(ModuleAlias, ModuleFilePath, Rc<ProgramTree>), ResolverDiagKind>> {
         let mut loaded_modules_list: Vec<Result<(ModuleAlias, ModuleFilePath, Rc<ProgramTree>), ResolverDiagKind>> =
             Vec::new();
 
         for sub_import in &import.paths {
-            let module_file_path = match self.get_imported_module_path(
-                sub_import.clone(),
-                sub_import.segments.clone(),
-                current_module_file_path.clone(),
-                import.loc.clone(),
-                import.span.end,
-            ) {
-                Ok(module_file_path) => module_file_path,
+            let mut module_file_path = match self.get_imported_module_path(sub_import.segments.clone()) {
+                Ok(path) => path,
                 Err(diag_kind) => {
                     loaded_modules_list.push(Err(diag_kind));
                     continue;
                 }
             };
 
-            let alias = sub_import
-                .alias
-                .clone()
-                .unwrap_or({
-                    // last segment of the import_path
-                    sub_import.segments.last().unwrap().as_identifier().name
-                });
+            let path_buf = Path::new(&module_file_path);
+            if path_buf.is_dir() {
+                let index_path = path_buf.join("index.cyr");
+                if !index_path.exists() {
+                    loaded_modules_list.push(Err(ResolverDiagKind::ModuleIndexNotFound {
+                        module_name: module_segments_as_string(sub_import.segments.clone()),
+                    }));
+                    continue;
+                }
+                module_file_path = index_path.to_str().unwrap().to_string();
+            }
 
-            let file_content = std::fs::read_to_string(module_file_path.clone()).unwrap();
+            let file_content = match std::fs::read_to_string(&module_file_path) {
+                Ok(content) => content,
+                Err(_) => {
+                    loaded_modules_list.push(Err(ResolverDiagKind::ModuleNotFound {
+                        module_name: module_segments_as_string(sub_import.segments.clone()),
+                    }));
+                    continue;
+                }
+            };
+
             let mut lexer = Lexer::new(file_content, module_file_path.clone());
             let mut parser = Parser::new(lexer.tokenize(), module_file_path.clone());
+
             match parser.parse() {
                 Ok(node) => {
                     let program_tree = node.as_program();
@@ -72,7 +82,14 @@ impl ModuleLoader {
                         body: Rc::clone(&program_tree.body),
                     });
 
-                    loaded_modules_list.push(Ok((alias, module_file_path.clone(), program_tree_rc)));
+                    let module_alias = match sub_import.segments.last().unwrap() {
+                        ModuleSegment::SubModule(identifier) => ModuleAlias::Group(identifier.name.clone()),
+                        ModuleSegment::Single(module_segment_singles) => {
+                            ModuleAlias::Single(module_segment_singles.clone())
+                        }
+                    };
+
+                    loaded_modules_list.push(Ok((module_alias, module_file_path.clone(), program_tree_rc)));
                 }
                 Err(errors) => {
                     parser.display_parser_errors(errors.clone());
@@ -83,14 +100,7 @@ impl ModuleLoader {
         loaded_modules_list
     }
 
-    fn get_imported_module_path(
-        &self,
-        module_path: ModulePath,
-        segments: Vec<ModuleSegment>,
-        current_module_file_path: String,
-        loc: Location,
-        span_end: usize,
-    ) -> Result<ModuleFilePath, ResolverDiagKind> {
+    fn get_imported_module_path(&self, segments: Vec<ModuleSegment>) -> Result<ModuleFilePath, ResolverDiagKind> {
         let mut sources = self.opts.source_dirs.clone();
 
         let mut segments = segments;
@@ -99,47 +109,16 @@ impl ModuleLoader {
             sources = vec![self.get_stdlib_modules_path()];
         }
 
-        let get_module_alias = |mut module_path: ModulePath| match module_path.alias.clone() {
-            Some(alias) => {
-                module_path.segments = vec![ModuleSegment::SubModule(Identifier {
-                    name: alias,
-                    span: module_path.span.clone(),
-                    loc: module_path.loc.clone(),
-                })];
-                module_path
-            }
-            None => {
-                let module_path_last_segment = module_path.segments.last().unwrap().clone();
-                module_path.segments = vec![module_path_last_segment];
-                module_path
-            }
-        };
-
         // starting point
         let module_file_path = String::new();
-
-        self.resolve_segments(
-            module_path,
-            &segments,
-            sources,
-            module_file_path,
-            &get_module_alias,
-            current_module_file_path,
-            loc,
-            span_end,
-        )
+        self.resolve_segments(&segments, sources, module_file_path)
     }
 
     fn resolve_segments(
         &self,
-        module_path: ModulePath,
         segments: &[ModuleSegment],
         sources: Vec<String>,
         mut module_file_path: String,
-        get_module_alias: &dyn Fn(ModulePath) -> ModulePath,
-        current_module_file_path: String,
-        loc: Location,
-        span_end: usize,
     ) -> Result<ModuleFilePath, ResolverDiagKind> {
         let module_name = module_segments_as_string(segments.to_vec());
 
@@ -198,16 +177,7 @@ impl ModuleLoader {
                 }
             } else if let ModuleSegment::Single(_) = segment {
                 // recurse for single segments
-                return self.resolve_segments(
-                    module_path.clone(),
-                    &segments[..=idx],
-                    sources.clone(),
-                    module_file_path.clone(),
-                    get_module_alias,
-                    current_module_file_path.clone(),
-                    loc.clone(),
-                    span_end,
-                );
+                return Ok(module_file_path);
             }
         }
 
