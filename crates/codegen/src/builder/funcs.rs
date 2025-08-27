@@ -1,4 +1,4 @@
-use crate::builder::module::LocalIRValue;
+use crate::builder::{abi::make_func_abi_name, module::LocalIRValue};
 
 use super::module::CodeGenBuilder;
 use ast::{AccessSpecifier, SelfModifierKind};
@@ -15,7 +15,8 @@ use inkwell::{
 };
 use resolver::scope::LocalScopeRef;
 use typed_ast::{
-    TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParams, TypedVariable, types::ConcreteType,
+    ModuleID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParams, TypedVariable,
+    types::ConcreteType,
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -58,12 +59,10 @@ impl<'a> CodeGenBuilder<'a> {
             let basic_value = fn_value.get_nth_param(param_idx.try_into().unwrap()).unwrap();
             self.llvmbuilder.build_store(lvalue_pointer, basic_value).unwrap();
 
-            let mut irreg = self.irreg.borrow_mut();
-            irreg.insert(
+            self.insert_forward_decl_to_registry(
                 local_param_symbol_id,
                 LocalIRValue::LValue(lvalue_pointer, concrete_type),
             );
-            drop(irreg);
         })
     }
 
@@ -99,6 +98,8 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_func_decl(
         &mut self,
         func_name: String,
+        use_func_real_name: bool,
+        module_id: Option<ModuleID>,
         params: TypedFuncParams,
         return_type: ConcreteType,
         vis: AccessSpecifier,
@@ -111,10 +112,20 @@ impl<'a> CodeGenBuilder<'a> {
                 self.build_func_linkage(vis)
             }
         };
+
         let fn_type = self.build_func_type(params, return_type, method_struct_type);
 
+        let func_abi_name = {
+            if func_name == "main" || use_func_real_name {
+                func_name
+            } else {
+                let module_name = self.get_module_name(module_id.unwrap());
+                make_func_abi_name(module_name, func_name)
+            }
+        };
+
         let llvmmodule = self.llvmmodule.borrow();
-        let fn_value = llvmmodule.add_function(&func_name, fn_type, Some(linkage));
+        let fn_value = llvmmodule.add_function(&func_abi_name, fn_type, Some(linkage));
         self.add_func_attrs(fn_value);
         drop(llvmmodule);
         fn_value

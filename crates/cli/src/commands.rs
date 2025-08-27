@@ -22,10 +22,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 use typed_ast::{ModuleID, TypedProgramTree};
-use utils::fs::ensure_output_dir;
+use utils::fs::{ensure_output_dir, get_directory_of_file};
 
 fn get_program_trees(
-    options: &CompilerOptions,
+    options: &mut CompilerOptions,
     file_path: String,
 ) -> (
     Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
@@ -42,6 +42,9 @@ fn get_program_trees(
             exit(1);
         }
     };
+
+    let entry_module_dir_path = get_directory_of_file(file_path.clone()).unwrap();
+    options.source_dirs.push(entry_module_dir_path);
 
     let module_loader_opts = ModuleLoaderOptions {
         stdlib_path: options.stdlib.clone(),
@@ -64,11 +67,11 @@ fn get_program_trees(
     let program_trees = resolver.program_trees.lock().unwrap();
 
     {
-        for (_, _, _, typed_program_tree) in program_trees.iter() {
+        for (_, _, module_id, typed_program_tree) in program_trees.iter() {
             {
                 let mut analyzer = AnalysisContext::new(
                     &resolver,
-                    module_id,
+                    *module_id,
                     typed_program_tree.clone(),
                     entry_points.clone(),
                 );
@@ -89,7 +92,7 @@ fn get_program_trees(
 }
 
 fn prepare_compilation(
-    options: &CompilerOptions,
+    mut options: &mut CompilerOptions,
     file_path: Option<String>,
 ) -> (
     CodeGenOptions,
@@ -103,13 +106,13 @@ fn prepare_compilation(
     let final_build_dir = get_final_build_directory_path(options.base_path.clone(), opts.build_dir.clone());
     ensure_build_dir_subs(options.base_path.clone(), final_build_dir.clone());
 
-    let (program_trees, resolver_rc) = get_program_trees(options, file_path.clone());
+    let (program_trees, resolver_rc) = get_program_trees(&mut options, file_path.clone());
 
     (opts, file_path, final_build_dir, program_trees, resolver_rc)
 }
 
-pub(crate) fn command_run(options: CompilerOptions, file_path: Option<String>) {
-    let (mut opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+pub(crate) fn command_run(mut options: CompilerOptions, file_path: Option<String>) {
+    let (mut opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
     opts.disable_modulefs_cache = true;
 
     let mut temp = env::temp_dir();
@@ -134,8 +137,8 @@ pub(crate) fn command_run(options: CompilerOptions, file_path: Option<String>) {
     }
 }
 
-pub(crate) fn command_emit_llvm(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+pub(crate) fn command_emit_llvm(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate llvm-ir.".to_string());
@@ -147,8 +150,8 @@ pub(crate) fn command_emit_llvm(options: CompilerOptions, file_path: Option<Stri
     context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_emit_bytecode(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+pub(crate) fn command_emit_bytecode(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
@@ -163,8 +166,8 @@ pub(crate) fn command_emit_bytecode(options: CompilerOptions, file_path: Option<
     context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_emit_asm(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+pub(crate) fn command_emit_asm(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
@@ -179,8 +182,8 @@ pub(crate) fn command_emit_asm(options: CompilerOptions, file_path: Option<Strin
     context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_build(options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&options, file_path);
+pub(crate) fn command_build(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+    let (opts, _file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output must be specified to generate executable.".to_string());

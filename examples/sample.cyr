@@ -1,1 +1,19 @@
-public func sample()  {}
+extern func printf(format: const char*, ...);
+
+public PI = 3.14;
+
+public func hello() {
+    printf("Hello, Cyrus!\n");
+}
+
+public func sample() {
+    printf("Sample!\n");
+    printf("PI: %f!\n", PI);
+}
+
+struct Person {
+    name: char*;
+    age: uint;
+}
+
+type MyPerson = Person;

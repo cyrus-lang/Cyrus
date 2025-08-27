@@ -375,6 +375,7 @@ pub struct TypedReturn {
 
 #[derive(Debug, Clone)]
 pub struct TypedGlobalVariable {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<ConcreteType>,
@@ -436,6 +437,7 @@ pub struct TypedIf {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDef {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub params: TypedFuncParams,

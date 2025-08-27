@@ -32,6 +32,13 @@ pub(crate) struct CodeGenBuilder<'a> {
     pub resolver: Rc<Resolver>,
 }
 
+impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn get_module_name(&self, module_id: ModuleID) -> String {
+        let module_file_path = self.resolver.get_module_file_path(module_id).unwrap();
+        make_module_name(self.resolver.master_module_file_path.clone(), module_file_path)
+    }
+}
+
 impl<'module> CodeGenModule<'module> {
     pub fn new(opts: &'module CodeGenOptions, program_tree: Rc<RefCell<TypedProgramTree>>) -> Self {
         let ctx = Rc::new(Context::create());
@@ -250,7 +257,7 @@ pub struct TerminatedBlockMetadata<'a> {
     pub terminated_with_return: bool,
 }
 
-pub(crate) fn make_module_name(master_module_file_path: String, current_module_file_path: String) -> String {
+fn make_module_name(master_module_file_path: String, current_module_file_path: String) -> String {
     let module_path = Path::new(&current_module_file_path);
     let master_root = Path::new(&master_module_file_path).parent().unwrap();
 

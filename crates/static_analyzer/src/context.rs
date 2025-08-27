@@ -5,7 +5,7 @@ use resolver::{
     Resolver,
     declsign::FuncSig,
     moduleloader::ModuleFilePath,
-    scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalSymbolKind, SymbolEntryKind},
 };
 use std::{
     cell::RefCell,
@@ -630,10 +630,15 @@ impl<'a> AnalysisContext<'a> {
                     ),
                 };
 
+                let file_path = self
+                    .resolver
+                    .get_module_file_path(symbol_entry.get_module_id())
+                    .unwrap();
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Warning,
                     kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
-                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+                    location: Some(DiagLoc::new(file_path, loc, 0)),
                     hint: None,
                 });
             }
@@ -830,7 +835,7 @@ impl<'a> AnalysisContext<'a> {
             self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
 
             if func_sig.vis.is_public() {
-                self.mark_symbol_used_once(self.module_id, *symbol_id);
+                self.mark_symbol_used_once(module_id, *symbol_id);
             }
 
             if let Some(mut body) = func_body {
@@ -870,6 +875,10 @@ impl<'a> AnalysisContext<'a> {
         if typed_func_def.name == "main" {
             let mut entry_points = self.entry_points.lock().unwrap();
             entry_points.push((self.resolver.get_current_module_file_path(), typed_func_def.loc.clone()));
+        }
+
+        if typed_func_def.vis.is_public() {
+            self.mark_symbol_used_once(self.module_id, typed_func_def.symbol_id);
         }
 
         self.analyze_any_func_def(
@@ -994,7 +1003,7 @@ impl<'a> AnalysisContext<'a> {
             .resolver
             .get_scope_ref(self.module_id, scope_id_opt.unwrap())
             .unwrap();
-        
+
         typed_variable.ty = self.normalize_type(
             scope_id_opt,
             typed_variable.ty.clone().unwrap(),

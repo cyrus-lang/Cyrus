@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use super::module::{CodeGenBuilder, LocalIRValue};
 use crate::builder::{
     abi::make_method_abi_name,
-    module::{LoopBlockRefs, TerminatedBlockMetadata, make_module_name},
+    module::{LoopBlockRefs, TerminatedBlockMetadata},
 };
 use inkwell::{
     basic_block::BasicBlock,
@@ -14,6 +12,7 @@ use resolver::{
     declsign::{FuncSig, StructSig},
     scope::LocalScopeRef,
 };
+use std::collections::HashMap;
 use typed_ast::{
     ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor,
     TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct,
@@ -111,27 +110,39 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
                 TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
                 TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
-                TypedStatement::Interface(typed_interface) => todo!(),
+                TypedStatement::Interface(_typed_interface) => todo!(),
                 TypedStatement::FuncDecl(_) => continue,
                 _ => continue,
             }
         }
     }
 
-    pub(crate) fn get_or_declare_func(&mut self, symbol_id: SymbolID, func_sig: FuncSig, method_struct_type: Option<StructType<'a>>) -> FunctionValue<'a> {
+    pub(crate) fn get_or_declare_func(
+        &mut self,
+        symbol_id: SymbolID,
+        func_sig: FuncSig,
+        method_struct_type: Option<StructType<'a>>,
+    ) -> FunctionValue<'a> {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&symbol_id).cloned();
         drop(irreg);
 
         let fn_value = match local_ir_value {
             Some(local_ir_value) => local_ir_value.as_func().unwrap().clone(),
-            None => self.build_func_decl(
-                func_sig.name.clone(),
-                func_sig.params.clone(),
-                func_sig.return_type.clone(),
-                func_sig.vis.clone(),
-                method_struct_type,
-            ),
+            None => {
+                let fn_value = self.build_func_decl(
+                    func_sig.name.clone(),
+                    func_sig.is_func_decl,
+                    Some(func_sig.module_id),
+                    func_sig.params.clone(),
+                    func_sig.return_type.clone(),
+                    func_sig.vis.clone(),
+                    method_struct_type,
+                );
+
+                self.insert_forward_decl_to_registry(symbol_id, LocalIRValue::Func(fn_value));
+                fn_value
+            }
         };
 
         fn_value
@@ -148,24 +159,24 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_forward_decls(&mut self, stmts: &Vec<TypedStatement>) {
-        let insert_forward_decl_to_registry = |this: &Self, symbol_id: SymbolID, local_value: LocalIRValue<'a>| {
-            let mut irreg = this.irreg.borrow_mut();
-            irreg.insert(symbol_id, local_value);
-            drop(irreg);
-        };
+    pub(crate) fn insert_forward_decl_to_registry(&mut self, symbol_id: SymbolID, local_value: LocalIRValue<'a>) {
+        let mut irreg = self.irreg.borrow_mut();
+        irreg.insert(symbol_id, local_value);
+        drop(irreg);
+    }
 
+    fn build_forward_decls(&mut self, stmts: &Vec<TypedStatement>) {
         for stmt in stmts {
             match stmt {
                 TypedStatement::Struct(typed_struct) => {
                     let struct_type = self.build_struct_decl(&typed_struct.name);
-                    insert_forward_decl_to_registry(self, typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
+                    self.insert_forward_decl_to_registry(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
                 }
                 TypedStatement::Enum(typed_enum) => {
                     let struct_type = self.build_enum_decl(&typed_enum.name);
-                    insert_forward_decl_to_registry(self, typed_enum.symbol_id, LocalIRValue::Struct(struct_type));
+                    self.insert_forward_decl_to_registry(typed_enum.symbol_id, LocalIRValue::Struct(struct_type));
                 }
-                TypedStatement::Interface(typed_interface) => todo!(),
+                TypedStatement::Interface(_typed_interface) => todo!(),
                 _ => continue,
             }
         }
@@ -174,8 +185,7 @@ impl<'a> CodeGenBuilder<'a> {
             match stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => {
                     let global_value = self.build_global_var_decl(typed_global_var);
-                    insert_forward_decl_to_registry(
-                        self,
+                    self.insert_forward_decl_to_registry(
                         typed_global_var.symbol_id,
                         LocalIRValue::GlobalValue(global_value, typed_global_var.ty.clone().unwrap()),
                     );
@@ -183,22 +193,26 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::FuncDef(typed_func_def) => {
                     let fn_value = self.build_func_decl(
                         typed_func_def.name.clone(),
+                        false,
+                        Some(typed_func_def.module_id),
                         typed_func_def.params.clone(),
                         typed_func_def.return_type.clone(),
                         typed_func_def.vis.clone(),
                         None,
                     );
-                    insert_forward_decl_to_registry(self, typed_func_def.symbol_id, LocalIRValue::Func(fn_value));
+                    self.insert_forward_decl_to_registry(typed_func_def.symbol_id, LocalIRValue::Func(fn_value));
                 }
                 TypedStatement::FuncDecl(typed_func_decl) => {
                     let fn_value = self.build_func_decl(
                         typed_func_decl.name.clone(),
+                        true,
+                        None,
                         typed_func_decl.params.clone(),
                         typed_func_decl.return_type.clone(),
                         typed_func_decl.vis.clone(),
                         None,
                     );
-                    insert_forward_decl_to_registry(self, typed_func_decl.symbol_id, LocalIRValue::Func(fn_value));
+                    self.insert_forward_decl_to_registry(typed_func_decl.symbol_id, LocalIRValue::Func(fn_value));
                 }
                 _ => continue,
             }
@@ -218,12 +232,16 @@ impl<'a> CodeGenBuilder<'a> {
 
         let struct_type = self.llvmctx.struct_type(&field_types, typed_struct.packed);
 
-        let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
-        drop(irreg);
+        self.insert_forward_decl_to_registry(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
     }
 
-    fn build_methods(&mut self, module_id: ModuleID, struct_name: String, struct_type: StructType<'a>, methods: &HashMap<String, SymbolID>) {
+    fn build_methods(
+        &mut self,
+        module_id: ModuleID,
+        struct_name: String,
+        struct_type: StructType<'a>,
+        methods: &HashMap<String, SymbolID>,
+    ) {
         for method_symbol_id in methods.values() {
             let symbol_entry = self
                 .resolver
@@ -231,17 +249,14 @@ impl<'a> CodeGenBuilder<'a> {
                 .unwrap();
             let mut resolved_method = symbol_entry.as_method().unwrap().clone();
 
-            let module_name = make_module_name(
-                self.resolver.master_module_file_path.clone(),
-                self.module_file_path.clone(),
-            );
+            let module_name = self.get_module_name(module_id);
             resolved_method.func_sig.name =
                 make_method_abi_name(module_name, struct_name.clone(), resolved_method.func_sig.name.clone());
 
-            let fn_value = self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone(), Some(struct_type));
-            let mut irreg = self.irreg.borrow_mut();
-            irreg.insert(*method_symbol_id, LocalIRValue::Func(fn_value));
-            drop(irreg);
+            let fn_value =
+                self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone(), Some(struct_type));
+
+            self.insert_forward_decl_to_registry(*method_symbol_id, LocalIRValue::Func(fn_value));
 
             self.blockreg.current_func_ref = Some(fn_value.clone());
 
@@ -296,7 +311,12 @@ impl<'a> CodeGenBuilder<'a> {
         drop(irreg);
 
         struct_type.set_body(&field_types, typed_struct.packed);
-        self.build_methods(typed_struct.module_id, typed_struct.name.clone(), struct_type.clone(), &typed_struct.methods);
+        self.build_methods(
+            typed_struct.module_id,
+            typed_struct.name.clone(),
+            struct_type.clone(),
+            &typed_struct.methods,
+        );
     }
 
     fn build_enum_decl(&self, name: &String) -> StructType<'a> {

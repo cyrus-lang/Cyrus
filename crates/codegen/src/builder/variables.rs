@@ -1,14 +1,33 @@
-use crate::builder::module::{CodeGenBuilder, LocalIRValue};
+use crate::builder::{
+    abi::make_global_var_abi_name,
+    module::{CodeGenBuilder, LocalIRValue},
+};
 use ast::AccessSpecifier;
 use inkwell::{
     module::Linkage,
     types::BasicTypeEnum,
     values::{GlobalValue, PointerValue},
 };
-use resolver::scope::LocalScopeRef;
+use resolver::{declsign::GlobalVarSig, scope::LocalScopeRef};
 use typed_ast::{TypedExpression, TypedGlobalVariable, TypedVariable, types::ConcreteType};
 
 impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn get_or_declare_global_var(&mut self, global_var_sig: GlobalVarSig) -> GlobalValue<'a> {
+        let concrete_type: BasicTypeEnum<'a> = self
+            .build_concrete_type(None, global_var_sig.ty.unwrap())
+            .try_into()
+            .unwrap();
+        let module_name = self.get_module_name(global_var_sig.module_id);
+        let abi_name = make_global_var_abi_name(module_name, global_var_sig.name);
+
+        let llvmmodule = self.llvmmodule.borrow_mut();
+        let global_value = llvmmodule.add_global(concrete_type, None, &abi_name);
+        global_value.set_linkage(Linkage::External);
+        drop(llvmmodule);
+
+        global_value
+    }
+
     pub(crate) fn build_global_var_decl(&mut self, global_var: &TypedGlobalVariable) -> GlobalValue<'a> {
         let linkage = self.build_global_variable_linkage(global_var.vis.clone());
 
@@ -26,11 +45,15 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         let global_var_type: BasicTypeEnum<'a> = global_var_type.unwrap().try_into().unwrap();
+        let module_name = self.get_module_name(global_var.module_id);
+        let abi_name = make_global_var_abi_name(module_name, global_var.name.clone());
 
         let llvmmodule = self.llvmmodule.borrow();
-        let global_var_value = llvmmodule.add_global(global_var_type, None, &global_var.name);
+        let global_var_value = llvmmodule.add_global(global_var_type, None, &abi_name);
         global_var_value.set_linkage(linkage);
+        global_var_value.set_unnamed_addr(true);
         drop(llvmmodule);
+
         global_var_value
     }
 
@@ -52,12 +75,10 @@ impl<'a> CodeGenBuilder<'a> {
             global_value.set_constant(concrete_type.is_const());
         }
 
-        let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(
+        self.insert_forward_decl_to_registry(
             global_var.symbol_id,
             LocalIRValue::GlobalValue(global_value, global_var.ty.clone().unwrap()),
         );
-        drop(irreg);
     }
 
     fn build_global_variable_linkage(&self, vis: AccessSpecifier) -> Linkage {
@@ -107,9 +128,7 @@ impl<'a> CodeGenBuilder<'a> {
 
         let alloca = self.llvmbuilder.build_alloca(basic_type, &variable.name).unwrap();
 
-        let mut irreg = self.irreg.borrow_mut();
-        irreg.insert(variable.symbol_id, LocalIRValue::LValue(alloca, concrete_type));
-        drop(irreg);
+        self.insert_forward_decl_to_registry(variable.symbol_id, LocalIRValue::LValue(alloca, concrete_type));
 
         if let Some(typed_expr) = &variable.rhs {
             let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
