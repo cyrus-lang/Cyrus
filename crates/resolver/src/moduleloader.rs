@@ -2,10 +2,14 @@ use crate::diagnostics::ResolverDiagKind;
 use ast::{
     Identifier, Import, ModulePath, ModuleSegment, ProgramTree, format::module_segments_as_string, token::Location,
 };
-use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
+use diagcentral::{Diag, DiagLevel, display_single_diag};
 use lexer::Lexer;
 use parser::Parser;
-use std::{env, path::Path, rc::Rc};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 use utils::fs::find_file_from_sources;
 
 pub type ModuleAlias = String;
@@ -53,7 +57,10 @@ impl ModuleLoader {
             let alias = sub_import
                 .alias
                 .clone()
-                .unwrap_or(module_segments_as_string(sub_import.segments.clone()));
+                .unwrap_or({
+                    // last segment of the import_path
+                    sub_import.segments.last().unwrap().as_identifier().name
+                });
 
             let file_content = std::fs::read_to_string(module_file_path.clone()).unwrap();
             let mut lexer = Lexer::new(file_content, module_file_path.clone());
@@ -92,8 +99,6 @@ impl ModuleLoader {
             sources = vec![self.get_stdlib_modules_path()];
         }
 
-        let module_file_path = String::new();
-
         let get_module_alias = |mut module_path: ModulePath| match module_path.alias.clone() {
             Some(alias) => {
                 module_path.segments = vec![ModuleSegment::SubModule(Identifier {
@@ -109,6 +114,9 @@ impl ModuleLoader {
                 module_path
             }
         };
+
+        // starting point
+        let module_file_path = String::new();
 
         self.resolve_segments(
             module_path,
@@ -127,123 +135,84 @@ impl ModuleLoader {
         module_path: ModulePath,
         segments: &[ModuleSegment],
         sources: Vec<String>,
-        module_file_path: String,
+        mut module_file_path: String,
         get_module_alias: &dyn Fn(ModulePath) -> ModulePath,
         current_module_file_path: String,
         loc: Location,
         span_end: usize,
     ) -> Result<ModuleFilePath, ResolverDiagKind> {
         let module_name = module_segments_as_string(segments.to_vec());
-        let mut module_file_path = module_file_path;
 
-        for idx in 0..segments.len() {
-            match &segments[idx] {
-                ModuleSegment::SubModule(identifier) => {
-                    let dir_path = format!("{}{}", module_file_path, identifier.name);
-                    let file_path = format!("{}{}.cyr", module_file_path, identifier.name);
+        for (idx, segment) in segments.iter().enumerate() {
+            if let ModuleSegment::SubModule(identifier) = segment {
+                let file_path = format!("{}{}.cyr", module_file_path, identifier.name);
+                let dir_path = format!("{}{}/", module_file_path, identifier.name);
 
-                    if let Some(file_path_buf) = find_file_from_sources(file_path.clone(), sources.clone()) {
+                // when inside a known directory, check directly; otherwise search in sources
+                let file_exists = if Path::new(&file_path).exists() {
+                    Some(PathBuf::from(&file_path))
+                } else {
+                    find_file_from_sources(file_path.clone(), sources.clone())
+                };
+
+                let dir_exists = if Path::new(&dir_path).exists() {
+                    Some(PathBuf::from(&dir_path))
+                } else {
+                    find_file_from_sources(dir_path.clone(), sources.clone())
+                };
+
+                match (file_exists, dir_exists) {
+                    (Some(..), Some(..)) => {
+                        return Err(ResolverDiagKind::DuplicateModule {
+                            module_name: identifier.name.clone(),
+                        });
+                    }
+                    (Some(file_buf), None) => {
+                        module_file_path = file_buf.to_str().unwrap().to_string();
                         if idx == segments.len() - 1 {
-                            return Ok(file_path_buf.to_str().unwrap().to_string());
-                        } else if (segments.len() - 1) - idx == 1 {
-                            match &segments[idx + 1] {
-                                ModuleSegment::Single(..) => {
-                                    let base_path = self.resolve_segments(
-                                        module_path.clone(),
-                                        &segments[..idx + 1],
-                                        sources.clone(),
-                                        module_file_path.clone(),
-                                        get_module_alias,
-                                        current_module_file_path.clone(),
-                                        loc.clone(),
-                                        span_end,
-                                    )?;
-
-                                    if !Path::new(&base_path).is_file() {
-                                        display_single_diag!(Diag {
-                                            level: DiagLevel::Error,
-                                            kind: ResolverDiagKind::CannotImportDirectoryAsModule,
-                                            location: Some(DiagLoc {
-                                                file: current_module_file_path,
-                                                line: loc.line,
-                                                column: loc.column,
-                                                length: span_end,
-                                            }),
-                                            hint: None
-                                        });
-                                    }
-
-                                    return Ok(base_path);
-                                }
-                                _ => {}
-                            }
-                        }
-                    } else {
-                        if let Some(found_path) = find_file_from_sources(dir_path, sources.clone()) {
-                            module_file_path.push_str(found_path.to_str().unwrap());
-                            module_file_path.push('/');
-                        } else {
-                            display_single_diag!(Diag {
-                                level: DiagLevel::Error,
-                                kind: ResolverDiagKind::ModuleNotFound { module_name },
-                                location: Some(DiagLoc {
-                                    file: current_module_file_path,
-                                    line: loc.line,
-                                    column: loc.column,
-                                    length: span_end,
-                                }),
-                                hint: None
-                            });
+                            return Ok(module_file_path);
                         }
                     }
+                    (None, Some(dir_buf)) => {
+                        if idx == segments.len() - 1 {
+                            // directory is the final segment → require index.cyr
+                            let index_path = dir_buf.join("index.cyr");
+                            if !index_path.exists() {
+                                return Err(ResolverDiagKind::ModuleIndexNotFound {
+                                    module_name: identifier.name.clone(),
+                                });
+                            }
+                            module_file_path = index_path.to_str().unwrap().to_string();
+                            return Ok(module_file_path);
+                        } else {
+                            // not the last segment → descend into directory
+                            module_file_path = dir_buf.to_str().unwrap().to_string();
+                            if !module_file_path.ends_with('/') {
+                                module_file_path.push('/');
+                            }
+                        }
+                    }
+                    (None, None) => {
+                        return Err(ResolverDiagKind::ModuleNotFound { module_name });
+                    }
                 }
-                ModuleSegment::Single(_) => {
-                    return self.resolve_segments(
-                        module_path.clone(),
-                        &segments[..idx + 1],
-                        sources.clone(),
-                        module_file_path.clone(),
-                        get_module_alias,
-                        current_module_file_path,
-                        loc.clone(),
-                        span_end,
-                    );
-                }
+            } else if let ModuleSegment::Single(_) = segment {
+                // recurse for single segments
+                return self.resolve_segments(
+                    module_path.clone(),
+                    &segments[..=idx],
+                    sources.clone(),
+                    module_file_path.clone(),
+                    get_module_alias,
+                    current_module_file_path.clone(),
+                    loc.clone(),
+                    span_end,
+                );
             }
-        }
-
-        let path = Path::new(&module_file_path);
-        if !path.exists() {
-            display_single_diag!(Diag {
-                level: DiagLevel::Error,
-                kind: ResolverDiagKind::ModuleImportNotFound { module_name },
-                location: Some(DiagLoc {
-                    file: current_module_file_path,
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-                hint: None
-            });
-        }
-
-        if path.is_dir() {
-            display_single_diag!(Diag {
-                level: DiagLevel::Error,
-                kind: ResolverDiagKind::CannotImportDirectoryAsModule,
-                location: Some(DiagLoc {
-                    file: current_module_file_path,
-                    line: loc.line,
-                    column: loc.column,
-                    length: span_end,
-                }),
-                hint: None
-            });
         }
 
         Ok(module_file_path)
     }
-
     fn get_stdlib_modules_path(&self) -> String {
         match self.opts.stdlib_path.clone() {
             Some(stdlib_path) => stdlib_path,

@@ -3,6 +3,12 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum ResolverDiagKind {
+    DuplicateModule {
+        module_name: String,
+    },
+    ModuleIndexNotFound {
+        module_name: String,
+    },
     InvalidLiteralSuffix,
     SymbolAlreadyDefined {
         name: String,
@@ -79,6 +85,20 @@ pub enum ResolverDiagKind {
 impl fmt::Display for ResolverDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ResolverDiagKind::DuplicateModule { module_name } => {
+                write!(
+                    f,
+                    "Module '{}' cannot exist as both a file and a directory.",
+                    module_name
+                )
+            }
+            ResolverDiagKind::ModuleIndexNotFound { module_name } => {
+                write!(
+                    f,
+                    "Module directory '{}' must contain an 'index.cyr' file for it to be importable.",
+                    module_name
+                )
+            }
             ResolverDiagKind::InvalidLiteralSuffix => {
                 write!(f, "Invalid literal suffix.")
             }

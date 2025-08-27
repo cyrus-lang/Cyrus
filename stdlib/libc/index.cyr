@@ -1,0 +1,11 @@
+public type CFile = void*;
+
+public extern stdout: CFile;
+public extern stderr: CFile;
+public extern stdin: CFile;
+
+public extern func printf(format: const char*, ...) int32;
+public extern func fprintf(stream: CFile, format: const char*, ...) int32;
+public extern func malloc(size: size_t) void*;
+public extern func free(ptr: void*) void;
+public extern func exit(status: int32) void;
