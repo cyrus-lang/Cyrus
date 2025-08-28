@@ -1017,7 +1017,7 @@ impl<'a> AnalysisContext<'a> {
                         Some(concrete_type) => concrete_type,
                         None => return,
                     };
-                typed_variable.ty = Some(concrete_type.clone());
+
                 typed_expr.concrete_type = Some(concrete_type.clone());
                 Some(concrete_type)
             } else {
@@ -1035,10 +1035,6 @@ impl<'a> AnalysisContext<'a> {
             typed_variable.ty.clone().unwrap(),
             typed_variable.loc.clone(),
         );
-
-        // update_local_symbol_type!(self, local_scope_rc, typed_variable.symbol_id, LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-        //     resolved_variable.typed_variable.ty = typed_variable.ty.clone();
-        // });
 
         if let Some(value_type) = value_type_opt {
             let lhs_type = format_concrete_type(
