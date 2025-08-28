@@ -75,6 +75,14 @@ pub enum Expression {
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
     UnnamedStructValue(UnnamedStructValue),
+    SizeOfExpression(SizeOfExpression),
+}
+
+#[derive(Debug, Clone)]
+pub struct SizeOfExpression {
+    pub expr: Box<Expression>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

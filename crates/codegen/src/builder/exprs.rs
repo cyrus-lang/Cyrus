@@ -15,7 +15,7 @@ use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind};
 use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedAssignment, TypedCast, TypedDereference, TypedExpression,
     TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedInfixExpression, TypedLiteral, TypedPrefixExpression,
-    TypedStructInit, TypedUnaryExpression, TypedUnnamedStructValue,
+    TypedSizeOfExpression, TypedStructInit, TypedUnaryExpression, TypedUnnamedStructValue,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
 };
 
@@ -57,6 +57,10 @@ impl<'a> CodeGenBuilder<'a> {
                 // lowered to func call in analyzer layer
                 unreachable!()
             }
+            TypedExpressionKind::SizeOfExpression(typed_size_of_expression) => {
+                self.build_sizeof(local_scope_opt, typed_size_of_expression)
+            }
+            TypedExpressionKind::ConcreteType(..) => unreachable!(),
         }
     }
 
@@ -210,6 +214,7 @@ impl<'a> CodeGenBuilder<'a> {
         let rhs_lvalue = self.build_expr(local_scope_opt.clone(), &assign.rhs);
         let rhs_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), rhs_lvalue);
 
+        dbg!(lhs_lvalue.clone());
         assert!(lhs_lvalue.as_basic_value().is_pointer_value() == true);
         let pointer_value = lhs_lvalue.as_basic_value().into_pointer_value();
 
@@ -843,17 +848,40 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_sizeof(&mut self, local_scope_opt: Option<LocalScopeRef>, rvalue: InternalValue<'a>) -> InternalValue<'a> {
-        let any_type = self.build_concrete_type(local_scope_opt.clone(), rvalue.value_type);
-        let size_internal_value = InternalValue::new(
-            ConcreteType::BasicType(BasicConcreteType::SizeT),
-            InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
-        );
-        self.build_implicit_cast(
-            local_scope_opt,
-            ConcreteType::BasicType(BasicConcreteType::SizeT),
-            size_internal_value,
-        )
+    fn build_sizeof(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        sizeof_expr: &TypedSizeOfExpression,
+    ) -> InternalValue<'a> {
+        match &sizeof_expr.expr.kind {
+            TypedExpressionKind::ConcreteType(concrete_type) => {
+                let any_type = self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone());
+                let size_internal_value = InternalValue::new(
+                    ConcreteType::BasicType(BasicConcreteType::SizeT),
+                    InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
+                );
+                self.build_implicit_cast(
+                    local_scope_opt,
+                    ConcreteType::BasicType(BasicConcreteType::SizeT),
+                    size_internal_value,
+                )
+            }
+            _ => {
+                let lvalue = self.build_expr(local_scope_opt.clone(), &sizeof_expr.expr);
+                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+
+                let any_type = self.build_concrete_type(local_scope_opt.clone(), rvalue.value_type);
+                let size_internal_value = InternalValue::new(
+                    ConcreteType::BasicType(BasicConcreteType::SizeT),
+                    InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
+                );
+                self.build_implicit_cast(
+                    local_scope_opt,
+                    ConcreteType::BasicType(BasicConcreteType::SizeT),
+                    size_internal_value,
+                )
+            }
+        }
     }
 
     fn build_prefix_expr(
@@ -868,7 +896,6 @@ impl<'a> CodeGenBuilder<'a> {
             PrefixOperator::Bang => self.build_logical_not(rvalue),
             PrefixOperator::Minus => self.build_negate(rvalue),
             PrefixOperator::BitwiseNot => self.build_bitwise_not(rvalue),
-            PrefixOperator::SizeOf => self.build_sizeof(local_scope_opt, rvalue),
         }
     }
 

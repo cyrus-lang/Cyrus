@@ -168,15 +168,28 @@ impl Parser {
                 })
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
+            TokenKind::SizeOf => {
+                let start = self.current_token().span.start;
+                let loc= self.current_token().loc;
+
+                self.next_token();
+                self.expect_current(TokenKind::LeftParen)?;
+                let expr = self.parse_expression(Precedence::Lowest)?.0;
+                self.expect_peek(TokenKind::RightParen)?;
+
+                Expression::SizeOfExpression(SizeOfExpression {
+                    expr: Box::new(expr),
+                    loc,
+                    span: Span::new(start, self.current_token().span.end),
+                })
+            }
             token_kind @ TokenKind::Minus
             | token_kind @ TokenKind::Bang
-            | token_kind @ TokenKind::SizeOf
             | token_kind @ TokenKind::Tilde => {
                 let start = self.current_token().span.start;
                 let prefix_operator = match token_kind {
                     TokenKind::Minus => PrefixOperator::Minus,
                     TokenKind::Bang => PrefixOperator::Bang,
-                    TokenKind::SizeOf => PrefixOperator::SizeOf,
                     TokenKind::Tilde => PrefixOperator::BitwiseNot,
                     _ => {
                         return Err(Diag {
@@ -250,7 +263,7 @@ impl Parser {
         left_start: usize,
     ) -> Option<Result<Expression, ParserError>> {
         let loc = self.current_token().loc.clone();
-      
+
         match self.peek_token().kind {
             TokenKind::Plus
             | TokenKind::Minus

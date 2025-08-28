@@ -2,8 +2,8 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
-    ObjectNotSupportsMethods, 
-    ObjectNotSupportsFields, 
+    ObjectNotSupportsMethods,
+    ObjectNotSupportsFields,
     InvalidFatArrow,
     StructMethodNotDefined {
         struct_name: String,

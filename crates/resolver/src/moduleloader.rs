@@ -4,13 +4,10 @@ use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
 use lexer::Lexer;
 use parser::Parser;
 use std::{
-    collections::HashMap,
     env,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::{Arc, Mutex},
 };
-use typed_ast::ModuleID;
 use utils::fs::find_file_from_sources;
 
 #[derive(Debug, Clone)]
@@ -30,12 +27,11 @@ pub struct ModuleLoaderOptions {
 #[derive(Debug)]
 pub struct ModuleLoader {
     pub opts: ModuleLoaderOptions,
-    file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
 }
 
 impl ModuleLoader {
-    pub fn new(opts: ModuleLoaderOptions, file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>) -> Self {
-        ModuleLoader { opts, file_paths }
+    pub fn new(opts: ModuleLoaderOptions) -> Self {
+        ModuleLoader { opts }
     }
 
     pub fn load_module(
