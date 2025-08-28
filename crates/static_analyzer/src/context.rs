@@ -5,7 +5,7 @@ use resolver::{
     Resolver,
     declsign::FuncSig,
     moduleloader::ModuleFilePath,
-    scope::{LocalOrGlobalSymbol, LocalSymbolKind, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
 };
 use std::{
     cell::RefCell,
@@ -22,22 +22,6 @@ use typed_ast::{format::format_concrete_type, types::ConcreteType, *};
 enum ControlContext {
     For(TypedFor),
     Switch(TypedSwitch),
-}
-
-macro_rules! update_local_symbol_type {
-    ($self:expr, $local_scope_rc:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
-        let mut local_scope = $local_scope_rc.borrow_mut();
-        let mut_ref = local_scope.resolve_with_symbol_id_mut($symbol_id).unwrap();
-
-        match &mut mut_ref.kind {
-            $pattern => {
-                let $var = $var;
-                $body
-            }
-            _ => unreachable!(),
-        }
-        drop(local_scope);
-    }};
 }
 
 macro_rules! update_global_symbol_type {
@@ -586,13 +570,13 @@ impl<'a> AnalysisContext<'a> {
                 };
 
                 if !self.disable_warnings {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Warning,
-                    kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
-                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
-                    hint: None,
-                });
-            }
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Warning,
+                        kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
+                        location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+                        hint: None,
+                    });
+                }
             }
         }
     }
@@ -827,6 +811,9 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
+        let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStatement>)> = Vec::new();
+
+        // forward method declaration resolving
         for symbol_id in methods.values() {
             let (mut func_sig, func_body) = {
                 let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
@@ -834,48 +821,78 @@ impl<'a> AnalysisContext<'a> {
                 let symbol_entry = symbol_table.entries.get_mut(symbol_id).unwrap();
 
                 match &mut symbol_entry.kind {
-                    SymbolEntryKind::Method(m) => (m.func_sig.clone(), m.func_body.take()),
+                    SymbolEntryKind::Method(m) => (m.func_sig.clone(), m.func_body.take().unwrap()),
                     _ => unreachable!(),
                 }
             };
 
             self.cur_func_symbol_id = Some(*symbol_id);
-
             self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
 
+            // public methods are allowed to not be used
             if func_sig.vis.is_public() {
                 self.mark_symbol_used_once(module_id, *symbol_id);
             }
 
-            if let Some(mut body) = func_body {
-                let scope_id_opt = Some(body.scope_id);
+            self.cur_func_symbol_id = Some(*symbol_id);
+            self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
 
-                self.analyze_any_func_def(
-                    *symbol_id,
-                    &mut func_sig.return_type,
-                    &mut func_sig.params,
-                    &mut body,
-                    func_sig.loc.clone(),
-                );
+            func_sig.return_type = match self.normalize_type(None, func_sig.return_type.clone(), func_sig.loc.clone()) {
+                Some(concrete_type) => concrete_type,
+                None => return,
+            };
 
-                if let Some(typed_func_param_kind) = func_sig.params.list.first() {
-                    if let TypedFuncParamKind::SelfModifier(mut typed_self_modifier) = typed_func_param_kind.clone() {
-                        typed_self_modifier.ty = self.normalize_type(
+            let scope_id_opt = Some(func_body.scope_id);
+
+            if let Some(typed_func_param_kind) = func_sig.params.list.first() {
+                if let TypedFuncParamKind::SelfModifier(mut typed_self_modifier) = typed_func_param_kind.clone() {
+                    typed_self_modifier.ty = Some(
+                        self.normalize_type(
                             scope_id_opt,
                             ConcreteType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
                             typed_self_modifier.loc.clone(),
-                        );
-                        func_sig.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
-                    }
-                }
+                        )
+                        .unwrap(),
+                    );
 
-                let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
-                let symbol_table = global_symbols.get_mut(&module_id).unwrap();
-                let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
-                if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
-                    m.func_sig = func_sig;
-                    m.func_body = Some(body);
+                    func_sig.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
                 }
+            }
+
+            local_methods_list.push((*symbol_id, func_sig.clone(), func_body));
+
+            let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+            let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+            let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
+            if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
+                m.func_sig = func_sig;
+            }
+        }
+
+        // analyze methods bodies
+        for (symbol_id, func_sig, mut func_body) in local_methods_list {
+            self.cur_func_symbol_id = Some(symbol_id);
+            let state = self.analyze_block_statement(&mut func_body);
+
+            if !func_sig.return_type.is_void() && state != FlowState::Returns {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::MissingReturn,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        func_sig.loc.clone(),
+                        0,
+                    )),
+                    hint: Some("Not all control paths return a value.".to_string()),
+                });
+            }
+
+            let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+            let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+            let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
+            if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
+                m.func_sig = func_sig;
+                m.func_body = Some(func_body);
             }
         }
     }
@@ -1019,9 +1036,9 @@ impl<'a> AnalysisContext<'a> {
             typed_variable.loc.clone(),
         );
 
-        update_local_symbol_type!(self, local_scope_rc, typed_variable.symbol_id, LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-            resolved_variable.typed_variable.ty = typed_variable.ty.clone();
-        });
+        // update_local_symbol_type!(self, local_scope_rc, typed_variable.symbol_id, LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+        //     resolved_variable.typed_variable.ty = typed_variable.ty.clone();
+        // });
 
         if let Some(value_type) = value_type_opt {
             let lhs_type = format_concrete_type(
@@ -1063,6 +1080,17 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         }
+
+        let mut local_scope = local_scope_rc.borrow_mut();
+        local_scope.insert(
+            typed_variable.name.clone(),
+            LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
+                module_id: self.module_id,
+                symbol_id: typed_variable.symbol_id,
+                typed_variable: typed_variable.clone(),
+            })),
+        );
+        drop(local_scope);
     }
 
     pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, typed_assignment: &mut TypedAssignment) {

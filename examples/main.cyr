@@ -1,6 +1,25 @@
-import std::libc;
-import sample;
+extern func printf(format: const char*, ...) int32;
+
+struct Person {
+    name: char*;
+    age: uint;
+
+    func sample(self, aaa: int) int {
+        return aaa;
+    }
+
+    func display(self, ccc: int) {
+        printf("Hello, %d\n", self.sample(ccc));
+    }
+
+    func get_name(self) char* {
+        // return self.name;
+        return "AAA";
+    }
+}
 
 func main() {
-    
+    #person = Person { name: "Taha", age: 18 };
+    person.display(5);
+    // printf("value: %s\n", person.get_name());
 }
