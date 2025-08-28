@@ -51,6 +51,8 @@ impl TypedExpression {
             TypedExpressionKind::FuncCall(typed_func_call) => typed_func_call.loc.clone(),
             TypedExpressionKind::FieldAccess(typed_field_access) => typed_field_access.loc.clone(),
             TypedExpressionKind::MethodCall(typed_method_call) => typed_method_call.loc.clone(),
+            TypedExpressionKind::SizeOfExpression(sizeof_expr) => sizeof_expr.loc.clone(),
+            TypedExpressionKind::ConcreteType(..) => Location::default(),
             TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 typed_unnamed_struct_value.loc.clone()
             }
@@ -76,6 +78,14 @@ pub enum TypedExpressionKind {
     FieldAccess(TypedFieldAccess),
     MethodCall(TypedMethodCall),
     UnnamedStructValue(TypedUnnamedStructValue),
+    SizeOfExpression(TypedSizeOfExpression),
+    ConcreteType(ConcreteType),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedSizeOfExpression {
+    pub expr: Box<TypedExpression>,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -116,6 +126,8 @@ impl TypedExpressionKind {
             | TypedExpressionKind::MethodCall(_)
             | TypedExpressionKind::FuncCall(_)
             | TypedExpressionKind::Assignment(_)
+            | TypedExpressionKind::SizeOfExpression(_)
+            | TypedExpressionKind::ConcreteType(_)
             | TypedExpressionKind::AddressOf(_) => false,
         }
     }
@@ -138,6 +150,8 @@ impl TypedExpressionKind {
             TypedExpressionKind::Cast(_) => false,
             TypedExpressionKind::AddressOf(_) => false,
             TypedExpressionKind::Array(_) => false,
+            TypedExpressionKind::SizeOfExpression(_) => false,
+            TypedExpressionKind::ConcreteType(_) => false,
         }
     }
 }
@@ -236,8 +250,8 @@ pub struct TypedFuncCall {
 pub struct TypedFieldAccess {
     pub operand: Box<TypedExpression>,
     pub field_name: String,
-    pub field_index: Option<usize>,       
-    pub field_ty: Option<ConcreteType>, 
+    pub field_index: Option<usize>,
+    pub field_ty: Option<ConcreteType>,
     pub object_symbol_id: Option<SymbolID>,
     pub loc: Location,
 }

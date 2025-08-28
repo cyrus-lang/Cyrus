@@ -45,7 +45,6 @@ pub enum ResolverDiagKind {
     SymbolIsNotAFunction {
         name: String,
     },
-    UselessTypeSpecifier,
     ImportCycle {
         module_names: Vec<String>,
     },
@@ -179,9 +178,6 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::SymbolIsNotAFunction { name } => {
                 write!(f, "Symbol '{}' is not a function.", name)
-            }
-            ResolverDiagKind::UselessTypeSpecifier => {
-                write!(f, "What you wanna do with this type specifier?")
             }
             ResolverDiagKind::ImportCycle { module_names } => {
                 write!(

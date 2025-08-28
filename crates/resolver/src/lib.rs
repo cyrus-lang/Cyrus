@@ -69,7 +69,7 @@ impl Resolver {
             program_trees: Arc::new(Mutex::new(Vec::new())),
             already_imported_modules: Vec::new(),
             reporter: DiagReporter::new(),
-            module_loader: ModuleLoader::new(opts, file_paths),
+            module_loader: ModuleLoader::new(opts),
             current_module: None,
             master_module_file_path,
         }
@@ -2393,14 +2393,15 @@ impl Resolver {
             Expression::TypeSpecifier(type_specifier) => {
                 let (loc, span_end) = type_specifier.get_loc();
 
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::UselessTypeSpecifier,
-                    location: Some(DiagLoc::new(self.get_current_module_file_path(), loc, span_end)),
-                    hint: None,
-                });
-
-                None
+                match self.resolve_type(module_id, type_specifier.clone(), loc, span_end) {
+                    Some(concrete_type) => {
+                        Some(TypedExpression {
+                            kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
+                            concrete_type: Some(concrete_type),
+                        })
+                    },
+                    None => return None,
+                }
             }
             Expression::Assignment(assignment) => {
                 let lhs = match self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.lhs) {
@@ -2611,6 +2612,20 @@ impl Resolver {
                         unnamed_struct_type: None,
                         packed: unnamed_struct_value.packed,
                         loc: unnamed_struct_value.loc.clone(),
+                    }),
+                    concrete_type: None,
+                })
+            }
+            Expression::SizeOfExpression(size_of_expression) => {
+                let typed_expr = match self.resolve_expr(module_id, local_scope_opt, &size_of_expression.expr) {
+                    Some(typed_expr) => typed_expr,
+                    None => return None,
+                };
+
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::SizeOfExpression(TypedSizeOfExpression {
+                        expr: Box::new(typed_expr),
+                        loc: size_of_expression.loc.clone(),
                     }),
                     concrete_type: None,
                 })

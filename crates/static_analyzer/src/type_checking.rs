@@ -415,7 +415,11 @@ impl<'a> AnalysisContext<'a> {
             TypedExpressionKind::FieldAccess(field_access) => {
                 self.analyze_field_access_type(scope_id_opt, field_access)
             }
-            TypedExpressionKind::MethodCall(..) => unreachable!(), // lowered to func call
+            TypedExpressionKind::MethodCall(..) => unreachable!(),
+            TypedExpressionKind::SizeOfExpression(typed_size_of_expression) => {
+                self.analyze_sizeof_expr_type(scope_id_opt, typed_size_of_expression, expected_type)
+            }
+            TypedExpressionKind::ConcreteType(..) => None,
         };
 
         let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.get_loc());
@@ -888,6 +892,8 @@ impl<'a> AnalysisContext<'a> {
                 None => return None,
             };
 
+        dereference.operand.concrete_type = Some(operand_type.clone());
+
         match operand_type {
             ConcreteType::Pointer(concrete_type) => Some(*concrete_type),
             _ => {
@@ -997,11 +1003,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedFuncVariadicParams::UntypedCStyle => {
                     for argument in variadic_args.iter_mut() {
-                        match self.analyze_typed_expr_type(
-                            scope_id_opt,
-                            argument,
-                            argument.concrete_type.clone(),
-                        ) {
+                        match self.analyze_typed_expr_type(scope_id_opt, argument, argument.concrete_type.clone()) {
                             Some(concrete_type) => concrete_type,
                             None => continue,
                         };
@@ -1014,9 +1016,7 @@ impl<'a> AnalysisContext<'a> {
         for (param, arg) in func_sig.params.list.iter().zip(args.iter_mut()) {
             let param_type = match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
-                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                    typed_self_modifier.ty.clone().unwrap()
-                },
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.ty.clone().unwrap(),
             };
 
             self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type));
@@ -1640,6 +1640,17 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn analyze_sizeof_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        sizeof_expr: &mut TypedSizeOfExpression,
+        expected_type: Option<ConcreteType>,
+    ) -> Option<ConcreteType> {
+        self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
+
+        Some(ConcreteType::BasicType(BasicConcreteType::SizeT))
+    }
+
     fn analyze_prefix_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1654,7 +1665,6 @@ impl<'a> AnalysisContext<'a> {
         };
 
         match prefix_expr.op {
-            PrefixOperator::SizeOf => Some(ConcreteType::BasicType(BasicConcreteType::SizeT)),
             PrefixOperator::BitwiseNot => {
                 let valid_concrete_type = match &operand_type {
                     ConcreteType::BasicType(basic_concrete_type) => {
