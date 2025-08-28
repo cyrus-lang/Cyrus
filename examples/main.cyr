@@ -1,9 +1,6 @@
 import std::libc;
-import std::libc::abi;
+import sample;
 
 func main() {
-    // #a: CBool = !true;
-
-    libc::printf("Hello, Cyrus!");
-    libc::exit(1);
+    
 }

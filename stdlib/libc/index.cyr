@@ -1,11 +1,11 @@
-public type CFile = void*;
+import std::libc::abi;
 
-public extern stdout: CFile;
-public extern stderr: CFile;
-public extern stdin: CFile;
+public extern stdout: abi::CFile;
+public extern stderr: abi::CFile;
+public extern stdin: abi::CFile;
 
 public extern func printf(format: const char*, ...) int32;
-public extern func fprintf(stream: CFile, format: const char*, ...) int32;
+public extern func fprintf(stream: abi::CFile, format: const char*, ...) int32;
 public extern func malloc(size: size_t) void*;
 public extern func free(ptr: void*) void;
 public extern func exit(status: int32) void;

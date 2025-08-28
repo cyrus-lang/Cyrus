@@ -47,6 +47,7 @@ pub struct Resolver {
     pub reporter: DiagReporter<ResolverDiagKind>,
     pub module_loader: ModuleLoader,
     pub master_module_file_path: String,
+    // loaded only for current module (not global)
     already_imported_modules: Vec<ModulePath>,
     current_module: Option<ModuleID>,
 }
@@ -58,15 +59,17 @@ pub struct Visiting {
 
 impl Resolver {
     pub fn new(opts: ModuleLoaderOptions, master_module_file_path: String) -> Self {
+        let file_paths = Arc::new(Mutex::new(HashMap::new()));
+
         Self {
             global_symbols: Arc::new(Mutex::new(HashMap::new())),
             analyzed_modules: Arc::new(Mutex::new(HashSet::new())),
             module_aliases: Arc::new(Mutex::new(HashMap::new())),
-            file_paths: Arc::new(Mutex::new(HashMap::new())),
+            file_paths: file_paths.clone(),
             program_trees: Arc::new(Mutex::new(Vec::new())),
             already_imported_modules: Vec::new(),
             reporter: DiagReporter::new(),
-            module_loader: ModuleLoader::new(opts),
+            module_loader: ModuleLoader::new(opts, file_paths),
             current_module: None,
             master_module_file_path,
         }
@@ -124,6 +127,13 @@ impl Resolver {
         Some(symbol_id)
     }
 
+    fn skip_module_if_loaded_once(&self, file_path: String) -> bool {
+        let file_paths = self.file_paths.lock().unwrap();
+        let exists = file_paths.iter().find(|(_, fp)| **fp == file_path).is_some();
+        drop(file_paths);
+        exists
+    }
+
     fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, mut visiting: &mut Visiting) {
         let mut duplicate_import = false;
         for module_path in &import.paths {
@@ -155,7 +165,9 @@ impl Resolver {
             return;
         }
 
-        let loaded_modules_list = self.module_loader.load_module(import.clone());
+        let loaded_modules_list = self
+            .module_loader
+            .load_module(import.clone(), self.get_current_module_file_path());
 
         for loaded_module in loaded_modules_list {
             let (module_alias, module_file_path, program_tree) = match loaded_module {
@@ -196,34 +208,51 @@ impl Resolver {
             }
 
             visiting.insert(module_file_path.clone());
-            self.insert_module_file_path(module_id, module_file_path);
 
-            match self.resolve_module(module_id, program_tree.as_ref(), &mut visiting, false) {
-                Some(typed_program_tree) => {
-                    let module_file_path = self.get_current_module_file_path();
-
-                    let mut program_trees = self.program_trees.lock().unwrap();
-                    let module_name = get_module_name(module_file_path.clone());
-                    program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
-                    drop(program_tree);
-                    drop(program_trees);
-
-                    match module_alias {
-                        ModuleAlias::Group(group_name) => {
-                            self.insert_module_alias(parent_module_id, group_name, module_id);
-                        }
-                        ModuleAlias::Single(ref module_segment_singles) => {
-                            self.load_module_import_singles(
-                                parent_module_id,
-                                module_id,
-                                module_segment_singles,
-                                import.loc.clone(),
-                            );
-                        }
+            if self.skip_module_if_loaded_once(module_file_path.clone()) {
+                match module_alias {
+                    ModuleAlias::Group(group_name) => {
+                        self.insert_module_alias(parent_module_id, group_name, module_id);
+                    }
+                    ModuleAlias::Single(ref module_segment_singles) => {
+                        self.load_module_import_singles(
+                            parent_module_id,
+                            module_id,
+                            module_segment_singles,
+                            import.loc.clone(),
+                        );
                     }
                 }
-                None => continue,
-            };
+            } else {
+                self.insert_module_file_path(module_id, module_file_path);
+
+                match self.resolve_module(module_id, program_tree.as_ref(), &mut visiting, false) {
+                    Some(typed_program_tree) => {
+                        let module_file_path = self.get_current_module_file_path();
+
+                        let mut program_trees = self.program_trees.lock().unwrap();
+                        let module_name = get_module_name(module_file_path.clone());
+                        program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
+                        drop(program_tree);
+                        drop(program_trees);
+
+                        match module_alias {
+                            ModuleAlias::Group(group_name) => {
+                                self.insert_module_alias(parent_module_id, group_name, module_id);
+                            }
+                            ModuleAlias::Single(ref module_segment_singles) => {
+                                self.load_module_import_singles(
+                                    parent_module_id,
+                                    module_id,
+                                    module_segment_singles,
+                                    import.loc.clone(),
+                                );
+                            }
+                        }
+                    }
+                    None => continue,
+                };
+            }
         }
     }
 
@@ -263,12 +292,12 @@ impl Resolver {
                 let mut global_symbols = self.global_symbols.lock().unwrap();
                 let symbol_table = global_symbols.get_mut(&parent_module_id).unwrap();
                 symbol_table.names.insert(single_name, symbol_id);
-                symbol_table.locs.insert(symbol_id, (loc_file, symbol_entry.get_loc(), 0));
+                symbol_table
+                    .locs
+                    .insert(symbol_id, (loc_file, symbol_entry.get_loc(), 0));
                 symbol_table.entries.insert(symbol_id, symbol_entry);
 
                 // FIXME Duplicate check not works with import singles
-                dbg!(symbol_table.names.clone());
-                todo!();
 
                 drop(global_symbols);
             }
@@ -290,6 +319,8 @@ impl Resolver {
     ) -> Option<Rc<RefCell<TypedProgramTree>>> {
         self.current_module = Some(module_id);
         self.init_imported_modules_for_module();
+        self.already_imported_modules.clear();
+        visiting.file_paths.clear();
 
         if is_master {
             self.insert_module_file_path(module_id, self.master_module_file_path.clone());

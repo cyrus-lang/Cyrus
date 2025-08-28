@@ -1,3 +1,5 @@
+import std::libc;
+
 extern func printf(format: const char*, ...);
 
 public PI = 3.14;
@@ -15,14 +17,14 @@ struct Person {
     name: char*;
     age: uint;
 
-    func display(self) {
-        printf("name: %s\n", self.get_name());
-        printf("age: %d\n", self.age);
-    }
+    // func display(self) {
+    //     printf("name: %s\n", self.get_name());
+    //     printf("age: %d\n", self.age);
+    // }
 
-    func get_name(self) char* {
-        return self.name;
-    }
+    // func get_name(self) char* {
+    //     return self.name;
+    // }
 }
 
 type MyPerson = Person;

@@ -65,6 +65,7 @@ pub enum ResolverDiagKind {
     ImportTwice {
         module_name: String,
     },
+    ModuleCannotImportItself,
     DuplicateSymbol {
         symbol_name: String,
     },
@@ -85,6 +86,9 @@ pub enum ResolverDiagKind {
 impl fmt::Display for ResolverDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ResolverDiagKind::ModuleCannotImportItself => {
+                write!(f, "Module cannot import itself.")
+            }
             ResolverDiagKind::DuplicateModule { module_name } => {
                 write!(
                     f,
