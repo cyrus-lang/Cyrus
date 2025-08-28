@@ -624,8 +624,9 @@ impl<'a> AnalysisContext<'a> {
             )
             .unwrap();
 
-        let struct_or_enum_symbol_id =
-            self.extract_struct_or_enum_symbol_id(scope_id_opt, resolved_var_type, field_access.loc.clone())?;
+        let struct_or_enum_symbol_id = self
+            .extract_struct_or_enum_symbol_id(scope_id_opt, resolved_var_type, field_access.loc.clone())
+            .unwrap();
 
         let module_id = self
             .resolver
@@ -949,11 +950,11 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if is_variadic {
+            let static_params_len = func_sig.params.list.len();
+            let variadic_args = &mut args[static_params_len..];
+
             match func_sig.params.variadic.clone().unwrap() {
                 TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
-                    let static_params_len = func_sig.params.list.len();
-                    let variadic_args = &mut args[static_params_len..];
-
                     for (argument_idx, argument) in variadic_args.iter_mut().enumerate() {
                         let argument_type = match self.analyze_typed_expr_type(
                             scope_id_opt,
@@ -994,7 +995,18 @@ impl<'a> AnalysisContext<'a> {
                         }
                     }
                 }
-                TypedFuncVariadicParams::UntypedCStyle => {}
+                TypedFuncVariadicParams::UntypedCStyle => {
+                    for argument in variadic_args.iter_mut() {
+                        match self.analyze_typed_expr_type(
+                            scope_id_opt,
+                            argument,
+                            argument.concrete_type.clone(),
+                        ) {
+                            Some(concrete_type) => concrete_type,
+                            None => continue,
+                        };
+                    }
+                }
             }
         }
 
@@ -1002,7 +1014,9 @@ impl<'a> AnalysisContext<'a> {
         for (param, arg) in func_sig.params.list.iter().zip(args.iter_mut()) {
             let param_type = match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
-                TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.ty.clone().unwrap(),
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                    typed_self_modifier.ty.clone().unwrap()
+                },
             };
 
             self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type));
@@ -1033,12 +1047,13 @@ impl<'a> AnalysisContext<'a> {
                 Some(symbol_entry) => Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry)),
                 None => {
                     match self
-                    .resolver
-                    .resolve_symbol_from_local_scope(local_scope_opt.clone().unwrap(), func_call.symbol_id) {
+                        .resolver
+                        .resolve_symbol_from_local_scope(local_scope_opt.clone().unwrap(), func_call.symbol_id)
+                    {
                         Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol)),
                         None => None,
                     }
-                },
+                }
             }
         }
         .unwrap();
@@ -1073,7 +1088,7 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
         };
-        
+
         self.mark_func_used(local_scope_opt, module_id, func_call.symbol_id);
         self.check_func_call(scope_id_opt, func_sig, &mut func_call.args, func_call.loc.clone())
     }
