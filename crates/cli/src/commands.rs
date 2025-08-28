@@ -14,12 +14,7 @@ use resolver::{
 };
 use static_analyzer::context::AnalysisContext;
 use std::{
-    cell::RefCell,
-    env,
-    io::{self, Write},
-    process::exit,
-    rc::Rc,
-    sync::{Arc, Mutex},
+    cell::RefCell, env, io::{self, Write}, path::Path, process::exit, rc::Rc, sync::{Arc, Mutex}
 };
 use typed_ast::{ModuleID, TypedProgramTree};
 use utils::fs::{ensure_output_dir, get_directory_of_file};
@@ -326,8 +321,11 @@ fn ensure_build_dir_subs(base_path: Option<String>, build_dir_path: String) {
     let base = base_path.unwrap_or_default();
     let dirs = [SOURCES_DIR_PATH, OBJECTS_FILENAME, OUTPUT_FILENAME];
 
+    let base_build_dir = Path::new(&base).join(build_dir_path);
+
     for dir in dirs {
-        ensure_output_dir(format!("{}/{}/{}", base, build_dir_path, dir));
+        let build_dir = base_build_dir.join(dir);
+        ensure_output_dir(build_dir.to_str().unwrap().to_string());
     }
 }
 
@@ -351,7 +349,8 @@ fn get_final_build_directory_path(base_path: Option<String>, build_dir: BuildDir
             match build_dir {
                 BuildDir::Default => env::temp_dir().to_str().unwrap().to_string(),
                 BuildDir::Provided(path) => {
-                    ensure_output_dir(format!("{}/{}", base, path));
+                    let build_dir = Path::new(&base).join(&path);
+                    ensure_output_dir(build_dir.to_str().unwrap().to_string());
                     path
                 }
             }
