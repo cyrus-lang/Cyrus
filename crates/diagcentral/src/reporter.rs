@@ -29,7 +29,7 @@ impl<K> DiagReporter<K> {
 
 impl<K: Display> DiagReporter<K> {
     pub fn display(&self) {
-        for diag in &self.diags {
+        for diag in self.diags.iter().rev() {
             match diag.level {
                 DiagLevel::Error => eprintln!("{}", Self::format_panel(diag)),
                 DiagLevel::Warning => println!("{}", Self::format_panel(diag)),

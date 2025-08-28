@@ -894,8 +894,8 @@ impl<'a> AnalysisContext<'a> {
 
         dereference.operand.concrete_type = Some(operand_type.clone());
 
-        match operand_type {
-            ConcreteType::Pointer(concrete_type) => Some(*concrete_type),
+        let pointer_inner_type = match operand_type {
+            ConcreteType::Pointer(concrete_type) => *concrete_type,
             _ => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -909,7 +909,23 @@ impl<'a> AnalysisContext<'a> {
                 });
                 return None;
             }
+        };
+
+        if pointer_inner_type.is_void() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::DerefVoidPointerValue,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    dereference.loc.clone(),
+                    0,
+                )),
+                hint: Some("Typecast 'void*' to a concrete pointer type before dereferencing it.".to_string()),
+            });
+            return None;
         }
+
+        Some(pointer_inner_type)
     }
 
     fn check_func_call(

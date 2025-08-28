@@ -132,6 +132,7 @@ pub enum AnalyzerDiagKind {
     },
     AddressOfRvalue,
     DerefNonPointerValue,
+    DerefVoidPointerValue,
     MultipleEntryPoints,
     MissingEntryPoint,
     ConstVariableMustBeInitialized,
@@ -269,6 +270,9 @@ impl fmt::Display for AnalyzerDiagKind {
             }
             AnalyzerDiagKind::DerefNonPointerValue => {
                 write!(f, "Cannot dereference non-pointer value.")
+            }
+            AnalyzerDiagKind::DerefVoidPointerValue => {
+                write!(f, "Cannot dereference a pointer of type 'void*'.")
             }
             AnalyzerDiagKind::DuplicateFuncParameter { param_idx, param_name } => {
                 write!(f, "Duplicate parameter name '{}' at index {}.", param_name, param_idx)
