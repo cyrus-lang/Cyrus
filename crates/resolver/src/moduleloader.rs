@@ -1,16 +1,19 @@
 use crate::diagnostics::ResolverDiagKind;
 use ast::{Import, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string};
-use diagcentral::{Diag, DiagLevel, display_single_diag};
+use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
 use lexer::Lexer;
 use parser::Parser;
 use std::{
+    collections::HashMap,
     env,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::{Arc, Mutex},
 };
+use typed_ast::ModuleID;
 use utils::fs::find_file_from_sources;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ModuleAlias {
     Group(String),
     Single(Vec<ModuleSegmentSingle>),
@@ -27,16 +30,18 @@ pub struct ModuleLoaderOptions {
 #[derive(Debug)]
 pub struct ModuleLoader {
     pub opts: ModuleLoaderOptions,
+    file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>,
 }
 
 impl ModuleLoader {
-    pub fn new(opts: ModuleLoaderOptions) -> Self {
-        ModuleLoader { opts }
+    pub fn new(opts: ModuleLoaderOptions, file_paths: Arc<Mutex<HashMap<ModuleID, ModuleFilePath>>>) -> Self {
+        ModuleLoader { opts, file_paths }
     }
 
     pub fn load_module(
         &mut self,
         import: Import,
+        current_module_file_path: String,
     ) -> Vec<Result<(ModuleAlias, ModuleFilePath, Rc<ProgramTree>), ResolverDiagKind>> {
         let mut loaded_modules_list: Vec<Result<(ModuleAlias, ModuleFilePath, Rc<ProgramTree>), ResolverDiagKind>> =
             Vec::new();
@@ -49,6 +54,19 @@ impl ModuleLoader {
                     continue;
                 }
             };
+
+            if current_module_file_path == module_file_path {
+                display_single_diag!(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ModuleCannotImportItself,
+                    location: Some(DiagLoc::new(
+                        current_module_file_path,
+                        import.loc.clone(),
+                        import.span.end,
+                    )),
+                    hint: None,
+                });
+            }
 
             let path_buf = Path::new(&module_file_path);
             if path_buf.is_dir() {
