@@ -14,7 +14,13 @@ use resolver::{
 };
 use static_analyzer::context::AnalysisContext;
 use std::{
-    cell::RefCell, env, io::{self, Write}, path::Path, process::exit, rc::Rc, sync::{Arc, Mutex}
+    cell::RefCell,
+    env,
+    io::{self, Write},
+    path::Path,
+    process::exit,
+    rc::Rc,
+    sync::{Arc, Mutex},
 };
 use typed_ast::{ModuleID, TypedProgramTree};
 use utils::fs::{ensure_output_dir, get_directory_of_file};
@@ -64,8 +70,13 @@ fn get_program_trees(
     {
         for (_, _, module_id, typed_program_tree) in program_trees.iter() {
             {
-                let mut analyzer =
-                    AnalysisContext::new(&resolver, *module_id, typed_program_tree.clone(), entry_points.clone(), options.disable_warnings);
+                let mut analyzer = AnalysisContext::new(
+                    &resolver,
+                    *module_id,
+                    typed_program_tree.clone(),
+                    entry_points.clone(),
+                    options.disable_warnings,
+                );
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
                 if analyzer.reporter.has_errors() {
@@ -92,7 +103,10 @@ fn prepare_compilation(
     Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
     Rc<Resolver>,
 ) {
-    let opts = options.to_compiler_options();
+    let mut opts = options.to_compiler_options();
+    if file_path.is_some() {
+        opts.disable_modulefs_cache = true;
+    }
     let file_path = get_entry_source_code_path(options.base_path.clone(), file_path);
     let final_build_dir = get_final_build_directory_path(options.base_path.clone(), opts.build_dir.clone());
     ensure_build_dir_subs(options.base_path.clone(), final_build_dir.clone());
@@ -103,9 +117,7 @@ fn prepare_compilation(
 }
 
 pub(crate) fn command_run(mut options: CompilerOptions, file_path: Option<String>) {
-    let (mut opts, file_path, final_build_dir, program_trees, resolver_rc) =
-        prepare_compilation(&mut options, file_path);
-    opts.disable_modulefs_cache = true;
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let mut temp = env::temp_dir();
     temp.push("path");
@@ -131,7 +143,6 @@ pub(crate) fn command_run(mut options: CompilerOptions, file_path: Option<String
 }
 
 pub(crate) fn command_emit_llvm(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    options.disable_modulefs_cache = true;
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
@@ -154,7 +165,6 @@ pub(crate) fn command_emit_bytecode(
     file_path: Option<String>,
     output_path: Option<String>,
 ) {
-    options.disable_modulefs_cache = true;
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
@@ -177,7 +187,6 @@ pub(crate) fn command_emit_bytecode(
 }
 
 pub(crate) fn command_emit_asm(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    options.disable_modulefs_cache = true;
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
@@ -217,7 +226,6 @@ pub(crate) fn command_build(mut options: CompilerOptions, file_path: Option<Stri
 }
 
 pub(crate) fn command_object(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    options.disable_modulefs_cache = true;
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
@@ -236,7 +244,6 @@ pub(crate) fn command_object(mut options: CompilerOptions, file_path: Option<Str
 }
 
 pub(crate) fn command_dylib(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
-    options.disable_modulefs_cache = true;
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {

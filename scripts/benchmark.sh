@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # benchmark.sh
 # A simple script to measure the execution time of a given program.
 
