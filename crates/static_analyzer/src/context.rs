@@ -178,7 +178,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::BlockStatement(typed_block_statement) => {
                     self.analyze_block_statement(typed_block_statement)
                 }
-                TypedStatement::If(typed_if) => self.analyze_if_stmt(typed_if),
+                TypedStatement::If(typed_if) => self.analyze_if_stmt(block_stmt.scope_id, typed_if, None),
                 TypedStatement::Return(typed_return) => self.analyze_return(block_stmt.scope_id, typed_return),
                 TypedStatement::Break(typed_break) => {
                     self.analyze_break(typed_break);
@@ -277,8 +277,10 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_if_stmt(&mut self, typed_if: &mut TypedIf) -> FlowState {
+    fn analyze_if_stmt(&mut self, scope_id: ScopeID, typed_if: &mut TypedIf, expected_type:Option<ConcreteType>) -> FlowState {
         let consequent_state = self.analyze_block_statement(&mut typed_if.consequent);
+
+        self.analyze_typed_expr_type(Some(scope_id), &mut typed_if.condition, expected_type.clone());
 
         let alternate_state = {
             if let Some(block_stmt) = &mut typed_if.alternate {
@@ -289,7 +291,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         typed_if.branches.iter_mut().for_each(|branch| {
-            self.analyze_if_stmt(branch);
+            self.analyze_if_stmt(scope_id, branch, expected_type.clone());
         });
 
         self.merge_flow_state(consequent_state, alternate_state)

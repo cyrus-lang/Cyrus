@@ -9,7 +9,7 @@ use resolver::{Resolver, moduleloader::ModuleFilePath};
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
-    process::{exit, Command},
+    process::{Command, exit},
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -101,6 +101,13 @@ impl CodeGenContext {
         ) {
             linker_command.arg("-ldl");
             linker_command.arg("-rdynamic");
+        }
+
+        linker_command.arg("-funroll-loops");
+        linker_command.arg("-flto");
+
+        if let Some(opt_level) = self.opts.opt_level {
+            linker_command.arg(format!("-O{}", opt_level));
         }
 
         linker_command.arg("-o").arg(output_path);

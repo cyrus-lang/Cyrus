@@ -1,13 +1,20 @@
 extern func printf(format: const char*, ...);
-extern func malloc(size: uint) void*;
-extern func free(pointer: void*);
+extern func exit(status: int);
+
+inline func fibonacci(n: int) int {
+    if (n == 0) {
+        return 0;
+    }
+    else if (n == 1) {
+        return 1;
+    }
+    else {
+        return fibonacci(n - 1) + fibonacci(n - 2);
+    }
+}
 
 func main() {
-    #int_ptr: int* = malloc(sizeof(int));
-
-    *int_ptr = 10;
-
-    printf("value: %d\n", *int_ptr);
-
-    free(int_ptr);
+    for (#i = 0; i < 40; i = i + 1) {
+        printf("%d\n", fibonacci(i));
+    }
 }
