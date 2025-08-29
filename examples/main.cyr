@@ -3,11 +3,11 @@ extern func malloc(size: uint) void*;
 extern func free(pointer: void*);
 
 func main() {
-    #int_ptr: void* = malloc(sizeof(int));
-    // int_ptr;
-    *int_ptr;
+    #int_ptr: int* = malloc(sizeof(int));
 
-    // printf("value: %d\n", *int_ptr);
+    *int_ptr = 10;
 
-    // free(int_ptr);
+    printf("value: %d\n", *int_ptr);
+
+    free(int_ptr);
 }

@@ -1030,35 +1030,33 @@ impl<'a> AnalysisContext<'a> {
             .get_scope_ref(self.module_id, scope_id_opt.unwrap())
             .unwrap();
 
-        typed_variable.ty = self.normalize_type(
-            scope_id_opt,
-            typed_variable.ty.clone().unwrap(),
-            typed_variable.loc.clone(),
-        );
+        if let Some(concrete_type) = &typed_variable.ty {
+            typed_variable.ty = self.normalize_type(scope_id_opt, concrete_type.clone(), typed_variable.loc.clone());
 
-        if let Some(value_type) = value_type_opt {
-            let lhs_type = format_concrete_type(
-                typed_variable.ty.clone().unwrap(),
-                &(self.symbol_formatter)(scope_id_opt),
-            );
-            let rhs_type = format_concrete_type(value_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            if let Some(value_type) = value_type_opt {
+                let lhs_type = format_concrete_type(
+                    typed_variable.ty.clone().unwrap(),
+                    &(self.symbol_formatter)(scope_id_opt),
+                );
+                let rhs_type = format_concrete_type(value_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
-            if !self.check_type_mismatch(
-                scope_id_opt,
-                value_type.clone(),
-                typed_variable.ty.clone().unwrap(),
-                typed_variable.loc.clone(),
-            ) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        typed_variable.loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
+                if !self.check_type_mismatch(
+                    scope_id_opt,
+                    value_type.clone(),
+                    typed_variable.ty.clone().unwrap(),
+                    typed_variable.loc.clone(),
+                ) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            typed_variable.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                }
             }
         }
 

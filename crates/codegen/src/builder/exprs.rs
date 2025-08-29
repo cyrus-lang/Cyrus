@@ -214,8 +214,8 @@ impl<'a> CodeGenBuilder<'a> {
         let rhs_lvalue = self.build_expr(local_scope_opt.clone(), &assign.rhs);
         let rhs_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), rhs_lvalue);
 
-        dbg!(lhs_lvalue.clone());
-        assert!(lhs_lvalue.as_basic_value().is_pointer_value() == true);
+        // dbg!(lhs_lvalue.clone());
+        // assert!(lhs_lvalue.as_basic_value().is_pointer_value() == true);
         let pointer_value = lhs_lvalue.as_basic_value().into_pointer_value();
 
         self.llvmbuilder
@@ -229,23 +229,12 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         deref: &TypedDereference,
     ) -> InternalValue<'a> {
-        let pointer_type = deref.operand.concrete_type.clone().unwrap();
         let lvalue = self.build_expr(local_scope_opt.clone(), &deref.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
 
-        let pointee_ty: BasicTypeEnum<'a> = self
-            .build_concrete_type(local_scope_opt, pointer_type.get_pointer_inner().unwrap())
-            .try_into()
-            .unwrap();
-
-        let loaded = self
-            .llvmbuilder
-            .build_load(pointee_ty, rvalue.as_basic_value().into_pointer_value(), "deref")
-            .unwrap();
-
         InternalValue::new(
-            pointer_type.get_pointer_inner().unwrap(),
-            InternalValueKind::RValue(loaded),
+            rvalue.value_type.clone(),
+            InternalValueKind::LValue(rvalue.as_basic_value().into_pointer_value()),
         )
     }
 
@@ -949,9 +938,8 @@ impl<'a> CodeGenBuilder<'a> {
                 None => panic!("Couldn't find any lvalue with this symbol id."),
             },
         };
-        let internal_value = InternalValue::new(concrete_type.clone().clone(), InternalValueKind::LValue(pointer));
 
-        dbg!(internal_value.clone());
+        let internal_value = InternalValue::new(concrete_type, InternalValueKind::LValue(pointer));
         internal_value
     }
 
