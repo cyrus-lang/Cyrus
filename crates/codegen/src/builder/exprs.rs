@@ -5,18 +5,19 @@ use crate::builder::{
 use ast::{
     LiteralKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
+    token::Location,
 };
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    types::BasicTypeEnum,
-    values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue},
+    types::{BasicMetadataTypeEnum, BasicTypeEnum},
+    values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue},
 };
 use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind};
 use typed_ast::{
-    SymbolID, TypedAddressOf, TypedArray, TypedAssignment, TypedCast, TypedDereference, TypedExpression,
-    TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedInfixExpression, TypedLiteral, TypedPrefixExpression,
-    TypedSizeOfExpression, TypedStructInit, TypedUnaryExpression, TypedUnnamedStructValue,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
+    SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedCast, TypedDereference,
+    TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedInfixExpression, TypedLiteral,
+    TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit, TypedUnaryExpression, TypedUnnamedStructValue,
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -49,7 +50,9 @@ impl<'a> CodeGenBuilder<'a> {
             TypedExpressionKind::FieldAccess(typed_field_access) => {
                 self.build_field_access(local_scope_opt, typed_field_access)
             }
-            TypedExpressionKind::ArrayIndex(_typed_array_index) => todo!(),
+            TypedExpressionKind::ArrayIndex(typed_array_index) => {
+                self.build_array_index(local_scope_opt, typed_array_index)
+            }
             TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.build_unnamed_struct_value(local_scope_opt, typed_unnamed_struct_value)
             }
@@ -62,6 +65,163 @@ impl<'a> CodeGenBuilder<'a> {
             }
             TypedExpressionKind::ConcreteType(..) => unreachable!(),
         }
+    }
+
+    pub(crate) fn build_runtime_inbounds_check(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        pointer: PointerValue<'a>,
+        pointee_ty: ConcreteType,
+        index: InternalValue<'a>,
+        array_length: u32,
+    ) -> InternalValue<'a> {
+        let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let current_block = self.blockreg.current_block_ref.unwrap();
+        let current_func = self.blockreg.current_func_ref.unwrap();
+
+        let failure_block = self.llvmctx.append_basic_block(current_func, "inbounds_check.failure");
+        let success_block = self.llvmctx.append_basic_block(current_func, "inbounds_check.success");
+
+        let pointee_basic_ty: BasicTypeEnum<'a> = self
+            .build_concrete_type(local_scope_opt, pointee_ty.clone())
+            .try_into()
+            .unwrap();
+
+        let array_length_int_value = pointee_basic_ty.into_int_type().const_int(array_length.into(), false);
+
+        let compare_result = self
+            .llvmbuilder
+            .build_int_compare(
+                inkwell::IntPredicate::ULT,
+                index.as_basic_value().into_int_value(),
+                array_length_int_value,
+                "cmp",
+            )
+            .unwrap();
+
+        self.llvmbuilder
+            .build_conditional_branch(compare_result, success_block, failure_block)
+            .unwrap();
+
+        self.mark_block_terminated(current_block);
+
+        self.llvmbuilder.position_at_end(failure_block);
+
+        let panic_msg = self
+            .build_global_str(
+                format!(
+                    "panic: Index out of bounds!\nAttempted to access index %d in an array of size {}.",
+                    array_length
+                ),
+                Location::default(),
+                0,
+            )
+            .0;
+
+        let module = self.llvmmodule.borrow_mut();
+
+        // call fprintf to display panic message
+
+        let void_type = self.llvmctx.void_type();
+        let i32_type = self.llvmctx.i32_type();
+        let fprintf_type = i32_type.fn_type(
+            &[
+                BasicMetadataTypeEnum::from(ptr_type), // FILE *stream
+                BasicMetadataTypeEnum::from(ptr_type), // const char *format
+            ],
+            true,
+        );
+
+        let fprintf_fn_value = match module.get_function("fprintf") {
+            Some(fn_value) => fn_value,
+            None => module.add_function("fprintf", fprintf_type, None),
+        };
+
+        let stderr_global = match module.get_global("stderr") {
+            Some(global_value) => global_value,
+            None => {
+                let global_value = module.add_global(ptr_type, None, "stderr");
+                global_value.set_linkage(inkwell::module::Linkage::External);
+                global_value
+            }
+        };
+
+        let stderr_val = self
+            .llvmbuilder
+            .build_load(ptr_type, stderr_global.as_pointer_value(), "stderr_val")
+            .unwrap();
+
+        self.llvmbuilder
+            .build_call(
+                fprintf_fn_value,
+                &[
+                    BasicMetadataValueEnum::PointerValue(stderr_val.into_pointer_value()),
+                    BasicMetadataValueEnum::PointerValue(panic_msg.as_pointer_value()),
+                    index.as_basic_value().into(),
+                ],
+                "call",
+            )
+            .unwrap();
+
+        // exit program with status code 1
+
+        let error_status_code = i32_type.const_int(1, false);
+
+        let exit_fn_value = match module.get_function("exit") {
+            Some(fn_value) => fn_value,
+            None => {
+                let exit_fn_type = void_type.fn_type(
+                    &[
+                        BasicMetadataTypeEnum::from(i32_type), // int status
+                    ],
+                    false,
+                );
+                module.add_function("exit", exit_fn_type, None)
+            }
+        };
+
+        self.llvmbuilder
+            .build_call(exit_fn_value, &[error_status_code.into()], "call")
+            .unwrap();
+
+        self.llvmbuilder.build_unreachable().unwrap();
+
+        self.llvmbuilder.position_at_end(success_block);
+        self.blockreg.current_block_ref = Some(success_block);
+
+        let ordered_indexes: Vec<IntValue<'a>> = vec![index.as_basic_value().into_int_value()];
+
+        let pointer_value = unsafe {
+            self.llvmbuilder
+                .build_in_bounds_gep(pointee_basic_ty, pointer, &ordered_indexes, "gep")
+                .unwrap()
+        };
+
+        InternalValue::new(pointee_ty, InternalValueKind::LValue(pointer_value))
+    }
+
+    fn build_array_index(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        array_index: &TypedArrayIndex,
+    ) -> InternalValue<'a> {
+        let lvalue = self.build_expr(local_scope_opt.clone(), &array_index.operand);
+        let array_type = lvalue.value_type.as_array_type().unwrap();
+        let array_capacity = match array_type.capacity {
+            TypedArrayCapacity::Fixed(fixed) => fixed,
+            TypedArrayCapacity::Dynamic => todo!(),
+        };
+
+        let index_lvalue = self.build_expr(local_scope_opt.clone(), &array_index.index);
+        let index_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), index_lvalue);
+
+        self.build_runtime_inbounds_check(
+            local_scope_opt,
+            lvalue.as_basic_value().into_pointer_value(),
+            *array_type.element_type.clone(),
+            index_rvalue,
+            array_capacity,
+        )
     }
 
     fn build_field_access(
