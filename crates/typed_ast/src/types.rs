@@ -40,6 +40,10 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
+    pub fn get_loc(&self) -> Location {
+        todo!()
+    }
+    
     pub fn is_bool(&self) -> bool {
         matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
     }
