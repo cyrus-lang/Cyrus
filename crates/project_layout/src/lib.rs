@@ -87,7 +87,7 @@ build_dir = \"./build\"
         .map_err(|_| format!("Failed to create '{}/src/main.cyr' file.", project_name))?;
 
     main_file
-        .write("fn main() {\n\tprintf(\"Hello World\");\n}".as_bytes())
+        .write("import std::io;\n\nfunc main() {\n\tio::printfn(\"Hello World\n\");\n}".as_bytes())
         .map_err(|err| err.to_string())?;
 
     Ok(())
