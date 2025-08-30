@@ -494,7 +494,7 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if !operand_type.is_array() {
+        if !operand_type.is_array() || array_index.operand.concrete_type.clone().unwrap().as_array_type().is_none() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::ArrayIndexOnNonArrayOperand,
@@ -505,6 +505,7 @@ impl<'a> AnalysisContext<'a> {
                 )),
                 hint: None,
             });
+            return None;
         }
 
         let index_inner_type = array_index.index.concrete_type.clone();
@@ -533,7 +534,9 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        None
+        let concrete_type = array_index.operand.concrete_type.clone().unwrap();
+        let array_type = concrete_type.as_array_type().unwrap();
+        Some(*array_type.element_type.clone())
     }
 
     fn extract_struct_or_enum_symbol_id(
