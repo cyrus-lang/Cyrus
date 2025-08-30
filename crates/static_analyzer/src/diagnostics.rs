@@ -136,11 +136,15 @@ pub enum AnalyzerDiagKind {
     MultipleEntryPoints,
     MissingEntryPoint,
     ConstVariableMustBeInitialized,
+    InvalidUsageOfTheConcreteType,
 }
 
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::InvalidUsageOfTheConcreteType => {
+                write!(f, "Invalid usage of the concrete type.")
+            }
             AnalyzerDiagKind::ObjectNotSupportsFields => {
                 write!(f, "Invalid field access (not supported for this symbol).")
             }

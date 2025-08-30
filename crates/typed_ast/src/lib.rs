@@ -31,33 +31,7 @@ pub struct TypedProgramTree {
 pub struct TypedExpression {
     pub kind: TypedExpressionKind,
     pub concrete_type: Option<ConcreteType>,
-}
-
-impl TypedExpression {
-    pub fn get_loc(&self) -> Location {
-        match &self.kind {
-            TypedExpressionKind::Symbol(_, loc) => loc.clone(),
-            TypedExpressionKind::Literal(typed_literal) => typed_literal.loc.clone(),
-            TypedExpressionKind::Prefix(typed_prefix_expression) => typed_prefix_expression.loc.clone(),
-            TypedExpressionKind::Infix(typed_infix_expression) => typed_infix_expression.loc.clone(),
-            TypedExpressionKind::Unary(typed_unary_expression) => typed_unary_expression.loc.clone(),
-            TypedExpressionKind::Assignment(typed_assignment) => typed_assignment.loc.clone(),
-            TypedExpressionKind::Cast(typed_cast) => typed_cast.loc.clone(),
-            TypedExpressionKind::Array(typed_array) => typed_array.loc.clone(),
-            TypedExpressionKind::ArrayIndex(typed_array_index) => typed_array_index.loc.clone(),
-            TypedExpressionKind::AddressOf(typed_address_of) => typed_address_of.loc.clone(),
-            TypedExpressionKind::Dereference(typed_dereference) => typed_dereference.loc.clone(),
-            TypedExpressionKind::StructInit(typed_struct_init) => typed_struct_init.loc.clone(),
-            TypedExpressionKind::FuncCall(typed_func_call) => typed_func_call.loc.clone(),
-            TypedExpressionKind::FieldAccess(typed_field_access) => typed_field_access.loc.clone(),
-            TypedExpressionKind::MethodCall(typed_method_call) => typed_method_call.loc.clone(),
-            TypedExpressionKind::SizeOfExpression(sizeof_expr) => sizeof_expr.loc.clone(),
-            TypedExpressionKind::ConcreteType(..) => Location::default(),
-            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
-                typed_unnamed_struct_value.loc.clone()
-            }
-        }
-    }
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -324,7 +298,7 @@ impl TypedStatement {
             TypedStatement::Struct(typed_struct) => typed_struct.loc.clone(),
             TypedStatement::Enum(typed_enum) => typed_enum.loc.clone(),
             TypedStatement::Interface(typed_interface) => typed_interface.loc.clone(),
-            TypedStatement::Expression(typed_expression) => typed_expression.get_loc(),
+            TypedStatement::Expression(typed_expression) => typed_expression.loc.clone(),
         }
     }
 }

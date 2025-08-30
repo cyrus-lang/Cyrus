@@ -2150,6 +2150,7 @@ impl Resolver {
                         loc: field_access.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: field_access.loc.clone(),
                 })
             }
             Expression::MethodCall(method_call) => {
@@ -2196,6 +2197,7 @@ impl Resolver {
                         args,
                     }),
                     concrete_type: None,
+                    loc: method_call.loc.clone(),
                 })
             }
             Expression::StructInit(struct_init) => {
@@ -2236,6 +2238,7 @@ impl Resolver {
                         loc: struct_init.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: struct_init.loc.clone(),
                 })
             }
             Expression::ModuleImport(module_import) => {
@@ -2244,12 +2247,14 @@ impl Resolver {
                     Some(TypedExpression {
                         kind: TypedExpressionKind::Symbol(symbol_id, identifier.loc.clone()),
                         concrete_type: None,
+                        loc: module_import.loc.clone(),
                     })
                 } else {
                     match self.resolve_module_import(module_id, module_import.clone()) {
                         Some(symbol_id) => Some(TypedExpression {
                             kind: TypedExpressionKind::Symbol(symbol_id, module_import.loc.clone()),
                             concrete_type: None,
+                            loc: module_import.loc.clone(),
                         }),
                         None => return None,
                     }
@@ -2260,6 +2265,7 @@ impl Resolver {
                 Some(TypedExpression {
                     kind: TypedExpressionKind::Symbol(symbol_id, identifier.loc.clone()),
                     concrete_type: None,
+                    loc: identifier.loc.clone(),
                 })
             }
             Expression::FuncCall(func_call) => {
@@ -2316,6 +2322,7 @@ impl Resolver {
                         loc: func_call.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: func_call.loc.clone(),
                 })
             }
             Expression::Array(arr) => {
@@ -2341,6 +2348,7 @@ impl Resolver {
                         loc: arr.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: arr.loc.clone(),
                 })
             }
             Expression::Infix(bin) => {
@@ -2355,6 +2363,7 @@ impl Resolver {
                         loc: bin.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: bin.loc.clone(),
                 })
             }
             Expression::Prefix(prefix) => {
@@ -2367,6 +2376,7 @@ impl Resolver {
                         loc: prefix.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: prefix.loc.clone(),
                 })
             }
             Expression::Cast(cast) => {
@@ -2388,18 +2398,18 @@ impl Resolver {
                         loc: cast.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: cast.loc.clone(),
                 })
             }
             Expression::TypeSpecifier(type_specifier) => {
                 let (loc, span_end) = type_specifier.get_loc();
 
-                match self.resolve_type(module_id, type_specifier.clone(), loc, span_end) {
-                    Some(concrete_type) => {
-                        Some(TypedExpression {
-                            kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
-                            concrete_type: Some(concrete_type),
-                        })
-                    },
+                match self.resolve_type(module_id, type_specifier.clone(), loc.clone(), span_end) {
+                    Some(concrete_type) => Some(TypedExpression {
+                        kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
+                        concrete_type: Some(concrete_type),
+                        loc,
+                    }),
                     None => return None,
                 }
             }
@@ -2421,6 +2431,7 @@ impl Resolver {
                         loc: assignment.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: assignment.loc.clone(),
                 })
             }
             Expression::Literal(literal) => {
@@ -2505,8 +2516,9 @@ impl Resolver {
                 };
 
                 Some(TypedExpression {
-                    kind: TypedExpressionKind::Literal(typed_literal),
+                    kind: TypedExpressionKind::Literal(typed_literal.clone()),
                     concrete_type: None,
+                    loc: typed_literal.loc.clone(),
                 })
             }
             Expression::Unary(unary) => {
@@ -2522,6 +2534,7 @@ impl Resolver {
                         loc: unary.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: unary.loc.clone(),
                 })
             }
             Expression::ArrayIndex(array_index) => {
@@ -2542,6 +2555,7 @@ impl Resolver {
                         loc: array_index.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: array_index.loc.clone(),
                 })
             }
             Expression::AddressOf(address_of) => {
@@ -2556,6 +2570,7 @@ impl Resolver {
                         loc: address_of.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: address_of.loc.clone(),
                 })
             }
             Expression::Dereference(dereference) => {
@@ -2570,6 +2585,7 @@ impl Resolver {
                         loc: dereference.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: dereference.loc.clone(),
                 })
             }
             Expression::UnnamedStructValue(unnamed_struct_value) => {
@@ -2614,6 +2630,7 @@ impl Resolver {
                         loc: unnamed_struct_value.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: unnamed_struct_value.loc.clone(),
                 })
             }
             Expression::SizeOfExpression(size_of_expression) => {
@@ -2628,6 +2645,7 @@ impl Resolver {
                         loc: size_of_expression.loc.clone(),
                     }),
                     concrete_type: None,
+                    loc: size_of_expression.loc.clone(),
                 })
             }
         }
