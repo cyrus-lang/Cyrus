@@ -1,8 +1,5 @@
 import std::libc;
 
 func main() {
-    #a = int[3]{1, 2, 3};
-    #b = 0;
-
-    libc::printf("value: %d\n", a[b]);
+    #a = int32;
 }

@@ -419,10 +419,22 @@ impl<'a> AnalysisContext<'a> {
             TypedExpressionKind::SizeOfExpression(typed_size_of_expression) => {
                 self.analyze_sizeof_expr_type(scope_id_opt, typed_size_of_expression, expected_type)
             }
-            TypedExpressionKind::ConcreteType(..) => None,
+            TypedExpressionKind::ConcreteType(..) => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InvalidUsageOfTheConcreteType,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_expr.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
         };
 
-        let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.get_loc());
+        let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.loc.clone());
         typed_expr.concrete_type = normalized_type.clone();
 
         if cfg!(debug_assertions) {
@@ -494,7 +506,15 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if !operand_type.is_array() || array_index.operand.concrete_type.clone().unwrap().as_array_type().is_none() {
+        if !operand_type.is_array()
+            || array_index
+                .operand
+                .concrete_type
+                .clone()
+                .unwrap()
+                .as_array_type()
+                .is_none()
+        {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::ArrayIndexOnNonArrayOperand,
@@ -994,7 +1014,7 @@ impl<'a> AnalysisContext<'a> {
                             scope_id_opt,
                             argument_type.clone(),
                             variadic_param_type.clone(),
-                            argument.get_loc(),
+                            argument.loc.clone(),
                         ) {
                             let param_type = format_concrete_type(
                                 variadic_param_type.clone(),
@@ -1298,7 +1318,7 @@ impl<'a> AnalysisContext<'a> {
                 scope_id_opt,
                 element_type.clone(),
                 *typed_array_type.element_type.clone(),
-                element.get_loc(),
+                element.loc.clone(),
             ) {
                 let element_type = format_concrete_type(element_type, &formatter_closure);
                 let expected_type = format_concrete_type(*typed_array_type.element_type.clone(), &formatter_closure);
