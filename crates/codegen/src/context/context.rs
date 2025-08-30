@@ -4,6 +4,10 @@ use crate::{
     options::{CodeGenOptions, OutputKind, RelocModeOptions},
 };
 use diagcentral::display_single_custom_diag;
+use inkwell::{
+    OptimizationLevel,
+    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
+};
 use project_layout::OBJECTS_FILENAME;
 use resolver::{Resolver, moduleloader::ModuleFilePath};
 use std::{
@@ -48,6 +52,41 @@ impl CodeGenContext {
             final_build_dir,
             resolver_rc,
             master_module_file_path,
+        }
+    }
+
+    pub fn display_target_machine_information(&self) {
+        let target_machine = get_target_machine(
+            self.opts.reloc_mode.to_llvm_reloc_mode(),
+            self.opts.code_model.to_llvm_code_model(),
+            self.opts.cpu.clone(),
+            self.opts.target_triple.clone(),
+        );
+
+        if !self.opts.quiet {
+            println!("Target Triple: {}", target_machine.get_triple().to_string());
+            println!("CPU Name: {}", target_machine.get_cpu().to_string());
+            println!(
+                "Data Layout: {}",
+                target_machine
+                    .get_target_data()
+                    .get_data_layout()
+                    .as_str()
+                    .to_str()
+                    .unwrap()
+            );
+            println!("Pointer Size: {}-bit", {
+                target_machine.get_target_data().get_pointer_byte_size(None) * 8
+            });
+            println!("Optimization Level: {}", {
+                if let Some(opt_level) = self.opts.opt_level {
+                    format!("O{}", opt_level)
+                } else {
+                    "Default".to_string()
+                }
+            });
+            println!("Relocation Mode: {}", self.opts.reloc_mode);
+            println!("Code Model: {}", self.opts.code_model);
         }
     }
 
@@ -280,6 +319,47 @@ impl CodeGenContext {
     fn compile_modules_in_parallel(&self, typed_modules: Vec<TypedProgramTree>) {
         todo!();
     }
+}
+
+pub(crate) fn get_target_machine(
+    reloc_mode: RelocMode,
+    code_model: CodeModel,
+    cpu: Option<String>,
+    target_triple_opt: Option<String>,
+) -> TargetMachine {
+    Target::initialize_all(&InitializationConfig::default());
+
+    let cpu = if let Some(cpu) = cpu {
+        cpu
+    } else {
+        TargetMachine::get_host_cpu_name().to_string()
+    };
+    let features = TargetMachine::get_host_cpu_features().to_string();
+
+    let target_triple = if let Some(target_triple_str) = target_triple_opt {
+        TargetTriple::create(&target_triple_str)
+    } else {
+        TargetMachine::get_default_triple()
+    };
+
+    let target = Target::from_triple(&target_triple).unwrap();
+    let target_machine = match target.create_target_machine(
+        &target_triple,
+        &cpu,
+        &features,
+        OptimizationLevel::Default,
+        reloc_mode,
+        code_model,
+    ) {
+        Some(target_machine) => target_machine,
+        None => {
+            display_single_custom_diag!(
+                "Failed to create LLVM Target Machine with given target_triple, cpu, features.".to_string()
+            );
+        }
+    };
+
+    target_machine
 }
 
 pub(crate) fn make_module_name(master_module_file_path: String, current_module_file_path: String) -> String {
