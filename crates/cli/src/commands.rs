@@ -104,9 +104,13 @@ fn prepare_compilation(
     Rc<Resolver>,
 ) {
     let mut opts = options.to_compiler_options();
+
     if file_path.is_some() {
         opts.disable_modulefs_cache = true;
     }
+
+    if opts.display_target_machine {}
+
     let file_path = get_entry_source_code_path(options.base_path.clone(), file_path);
     let final_build_dir = get_final_build_directory_path(options.base_path.clone(), opts.build_dir.clone());
     ensure_build_dir_subs(options.base_path.clone(), final_build_dir.clone());
@@ -125,11 +129,15 @@ pub(crate) fn command_run(mut options: CompilerOptions, file_path: Option<String
 
     let context = CodeGenContext::new(
         final_build_dir,
-        opts,
+        opts.clone(),
         OutputKind::Executable(temp_file_path.clone()),
         resolver_rc,
         file_path,
     );
+
+    if opts.display_target_machine {
+        context.display_target_machine_information();
+    }
     context.compile_modules(program_trees);
 
     let mut executable_command = std::process::Command::new(&temp_file_path);
