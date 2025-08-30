@@ -1,5 +1,5 @@
-import std::libc;
+// import std::libc;
 
 func main() {
-    #a = int32;
+    // #a = int32;
 }
