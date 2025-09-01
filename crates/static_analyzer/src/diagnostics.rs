@@ -5,6 +5,7 @@ pub enum AnalyzerDiagKind {
     ObjectNotSupportsMethods,
     ObjectNotSupportsFields,
     InvalidFatArrow,
+    UseFatArrow,
     StructMethodNotDefined {
         struct_name: String,
         method_name: String,
@@ -142,6 +143,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::UseFatArrow => {
+                write!(f, "Use '->' instead of '.' when accessing a member via a pointer.")
+            }
             AnalyzerDiagKind::InvalidUsageOfTheConcreteType => {
                 write!(f, "Invalid usage of the concrete type.")
             }

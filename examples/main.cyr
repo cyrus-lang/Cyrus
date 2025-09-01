@@ -1,5 +1,7 @@
-// import std::libc;
+// import logger;
+import std::libc;
 
 func main() {
-    // #a = int32;
+    #b = libc::stderr;
+    #a = libc::stderr;
 }
