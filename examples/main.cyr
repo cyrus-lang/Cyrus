@@ -2,7 +2,7 @@ extern func printf(format: const char*, ...) int32;
 
 type Config = struct { host: char*, port: int };
 
-config: Config = struct {
+config: const Config = struct {
 	host = "127.0.0.1",
 	port = 8080
 };

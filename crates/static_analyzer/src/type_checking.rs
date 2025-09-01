@@ -7,7 +7,7 @@ use ast::{
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
     declsign::FuncSig,
-    scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind},
 };
 use typed_ast::{
     format::format_concrete_type,
@@ -342,15 +342,6 @@ impl<'a> AnalysisContext<'a> {
         typed_expr: &mut TypedExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        if let TypedExpressionKind::MethodCall(method_call) = &mut typed_expr.kind {
-            let (concrete_type, lowered_func_call) =
-                self.analyze_and_lower_method_call_expr_type(scope_id_opt, method_call, expected_type)?;
-
-            typed_expr.concrete_type = Some(concrete_type.clone());
-            typed_expr.kind = TypedExpressionKind::FuncCall(lowered_func_call);
-            return Some(concrete_type);
-        }
-
         let concrete_type = match &mut typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => {
                 let local_scope_ref_opt = {
@@ -415,7 +406,9 @@ impl<'a> AnalysisContext<'a> {
             TypedExpressionKind::FieldAccess(field_access) => {
                 self.analyze_field_access_type(scope_id_opt, field_access)
             }
-            TypedExpressionKind::MethodCall(..) => unreachable!(),
+            TypedExpressionKind::MethodCall(method_call) => {
+                self.analyze_method_call_expr_type(scope_id_opt, method_call, expected_type)
+            }
             TypedExpressionKind::SizeOfExpression(typed_size_of_expression) => {
                 self.analyze_sizeof_expr_type(scope_id_opt, typed_size_of_expression, expected_type)
             }
@@ -661,6 +654,41 @@ impl<'a> AnalysisContext<'a> {
         Some(*typed_struct_field.field_type.clone())
     }
 
+    fn validate_field_access(
+        &mut self,
+        module_id: ModuleID,
+        operand_concrete_type: ConcreteType,
+        field_access: &TypedFieldAccess,
+    ) -> bool {
+        if operand_concrete_type.is_pointer() && !field_access.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UseFatArrow,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    field_access.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            false
+        } else if !operand_concrete_type.is_pointer() && field_access.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidFatArrow,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    field_access.loc.clone(),
+                    0,
+                )),
+                hint: Some("Use '.' instead of '->'.".to_string()),
+            });
+            false
+        } else {
+            true
+        }
+    }
+
     fn analyze_field_access_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -696,7 +724,7 @@ impl<'a> AnalysisContext<'a> {
             )
             .unwrap();
 
-        let (struct_name, struct_fields, struct_symbol_id) = match self.extract_struct_or_enum_symbol_id(
+        let (struct_module_id, struct_name, struct_fields, struct_symbol_id) = match self.extract_struct_or_enum_symbol_id(
             scope_id_opt,
             resolved_var_type.clone(),
             field_access.loc.clone(),
@@ -724,6 +752,7 @@ impl<'a> AnalysisContext<'a> {
 
                 if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
                     (
+                        resolved_struct.module_id,
                         resolved_struct.struct_sig.name.clone(),
                         resolved_struct.struct_sig.fields.clone(),
                         resolved_struct.symbol_id,
@@ -775,6 +804,10 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
+        if !self.validate_field_access(struct_module_id, resolved_var_type, &field_access) {
+            return None;
+        }
+
         let field_index = match struct_fields
             .iter()
             .position(|typed_struct_field| typed_struct_field.name == field_access.field_name)
@@ -797,6 +830,17 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
         };
+
+        if field_access.is_fat_arrow {
+            field_access.operand = Box::new(TypedExpression {
+                kind: TypedExpressionKind::Dereference(TypedDereference {
+                    operand: field_access.operand.clone(),
+                    loc: field_access.loc.clone(),
+                }),
+                concrete_type: None,
+                loc: field_access.loc.clone(),
+            });
+        }
 
         let typed_struct_field = struct_fields.get(field_index).unwrap();
 
@@ -1249,12 +1293,12 @@ impl<'a> AnalysisContext<'a> {
         return_type
     }
 
-    fn analyze_and_lower_method_call_expr_type(
+    fn analyze_method_call_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         method_call: &mut TypedMethodCall,
         expected_type: Option<ConcreteType>,
-    ) -> Option<(ConcreteType, TypedFuncCall)> {
+    ) -> Option<ConcreteType> {
         let method_name = method_call.method_name.clone();
         let loc = method_call.loc.clone();
 
@@ -1338,6 +1382,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
+        method_call.symbol_id = struct_id;
         let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, struct_id).unwrap();
 
         let (object_name, object_methods, object_module_id) = {
@@ -1384,12 +1429,16 @@ impl<'a> AnalysisContext<'a> {
 
         let first_param_opt = resolved_method.func_sig.params.list.first();
 
-        if !self.validate_method_call(scope_id_opt, instance_symbol_id, operand_concrete_type.clone(), method_call, first_param_opt) {
+        if !self.validate_method_call(
+            object_module_id,
+            scope_id_opt,
+            instance_symbol_id,
+            operand_concrete_type.clone(),
+            method_call,
+            first_param_opt,
+        ) {
             return None;
         }
-
-        let mut func_call =
-            self.lower_to_func_call(operand_concrete_type, resolved_method, method_call, method_symbol_id);
 
         {
             // FIXME I still don't know why this isn't working?
@@ -1397,26 +1446,12 @@ impl<'a> AnalysisContext<'a> {
             // self.mark_func_used(local_scope_opt, module_id, method_symbol_id);
         }
 
-        let concrete_type = self
-            .check_func_call(
-                scope_id_opt,
-                &mut resolved_method.func_sig,
-                &mut func_call.args,
-                func_call.loc.clone(),
-            )
-            .unwrap();
-
-        update_global_symbol_type!(self, resolved_method.module_id, resolved_method.symbol_id,
-            SymbolEntryKind::Method(resolved_method) => resolved_method, {
-                resolved_method.func_sig = resolved_method.func_sig.clone();
-            }
-        );
-
-        Some((concrete_type, func_call))
+        Some(resolved_method.func_sig.return_type.clone())
     }
 
     fn validate_method_call(
         &mut self,
+        module_id: ModuleID,
         scope_id_opt: Option<ScopeID>,
         instance_symbol_id: SymbolID,
         operand_concrete_type: ConcreteType,
@@ -1428,7 +1463,7 @@ impl<'a> AnalysisContext<'a> {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::UseFatArrow,
                 location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
+                    self.resolver.get_module_file_path(module_id).unwrap(),
                     method_call.loc.clone(),
                     0,
                 )),
@@ -1440,7 +1475,7 @@ impl<'a> AnalysisContext<'a> {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InvalidFatArrow,
                 location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
+                    self.resolver.get_module_file_path(module_id).unwrap(),
                     method_call.loc.clone(),
                     0,
                 )),
@@ -1460,87 +1495,20 @@ impl<'a> AnalysisContext<'a> {
                                 instance_name: instance_name.clone(),
                             },
                             location: Some(DiagLoc::new(
-                                self.resolver.get_current_module_file_path(),
+                                self.resolver.get_module_file_path(module_id).unwrap(),
                                 method_call.loc.clone(),
                                 0,
                             )),
-                            hint: Some(format!("Instance '{}' is declared as 'const' and cannot be modified.", instance_name)),
+                            hint: Some(format!(
+                                "Instance '{}' is declared as 'const' and cannot be modified.",
+                                instance_name
+                            )),
                         });
                     }
                 }
             }
 
             true
-        }
-    }
-
-    fn lower_to_func_call(
-        &self,
-        operand_concrete_type: ConcreteType,
-        resolved_method: &ResolvedMethod,
-        method_call: &mut TypedMethodCall,
-        method_symbol_id: SymbolID,
-    ) -> TypedFuncCall {
-        if resolved_method.is_instance_method() {
-            // self modifier value
-
-            let first_param = resolved_method.func_sig.params.list.first().unwrap();
-            if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
-                match typed_self_modifier.kind {
-                    SelfModifierKind::Copied => {
-                        if operand_concrete_type.is_pointer() {
-                            // deref self modifier value
-                            let concrete_type = method_call.operand.concrete_type.clone().unwrap();
-                            method_call.args.insert(
-                                0,
-                                TypedExpression {
-                                    kind: TypedExpressionKind::Dereference(TypedDereference {
-                                        operand: method_call.operand.clone(),
-                                        loc: method_call.loc.clone(),
-                                    }),
-                                    concrete_type: Some(concrete_type),
-                                    loc: method_call.loc.clone(),
-                                },
-                            );
-                        } else {
-                            method_call.args.insert(0, *method_call.operand.clone());
-                        }
-                    }
-                    SelfModifierKind::Referenced => {
-                        if !operand_concrete_type.is_pointer() {
-                            let concrete_type = ConcreteType::Pointer(Box::new(ConcreteType::Pointer(Box::new(
-                                method_call.operand.concrete_type.clone().unwrap(),
-                            ))));
-
-                            method_call.args.insert(
-                                0,
-                                TypedExpression {
-                                    kind: TypedExpressionKind::AddressOf(TypedAddressOf {
-                                        operand: method_call.operand.clone(),
-                                        loc: method_call.loc.clone(),
-                                    }),
-                                    concrete_type: Some(concrete_type),
-                                    loc: method_call.loc.clone(),
-                                },
-                            );
-                        } else {
-                            method_call.args.insert(0, *method_call.operand.clone());
-                        }
-                    }
-                }
-            }
-
-            TypedFuncCall {
-                symbol_id: method_symbol_id,
-                args: method_call.args.clone(),
-                loc: method_call.loc.clone(),
-            }
-        } else {
-            TypedFuncCall {
-                symbol_id: method_symbol_id,
-                args: method_call.args.clone(),
-                loc: method_call.loc.clone(),
-            }
         }
     }
 

@@ -227,6 +227,7 @@ pub struct TypedFieldAccess {
     pub field_index: Option<usize>,
     pub field_ty: Option<ConcreteType>,
     pub object_symbol_id: Option<SymbolID>,
+    pub is_fat_arrow: bool,
     pub loc: Location,
 }
 
