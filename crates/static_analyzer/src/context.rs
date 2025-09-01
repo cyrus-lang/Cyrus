@@ -1,5 +1,5 @@
 use crate::{diagnostics::AnalyzerDiagKind, type_cache::TypeResolverCaches};
-use ast::token::Location;
+use ast::{SelfModifierKind, token::Location};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
@@ -14,7 +14,11 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use typed_ast::{format::format_concrete_type, types::ConcreteType, *};
+use typed_ast::{
+    format::format_concrete_type,
+    types::{ConcreteType, ResolvedSymbol},
+    *,
+};
 
 // FIXME Remove later
 #[allow(unused)]
@@ -854,15 +858,6 @@ impl<'a> AnalysisContext<'a> {
 
             if let Some(typed_func_param_kind) = func_sig.params.list.first() {
                 if let TypedFuncParamKind::SelfModifier(mut typed_self_modifier) = typed_func_param_kind.clone() {
-                    typed_self_modifier.ty = Some(
-                        self.normalize_type(
-                            scope_id_opt,
-                            ConcreteType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
-                            typed_self_modifier.loc.clone(),
-                        )
-                        .unwrap(),
-                    );
-
                     func_sig.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
                 }
             }
@@ -925,16 +920,42 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: Location) {
-        for param in &mut params.list {
+        // analyze static arguments
+        for param in params.list.iter_mut() {
             match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    typed_func_param.ty =
-                        match self.normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone()) {
-                            Some(concrete_type) => concrete_type,
-                            None => continue,
-                        };
+                    let normalized_type = self
+                        .normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
+                        .unwrap();
+
+                    typed_func_param.ty = normalized_type.clone();
                 }
-                TypedFuncParamKind::SelfModifier(..) => continue,
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                    let normalized_type = self
+                        .normalize_type(
+                            None,
+                            ConcreteType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
+                            typed_self_modifier.loc.clone(),
+                        )
+                        .unwrap();
+
+                    let symbol_id = match normalized_type {
+                        ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id))
+                        | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id)) => symbol_id,
+                        _ => unreachable!(),
+                    };
+
+                    let struct_concrete_type = ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id));
+
+                    match typed_self_modifier.kind {
+                        SelfModifierKind::Copied => {
+                            typed_self_modifier.ty = Some(struct_concrete_type);
+                        }
+                        SelfModifierKind::Referenced => {
+                            typed_self_modifier.ty = Some(ConcreteType::Pointer(Box::new(struct_concrete_type)));
+                        }
+                    }
+                }
             }
         }
 
