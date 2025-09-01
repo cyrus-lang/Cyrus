@@ -1073,8 +1073,17 @@ impl<'a> AnalysisContext<'a> {
                             typed_self_modifier.loc.clone(),
                         )
                         .unwrap();
-                    typed_self_modifier.ty = Some(normalized_type.clone());
-                    normalized_type
+                    
+                    match typed_self_modifier.kind {
+                        SelfModifierKind::Copied => {
+                            typed_self_modifier.ty = Some(normalized_type.clone());
+                        }
+                        SelfModifierKind::Referenced => {
+                            typed_self_modifier.ty = Some(ConcreteType::Pointer(Box::new(normalized_type.clone())));
+                        }
+                    }
+                    
+                    typed_self_modifier.ty.clone().unwrap()
                 }
             };
 
@@ -1367,7 +1376,7 @@ impl<'a> AnalysisContext<'a> {
                     SelfModifierKind::Copied => {
                         if operand_concrete_type.is_pointer() {
                             // deref self modifier value
-                            let concrete_type = method_call.operand.concrete_type.clone();
+                            let concrete_type = method_call.operand.concrete_type.clone().unwrap();
                             method_call.args.insert(
                                 0,
                                 TypedExpression {
@@ -1375,7 +1384,7 @@ impl<'a> AnalysisContext<'a> {
                                         operand: method_call.operand.clone(),
                                         loc: method_call.loc.clone(),
                                     }),
-                                    concrete_type,
+                                    concrete_type: Some(concrete_type),
                                     loc: method_call.loc.clone(),
                                 },
                             );
@@ -1383,7 +1392,27 @@ impl<'a> AnalysisContext<'a> {
                             method_call.args.insert(0, *method_call.operand.clone());
                         }
                     }
-                    SelfModifierKind::Referenced => {}
+                    SelfModifierKind::Referenced => {
+                        if !operand_concrete_type.is_pointer() {
+                            let concrete_type = ConcreteType::Pointer(Box::new(ConcreteType::Pointer(Box::new(
+                                method_call.operand.concrete_type.clone().unwrap(),
+                            ))));
+
+                            method_call.args.insert(
+                                0,
+                                TypedExpression {
+                                    kind: TypedExpressionKind::AddressOf(TypedAddressOf {
+                                        operand: method_call.operand.clone(),
+                                        loc: method_call.loc.clone(),
+                                    }),
+                                    concrete_type: Some(concrete_type),
+                                    loc: method_call.loc.clone(),
+                                },
+                            );
+                        } else {
+                            method_call.args.insert(0, *method_call.operand.clone());
+                        }
+                    }
                 }
             }
 
