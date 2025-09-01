@@ -126,6 +126,46 @@ impl LocalOrGlobalSymbol {
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.get_symbol_id(),
         }
     }
+
+    pub fn as_struct(&self) -> Option<ResolvedStruct> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Struct(resolved_struct) => Some(resolved_struct.clone()),
+                _ => None,
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct.clone()),
+                _ => None,
+            },
+        }
+    }
+
+    pub fn as_enum(&self) -> Option<ResolvedEnum> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Enum(resolved_enum) => Some(resolved_enum.clone()),
+                _ => None,
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum.clone()),
+                _ => None,
+            },
+        }
+    }
+
+    pub fn as_global_var(&self) -> Option<ResolvedGlobalVar> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(..) => None,
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.as_global_var().cloned(),
+        }
+    }
+
+    pub fn as_variable(&self) -> Option<ResolvedVariable> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.as_variable().cloned(),
+            LocalOrGlobalSymbol::GlobalSymbol(..) => None,
+        }
+    }
 }
 
 impl LocalSymbol {

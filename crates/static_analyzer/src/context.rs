@@ -24,10 +24,11 @@ enum ControlContext {
     Switch(TypedSwitch),
 }
 
+#[macro_export]
 macro_rules! update_global_symbol_type {
-    ($self:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
+    ($self:expr, $module_id:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
         let mut global_symbols = $self.resolver.global_symbols.lock().unwrap();
-        let symbol_table = global_symbols.get_mut(&$self.module_id).unwrap();
+        let symbol_table = global_symbols.get_mut(&$module_id).unwrap();
         match &mut symbol_table.entries.get_mut(&$symbol_id).unwrap().kind {
             $pattern => {
                 let $var = $var;
@@ -138,7 +139,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
                 TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum, false),
-                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef, false),
+                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef),
                 // Not analyzed
                 TypedStatement::Import(_) => continue,
                 // Invalid top-level statements
@@ -220,7 +221,7 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Reachable
                 }
                 TypedStatement::Typedef(typed_typedef) => {
-                    self.analyze_typedef(Some(block_stmt.scope_id), typed_typedef, false);
+                    self.analyze_typedef(Some(block_stmt.scope_id), typed_typedef);
                     FlowState::Reachable
                 }
                 // Invalid statements
@@ -277,7 +278,12 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_if_stmt(&mut self, scope_id: ScopeID, typed_if: &mut TypedIf, expected_type:Option<ConcreteType>) -> FlowState {
+    fn analyze_if_stmt(
+        &mut self,
+        scope_id: ScopeID,
+        typed_if: &mut TypedIf,
+        expected_type: Option<ConcreteType>,
+    ) -> FlowState {
         let consequent_state = self.analyze_block_statement(&mut typed_if.consequent);
 
         self.analyze_typed_expr_type(Some(scope_id), &mut typed_if.condition, expected_type.clone());
@@ -507,7 +513,7 @@ impl<'a> AnalysisContext<'a> {
             );
         }
 
-        update_global_symbol_type!(self, typed_global_var.symbol_id,
+        update_global_symbol_type!(self, typed_global_var.module_id, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
                 resolved_var.global_var_sig.ty = typed_global_var.ty.clone();
             }
@@ -998,8 +1004,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedef, is_local: bool) {
-        self.check_typedef_name(typed_typedef.name.clone(), typed_typedef.loc.clone(), is_local);
+    fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedef) {
         typed_typedef.ty = match self.normalize_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone())
         {
             Some(concrete_type) => concrete_type,

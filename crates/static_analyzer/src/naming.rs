@@ -5,7 +5,6 @@ use diagcentral::{Diag, DiagLevel, DiagLoc};
 enum NamingConvDeclKind {
     Struct,
     Enum,
-    Typedef,
     Interface,
 }
 
@@ -21,7 +20,6 @@ impl<'a> AnalysisContext<'a> {
             let kind_str = match decl_kind {
                 NamingConvDeclKind::Struct => "Struct",
                 NamingConvDeclKind::Enum => "Enum",
-                NamingConvDeclKind::Typedef => "Typedef",
                 NamingConvDeclKind::Interface => "Interface",
             };
 
@@ -35,10 +33,6 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn check_enum_name(&mut self, name: String, loc: Location, is_local: bool) {
         self.check_name(NamingConvDeclKind::Enum, &name, loc, is_local);
-    }
-
-    pub(crate) fn check_typedef_name(&mut self, name: String, loc: Location, is_local: bool) {
-        self.check_name(NamingConvDeclKind::Typedef, &name, loc, is_local);
     }
 
     pub(crate) fn check_interface_name(&mut self, name: String, loc: Location, is_local: bool) {
