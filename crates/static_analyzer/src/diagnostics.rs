@@ -6,6 +6,10 @@ pub enum AnalyzerDiagKind {
     ObjectNotSupportsFields,
     InvalidFatArrow,
     UseFatArrow,
+    MutationPossibleMethodCallOnConstInstance {
+        method_name: String,
+        instance_name: String,
+    },
     StructMethodNotDefined {
         struct_name: String,
         method_name: String,
@@ -143,6 +147,16 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
+                method_name,
+                instance_name,
+            } => {
+                write!(
+                    f,
+                    "Cannot call method '{}' on constant instance '{}'.",
+                    method_name, instance_name
+                )
+            }
             AnalyzerDiagKind::UseFatArrow => {
                 write!(f, "Use '->' instead of '.' when accessing a member via a pointer.")
             }

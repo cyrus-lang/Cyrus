@@ -854,10 +854,8 @@ impl<'a> AnalysisContext<'a> {
                 None => return,
             };
 
-            let scope_id_opt = Some(func_body.scope_id);
-
             if let Some(typed_func_param_kind) = func_sig.params.list.first() {
-                if let TypedFuncParamKind::SelfModifier(mut typed_self_modifier) = typed_func_param_kind.clone() {
+                if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = typed_func_param_kind.clone() {
                     func_sig.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
                 }
             }
