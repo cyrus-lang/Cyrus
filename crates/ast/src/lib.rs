@@ -646,7 +646,7 @@ pub struct SelfModifier {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SelfModifierKind {
     Copied,
     Referenced,

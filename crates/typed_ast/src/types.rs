@@ -43,7 +43,7 @@ impl ConcreteType {
     pub fn get_loc(&self) -> Location {
         todo!()
     }
-    
+
     pub fn is_bool(&self) -> bool {
         matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
     }
@@ -82,7 +82,7 @@ impl ConcreteType {
     pub fn get_pointer_inner(&self) -> Option<ConcreteType> {
         match self {
             ConcreteType::Pointer(concrete_type) => Some(*concrete_type.clone()),
-            _ => None
+            _ => None,
         }
     }
 
@@ -109,6 +109,21 @@ impl ConcreteType {
                 ResolvedSymbol::Enum(symbol_id) => Some(*symbol_id),
                 _ => None,
             },
+            _ => None,
+        }
+    }
+
+    pub fn as_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
+        match self {
+            ConcreteType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_const_or_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
+        match self {
+            ConcreteType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
+            ConcreteType::Const(inner_concrete_type) => inner_concrete_type.as_unnamed_struct(),
             _ => None,
         }
     }

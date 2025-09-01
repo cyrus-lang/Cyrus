@@ -232,32 +232,42 @@ impl<'a> CodeGenBuilder<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &typed_field_access.operand);
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
 
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, typed_field_access.object_symbol_id.unwrap())
-            .unwrap();
+        let struct_type = match typed_field_access.object_symbol_id {
+            Some(object_symbol_id) => {
+                let local_or_global_symbol = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id).unwrap();
 
-        let resolved_struct = match &local_or_global_symbol {
-            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_struct() {
-                Some(resolved_struct) => resolved_struct,
-                None => {
-                    let _resolved_enum = local_symbol.as_enum().unwrap();
-                    todo!();
-                }
-            },
-            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.as_struct() {
-                Some(resolved_struct) => resolved_struct,
-                None => {
-                    let _resolved_enum = symbol_entry.as_enum().unwrap();
-                    todo!();
-                }
+                let resolved_struct = match &local_or_global_symbol {
+                    LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_struct() {
+                        Some(resolved_struct) => resolved_struct,
+                        None => {
+                            let _resolved_enum = local_symbol.as_enum().unwrap();
+                            todo!();
+                        }
+                    },
+                    LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.as_struct() {
+                        Some(resolved_struct) => resolved_struct,
+                        None => {
+                            let _resolved_enum = symbol_entry.as_enum().unwrap();
+                            todo!();
+                        }
+                    },
+                };
+
+                let struct_type = self.get_or_declare_struct(
+                    typed_field_access.object_symbol_id.unwrap(),
+                    &resolved_struct.struct_sig,
+                );
+
+                struct_type
+            }
+            None => {
+                // handle unnamed struct field access
+                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, lvalue);
+                rvalue.as_basic_value().into_struct_value().get_type()
             },
         };
-
-        let struct_type = self.get_or_declare_struct(
-            typed_field_access.object_symbol_id.unwrap(),
-            &resolved_struct.struct_sig,
-        );
 
         let extracted_value = self
             .llvmbuilder
