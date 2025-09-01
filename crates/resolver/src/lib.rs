@@ -2201,9 +2201,10 @@ impl Resolver {
                 })
             }
             Expression::StructInit(struct_init) => {
-                if is_unscoped_expr!(struct_init.struct_name.loc.clone(), struct_init.struct_name.span.end) {
-                    return None;
-                }
+                // FIXME I guess not required anymore.
+                // if is_unscoped_expr!(struct_init.struct_name.loc.clone(), struct_init.struct_name.span.end) {
+                //     return None;
+                // }
 
                 let symbol_id = match self.resolve_local_module_import(
                     local_scope_opt.clone(),
