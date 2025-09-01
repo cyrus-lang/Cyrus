@@ -3,13 +3,14 @@ import std::libc;
 public struct Logger {
 	group_name: char*;
 
-    public func new(group_name: char*) Logger { 
-		// libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
-		return Logger { group_name: group_name };
-	}
+    // public func new(group_name: char*) Logger { 
+	// 	// libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
+	// 	return Logger { group_name: group_name };
+	// }
 
-	public func logf(self, format: char*) {
-		libc::fprintf(libc::stdout, "[info][%s] %s\n", self.group_name, format);
+	public func logf(&self, format: char*) {
+		#this = *self;
+		libc::fprintf(libc::stdout, "[info][%s] %s\n", this.group_name, format);
 	}
 
 	// public func errorf(self, format: char*) {

@@ -11,10 +11,11 @@ func main() {
 	// };
 	// printf("name: %s\n", a.name);
 
-	#my_logger: Logger = Logger.new("services.hello");
+	#my_logger: Logger = Logger { group_name: "services.hello" };
 	#my_logger_ptr = &my_logger;
 	
-	my_logger_ptr->logf("aaa");
+	my_logger.logf("aaa");
+	// my_logger_ptr->logf("aaa");
 
 	// #my_logger = logger::Logger.new("services.example");
 	
