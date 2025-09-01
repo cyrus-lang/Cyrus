@@ -18,10 +18,13 @@ impl<'a> CodeGenBuilder<'a> {
             .try_into()
             .unwrap();
         let module_name = self.get_module_name(global_var_sig.module_id);
-        let abi_name = make_global_var_abi_name(module_name, global_var_sig.name);
+        let abi_name = make_global_var_abi_name(module_name, global_var_sig.name, global_var_sig.vis.clone());
 
         let llvmmodule = self.llvmmodule.borrow_mut();
-        let global_value = llvmmodule.add_global(concrete_type, None, &abi_name);
+        let global_value = match llvmmodule.get_global(&abi_name) {
+            Some(global_value) => global_value,
+            None => llvmmodule.add_global(concrete_type, None, &abi_name),
+        };
         global_value.set_linkage(Linkage::External);
         drop(llvmmodule);
 
@@ -46,7 +49,7 @@ impl<'a> CodeGenBuilder<'a> {
 
         let global_var_type: BasicTypeEnum<'a> = global_var_type.unwrap().try_into().unwrap();
         let module_name = self.get_module_name(global_var.module_id);
-        let abi_name = make_global_var_abi_name(module_name, global_var.name.clone());
+        let abi_name = make_global_var_abi_name(module_name, global_var.name.clone(), global_var.vis.clone());
 
         let llvmmodule = self.llvmmodule.borrow();
         let global_var_value = llvmmodule.add_global(global_var_type, None, &abi_name);
@@ -63,16 +66,22 @@ impl<'a> CodeGenBuilder<'a> {
         let global_value = local_ir_value.as_global_value().unwrap().0.clone();
         drop(irreg);
 
+        if let Some(concrete_type) = &global_var.ty {
+            global_value.set_constant(concrete_type.is_const());
+        }
+
         if global_var.expr.is_some() {
             let lvalue = self.build_expr(None, global_var.expr.as_ref().unwrap());
             let rvalue = self.build_load_lvalue_to_rvalue(None, lvalue);
 
             let basic_rvalue = rvalue.as_basic_value();
             global_value.set_initializer(&basic_rvalue);
-        }
-
-        if let Some(concrete_type) = &global_var.ty {
-            global_value.set_constant(concrete_type.is_const());
+        } else {
+            let basic_type: BasicTypeEnum<'a> = self
+                .build_concrete_type(None, global_var.ty.clone().unwrap())
+                .try_into()
+                .unwrap();
+            global_value.set_initializer(&basic_type.const_zero());
         }
 
         self.insert_forward_decl_to_registry(

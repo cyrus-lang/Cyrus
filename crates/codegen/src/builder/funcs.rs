@@ -106,7 +106,7 @@ impl<'a> CodeGenBuilder<'a> {
             if func_name == "main" {
                 Linkage::External
             } else {
-                self.build_func_linkage(vis)
+                self.build_func_linkage(vis.clone())
             }
         };
 
@@ -117,7 +117,7 @@ impl<'a> CodeGenBuilder<'a> {
                 func_name
             } else {
                 let module_name = self.get_module_name(module_id.unwrap());
-                make_func_abi_name(module_name, func_name)
+                make_func_abi_name(module_name, func_name, vis)
             }
         };
 
