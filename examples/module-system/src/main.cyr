@@ -1,28 +1,7 @@
 import logger{Logger};
 
-public extern func printf(format: const char*, ...) int32;
-
-loggerInstance: Logger;
-
-config = struct {
-	host = "127.0.0.1",
-	port = 8080
-};
-
 func main() {
-	printf("host: %s\n", config.host);
-	printf("port: %d\n", config.port);
-
-	// #my_logger: Logger = Logger { group_name: "services.hello" };
-	// #my_logger_ptr = &my_logger;
-	
-	// my_logger.logf("aaa");
-	// printf("value: %s\n", my_logger.group_name);
-
-	
-
-	// #my_logger = logger::Logger.new("services.example");
-	// my_logger.greeting("Taha");
-	// my_logger.logf("We believe in it.");
-	// my_logger.errorf("No problem remains tho.");
+	#my_logger = Logger.new("services.example");
+	my_logger.logf("hello, world...");
+	my_logger.errorf("hello, cyrus...");
 }

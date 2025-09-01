@@ -2144,6 +2144,7 @@ impl Resolver {
                     kind: TypedExpressionKind::FieldAccess(TypedFieldAccess {
                         operand: Box::new(operand),
                         field_name: field_access.field_name.name.clone(),
+                        is_fat_arrow: field_access.is_fat_arrow,
                         field_index: None,
                         field_ty: None,
                         object_symbol_id: None,

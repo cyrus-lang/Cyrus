@@ -3,7 +3,7 @@ use crate::builder::{
     values::{InternalValue, InternalValueKind},
 };
 use ast::{
-    LiteralKind, StringPrefix,
+    LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::Location,
 };
@@ -15,8 +15,9 @@ use inkwell::{
 use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind};
 use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedCast, TypedDereference,
-    TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedInfixExpression, TypedLiteral,
-    TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit, TypedUnaryExpression, TypedUnnamedStructValue,
+    TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
+    TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit, TypedUnaryExpression,
+    TypedUnnamedStructValue,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity},
 };
 
@@ -56,10 +57,7 @@ impl<'a> CodeGenBuilder<'a> {
             TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.build_unnamed_struct_value(local_scope_opt, typed_unnamed_struct_value)
             }
-            TypedExpressionKind::MethodCall(..) => {
-                // lowered to func call in analyzer layer
-                unreachable!()
-            }
+            TypedExpressionKind::MethodCall(method_call) => self.build_method_call(local_scope_opt, method_call),
             TypedExpressionKind::SizeOfExpression(typed_size_of_expression) => {
                 self.build_sizeof(local_scope_opt, typed_size_of_expression)
             }
@@ -236,7 +234,8 @@ impl<'a> CodeGenBuilder<'a> {
             Some(object_symbol_id) => {
                 let local_or_global_symbol = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id).unwrap();
+                    .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
+                    .unwrap();
 
                 let resolved_struct = match &local_or_global_symbol {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_struct() {
@@ -266,7 +265,7 @@ impl<'a> CodeGenBuilder<'a> {
                 // handle unnamed struct field access
                 let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, lvalue);
                 rvalue.as_basic_value().into_struct_value().get_type()
-            },
+            }
         };
 
         let extracted_value = self
@@ -492,6 +491,80 @@ impl<'a> CodeGenBuilder<'a> {
             cast.target_type.clone(),
             InternalValueKind::RValue(any_value.try_into().unwrap()),
         )
+    }
+
+    fn build_method_call(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        method_call: &TypedMethodCall,
+    ) -> InternalValue<'a> {
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), method_call.symbol_id)
+            .unwrap();
+
+        let resolved_struct = local_or_global_symbol.as_struct().unwrap();
+        let method_symbol_id = *resolved_struct
+            .struct_sig
+            .methods
+            .get(&method_call.method_name)
+            .unwrap();
+
+        let symbol_entry = self
+            .resolver
+            .lookup_symbol_entry_with_id(resolved_struct.module_id, method_symbol_id)
+            .unwrap();
+
+        let func_sig = match symbol_entry.kind {
+            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig,
+            _ => unreachable!(),
+        };
+        let return_type = func_sig.return_type.clone();
+        let fn_value = self.get_or_declare_func(method_symbol_id, func_sig.clone());
+
+        let mut args: Vec<BasicMetadataValueEnum<'a>> = method_call
+            .args
+            .iter()
+            .map(|typed_expr| {
+                let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
+                self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue)
+                    .as_basic_value()
+                    .into()
+            })
+            .collect();
+
+        if let Some(first_param) = func_sig.params.list.first() {
+            if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
+                let operand_lvalue = self.build_expr(local_scope_opt.clone(), &method_call.operand);
+                
+                match typed_self_modifier.kind {
+                    SelfModifierKind::Copied => {
+                        let operand_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, operand_lvalue);
+                        args.insert(0, operand_rvalue.as_basic_value().into());
+                    }
+                    SelfModifierKind::Referenced => {
+                        args.insert(0, operand_lvalue.as_basic_value().into());
+                    },
+                }
+            }
+        }
+
+        let call_result = self
+            .llvmbuilder
+            .build_call(fn_value, &args, "call")
+            .unwrap()
+            .try_as_basic_value();
+
+        if let Some(_) = call_result.right() {
+            let null_literal =
+                BasicValueEnum::PointerValue(self.llvmctx.ptr_type(AddressSpace::default()).const_null());
+
+            InternalValue::new(return_type, InternalValueKind::RValue(null_literal))
+        } else if let Some(basic_value) = call_result.left() {
+            InternalValue::new(return_type, InternalValueKind::RValue(basic_value))
+        } else {
+            unreachable!()
+        }
     }
 
     fn build_func_call(

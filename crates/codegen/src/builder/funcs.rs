@@ -1,6 +1,6 @@
 use super::module::CodeGenBuilder;
 use crate::builder::{abi::make_func_abi_name, module::LocalIRValue};
-use ast::AccessSpecifier;
+use ast::{AccessSpecifier, SelfModifierKind};
 use inkwell::{
     attributes::{Attribute, AttributeLoc},
     llvm_sys::{
@@ -180,8 +180,7 @@ impl<'a> CodeGenBuilder<'a> {
                         .try_into()
                         .unwrap(),
                     TypedFuncParamKind::SelfModifier(self_modifier) => {
-                        let concrete_type =
-                            self.build_concrete_type_from_symbol_id(None, self_modifier.symbol_id.unwrap());
+                        let concrete_type = self.build_concrete_type(None, self_modifier.ty.clone().unwrap());
                         concrete_type.try_into().unwrap()
                     }
                 };
