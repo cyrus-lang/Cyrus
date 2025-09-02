@@ -7,13 +7,13 @@ use crate::{
 };
 use ast::format::module_segments_as_string;
 use ast::{
+    AccessSpecifier, GlobalVariable, If, Import, Interface, ModuleImport, ModulePath, ModuleSegment,
+    ModuleSegmentSingle, SelfModifierKind, StringPrefix, SwitchCasePattern,
+};
+use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
     Identifier, LiteralKind, ProgramTree, Statement, Struct, TypeSpecifier, Typedef, Variable,
     token::{Location, Span, Token, TokenKind},
-};
-use ast::{
-    GlobalVariable, If, Import, Interface, ModuleImport, ModulePath, ModuleSegment, ModuleSegmentSingle,
-    SelfModifierKind, StringPrefix, SwitchCasePattern,
 };
 use diagcentral::{reporter::DiagReporter, *};
 use rand::Rng;
@@ -291,16 +291,34 @@ impl Resolver {
             {
                 let mut global_symbols = self.global_symbols.lock().unwrap();
                 let symbol_table = global_symbols.get_mut(&parent_module_id).unwrap();
-                symbol_table.names.insert(single_name, symbol_id);
+                symbol_table.names.insert(single_name.clone(), symbol_id);
                 symbol_table
                     .locs
                     .insert(symbol_id, (loc_file, symbol_entry.get_loc(), 0));
+
+                let vis = symbol_entry.get_vis();
+
                 symbol_table.entries.insert(symbol_id, symbol_entry);
+                drop(global_symbols);
+
+                self.check_import_single_vis(single_name, vis, loc.clone());
 
                 // FIXME Duplicate check not works with import singles
 
-                drop(global_symbols);
             }
+        }
+    }
+
+    fn check_import_single_vis(&mut self, single_name: String, vis: AccessSpecifier, loc: Location) {
+        if vis.is_private() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::ImportSinglePrivateSymbol {
+                    symbol_name: single_name,
+                },
+                location: Some(DiagLoc::new(self.get_current_module_file_path(), loc.clone(), 0)),
+                hint: None,
+            });
         }
     }
 

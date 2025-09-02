@@ -1,7 +1,9 @@
-import logger{Logger};
+import std::libc;
 
 func main() {
-	#my_logger = Logger.new("services.example");
-	my_logger.logf("hello, world...");
-	my_logger.errorf("hello, cyrus...");
+	#v = 10;
+	#a: void* = &v;
+	#b = typecast(intptr, a);
+
+	libc::printf("pointer: %p\n", b);
 }

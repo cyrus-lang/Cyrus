@@ -23,21 +23,54 @@ impl<'a> CodeGenBuilder<'a> {
         let basic_value = internal_value.as_basic_value();
 
         match target_type {
-            AnyTypeEnum::IntType(int_type) => AnyValueEnum::IntValue(
-                self.llvmbuilder
-                    .build_int_cast(basic_value.into_int_value(), int_type, "cast")
-                    .unwrap(),
-            ),
+            AnyTypeEnum::IntType(int_type) => {
+                let val = basic_value;
+                if val.is_int_value() {
+                    // int -> int
+                    AnyValueEnum::IntValue(
+                        self.llvmbuilder
+                            .build_int_cast(val.into_int_value(), int_type, "cast")
+                            .unwrap(),
+                    )
+                } else if val.is_pointer_value() {
+                    // ptr -> int
+                    AnyValueEnum::IntValue(
+                        self.llvmbuilder
+                            .build_ptr_to_int(val.into_pointer_value(), int_type, "ptr_to_int")
+                            .unwrap(),
+                    )
+                } else {
+                    panic!("Invalid cast to int");
+                }
+            }
+
             AnyTypeEnum::FloatType(float_type) => AnyValueEnum::FloatValue(
                 self.llvmbuilder
                     .build_float_cast(basic_value.into_float_value(), float_type, "cast")
                     .unwrap(),
             ),
-            AnyTypeEnum::PointerType(ptr_type) => AnyValueEnum::PointerValue(
-                self.llvmbuilder
-                    .build_pointer_cast(basic_value.into_pointer_value(), ptr_type, "cast")
-                    .unwrap(),
-            ),
+
+            AnyTypeEnum::PointerType(ptr_type) => {
+                let val = basic_value;
+                if val.is_pointer_value() {
+                    // ptr -> ptr
+                    AnyValueEnum::PointerValue(
+                        self.llvmbuilder
+                            .build_pointer_cast(val.into_pointer_value(), ptr_type, "cast")
+                            .unwrap(),
+                    )
+                } else if val.is_int_value() {
+                    // int -> ptr
+                    AnyValueEnum::PointerValue(
+                        self.llvmbuilder
+                            .build_int_to_ptr(val.into_int_value(), ptr_type, "int_to_ptr")
+                            .unwrap(),
+                    )
+                } else {
+                    panic!("Invalid cast to pointer");
+                }
+            }
+
             _ => internal_value.as_basic_value().as_any_value_enum(),
         }
     }
