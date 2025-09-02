@@ -484,13 +484,9 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_cast_expr(&mut self, local_scope_opt: Option<LocalScopeRef>, cast: &TypedCast) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &cast.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
-
         let target_any_type = self.build_concrete_type(local_scope_opt, cast.target_type.clone());
-        let any_value = self.build_cast(target_any_type, rvalue);
-        InternalValue::new(
-            cast.target_type.clone(),
-            InternalValueKind::RValue(any_value.try_into().unwrap()),
-        )
+        let casted_rvalue: BasicValueEnum<'a> = self.build_cast(target_any_type, rvalue).try_into().unwrap();
+        InternalValue::new(cast.target_type.clone(), InternalValueKind::RValue(casted_rvalue))
     }
 
     fn build_method_call(
@@ -536,7 +532,7 @@ impl<'a> CodeGenBuilder<'a> {
         if let Some(first_param) = func_sig.params.list.first() {
             if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
                 let operand_lvalue = self.build_expr(local_scope_opt.clone(), &method_call.operand);
-                
+
                 match typed_self_modifier.kind {
                     SelfModifierKind::Copied => {
                         let operand_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, operand_lvalue);
@@ -544,7 +540,7 @@ impl<'a> CodeGenBuilder<'a> {
                     }
                     SelfModifierKind::Referenced => {
                         args.insert(0, operand_lvalue.as_basic_value().into());
-                    },
+                    }
                 }
             }
         }
