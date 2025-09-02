@@ -1,5 +1,5 @@
 use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig};
-use ast::token::Location;
+use ast::{token::Location, AccessSpecifier};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedFuncParamKind, TypedVariable};
@@ -271,6 +271,18 @@ impl SymbolTable {
 impl SymbolEntry {
     pub fn new(kind: SymbolEntryKind) -> Self {
         Self { used: false, kind }
+    }
+
+    pub fn get_vis(&self) -> AccessSpecifier {
+        match &self.kind {
+            SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.vis.clone(),
+            SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.vis.clone(),
+            SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var.global_var_sig.vis.clone(),
+            SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.vis.clone(),
+            SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.vis.clone(),
+            SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.vis.clone(),
+            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.vis.clone(),
+        }
     }
 
     pub fn get_loc(&self) -> Location {

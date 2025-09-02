@@ -6,6 +6,9 @@ pub enum ResolverDiagKind {
     DuplicateModule {
         module_name: String,
     },
+    ImportSinglePrivateSymbol {
+        symbol_name: String
+    },
     ModuleIndexNotFound {
         module_name: String,
     },
@@ -85,6 +88,9 @@ pub enum ResolverDiagKind {
 impl fmt::Display for ResolverDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ResolverDiagKind::ImportSinglePrivateSymbol { symbol_name } => {
+                write!(f, "Symbol '{}' is private and cannot be imported.", symbol_name)
+            }
             ResolverDiagKind::ModuleCannotImportItself => {
                 write!(f, "Module cannot import itself.")
             }
