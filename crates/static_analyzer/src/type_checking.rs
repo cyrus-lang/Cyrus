@@ -122,7 +122,7 @@ impl<'a> AnalysisContext<'a> {
             // char to int
             (Char, Int8 | Int16 | Int32 | Int64 | Int128 | Int) => true,
 
-            // int8 to char 
+            // int8 to char
             (Int8, Char) => true,
 
             // Bool to Int
@@ -717,7 +717,7 @@ impl<'a> AnalysisContext<'a> {
         let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
         let field_access_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
 
-        if !field_access_from_struct_methods && field.vis.is_private() {
+        if !(field_access_from_struct_methods || field.vis.is_private()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InternalFieldAccess {
@@ -1165,31 +1165,23 @@ impl<'a> AnalysisContext<'a> {
         func_sig: &mut FuncSig,
         args: &mut Vec<TypedExpression>,
         loc: Location,
+        instance_method_call: bool,
     ) -> Option<ConcreteType> {
         let is_variadic = func_sig.params.variadic.is_some();
+        let mut expected_args_len = func_sig.params.list.len();
 
-        if !is_variadic && args.len() != func_sig.params.list.len() {
+        // If this is an instance method call, `&self` will be pushed later
+        if instance_method_call && !func_sig.params.list.is_empty() {
+            expected_args_len = expected_args_len.saturating_sub(1);
+        }
+
+        // Check argument count
+        if (!is_variadic && args.len() != expected_args_len) || (is_variadic && args.len() < expected_args_len) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::FuncCallArgsCountMismatch {
                     args: args.len() as u32,
-                    expected: func_sig.params.list.len() as u32,
-                    func_name: func_sig.name.clone(),
-                },
-                location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
-                    loc.clone(),
-                    0,
-                )),
-                hint: None,
-            });
-            return None;
-        } else if is_variadic && args.len() < func_sig.params.list.len() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::FuncCallArgsCountMismatch {
-                    args: args.len() as u32,
-                    expected: func_sig.params.list.len() as u32,
+                    expected: expected_args_len as u32,
                     func_name: func_sig.name.clone(),
                 },
                 location: Some(DiagLoc::new(
@@ -1202,102 +1194,85 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
+        // Handle variadic arguments
         if is_variadic {
             let static_params_len = func_sig.params.list.len();
             let variadic_args = &mut args[static_params_len..];
 
-            match func_sig.params.variadic.clone().unwrap() {
-                TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
-                    for (argument_idx, argument) in variadic_args.iter_mut().enumerate() {
-                        let argument_type = match self.analyze_typed_expr_type(
-                            scope_id_opt,
-                            argument,
-                            argument.concrete_type.clone(),
-                        ) {
-                            Some(concrete_type) => concrete_type,
-                            None => continue,
-                        };
-
-                        if !self.check_type_mismatch(
-                            scope_id_opt,
-                            argument_type.clone(),
-                            variadic_param_type.clone(),
-                            argument.loc.clone(),
-                        ) {
-                            let param_type = format_concrete_type(
-                                variadic_param_type.clone(),
-                                &(self.symbol_formatter)(scope_id_opt),
-                            );
-                            let argument_type =
-                                format_concrete_type(argument_type, &(self.symbol_formatter)(scope_id_opt));
-
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
-                                    param_type,
-                                    argument_type,
-                                    argument_idx: (argument_idx + static_params_len) as u32,
-                                },
-                                location: Some(DiagLoc::new(
-                                    self.resolver.get_current_module_file_path(),
-                                    loc.clone(),
-                                    0,
-                                )),
-                                hint: None,
-                            });
+            if let Some(var_param) = &func_sig.params.variadic {
+                match var_param.clone() {
+                    TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
+                        for (idx, arg) in variadic_args.iter_mut().enumerate() {
+                            if let Some(arg_type) =
+                                self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone())
+                            {
+                                if !self.check_type_mismatch(
+                                    scope_id_opt,
+                                    arg_type.clone(),
+                                    variadic_param_type.clone(),
+                                    arg.loc.clone(),
+                                ) {
+                                    self.reporter.report(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
+                                            param_type: format_concrete_type(
+                                                variadic_param_type.clone(),
+                                                &(self.symbol_formatter)(scope_id_opt),
+                                            ),
+                                            argument_type: format_concrete_type(
+                                                arg_type,
+                                                &(self.symbol_formatter)(scope_id_opt),
+                                            ),
+                                            argument_idx: (idx + static_params_len) as u32,
+                                        },
+                                        location: Some(DiagLoc::new(
+                                            self.resolver.get_current_module_file_path(),
+                                            loc.clone(),
+                                            0,
+                                        )),
+                                        hint: None,
+                                    });
+                                }
+                            }
                         }
                     }
-                }
-                TypedFuncVariadicParams::UntypedCStyle => {
-                    for argument in variadic_args.iter_mut() {
-                        match self.analyze_typed_expr_type(scope_id_opt, argument, argument.concrete_type.clone()) {
-                            Some(concrete_type) => concrete_type,
-                            None => continue,
-                        };
+                    TypedFuncVariadicParams::UntypedCStyle => {
+                        for arg in variadic_args.iter_mut() {
+                            let _ = self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone());
+                        }
                     }
                 }
             }
         }
 
-        // analyze static arguments
-        for (param, arg) in func_sig.params.list.iter_mut().zip(args.iter_mut()) {
+        // Analyze static arguments
+        let start_idx = if instance_method_call { 1 } else { 0 };
+        for (param, arg) in func_sig.params.list.iter_mut().skip(start_idx).zip(args.iter_mut()) {
             let param_type = match param {
-                TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    let normalized_type = self
-                        .normalize_type(scope_id_opt, typed_func_param.ty.clone(), typed_func_param.loc.clone())
-                        .unwrap();
-                    typed_func_param.ty = normalized_type.clone();
-                    normalized_type
+                TypedFuncParamKind::FuncParam(p) => {
+                    let normalized = self.normalize_type(scope_id_opt, p.ty.clone(), p.loc.clone()).unwrap();
+                    p.ty = normalized.clone();
+                    normalized
                 }
-                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                    let normalized_type = self
-                        .normalize_type(
-                            scope_id_opt,
-                            typed_self_modifier.ty.clone().unwrap(),
-                            typed_self_modifier.loc.clone(),
-                        )
+                TypedFuncParamKind::SelfModifier(s) => {
+                    let normalized = self
+                        .normalize_type(scope_id_opt, s.ty.clone().unwrap(), s.loc.clone())
                         .unwrap();
-
-                    match typed_self_modifier.kind {
-                        SelfModifierKind::Copied => {
-                            typed_self_modifier.ty = Some(normalized_type.clone());
-                        }
-                        SelfModifierKind::Referenced => {
-                            typed_self_modifier.ty = Some(ConcreteType::Pointer(Box::new(normalized_type.clone())));
-                        }
-                    }
-
-                    typed_self_modifier.ty.clone().unwrap()
+                    s.ty = Some(match s.kind {
+                        SelfModifierKind::Copied => normalized.clone(),
+                        SelfModifierKind::Referenced => ConcreteType::Pointer(Box::new(normalized.clone())),
+                    });
+                    s.ty.clone().unwrap()
                 }
             };
-
-            self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type));
+            let _ = self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type));
         }
 
+        // Check for duplicate parameter names
         self.check_duplicate_param_names(
             &func_sig.params.list,
             func_sig.params.variadic.as_ref(),
-            DiagLoc::new(self.resolver.get_current_module_file_path(), loc.clone(), 0),
+            DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0),
         );
 
         Some(func_sig.return_type.clone())
@@ -1362,7 +1337,13 @@ impl<'a> AnalysisContext<'a> {
         };
 
         self.mark_func_used(local_scope_opt, module_id, func_call.symbol_id);
-        let return_type = self.check_func_call(scope_id_opt, &mut func_sig, &mut func_call.args, func_call.loc.clone());
+        let return_type = self.check_func_call(
+            scope_id_opt,
+            &mut func_sig,
+            &mut func_call.args,
+            func_call.loc.clone(),
+            false,
+        );
 
         update_global_symbol_type!(self, func_sig.module_id, func_call.symbol_id,
             SymbolEntryKind::Func(resolved_func) => resolved_func, {
@@ -1383,7 +1364,7 @@ impl<'a> AnalysisContext<'a> {
         let loc = method_call.loc.clone();
 
         let operand_concrete_type =
-            self.analyze_typed_expr_type(scope_id_opt, &mut method_call.operand, expected_type)?;
+            self.analyze_typed_expr_type(scope_id_opt, &mut method_call.operand, expected_type.clone())?;
 
         let instance_symbol_id = match method_call.operand.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => symbol_id,
@@ -1422,7 +1403,13 @@ impl<'a> AnalysisContext<'a> {
                         .typed_variable
                         .ty
                         .clone()
-                        .unwrap_or(resolved_var.typed_variable.rhs.unwrap().concrete_type.unwrap())
+                        .unwrap_or({
+                            self.analyze_typed_expr_type(
+                                scope_id_opt,
+                                &mut resolved_var.typed_variable.rhs.unwrap(),
+                                expected_type.clone(),
+                            ).unwrap()
+                        })
                         .get_const_inner()
                         .clone();
 
@@ -1508,6 +1495,15 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let first_param_opt = resolved_method.func_sig.params.list.first();
+        let is_instance_method_call = {
+            match first_param_opt {
+                Some(first_param) => match first_param {
+                    TypedFuncParamKind::FuncParam(..) => false,
+                    TypedFuncParamKind::SelfModifier(..) => true,
+                },
+                None => false,
+            }
+        };
 
         if !self.validate_method_call(
             object_module_id,
@@ -1529,6 +1525,14 @@ impl<'a> AnalysisContext<'a> {
             // self.mark_func_used(local_scope_opt, module_id, method_symbol_id);
         }
 
+        self.check_func_call(
+            scope_id_opt,
+            &mut resolved_method.func_sig,
+            &mut method_call.args,
+            method_call.loc.clone(),
+            is_instance_method_call,
+        );
+
         Some(resolved_method.func_sig.return_type.clone())
     }
 
@@ -1546,9 +1550,9 @@ impl<'a> AnalysisContext<'a> {
     ) -> bool {
         let mut result = true;
         let method_symbol_ids = object_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
-        let field_access_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
+        let method_call_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
 
-        if !field_access_from_struct_methods && resolved_method.func_sig.vis.is_private() {
+        if !(method_call_from_struct_methods || resolved_method.func_sig.vis.is_public()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InternalMethodCall {
@@ -2145,7 +2149,7 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if self.is_integer_type(operand_type.get_const_inner().clone()) {
+        if !self.is_integer_type(operand_type.get_const_inner().clone()) {
             let operand_type = format_concrete_type(operand_type, &formatter_closure);
 
             self.reporter.report(Diag {

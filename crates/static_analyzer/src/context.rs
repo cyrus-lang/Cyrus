@@ -1038,6 +1038,11 @@ impl<'a> AnalysisContext<'a> {
 
         let value_type_opt = {
             if let Some(typed_expr) = &mut typed_variable.rhs {
+                if let Some(concrete_type) = &typed_variable.ty {
+                    typed_variable.ty =
+                        self.normalize_type(scope_id_opt, concrete_type.clone(), typed_variable.loc.clone());
+                }
+                
                 let concrete_type =
                     match self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone()) {
                         Some(concrete_type) => concrete_type,

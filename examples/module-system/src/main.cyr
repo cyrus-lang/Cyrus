@@ -1,9 +1,7 @@
-import std::libc;
+import logger{Logger};
 
 func main() {
-	#v = 10;
-	#a: void* = &v;
-	#b: int32 = 'a';
-
-	libc::printf("aa: %p\n", b);
+	#my_logger = Logger.new("services.example");
+	my_logger.logf("hello, world...");
+	my_logger.errorf("hello, cyrus...");
 }

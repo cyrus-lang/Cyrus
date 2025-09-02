@@ -369,7 +369,7 @@ impl fmt::Display for AnalyzerDiagKind {
             } => {
                 write!(
                     f,
-                    "Function '{}' expects {} arguments, but {} was provided..",
+                    "Function '{}' expects {} arguments, but {} was provided.",
                     func_name, expected, args
                 )
             }
