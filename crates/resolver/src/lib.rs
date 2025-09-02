@@ -304,7 +304,6 @@ impl Resolver {
                 self.check_import_single_vis(single_name, vis, loc.clone());
 
                 // FIXME Duplicate check not works with import singles
-
             }
         }
     }
@@ -2352,6 +2351,13 @@ impl Resolver {
                         Some(concrete_type) => concrete_type,
                         None => return None,
                     };
+                    
+                // arr.
+                // let array_type = ConcreteType::Array(TypedArrayType {
+                //     element_type: Box::new(element_type),
+                //     capacity: todo!(),
+                //     loc: arr.loc.clone(),
+                // });
 
                 let mut typed_elements: Vec<TypedExpression> = Vec::new();
 
