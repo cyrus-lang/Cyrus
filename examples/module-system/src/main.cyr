@@ -3,7 +3,7 @@ import std::libc;
 func main() {
 	#v = 10;
 	#a: void* = &v;
-	#b = typecast(intptr, a);
+	#b: int32 = 'a';
 
-	libc::printf("pointer: %p\n", b);
+	libc::printf("aa: %p\n", b);
 }

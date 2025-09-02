@@ -26,7 +26,7 @@ use typed_ast::{ModuleID, TypedProgramTree};
 use utils::fs::{ensure_output_dir, get_directory_of_file};
 
 fn get_program_trees(
-    options: &mut CompilerOptions,
+    options: &mut CodeGenOptions,
     file_path: String,
 ) -> (
     Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
@@ -48,7 +48,7 @@ fn get_program_trees(
     options.source_dirs.push(entry_module_dir_path);
 
     let module_loader_opts = ModuleLoaderOptions {
-        stdlib_path: options.stdlib.clone(),
+        stdlib_path: options.stdlib_path.clone(),
         source_dirs: options.source_dirs.clone(),
     };
 
@@ -94,7 +94,7 @@ fn get_program_trees(
 }
 
 fn prepare_compilation(
-    mut options: &mut CompilerOptions,
+    opts: &mut CodeGenOptions,
     file_path: Option<String>,
 ) -> (
     CodeGenOptions,
@@ -103,24 +103,22 @@ fn prepare_compilation(
     Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
     Rc<Resolver>,
 ) {
-    let mut opts = options.to_compiler_options();
-
     if file_path.is_some() {
         opts.disable_modulefs_cache = true;
     }
 
     if opts.display_target_machine {}
 
-    let file_path = get_entry_source_code_path(options.base_path.clone(), file_path);
-    let final_build_dir = get_final_build_directory_path(options.base_path.clone(), opts.build_dir.clone());
-    ensure_build_dir_subs(options.base_path.clone(), final_build_dir.clone());
+    let file_path = get_entry_source_code_path(opts.base_path.clone(), file_path);
+    let final_build_dir = get_final_build_directory_path(opts.base_path.clone(), opts.build_dir.clone());
+    ensure_build_dir_subs(opts.base_path.clone(), final_build_dir.clone());
 
-    let (program_trees, resolver_rc) = get_program_trees(&mut options, file_path.clone());
+    let (program_trees, resolver_rc) = get_program_trees(opts, file_path.clone());
 
-    (opts, file_path, final_build_dir, program_trees, resolver_rc)
+    (opts.clone(), file_path, final_build_dir, program_trees, resolver_rc)
 }
 
-pub(crate) fn command_run(mut options: CompilerOptions, file_path: Option<String>) {
+pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>) {
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let mut temp = env::temp_dir();
@@ -150,7 +148,7 @@ pub(crate) fn command_run(mut options: CompilerOptions, file_path: Option<String
     }
 }
 
-pub(crate) fn command_emit_llvm(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_emit_llvm(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
@@ -169,7 +167,7 @@ pub(crate) fn command_emit_llvm(mut options: CompilerOptions, file_path: Option<
 }
 
 pub(crate) fn command_emit_bytecode(
-    mut options: CompilerOptions,
+    mut options: CodeGenOptions,
     file_path: Option<String>,
     output_path: Option<String>,
 ) {
@@ -178,10 +176,6 @@ pub(crate) fn command_emit_bytecode(
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
     });
-
-    if let Some(build_dir) = &options.build_dir {
-        ensure_output_dir(build_dir.clone());
-    }
 
     ensure_output_dir(output_path.clone());
     let context = CodeGenContext::new(
@@ -194,16 +188,12 @@ pub(crate) fn command_emit_bytecode(
     context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_emit_asm(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_emit_asm(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
     });
-
-    if let Some(build_dir) = &options.build_dir {
-        ensure_output_dir(build_dir.clone());
-    }
 
     ensure_output_dir(output_path.clone());
     let context = CodeGenContext::new(
@@ -216,7 +206,7 @@ pub(crate) fn command_emit_asm(mut options: CompilerOptions, file_path: Option<S
     context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_build(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_build(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
@@ -233,7 +223,7 @@ pub(crate) fn command_build(mut options: CompilerOptions, file_path: Option<Stri
     context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_object(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_object(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
@@ -251,7 +241,7 @@ pub(crate) fn command_object(mut options: CompilerOptions, file_path: Option<Str
     context.compile_modules(program_trees);
 }
 
-pub(crate) fn command_dylib(mut options: CompilerOptions, file_path: Option<String>, output_path: Option<String>) {
+pub(crate) fn command_dylib(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
