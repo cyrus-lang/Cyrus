@@ -312,11 +312,17 @@ impl Parser {
                 }
                 TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
                     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
-                    if let Statement::FuncDef(method) = self.parse_func(Some(vis))? {
-                        self.next_token(); // consume right brace
-                        methods.push(method);
+
+                    if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
+                        let field = self.parse_struct_field(None)?;
+                        fields.push(field);
                     } else {
-                        unreachable!();
+                        if let Statement::FuncDef(method) = self.parse_func(Some(vis))? {
+                            self.next_token(); // consume right brace
+                            methods.push(method);
+                        } else {
+                            unreachable!();
+                        }
                     }
                 }
                 TokenKind::Function => {
@@ -328,28 +334,7 @@ impl Parser {
                     }
                 }
                 TokenKind::Identifier { .. } => {
-                    let start = self.current_token().span.start;
-                    let loc = self.current_token().loc.clone();
-
-                    let identifier = self.parse_identifier()?;
-                    self.next_token(); // consume identifier
-
-                    self.expect_current(TokenKind::Colon)?;
-
-                    let type_token = self.parse_type_specifier()?;
-                    self.next_token();
-
-                    let field = StructField {
-                        identifier,
-                        ty: type_token,
-                        loc,
-                        span: Span {
-                            start,
-                            end: self.current_token().span.end,
-                        },
-                    };
-
-                    self.expect_current(TokenKind::Semicolon)?;
+                    let field = self.parse_struct_field(None)?;
                     fields.push(field);
                 }
                 _ => {
@@ -380,6 +365,33 @@ impl Parser {
                 end: self.current_token().span.end,
             },
         }))
+    }
+
+    fn parse_struct_field(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<StructField, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let identifier = self.parse_identifier()?;
+        self.next_token(); // consume identifier
+
+        self.expect_current(TokenKind::Colon)?;
+
+        let type_token = self.parse_type_specifier()?;
+        self.next_token();
+
+        let field = StructField {
+            identifier,
+            ty: type_token,
+            vis: access_specifier.unwrap_or(AccessSpecifier::Internal),
+            loc,
+            span: Span {
+                start,
+                end: self.current_token().span.end,
+            },
+        };
+
+        self.expect_current(TokenKind::Semicolon)?;
+        Ok(field)
     }
 
     pub fn parse_break(&mut self) -> Result<Statement, ParserError> {

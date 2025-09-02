@@ -494,6 +494,7 @@ pub struct StructInit {
 #[derive(Debug, Clone)]
 pub struct StructField {
     pub identifier: Identifier,
+    pub vis: AccessSpecifier,
     pub ty: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
