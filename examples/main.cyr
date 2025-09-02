@@ -1,15 +1,5 @@
 import std::libc;
-
-struct Slice {
-	public data: void*;
-	public length: size_t;
-	public element_size: size_t;
-
-	public inline func index(self, idx: size_t) void* {
-		#ptrv = typecast(uintptr, self.data) + typecast(uintptr, idx * self.element_size);
-		return typecast(void*, ptrv);
-	}
-}
+import std::slices{Slice};
 
 func main() {
 	#arr = int32[3] {3, 6, 9};
