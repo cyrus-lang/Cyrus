@@ -131,16 +131,28 @@ impl CodeGenContext {
 
         let mut linker_command = Command::new(linker.clone());
 
-        if self.opts.reloc_mode == RelocModeOptions::Static {
+        if self.opts.linker_options.link_static {
             linker_command.arg("-static");
-            linker_command.arg("-lc");
-        } else if matches!(
-            self.opts.reloc_mode,
-            RelocModeOptions::PIC | RelocModeOptions::DynamicNoPic
-        ) {
+        }
+
+        if self.opts.linker_options.pie {
+            linker_command.arg("-pie");
+        }
+
+        if self.opts.linker_options.no_pie {
+            linker_command.arg("-no-pie");
+        }
+
+        if !self.opts.linker_options.link_static && (self.opts.linker_options.pie || self.opts.linker_options.no_pie) {
             linker_command.arg("-ldl");
             linker_command.arg("-rdynamic");
         }
+
+        if self.opts.linker_options.link_static {
+            linker_command.arg("-lc");
+        }
+
+        linker_command.arg("-flto");
 
         linker_command.arg("-funroll-loops");
         linker_command.arg("-flto");

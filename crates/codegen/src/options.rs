@@ -21,8 +21,26 @@ pub enum CodeModelOptions {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+pub struct CodeGenLinkerOptions {
+    pub link_static: bool,
+    pub pie: bool,
+    pub no_pie: bool,
+}
+
+impl Default for CodeGenLinkerOptions {
+    fn default() -> Self {
+        Self {
+            link_static: false,
+            pie: true,
+            no_pie: false,
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct CodeGenOptions {
     pub linker: Option<String>,
+    pub linker_options: CodeGenLinkerOptions,
     pub base_path: Option<String>,
     pub project_type: Option<String>,
     pub project_name: Option<String>,
@@ -42,6 +60,7 @@ pub struct CodeGenOptions {
     pub cpu: Option<String>,
     pub target_triple: Option<String>,
     pub disable_modulefs_cache: bool,
+    pub disable_warnings: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +103,8 @@ impl CodeGenOptions {
             target_triple: None,
             cpu: None,
             disable_modulefs_cache: false,
+            disable_warnings: false,
+            linker_options: CodeGenLinkerOptions::default(),
         }
     }
 
@@ -130,6 +151,8 @@ impl CodeGenOptions {
             },
             target_triple: instance.target_triple.or(self.target_triple.clone()),
             base_path: instance.base_path.or(self.base_path.clone()),
+            disable_warnings: instance.disable_warnings || self.disable_warnings,
+            linker_options: instance.linker_options,
         };
     }
 
