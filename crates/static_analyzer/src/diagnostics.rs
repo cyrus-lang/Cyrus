@@ -6,6 +6,14 @@ pub enum AnalyzerDiagKind {
     ObjectNotSupportsFields,
     InvalidFatArrow,
     UseFatArrow,
+    InternalFieldAccess {
+        field_name: String,
+        struct_name: String,
+    },
+    InternalMethodCall {
+        method_name: String,
+        object_name: String,
+    },
     MutationPossibleMethodCallOnConstInstance {
         method_name: String,
         instance_name: String,
@@ -155,6 +163,26 @@ impl fmt::Display for AnalyzerDiagKind {
                     f,
                     "Cannot call method '{}' on constant instance '{}'.",
                     method_name, instance_name
+                )
+            }
+            AnalyzerDiagKind::InternalFieldAccess {
+                field_name,
+                struct_name,
+            } => {
+                write!(
+                    f,
+                    "Cannot access internal field '{}' of struct '{}' from outside its definition.",
+                    field_name, struct_name
+                )
+            }
+            AnalyzerDiagKind::InternalMethodCall {
+                method_name,
+                object_name,
+            } => {
+                write!(
+                    f,
+                    "Cannot call internal method '{}' of object '{}' from outside its definition.",
+                    method_name, object_name
                 )
             }
             AnalyzerDiagKind::UseFatArrow => {

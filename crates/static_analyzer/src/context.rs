@@ -51,7 +51,7 @@ pub struct AnalysisContext<'a> {
     pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub ty_caches: TypeResolverCaches,
     control_stack: Vec<ControlContext>,
-    cur_func_symbol_id: Option<SymbolID>,
+    pub(crate) cur_func_symbol_id: Option<SymbolID>,
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>,
 }

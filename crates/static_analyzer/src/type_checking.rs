@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol_type};
 use ast::{
     LiteralKind, SelfModifierKind,
@@ -7,7 +9,7 @@ use ast::{
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
     declsign::FuncSig,
-    scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, SymbolEntryKind},
 };
 use typed_ast::{
     format::format_concrete_type,
@@ -659,7 +661,31 @@ impl<'a> AnalysisContext<'a> {
         module_id: ModuleID,
         operand_concrete_type: ConcreteType,
         field_access: &TypedFieldAccess,
+        field: &TypedStructField,
+        struct_methods: HashMap<String, SymbolID>,
+        struct_name: String,
     ) -> bool {
+        let mut result = true;
+        let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
+        let field_access_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
+
+        if !field_access_from_struct_methods && field.vis.is_private() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InternalFieldAccess {
+                    field_name: field_access.field_name.clone(),
+                    struct_name,
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    field_access.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            result = false;
+        }
+
         if operand_concrete_type.is_pointer() && !field_access.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -671,7 +697,7 @@ impl<'a> AnalysisContext<'a> {
                 )),
                 hint: None,
             });
-            false
+            result = false;
         } else if !operand_concrete_type.is_pointer() && field_access.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -683,10 +709,10 @@ impl<'a> AnalysisContext<'a> {
                 )),
                 hint: Some("Use '.' instead of '->'.".to_string()),
             });
-            false
-        } else {
-            true
+            result = false;
         }
+
+        result
     }
 
     fn analyze_field_access_type(
@@ -724,11 +750,9 @@ impl<'a> AnalysisContext<'a> {
             )
             .unwrap();
 
-        let (struct_module_id, struct_name, struct_fields, struct_symbol_id) = match self.extract_struct_or_enum_symbol_id(
-            scope_id_opt,
-            resolved_var_type.clone(),
-            field_access.loc.clone(),
-        ) {
+        let (struct_module_id, struct_name, struct_fields, struct_methods, struct_symbol_id) = match self
+            .extract_struct_or_enum_symbol_id(scope_id_opt, resolved_var_type.clone(), field_access.loc.clone())
+        {
             Some(struct_or_enum_symbol_id) => {
                 let local_or_global_symbol = match self
                     .resolver
@@ -755,6 +779,7 @@ impl<'a> AnalysisContext<'a> {
                         resolved_struct.module_id,
                         resolved_struct.struct_sig.name.clone(),
                         resolved_struct.struct_sig.fields.clone(),
+                        resolved_struct.struct_sig.methods.clone(),
                         resolved_struct.symbol_id,
                     )
                 } else if let Some(_resolved_enum) = local_or_global_symbol.as_enum() {
@@ -804,10 +829,6 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        if !self.validate_field_access(struct_module_id, resolved_var_type, &field_access) {
-            return None;
-        }
-
         let field_index = match struct_fields
             .iter()
             .position(|typed_struct_field| typed_struct_field.name == field_access.field_name)
@@ -831,6 +852,19 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
+        let typed_struct_field = struct_fields.get(field_index).unwrap();
+
+        if !self.validate_field_access(
+            struct_module_id,
+            resolved_var_type,
+            &field_access,
+            typed_struct_field,
+            struct_methods,
+            struct_name.clone(),
+        ) {
+            return None;
+        }
+
         if field_access.is_fat_arrow {
             field_access.operand = Box::new(TypedExpression {
                 kind: TypedExpressionKind::Dereference(TypedDereference {
@@ -841,8 +875,6 @@ impl<'a> AnalysisContext<'a> {
                 loc: field_access.loc.clone(),
             });
         }
-
-        let typed_struct_field = struct_fields.get(field_index).unwrap();
 
         field_access.field_index = Some(field_index);
         field_access.field_ty = Some(typed_struct_field.ty.clone());
@@ -1436,6 +1468,9 @@ impl<'a> AnalysisContext<'a> {
             operand_concrete_type.clone(),
             method_call,
             first_param_opt,
+            object_methods,
+            object_name.clone(),
+            &resolved_method,
         ) {
             return None;
         }
@@ -1457,7 +1492,31 @@ impl<'a> AnalysisContext<'a> {
         operand_concrete_type: ConcreteType,
         method_call: &TypedMethodCall,
         first_param_opt: Option<&TypedFuncParamKind>,
+        object_methods: HashMap<String, SymbolID>,
+        object_name: String,
+        resolved_method: &ResolvedMethod,
     ) -> bool {
+        let mut result = true;
+        let method_symbol_ids = object_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
+        let field_access_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
+
+        if !field_access_from_struct_methods && resolved_method.func_sig.vis.is_private() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InternalMethodCall {
+                    method_name: resolved_method.func_sig.name.clone(),
+                    object_name,
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    method_call.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            result = false;
+        }
+
         if operand_concrete_type.is_pointer() && !method_call.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1469,7 +1528,7 @@ impl<'a> AnalysisContext<'a> {
                 )),
                 hint: None,
             });
-            false
+            result = false;
         } else if !operand_concrete_type.is_pointer() && method_call.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1481,7 +1540,7 @@ impl<'a> AnalysisContext<'a> {
                 )),
                 hint: Some("Use '.' instead of '->'.".to_string()),
             });
-            false
+            result = false;
         } else {
             if let Some(first_param) = first_param_opt {
                 if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
@@ -1504,12 +1563,13 @@ impl<'a> AnalysisContext<'a> {
                                 instance_name
                             )),
                         });
+                        result = false;
                     }
                 }
             }
-
-            true
         }
+
+        result
     }
 
     fn analyze_array_expr_type(
