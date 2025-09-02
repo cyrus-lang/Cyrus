@@ -1,14 +1,32 @@
 import std::libc;
 
-struct Sample {
-	value: int;
+struct Slice {
+	public data: void*;
+	public length: size_t;
+	public element_size: size_t;
 
-	func to_string(self) int {
-		return self.value;
+	public inline func index(self, idx: size_t) void* {
+		#ptrv = typecast(uintptr, self.data) + typecast(uintptr, idx * self.element_size);
+		return typecast(void*, ptrv);
 	}
 }
 
 func main() {
-	#sample = Sample { value: 10 };
-	sample.to_string();
+	#arr = int32[3] {3, 6, 9};
+
+	#slice = Slice {
+		data: &arr,
+		length: sizeof(arr) / sizeof(arr[0]),
+		element_size: sizeof(arr[0])
+	};
+	
+ 	libc::printf("length: %d\n", slice.length);
+ 	libc::printf("element_size: %d\n", slice.length);
+
+ 	libc::printf("---------------\n");
+ 	
+	for (#i: size_t = 0; i < slice.length; i++) {
+		#value: int* = typecast(int*, slice.index(i));
+		libc::printf("value: %d\n", *value);
+	}
 }
