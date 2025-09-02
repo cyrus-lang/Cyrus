@@ -1163,6 +1163,7 @@ impl Resolver {
                 Some(concrete_type) => {
                     typed_struct_fields.push(TypedStructField {
                         name: field.identifier.name.clone(),
+                        vis: field.vis.clone(),
                         ty: concrete_type,
                         loc: field.loc.clone(),
                     });

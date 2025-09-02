@@ -353,6 +353,7 @@ pub struct TypedStruct {
 pub struct TypedStructField {
     pub name: String,
     pub ty: ConcreteType,
+    pub vis: AccessSpecifier,
     pub loc: Location,
 }
 

@@ -1,6 +1,6 @@
 use super::module::CodeGenBuilder;
 use crate::builder::{abi::make_func_abi_name, module::LocalIRValue};
-use ast::{AccessSpecifier, SelfModifierKind};
+use ast::AccessSpecifier;
 use inkwell::{
     attributes::{Attribute, AttributeLoc},
     llvm_sys::{
