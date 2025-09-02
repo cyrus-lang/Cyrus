@@ -38,9 +38,6 @@ impl<'a> AnalysisContext<'a> {
             (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
                 self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
             }
-            (concrete_type1, ConcreteType::Const(inner_concrete_type2)) => {
-                self.check_type_mismatch(scope_id_opt, concrete_type1, *inner_concrete_type2, loc)
-            }
             (ConcreteType::Array(array_type1), ConcreteType::Array(array_type2)) => {
                 let capacity = {
                     match (array_type1.capacity, array_type2.capacity) {
@@ -122,13 +119,64 @@ impl<'a> AnalysisContext<'a> {
 
             (Null, Null) => true,
 
-            // Char to Int
-            (Char, Int8 | UInt8) => true,
+            // char to int
+            (Char, Int8 | Int16 | Int32 | Int64 | Int128 | Int) => true,
+
+            // int8 to char 
+            (Int8, Char) => true,
 
             // Bool to Int
             (Bool, Int8 | UInt8) => true,
 
             (Bool, Bool) => true,
+
+            _ => false,
+        }
+    }
+
+    fn check_explicit_typecast(&mut self, value_type: ConcreteType, target_type: ConcreteType) -> bool {
+        match (value_type, target_type) {
+            // Same type, always fine
+            (a, b) if a == b => true,
+
+            // Any integer to any integer
+            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
+                if value.is_integer() && target.is_integer() =>
+            {
+                true
+            }
+
+            // Any float to any float
+            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
+                if value.is_float() && target.is_float() =>
+            {
+                true
+            }
+
+            // Bool to anything integer-ish (common in C-style languages)
+            (ConcreteType::BasicType(BasicConcreteType::Bool), ConcreteType::BasicType(target))
+                if target.is_integer() =>
+            {
+                true
+            }
+
+            // Char to integer and back
+            (ConcreteType::BasicType(BasicConcreteType::Char), ConcreteType::BasicType(target))
+                if target.is_integer() =>
+            {
+                true
+            }
+            (ConcreteType::BasicType(value), ConcreteType::BasicType(BasicConcreteType::Char))
+                if value.is_integer() =>
+            {
+                true
+            }
+
+            // void* <-> intptr/uintptr
+            (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::IntPtr))
+            | (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::UIntPtr))
+            | (ConcreteType::BasicType(BasicConcreteType::IntPtr), ConcreteType::Pointer(..))
+            | (ConcreteType::BasicType(BasicConcreteType::UIntPtr), ConcreteType::Pointer(..)) => true,
 
             _ => false,
         }
@@ -1623,54 +1671,6 @@ impl<'a> AnalysisContext<'a> {
         }
 
         Some(ConcreteType::Array(typed_array_type.clone()))
-    }
-
-    fn check_explicit_typecast(&mut self, value_type: ConcreteType, target_type: ConcreteType) -> bool {
-        match (value_type, target_type) {
-            // Same type, always fine
-            (a, b) if a == b => true,
-
-            // Any integer to any integer
-            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
-                if value.is_integer() && target.is_integer() =>
-            {
-                true
-            }
-
-            // Any float to any float
-            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
-                if value.is_float() && target.is_float() =>
-            {
-                true
-            }
-
-            // Bool to anything integer-ish (common in C-style languages)
-            (ConcreteType::BasicType(BasicConcreteType::Bool), ConcreteType::BasicType(target))
-                if target.is_integer() =>
-            {
-                true
-            }
-
-            // Char to integer and back
-            (ConcreteType::BasicType(BasicConcreteType::Char), ConcreteType::BasicType(target))
-                if target.is_integer() =>
-            {
-                true
-            }
-            (ConcreteType::BasicType(value), ConcreteType::BasicType(BasicConcreteType::Char))
-                if value.is_integer() =>
-            {
-                true
-            }
-
-            // void* <-> intptr/uintptr
-            (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::IntPtr))
-            | (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::UIntPtr))
-            | (ConcreteType::BasicType(BasicConcreteType::IntPtr), ConcreteType::Pointer(..))
-            | (ConcreteType::BasicType(BasicConcreteType::UIntPtr), ConcreteType::Pointer(..)) => true,
-
-            _ => false,
-        }
     }
 
     fn analyze_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCast) -> Option<ConcreteType> {
