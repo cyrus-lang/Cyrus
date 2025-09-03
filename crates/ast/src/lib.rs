@@ -334,6 +334,7 @@ pub enum Statement {
     FuncDef(FuncDef),
     FuncDecl(FuncDecl),
     For(For),
+    While(While),
     Foreach(Foreach),
     Switch(Switch),
     Struct(Struct),
@@ -504,6 +505,14 @@ pub struct StructField {
 pub struct FieldInit {
     pub identifier: Identifier,
     pub value: Expression,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct While {
+    pub condition: Expression,
+    pub body: Box<BlockStatement>,
+    pub span: Span,
     pub loc: Location,
 }
 
