@@ -16,7 +16,7 @@ use std::{
 };
 use typed_ast::{
     format::format_concrete_type,
-    types::{ConcreteType, ResolvedSymbol},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
     *,
 };
 
@@ -26,6 +26,7 @@ use typed_ast::{
 enum ControlContext {
     For(TypedFor),
     Switch(TypedSwitch),
+    While(TypedWhile),
 }
 
 #[macro_export]
@@ -154,6 +155,7 @@ impl<'a> AnalysisContext<'a> {
                 | TypedStatement::Break(_)
                 | TypedStatement::Continue(_)
                 | TypedStatement::For(_)
+                | TypedStatement::While(_)
                 | TypedStatement::Switch(_)
                 | TypedStatement::Expression(_) => {
                     unreachable!()
@@ -194,6 +196,9 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Unreachable
                 }
                 TypedStatement::For(typed_for) => self.analyze_for_loop(Some(typed_for.body.scope_id), typed_for),
+                TypedStatement::While(typed_while) => {
+                    self.analyze_while_loop(Some(typed_while.body.scope_id), typed_while)
+                }
                 TypedStatement::Switch(..) => todo!(),
                 TypedStatement::Struct(typed_struct) => {
                     self.analyze_struct(typed_struct, true);
@@ -307,15 +312,33 @@ impl<'a> AnalysisContext<'a> {
         self.merge_flow_state(consequent_state, alternate_state)
     }
 
+    fn analyze_while_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_while: &mut TypedWhile) -> FlowState {
+        if let Some(concrete_type) = self.analyze_typed_expr_type(
+            scope_id_opt,
+            &mut typed_while.condition,
+            Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
+        ) {
+            self.check_expr_type_must_be_condition(concrete_type, typed_while.loc.clone());
+        }
+
+        self.control_stack.push(ControlContext::While(typed_while.clone()));
+        self.analyze_block_statement(&mut typed_while.body);
+        self.control_stack.pop();
+
+        FlowState::Reachable
+    }
+
     fn analyze_for_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_for: &mut TypedFor) -> FlowState {
         if let Some(initializer) = &mut typed_for.initializer {
             self.analyze_variable(scope_id_opt, initializer);
         }
 
         if let Some(typed_expr) = &mut typed_for.condition {
-            if let Some(concrete_type) =
-                self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone())
-            {
+            if let Some(concrete_type) = self.analyze_typed_expr_type(
+                scope_id_opt,
+                typed_expr,
+                Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
+            ) {
                 self.check_expr_type_must_be_condition(concrete_type, typed_for.loc.clone());
             }
         }
@@ -1042,7 +1065,7 @@ impl<'a> AnalysisContext<'a> {
                     typed_variable.ty =
                         self.normalize_type(scope_id_opt, concrete_type.clone(), typed_variable.loc.clone());
                 }
-                
+
                 let concrete_type =
                     match self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone()) {
                         Some(concrete_type) => concrete_type,

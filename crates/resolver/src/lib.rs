@@ -700,7 +700,6 @@ impl Resolver {
 
         for stmt in ast.body.as_ref() {
             let valid_top_level_stmt: Result<TypedStatement, (Location, usize)> = match stmt {
-                // Valid top-level statements.
                 Statement::Import(_) => continue,
                 Statement::GlobalVariable(global_var) => match self.resolve_global_var(module_id, global_var) {
                     Some(typed_stmt) => Ok(typed_stmt),
@@ -730,8 +729,6 @@ impl Resolver {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-
-                // Invalid top-level statements.
                 Statement::Variable(variable) => Err((variable.loc.clone(), variable.span.end)),
                 Statement::If(if_stmt) => Err((if_stmt.loc.clone(), if_stmt.span.end)),
                 Statement::Return(return_stmt) => Err((return_stmt.loc.clone(), return_stmt.span.end)),
@@ -744,6 +741,7 @@ impl Resolver {
                 Statement::Break(break_stmt) => Err((break_stmt.loc.clone(), break_stmt.span.end)),
                 Statement::Continue(continue_stmt) => Err((continue_stmt.loc.clone(), continue_stmt.span.end)),
                 Statement::Expression(..) => continue,
+                Statement::While(..) => continue,
             };
 
             match valid_top_level_stmt {
@@ -1844,6 +1842,29 @@ impl Resolver {
                         increment,
                         body: for_typed_body,
                         loc: for_stmt.loc.clone(),
+                    }));
+                }
+                Statement::While(while_stmt) => {
+                    let body_scope_id = generate_scope_id();
+                    let body_scope = LocalScope::deep_clone(&local_scope);
+                    self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
+                    let condition =
+                        match self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), &while_stmt.condition) {
+                            Some(typed_expr) => Some(typed_expr),
+                            None => continue,
+                        }
+                        .unwrap();
+
+                    let while_typed_body =
+                        match self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*while_stmt.body) {
+                            Some(typed_block) => Box::new(typed_block),
+                            None => continue,
+                        };
+
+                    typed_body.push(TypedStatement::While(TypedWhile {
+                        condition,
+                        body: while_typed_body,
+                        loc: while_stmt.loc.clone(),
                     }));
                 }
                 Statement::Switch(switch) => {

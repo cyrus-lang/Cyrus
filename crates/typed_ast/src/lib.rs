@@ -273,6 +273,7 @@ pub enum TypedStatement {
     Break(TypedBreak),
     Continue(TypedContinue),
     For(TypedFor),
+    While(TypedWhile),
     Switch(TypedSwitch),
     Struct(TypedStruct),
     Enum(TypedEnum),
@@ -300,6 +301,7 @@ impl TypedStatement {
             TypedStatement::Enum(typed_enum) => typed_enum.loc.clone(),
             TypedStatement::Interface(typed_interface) => typed_interface.loc.clone(),
             TypedStatement::Expression(typed_expression) => typed_expression.loc.clone(),
+            TypedStatement::While(while_stmt) => while_stmt.loc.clone(),
         }
     }
 }
@@ -487,6 +489,13 @@ pub struct TypedFor {
     pub initializer: Option<TypedVariable>,
     pub condition: Option<TypedExpression>,
     pub increment: Option<TypedExpression>,
+    pub body: Box<TypedBlockStatement>,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedWhile {
+    pub condition: TypedExpression,
     pub body: Box<TypedBlockStatement>,
     pub loc: Location,
 }

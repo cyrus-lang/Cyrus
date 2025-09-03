@@ -13,7 +13,7 @@ use resolver::{
 use std::collections::HashMap;
 use typed_ast::{
     ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor,
-    TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct,
+    TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct, TypedWhile,
 };
 
 /// A macro to build the LLVM IR for a loop structure.
@@ -313,6 +313,7 @@ impl<'a> CodeGenBuilder<'a> {
                 }
                 TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
                 TypedStatement::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
+                TypedStatement::While(typed_while) => self.build_while(local_scope_opt.clone(), typed_while),
                 TypedStatement::Return(typed_return) => self.build_return(local_scope_opt.clone(), typed_return),
                 TypedStatement::Break(typed_break) => self.build_break(typed_break),
                 TypedStatement::Continue(typed_continue) => self.build_continue(typed_continue),
@@ -461,6 +462,21 @@ impl<'a> CodeGenBuilder<'a> {
                 Some(typed_for.increment.clone().unwrap()),
             );
         }
+    }
+
+    fn build_while(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_while: &TypedWhile) {
+        build_loop_statement!(
+            self,
+            scope,
+            {
+                let cond_value = self.build_expr(local_scope_opt.clone(), &typed_while.condition);
+                cond_value.as_basic_value().into_int_value()
+            },
+            {
+                self.build_block_statement(&typed_while.body);
+            },
+            {}
+        );
     }
 
     fn build_if(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_if: &TypedIf) {
