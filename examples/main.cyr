@@ -1,7 +1,14 @@
 import std::libc{printf};
 
 func main() {
-	#i: int = 10;
-	i++;
-	printf("value: %d\n", i);
+	#i = 0;
+
+	while (true) {
+		printf("v: %d\n", i);
+		i++;
+
+		if (i == 10) {
+			break;
+		}
+	}
 }

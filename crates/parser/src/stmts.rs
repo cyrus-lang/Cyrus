@@ -57,6 +57,7 @@ impl Parser {
                 TokenKind::Hashtag => self.parse_variable(),
                 TokenKind::Return => self.parse_return(),
                 TokenKind::For => self.parse_for_loop(),
+                TokenKind::While => self.parse_while_loop(),
                 TokenKind::Foreach => self.parse_foreach(),
                 TokenKind::Break => self.parse_break(),
                 TokenKind::Continue => self.parse_continue(),
@@ -812,6 +813,26 @@ impl Parser {
             item: item_identifier,
             index: index_identifier,
             expr,
+            body: Box::new(body),
+            span: Span::new(start, self.current_token().span.end),
+            loc,
+        }))
+    }
+
+    pub fn parse_while_loop(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume while token
+        self.expect_current(TokenKind::LeftParen)?;
+        let condition = self.parse_expression(Precedence::Lowest)?.0;
+        self.next_token();
+        self.expect_current(TokenKind::RightParen)?;
+
+        let body = self.parse_block_statement()?;
+
+        Ok(Statement::While(While {
+            condition,
             body: Box::new(body),
             span: Span::new(start, self.current_token().span.end),
             loc,
