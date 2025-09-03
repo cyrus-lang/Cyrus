@@ -1,6 +1,7 @@
 import std::libc{printf};
 
-
 func main() {
-	printf("Hello, Cyrus!\n");
+	#i: int = 10;
+	i++;
+	printf("value: %d\n", i);
 }

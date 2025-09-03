@@ -1408,7 +1408,8 @@ impl<'a> AnalysisContext<'a> {
                                 scope_id_opt,
                                 &mut resolved_var.typed_variable.rhs.unwrap(),
                                 expected_type.clone(),
-                            ).unwrap()
+                            )
+                            .unwrap()
                         })
                         .get_const_inner()
                         .clone();
@@ -2148,6 +2149,20 @@ impl<'a> AnalysisContext<'a> {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
+
+        if operand_type.is_const() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::CannotAssignToConstLValue,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    unary_expr.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        }
 
         if !self.is_integer_type(operand_type.get_const_inner().clone()) {
             let operand_type = format_concrete_type(operand_type, &formatter_closure);
