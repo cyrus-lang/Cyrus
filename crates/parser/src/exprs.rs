@@ -170,7 +170,7 @@ impl Parser {
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
             TokenKind::SizeOf => {
                 let start = self.current_token().span.start;
-                let loc= self.current_token().loc;
+                let loc = self.current_token().loc;
 
                 self.next_token();
                 self.expect_current(TokenKind::LeftParen)?;
@@ -183,9 +183,7 @@ impl Parser {
                     span: Span::new(start, self.current_token().span.end),
                 })
             }
-            token_kind @ TokenKind::Minus
-            | token_kind @ TokenKind::Bang
-            | token_kind @ TokenKind::Tilde => {
+            token_kind @ TokenKind::Minus | token_kind @ TokenKind::Bang | token_kind @ TokenKind::Tilde => {
                 let start = self.current_token().span.start;
                 let prefix_operator = match token_kind {
                     TokenKind::Minus => PrefixOperator::Minus,
@@ -792,6 +790,19 @@ impl Parser {
     pub fn parse_array(&mut self, data_type: TypeSpecifier) -> Result<Expression, ParserError> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
+
+        if !matches!(data_type, TypeSpecifier::Array(..)) {
+            return Err(Diag {
+                kind: ParserDiagKind::NonArrayDataTypeForArrayConstruction,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(
+                    self.file_name.clone(),
+                    loc.clone(),
+                    self.current_token().span.end,
+                )),
+                hint: None,
+            });
+        }
 
         if !self.current_token_is(TokenKind::LeftBrace) {
             return Err(Diag {

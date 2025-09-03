@@ -291,6 +291,23 @@ impl Resolver {
             {
                 let mut global_symbols = self.global_symbols.lock().unwrap();
                 let symbol_table = global_symbols.get_mut(&parent_module_id).unwrap();
+
+                if symbol_table.names.contains_key(&single_name) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: ResolverDiagKind::DuplicateSymbol {
+                            symbol_name: single_name,
+                        },
+                        location: Some(DiagLoc::new(
+                            self.get_module_file_path(parent_module_id).unwrap(),
+                            loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    continue;
+                }
+
                 symbol_table.names.insert(single_name.clone(), symbol_id);
                 symbol_table
                     .locs
@@ -302,8 +319,6 @@ impl Resolver {
                 drop(global_symbols);
 
                 self.check_import_single_vis(single_name, vis, loc.clone());
-
-                // FIXME Duplicate check not works with import singles
             }
         }
     }
@@ -2351,13 +2366,6 @@ impl Resolver {
                         Some(concrete_type) => concrete_type,
                         None => return None,
                     };
-                    
-                // arr.
-                // let array_type = ConcreteType::Array(TypedArrayType {
-                //     element_type: Box::new(element_type),
-                //     capacity: todo!(),
-                //     loc: arr.loc.clone(),
-                // });
 
                 let mut typed_elements: Vec<TypedExpression> = Vec::new();
 
