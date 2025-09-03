@@ -1,22 +1,6 @@
-import std::libc;
-import std::slices{Slice};
+import std::libc{printf};
+
 
 func main() {
-	#arr = int32[3] {3, 6, 9};
-
-	#slice = Slice {
-		data: &arr,
-		length: sizeof(arr) / sizeof(arr[0]),
-		element_size: sizeof(arr[0])
-	};
-	
- 	libc::printf("length: %d\n", slice.length);
- 	libc::printf("element_size: %d\n", slice.length);
-
- 	libc::printf("---------------\n");
- 	
-	for (#i: size_t = 0; i < slice.length; i++) {
-		#value: int* = typecast(int*, slice.index(i));
-		libc::printf("value: %d\n", *value);
-	}
+	printf("Hello, Cyrus!\n");
 }
