@@ -1,37 +1,46 @@
-public type CInt = int32;
-public type CUInt = uint32;
-public type CInt8T = int8;
-public type CInt16T = int16;
-public type CInt32T = int32;
-public type CInt64T = int64;
-public type CInt128T = int128;
-public type CUInt8T = uint8;
-public type CUInt16T = uint16;
-public type CUInt32T = uint32;
-public type CUInt64T = uint64;
-public type CUInt128T= uint128;
-public type CSignedChar = int8;
-public type CUnsignedChar = uint8;
-public type CChar = char;  
-public type CShort = int16;
-public type CUnsignedShort = uint16;
-public type CUnsignedInt = uint32;
-public type CLong = int;
-public type CUnsignedLong = uint;
-public type CLongLong = int64;
-public type CUnsignedLongLong = uint64;
-public type CBool = bool;
-public type CVoid = void;
-public type CSizeT = size_t;
-public type CPtrDiffT = size_t;  
-public type CIntPtrT = intptr;
-public type CUIntPtrT = uintptr;
-public type CFloat = float32;
-public type CDouble = float64;
-public type CLongDouble = float128;
-public type CWchar = int32;  
-public type CWint = int32;   
-public type CChar16 = uint16;  
-public type CChar32 = uint32;  
-public type CSigAtomicT = int32;
-public type CFile = void*;
+public type c_int = int32;
+public type c_uint = uint32;
+
+public type c_int8_t = int8;
+public type c_int16_t = int16;
+public type c_int32_t = int32;
+public type c_int64_t = int64;
+public type c_int128_t = int128;
+
+public type c_uint8_t = uint8;
+public type c_uint16_t = uint16;
+public type c_uint32_t = uint32;
+public type c_uint64_t = uint64;
+public type c_uint128_t = uint128;
+
+public type c_signed_char = int8;
+public type c_unsigned_char = uint8;
+public type c_char = char;
+
+public type c_short = int16;
+public type c_unsigned_short = uint16;
+public type c_unsigned_int = uint32;
+public type c_long = int;
+public type c_unsigned_long = uint;
+public type c_long_long = int64;
+public type c_unsigned_long_long = uint64;
+
+public type c_bool = bool;
+public type c_void = void;
+public type c_size_t = size_t;
+public type c_ptrdiff_t = size_t;
+
+public type c_intptr_t = intptr;
+public type c_uintptr_t = uintptr;
+
+public type c_float = float32;
+public type c_double = float64;
+public type c_long_double = float128;
+
+public type c_wchar = int32;
+public type c_wint = int32;
+public type c_char16 = uint16;
+public type c_char32 = uint32;
+
+public type c_sig_atomic_t = int32;
+public type c_file = void*;
