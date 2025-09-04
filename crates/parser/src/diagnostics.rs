@@ -20,6 +20,7 @@ pub enum ParserDiagKind {
     SeveralSelfModifierDefinition,
     InvalidPrefixOperator(TokenKind),
     InvalidInfixOperator(TokenKind),
+    InvalidAssignOperator(TokenKind),
     NonArrayDataTypeForArrayConstruction,
 }
 
@@ -69,6 +70,9 @@ impl fmt::Display for ParserDiagKind {
             }
             ParserDiagKind::InvalidPrefixOperator(token_kind) => {
                 write!(f, "Invalid prefix operator '{}'.", token_kind)
+            }
+            ParserDiagKind::InvalidAssignOperator(token_kind) => {
+                write!(f, "Invalid assign operator '{}'.", token_kind)
             }
             ParserDiagKind::NonArrayDataTypeForArrayConstruction => {
                 write!(f, "Cannot use non-array type for array construction.")

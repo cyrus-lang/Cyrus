@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol_type};
 use ast::{
-    LiteralKind, SelfModifierKind,
+    AssignmentKind, LiteralKind, SelfModifierKind,
     operators::{InfixOperator, PrefixOperator},
     token::{Location, TokenKind},
 };
@@ -400,6 +400,16 @@ impl<'a> AnalysisContext<'a> {
         typed_expr: &mut TypedExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
+        // lowering
+        match &mut typed_expr.kind {
+            TypedExpressionKind::Assignment(typed_assignment) => {
+                if typed_assignment.kind != AssignmentKind::Default {
+                    typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
+                }
+            }
+            _ => {}
+        }
+
         let concrete_type = match &mut typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => {
                 let local_scope_ref_opt = {

@@ -645,8 +645,42 @@ pub struct Variable {
 pub struct Assignment {
     pub lhs: Expression,
     pub rhs: Expression,
+    pub kind: AssignmentKind,
     pub span: Span,
     pub loc: Location,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssignmentKind {
+    Default,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    BitwiseAndAssign,
+    BitwiseXorAssign,
+    BitwiseAndNotAssign,
+    LeftShiftAssign,
+    RightShiftAssign,
+}
+
+impl AssignmentKind {
+    pub fn to_infix_operator(&self) -> InfixOperator {
+        match self {
+            AssignmentKind::Default => unreachable!(),
+            AssignmentKind::AddAssign => InfixOperator::Add,
+            AssignmentKind::SubAssign => InfixOperator::Sub,
+            AssignmentKind::MulAssign => InfixOperator::Mul,
+            AssignmentKind::DivAssign => InfixOperator::Div,
+            AssignmentKind::ModAssign => InfixOperator::Rem,
+            AssignmentKind::BitwiseAndAssign => InfixOperator::BitwiseAnd,
+            AssignmentKind::BitwiseXorAssign => InfixOperator::BitwiseXor,
+            AssignmentKind::BitwiseAndNotAssign => InfixOperator::BitwiseAndNot,
+            AssignmentKind::LeftShiftAssign => InfixOperator::ShiftLeft,
+            AssignmentKind::RightShiftAssign => InfixOperator::ShiftRight,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
