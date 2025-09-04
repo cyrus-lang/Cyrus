@@ -838,7 +838,7 @@ impl Lexer {
         match ident.as_str() {
             "interface" => TokenKind::Interface,
             "type" => TokenKind::Typedef,
-            "typecast" => TokenKind::Typecast,
+            "cast" => TokenKind::Typecast,
             "func" => TokenKind::Function,
             "switch" => TokenKind::Switch,
             "case" => TokenKind::Case,

@@ -1151,7 +1151,7 @@ impl<'a> AnalysisContext<'a> {
                     dereference.loc.clone(),
                     0,
                 )),
-                hint: Some("Typecast 'void*' to a concrete pointer type before dereferencing it.".to_string()),
+                hint: Some("Cast 'void*' to a concrete pointer type before dereferencing it.".to_string()),
             });
             return None;
         }

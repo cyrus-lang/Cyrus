@@ -1,14 +1,17 @@
-import std::libc{printf};
+extern func printf(format: const char*, ...) int32;
 
 func main() {
-	#i = 0;
+	#i: float64 = 3.15;
 
-	while (true) {
-		printf("v: %d\n", i);
-		i++;
-
-		if (i == 10) {
+	switch (i) {
+		case 3.14:
+			printf("AAAA\n");
 			break;
-		}
+		case 3.15:
+			printf("BBBB\n");
+			break;
+		default:
+			printf("default\n");
+			break;
 	}
 }
