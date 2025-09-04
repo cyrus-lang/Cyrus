@@ -28,7 +28,7 @@ impl Parser {
 
         if self.peek_token_is(TokenKind::Assign) {
             self.next_token();
-            let expr = self.parse_assignment(left, left_start)?;
+            let expr = self.parse_assignment(left, AssignmentKind::Default, left_start)?;
             return Ok((expr, Span::new(left_start, self.current_token().span.end)));
         }
 
@@ -286,6 +286,11 @@ impl Parser {
             | TokenKind::Identifier { .. } => {
                 self.next_token(); // consume left expression
                 let op_token = self.current_token().kind;
+                if self.peek_token_is(TokenKind::Assign) {
+                    self.next_token();
+                    let kind = self.parse_assignment_kind(op_token, loc).ok()?;
+                    return Some(self.parse_assignment(left, kind, left_start));
+                }
                 let precedence = token_precedence_of(op_token.clone());
                 self.next_token(); // consume the operator
 
@@ -742,7 +747,43 @@ impl Parser {
         }));
     }
 
-    pub fn parse_assignment(&mut self, lhs: Expression, start: usize) -> Result<Expression, ParserError> {
+    pub fn parse_assignment_kind(
+        &mut self,
+        token_kind: TokenKind,
+        loc: Location,
+    ) -> Result<AssignmentKind, ParserError> {
+        match token_kind {
+            TokenKind::Plus => Ok(AssignmentKind::AddAssign),
+            TokenKind::Minus => Ok(AssignmentKind::SubAssign),
+            TokenKind::Asterisk => Ok(AssignmentKind::MulAssign),
+            TokenKind::Slash => Ok(AssignmentKind::DivAssign),
+            TokenKind::Percent => Ok(AssignmentKind::ModAssign),
+            TokenKind::Ampersand => Ok(AssignmentKind::BitwiseAndAssign),
+            TokenKind::Tilde => Ok(AssignmentKind::BitwiseXorAssign),
+            TokenKind::AmpTilde => Ok(AssignmentKind::BitwiseAndNotAssign),
+            TokenKind::ShiftLeft => Ok(AssignmentKind::LeftShiftAssign),
+            TokenKind::ShiftRight => Ok(AssignmentKind::RightShiftAssign),
+            _ => {
+                return Err(Diag {
+                    kind: ParserDiagKind::InvalidAssignOperator(token_kind),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(
+                        self.file_name.clone(),
+                        loc.clone(),
+                        self.current_token().span.end,
+                    )),
+                    hint: None,
+                });
+            }
+        }
+    }
+
+    pub fn parse_assignment(
+        &mut self,
+        lhs: Expression,
+        kind: AssignmentKind,
+        start: usize,
+    ) -> Result<Expression, ParserError> {
         let loc = self.current_token().loc.clone();
 
         self.expect_current(TokenKind::Assign)?;
@@ -751,6 +792,7 @@ impl Parser {
         Ok(Expression::Assignment(Box::new(Assignment {
             lhs,
             rhs,
+            kind,
             span: Span { start, end },
             loc,
         })))

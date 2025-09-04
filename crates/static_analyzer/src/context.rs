@@ -1,5 +1,5 @@
 use crate::{diagnostics::AnalyzerDiagKind, type_cache::TypeResolverCaches};
-use ast::{SelfModifierKind, token::Location};
+use ast::{AssignmentKind, SelfModifierKind, token::Location};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
@@ -308,8 +308,10 @@ impl<'a> AnalysisContext<'a> {
                             operand_concrete_type.clone(),
                             typed_switch.loc.clone(),
                         ) {
-                            let operand_type =
-                                format_concrete_type(operand_concrete_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                            let operand_type = format_concrete_type(
+                                operand_concrete_type.clone(),
+                                &(self.symbol_formatter)(scope_id_opt),
+                            );
                             let pattern_type =
                                 format_concrete_type(pattern_concrete_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -1195,19 +1197,38 @@ impl<'a> AnalysisContext<'a> {
         drop(local_scope);
     }
 
-    pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, typed_assignment: &mut TypedAssignment) {
+    pub(crate) fn lower_assign_to_infix_expr(&self, assign: &mut TypedAssignment) -> TypedExpressionKind {
+        let infix_expr = TypedExpressionKind::Infix(TypedInfixExpression {
+            op: assign.kind.to_infix_operator(),
+            lhs: assign.lhs.clone(),
+            rhs: assign.rhs.clone(),
+            loc: assign.loc.clone(),
+        });
+
+        TypedExpressionKind::Assignment(TypedAssignment {
+            lhs: assign.lhs.clone(),
+            rhs: Box::new(TypedExpression {
+                kind: infix_expr,
+                concrete_type: None,
+                loc: assign.loc.clone(),
+            }),
+            kind: AssignmentKind::Default,
+            loc: assign.loc.clone(),
+        })
+    }
+
+    pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignment) {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.lhs, None) {
+        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.lhs, None) {
             Some(concrete_type) => concrete_type,
             None => return,
         };
 
-        let rhs_type =
-            match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.rhs, Some(lhs_type.clone())) {
-                Some(concrete_type) => concrete_type,
-                None => return,
-            };
+        let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.rhs, Some(lhs_type.clone())) {
+            Some(concrete_type) => concrete_type,
+            None => return,
+        };
 
         if lhs_type.is_const() {
             self.reporter.report(Diag {
@@ -1215,7 +1236,7 @@ impl<'a> AnalysisContext<'a> {
                 kind: AnalyzerDiagKind::CannotAssignToConstLValue,
                 location: Some(DiagLoc::new(
                     self.resolver.get_current_module_file_path(),
-                    typed_assignment.loc.clone(),
+                    assign.loc.clone(),
                     0,
                 )),
                 hint: None,
@@ -1223,25 +1244,29 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
-        if !self.check_type_mismatch(
-            scope_id_opt,
-            rhs_type.clone(),
-            lhs_type.clone(),
-            typed_assignment.loc.clone(),
-        ) {
-            let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-            let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
+        if assign.kind == AssignmentKind::Default {
+            if !self.check_type_mismatch(
+                scope_id_opt,
+                rhs_type.clone(),
+                lhs_type.clone(),
+                assign.loc.clone(),
+            ) {
+                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
+                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
-                location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
-                    typed_assignment.loc.clone(),
-                    0,
-                )),
-                hint: None,
-            });
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        assign.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+            }
+        } else {
+            unreachable!()
         }
     }
 }

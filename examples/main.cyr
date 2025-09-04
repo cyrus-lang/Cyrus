@@ -1,5 +1,8 @@
 extern func printf(format: const char*, ...) int32;
 
 func main() {
+	#a = 0;
+	a -= 1;
 
+	printf("v: %d\n", a);
 }
