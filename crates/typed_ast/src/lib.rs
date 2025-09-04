@@ -69,6 +69,20 @@ pub struct TypedLiteral {
     pub loc: Location,
 }
 
+impl TypedLiteral {
+    pub fn format_kind(&self) -> String {
+        match &self.kind {
+            LiteralKind::Integer(..) => "integer",
+            LiteralKind::Float(..) => "float",
+            LiteralKind::String(..) => "string",
+            LiteralKind::Bool(..) => "bool",
+            LiteralKind::Char(..) => "char",
+            LiteralKind::Null => "null",
+        }
+        .to_string()
+    }
+}
+
 impl TypedExpressionKind {
     pub fn is_comptime_valid(&self) -> bool {
         match self {

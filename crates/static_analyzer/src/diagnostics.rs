@@ -2,6 +2,10 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    TypeMismatchLiteral {
+        literal_type: String,
+        expected_type: String,
+    },
     ObjectNotSupportsMethods,
     ObjectNotSupportsFields,
     InvalidFatArrow,
@@ -159,6 +163,16 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::TypeMismatchLiteral {
+                literal_type,
+                expected_type,
+            } => {
+                write!(
+                    f,
+                    "Literal of type {} is not assignable to expected type '{}'.",
+                    literal_type, expected_type
+                )
+            }
             AnalyzerDiagKind::TypeMismatchInCasePattern {
                 operand_type,
                 pattern_type,
