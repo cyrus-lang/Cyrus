@@ -248,12 +248,12 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         match &typed_literal.kind {
             LiteralKind::Integer(_, suffix_opt) => {
-                let inferred = self.infer_integer_type(typed_literal, suffix_opt, expected_type);
+                let inferred = self.infer_integer_type(typed_literal, suffix_opt, expected_type.clone());
                 typed_literal.ty = Some(inferred.clone());
                 Some(inferred)
             }
             LiteralKind::Float(_, suffix_opt) => {
-                let inferred = self.infer_float_type(typed_literal, suffix_opt, expected_type);
+                let inferred = self.infer_float_type(typed_literal, suffix_opt, expected_type.clone());
                 typed_literal.ty = Some(inferred.clone());
                 Some(inferred)
             }
@@ -295,7 +295,11 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if let Some(ctx_ty) = expected {
-            ctx_ty
+            if self.is_integer_type(ctx_ty.clone()) {
+                ctx_ty
+            } else {
+                ConcreteType::BasicType(BasicConcreteType::Int) // keep a safe default
+            }
         } else {
             ConcreteType::BasicType(BasicConcreteType::Int)
         }
@@ -316,7 +320,11 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if let Some(ctx_ty) = expected {
-            ctx_ty
+            if self.is_float_type(ctx_ty.clone()) {
+                ctx_ty
+            } else {
+                ConcreteType::BasicType(BasicConcreteType::Float64) // keep a safe default
+            }
         } else {
             ConcreteType::BasicType(BasicConcreteType::Float64)
         }

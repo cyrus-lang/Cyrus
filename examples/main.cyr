@@ -1,17 +1,5 @@
 extern func printf(format: const char*, ...) int32;
 
 func main() {
-	#i: float64 = 3.15;
 
-	switch (i) {
-		case 3.14:
-			printf("AAAA\n");
-			break;
-		case 3.15:
-			printf("BBBB\n");
-			break;
-		default:
-			printf("default\n");
-			break;
-	}
 }
