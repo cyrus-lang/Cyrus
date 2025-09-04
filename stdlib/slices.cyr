@@ -4,9 +4,9 @@ public struct Slice {
 	public element_size: size_t;
 
 	public inline func index(self, idx: size_t) void* {
-		#base = typecast(uintptr, self.data);
-		#offset = typecast(uintptr, idx * self.element_size);
+		#base = cast(uintptr, self.data);
+		#offset = cast(uintptr, idx * self.element_size);
 		#result = base + offset;
-		return typecast(void*, result);
+		return cast(void*, result);
 	}
 }

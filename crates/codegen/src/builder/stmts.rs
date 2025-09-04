@@ -1,10 +1,14 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
-use crate::builder::module::{LoopBlockRefs, TerminatedBlockMetadata};
+use crate::builder::{
+    module::{LoopBlockRefs, SwitchBlockRefs, TerminatedBlockMetadata},
+    values::InternalValue,
+};
+use ast::{LiteralKind, token::Location};
 use inkwell::{
     basic_block::BasicBlock,
     module::Linkage,
     types::{BasicTypeEnum, StructType},
-    values::FunctionValue,
+    values::{BasicValueEnum, FunctionValue, IntValue},
 };
 use resolver::{
     declsign::{FuncSig, StructSig},
@@ -12,8 +16,9 @@ use resolver::{
 };
 use std::collections::HashMap;
 use typed_ast::{
-    ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedFor,
-    TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct, TypedWhile,
+    ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedExpressionKind, TypedFor,
+    TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct, TypedSwitch, TypedSwitchCasePattern,
+    TypedWhile,
 };
 
 /// A macro to build the LLVM IR for a loop structure.
@@ -317,7 +322,7 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::Return(typed_return) => self.build_return(local_scope_opt.clone(), typed_return),
                 TypedStatement::Break(typed_break) => self.build_break(typed_break),
                 TypedStatement::Continue(typed_continue) => self.build_continue(typed_continue),
-                TypedStatement::Switch(_typed_switch) => todo!(),
+                TypedStatement::Switch(typed_switch) => self.build_switch(local_scope_opt.clone(), typed_switch),
                 TypedStatement::Struct(typed_struct) => {
                     self.build_local_struct_def(typed_struct);
                 }
@@ -341,6 +346,354 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::GlobalVariable(_) => unreachable!(),
             }
         }
+    }
+
+    // Analyze switch to determine it must be compiled as traditional-switch or smart-switch.
+    fn detect_smart_switch(&self, switch: &TypedSwitch) -> bool {
+        for case in &switch.cases {
+            if case.patterns.len() > 1 {
+                return true;
+            }
+
+            for pattern in &case.patterns {
+                match pattern {
+                    TypedSwitchCasePattern::Expression(typed_expr) => match &typed_expr.kind {
+                        TypedExpressionKind::Literal(typed_literal) => match &typed_literal.kind {
+                            LiteralKind::Integer(..) | LiteralKind::Bool(..) | LiteralKind::Char(..) => continue,
+                            LiteralKind::Float(..) | LiteralKind::String(..) | LiteralKind::Null => return true,
+                        },
+                        _ => return true,
+                    },
+                    TypedSwitchCasePattern::Identifier(..) => return true,
+                    TypedSwitchCasePattern::EnumVariant(..) => return true,
+                }
+            }
+        }
+
+        false
+    }
+
+    fn build_switch(&mut self, local_scope_opt: Option<LocalScopeRef>, switch: &TypedSwitch) {
+        let smart_switch = self.detect_smart_switch(switch);
+
+        let lvalue = self.build_expr(local_scope_opt.clone(), &switch.operand);
+        let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+
+        // TODO build_enum_pattern_matching
+
+        let mut case_list: SwitchCaseList<'a> = Vec::new();
+        let mut block_id = 0;
+
+        // Temporarily remove reference to the loop-blocks. It's state must be returned after building the switch statement.
+        let current_loop_ref_copy: Option<LoopBlockRefs<'a>> = self.blockreg.current_loop_ref.clone();
+        self.blockreg.current_loop_ref = None;
+
+        for case in &switch.cases {
+            for pattern in &case.patterns {
+                let case_pattern_expr = match pattern {
+                    TypedSwitchCasePattern::Expression(typed_expr) => typed_expr,
+                    _ => unreachable!(),
+                };
+
+                let case_lvalue = self.build_expr(local_scope_opt.clone(), case_pattern_expr);
+                let case_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), case_lvalue);
+
+                case_list.push(SwitchCaseItem {
+                    block_id,
+                    value: case_rvalue,
+                    body: case.body.clone(),
+                    loc: case.loc.clone(),
+                });
+
+                if !case.body.exprs.is_empty() {
+                    block_id += 1;
+                }
+            }
+        }
+
+        if smart_switch {
+            self.build_smart_switch(
+                local_scope_opt.clone().unwrap(),
+                &rvalue,
+                &case_list,
+                &switch.default_case,
+                switch.loc.clone(),
+            );
+        } else {
+            self.build_traditional_switch(&rvalue, &case_list, &switch.default_case);
+        }
+
+        self.blockreg.current_loop_ref = current_loop_ref_copy;
+    }
+
+    fn build_traditional_switch(
+        &mut self,
+        operand: &InternalValue<'a>,
+        case_list: &SwitchCaseList<'a>,
+        default_case: &Option<TypedBlockStatement>,
+    ) {
+        let current_func = self.blockreg.current_func_ref.unwrap();
+
+        let parent_switch_copy = self.blockreg.current_switch.clone();
+        let parent_block = self.blockreg.current_block_ref.clone().unwrap();
+
+        let exit_block = self.llvmctx.append_basic_block(current_func, "switch.exit");
+
+        let target_block = if let Some(block_statement) = default_case.clone() {
+            let default_block = self.llvmctx.append_basic_block(current_func, "switch.default");
+            self.blockreg.current_block_ref = Some(default_block.clone());
+            self.llvmbuilder.position_at_end(default_block);
+            self.blockreg.current_switch = Some(SwitchBlockRefs { exit_block });
+            self.build_block_statement(&block_statement);
+            default_block
+        } else {
+            self.blockreg.current_switch = Some(SwitchBlockRefs { exit_block });
+            exit_block
+        };
+
+        let mut case_blocks: HashMap<u32, BasicBlock<'a>> = HashMap::new();
+        let max_block_id = case_list.iter().last().unwrap().block_id;
+
+        for block_id in 0..(max_block_id + 1) {
+            let case_block = self.llvmctx.append_basic_block(current_func, "switch.case");
+            case_blocks.insert(block_id, case_block);
+        }
+
+        for block_id in 0..(max_block_id + 1) {
+            let group = self.select_switch_grouped_cases(block_id, case_list.clone());
+            let group_body = &group.iter().last().unwrap().body;
+
+            let case_block = case_blocks.get(&block_id).unwrap();
+            self.llvmbuilder.position_at_end(*case_block);
+            self.blockreg.current_block_ref = Some(*case_block);
+            self.build_block_statement(group_body);
+
+            // Jump to the exit block if this is the last case, otherwise jump to the next case.
+            let current_block = self.blockreg.current_block_ref.clone().unwrap();
+            self.llvmbuilder.position_at_end(current_block);
+
+            if !self.is_block_terminated(current_block) {
+                match case_list.iter().find(|case| case.block_id == block_id + 1) {
+                    Some(next_case) => {
+                        self.mark_block_terminated(current_block);
+                        let next_case_block = case_blocks.get(&next_case.block_id).unwrap();
+                        self.llvmbuilder.build_unconditional_branch(*next_case_block).unwrap();
+                        self.llvmbuilder.position_at_end(*next_case_block);
+                    }
+                    None => {}
+                }
+            }
+        }
+
+        // Check if ending case doesn't have a terminator...
+        let current_block = self.blockreg.current_block_ref.clone().unwrap();
+        if !self.is_block_terminated(current_block) {
+            self.mark_block_terminated(current_block);
+            self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+            self.llvmbuilder.position_at_end(target_block);
+        }
+
+        let ir_cases: Vec<(IntValue<'a>, BasicBlock<'a>)> = case_list
+            .iter()
+            .map(|case| {
+                let basic_block = case_blocks.get(&case.block_id).cloned().unwrap();
+                (case.value.as_basic_value().into_int_value(), basic_block)
+            })
+            .collect();
+
+        self.llvmbuilder.position_at_end(parent_block);
+        self.llvmbuilder
+            .build_switch(operand.as_basic_value().into_int_value(), target_block, &ir_cases)
+            .unwrap();
+
+        if default_case.is_some() {
+            self.llvmbuilder.position_at_end(target_block);
+            if !self.is_block_terminated(target_block) {
+                self.llvmbuilder.position_at_end(target_block);
+                self.mark_block_terminated(target_block);
+                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            }
+        }
+
+        self.llvmbuilder.position_at_end(exit_block);
+        self.blockreg.current_block_ref = Some(exit_block);
+        self.blockreg.current_switch = parent_switch_copy;
+    }
+
+    fn build_smart_switch(
+        &mut self,
+        scope: LocalScopeRef,
+        operand: &InternalValue<'a>,
+        case_list: &SwitchCaseList<'a>,
+        default_case: &Option<TypedBlockStatement>,
+        switch_loc: Location,
+    ) {
+        let current_func = self.blockreg.current_func_ref.unwrap();
+
+        let parent_switch_copy = self.blockreg.current_switch.clone();
+        let parent_block = self.blockreg.current_block_ref.clone().unwrap();
+
+        let exit_block = self.llvmctx.append_basic_block(current_func, "smart_switch.exit");
+        let target_block = if let Some(block_statement) = default_case.clone() {
+            let default_block = self.llvmctx.append_basic_block(current_func, "smart_switch.default");
+            self.blockreg.current_block_ref = Some(default_block.clone());
+            self.llvmbuilder.position_at_end(default_block);
+            self.blockreg.current_switch = Some(SwitchBlockRefs { exit_block });
+            self.build_block_statement(&block_statement);
+            default_block
+        } else {
+            self.blockreg.current_switch = Some(SwitchBlockRefs { exit_block });
+            exit_block
+        };
+
+        let mut case_blocks: HashMap<u32, BasicBlock<'a>> = HashMap::new();
+        let max_block_id = case_list.iter().last().unwrap().block_id;
+
+        for block_id in 0..(max_block_id + 1) {
+            let case_block = self.llvmctx.append_basic_block(current_func, "smart_switch.case");
+            case_blocks.insert(block_id, case_block);
+        }
+
+        let mut starting_check_block: Option<BasicBlock<'a>> = None;
+        let mut groups: HashMap<
+            u32,
+            (
+                BasicBlock<'a>,                           // case_block
+                Vec<(InternalValue<'a>, BasicBlock<'a>)>, // cond, check_block
+            ),
+        > = HashMap::new();
+
+        for block_id in 0..(max_block_id + 1) {
+            let group = self.select_switch_grouped_cases(block_id, case_list.clone());
+            let group_body = &group.iter().last().unwrap().body;
+
+            // Build Case Block
+            let case_block = case_blocks.get(&block_id).unwrap();
+            self.llvmbuilder.position_at_end(*case_block);
+            self.blockreg.current_block_ref = Some(*case_block);
+            self.build_block_statement(&group_body);
+
+            let current_block = self.blockreg.current_block_ref.clone().unwrap();
+            if !self.is_block_terminated(current_block) {
+                match case_list.iter().find(|case| case.block_id == block_id + 1) {
+                    Some(next_case) => {
+                        self.llvmbuilder.position_at_end(current_block);
+                        self.mark_block_terminated(current_block);
+                        let next_case_block = case_blocks.get(&next_case.block_id).unwrap();
+                        self.llvmbuilder.build_unconditional_branch(*next_case_block).unwrap();
+                        self.llvmbuilder.position_at_end(*next_case_block);
+                    }
+                    None => {
+                        self.mark_block_terminated(current_block);
+                        self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+                        self.llvmbuilder.position_at_end(target_block);
+                    }
+                }
+            }
+
+            let current_group_check_blocks: Vec<(InternalValue<'a>, BasicBlock<'a>)> = group
+                .iter()
+                .map(|switch_case_item| {
+                    let case_group_check_block = self
+                        .llvmctx
+                        .append_basic_block(current_func, "smart_switch.group.check");
+
+                    (switch_case_item.value.clone(), case_group_check_block)
+                })
+                .collect();
+
+            if starting_check_block.is_none() {
+                starting_check_block = Some(current_group_check_blocks.first().unwrap().1.clone());
+            }
+
+            groups.insert(block_id, (case_block.clone(), current_group_check_blocks));
+        }
+
+        for (group_idx, (case_block, group_check_blocks)) in groups.iter() {
+            // Build Check Blocks
+            for idx in 0..group_check_blocks.len() {
+                let (internal_value, check_block) = group_check_blocks.get(idx).unwrap();
+
+                // Current group_check_blocks may not contain another check_block, Hence we gotta retrieve
+                // the next group and retrieve it's group_check_blocks and extract the next_check_block.
+                let next_check_block = match group_check_blocks.get(idx + 1) {
+                    Some((_, basic_block)) => basic_block.clone(),
+                    None => {
+                        // REVIEW Consider to move this part to the higher scope to prevent redundant lookup.
+                        let next_group_id = group_idx + 1;
+                        let basic_block = match groups.get(&next_group_id) {
+                            Some(next_group) => {
+                                let group_check_blocks = next_group.1.clone();
+                                match group_check_blocks.first() {
+                                    Some(first_check_block) => first_check_block.1,
+                                    None => target_block,
+                                }
+                            }
+                            None => target_block,
+                        };
+                        basic_block
+                    }
+                };
+
+                self.llvmbuilder.position_at_end(check_block.clone());
+                let condition_internal_value = self.build_cmp_eq(internal_value.clone(), operand.clone());
+                let condition_basic_value: BasicValueEnum<'a> = condition_internal_value.as_basic_value();
+
+                self.llvmbuilder
+                    .build_conditional_branch(
+                        condition_basic_value.into_int_value(),
+                        *case_block,
+                        next_check_block.clone(),
+                    )
+                    .unwrap();
+            }
+        }
+
+        // Check if ending case doesn't have a terminator...
+        let current_block = self.blockreg.current_block_ref.clone().unwrap();
+        if !self.is_block_terminated(current_block) {
+            self.mark_block_terminated(current_block);
+            self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+            self.llvmbuilder.position_at_end(target_block);
+        }
+
+        // Starting point of the switch statement which retrieves first check_case and it's condition,
+        // And builds the first comparison instruction and jumps to the linked blocks.
+        {
+            self.llvmbuilder.position_at_end(parent_block);
+
+            match starting_check_block {
+                Some(starting_check_block) => {
+                    self.llvmbuilder
+                        .build_unconditional_branch(starting_check_block)
+                        .unwrap();
+                }
+                None => {
+                    self.llvmbuilder.build_unconditional_branch(target_block).unwrap();
+                }
+            }
+        }
+
+        if default_case.is_some() {
+            self.llvmbuilder.position_at_end(target_block);
+            if !self.is_block_terminated(target_block) {
+                self.llvmbuilder.position_at_end(target_block);
+                self.mark_block_terminated(target_block);
+                self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+            }
+        }
+
+        self.llvmbuilder.position_at_end(exit_block);
+        self.blockreg.current_block_ref = Some(exit_block);
+        self.blockreg.current_switch = parent_switch_copy;
+    }
+
+    fn select_switch_grouped_cases(&self, block_id: u32, case_list: SwitchCaseList<'a>) -> SwitchCaseList<'a> {
+        case_list
+            .iter()
+            .filter(|case| case.block_id == block_id)
+            .cloned()
+            .collect()
     }
 
     fn build_return(&mut self, local_scope_opt: Option<LocalScopeRef>, return_stmt: &TypedReturn) {
@@ -569,3 +922,13 @@ impl<'a> CodeGenBuilder<'a> {
             .push(TerminatedBlockMetadata { basic_block });
     }
 }
+
+#[derive(Debug, Clone)]
+struct SwitchCaseItem<'a> {
+    block_id: u32,
+    value: InternalValue<'a>,
+    body: Box<TypedBlockStatement>,
+    loc: Location,
+}
+
+type SwitchCaseList<'a> = Vec<SwitchCaseItem<'a>>;

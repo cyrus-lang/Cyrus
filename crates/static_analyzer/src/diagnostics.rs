@@ -97,6 +97,10 @@ pub enum AnalyzerDiagKind {
         lhs_type: String,
         rhs_type: String,
     },
+    TypeMismatchInCasePattern {
+        operand_type: String,
+        pattern_type: String,
+    },
     PrefixMinusOnNonInteger {
         operand_type: String,
     },
@@ -155,6 +159,16 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::TypeMismatchInCasePattern {
+                operand_type,
+                pattern_type,
+            } => {
+                write!(
+                    f,
+                    "Case pattern with type '{}' is not compatible with switch operand of type '{}'.",
+                    pattern_type, operand_type
+                )
+            }
             AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
                 method_name,
                 instance_name,
