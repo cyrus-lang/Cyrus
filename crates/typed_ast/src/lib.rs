@@ -1,8 +1,6 @@
 use crate::types::{ConcreteType, TypedUnnamedStructType};
 use ast::{
-    AccessSpecifier, Identifier, LiteralKind, SelfModifierKind,
-    operators::{InfixOperator, PrefixOperator, UnaryOperator},
-    token::Location,
+    operators::{InfixOperator, PrefixOperator, UnaryOperator}, token::Location, AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind
 };
 use std::collections::HashMap;
 
@@ -177,6 +175,7 @@ pub struct TypedInfixExpression {
 pub struct TypedAssignment {
     pub lhs: Box<TypedExpression>,
     pub rhs: Box<TypedExpression>,
+    pub kind: AssignmentKind,
     pub loc: Location,
 }
 

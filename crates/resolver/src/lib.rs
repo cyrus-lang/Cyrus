@@ -2489,6 +2489,7 @@ impl Resolver {
                     kind: TypedExpressionKind::Assignment(TypedAssignment {
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
+                        kind: assignment.kind.clone(),
                         loc: assignment.loc.clone(),
                     }),
                     concrete_type: None,
