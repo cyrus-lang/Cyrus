@@ -1286,34 +1286,46 @@ impl Parser {
                 let case_start = self.current_token().span.start;
                 self.next_token();
 
-                let case_pattern = if self.current_token_is(TokenKind::Dot) {
-                    self.next_token();
-                    let identifier = self.parse_identifier()?;
-                    self.next_token();
+                let mut patterns: Vec<SwitchCasePattern> = Vec::new();
 
-                    if self.current_token_is(TokenKind::LeftParen) {
-                        self.next_token();
-                        let mut items: Vec<Identifier> = Vec::new();
-                        loop {
-                            let item = self.parse_identifier()?;
-                            self.next_token();
-                            items.push(item);
-                            if self.current_token_is(TokenKind::RightParen) {
-                                break;
-                            } else {
-                                self.expect_current(TokenKind::Comma)?;
+                fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, ParserError> {
+                    let case_pattern = if this.current_token_is(TokenKind::Dot) {
+                        this.next_token();
+                        let identifier = this.parse_identifier()?;
+                        this.next_token();
+
+                        if this.current_token_is(TokenKind::LeftParen) {
+                            this.next_token();
+                            let mut items: Vec<Identifier> = Vec::new();
+                            loop {
+                                let item = this.parse_identifier()?;
+                                this.next_token();
+                                items.push(item);
+                                if this.current_token_is(TokenKind::RightParen) {
+                                    break;
+                                } else {
+                                    this.expect_current(TokenKind::Comma)?;
+                                }
                             }
+                            this.expect_current(TokenKind::RightParen)?;
+                            SwitchCasePattern::EnumVariant(identifier, items)
+                        } else {
+                            SwitchCasePattern::Identifier(identifier)
                         }
-                        self.expect_current(TokenKind::RightParen)?;
-                        SwitchCasePattern::EnumVariant(identifier, items)
                     } else {
-                        SwitchCasePattern::Identifier(identifier)
-                    }
-                } else {
-                    let expr = self.parse_expression(Precedence::Lowest)?.0;
+                        let expr = this.parse_expression(Precedence::Lowest)?.0;
+                        this.next_token();
+                        SwitchCasePattern::Expression(expr)
+                    };
+                    Ok(case_pattern)
+                }
+
+                patterns.push(parse_pattern(self)?);
+
+                while self.current_token_is(TokenKind::Comma) {
                     self.next_token();
-                    SwitchCasePattern::Expression(expr)
-                };
+                    patterns.push(parse_pattern(self)?);
+                }
 
                 self.expect_current(TokenKind::Colon)?;
                 let case_body;
@@ -1329,7 +1341,7 @@ impl Parser {
                 }
 
                 cases.push(SwitchCase {
-                    pattern: case_pattern,
+                    patterns,
                     body: case_body,
                     span: Span::new(case_start, self.current_token().span.end),
                     loc: case_loc,

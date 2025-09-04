@@ -770,7 +770,11 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    fn build_cmp_eq(&self, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
+    pub(crate) fn build_cmp_eq(
+        &self,
+        lhs_rvalue: InternalValue<'a>,
+        rhs_rvalue: InternalValue<'a>,
+    ) -> InternalValue<'a> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let cmp = self

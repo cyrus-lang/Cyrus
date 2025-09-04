@@ -547,7 +547,7 @@ pub struct Switch {
 
 #[derive(Debug, Clone)]
 pub struct SwitchCase {
-    pub pattern: SwitchCasePattern,
+    pub patterns: Vec<SwitchCasePattern>,
     pub body: BlockStatement,
     pub span: Span,
     pub loc: Location,

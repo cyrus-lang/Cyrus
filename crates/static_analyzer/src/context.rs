@@ -195,11 +195,9 @@ impl<'a> AnalysisContext<'a> {
                     self.analyze_continue(typed_continue);
                     FlowState::Unreachable
                 }
-                TypedStatement::For(typed_for) => self.analyze_for_loop(Some(typed_for.body.scope_id), typed_for),
-                TypedStatement::While(typed_while) => {
-                    self.analyze_while_loop(Some(typed_while.body.scope_id), typed_while)
-                }
-                TypedStatement::Switch(..) => todo!(),
+                TypedStatement::For(typed_for) => self.analyze_for_loop(Some(block_stmt.scope_id), typed_for),
+                TypedStatement::While(typed_while) => self.analyze_while_loop(Some(block_stmt.scope_id), typed_while),
+                TypedStatement::Switch(typed_switch) => self.analyze_switch(Some(block_stmt.scope_id), typed_switch),
                 TypedStatement::Struct(typed_struct) => {
                     self.analyze_struct(typed_struct, true);
                     FlowState::Reachable
@@ -285,6 +283,62 @@ impl<'a> AnalysisContext<'a> {
             (FlowState::Unreachable, FlowState::Unreachable) => FlowState::Unreachable,
             _ => FlowState::Reachable,
         }
+    }
+
+    fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
+        self.control_stack.push(ControlContext::Switch(typed_switch.clone()));
+
+        let operand_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_switch.operand, None) {
+            Some(concrete_type) => concrete_type,
+            None => return FlowState::Reachable,
+        };
+
+        for case in &mut typed_switch.cases {
+            for pattern in &mut case.patterns {
+                match pattern {
+                    TypedSwitchCasePattern::Expression(typed_expr) => {
+                        let pattern_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
+                            Some(concrete_type) => concrete_type,
+                            None => continue,
+                        };
+
+                        if !self.check_type_mismatch(
+                            scope_id_opt,
+                            pattern_concrete_type.clone(),
+                            operand_concrete_type.clone(),
+                            typed_switch.loc.clone(),
+                        ) {
+                            let operand_type =
+                                format_concrete_type(operand_concrete_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                            let pattern_type =
+                                format_concrete_type(pattern_concrete_type, &(self.symbol_formatter)(scope_id_opt));
+
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: AnalyzerDiagKind::TypeMismatchInCasePattern {
+                                    operand_type,
+                                    pattern_type,
+                                },
+                                location: Some(DiagLoc::new(
+                                    self.resolver.get_current_module_file_path(),
+                                    case.loc.clone(),
+                                    0,
+                                )),
+                                hint: None,
+                            });
+                            continue;
+                        }
+                    }
+                    TypedSwitchCasePattern::Identifier(_) => todo!(),
+                    TypedSwitchCasePattern::EnumVariant(_, _items) => todo!(),
+                }
+            }
+
+            self.analyze_block_statement(&mut case.body);
+        }
+
+        self.control_stack.pop();
+        FlowState::Reachable
     }
 
     fn analyze_if_stmt(
