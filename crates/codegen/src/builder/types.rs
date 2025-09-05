@@ -8,7 +8,7 @@ use inkwell::{
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
     values::{AnyValue, AnyValueEnum},
 };
-use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind};
+use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntryKind};
 use typed_ast::{
     SymbolID,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType},
@@ -23,21 +23,54 @@ impl<'a> CodeGenBuilder<'a> {
         let basic_value = internal_value.as_basic_value();
 
         match target_type {
-            AnyTypeEnum::IntType(int_type) => AnyValueEnum::IntValue(
-                self.llvmbuilder
-                    .build_int_cast(basic_value.into_int_value(), int_type, "cast")
-                    .unwrap(),
-            ),
+            AnyTypeEnum::IntType(int_type) => {
+                let val = basic_value;
+                if val.is_int_value() {
+                    // int -> int
+                    AnyValueEnum::IntValue(
+                        self.llvmbuilder
+                            .build_int_cast(val.into_int_value(), int_type, "cast")
+                            .unwrap(),
+                    )
+                } else if val.is_pointer_value() {
+                    // ptr -> int
+                    AnyValueEnum::IntValue(
+                        self.llvmbuilder
+                            .build_ptr_to_int(val.into_pointer_value(), int_type, "ptr_to_int")
+                            .unwrap(),
+                    )
+                } else {
+                    panic!("Invalid cast to int");
+                }
+            }
+
             AnyTypeEnum::FloatType(float_type) => AnyValueEnum::FloatValue(
                 self.llvmbuilder
                     .build_float_cast(basic_value.into_float_value(), float_type, "cast")
                     .unwrap(),
             ),
-            AnyTypeEnum::PointerType(ptr_type) => AnyValueEnum::PointerValue(
-                self.llvmbuilder
-                    .build_pointer_cast(basic_value.into_pointer_value(), ptr_type, "cast")
-                    .unwrap(),
-            ),
+
+            AnyTypeEnum::PointerType(ptr_type) => {
+                let val = basic_value;
+                if val.is_pointer_value() {
+                    // ptr -> ptr
+                    AnyValueEnum::PointerValue(
+                        self.llvmbuilder
+                            .build_pointer_cast(val.into_pointer_value(), ptr_type, "cast")
+                            .unwrap(),
+                    )
+                } else if val.is_int_value() {
+                    // int -> ptr
+                    AnyValueEnum::PointerValue(
+                        self.llvmbuilder
+                            .build_int_to_ptr(val.into_int_value(), ptr_type, "int_to_ptr")
+                            .unwrap(),
+                    )
+                } else {
+                    panic!("Invalid cast to pointer");
+                }
+            }
+
             _ => internal_value.as_basic_value().as_any_value_enum(),
         }
     }
@@ -51,6 +84,34 @@ impl<'a> CodeGenBuilder<'a> {
         let target_any_type = self.build_concrete_type(local_scope_opt, target_type.clone());
         let any_value = self.build_cast(target_any_type, rvalue);
         InternalValue::new(target_type, InternalValueKind::RValue(any_value.try_into().unwrap()))
+    }
+
+    fn build_concrete_type_declare_fresh(&mut self, local_or_global_symbol: LocalOrGlobalSymbol) -> LocalIRValue<'a> {
+        match local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
+                LocalSymbolKind::Struct(resolved_struct) => {
+                    let struct_type =
+                        self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig);
+
+                    LocalIRValue::Struct(struct_type)
+                }
+                LocalSymbolKind::Enum(_resolved_enum) => todo!(),
+                _ => unreachable!(),
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
+                SymbolEntryKind::Method(_resolved_method) => todo!(),
+                SymbolEntryKind::Typedef(_resolved_typedef) => todo!(),
+                SymbolEntryKind::GlobalVar(_resolved_global_var) => todo!(),
+                SymbolEntryKind::Struct(resolved_struct) => {
+                    let struct_type =
+                        self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig);
+
+                    LocalIRValue::Struct(struct_type)
+                }
+                SymbolEntryKind::Enum(_resolved_enum) => todo!(),
+                SymbolEntryKind::Func(..) | SymbolEntryKind::Interface(..) => unreachable!(),
+            },
+        }
     }
 
     pub(crate) fn build_concrete_type_from_symbol_id(
@@ -69,20 +130,22 @@ impl<'a> CodeGenBuilder<'a> {
                 }
             };
 
-            let irreg_symbol_id = match local_or_global_symbol {
-                LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.get_symbol_id(),
-                LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.get_symbol_id(),
-            };
+            let irreg_symbol_id = local_or_global_symbol.get_symbol_id();
 
             let irreg = self.irreg.borrow();
-            let local_ir_value = irreg.get(&irreg_symbol_id).unwrap();
+            let local_ir_value_opt = irreg.get(&irreg_symbol_id).cloned();
+            drop(irreg);
+
+            let local_ir_value = match local_ir_value_opt {
+                Some(local_ir_value) => local_ir_value,
+                None => self.build_concrete_type_declare_fresh(local_or_global_symbol),
+            };
 
             let any_type_enum = match local_ir_value {
                 LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
                 _ => unreachable!(),
             };
 
-            drop(irreg);
             any_type_enum
         } else {
             let module_id = self.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
@@ -94,8 +157,27 @@ impl<'a> CodeGenBuilder<'a> {
                         self.build_concrete_type(local_scope_opt, resolved_typedef.typedef_sig.ty)
                     }
                     _ => {
+                        let local_or_global_symbol = match self
+                            .resolver
+                            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                        {
+                            Some(local_or_global_symbol) => local_or_global_symbol,
+                            None => {
+                                panic!("Undefined type symbol.")
+                            }
+                        };
+
+                        let irreg_symbol_id = local_or_global_symbol.get_symbol_id();
+
                         let irreg = self.irreg.borrow();
-                        let local_ir_value = irreg.get(&symbol_entry.get_symbol_id()).unwrap();
+                        let local_ir_value_opt = irreg.get(&irreg_symbol_id).cloned();
+                        drop(irreg);
+
+                        let local_ir_value = match local_ir_value_opt {
+                            Some(local_ir_value) => local_ir_value,
+                            None => self.build_concrete_type_declare_fresh(local_or_global_symbol),
+                        };
+
                         match local_ir_value {
                             LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
                             _ => unreachable!(),

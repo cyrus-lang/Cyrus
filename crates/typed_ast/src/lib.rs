@@ -1,8 +1,6 @@
 use crate::types::{ConcreteType, TypedUnnamedStructType};
 use ast::{
-    AccessSpecifier, Identifier, LiteralKind, SelfModifierKind,
-    operators::{InfixOperator, PrefixOperator, UnaryOperator},
-    token::Location,
+    operators::{InfixOperator, PrefixOperator, UnaryOperator}, token::Location, AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind
 };
 use std::collections::HashMap;
 
@@ -31,31 +29,7 @@ pub struct TypedProgramTree {
 pub struct TypedExpression {
     pub kind: TypedExpressionKind,
     pub concrete_type: Option<ConcreteType>,
-}
-
-impl TypedExpression {
-    pub fn get_loc(&self) -> Location {
-        match &self.kind {
-            TypedExpressionKind::Symbol(_, loc) => loc.clone(),
-            TypedExpressionKind::Literal(typed_literal) => typed_literal.loc.clone(),
-            TypedExpressionKind::Prefix(typed_prefix_expression) => typed_prefix_expression.loc.clone(),
-            TypedExpressionKind::Infix(typed_infix_expression) => typed_infix_expression.loc.clone(),
-            TypedExpressionKind::Unary(typed_unary_expression) => typed_unary_expression.loc.clone(),
-            TypedExpressionKind::Assignment(typed_assignment) => typed_assignment.loc.clone(),
-            TypedExpressionKind::Cast(typed_cast) => typed_cast.loc.clone(),
-            TypedExpressionKind::Array(typed_array) => typed_array.loc.clone(),
-            TypedExpressionKind::ArrayIndex(typed_array_index) => typed_array_index.loc.clone(),
-            TypedExpressionKind::AddressOf(typed_address_of) => typed_address_of.loc.clone(),
-            TypedExpressionKind::Dereference(typed_dereference) => typed_dereference.loc.clone(),
-            TypedExpressionKind::StructInit(typed_struct_init) => typed_struct_init.loc.clone(),
-            TypedExpressionKind::FuncCall(typed_func_call) => typed_func_call.loc.clone(),
-            TypedExpressionKind::FieldAccess(typed_field_access) => typed_field_access.loc.clone(),
-            TypedExpressionKind::MethodCall(typed_method_call) => typed_method_call.loc.clone(),
-            TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
-                typed_unnamed_struct_value.loc.clone()
-            }
-        }
-    }
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +50,14 @@ pub enum TypedExpressionKind {
     FieldAccess(TypedFieldAccess),
     MethodCall(TypedMethodCall),
     UnnamedStructValue(TypedUnnamedStructValue),
+    SizeOfExpression(TypedSizeOfExpression),
+    ConcreteType(ConcreteType),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedSizeOfExpression {
+    pub expr: Box<TypedExpression>,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +65,20 @@ pub struct TypedLiteral {
     pub ty: Option<ConcreteType>,
     pub kind: LiteralKind,
     pub loc: Location,
+}
+
+impl TypedLiteral {
+    pub fn format_kind(&self) -> String {
+        match &self.kind {
+            LiteralKind::Integer(..) => "integer",
+            LiteralKind::Float(..) => "float",
+            LiteralKind::String(..) => "string",
+            LiteralKind::Bool(..) => "bool",
+            LiteralKind::Char(..) => "char",
+            LiteralKind::Null => "null",
+        }
+        .to_string()
+    }
 }
 
 impl TypedExpressionKind {
@@ -116,6 +112,8 @@ impl TypedExpressionKind {
             | TypedExpressionKind::MethodCall(_)
             | TypedExpressionKind::FuncCall(_)
             | TypedExpressionKind::Assignment(_)
+            | TypedExpressionKind::SizeOfExpression(_)
+            | TypedExpressionKind::ConcreteType(_)
             | TypedExpressionKind::AddressOf(_) => false,
         }
     }
@@ -138,6 +136,8 @@ impl TypedExpressionKind {
             TypedExpressionKind::Cast(_) => false,
             TypedExpressionKind::AddressOf(_) => false,
             TypedExpressionKind::Array(_) => false,
+            TypedExpressionKind::SizeOfExpression(_) => false,
+            TypedExpressionKind::ConcreteType(_) => false,
         }
     }
 }
@@ -175,6 +175,7 @@ pub struct TypedInfixExpression {
 pub struct TypedAssignment {
     pub lhs: Box<TypedExpression>,
     pub rhs: Box<TypedExpression>,
+    pub kind: AssignmentKind,
     pub loc: Location,
 }
 
@@ -234,14 +235,19 @@ pub struct TypedFuncCall {
 
 #[derive(Debug, Clone)]
 pub struct TypedFieldAccess {
-    pub symbol_id: SymbolID,
+    pub operand: Box<TypedExpression>,
     pub field_name: String,
+    pub field_index: Option<usize>,
+    pub field_ty: Option<ConcreteType>,
+    pub object_symbol_id: Option<SymbolID>,
+    pub is_fat_arrow: bool,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedMethodCall {
     pub symbol_id: SymbolID,
+    pub operand: Box<TypedExpression>,
     pub method_name: String,
     pub args: Vec<TypedExpression>,
     pub is_fat_arrow: bool,
@@ -280,6 +286,7 @@ pub enum TypedStatement {
     Break(TypedBreak),
     Continue(TypedContinue),
     For(TypedFor),
+    While(TypedWhile),
     Switch(TypedSwitch),
     Struct(TypedStruct),
     Enum(TypedEnum),
@@ -306,7 +313,8 @@ impl TypedStatement {
             TypedStatement::Struct(typed_struct) => typed_struct.loc.clone(),
             TypedStatement::Enum(typed_enum) => typed_enum.loc.clone(),
             TypedStatement::Interface(typed_interface) => typed_interface.loc.clone(),
-            TypedStatement::Expression(typed_expression) => typed_expression.get_loc(),
+            TypedStatement::Expression(typed_expression) => typed_expression.loc.clone(),
+            TypedStatement::While(while_stmt) => while_stmt.loc.clone(),
         }
     }
 }
@@ -346,6 +354,7 @@ pub struct TypedEnumValuedField {
 
 #[derive(Debug, Clone)]
 pub struct TypedStruct {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub fields: Vec<TypedStructField>,
@@ -359,6 +368,7 @@ pub struct TypedStruct {
 pub struct TypedStructField {
     pub name: String,
     pub ty: ConcreteType,
+    pub vis: AccessSpecifier,
     pub loc: Location,
 }
 
@@ -370,6 +380,7 @@ pub struct TypedReturn {
 
 #[derive(Debug, Clone)]
 pub struct TypedGlobalVariable {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub ty: Option<ConcreteType>,
@@ -431,6 +442,7 @@ pub struct TypedIf {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDef {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub params: TypedFuncParams,
@@ -472,6 +484,7 @@ pub enum TypedFuncParamKind {
 #[derive(Debug, Clone)]
 pub struct TypedSelfModifier {
     pub symbol_id: Option<SymbolID>,
+    pub self_symbol_id: Option<SymbolID>,
     pub ty: Option<ConcreteType>,
     pub kind: SelfModifierKind,
     pub loc: Location,
@@ -494,6 +507,13 @@ pub struct TypedFor {
 }
 
 #[derive(Debug, Clone)]
+pub struct TypedWhile {
+    pub condition: TypedExpression,
+    pub body: Box<TypedBlockStatement>,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
 pub struct TypedSwitch {
     pub operand: TypedExpression,
     pub cases: Vec<TypedSwitchCase>,
@@ -503,7 +523,7 @@ pub struct TypedSwitch {
 
 #[derive(Debug, Clone)]
 pub struct TypedSwitchCase {
-    pub pattern: TypedSwitchCasePattern,
+    pub patterns: Vec<TypedSwitchCasePattern>,
     pub body: Box<TypedBlockStatement>,
     pub loc: Location,
 }

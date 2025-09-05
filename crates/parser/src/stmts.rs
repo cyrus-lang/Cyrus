@@ -57,6 +57,7 @@ impl Parser {
                 TokenKind::Hashtag => self.parse_variable(),
                 TokenKind::Return => self.parse_return(),
                 TokenKind::For => self.parse_for_loop(),
+                TokenKind::While => self.parse_while_loop(),
                 TokenKind::Foreach => self.parse_foreach(),
                 TokenKind::Break => self.parse_break(),
                 TokenKind::Continue => self.parse_continue(),
@@ -312,11 +313,17 @@ impl Parser {
                 }
                 TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
                     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
-                    if let Statement::FuncDef(method) = self.parse_func(Some(vis))? {
-                        self.next_token(); // consume right brace
-                        methods.push(method);
+
+                    if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
+                        let field = self.parse_struct_field(None)?;
+                        fields.push(field);
                     } else {
-                        unreachable!();
+                        if let Statement::FuncDef(method) = self.parse_func(Some(vis))? {
+                            self.next_token(); // consume right brace
+                            methods.push(method);
+                        } else {
+                            unreachable!();
+                        }
                     }
                 }
                 TokenKind::Function => {
@@ -328,28 +335,7 @@ impl Parser {
                     }
                 }
                 TokenKind::Identifier { .. } => {
-                    let start = self.current_token().span.start;
-                    let loc = self.current_token().loc.clone();
-
-                    let identifier = self.parse_identifier()?;
-                    self.next_token(); // consume identifier
-
-                    self.expect_current(TokenKind::Colon)?;
-
-                    let type_token = self.parse_type_specifier()?;
-                    self.next_token();
-
-                    let field = StructField {
-                        identifier,
-                        ty: type_token,
-                        loc,
-                        span: Span {
-                            start,
-                            end: self.current_token().span.end,
-                        },
-                    };
-
-                    self.expect_current(TokenKind::Semicolon)?;
+                    let field = self.parse_struct_field(None)?;
                     fields.push(field);
                 }
                 _ => {
@@ -380,6 +366,33 @@ impl Parser {
                 end: self.current_token().span.end,
             },
         }))
+    }
+
+    fn parse_struct_field(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<StructField, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let identifier = self.parse_identifier()?;
+        self.next_token(); // consume identifier
+
+        self.expect_current(TokenKind::Colon)?;
+
+        let type_token = self.parse_type_specifier()?;
+        self.next_token();
+
+        let field = StructField {
+            identifier,
+            ty: type_token,
+            vis: access_specifier.unwrap_or(AccessSpecifier::Internal),
+            loc,
+            span: Span {
+                start,
+                end: self.current_token().span.end,
+            },
+        };
+
+        self.expect_current(TokenKind::Semicolon)?;
+        Ok(field)
     }
 
     pub fn parse_break(&mut self) -> Result<Statement, ParserError> {
@@ -800,6 +813,26 @@ impl Parser {
             item: item_identifier,
             index: index_identifier,
             expr,
+            body: Box::new(body),
+            span: Span::new(start, self.current_token().span.end),
+            loc,
+        }))
+    }
+
+    pub fn parse_while_loop(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume while token
+        self.expect_current(TokenKind::LeftParen)?;
+        let condition = self.parse_expression(Precedence::Lowest)?.0;
+        self.next_token();
+        self.expect_current(TokenKind::RightParen)?;
+
+        let body = self.parse_block_statement()?;
+
+        Ok(Statement::While(While {
+            condition,
             body: Box::new(body),
             span: Span::new(start, self.current_token().span.end),
             loc,
@@ -1253,34 +1286,46 @@ impl Parser {
                 let case_start = self.current_token().span.start;
                 self.next_token();
 
-                let case_pattern = if self.current_token_is(TokenKind::Dot) {
-                    self.next_token();
-                    let identifier = self.parse_identifier()?;
-                    self.next_token();
+                let mut patterns: Vec<SwitchCasePattern> = Vec::new();
 
-                    if self.current_token_is(TokenKind::LeftParen) {
-                        self.next_token();
-                        let mut items: Vec<Identifier> = Vec::new();
-                        loop {
-                            let item = self.parse_identifier()?;
-                            self.next_token();
-                            items.push(item);
-                            if self.current_token_is(TokenKind::RightParen) {
-                                break;
-                            } else {
-                                self.expect_current(TokenKind::Comma)?;
+                fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, ParserError> {
+                    let case_pattern = if this.current_token_is(TokenKind::Dot) {
+                        this.next_token();
+                        let identifier = this.parse_identifier()?;
+                        this.next_token();
+
+                        if this.current_token_is(TokenKind::LeftParen) {
+                            this.next_token();
+                            let mut items: Vec<Identifier> = Vec::new();
+                            loop {
+                                let item = this.parse_identifier()?;
+                                this.next_token();
+                                items.push(item);
+                                if this.current_token_is(TokenKind::RightParen) {
+                                    break;
+                                } else {
+                                    this.expect_current(TokenKind::Comma)?;
+                                }
                             }
+                            this.expect_current(TokenKind::RightParen)?;
+                            SwitchCasePattern::EnumVariant(identifier, items)
+                        } else {
+                            SwitchCasePattern::Identifier(identifier)
                         }
-                        self.expect_current(TokenKind::RightParen)?;
-                        SwitchCasePattern::EnumVariant(identifier, items)
                     } else {
-                        SwitchCasePattern::Identifier(identifier)
-                    }
-                } else {
-                    let expr = self.parse_expression(Precedence::Lowest)?.0;
+                        let expr = this.parse_expression(Precedence::Lowest)?.0;
+                        this.next_token();
+                        SwitchCasePattern::Expression(expr)
+                    };
+                    Ok(case_pattern)
+                }
+
+                patterns.push(parse_pattern(self)?);
+
+                while self.current_token_is(TokenKind::Comma) {
                     self.next_token();
-                    SwitchCasePattern::Expression(expr)
-                };
+                    patterns.push(parse_pattern(self)?);
+                }
 
                 self.expect_current(TokenKind::Colon)?;
                 let case_body;
@@ -1296,7 +1341,7 @@ impl Parser {
                 }
 
                 cases.push(SwitchCase {
-                    pattern: case_pattern,
+                    patterns,
                     body: case_body,
                     span: Span::new(case_start, self.current_token().span.end),
                     loc: case_loc,

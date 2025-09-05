@@ -1,0 +1,11 @@
+import std::libc::abi;
+
+public extern stdout: abi::c_file;
+public extern stderr: abi::c_file;
+public extern stdin: abi::c_file;
+
+public extern func printf(format: const char*, ...) int32;
+public extern func fprintf(stream: abi::c_file, format: const char*, ...) int32;
+public extern func malloc(size: size_t) void*;
+public extern func free(ptr: void*) void;
+public extern func exit(status: int32) void;

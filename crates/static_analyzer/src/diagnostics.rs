@@ -2,6 +2,30 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    TypeMismatchLiteral {
+        literal_type: String,
+        expected_type: String,
+    },
+    ObjectNotSupportsMethods,
+    ObjectNotSupportsFields,
+    InvalidFatArrow,
+    UseFatArrow,
+    InternalFieldAccess {
+        field_name: String,
+        struct_name: String,
+    },
+    InternalMethodCall {
+        method_name: String,
+        object_name: String,
+    },
+    MutationPossibleMethodCallOnConstInstance {
+        method_name: String,
+        instance_name: String,
+    },
+    StructMethodNotDefined {
+        struct_name: String,
+        method_name: String,
+    },
     RhsOfShiftMustBeUnsignedInteger,
     CyclicTypeDefinition {
         symbol: String,
@@ -77,6 +101,10 @@ pub enum AnalyzerDiagKind {
         lhs_type: String,
         rhs_type: String,
     },
+    TypeMismatchInCasePattern {
+        operand_type: String,
+        pattern_type: String,
+    },
     PrefixMinusOnNonInteger {
         operand_type: String,
     },
@@ -125,14 +153,87 @@ pub enum AnalyzerDiagKind {
     },
     AddressOfRvalue,
     DerefNonPointerValue,
+    DerefVoidPointerValue,
     MultipleEntryPoints,
     MissingEntryPoint,
     ConstVariableMustBeInitialized,
+    InvalidUsageOfTheConcreteType,
 }
 
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::TypeMismatchLiteral {
+                literal_type,
+                expected_type,
+            } => {
+                write!(
+                    f,
+                    "Literal of type {} is not assignable to expected type '{}'.",
+                    literal_type, expected_type
+                )
+            }
+            AnalyzerDiagKind::TypeMismatchInCasePattern {
+                operand_type,
+                pattern_type,
+            } => {
+                write!(
+                    f,
+                    "Case pattern with type '{}' is not compatible with switch operand of type '{}'.",
+                    pattern_type, operand_type
+                )
+            }
+            AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
+                method_name,
+                instance_name,
+            } => {
+                write!(
+                    f,
+                    "Cannot call method '{}' on constant instance '{}'.",
+                    method_name, instance_name
+                )
+            }
+            AnalyzerDiagKind::InternalFieldAccess {
+                field_name,
+                struct_name,
+            } => {
+                write!(
+                    f,
+                    "Cannot access internal field '{}' of struct '{}' from outside its definition.",
+                    field_name, struct_name
+                )
+            }
+            AnalyzerDiagKind::InternalMethodCall {
+                method_name,
+                object_name,
+            } => {
+                write!(
+                    f,
+                    "Cannot call internal method '{}' of object '{}' from outside its definition.",
+                    method_name, object_name
+                )
+            }
+            AnalyzerDiagKind::UseFatArrow => {
+                write!(f, "Use '->' instead of '.' when accessing a member via a pointer.")
+            }
+            AnalyzerDiagKind::InvalidUsageOfTheConcreteType => {
+                write!(f, "Invalid usage of the concrete type.")
+            }
+            AnalyzerDiagKind::ObjectNotSupportsFields => {
+                write!(f, "Invalid field access (not supported for this symbol).")
+            }
+            AnalyzerDiagKind::ObjectNotSupportsMethods => {
+                write!(f, "Invalid method call (not supported for this symbol).")
+            }
+            AnalyzerDiagKind::InvalidFatArrow => {
+                write!(f, "Invalid usage of the fat arrow.")
+            }
+            AnalyzerDiagKind::StructMethodNotDefined {
+                struct_name,
+                method_name,
+            } => {
+                write!(f, "Method '{}' not defined for struct '{}'.", method_name, struct_name)
+            }
             AnalyzerDiagKind::RhsOfShiftMustBeUnsignedInteger => {
                 write!(f, "Rhs of the shift must be unsigned integer.")
             }
@@ -248,6 +349,9 @@ impl fmt::Display for AnalyzerDiagKind {
             AnalyzerDiagKind::DerefNonPointerValue => {
                 write!(f, "Cannot dereference non-pointer value.")
             }
+            AnalyzerDiagKind::DerefVoidPointerValue => {
+                write!(f, "Cannot dereference a pointer of type 'void*'.")
+            }
             AnalyzerDiagKind::DuplicateFuncParameter { param_idx, param_name } => {
                 write!(f, "Duplicate parameter name '{}' at index {}.", param_name, param_idx)
             }
@@ -293,7 +397,7 @@ impl fmt::Display for AnalyzerDiagKind {
             } => {
                 write!(
                     f,
-                    "Function '{}' expects {} arguments, but {} was provided..",
+                    "Function '{}' expects {} arguments, but {} was provided.",
                     func_name, expected, args
                 )
             }

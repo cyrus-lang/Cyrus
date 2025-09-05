@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use codegen::options::{BuildDir, CodeGenOptions, CodeModelOptions, RelocModeOptions};
+use codegen::options::{BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeModelOptions, RelocModeOptions};
 use commands::*;
 use diagcentral::display_single_custom_diag;
 use project_layout::PROJECT_FILE_PATH;
@@ -30,6 +30,21 @@ impl std::fmt::Display for OptimizeLevel {
             OptimizeLevel::O3 => write!(f, "o3"),
         }
     }
+}
+
+#[derive(Parser, Debug, Clone)]
+struct LinkerCompilerOptions {
+    /// Produce a fully static ELF
+    #[arg(long)]
+    pub r#static: bool,
+
+    /// Enable PIE (Position Independent Executable)
+    #[arg(long, conflicts_with = "no_pie")]
+    pie: bool,
+
+    /// Disable PIE
+    #[arg(long, conflicts_with = "pie")]
+    no_pie: bool,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -82,6 +97,9 @@ struct CompilerOptions {
 
     #[clap(long, help = "Disables module filesystem cache.")]
     disable_modulefs_cache: bool,
+
+    #[clap(long, help = "Disables all warnings.")]
+    disable_warnings: bool,
 
     #[clap(long, help = "Set cyrus standard library path.")]
     stdlib: Option<String>,
@@ -142,9 +160,20 @@ impl CodeModel {
     }
 }
 
+impl LinkerCompilerOptions {
+    pub fn to_compiler_linker_options(&self) -> CodeGenLinkerOptions {
+        CodeGenLinkerOptions {
+            link_static: self.r#static,
+            pie: self.pie,
+            no_pie: self.no_pie,
+        }
+    }
+}
+
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            linker_options: CodeGenLinkerOptions::default(),
             linker: self.linker.clone().or(Some("cc".to_string())),
             disable_modulefs_cache: self.disable_modulefs_cache,
             base_path: self.base_path.clone(),
@@ -171,6 +200,7 @@ impl CompilerOptions {
             quiet: self.quiet,
             stdlib_path: self.stdlib.clone(),
             display_target_machine: self.display_target_machine,
+            disable_warnings: self.disable_warnings,
             reloc_mode: self.reloc_mode.as_compiler_reloc_mode(),
             code_model: self.code_model.as_compiler_code_model(),
             target_triple: {
@@ -212,6 +242,9 @@ enum Commands {
         file_path: Option<String>,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
+
+        #[clap(flatten)]
+        linker_options: LinkerCompilerOptions,
     },
 
     #[clap(about = "Fetches a library into vendor directory.", display_order = 2)]
@@ -224,6 +257,9 @@ enum Commands {
         output_path: Option<String>,
         #[clap(flatten)]
         compiler_options: CompilerOptions,
+
+        #[clap(flatten)]
+        linker_options: LinkerCompilerOptions,
     },
 
     #[clap(about = "Generate an object file", display_order = 4)]
@@ -281,8 +317,12 @@ enum Commands {
     #[clap(about = "Display program tree.", display_order = 10)]
     ParseOnly { file_path: String },
 
-    #[clap(about = "Check program correctness syntactically.", display_order = 11)]
-    SyntacticOnly { file_path: String },
+    #[clap(about = "Check program correctness semantically.", display_order = 11)]
+    SemanticOnly {
+        file_path: String,
+        #[clap(flatten)]
+        compiler_options: CompilerOptions,
+    },
 
     #[clap(about = "Print version information", display_order = 12)]
     Version,
@@ -304,7 +344,7 @@ fn command_new(project_name: String, lib: bool) {
 
 pub fn main() {
     std::panic::set_hook(Box::new(|info| {
-        eprintln!("Compiler panic: {info}");
+        eprintln!("Compiler panic:\n{info}");
     }));
 
     let version = env!("CARGO_PKG_VERSION");
@@ -320,8 +360,11 @@ pub fn main() {
         Commands::Run {
             file_path,
             compiler_options,
+            linker_options,
         } => {
-            command_run(compiler_options, file_path);
+            let mut codegen_options = compiler_options.to_compiler_options();
+            codegen_options.linker_options = linker_options.to_compiler_linker_options();
+            command_run(codegen_options, file_path);
         }
         Commands::EmitLLVM {
             file_path,
@@ -332,7 +375,9 @@ pub fn main() {
                 project_file_required();
             }
 
-            command_emit_llvm(compiler_options, file_path, output_path);
+            let codegen_options = compiler_options.to_compiler_options();
+
+            command_emit_llvm(codegen_options, file_path, output_path);
         }
         Commands::EmitASM {
             file_path,
@@ -343,7 +388,9 @@ pub fn main() {
                 project_file_required();
             }
 
-            command_emit_asm(compiler_options, file_path, output_path);
+            let codegen_options = compiler_options.to_compiler_options();
+
+            command_emit_asm(codegen_options, file_path, output_path);
         }
         Commands::EmitByteCode {
             file_path,
@@ -354,18 +401,23 @@ pub fn main() {
                 project_file_required();
             }
 
-            command_emit_bytecode(compiler_options, file_path, output_path);
+            let codegen_options = compiler_options.to_compiler_options();
+
+            command_emit_bytecode(codegen_options, file_path, output_path);
         }
         Commands::Build {
             file_path,
             output_path,
             compiler_options,
+            linker_options,
         } => {
             if file_path.is_none() && output_path.is_none() {
                 project_file_required();
             }
 
-            command_build(compiler_options, file_path, output_path);
+            let mut codegen_options = compiler_options.to_compiler_options();
+            codegen_options.linker_options = linker_options.to_compiler_linker_options();
+            command_build(codegen_options, file_path, output_path);
         }
         Commands::Object {
             file_path,
@@ -376,7 +428,9 @@ pub fn main() {
                 project_file_required();
             }
 
-            command_object(compiler_options, file_path, output_path);
+            let codegen_options = compiler_options.to_compiler_options();
+
+            command_object(codegen_options, file_path, output_path);
         }
         Commands::Dylib {
             file_path,
@@ -387,13 +441,18 @@ pub fn main() {
                 project_file_required();
             }
 
-            command_dylib(compiler_options, file_path, output_path);
+            let codegen_options = compiler_options.to_compiler_options();
+
+            command_dylib(codegen_options, file_path, output_path);
         }
+        Commands::SemanticOnly {
+            compiler_options,
+            file_path,
+        } => command_semantic_only(compiler_options, file_path),
         Commands::Version => {
             println!("Cyrus {}", version)
         }
         Commands::LexOnly { file_path } => command_lex_only(file_path),
         Commands::ParseOnly { file_path } => command_parse_only(file_path),
-        Commands::SyntacticOnly { file_path } => command_syntactic_only(file_path),
     }
 }

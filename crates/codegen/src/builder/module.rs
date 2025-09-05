@@ -1,12 +1,13 @@
-use crate::options::CodeGenOptions;
-use diagcentral::display_single_custom_diag;
+use crate::{
+    context::context::{get_target_machine, make_module_name},
+    options::CodeGenOptions,
+};
 use inkwell::{
-    OptimizationLevel,
     basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     module::Module,
-    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
+    targets::{FileType, TargetMachine},
     types::StructType,
     values::{FunctionValue, GlobalValue, PointerValue},
 };
@@ -32,6 +33,13 @@ pub(crate) struct CodeGenBuilder<'a> {
     pub resolver: Rc<Resolver>,
 }
 
+impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn get_module_name(&self, module_id: ModuleID) -> String {
+        let module_file_path = self.resolver.get_module_file_path(module_id).unwrap();
+        make_module_name(self.resolver.master_module_file_path.clone(), module_file_path)
+    }
+}
+
 impl<'module> CodeGenModule<'module> {
     pub fn new(opts: &'module CodeGenOptions, program_tree: Rc<RefCell<TypedProgramTree>>) -> Self {
         let ctx = Rc::new(Context::create());
@@ -52,7 +60,7 @@ impl<'module> CodeGenModule<'module> {
     ) -> CodeGenModuleOutput<'a> {
         let llvmmodule = self.ctx.create_module(&module_name);
         let builder = self.ctx.create_builder();
-        let llvmtm = Rc::new(self.get_target_machine(
+        let llvmtm = Rc::new(get_target_machine(
             self.opts.reloc_mode.to_llvm_reloc_mode(),
             self.opts.code_model.to_llvm_code_model(),
             self.opts.cpu.clone(),
@@ -79,48 +87,6 @@ impl<'module> CodeGenModule<'module> {
         let program_tree_borrowed = self.program_tree.borrow();
         codegen_builder.build_toplevel_statements(&program_tree_borrowed.body);
         CodeGenModuleOutput::new(module_name, llvmmodule, llvmtm.clone())
-    }
-
-    fn get_target_machine(
-        &self,
-        reloc_mode: RelocMode,
-        code_model: CodeModel,
-        cpu: Option<String>,
-        target_triple_opt: Option<String>,
-    ) -> TargetMachine {
-        Target::initialize_all(&InitializationConfig::default());
-
-        let cpu = if let Some(cpu) = cpu {
-            cpu
-        } else {
-            TargetMachine::get_host_cpu_name().to_string()
-        };
-        let features = TargetMachine::get_host_cpu_features().to_string();
-
-        let target_triple = if let Some(target_triple_str) = target_triple_opt {
-            TargetTriple::create(&target_triple_str)
-        } else {
-            TargetMachine::get_default_triple()
-        };
-
-        let target = Target::from_triple(&target_triple).unwrap();
-        let target_machine = match target.create_target_machine(
-            &target_triple,
-            &cpu,
-            &features,
-            OptimizationLevel::Default,
-            reloc_mode,
-            code_model,
-        ) {
-            Some(target_machine) => target_machine,
-            None => {
-                display_single_custom_diag!(
-                    "Failed to create LLVM Target Machine with given target_triple, cpu, features.".to_string()
-                );
-            }
-        };
-
-        target_machine
     }
 }
 
@@ -234,7 +200,6 @@ impl<'a> BlockRegistry<'a> {
 
 #[derive(Debug, Clone)]
 pub struct LoopBlockRefs<'a> {
-    pub cond_block: BasicBlock<'a>,
     pub end_block: BasicBlock<'a>,
     pub inc_block: BasicBlock<'a>,
 }
@@ -247,5 +212,4 @@ pub struct SwitchBlockRefs<'a> {
 #[derive(Debug, Clone)]
 pub struct TerminatedBlockMetadata<'a> {
     pub basic_block: BasicBlock<'a>,
-    pub terminated_with_return: bool,
 }

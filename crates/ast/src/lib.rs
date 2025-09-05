@@ -75,6 +75,14 @@ pub enum Expression {
     FieldAccess(FieldAccess),
     MethodCall(MethodCall),
     UnnamedStructValue(UnnamedStructValue),
+    SizeOfExpression(SizeOfExpression),
+}
+
+#[derive(Debug, Clone)]
+pub struct SizeOfExpression {
+    pub expr: Box<Expression>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -326,6 +334,7 @@ pub enum Statement {
     FuncDef(FuncDef),
     FuncDecl(FuncDecl),
     For(For),
+    While(While),
     Foreach(Foreach),
     Switch(Switch),
     Struct(Struct),
@@ -486,6 +495,7 @@ pub struct StructInit {
 #[derive(Debug, Clone)]
 pub struct StructField {
     pub identifier: Identifier,
+    pub vis: AccessSpecifier,
     pub ty: TypeSpecifier,
     pub loc: Location,
     pub span: Span,
@@ -495,6 +505,14 @@ pub struct StructField {
 pub struct FieldInit {
     pub identifier: Identifier,
     pub value: Expression,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct While {
+    pub condition: Expression,
+    pub body: Box<BlockStatement>,
+    pub span: Span,
     pub loc: Location,
 }
 
@@ -529,7 +547,7 @@ pub struct Switch {
 
 #[derive(Debug, Clone)]
 pub struct SwitchCase {
-    pub pattern: SwitchCasePattern,
+    pub patterns: Vec<SwitchCasePattern>,
     pub body: BlockStatement,
     pub span: Span,
     pub loc: Location,
@@ -627,8 +645,42 @@ pub struct Variable {
 pub struct Assignment {
     pub lhs: Expression,
     pub rhs: Expression,
+    pub kind: AssignmentKind,
     pub span: Span,
     pub loc: Location,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssignmentKind {
+    Default,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    BitwiseAndAssign,
+    BitwiseXorAssign,
+    BitwiseAndNotAssign,
+    LeftShiftAssign,
+    RightShiftAssign,
+}
+
+impl AssignmentKind {
+    pub fn to_infix_operator(&self) -> InfixOperator {
+        match self {
+            AssignmentKind::Default => unreachable!(),
+            AssignmentKind::AddAssign => InfixOperator::Add,
+            AssignmentKind::SubAssign => InfixOperator::Sub,
+            AssignmentKind::MulAssign => InfixOperator::Mul,
+            AssignmentKind::DivAssign => InfixOperator::Div,
+            AssignmentKind::ModAssign => InfixOperator::Rem,
+            AssignmentKind::BitwiseAndAssign => InfixOperator::BitwiseAnd,
+            AssignmentKind::BitwiseXorAssign => InfixOperator::BitwiseXor,
+            AssignmentKind::BitwiseAndNotAssign => InfixOperator::BitwiseAndNot,
+            AssignmentKind::LeftShiftAssign => InfixOperator::ShiftLeft,
+            AssignmentKind::RightShiftAssign => InfixOperator::ShiftRight,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -638,7 +690,7 @@ pub struct SelfModifier {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SelfModifierKind {
     Copied,
     Referenced,

@@ -1,0 +1,12 @@
+public struct Slice {
+	public data: void*;
+	public length: size_t;
+	public element_size: size_t;
+
+	public inline func index(self, idx: size_t) void* {
+		#base = cast(uintptr, self.data);
+		#offset = cast(uintptr, idx * self.element_size);
+		#result = base + offset;
+		return cast(void*, result);
+	}
+}

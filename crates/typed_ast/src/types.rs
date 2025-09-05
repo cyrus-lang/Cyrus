@@ -24,7 +24,26 @@ pub enum ResolvedSymbol {
     Method(SymbolID),
 }
 
+impl ResolvedSymbol {
+    pub fn get_symbol_id(&self) -> SymbolID {
+        match self {
+            ResolvedSymbol::Enum(symbol_id) => *symbol_id,
+            ResolvedSymbol::Typedef(symbol_id) => *symbol_id,
+            ResolvedSymbol::NamedStruct(symbol_id) => *symbol_id,
+            ResolvedSymbol::Interface(symbol_id) => *symbol_id,
+            ResolvedSymbol::GlobalVar(symbol_id) => *symbol_id,
+            ResolvedSymbol::Variable(symbol_id) => *symbol_id,
+            ResolvedSymbol::Func(symbol_id) => *symbol_id,
+            ResolvedSymbol::Method(symbol_id) => *symbol_id,
+        }
+    }
+}
+
 impl ConcreteType {
+    pub fn get_loc(&self) -> Location {
+        todo!()
+    }
+
     pub fn is_bool(&self) -> bool {
         matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
     }
@@ -39,6 +58,10 @@ impl ConcreteType {
 
     pub fn is_void(&self) -> bool {
         matches!(self, ConcreteType::BasicType(BasicConcreteType::Void))
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        matches!(self, ConcreteType::Pointer(..))
     }
 
     pub fn as_basic_type(&self) -> Option<&BasicConcreteType> {
@@ -59,7 +82,7 @@ impl ConcreteType {
     pub fn get_pointer_inner(&self) -> Option<ConcreteType> {
         match self {
             ConcreteType::Pointer(concrete_type) => Some(*concrete_type.clone()),
-            _ => None
+            _ => None,
         }
     }
 
@@ -76,6 +99,31 @@ impl ConcreteType {
                 ResolvedSymbol::NamedStruct(symbol_id) => Some(*symbol_id),
                 _ => None,
             },
+            _ => None,
+        }
+    }
+
+    pub fn as_enum_symbol_id(&self) -> Option<SymbolID> {
+        match self {
+            ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+                ResolvedSymbol::Enum(symbol_id) => Some(*symbol_id),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn as_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
+        match self {
+            ConcreteType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_const_or_unnamed_struct(&self) -> Option<TypedUnnamedStructType> {
+        match self {
+            ConcreteType::UnnamedStruct(unnamed_struct_type) => Some(unnamed_struct_type.clone()),
+            ConcreteType::Const(inner_concrete_type) => inner_concrete_type.as_unnamed_struct(),
             _ => None,
         }
     }

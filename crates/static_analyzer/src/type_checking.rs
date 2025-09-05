@@ -1,20 +1,23 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use std::collections::HashMap;
+
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol_type};
 use ast::{
-    LiteralKind,
+    AssignmentKind, LiteralKind, SelfModifierKind,
     operators::{InfixOperator, PrefixOperator},
     token::{Location, TokenKind},
 };
 use diagcentral::{Diag, DiagLevel, DiagLoc};
-use resolver::scope::{LocalOrGlobalSymbol, SymbolEntryKind};
+use resolver::{
+    declsign::FuncSig,
+    scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, SymbolEntryKind},
+};
 use typed_ast::{
-    ScopeID, SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedCast, TypedDereference, TypedExpression,
-    TypedExpressionKind, TypedFuncCall, TypedFuncVariadicParams, TypedInfixExpression, TypedLiteral,
-    TypedPrefixExpression, TypedStructInit, TypedUnaryExpression, TypedUnnamedStructValue,
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
         ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
+    *,
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -34,9 +37,6 @@ impl<'a> AnalysisContext<'a> {
             }
             (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
                 self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
-            }
-            (concrete_type1, ConcreteType::Const(inner_concrete_type2)) => {
-                self.check_type_mismatch(scope_id_opt, concrete_type1, *inner_concrete_type2, loc)
             }
             (ConcreteType::Array(array_type1), ConcreteType::Array(array_type2)) => {
                 let capacity = {
@@ -119,13 +119,64 @@ impl<'a> AnalysisContext<'a> {
 
             (Null, Null) => true,
 
-            // Char to Int
-            (Char, Int8 | UInt8) => true,
+            // char to int
+            (Char, Int8 | Int16 | Int32 | Int64 | Int128 | Int) => true,
+
+            // int8 to char
+            (Int8, Char) => true,
 
             // Bool to Int
             (Bool, Int8 | UInt8) => true,
 
             (Bool, Bool) => true,
+
+            _ => false,
+        }
+    }
+
+    fn check_explicit_typecast(&mut self, value_type: ConcreteType, target_type: ConcreteType) -> bool {
+        match (value_type, target_type) {
+            // Same type, always fine
+            (a, b) if a == b => true,
+
+            // Any integer to any integer
+            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
+                if value.is_integer() && target.is_integer() =>
+            {
+                true
+            }
+
+            // Any float to any float
+            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
+                if value.is_float() && target.is_float() =>
+            {
+                true
+            }
+
+            // Bool to anything integer-ish (common in C-style languages)
+            (ConcreteType::BasicType(BasicConcreteType::Bool), ConcreteType::BasicType(target))
+                if target.is_integer() =>
+            {
+                true
+            }
+
+            // Char to integer and back
+            (ConcreteType::BasicType(BasicConcreteType::Char), ConcreteType::BasicType(target))
+                if target.is_integer() =>
+            {
+                true
+            }
+            (ConcreteType::BasicType(value), ConcreteType::BasicType(BasicConcreteType::Char))
+                if value.is_integer() =>
+            {
+                true
+            }
+
+            // void* <-> intptr/uintptr
+            (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::IntPtr))
+            | (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::UIntPtr))
+            | (ConcreteType::BasicType(BasicConcreteType::IntPtr), ConcreteType::Pointer(..))
+            | (ConcreteType::BasicType(BasicConcreteType::UIntPtr), ConcreteType::Pointer(..)) => true,
 
             _ => false,
         }
@@ -197,12 +248,12 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         match &typed_literal.kind {
             LiteralKind::Integer(_, suffix_opt) => {
-                let inferred = self.infer_integer_type(typed_literal, suffix_opt, expected_type);
+                let inferred = self.infer_integer_type(typed_literal, suffix_opt, expected_type.clone());
                 typed_literal.ty = Some(inferred.clone());
                 Some(inferred)
             }
             LiteralKind::Float(_, suffix_opt) => {
-                let inferred = self.infer_float_type(typed_literal, suffix_opt, expected_type);
+                let inferred = self.infer_float_type(typed_literal, suffix_opt, expected_type.clone());
                 typed_literal.ty = Some(inferred.clone());
                 Some(inferred)
             }
@@ -244,7 +295,11 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if let Some(ctx_ty) = expected {
-            ctx_ty
+            if self.is_integer_type(ctx_ty.clone()) {
+                ctx_ty
+            } else {
+                ConcreteType::BasicType(BasicConcreteType::Int) // keep a safe default
+            }
         } else {
             ConcreteType::BasicType(BasicConcreteType::Int)
         }
@@ -265,7 +320,11 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if let Some(ctx_ty) = expected {
-            ctx_ty
+            if self.is_float_type(ctx_ty.clone()) {
+                ctx_ty
+            } else {
+                ConcreteType::BasicType(BasicConcreteType::Float64) // keep a safe default
+            }
         } else {
             ConcreteType::BasicType(BasicConcreteType::Float64)
         }
@@ -341,6 +400,16 @@ impl<'a> AnalysisContext<'a> {
         typed_expr: &mut TypedExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
+        // lowering
+        match &mut typed_expr.kind {
+            TypedExpressionKind::Assignment(typed_assignment) => {
+                if typed_assignment.kind != AssignmentKind::Default {
+                    typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
+                }
+            }
+            _ => {}
+        }
+
         let concrete_type = match &mut typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => {
                 let local_scope_ref_opt = {
@@ -362,7 +431,7 @@ impl<'a> AnalysisContext<'a> {
                         self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
-                        self.mark_symbol_used_once(self.module_id, symbol_entry.get_symbol_id());
+                        self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
                     }
                 }
 
@@ -399,24 +468,45 @@ impl<'a> AnalysisContext<'a> {
             TypedExpressionKind::FuncCall(typed_func_call) => {
                 self.analyze_func_call_expr_type(scope_id_opt, typed_func_call)
             }
-            TypedExpressionKind::FieldAccess(..) => todo!(),
-            TypedExpressionKind::MethodCall(..) => todo!(),
             TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => {
                 self.analyze_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
             }
+            TypedExpressionKind::FieldAccess(field_access) => {
+                self.analyze_field_access_type(scope_id_opt, field_access)
+            }
+            TypedExpressionKind::MethodCall(method_call) => {
+                self.analyze_method_call_expr_type(scope_id_opt, method_call, expected_type)
+            }
+            TypedExpressionKind::SizeOfExpression(typed_size_of_expression) => {
+                self.analyze_sizeof_expr_type(scope_id_opt, typed_size_of_expression, expected_type)
+            }
+            TypedExpressionKind::ConcreteType(..) => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InvalidUsageOfTheConcreteType,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_expr.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
         };
 
-        let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.get_loc());
-        typed_expr.concrete_type = normalized_type;
+        let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.loc.clone());
+        typed_expr.concrete_type = normalized_type.clone();
 
         if cfg!(debug_assertions) {
             if let Some(concrete_type_clone) = typed_expr.concrete_type.clone() {
                 let is_unresolved_symbol = matches!(concrete_type_clone, ConcreteType::UnresolvedSymbol(..));
                 assert!(is_unresolved_symbol == false);
             }
+            assert!(typed_expr.concrete_type != None);
         }
 
-        typed_expr.concrete_type.clone()
+        normalized_type
     }
 
     pub(crate) fn check_expr_type_must_be_condition(&mut self, concrete_type: ConcreteType, loc: Location) {
@@ -477,7 +567,15 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if !operand_type.is_array() {
+        if !operand_type.is_array()
+            || array_index
+                .operand
+                .concrete_type
+                .clone()
+                .unwrap()
+                .as_array_type()
+                .is_none()
+        {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::ArrayIndexOnNonArrayOperand,
@@ -488,6 +586,7 @@ impl<'a> AnalysisContext<'a> {
                 )),
                 hint: None,
             });
+            return None;
         }
 
         let index_inner_type = array_index.index.concrete_type.clone();
@@ -516,7 +615,338 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        None
+        let concrete_type = array_index.operand.concrete_type.clone().unwrap();
+        let array_type = concrete_type.as_array_type().unwrap();
+        Some(*array_type.element_type.clone())
+    }
+
+    fn extract_struct_or_enum_symbol_id(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        var_type: ConcreteType,
+        loc: Location,
+    ) -> Option<SymbolID> {
+        let normalized = self.normalize_type(scope_id_opt, var_type, loc.clone())?;
+
+        match normalized {
+            ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+            ConcreteType::Pointer(concrete_type) => {
+                self.extract_struct_or_enum_symbol_id(scope_id_opt, *concrete_type, loc)
+            }
+            _ => None,
+        }
+    }
+
+    fn resolve_var_or_global_var_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
+        instance_symbol_id: SymbolID,
+        loc: Location,
+    ) -> Option<ConcreteType> {
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), instance_symbol_id)
+            .unwrap();
+
+        let concrete_type = match match &local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
+                let typed_variable = &local_symbol.as_variable().unwrap().typed_variable;
+
+                match &typed_variable.ty {
+                    Some(concrete_type) => self.normalize_type(scope_id_opt, concrete_type.clone(), loc.clone()),
+                    None => {
+                        let rhs = typed_variable.rhs.clone().unwrap();
+                        self.analyze_typed_expr_type(scope_id_opt, &mut rhs.clone(), None)
+                    }
+                }
+            }
+            LocalOrGlobalSymbol::GlobalSymbol(global_symbol) => match global_symbol.as_global_var() {
+                Some(resolved_global_var) => Some(resolved_global_var.global_var_sig.ty.clone().unwrap()),
+                None => None,
+            },
+        } {
+            Some(concrete_type) => Some(concrete_type),
+            None => None,
+        };
+
+        if concrete_type.is_some() {
+            let normalized_type = self
+                .normalize_type(scope_id_opt, concrete_type.unwrap(), loc.clone())
+                .unwrap();
+
+            Some(normalized_type)
+        } else {
+            None
+        }
+    }
+
+    fn analyze_unnamed_struct_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_struct_type: TypedUnnamedStructType,
+        field_access: &mut TypedFieldAccess,
+        resolved_var_type: ConcreteType,
+    ) -> Option<ConcreteType> {
+        let struct_name = format_concrete_type(resolved_var_type, &(self.symbol_formatter)(scope_id_opt));
+
+        let field_index = match unnamed_struct_type
+            .fields
+            .iter()
+            .position(|typed_struct_field| typed_struct_field.field_name == field_access.field_name)
+        {
+            Some(typed_struct_field) => typed_struct_field,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::StructHasNoFieldNamed {
+                        struct_name,
+                        field_name: field_access.field_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_access.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let typed_struct_field = unnamed_struct_type.fields.get(field_index).unwrap();
+
+        field_access.field_index = Some(field_index);
+        field_access.field_ty = Some(*typed_struct_field.field_type.clone());
+
+        Some(*typed_struct_field.field_type.clone())
+    }
+
+    fn validate_field_access(
+        &mut self,
+        module_id: ModuleID,
+        operand_concrete_type: ConcreteType,
+        field_access: &TypedFieldAccess,
+        field: &TypedStructField,
+        struct_methods: HashMap<String, SymbolID>,
+        struct_name: String,
+    ) -> bool {
+        let mut result = true;
+        let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
+        let field_access_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
+
+        if !(field_access_from_struct_methods || field.vis.is_private()) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InternalFieldAccess {
+                    field_name: field_access.field_name.clone(),
+                    struct_name,
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    field_access.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            result = false;
+        }
+
+        if operand_concrete_type.is_pointer() && !field_access.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UseFatArrow,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    field_access.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            result = false;
+        } else if !operand_concrete_type.is_pointer() && field_access.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidFatArrow,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    field_access.loc.clone(),
+                    0,
+                )),
+                hint: Some("Use '.' instead of '->'.".to_string()),
+            });
+            result = false;
+        }
+
+        result
+    }
+
+    fn analyze_field_access_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        field_access: &mut TypedFieldAccess,
+    ) -> Option<ConcreteType> {
+        let instance_symbol_id = match &field_access.operand.kind {
+            TypedExpressionKind::Symbol(symbol_id, ..) => symbol_id,
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::ObjectNotSupportsFields,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_access.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+
+        self.mark_local_symbol_used_once(local_scope_opt.clone().unwrap(), self.module_id, *instance_symbol_id);
+
+        let resolved_var_type = self
+            .resolve_var_or_global_var_type(
+                scope_id_opt,
+                local_scope_opt.clone(),
+                *instance_symbol_id,
+                field_access.loc.clone(),
+            )
+            .unwrap();
+
+        let (struct_module_id, struct_name, struct_fields, struct_methods, struct_symbol_id) = match self
+            .extract_struct_or_enum_symbol_id(scope_id_opt, resolved_var_type.clone(), field_access.loc.clone())
+        {
+            Some(struct_or_enum_symbol_id) => {
+                let local_or_global_symbol = match self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt, struct_or_enum_symbol_id)
+                {
+                    Some(local_or_global_symbol) => local_or_global_symbol,
+                    None => {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::ObjectNotSupportsFields,
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_current_module_file_path(),
+                                field_access.loc.clone(),
+                                0,
+                            )),
+                            hint: None,
+                        });
+                        return None;
+                    }
+                };
+
+                if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
+                    (
+                        resolved_struct.module_id,
+                        resolved_struct.struct_sig.name.clone(),
+                        resolved_struct.struct_sig.fields.clone(),
+                        resolved_struct.struct_sig.methods.clone(),
+                        resolved_struct.symbol_id,
+                    )
+                } else if let Some(_resolved_enum) = local_or_global_symbol.as_enum() {
+                    todo!();
+                } else {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::ObjectNotSupportsFields,
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            field_access.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
+            None => {
+                // handle unnamed struct
+
+                let is_resolved_var_type_const = resolved_var_type.is_const();
+
+                if let Some(unnamed_struct_type) = resolved_var_type.as_const_or_unnamed_struct() {
+                    let mut concrete_type = self
+                        .analyze_unnamed_struct_type(scope_id_opt, unnamed_struct_type, field_access, resolved_var_type)
+                        .unwrap();
+
+                    if is_resolved_var_type_const {
+                        concrete_type = ConcreteType::Const(Box::new(concrete_type.clone()));
+                    }
+
+                    return Some(concrete_type);
+                } else {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::ObjectNotSupportsFields,
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            field_access.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
+        };
+
+        let field_index = match struct_fields
+            .iter()
+            .position(|typed_struct_field| typed_struct_field.name == field_access.field_name)
+        {
+            Some(typed_struct_field) => typed_struct_field,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::StructHasNoFieldNamed {
+                        struct_name,
+                        field_name: field_access.field_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_access.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let typed_struct_field = struct_fields.get(field_index).unwrap();
+
+        if !self.validate_field_access(
+            struct_module_id,
+            resolved_var_type,
+            &field_access,
+            typed_struct_field,
+            struct_methods,
+            struct_name.clone(),
+        ) {
+            return None;
+        }
+
+        if field_access.is_fat_arrow {
+            field_access.operand = Box::new(TypedExpression {
+                kind: TypedExpressionKind::Dereference(TypedDereference {
+                    operand: field_access.operand.clone(),
+                    loc: field_access.loc.clone(),
+                }),
+                concrete_type: None,
+                loc: field_access.loc.clone(),
+            });
+        }
+
+        field_access.field_index = Some(field_index);
+        field_access.field_ty = Some(typed_struct_field.ty.clone());
+        field_access.object_symbol_id = Some(struct_symbol_id);
+
+        Some(typed_struct_field.ty.clone())
     }
 
     fn analyze_struct_init_expr_type(
@@ -524,14 +954,26 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         typed_struct_init: &mut TypedStructInit,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
-        let resolved_struct =
-            self.resolve_symbol_as_struct(scope_id_opt, typed_struct_init.symbol_id, typed_struct_init.loc.clone())?;
+        let normalized = self
+            .normalize_type(
+                scope_id_opt,
+                ConcreteType::UnresolvedSymbol(typed_struct_init.symbol_id),
+                typed_struct_init.loc.clone(),
+            )
+            .unwrap();
+
+        let resolved_struct = self
+            .resolve_symbol_as_struct(
+                scope_id_opt,
+                normalized.as_struct_symbol_id().unwrap(),
+                typed_struct_init.loc.clone(),
+            )
+            .unwrap();
 
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
         for field_init in &typed_struct_init.fields {
-            let struct_name = formatter_closure(typed_struct_init.symbol_id);
+            let struct_name = (self.symbol_formatter)(scope_id_opt)(typed_struct_init.symbol_id);
 
             if field_names.contains(&field_init.name) {
                 self.reporter.report(Diag {
@@ -568,7 +1010,7 @@ impl<'a> AnalysisContext<'a> {
                 .find(|field| field.name == field_init.name);
 
             if field.is_none() {
-                let struct_name = formatter_closure(typed_struct_init.symbol_id);
+                let struct_name = (self.symbol_formatter)(scope_id_opt)(typed_struct_init.symbol_id);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -602,9 +1044,9 @@ impl<'a> AnalysisContext<'a> {
                 field_target_type.clone(),
                 field_init.loc.clone(),
             ) {
-                let struct_name = formatter_closure(typed_struct_init.symbol_id);
-                let expected_type = format_concrete_type(field_target_type, &formatter_closure);
-                let found_type = format_concrete_type(field_value_type, &formatter_closure);
+                let struct_name = (self.symbol_formatter)(scope_id_opt)(typed_struct_init.symbol_id);
+                let expected_type = format_concrete_type(field_target_type, &(self.symbol_formatter)(scope_id_opt));
+                let found_type = format_concrete_type(field_value_type, &(self.symbol_formatter)(scope_id_opt));
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -634,7 +1076,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if !missing_fields.is_empty() {
-            let struct_name = formatter_closure(typed_struct_init.symbol_id);
+            let struct_name = (self.symbol_formatter)(scope_id_opt)(typed_struct_init.symbol_id);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -650,6 +1092,8 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         }
+
+        typed_struct_init.symbol_id = normalized.as_struct_symbol_id().unwrap();
 
         Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
             typed_struct_init.symbol_id,
@@ -697,8 +1141,10 @@ impl<'a> AnalysisContext<'a> {
                 None => return None,
             };
 
-        match operand_type {
-            ConcreteType::Pointer(concrete_type) => Some(*concrete_type),
+        dereference.operand.concrete_type = Some(operand_type.clone());
+
+        let pointer_inner_type = match operand_type {
+            ConcreteType::Pointer(concrete_type) => *concrete_type,
             _ => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -712,34 +1158,187 @@ impl<'a> AnalysisContext<'a> {
                 });
                 return None;
             }
+        };
+
+        if pointer_inner_type.is_void() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::DerefVoidPointerValue,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    dereference.loc.clone(),
+                    0,
+                )),
+                hint: Some("Cast 'void*' to a concrete pointer type before dereferencing it.".to_string()),
+            });
+            return None;
         }
+
+        Some(pointer_inner_type)
     }
 
     fn check_func_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
+        func_sig: &mut FuncSig,
+        args: &mut Vec<TypedExpression>,
+        loc: Location,
+        instance_method_call: bool,
+    ) -> Option<ConcreteType> {
+        let is_variadic = func_sig.params.variadic.is_some();
+        let mut expected_args_len = func_sig.params.list.len();
+
+        // If this is an instance method call, `&self` will be pushed later
+        if instance_method_call && !func_sig.params.list.is_empty() {
+            expected_args_len = expected_args_len.saturating_sub(1);
+        }
+
+        // Check argument count
+        if (!is_variadic && args.len() != expected_args_len) || (is_variadic && args.len() < expected_args_len) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::FuncCallArgsCountMismatch {
+                    args: args.len() as u32,
+                    expected: expected_args_len as u32,
+                    func_name: func_sig.name.clone(),
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        }
+
+        // Handle variadic arguments
+        if is_variadic {
+            let static_params_len = func_sig.params.list.len();
+            let variadic_args = &mut args[static_params_len..];
+
+            if let Some(var_param) = &func_sig.params.variadic {
+                match var_param.clone() {
+                    TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
+                        for (idx, arg) in variadic_args.iter_mut().enumerate() {
+                            if let Some(arg_type) =
+                                self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone())
+                            {
+                                if !self.check_type_mismatch(
+                                    scope_id_opt,
+                                    arg_type.clone(),
+                                    variadic_param_type.clone(),
+                                    arg.loc.clone(),
+                                ) {
+                                    self.reporter.report(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
+                                            param_type: format_concrete_type(
+                                                variadic_param_type.clone(),
+                                                &(self.symbol_formatter)(scope_id_opt),
+                                            ),
+                                            argument_type: format_concrete_type(
+                                                arg_type,
+                                                &(self.symbol_formatter)(scope_id_opt),
+                                            ),
+                                            argument_idx: (idx + static_params_len) as u32,
+                                        },
+                                        location: Some(DiagLoc::new(
+                                            self.resolver.get_current_module_file_path(),
+                                            loc.clone(),
+                                            0,
+                                        )),
+                                        hint: None,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    TypedFuncVariadicParams::UntypedCStyle => {
+                        for arg in variadic_args.iter_mut() {
+                            let _ = self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Analyze static arguments
+        let start_idx = if instance_method_call { 1 } else { 0 };
+        for (param, arg) in func_sig.params.list.iter_mut().skip(start_idx).zip(args.iter_mut()) {
+            let param_type = match param {
+                TypedFuncParamKind::FuncParam(p) => {
+                    let normalized = self.normalize_type(scope_id_opt, p.ty.clone(), p.loc.clone()).unwrap();
+                    p.ty = normalized.clone();
+                    normalized
+                }
+                TypedFuncParamKind::SelfModifier(s) => {
+                    let normalized = self
+                        .normalize_type(scope_id_opt, s.ty.clone().unwrap(), s.loc.clone())
+                        .unwrap();
+                    s.ty = Some(match s.kind {
+                        SelfModifierKind::Copied => normalized.clone(),
+                        SelfModifierKind::Referenced => ConcreteType::Pointer(Box::new(normalized.clone())),
+                    });
+                    s.ty.clone().unwrap()
+                }
+            };
+            let _ = self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type));
+        }
+
+        // Check for duplicate parameter names
+        self.check_duplicate_param_names(
+            &func_sig.params.list,
+            func_sig.params.variadic.as_ref(),
+            DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0),
+        );
+
+        Some(func_sig.return_type.clone())
+    }
+
+    fn analyze_func_call_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
+        let module_id = self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id).unwrap();
 
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, func_call.symbol_id)
+        let local_scope_opt = self.resolver.get_scope_ref(module_id, scope_id_opt.unwrap());
+        let local_or_global_symbol = {
+            match self
+                .resolver
+                .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
+            {
+                Some(symbol_entry) => Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry)),
+                None => {
+                    match self
+                        .resolver
+                        .resolve_symbol_from_local_scope(local_scope_opt.clone().unwrap(), func_call.symbol_id)
+                    {
+                        Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol)),
+                        None => None,
+                    }
+                }
+            }
+        }
+        .unwrap();
+
+        self.resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), func_call.symbol_id)
             .unwrap();
 
         let func_sig_opt = match local_or_global_symbol {
-            resolver::scope::LocalOrGlobalSymbol::LocalSymbol(_) => None,
-            resolver::scope::LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
+            LocalOrGlobalSymbol::LocalSymbol(_) => None,
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
                 SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig),
                 _ => None,
             },
         };
 
-        let func_sig = match func_sig_opt {
+        let mut func_sig = match func_sig_opt {
             Some(func_sig) => func_sig,
             None => {
-                let func_name = formatter_closure(func_call.symbol_id);
+                let func_name = (self.symbol_formatter)(scope_id_opt)(func_call.symbol_id);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -755,113 +1354,293 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let is_variadic = func_sig.params.variadic.is_some();
+        self.mark_func_used(local_scope_opt, module_id, func_call.symbol_id);
+        let return_type = self.check_func_call(
+            scope_id_opt,
+            &mut func_sig,
+            &mut func_call.args,
+            func_call.loc.clone(),
+            false,
+        );
 
-        if !is_variadic && func_call.args.len() != func_sig.params.list.len() {
-            let func_name = formatter_closure(func_call.symbol_id);
+        update_global_symbol_type!(self, func_sig.module_id, func_call.symbol_id,
+            SymbolEntryKind::Func(resolved_func) => resolved_func, {
+                resolved_func.func_sig = func_sig.clone();
+            }
+        );
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::FuncCallArgsCountMismatch {
-                    args: func_call.args.len() as u32,
-                    expected: func_sig.params.list.len() as u32,
-                    func_name,
+        return_type
+    }
+
+    fn analyze_method_call_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        method_call: &mut TypedMethodCall,
+        expected_type: Option<ConcreteType>,
+    ) -> Option<ConcreteType> {
+        let method_name = method_call.method_name.clone();
+        let loc = method_call.loc.clone();
+
+        let operand_concrete_type =
+            self.analyze_typed_expr_type(scope_id_opt, &mut method_call.operand, expected_type.clone())?;
+
+        let instance_symbol_id = match method_call.operand.kind {
+            TypedExpressionKind::Symbol(symbol_id, ..) => symbol_id,
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::ObjectNotSupportsMethods,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        method_call.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt?);
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), instance_symbol_id)
+            .unwrap();
+
+        let struct_id_opt = {
+            if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
+                // static method call
+                Some((resolved_struct.module_id, resolved_struct.symbol_id))
+            } else if let Some(_resolved_enum) = local_or_global_symbol.as_enum() {
+                // TODO enum variant
+                todo!();
+            } else {
+                // instance method call
+                if let Some(resolved_var) = local_or_global_symbol.as_variable() {
+                    let var_type = resolved_var
+                        .typed_variable
+                        .ty
+                        .clone()
+                        .unwrap_or({
+                            self.analyze_typed_expr_type(
+                                scope_id_opt,
+                                &mut resolved_var.typed_variable.rhs.unwrap(),
+                                expected_type.clone(),
+                            )
+                            .unwrap()
+                        })
+                        .get_const_inner()
+                        .clone();
+
+                    match self.extract_struct_or_enum_symbol_id(scope_id_opt, var_type, loc) {
+                        Some(struct_id) => Some((resolved_var.module_id, struct_id)),
+                        None => None,
+                    }
+                } else if let Some(resolved_global_var) = local_or_global_symbol.as_global_var() {
+                    let var_type = resolved_global_var.global_var_sig.ty.unwrap().get_const_inner().clone();
+
+                    match self.extract_struct_or_enum_symbol_id(scope_id_opt, var_type, loc) {
+                        Some(struct_id) => Some((resolved_global_var.module_id, struct_id)),
+                        None => None,
+                    }
+                } else {
+                    None
+                }
+            }
+        };
+
+        let (module_id, struct_id) = match struct_id_opt {
+            Some((module_id, struct_id)) => (module_id, struct_id),
+            None => {
+                let symbol_name = (self.symbol_formatter)(scope_id_opt)(instance_symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::NonStructSymbol { symbol_name },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        method_call.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        method_call.symbol_id = struct_id;
+        let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, struct_id).unwrap();
+
+        let (object_name, object_methods, object_module_id) = {
+            match symbol_entry.kind {
+                SymbolEntryKind::Struct(resolved_struct) => (
+                    resolved_struct.struct_sig.name,
+                    resolved_struct.struct_sig.methods,
+                    resolved_struct.module_id,
+                ),
+                SymbolEntryKind::Enum(_resolved_enum) => todo!(),
+                _ => unreachable!(),
+            }
+        };
+
+        let method_symbol_id = match object_methods.get(&method_name) {
+            Some(symbol_id) => *symbol_id,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::StructMethodNotDefined {
+                        struct_name: object_name.clone(),
+                        method_name: method_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        method_call.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let mut method_symbol_entry = self
+            .resolver
+            .lookup_symbol_entry_with_id(object_module_id, method_symbol_id)
+            .unwrap();
+
+        let resolved_method = match &mut method_symbol_entry.kind {
+            SymbolEntryKind::Method(resolved_method) => resolved_method,
+            _ => unreachable!(),
+        };
+
+        let first_param_opt = resolved_method.func_sig.params.list.first();
+        let is_instance_method_call = {
+            match first_param_opt {
+                Some(first_param) => match first_param {
+                    TypedFuncParamKind::FuncParam(..) => false,
+                    TypedFuncParamKind::SelfModifier(..) => true,
                 },
-                location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
-                    func_call.loc.clone(),
-                    0,
-                )),
-                hint: None,
-            });
-            return None;
-        } else if is_variadic && func_call.args.len() < func_sig.params.list.len() {
-            let func_name = formatter_closure(func_call.symbol_id);
+                None => false,
+            }
+        };
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::FuncCallArgsCountMismatch {
-                    args: func_call.args.len() as u32,
-                    expected: func_sig.params.list.len() as u32,
-                    func_name,
-                },
-                location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
-                    func_call.loc.clone(),
-                    0,
-                )),
-                hint: None,
-            });
+        if !self.validate_method_call(
+            object_module_id,
+            scope_id_opt,
+            instance_symbol_id,
+            operand_concrete_type.clone(),
+            method_call,
+            first_param_opt,
+            object_methods,
+            object_name.clone(),
+            &resolved_method,
+        ) {
             return None;
         }
 
-        if is_variadic {
-            match func_sig.params.variadic.clone().unwrap() {
-                TypedFuncVariadicParams::Typed(_, variadic_param_type) => {
-                    let static_params_len = func_sig.params.list.len();
-                    let variadic_args = &mut func_call.args[static_params_len..];
+        {
+            // FIXME I still don't know why this isn't working?
+            // But i know i can fix it in the future and does not matter for me at moment =/
+            // self.mark_func_used(local_scope_opt, module_id, method_symbol_id);
+        }
 
-                    for (argument_idx, argument) in variadic_args.iter_mut().enumerate() {
-                        let argument_type = match self.analyze_typed_expr_type(
-                            scope_id_opt,
-                            argument,
-                            argument.concrete_type.clone(),
-                        ) {
-                            Some(concrete_type) => concrete_type,
-                            None => continue,
-                        };
+        self.check_func_call(
+            scope_id_opt,
+            &mut resolved_method.func_sig,
+            &mut method_call.args,
+            method_call.loc.clone(),
+            is_instance_method_call,
+        );
 
-                        if !self.check_type_mismatch(
-                            scope_id_opt,
-                            argument_type.clone(),
-                            variadic_param_type.clone(),
-                            argument.get_loc(),
-                        ) {
-                            let param_type = format_concrete_type(variadic_param_type.clone(), &formatter_closure);
-                            let argument_type = format_concrete_type(argument_type, &formatter_closure);
+        Some(resolved_method.func_sig.return_type.clone())
+    }
 
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
-                                    param_type,
-                                    argument_type,
-                                    argument_idx: (argument_idx + static_params_len) as u32,
-                                },
-                                location: Some(DiagLoc::new(
-                                    self.resolver.get_current_module_file_path(),
-                                    func_call.loc.clone(),
-                                    0,
-                                )),
-                                hint: None,
-                            });
-                        }
+    fn validate_method_call(
+        &mut self,
+        module_id: ModuleID,
+        scope_id_opt: Option<ScopeID>,
+        instance_symbol_id: SymbolID,
+        operand_concrete_type: ConcreteType,
+        method_call: &TypedMethodCall,
+        first_param_opt: Option<&TypedFuncParamKind>,
+        object_methods: HashMap<String, SymbolID>,
+        object_name: String,
+        resolved_method: &ResolvedMethod,
+    ) -> bool {
+        let mut result = true;
+        let method_symbol_ids = object_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
+        let method_call_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
+
+        if !(method_call_from_struct_methods || resolved_method.func_sig.vis.is_public()) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InternalMethodCall {
+                    method_name: resolved_method.func_sig.name.clone(),
+                    object_name,
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    method_call.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            result = false;
+        }
+
+        if operand_concrete_type.is_pointer() && !method_call.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UseFatArrow,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    method_call.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            result = false;
+        } else if !operand_concrete_type.is_pointer() && method_call.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidFatArrow,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_module_file_path(module_id).unwrap(),
+                    method_call.loc.clone(),
+                    0,
+                )),
+                hint: Some("Use '.' instead of '->'.".to_string()),
+            });
+            result = false;
+        } else {
+            if let Some(first_param) = first_param_opt {
+                if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
+                    if typed_self_modifier.kind == SelfModifierKind::Referenced && operand_concrete_type.is_const() {
+                        let instance_name = (self.symbol_formatter)(scope_id_opt)(instance_symbol_id);
+
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
+                                method_name: method_call.method_name.clone(),
+                                instance_name: instance_name.clone(),
+                            },
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_module_file_path(module_id).unwrap(),
+                                method_call.loc.clone(),
+                                0,
+                            )),
+                            hint: Some(format!(
+                                "Instance '{}' is declared as 'const' and cannot be modified.",
+                                instance_name
+                            )),
+                        });
+                        result = false;
                     }
                 }
-                TypedFuncVariadicParams::UntypedCStyle => {}
             }
         }
 
-        for typed_expr in &mut func_call.args {
-            self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone());
-        }
-
-        self.check_duplicate_param_names(
-            &func_sig.params.list,
-            func_sig.params.variadic.as_ref(),
-            DiagLoc::new(self.resolver.get_current_module_file_path(), func_call.loc.clone(), 0),
-        );
-
-        Some(func_sig.return_type)
-    }
-
-    fn analyze_func_call_expr_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        func_call: &mut TypedFuncCall,
-    ) -> Option<ConcreteType> {
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt?);
-        self.mark_func_used(local_scope_opt?, self.module_id, func_call.symbol_id);
-        self.check_func_call(scope_id_opt, func_call)
+        result
     }
 
     fn analyze_array_expr_type(
@@ -892,7 +1671,7 @@ impl<'a> AnalysisContext<'a> {
                 scope_id_opt,
                 element_type.clone(),
                 *typed_array_type.element_type.clone(),
-                element.get_loc(),
+                element.loc.clone(),
             ) {
                 let element_type = format_concrete_type(element_type, &formatter_closure);
                 let expected_type = format_concrete_type(*typed_array_type.element_type.clone(), &formatter_closure);
@@ -926,12 +1705,13 @@ impl<'a> AnalysisContext<'a> {
                 None => return None,
             };
 
-        if !self.check_type_mismatch(
+        if !(self.check_type_mismatch(
             scope_id_opt,
             operand.clone(),
             cast.target_type.clone(),
             cast.loc.clone(),
-        ) {
+        ) || self.check_explicit_typecast(operand.clone(), cast.target_type.clone()))
+        {
             let lhs_type = format_concrete_type(cast.target_type.clone(), &formatter_closure);
             let rhs_type = format_concrete_type(operand, &formatter_closure);
 
@@ -1253,6 +2033,17 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn analyze_sizeof_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        sizeof_expr: &mut TypedSizeOfExpression,
+        expected_type: Option<ConcreteType>,
+    ) -> Option<ConcreteType> {
+        self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
+
+        Some(ConcreteType::BasicType(BasicConcreteType::SizeT))
+    }
+
     fn analyze_prefix_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1267,7 +2058,6 @@ impl<'a> AnalysisContext<'a> {
         };
 
         match prefix_expr.op {
-            PrefixOperator::SizeOf => Some(ConcreteType::BasicType(BasicConcreteType::SizeT)),
             PrefixOperator::BitwiseNot => {
                 let valid_concrete_type = match &operand_type {
                     ConcreteType::BasicType(basic_concrete_type) => {
@@ -1378,7 +2168,21 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if self.is_integer_type(operand_type.get_const_inner().clone()) {
+        if operand_type.is_const() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::CannotAssignToConstLValue,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    unary_expr.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        }
+
+        if !self.is_integer_type(operand_type.get_const_inner().clone()) {
             let operand_type = format_concrete_type(operand_type, &formatter_closure);
 
             self.reporter.report(Diag {

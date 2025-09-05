@@ -1,7 +1,6 @@
+use crate::context::AnalysisContext;
 use resolver::scope::LocalScopeRef;
 use typed_ast::{ModuleID, SymbolID};
-
-use crate::context::AnalysisContext;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn mark_symbol_used_once(&mut self, module_id: ModuleID, symbol_id: SymbolID) {
@@ -40,17 +39,21 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn mark_func_used(
         &mut self,
-        local_scope_rc: LocalScopeRef,
+        local_scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         symbol_id: SymbolID,
     ) {
-        match self.resolver.resolve_symbol_from_local_scope(local_scope_rc.clone(), symbol_id) {
-            Some(..) => {
+        if let Some(local_scope_rc) = local_scope_opt {
+            if self
+                .resolver
+                .resolve_symbol_from_local_scope(local_scope_rc.clone(), symbol_id)
+                .is_some()
+            {
                 self.mark_local_symbol_used_once(local_scope_rc, module_id, symbol_id);
-            },
-            None => {
-                self.mark_symbol_used_once(module_id, symbol_id);
-            },
+                return;
+            }
         }
+
+        self.mark_symbol_used_once(module_id, symbol_id);
     }
 }

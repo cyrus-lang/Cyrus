@@ -5,7 +5,6 @@ use diagcentral::{Diag, DiagLevel, DiagLoc};
 enum NamingConvDeclKind {
     Struct,
     Enum,
-    Typedef,
     Interface,
 }
 
@@ -21,7 +20,6 @@ impl<'a> AnalysisContext<'a> {
             let kind_str = match decl_kind {
                 NamingConvDeclKind::Struct => "Struct",
                 NamingConvDeclKind::Enum => "Enum",
-                NamingConvDeclKind::Typedef => "Typedef",
                 NamingConvDeclKind::Interface => "Interface",
             };
 
@@ -37,42 +35,42 @@ impl<'a> AnalysisContext<'a> {
         self.check_name(NamingConvDeclKind::Enum, &name, loc, is_local);
     }
 
-    pub(crate) fn check_typedef_name(&mut self, name: String, loc: Location, is_local: bool) {
-        self.check_name(NamingConvDeclKind::Typedef, &name, loc, is_local);
-    }
-
     pub(crate) fn check_interface_name(&mut self, name: String, loc: Location, is_local: bool) {
         self.check_name(NamingConvDeclKind::Interface, &name, loc, is_local);
     }
 
     pub(crate) fn check_method_name(&mut self, name: String, loc: Location) {
-        if !is_snake_case(&name) {
+        if !self.disable_warnings {
+            if !is_snake_case(&name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Warning,
+                    kind: AnalyzerDiagKind::NamingConv {
+                        name,
+                        kind: "Method".to_string(),
+                        expected: "snake_case".to_string(),
+                    },
+                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+                    hint: None,
+                });
+            }
+        }
+    }
+
+    fn report_nameconv_diag(&mut self, kind: String, name: String, loc: Location, is_local: bool) {
+        if !self.disable_warnings {
+            let expected = if is_local { "camelCase" } else { "PascalCase" };
+
             self.reporter.report(Diag {
                 level: DiagLevel::Warning,
                 kind: AnalyzerDiagKind::NamingConv {
+                    kind,
                     name,
-                    kind: "Method".to_string(),
-                    expected: "snake_case".to_string(),
+                    expected: expected.to_string(),
                 },
                 location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
                 hint: None,
             });
         }
-    }
-
-    fn report_nameconv_diag(&mut self, kind: String, name: String, loc: Location, is_local: bool) {
-        let expected = if is_local { "camelCase" } else { "PascalCase" };
-
-        self.reporter.report(Diag {
-            level: DiagLevel::Warning,
-            kind: AnalyzerDiagKind::NamingConv {
-                kind,
-                name,
-                expected: expected.to_string(),
-            },
-            location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
-            hint: None,
-        });
     }
 }
 

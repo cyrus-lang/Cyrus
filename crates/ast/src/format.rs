@@ -149,7 +149,6 @@ impl fmt::Display for UnnamedStructType {
 impl fmt::Display for PrefixOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PrefixOperator::SizeOf => write!(f, "sizeof"),
             PrefixOperator::Bang => write!(f, "&"),
             PrefixOperator::Minus => write!(f, "-"),
             PrefixOperator::BitwiseNot => write!(f, "~"),
@@ -262,6 +261,9 @@ impl fmt::Display for Expression {
                 write!(f, "{}", module_import.to_string())
             }
             Expression::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
+            Expression::SizeOfExpression(size_of_expression) => {
+                write!(f, "sizeof {}", size_of_expression.expr)
+            },
         }
     }
 }

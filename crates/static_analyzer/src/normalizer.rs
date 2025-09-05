@@ -42,7 +42,7 @@ impl<'a> AnalysisContext<'a> {
                         self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
-                        self.mark_symbol_used_once(self.module_id, symbol_entry.get_symbol_id());
+                        self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
                     }
                 }
             }
@@ -264,7 +264,7 @@ impl<'a> AnalysisContext<'a> {
         Some(resolved_typedef.typedef_sig.ty.clone())
     }
 
-    fn resolve_symbol_type(
+    pub(crate) fn resolve_symbol_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,

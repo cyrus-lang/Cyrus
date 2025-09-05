@@ -1,20 +1,8 @@
+extern func printf(format: const char*, ...) int32;
+
 func main() {
-    #val1: int64 = 10;
-    #val2: int64 = 10;
+	#a = 0;
+	a -= 1;
 
-    #ptr1: int64* = &val1;
-    #ptr2: int64* = &val2;
-    #ptr3: int64* = null;
-
-    printf("value: %d\n", *(ptr1 || ptr2));
-    printf("value: %d\n", *(ptr1 || ptr3));
-
-    if ((null || ptr3) == null) {
-        printf("null || null\n");
-    } else {
-        #result = null || ptr3;
-        printf("value: %d\n", *(null || ptr3));
-    }
+	printf("v: %d\n", a);
 }
-
-extern func printf(format: const char*, ...);

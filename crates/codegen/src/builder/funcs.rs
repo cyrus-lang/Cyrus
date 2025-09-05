@@ -1,23 +1,69 @@
-use crate::builder::module::LocalIRValue;
-
 use super::module::CodeGenBuilder;
-use ast::{AccessSpecifier, SelfModifierKind};
+use crate::builder::{abi::make_func_abi_name, module::LocalIRValue};
+use ast::AccessSpecifier;
 use inkwell::{
-    AddressSpace,
     attributes::{Attribute, AttributeLoc},
     llvm_sys::{
         core::LLVMFunctionType,
         prelude::{LLVMBool, LLVMTypeRef},
     },
     module::Linkage,
-    types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
+    types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
     values::FunctionValue,
 };
+use resolver::scope::LocalScopeRef;
 use typed_ast::{
-    TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParams, TypedVariable, types::ConcreteType,
+    ModuleID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParams, TypedVariable,
+    types::ConcreteType,
 };
 
 impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn build_func_params(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        params: &TypedFuncParams,
+        fn_value: FunctionValue<'a>,
+    ) {
+        params.list.iter().enumerate().for_each(|(param_idx, param_kind)| {
+            let (name, concrete_type, loc) = match param_kind {
+                TypedFuncParamKind::FuncParam(typed_func_param) => (
+                    typed_func_param.name.clone(),
+                    typed_func_param.ty.clone(),
+                    typed_func_param.loc.clone(),
+                ),
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => (
+                    "self".to_string(),
+                    typed_self_modifier.ty.clone().unwrap(),
+                    typed_self_modifier.loc.clone(),
+                ),
+            };
+
+            let local_scope_rc = local_scope_opt.clone().unwrap();
+            let local_scope = local_scope_rc.borrow();
+            let local_param_symbol_id = local_scope.resolve(&name).unwrap().get_symbol_id();
+            drop(local_scope);
+
+            let lvalue_pointer = self.build_local_variable(
+                local_scope_opt.clone(),
+                &TypedVariable {
+                    symbol_id: local_param_symbol_id,
+                    name: name.clone(),
+                    ty: Some(concrete_type.clone()),
+                    rhs: None,
+                    loc,
+                },
+            );
+
+            let basic_value = fn_value.get_nth_param(param_idx.try_into().unwrap()).unwrap();
+            self.llvmbuilder.build_store(lvalue_pointer, basic_value).unwrap();
+
+            self.insert_forward_decl_to_registry(
+                local_param_symbol_id,
+                LocalIRValue::LValue(lvalue_pointer, concrete_type),
+            );
+        })
+    }
+
     pub(crate) fn build_func_def(&mut self, func_def: &TypedFuncDef) {
         let local_scope_opt = self.resolver.get_scope_ref(self.module_id, func_def.body.scope_id);
         let irreg = self.irreg.borrow();
@@ -31,40 +77,7 @@ impl<'a> CodeGenBuilder<'a> {
         self.llvmbuilder.position_at_end(entry_block);
         drop(irreg);
 
-        func_def
-            .params
-            .list
-            .iter()
-            .enumerate()
-            .for_each(|(param_idx, param_kind)| {
-                if let TypedFuncParamKind::FuncParam(func_param) = param_kind {
-                    let local_scope_rc = local_scope_opt.clone().unwrap();
-                    let local_scope = local_scope_rc.borrow();
-                    let local_param_symbol_id = local_scope.resolve(&func_param.name).unwrap().get_symbol_id();
-                    drop(local_scope);
-
-                    let lvalue_pointer = self.build_local_variable(
-                        local_scope_opt.clone(),
-                        &TypedVariable {
-                            symbol_id: local_param_symbol_id,
-                            name: func_param.name.clone(),
-                            ty: Some(func_param.ty.clone()),
-                            rhs: None,
-                            loc: func_param.loc.clone(),
-                        },
-                    );
-
-                    let basic_value = fn_value.get_nth_param(param_idx.try_into().unwrap()).unwrap();
-                    self.llvmbuilder.build_store(lvalue_pointer, basic_value).unwrap();
-
-                    let mut irreg = self.irreg.borrow_mut();
-                    irreg.insert(
-                        local_param_symbol_id,
-                        LocalIRValue::LValue(lvalue_pointer, func_param.ty.clone()),
-                    );
-                    drop(irreg);
-                }
-            });
+        self.build_func_params(local_scope_opt, &func_def.params, fn_value);
 
         if let Some(variadic_params) = &func_def.params.variadic {
             if let TypedFuncVariadicParams::Typed(_, _) = variadic_params {
@@ -83,22 +96,33 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_func_decl(
         &mut self,
         func_name: String,
+        use_func_real_name: bool,
+        module_id: Option<ModuleID>,
         params: TypedFuncParams,
         return_type: ConcreteType,
         vis: AccessSpecifier,
-        method_struct_type: Option<StructType<'a>>,
     ) -> FunctionValue<'a> {
         let linkage = {
             if func_name == "main" {
                 Linkage::External
             } else {
-                self.build_func_linkage(vis)
+                self.build_func_linkage(vis.clone())
             }
         };
-        let fn_type = self.build_func_type(params, return_type, method_struct_type);
+
+        let fn_type = self.build_func_type(params, return_type);
+
+        let func_abi_name = {
+            if func_name == "main" || use_func_real_name {
+                func_name
+            } else {
+                let module_name = self.get_module_name(module_id.unwrap());
+                make_func_abi_name(module_name, func_name, vis)
+            }
+        };
 
         let llvmmodule = self.llvmmodule.borrow();
-        let fn_value = llvmmodule.add_function(&func_name, fn_type, Some(linkage));
+        let fn_value = llvmmodule.add_function(&func_abi_name, fn_type, Some(linkage));
         self.add_func_attrs(fn_value);
         drop(llvmmodule);
         fn_value
@@ -145,12 +169,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_func_type(
-        &mut self,
-        params: TypedFuncParams,
-        return_type: ConcreteType,
-        method_struct_type: Option<StructType<'a>>,
-    ) -> FunctionType<'a> {
+    pub(crate) fn build_func_type(&mut self, params: TypedFuncParams, return_type: ConcreteType) -> FunctionType<'a> {
         let param_types: Vec<BasicMetadataTypeEnum<'a>> = params
             .list
             .iter()
@@ -160,12 +179,10 @@ impl<'a> CodeGenBuilder<'a> {
                         .build_concrete_type(None, typed_func_param.ty.clone())
                         .try_into()
                         .unwrap(),
-                    TypedFuncParamKind::SelfModifier(self_modifier) => match self_modifier.kind {
-                        SelfModifierKind::Copied => BasicTypeEnum::StructType(method_struct_type.unwrap()),
-                        SelfModifierKind::Referenced => {
-                            BasicTypeEnum::PointerType(self.llvmctx.ptr_type(AddressSpace::default()))
-                        }
-                    },
+                    TypedFuncParamKind::SelfModifier(self_modifier) => {
+                        let concrete_type = self.build_concrete_type(None, self_modifier.ty.clone().unwrap());
+                        concrete_type.try_into().unwrap()
+                    }
                 };
                 BasicMetadataTypeEnum::from(basic_type_enum.clone())
             })

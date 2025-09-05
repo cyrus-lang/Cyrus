@@ -69,6 +69,7 @@ pub enum TokenKind {
     Else,
     Return,
     For,
+    While,
     Foreach,
     Break,
     Continue,
@@ -182,7 +183,7 @@ impl fmt::Display for TokenKind {
             // Keywords
             Self::Interface => write!(f, "interface"),
             Self::Typedef => write!(f, "type"),
-            Self::Typecast => write!(f, "typecast"),
+            Self::Typecast => write!(f, "cast"),
             Self::Function => write!(f, "func"),
             Self::Switch => write!(f, "switch"),
             Self::Case => write!(f, "case"),

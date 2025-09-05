@@ -1,16 +1,24 @@
 use crate::{diagnostics::AnalyzerDiagKind, type_cache::TypeResolverCaches};
-use ast::token::Location;
+use ast::{AssignmentKind, SelfModifierKind, token::Location};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
+    declsign::FuncSig,
     moduleloader::ModuleFilePath,
-    scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedFunction, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
 };
 use std::{
+    cell::RefCell,
+    collections::HashMap,
     mem,
+    rc::Rc,
     sync::{Arc, Mutex},
 };
-use typed_ast::{format::format_concrete_type, types::ConcreteType, *};
+use typed_ast::{
+    format::format_concrete_type,
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
+    *,
+};
 
 // FIXME Remove later
 #[allow(unused)]
@@ -18,28 +26,14 @@ use typed_ast::{format::format_concrete_type, types::ConcreteType, *};
 enum ControlContext {
     For(TypedFor),
     Switch(TypedSwitch),
+    While(TypedWhile),
 }
 
-macro_rules! update_local_symbol_type {
-    ($self:expr, $local_scope_rc:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
-        let mut local_scope = $local_scope_rc.borrow_mut();
-        let mut_ref = local_scope.resolve_with_symbol_id_mut($symbol_id).unwrap();
-
-        match &mut mut_ref.kind {
-            $pattern => {
-                let $var = $var;
-                $body
-            }
-            _ => unreachable!(),
-        }
-        drop(local_scope);
-    }};
-}
-
+#[macro_export]
 macro_rules! update_global_symbol_type {
-    ($self:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
+    ($self:expr, $module_id:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
         let mut global_symbols = $self.resolver.global_symbols.lock().unwrap();
-        let symbol_table = global_symbols.get_mut(&$self.module_id).unwrap();
+        let symbol_table = global_symbols.get_mut(&$module_id).unwrap();
         match &mut symbol_table.entries.get_mut(&$symbol_id).unwrap().kind {
             $pattern => {
                 let $var = $var;
@@ -51,14 +45,15 @@ macro_rules! update_global_symbol_type {
 }
 
 pub struct AnalysisContext<'a> {
-    pub ast: &'a mut TypedProgramTree,
+    pub ast: Rc<RefCell<TypedProgramTree>>,
     pub resolver: &'a Resolver,
     pub reporter: DiagReporter<AnalyzerDiagKind>,
     pub module_id: ModuleID,
     pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub ty_caches: TypeResolverCaches,
     control_stack: Vec<ControlContext>,
-    cur_func_symbol_id: Option<SymbolID>,
+    pub(crate) cur_func_symbol_id: Option<SymbolID>,
+    pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>,
 }
 
@@ -76,8 +71,9 @@ impl<'a> AnalysisContext<'a> {
     pub fn new(
         resolver: &'a Resolver,
         module_id: ModuleID,
-        ast: &'a mut TypedProgramTree,
+        ast: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<Mutex<Vec<(ModuleFilePath, Location)>>>,
+        disable_warnings: bool,
     ) -> Self {
         let symbol_formatter = Box::new(
             move |scope_id_opt: Option<ScopeID>| -> Box<dyn Fn(SymbolID) -> String> {
@@ -129,12 +125,16 @@ impl<'a> AnalysisContext<'a> {
             cur_func_symbol_id: None,
             entry_points,
             ty_caches: TypeResolverCaches::default(),
+            disable_warnings,
         }
     }
 
     // Traverse TypedAST
     pub fn analyze(&mut self) {
-        let mut body = mem::take(&mut self.ast.body);
+        let mut body = {
+            let mut ast_borrowed = self.ast.borrow_mut();
+            mem::take(&mut ast_borrowed.body)
+        };
 
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
@@ -144,7 +144,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
                 TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum, false),
-                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef, false),
+                TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef),
                 // Not analyzed
                 TypedStatement::Import(_) => continue,
                 // Invalid top-level statements
@@ -155,6 +155,7 @@ impl<'a> AnalysisContext<'a> {
                 | TypedStatement::Break(_)
                 | TypedStatement::Continue(_)
                 | TypedStatement::For(_)
+                | TypedStatement::While(_)
                 | TypedStatement::Switch(_)
                 | TypedStatement::Expression(_) => {
                     unreachable!()
@@ -163,7 +164,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_unused_symbols();
-        self.ast.body = body;
+        self.ast.borrow_mut().body = body;
     }
 
     // Traverse BlockStatement
@@ -184,7 +185,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::BlockStatement(typed_block_statement) => {
                     self.analyze_block_statement(typed_block_statement)
                 }
-                TypedStatement::If(typed_if) => self.analyze_if_stmt(typed_if),
+                TypedStatement::If(typed_if) => self.analyze_if_stmt(block_stmt.scope_id, typed_if, None),
                 TypedStatement::Return(typed_return) => self.analyze_return(block_stmt.scope_id, typed_return),
                 TypedStatement::Break(typed_break) => {
                     self.analyze_break(typed_break);
@@ -194,8 +195,9 @@ impl<'a> AnalysisContext<'a> {
                     self.analyze_continue(typed_continue);
                     FlowState::Unreachable
                 }
-                TypedStatement::For(typed_for) => self.analyze_for_loop(Some(typed_for.body.scope_id), typed_for),
-                TypedStatement::Switch(..) => todo!(),
+                TypedStatement::For(typed_for) => self.analyze_for_loop(Some(block_stmt.scope_id), typed_for),
+                TypedStatement::While(typed_while) => self.analyze_while_loop(Some(block_stmt.scope_id), typed_while),
+                TypedStatement::Switch(typed_switch) => self.analyze_switch(Some(block_stmt.scope_id), typed_switch),
                 TypedStatement::Struct(typed_struct) => {
                     self.analyze_struct(typed_struct, true);
                     FlowState::Reachable
@@ -214,7 +216,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedStatement::Interface(typed_interface) => {
                     self.reporter.report(Diag {
-                        level: DiagLevel::Warning,
+                        level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::InternalInterfaceIsNotValid,
                         location: Some(DiagLoc::new(
                             self.resolver.get_current_module_file_path(),
@@ -226,7 +228,7 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Reachable
                 }
                 TypedStatement::Typedef(typed_typedef) => {
-                    self.analyze_typedef(Some(block_stmt.scope_id), typed_typedef, false);
+                    self.analyze_typedef(Some(block_stmt.scope_id), typed_typedef);
                     FlowState::Reachable
                 }
                 // Invalid statements
@@ -283,8 +285,73 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_if_stmt(&mut self, typed_if: &mut TypedIf) -> FlowState {
+    fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
+        self.control_stack.push(ControlContext::Switch(typed_switch.clone()));
+
+        let operand_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_switch.operand, None) {
+            Some(concrete_type) => concrete_type,
+            None => return FlowState::Reachable,
+        };
+
+        for case in &mut typed_switch.cases {
+            for pattern in &mut case.patterns {
+                match pattern {
+                    TypedSwitchCasePattern::Expression(typed_expr) => {
+                        let pattern_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
+                            Some(concrete_type) => concrete_type,
+                            None => continue,
+                        };
+
+                        if !self.check_type_mismatch(
+                            scope_id_opt,
+                            pattern_concrete_type.clone(),
+                            operand_concrete_type.clone(),
+                            typed_switch.loc.clone(),
+                        ) {
+                            let operand_type = format_concrete_type(
+                                operand_concrete_type.clone(),
+                                &(self.symbol_formatter)(scope_id_opt),
+                            );
+                            let pattern_type =
+                                format_concrete_type(pattern_concrete_type, &(self.symbol_formatter)(scope_id_opt));
+
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: AnalyzerDiagKind::TypeMismatchInCasePattern {
+                                    operand_type,
+                                    pattern_type,
+                                },
+                                location: Some(DiagLoc::new(
+                                    self.resolver.get_current_module_file_path(),
+                                    case.loc.clone(),
+                                    0,
+                                )),
+                                hint: None,
+                            });
+                            continue;
+                        }
+                    }
+                    TypedSwitchCasePattern::Identifier(_) => todo!(),
+                    TypedSwitchCasePattern::EnumVariant(_, _items) => todo!(),
+                }
+            }
+
+            self.analyze_block_statement(&mut case.body);
+        }
+
+        self.control_stack.pop();
+        FlowState::Reachable
+    }
+
+    fn analyze_if_stmt(
+        &mut self,
+        scope_id: ScopeID,
+        typed_if: &mut TypedIf,
+        expected_type: Option<ConcreteType>,
+    ) -> FlowState {
         let consequent_state = self.analyze_block_statement(&mut typed_if.consequent);
+
+        self.analyze_typed_expr_type(Some(scope_id), &mut typed_if.condition, expected_type.clone());
 
         let alternate_state = {
             if let Some(block_stmt) = &mut typed_if.alternate {
@@ -295,10 +362,26 @@ impl<'a> AnalysisContext<'a> {
         };
 
         typed_if.branches.iter_mut().for_each(|branch| {
-            self.analyze_if_stmt(branch);
+            self.analyze_if_stmt(scope_id, branch, expected_type.clone());
         });
 
         self.merge_flow_state(consequent_state, alternate_state)
+    }
+
+    fn analyze_while_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_while: &mut TypedWhile) -> FlowState {
+        if let Some(concrete_type) = self.analyze_typed_expr_type(
+            scope_id_opt,
+            &mut typed_while.condition,
+            Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
+        ) {
+            self.check_expr_type_must_be_condition(concrete_type, typed_while.loc.clone());
+        }
+
+        self.control_stack.push(ControlContext::While(typed_while.clone()));
+        self.analyze_block_statement(&mut typed_while.body);
+        self.control_stack.pop();
+
+        FlowState::Reachable
     }
 
     fn analyze_for_loop(&mut self, scope_id_opt: Option<ScopeID>, typed_for: &mut TypedFor) -> FlowState {
@@ -307,7 +390,11 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if let Some(typed_expr) = &mut typed_for.condition {
-            if let Some(concrete_type) = self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone()) {
+            if let Some(concrete_type) = self.analyze_typed_expr_type(
+                scope_id_opt,
+                typed_expr,
+                Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
+            ) {
                 self.check_expr_type_must_be_condition(concrete_type, typed_for.loc.clone());
             }
         }
@@ -326,13 +413,9 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturn) -> FlowState {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(Some(scope_id));
 
-        let resolved_func = self.get_cur_func_symbol_id();
+        let func_sig = self.get_cur_func_sig();
         let return_type = self
-            .normalize_type(
-                Some(scope_id),
-                resolved_func.func_sig.return_type,
-                typed_return.loc.clone(),
-            )
+            .normalize_type(Some(scope_id), func_sig.return_type, typed_return.loc.clone())
             .unwrap();
 
         if return_type.is_void() && typed_return.argument.is_some() {
@@ -347,7 +430,9 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         } else if let Some(typed_expr) = &mut typed_return.argument {
-            if let Some(concrete_type) = self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone())) {
+            if let Some(concrete_type) =
+                self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone()))
+            {
                 let expected = format_concrete_type(return_type.clone(), &formatter_closure);
                 let got = format_concrete_type(concrete_type.clone(), &formatter_closure);
 
@@ -421,25 +506,30 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn report_unreachable_block_diag(&mut self, typed_stmt: &TypedStatement) {
-        self.reporter.report(Diag {
-            level: DiagLevel::Warning,
-            kind: AnalyzerDiagKind::UnreachableCode,
-            location: Some(DiagLoc::new(
-                self.resolver.get_current_module_file_path(),
-                typed_stmt.get_loc(),
-                0,
-            )),
-            hint: None,
-        });
+        if !self.disable_warnings {
+            self.reporter.report(Diag {
+                level: DiagLevel::Warning,
+                kind: AnalyzerDiagKind::UnreachableCode,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_stmt.get_loc(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
     }
 
-    fn get_cur_func_symbol_id(&self) -> ResolvedFunction {
+    fn get_cur_func_sig(&self) -> FuncSig {
         let symbol_id = self.cur_func_symbol_id.unwrap();
         let symbol_entry = self
             .resolver
             .lookup_symbol_entry_with_id(self.module_id, symbol_id)
             .unwrap();
-        symbol_entry.as_func().unwrap().clone()
+        match symbol_entry.as_func() {
+            Some(resolved_func) => resolved_func.func_sig.clone(),
+            None => symbol_entry.as_method().unwrap().func_sig.clone(),
+        }
     }
 
     fn check_global_var_assignment_type(
@@ -506,7 +596,7 @@ impl<'a> AnalysisContext<'a> {
             );
         }
 
-        update_global_symbol_type!(self, typed_global_var.symbol_id,
+        update_global_symbol_type!(self, typed_global_var.module_id, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
                 resolved_var.global_var_sig.ty = typed_global_var.ty.clone();
             }
@@ -570,12 +660,14 @@ impl<'a> AnalysisContext<'a> {
                     ),
                 };
 
-                self.reporter.report(Diag {
-                    level: DiagLevel::Warning,
-                    kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
-                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
-                    hint: None,
-                });
+                if !self.disable_warnings {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Warning,
+                        kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
+                        location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+                        hint: None,
+                    });
+                }
             }
         }
     }
@@ -620,12 +712,19 @@ impl<'a> AnalysisContext<'a> {
                     ),
                 };
 
-                self.reporter.report(Diag {
-                    level: DiagLevel::Warning,
-                    kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
-                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
-                    hint: None,
-                });
+                let file_path = self
+                    .resolver
+                    .get_module_file_path(symbol_entry.get_module_id())
+                    .unwrap();
+
+                if !self.disable_warnings {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Warning,
+                        kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
+                        location: Some(DiagLoc::new(file_path, loc, 0)),
+                        hint: None,
+                    });
+                }
             }
         }
 
@@ -634,19 +733,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_struct(&mut self, typed_struct: &TypedStruct, is_local: bool) {
         self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
-
-        for symbol_id in typed_struct.methods.values() {
-            let symbol_entry = self
-                .resolver
-                .lookup_symbol_entry_with_id(self.module_id, *symbol_id)
-                .unwrap();
-            let resolved_method = symbol_entry.as_method().unwrap();
-
-            self.check_method_name(
-                resolved_method.func_sig.name.clone(),
-                resolved_method.func_sig.loc.clone(),
-            );
-        }
+        self.analyze_methods(self.module_id, &typed_struct.methods);
 
         let mut field_names: Vec<String> = Vec::new();
 
@@ -674,19 +761,7 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_enum(&mut self, typed_enum: &TypedEnum, is_local: bool) {
         self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
-
-        for symbol_id in typed_enum.methods.values() {
-            let symbol_entry = self
-                .resolver
-                .lookup_symbol_entry_with_id(self.module_id, *symbol_id)
-                .unwrap();
-            let resolved_method = symbol_entry.as_method().unwrap();
-
-            self.check_method_name(
-                resolved_method.func_sig.name.clone(),
-                resolved_method.func_sig.loc.clone(),
-            );
-        }
+        self.analyze_methods(self.module_id, &typed_enum.methods);
 
         let mut variant_names: Vec<String> = Vec::new();
 
@@ -794,49 +869,170 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDef) {
-        if typed_func_def.name == "main" {
-            let mut entry_points = self.entry_points.lock().unwrap();
-            entry_points.push((self.resolver.get_current_module_file_path(), typed_func_def.loc.clone()));
-            drop(entry_points);
-        }
+    fn analyze_any_func_def(
+        &mut self,
+        symbol_id: SymbolID,
+        return_type: &mut ConcreteType,
+        params: &mut TypedFuncParams,
+        body: &mut TypedBlockStatement,
+        loc: Location,
+    ) {
+        self.cur_func_symbol_id = Some(symbol_id);
+        let state = self.analyze_block_statement(body);
 
-        self.cur_func_symbol_id = Some(typed_func_def.symbol_id);
-        let state = self.analyze_block_statement(&mut typed_func_def.body);
-
-        if !typed_func_def.return_type.is_void() && state != FlowState::Returns {
+        if !return_type.is_void() && state != FlowState::Returns {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::MissingReturn,
                 location: Some(DiagLoc::new(
                     self.resolver.get_current_module_file_path(),
-                    typed_func_def.loc.clone(),
+                    loc.clone(),
                     0,
                 )),
                 hint: Some("Not all control paths return a value.".to_string()),
             });
         }
 
-        typed_func_def.return_type =
-            match self.normalize_type(None, typed_func_def.return_type.clone(), typed_func_def.loc.clone()) {
+        *return_type = match self.normalize_type(None, return_type.clone(), loc.clone()) {
+            Some(concrete_type) => concrete_type,
+            None => return,
+        };
+
+        self.normalize_func_params(params, loc);
+    }
+
+    fn analyze_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
+        let mut local_methods_list: Vec<(SymbolID, FuncSig, Box<TypedBlockStatement>)> = Vec::new();
+
+        // forward method declaration resolving
+        for symbol_id in methods.values() {
+            let (mut func_sig, func_body) = {
+                let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+                let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+                let symbol_entry = symbol_table.entries.get_mut(symbol_id).unwrap();
+
+                match &mut symbol_entry.kind {
+                    SymbolEntryKind::Method(m) => (m.func_sig.clone(), m.func_body.take().unwrap()),
+                    _ => unreachable!(),
+                }
+            };
+
+            self.cur_func_symbol_id = Some(*symbol_id);
+            self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
+
+            // public methods are allowed to not be used
+            if func_sig.vis.is_public() {
+                self.mark_symbol_used_once(module_id, *symbol_id);
+            }
+
+            self.cur_func_symbol_id = Some(*symbol_id);
+            self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
+
+            func_sig.return_type = match self.normalize_type(None, func_sig.return_type.clone(), func_sig.loc.clone()) {
                 Some(concrete_type) => concrete_type,
                 None => return,
             };
 
-        self.normalize_func_params(&mut typed_func_def.params, typed_func_def.loc.clone());
+            if let Some(typed_func_param_kind) = func_sig.params.list.first() {
+                if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = typed_func_param_kind.clone() {
+                    func_sig.params.list[0] = TypedFuncParamKind::SelfModifier(typed_self_modifier.clone());
+                }
+            }
+
+            local_methods_list.push((*symbol_id, func_sig.clone(), func_body));
+
+            let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+            let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+            let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
+            if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
+                m.func_sig = func_sig;
+            }
+        }
+
+        // analyze methods bodies
+        for (symbol_id, func_sig, mut func_body) in local_methods_list {
+            self.cur_func_symbol_id = Some(symbol_id);
+            let state = self.analyze_block_statement(&mut func_body);
+
+            if !func_sig.return_type.is_void() && state != FlowState::Returns {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::MissingReturn,
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        func_sig.loc.clone(),
+                        0,
+                    )),
+                    hint: Some("Not all control paths return a value.".to_string()),
+                });
+            }
+
+            let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
+            let symbol_table = global_symbols.get_mut(&module_id).unwrap();
+            let symbol_entry = symbol_table.entries.get_mut(&symbol_id).unwrap();
+            if let SymbolEntryKind::Method(m) = &mut symbol_entry.kind {
+                m.func_sig = func_sig;
+                m.func_body = Some(func_body);
+            }
+        }
+    }
+
+    fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDef) {
+        if typed_func_def.name == "main" {
+            let mut entry_points = self.entry_points.lock().unwrap();
+            entry_points.push((self.resolver.get_current_module_file_path(), typed_func_def.loc.clone()));
+        }
+
+        if typed_func_def.vis.is_public() {
+            self.mark_symbol_used_once(self.module_id, typed_func_def.symbol_id);
+        }
+
+        self.analyze_any_func_def(
+            typed_func_def.symbol_id,
+            &mut typed_func_def.return_type,
+            &mut typed_func_def.params,
+            &mut typed_func_def.body,
+            typed_func_def.loc.clone(),
+        );
     }
 
     fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: Location) {
-        for param in &mut params.list {
+        // analyze static arguments
+        for param in params.list.iter_mut() {
             match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => {
-                    typed_func_param.ty =
-                        match self.normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone()) {
-                            Some(concrete_type) => concrete_type,
-                            None => continue,
-                        };
+                    let normalized_type = self
+                        .normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
+                        .unwrap();
+
+                    typed_func_param.ty = normalized_type.clone();
                 }
-                TypedFuncParamKind::SelfModifier(..) => continue,
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                    let normalized_type = self
+                        .normalize_type(
+                            None,
+                            ConcreteType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap()),
+                            typed_self_modifier.loc.clone(),
+                        )
+                        .unwrap();
+
+                    let symbol_id = match normalized_type {
+                        ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id))
+                        | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id)) => symbol_id,
+                        _ => unreachable!(),
+                    };
+
+                    let struct_concrete_type = ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id));
+
+                    match typed_self_modifier.kind {
+                        SelfModifierKind::Copied => {
+                            typed_self_modifier.ty = Some(struct_concrete_type);
+                        }
+                        SelfModifierKind::Referenced => {
+                            typed_self_modifier.ty = Some(ConcreteType::Pointer(Box::new(struct_concrete_type)));
+                        }
+                    }
+                }
             }
         }
 
@@ -906,8 +1102,7 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedef, is_local: bool) {
-        self.check_typedef_name(typed_typedef.name.clone(), typed_typedef.loc.clone(), is_local);
+    fn analyze_typedef(&mut self, scope_id_opt: Option<ScopeID>, typed_typedef: &mut TypedTypedef) {
         typed_typedef.ty = match self.normalize_type(scope_id_opt, typed_typedef.ty.clone(), typed_typedef.loc.clone())
         {
             Some(concrete_type) => concrete_type,
@@ -922,7 +1117,19 @@ impl<'a> AnalysisContext<'a> {
 
         let value_type_opt = {
             if let Some(typed_expr) = &mut typed_variable.rhs {
-                self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone())
+                if let Some(concrete_type) = &typed_variable.ty {
+                    typed_variable.ty =
+                        self.normalize_type(scope_id_opt, concrete_type.clone(), typed_variable.loc.clone());
+                }
+
+                let concrete_type =
+                    match self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_variable.ty.clone()) {
+                        Some(concrete_type) => concrete_type,
+                        None => return,
+                    };
+
+                typed_expr.concrete_type = Some(concrete_type.clone());
+                Some(concrete_type)
             } else {
                 None
             }
@@ -933,16 +1140,8 @@ impl<'a> AnalysisContext<'a> {
             .get_scope_ref(self.module_id, scope_id_opt.unwrap())
             .unwrap();
 
-        if typed_variable.ty.is_some() {
-            typed_variable.ty = self.normalize_type(
-                scope_id_opt,
-                typed_variable.ty.clone().unwrap(),
-                typed_variable.loc.clone(),
-            );
-
-            update_local_symbol_type!(self, local_scope_rc, typed_variable.symbol_id, LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                resolved_variable.typed_variable.ty = typed_variable.ty.clone();
-            });
+        if let Some(concrete_type) = &typed_variable.ty {
+            typed_variable.ty = self.normalize_type(scope_id_opt, concrete_type.clone(), typed_variable.loc.clone());
 
             if let Some(value_type) = value_type_opt {
                 let lhs_type = format_concrete_type(
@@ -985,21 +1184,51 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
         }
+
+        let mut local_scope = local_scope_rc.borrow_mut();
+        local_scope.insert(
+            typed_variable.name.clone(),
+            LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
+                module_id: self.module_id,
+                symbol_id: typed_variable.symbol_id,
+                typed_variable: typed_variable.clone(),
+            })),
+        );
+        drop(local_scope);
     }
 
-    pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, typed_assignment: &mut TypedAssignment) {
+    pub(crate) fn lower_assign_to_infix_expr(&self, assign: &mut TypedAssignment) -> TypedExpressionKind {
+        let infix_expr = TypedExpressionKind::Infix(TypedInfixExpression {
+            op: assign.kind.to_infix_operator(),
+            lhs: assign.lhs.clone(),
+            rhs: assign.rhs.clone(),
+            loc: assign.loc.clone(),
+        });
+
+        TypedExpressionKind::Assignment(TypedAssignment {
+            lhs: assign.lhs.clone(),
+            rhs: Box::new(TypedExpression {
+                kind: infix_expr,
+                concrete_type: None,
+                loc: assign.loc.clone(),
+            }),
+            kind: AssignmentKind::Default,
+            loc: assign.loc.clone(),
+        })
+    }
+
+    pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignment) {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.lhs, None) {
+        let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.lhs, None) {
             Some(concrete_type) => concrete_type,
             None => return,
         };
 
-        let rhs_type =
-            match self.analyze_typed_expr_type(scope_id_opt, &mut typed_assignment.rhs, Some(lhs_type.clone())) {
-                Some(concrete_type) => concrete_type,
-                None => return,
-            };
+        let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.rhs, Some(lhs_type.clone())) {
+            Some(concrete_type) => concrete_type,
+            None => return,
+        };
 
         if lhs_type.is_const() {
             self.reporter.report(Diag {
@@ -1007,7 +1236,7 @@ impl<'a> AnalysisContext<'a> {
                 kind: AnalyzerDiagKind::CannotAssignToConstLValue,
                 location: Some(DiagLoc::new(
                     self.resolver.get_current_module_file_path(),
-                    typed_assignment.loc.clone(),
+                    assign.loc.clone(),
                     0,
                 )),
                 hint: None,
@@ -1015,25 +1244,29 @@ impl<'a> AnalysisContext<'a> {
             return;
         }
 
-        if !self.check_type_mismatch(
-            scope_id_opt,
-            rhs_type.clone(),
-            lhs_type.clone(),
-            typed_assignment.loc.clone(),
-        ) {
-            let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-            let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
+        if assign.kind == AssignmentKind::Default {
+            if !self.check_type_mismatch(
+                scope_id_opt,
+                rhs_type.clone(),
+                lhs_type.clone(),
+                assign.loc.clone(),
+            ) {
+                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
+                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
 
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
-                location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
-                    typed_assignment.loc.clone(),
-                    0,
-                )),
-                hint: None,
-            });
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::AssignmentTypeMismatch { lhs_type, rhs_type },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        assign.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+            }
+        } else {
+            unreachable!()
         }
     }
 }

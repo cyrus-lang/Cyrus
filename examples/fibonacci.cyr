@@ -15,6 +15,6 @@ public func fibonacci(n: int) int {
 
 func main() {
     for (#i = 0; i < 30; i++) {
-        printf("%d\n", foo(i));
+        printf("%d\n", fibonacci(i));
     }
 }

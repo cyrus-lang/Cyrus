@@ -3,6 +3,15 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum ResolverDiagKind {
+    DuplicateModule {
+        module_name: String,
+    },
+    ImportSinglePrivateSymbol {
+        symbol_name: String
+    },
+    ModuleIndexNotFound {
+        module_name: String,
+    },
     InvalidLiteralSuffix,
     SymbolAlreadyDefined {
         name: String,
@@ -39,7 +48,6 @@ pub enum ResolverDiagKind {
     SymbolIsNotAFunction {
         name: String,
     },
-    UselessTypeSpecifier,
     ImportCycle {
         module_names: Vec<String>,
     },
@@ -59,6 +67,7 @@ pub enum ResolverDiagKind {
     ImportTwice {
         module_name: String,
     },
+    ModuleCannotImportItself,
     DuplicateSymbol {
         symbol_name: String,
     },
@@ -79,6 +88,26 @@ pub enum ResolverDiagKind {
 impl fmt::Display for ResolverDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ResolverDiagKind::ImportSinglePrivateSymbol { symbol_name } => {
+                write!(f, "Symbol '{}' is private and cannot be imported.", symbol_name)
+            }
+            ResolverDiagKind::ModuleCannotImportItself => {
+                write!(f, "Module cannot import itself.")
+            }
+            ResolverDiagKind::DuplicateModule { module_name } => {
+                write!(
+                    f,
+                    "Module '{}' cannot exist as both a file and a directory.",
+                    module_name
+                )
+            }
+            ResolverDiagKind::ModuleIndexNotFound { module_name } => {
+                write!(
+                    f,
+                    "Module directory '{}' must contain an 'index.cyr' file for it to be importable.",
+                    module_name
+                )
+            }
             ResolverDiagKind::InvalidLiteralSuffix => {
                 write!(f, "Invalid literal suffix.")
             }
@@ -155,9 +184,6 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::SymbolIsNotAFunction { name } => {
                 write!(f, "Symbol '{}' is not a function.", name)
-            }
-            ResolverDiagKind::UselessTypeSpecifier => {
-                write!(f, "What you wanna do with this type specifier?")
             }
             ResolverDiagKind::ImportCycle { module_names } => {
                 write!(
