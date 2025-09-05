@@ -3,7 +3,7 @@ use crate::builder::{
     module::{LoopBlockRefs, SwitchBlockRefs, TerminatedBlockMetadata},
     values::InternalValue,
 };
-use ast::{LiteralKind, token::Location};
+use ast::LiteralKind;
 use inkwell::{
     basic_block::BasicBlock,
     module::Linkage,
@@ -402,7 +402,6 @@ impl<'a> CodeGenBuilder<'a> {
                     block_id,
                     value: case_rvalue,
                     body: case.body.clone(),
-                    loc: case.loc.clone(),
                 });
 
                 if !case.body.exprs.is_empty() {
@@ -412,13 +411,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         if smart_switch {
-            self.build_smart_switch(
-                local_scope_opt.clone().unwrap(),
-                &rvalue,
-                &case_list,
-                &switch.default_case,
-                switch.loc.clone(),
-            );
+            self.build_smart_switch(&rvalue, &case_list, &switch.default_case);
         } else {
             self.build_traditional_switch(&rvalue, &case_list, &switch.default_case);
         }
@@ -522,11 +515,9 @@ impl<'a> CodeGenBuilder<'a> {
 
     fn build_smart_switch(
         &mut self,
-        scope: LocalScopeRef,
         operand: &InternalValue<'a>,
         case_list: &SwitchCaseList<'a>,
         default_case: &Option<TypedBlockStatement>,
-        switch_loc: Location,
     ) {
         let current_func = self.blockreg.current_func_ref.unwrap();
 
@@ -928,7 +919,6 @@ struct SwitchCaseItem<'a> {
     block_id: u32,
     value: InternalValue<'a>,
     body: Box<TypedBlockStatement>,
-    loc: Location,
 }
 
 type SwitchCaseList<'a> = Vec<SwitchCaseItem<'a>>;

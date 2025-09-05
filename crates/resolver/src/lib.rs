@@ -629,7 +629,7 @@ impl Resolver {
 
                     self.insert_symbol_name(
                         module_id,
-                        &func_decl.identifier.name.clone(),
+                        &func_decl.get_usable_name(),
                         self.get_current_module_file_path(),
                         func_decl.loc.clone(),
                         func_decl.span.end,
