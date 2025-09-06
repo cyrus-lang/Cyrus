@@ -1,11 +1,7 @@
 import std::libc;
 
-func main() {
-    #user = const struct {
-        name = "Taha",
-        age = 18
-    };
+config = const struct { host = "127.0.0.1", port = 8080 };
 
-    libc::printf("Name: %s\n", user.name);
-    libc::printf("Age: %d\n", user.age);
+func main() {
+    
 }
