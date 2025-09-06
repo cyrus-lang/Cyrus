@@ -1210,7 +1210,7 @@ impl<'a> AnalysisContext<'a> {
                     func_name: func_sig.name.clone(),
                 },
                 location: Some(DiagLoc::new(
-                    self.resolver.get_current_module_file_path(),
+                    self.resolver.get_module_file_path(func_sig.module_id).unwrap(),
                     loc.clone(),
                     0,
                 )),
