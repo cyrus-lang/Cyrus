@@ -1,11 +1,14 @@
+%global rust_version %(sed -n 's/^version\s*=\s*"\(.*\)"/\1/p' ../../Cargo.toml | head -n1)
+
 Name:           cyrus
-Version:        0.0.1
+Version:        %{rust_version}
 Release:        1%{?dist}
+
 Summary:        Cyrus Programming Language
 
 License:        GPL-3.0
 URL:            https://github.com/cyrus-lang/Cyrus
-Source0:        cyrus-0.0.1.tar.gz
+Source0:        cyrus-${rust_version}.tar.gz
 
 BuildRequires:  rust, cargo, llvm, clang, libffi-devel, libxml2-devel, isl-devel
 BuildArch:	x86_64
@@ -44,5 +47,6 @@ source /etc/profile.d/cyrus.sh
 sed -i '/source \/etc\/profile.d\/cyrus.sh/d' /etc/bashrc
 
 %changelog
-* Fri Sep 05 2025 Cyrus Team <you@example.com> - 0.0.1-1
+* Fri Sep 05 2025 Cyrus Team <you@example.com> - ${rust_version}-1
 - Initial RPM packaging
+
