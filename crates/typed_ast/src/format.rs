@@ -72,6 +72,8 @@ pub fn format_concrete_type<'a>(
                 fmt.push_str("struct");
             };
 
+            fmt.push_str(" { ");
+
             fmt.push_str(
                 &typed_unnamed_struct_type
                     .fields
@@ -86,6 +88,8 @@ pub fn format_concrete_type<'a>(
                     .collect::<Vec<String>>()
                     .join(", "),
             );
+
+            fmt.push_str(" }");
 
             fmt
         }

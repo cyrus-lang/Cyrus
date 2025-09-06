@@ -552,6 +552,9 @@ impl<'a> AnalysisContext<'a> {
         loc: Location,
     ) {
         let compatible_type = match (global_var_type.clone(), expr_type.clone()) {
+            (ConcreteType::Const(concrete_type1), ConcreteType::Const(concrete_type2)) => {
+                concrete_type1 == concrete_type2
+            }
             (ConcreteType::Const(concrete_type1), concrete_type2) => *concrete_type1 == concrete_type2,
             (concrete_type1, ConcreteType::Const(concrete_type2)) => concrete_type1 == *concrete_type2,
             (concrete_type1, concrete_type2) => concrete_type1 == concrete_type2,
@@ -601,14 +604,6 @@ impl<'a> AnalysisContext<'a> {
             None => Some(typed_global_var.expr.clone().unwrap().concrete_type.unwrap()),
         };
 
-        if let Some(typed_expr) = &typed_global_var.expr {
-            self.check_global_var_assignment_type(
-                typed_global_var.ty.clone().unwrap(),
-                typed_expr.concrete_type.clone().unwrap(),
-                typed_global_var.loc.clone(),
-            );
-        }
-
         update_global_symbol_type!(self, typed_global_var.module_id, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
                 resolved_var.global_var_sig.ty = typed_global_var.ty.clone();
@@ -639,6 +634,14 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
+        }
+
+        if let Some(typed_expr) = &typed_global_var.expr {
+            self.check_global_var_assignment_type(
+                typed_global_var.ty.clone().unwrap(),
+                typed_expr.concrete_type.clone().unwrap(),
+                typed_global_var.loc.clone(),
+            );
         }
     }
 
