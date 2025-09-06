@@ -103,6 +103,7 @@ pub struct AddressOf {
 pub struct UnnamedStructValue {
     pub fields: Vec<UnnamedStructValueField>,
     pub packed: bool,
+    pub is_const: bool,
     pub loc: Location,
     pub span: Span,
 }

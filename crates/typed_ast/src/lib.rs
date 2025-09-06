@@ -259,6 +259,7 @@ pub struct TypedUnnamedStructValue {
     pub fields: Vec<TypedUnnamedStructValueField>,
     pub unnamed_struct_type: Option<TypedUnnamedStructType>,
     pub packed: bool,
+    pub is_const: bool,
     pub loc: Location,
 }
 

@@ -300,7 +300,7 @@ impl fmt::Display for AnalyzerDiagKind {
                 write!(f, "Global variable expression is not valid at compile time.")
             }
             AnalyzerDiagKind::CannotAssignToConstLValue => {
-                write!(f, "Cannot assign to immutable variable.")
+                write!(f, "Cannot assign to immutable lvalue.")
             }
             AnalyzerDiagKind::StructMissingFields {
                 struct_name,

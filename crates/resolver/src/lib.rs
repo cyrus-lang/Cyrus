@@ -2689,6 +2689,7 @@ impl Resolver {
                         fields,
                         unnamed_struct_type: None,
                         packed: unnamed_struct_value.packed,
+                        is_const: unnamed_struct_value.is_const,
                         loc: unnamed_struct_value.loc.clone(),
                     }),
                     concrete_type: None,
