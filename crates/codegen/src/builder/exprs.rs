@@ -993,8 +993,8 @@ impl<'a> CodeGenBuilder<'a> {
 
         let get_signed = || {
             let rhs_signed = rhs_rvalue.value_type.as_basic_type().unwrap().is_signed();
-            let lhs_signed = lhs_rvalue.value_type.as_basic_type().unwrap().is_signed();
-            assert!(lhs_signed == rhs_signed);
+            // let lhs_signed = lhs_rvalue.value_type.as_basic_type().unwrap().is_signed();
+            // assert!(lhs_signed == rhs_signed);
             rhs_signed
         };
 

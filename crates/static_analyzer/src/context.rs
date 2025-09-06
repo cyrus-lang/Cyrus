@@ -339,6 +339,19 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_block_statement(&mut case.body);
         }
 
+        if typed_switch.cases.is_empty() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::EmptyCaseSwitchStatement,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_switch.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+        }
+
         self.control_stack.pop();
         FlowState::Reachable
     }
@@ -1245,12 +1258,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if assign.kind == AssignmentKind::Default {
-            if !self.check_type_mismatch(
-                scope_id_opt,
-                rhs_type.clone(),
-                lhs_type.clone(),
-                assign.loc.clone(),
-            ) {
+            if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), assign.loc.clone()) {
                 let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
                 let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
 

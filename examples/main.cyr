@@ -1,5 +1,13 @@
-extern func printf() int as my_printf;
+import std::libc;
 
 func main() {
-    
+    #val1 = 10;
+    #ptr1 = &val1;
+
+    switch (*ptr1) {
+        
+        default:
+            libc::printf("unknown value: %d\n", *ptr1);
+            break;
+    }
 }

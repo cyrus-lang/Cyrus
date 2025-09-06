@@ -1789,6 +1789,10 @@ impl<'a> AnalysisContext<'a> {
                     // allow pointer comparisons
                     if let (ConcreteType::Pointer(_), ConcreteType::Pointer(_)) = (&lhs, &rhs) {
                         Some(BasicConcreteType::Bool)
+                    } else if let (ConcreteType::Pointer(_), ConcreteType::BasicType(BasicConcreteType::Null)) =
+                        (&lhs, &rhs)
+                    {
+                        Some(BasicConcreteType::Bool)
                     } else {
                         None
                     }
