@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    EmptyCaseSwitchStatement,
     TypeMismatchLiteral {
         literal_type: String,
         expected_type: String,
@@ -163,6 +164,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::EmptyCaseSwitchStatement => {
+                write!(f, "Switch statement must contain at least one case or consider to remove it or replace it with a if statement.")
+            }
             AnalyzerDiagKind::TypeMismatchLiteral {
                 literal_type,
                 expected_type,

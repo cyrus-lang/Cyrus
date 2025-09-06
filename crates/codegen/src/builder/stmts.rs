@@ -410,8 +410,12 @@ impl<'a> CodeGenBuilder<'a> {
             }
         }
 
+        if case_list.len() == 0 {
+            return;
+        }
+
         if smart_switch {
-            self.build_smart_switch(&rvalue, &case_list, &switch.default_case);
+            self.build_smart_switch(local_scope_opt.clone(), &rvalue, &case_list, &switch.default_case);
         } else {
             self.build_traditional_switch(&rvalue, &case_list, &switch.default_case);
         }
@@ -515,6 +519,7 @@ impl<'a> CodeGenBuilder<'a> {
 
     fn build_smart_switch(
         &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
         operand: &InternalValue<'a>,
         case_list: &SwitchCaseList<'a>,
         default_case: &Option<TypedBlockStatement>,
@@ -627,7 +632,12 @@ impl<'a> CodeGenBuilder<'a> {
                 };
 
                 self.llvmbuilder.position_at_end(check_block.clone());
-                let condition_internal_value = self.build_cmp_eq(internal_value.clone(), operand.clone());
+                let condition_internal_value = {
+                    let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), internal_value.clone());
+                    let operand_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), operand.clone());
+
+                    self.build_cmp_eq(rvalue, operand_rvalue)
+                };
                 let condition_basic_value: BasicValueEnum<'a> = condition_internal_value.as_basic_value();
 
                 self.llvmbuilder

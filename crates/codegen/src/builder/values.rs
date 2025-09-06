@@ -22,7 +22,15 @@ impl<'a> CodeGenBuilder<'a> {
             .try_into()
             .unwrap();
         let basic_value = self.llvmbuilder.build_load(pointee_ty, *pointer, "load").unwrap();
-        InternalValue::new(internal_value.value_type, InternalValueKind::RValue(basic_value))
+
+        if let Some(pointee_concrete_type) = internal_value.value_type.get_pointer_inner() {
+            InternalValue::new(pointee_concrete_type, InternalValueKind::RValue(basic_value))
+        } else {
+            InternalValue::new(
+                internal_value.value_type.clone(),
+                InternalValueKind::RValue(basic_value),
+            )
+        }
     }
 }
 
