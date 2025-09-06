@@ -248,7 +248,7 @@ impl CodeGenContext {
                 output_kind,
                 OutputKind::ByteCode(_) | OutputKind::Asm(_) | OutputKind::LlvmIr(_)
             ) && build_manifest.check_source_code_changed(module_file_path.clone())
-                || disable_modulefs_cache
+                || disable_modulefs_cache || build_manifest.is_first_build
         }
 
         typed_modules
@@ -311,6 +311,7 @@ impl CodeGenContext {
                 }
             });
 
+        build_manifest.is_first_build = false;
         build_manifest.save_manifest();
         utils::tui::tui_compile_finished();
 

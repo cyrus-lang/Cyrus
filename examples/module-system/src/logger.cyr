@@ -21,7 +21,7 @@ public struct Logger {
 		libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
 	}
 
-    func logger_initialized(name: char*) {
+    func logger_initialized() {
         libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
     }
 }

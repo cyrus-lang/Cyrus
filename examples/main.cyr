@@ -1,7 +1,16 @@
 import std::libc;
 
-config = const struct { host = "127.0.0.1", port = 8080 };
-
 func main() {
-    
+    struct Sample {
+        a: int;
+        b: int;
+    }
+
+    #obj = Sample {
+        a: 10,
+        b: 20,
+    }; 
+
+    libc::printf("value: %d\n", obj.a);
+    libc::printf("value: %d\n", obj.b);
 }

@@ -32,6 +32,10 @@ fn get_program_trees(
     Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
     Rc<Resolver>,
 ) {
+    // FIXME Would be implemented later.
+    // Disabled temporarily.
+    options.disable_warnings = true;
+
     let file_content = utils::fs::read_file(file_path.clone()).0;
     let mut lexer = Lexer::new(file_content, file_path.clone());
     let mut parser = Parser::new(lexer.tokenize(), file_path.clone());

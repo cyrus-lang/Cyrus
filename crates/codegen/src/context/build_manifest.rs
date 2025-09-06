@@ -21,6 +21,7 @@ pub struct BuildManifest {
     // Maps object file names to their paths.
     // This is used to track which object files were generated from which source files.
     pub objects: HashMap<String, String>,
+    pub is_first_build: bool,
 }
 
 impl BuildManifest {
@@ -30,6 +31,7 @@ impl BuildManifest {
             base_path,
             sources: HashMap::new(),
             objects: HashMap::new(),
+            is_first_build: true,
         }
     }
 }
