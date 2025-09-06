@@ -1,13 +1,11 @@
 import std::libc;
 
 func main() {
-    #val1 = 10;
-    #ptr1 = &val1;
+    #user = const struct {
+        name = "Taha",
+        age = 18
+    };
 
-    switch (*ptr1) {
-        
-        default:
-            libc::printf("unknown value: %d\n", *ptr1);
-            break;
-    }
+    libc::printf("Name: %s\n", user.name);
+    libc::printf("Age: %d\n", user.age);
 }

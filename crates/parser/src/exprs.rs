@@ -63,7 +63,20 @@ impl Parser {
 
         let expr = match &self.current_token().clone().kind {
             TokenKind::Typecast => self.parse_cast_expression()?,
-            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value()?,
+            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
+            TokenKind::Const => {
+                if self.peek_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Bits) {
+                    self.next_token();
+                    self.parse_unnamed_struct_value(true)?
+                } else {
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
+                        hint: None,
+                    });
+                }
+            }
             TokenKind::Identifier { .. } => {
                 let module_import = self.parse_module_import()?;
 
@@ -958,7 +971,7 @@ impl Parser {
         }))
     }
 
-    pub fn parse_unnamed_struct_value(&mut self) -> Result<Expression, ParserError> {
+    pub fn parse_unnamed_struct_value(&mut self, is_const: bool) -> Result<Expression, ParserError> {
         let struct_start = self.current_token().span.start;
 
         let packed = {
@@ -1064,6 +1077,7 @@ impl Parser {
         Ok(Expression::UnnamedStructValue(UnnamedStructValue {
             fields,
             packed,
+            is_const,
             loc: self.current_token().loc.clone(),
             span: Span::new(struct_start, self.current_token().span.end),
         }))

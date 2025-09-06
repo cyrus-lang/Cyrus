@@ -552,7 +552,14 @@ impl<'a> AnalysisContext<'a> {
         };
 
         unnamed_struct_value.unnamed_struct_type = Some(unnamed_struct_type.clone());
-        Some(ConcreteType::UnnamedStruct(unnamed_struct_type))
+
+        if unnamed_struct_value.is_const {
+            Some(ConcreteType::Const(Box::new(ConcreteType::UnnamedStruct(
+                unnamed_struct_type,
+            ))))
+        } else {
+            Some(ConcreteType::UnnamedStruct(unnamed_struct_type))
+        }
     }
 
     fn analyze_array_index_expr_type(
