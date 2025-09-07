@@ -140,7 +140,7 @@ pub enum AnalyzerDiagKind {
         param_name: String,
     },
     DuplicateFieldName {
-        struct_name: String,
+        object_name: String,
         field_name: String,
     },
     DuplicateEnumVariantName {
@@ -165,7 +165,10 @@ impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AnalyzerDiagKind::EmptyCaseSwitchStatement => {
-                write!(f, "Switch statement must contain at least one case or consider to remove it or replace it with a if statement.")
+                write!(
+                    f,
+                    "Switch statement must contain at least one case or consider to remove it or replace it with a if statement."
+                )
             }
             AnalyzerDiagKind::TypeMismatchLiteral {
                 literal_type,
@@ -385,13 +388,13 @@ impl fmt::Display for AnalyzerDiagKind {
             }
 
             AnalyzerDiagKind::DuplicateFieldName {
-                struct_name,
+                object_name,
                 field_name,
             } => {
                 write!(
                     f,
-                    "Duplicate declaration of field '{}' in struct '{}'.",
-                    field_name, struct_name
+                    "Duplicate declaration of field '{}' in '{}'.",
+                    field_name, object_name
                 )
             }
             AnalyzerDiagKind::FuncCallArgsCountMismatch {

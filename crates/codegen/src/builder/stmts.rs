@@ -7,7 +7,7 @@ use ast::LiteralKind;
 use inkwell::{
     basic_block::BasicBlock,
     module::Linkage,
-    types::{BasicTypeEnum, StructType},
+    types::{AnyType, BasicTypeEnum, StructType},
     values::{BasicValueEnum, FunctionValue, IntValue},
 };
 use resolver::{
@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use typed_ast::{
     ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedExpressionKind, TypedFor,
     TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct, TypedSwitch, TypedSwitchCasePattern,
-    TypedWhile,
+    TypedUnion, TypedWhile,
 };
 
 /// A macro to build the LLVM IR for a loop structure.
@@ -113,6 +113,7 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
                 TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
                 TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
+                TypedStatement::Union(typed_union) => self.build_union_def(typed_union),
                 TypedStatement::Interface(_typed_interface) => todo!(),
                 TypedStatement::FuncDecl(_) => continue,
                 _ => continue,
@@ -173,6 +174,10 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::Enum(typed_enum) => {
                     let struct_type = self.build_enum_decl(&typed_enum.name);
                     self.insert_forward_decl_to_registry(typed_enum.symbol_id, LocalIRValue::Struct(struct_type));
+                }
+                TypedStatement::Union(typed_union) => {
+                    let struct_type = self.build_union_decl(&typed_union.name);
+                    self.insert_forward_decl_to_registry(typed_union.symbol_id, LocalIRValue::Struct(struct_type));
                 }
                 TypedStatement::Interface(_typed_interface) => todo!(),
                 _ => continue,
@@ -304,6 +309,47 @@ impl<'a> CodeGenBuilder<'a> {
         self.llvmctx.opaque_struct_type(name)
     }
 
+    fn build_union_decl(&self, name: &String) -> StructType<'a> {
+        self.llvmctx.opaque_struct_type(&format!("union.{}", name))
+    }
+
+    fn build_union_def(&mut self, typed_union: &TypedUnion) {
+        let field_types: Vec<BasicTypeEnum<'a>> = typed_union
+            .fields
+            .iter()
+            .map(|field| self.build_concrete_type(None, field.ty.clone()).try_into().unwrap())
+            .collect();
+
+        let mut largest_field_type: BasicTypeEnum = BasicTypeEnum::IntType(self.llvmctx.bool_type());
+
+        field_types.iter().for_each(|basic_type| {
+            let largest_store_size = self
+                .llvmtm
+                .get_target_data()
+                .get_store_size(&largest_field_type.as_any_type_enum());
+
+            let field_store_size = self
+                .llvmtm
+                .get_target_data()
+                .get_store_size(&basic_type.as_any_type_enum());
+
+            if field_store_size > largest_store_size {
+                largest_field_type = basic_type.clone();
+            }
+        });
+
+        let irreg = self.irreg.borrow();
+        let local_ir_value = irreg.get(&typed_union.symbol_id).unwrap();
+
+        let struct_type = local_ir_value.as_struct().unwrap().clone();
+        drop(irreg);
+
+        struct_type.set_body(&[
+            largest_field_type
+        ], false);
+        self.build_methods(typed_union.module_id, &typed_union.methods);
+    }
+
     pub(crate) fn build_block_statement(&mut self, block_stmt: &TypedBlockStatement) {
         let local_scope_opt = Some(
             self.resolver
@@ -328,6 +374,10 @@ impl<'a> CodeGenBuilder<'a> {
                 }
                 TypedStatement::Enum(typed_enum) => {
                     self.build_local_enum_def(typed_enum);
+                }
+                TypedStatement::Union(typed_enum) => {
+                    // FIXME
+                    todo!();
                 }
                 TypedStatement::Expression(typed_expr) => {
                     let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);

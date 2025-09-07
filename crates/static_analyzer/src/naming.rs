@@ -6,6 +6,7 @@ enum NamingConvDeclKind {
     Struct,
     Enum,
     Interface,
+    Union
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -21,6 +22,7 @@ impl<'a> AnalysisContext<'a> {
                 NamingConvDeclKind::Struct => "Struct",
                 NamingConvDeclKind::Enum => "Enum",
                 NamingConvDeclKind::Interface => "Interface",
+                NamingConvDeclKind::Union => "Union",
             };
 
             self.report_nameconv_diag(kind_str.to_string(), name.to_string(), loc, is_local);
@@ -33,6 +35,10 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn check_enum_name(&mut self, name: String, loc: Location, is_local: bool) {
         self.check_name(NamingConvDeclKind::Enum, &name, loc, is_local);
+    }
+
+    pub(crate) fn check_union_name(&mut self, name: String, loc: Location, is_local: bool) {
+        self.check_name(NamingConvDeclKind::Union, &name, loc, is_local);
     }
 
     pub(crate) fn check_interface_name(&mut self, name: String, loc: Location, is_local: bool) {

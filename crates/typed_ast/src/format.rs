@@ -18,6 +18,7 @@ pub fn format_concrete_type<'a>(
             ResolvedSymbol::Variable(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::Func(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::Method(symbol_id) => format_symbol(symbol_id),
+            ResolvedSymbol::Union(symbol_id) => format_symbol(symbol_id),
         },
         ConcreteType::BasicType(basic_concrete_type) => match basic_concrete_type {
             BasicConcreteType::UIntPtr => "uintptr".to_string(),

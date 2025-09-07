@@ -96,6 +96,7 @@ impl<'a> AnalysisContext<'a> {
                             LocalSymbolKind::Interface(resolved_interface) => {
                                 resolved_interface.interface_sig.name.clone()
                             }
+                            LocalSymbolKind::Union(resolved_union) => resolved_union.union_sig.name.clone(),
                         },
                         LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
                             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.name.clone(),
@@ -109,6 +110,7 @@ impl<'a> AnalysisContext<'a> {
                             SymbolEntryKind::Interface(resolved_interface) => {
                                 resolved_interface.interface_sig.name.clone()
                             }
+                            SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.name.clone(),
                         },
                     }
                 })
@@ -145,6 +147,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
                 TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum, false),
                 TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef),
+                TypedStatement::Union(typed_union) => self.analyze_union(None, typed_union, false),
                 // Not analyzed
                 TypedStatement::Import(_) => continue,
                 // Invalid top-level statements
@@ -229,6 +232,10 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedStatement::Typedef(typed_typedef) => {
                     self.analyze_typedef(Some(block_stmt.scope_id), typed_typedef);
+                    FlowState::Reachable
+                }
+                TypedStatement::Union(typed_union) => {
+                    self.analyze_union(Some(block_stmt.scope_id), typed_union, true);
                     FlowState::Reachable
                 }
                 // Invalid statements
@@ -674,6 +681,10 @@ impl<'a> AnalysisContext<'a> {
                         resolved_interface.interface_sig.name.clone(),
                         resolved_interface.interface_sig.loc.clone(),
                     ),
+                    LocalSymbolKind::Union(resolved_union) => (
+                        resolved_union.union_sig.name.clone(),
+                        resolved_union.union_sig.loc.clone(),
+                    ),
                 };
 
                 if !self.disable_warnings {
@@ -722,6 +733,10 @@ impl<'a> AnalysisContext<'a> {
                     SymbolEntryKind::Enum(resolved_enum) => {
                         (resolved_enum.enum_sig.name.clone(), resolved_enum.enum_sig.loc.clone())
                     }
+                    SymbolEntryKind::Union(resolved_union) => (
+                        resolved_union.union_sig.name.clone(),
+                        resolved_union.union_sig.loc.clone(),
+                    ),
                     SymbolEntryKind::Interface(resolved_interface) => (
                         resolved_interface.interface_sig.name.clone(),
                         resolved_interface.interface_sig.loc.clone(),
@@ -758,7 +773,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::DuplicateFieldName {
-                        struct_name: typed_struct.name.clone(),
+                        object_name: typed_struct.name.clone(),
                         field_name: field.name.clone(),
                     },
                     location: Some(DiagLoc::new(
@@ -769,6 +784,34 @@ impl<'a> AnalysisContext<'a> {
                     hint: Some("Consider to rename the field to a different name.".to_string()),
                 });
                 continue;
+            }
+
+            field_names.push(field.name.clone());
+        }
+    }
+
+    // ANCHOR
+    pub(crate) fn analyze_union(&mut self, scope_id_opt: Option<ScopeID>, typed_union: &TypedUnion, is_local: bool) {
+        self.check_enum_name(typed_union.name.clone(), typed_union.loc.clone(), is_local);
+        self.analyze_methods(self.module_id, &typed_union.methods);
+
+        let mut field_names: Vec<String> = Vec::new();
+
+        for field in &typed_union.fields {
+            if field_names.contains(&field.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::DuplicateFieldName {
+                        field_name: field.name.clone(),
+                        object_name: typed_union.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field.loc.clone(),
+                        0,
+                    )),
+                    hint: Some("Consider to rename the field to a different name.".to_string()),
+                });
             }
 
             field_names.push(field.name.clone());
