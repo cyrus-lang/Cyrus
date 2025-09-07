@@ -1,16 +1,14 @@
-import std::libc;
+import std::libc; 
+
+struct User {
+    name: char*;
+    age: uint;
+}
 
 func main() {
-    struct Sample {
-        a: int;
-        b: int;
-    }
+    #user = User { name: "Cyrus", age: 2500 }; 
+    #ptr = &user;
 
-    #obj = Sample {
-        a: 10,
-        b: 20,
-    }; 
-
-    libc::printf("value: %d\n", obj.a);
-    libc::printf("value: %d\n", obj.b);
+    libc::printf("value: %s\n", ptr->name);
+    libc::printf("value: %d\n", ptr->age);
 }

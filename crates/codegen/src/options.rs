@@ -53,6 +53,7 @@ pub struct CodeGenOptions {
     pub source_dirs: Vec<String>,
     pub build_dir: BuildDir,
     pub quiet: bool,
+    pub verbose: bool,
     pub stdlib_path: Option<String>,
     pub display_target_machine: bool,
     pub reloc_mode: RelocModeOptions,
@@ -96,6 +97,7 @@ impl CodeGenOptions {
             project_version: None,
             source_dirs: vec!["./".to_string()],
             quiet: false,
+            verbose: false,
             stdlib_path: None,
             display_target_machine: false,
             reloc_mode: RelocModeOptions::Default,
@@ -138,6 +140,7 @@ impl CodeGenOptions {
                 sources
             },
             quiet: instance.quiet || self.quiet,
+            verbose: instance.verbose || self.verbose,
             disable_modulefs_cache: instance.disable_modulefs_cache || self.disable_modulefs_cache,
             stdlib_path: instance.stdlib_path.or(self.stdlib_path.clone()),
             display_target_machine: instance.display_target_machine || self.display_target_machine,

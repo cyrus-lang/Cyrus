@@ -87,6 +87,8 @@ impl CodeGenContext {
             });
             println!("Relocation Mode: {}", self.opts.reloc_mode);
             println!("Code Model: {}", self.opts.code_model);
+            println!("Static: {}", self.opts.linker_options.link_static);
+            println!("PIE: {}", self.opts.linker_options.pie);
         }
     }
 
@@ -137,6 +139,7 @@ impl CodeGenContext {
 
         if self.opts.linker_options.pie {
             linker_command.arg("-pie");
+            linker_command.arg("-fPIE");
         }
 
         if self.opts.linker_options.no_pie {
@@ -163,6 +166,10 @@ impl CodeGenContext {
 
         linker_command.arg("-o").arg(output_path);
         linker_command.args(object_files_str_list);
+
+        if self.opts.verbose {
+            println!("{:?}", linker_command);
+        }
 
         match linker_command.output() {
             Ok(output) => {
