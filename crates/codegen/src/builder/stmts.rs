@@ -344,9 +344,7 @@ impl<'a> CodeGenBuilder<'a> {
         let struct_type = local_ir_value.as_struct().unwrap().clone();
         drop(irreg);
 
-        struct_type.set_body(&[
-            largest_field_type
-        ], false);
+        struct_type.set_body(&[largest_field_type], false);
         self.build_methods(typed_union.module_id, &typed_union.methods);
     }
 
@@ -375,9 +373,8 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::Enum(typed_enum) => {
                     self.build_local_enum_def(typed_enum);
                 }
-                TypedStatement::Union(typed_enum) => {
-                    // FIXME
-                    todo!();
+                TypedStatement::Union(typed_union) => {
+                    self.build_union_def(typed_union);
                 }
                 TypedStatement::Expression(typed_expr) => {
                     let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);

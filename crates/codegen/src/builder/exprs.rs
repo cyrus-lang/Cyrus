@@ -222,6 +222,30 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
+    fn build_union_field_access(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        typed_field_access: &TypedFieldAccess,
+    ) -> InternalValue<'a> {
+        let lvalue_pointer = self
+            .build_expr(local_scope_opt.clone(), &typed_field_access.operand)
+            .as_basic_value()
+            .into_pointer_value();
+        let field_type = typed_field_access.field_ty.clone().unwrap();
+
+        // let field_basic_type: BasicTypeEnum<'a> = self
+        //     .build_concrete_type(local_scope_opt, field_type.clone())
+        //     .try_into()
+        //     .unwrap();
+        // let bit_casted_pointer = self
+        //     .llvmbuilder
+        //     .build_bit_cast(lvalue_pointer, field_basic_type, "union_bitcast")
+        //     .unwrap()
+        //     .into_pointer_value();
+
+        InternalValue::new(field_type.clone(), InternalValueKind::LValue(lvalue_pointer))
+    }
+
     fn build_field_access(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
@@ -234,9 +258,15 @@ impl<'a> CodeGenBuilder<'a> {
             Some(object_symbol_id) => {
                 let local_or_global_symbol = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), object_symbol_id)
                     .unwrap();
 
+                // handle union field access
+                if let Some(..) = local_or_global_symbol.as_union() {
+                    return self.build_union_field_access(local_scope_opt.clone(), typed_field_access);
+                }
+
+                // handle struct field access
                 let resolved_struct = match &local_or_global_symbol {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_struct() {
                         Some(resolved_struct) => resolved_struct,

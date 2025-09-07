@@ -162,6 +162,19 @@ impl LocalOrGlobalSymbol {
         }
     }
 
+    pub fn as_union(&self) -> Option<ResolvedUnion> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Union(resolved_union) => Some(resolved_union.clone()),
+                _ => None,
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Union(resolved_union) => Some(resolved_union.clone()),
+                _ => None,
+            },
+        }
+    }
+
     pub fn as_global_var(&self) -> Option<ResolvedGlobalVar> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(..) => None,

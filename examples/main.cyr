@@ -1,11 +1,23 @@
 import std::libc; 
 
+struct Sample {
+    name: char*;
+}
+
 union MyUnion {
     a: int;
     b: char*;
+    c: Sample;
 }
 
 func main() {
     #un: MyUnion;
-    // un.a = 10;
+    un.a = 10;
+
+    libc::printf("value: %d\n", un.a);
+
+    un.c = Sample { name: "Taha" };
+
+    #clone: Sample = un.c;
+    libc::printf("value: %s\n", clone.name);
 }
