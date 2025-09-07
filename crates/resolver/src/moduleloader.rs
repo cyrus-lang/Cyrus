@@ -97,7 +97,9 @@ impl ModuleLoader {
                     });
 
                     let module_alias = match sub_import.segments.last().unwrap() {
-                        ModuleSegment::SubModule(identifier) => ModuleAlias::Group(identifier.name.clone()),
+                        ModuleSegment::SubModule(identifier) => {
+                            ModuleAlias::Group(sub_import.alias.clone().unwrap_or(identifier.name.clone()))
+                        },
                         ModuleSegment::Single(module_segment_singles) => {
                             ModuleAlias::Single(module_segment_singles.clone())
                         }
@@ -197,6 +199,7 @@ impl ModuleLoader {
 
         Ok(module_file_path)
     }
+    
     fn get_stdlib_modules_path(&self) -> String {
         match self.opts.stdlib_path.clone() {
             Some(stdlib_path) => stdlib_path,
