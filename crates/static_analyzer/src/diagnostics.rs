@@ -54,7 +54,7 @@ pub enum AnalyzerDiagKind {
         found_type: String,
     },
     ArrayIndexOnNonArrayOperand,
-    StructHasNoFieldNamed {
+    ObjectHasNoFieldNamed {
         struct_name: String,
         field_name: String,
     },
@@ -320,11 +320,11 @@ impl fmt::Display for AnalyzerDiagKind {
                     struct_name
                 )
             }
-            AnalyzerDiagKind::StructHasNoFieldNamed {
+            AnalyzerDiagKind::ObjectHasNoFieldNamed {
                 struct_name,
                 field_name,
             } => {
-                write!(f, "Struct '{}' has no field named '{}'.", struct_name, field_name)
+                write!(f, "'{}' has no field named '{}'.", struct_name, field_name)
             }
             AnalyzerDiagKind::InvalidIntegerLiteralSuffix => {
                 write!(f, "Invalid integer literal suffix.")

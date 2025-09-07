@@ -790,14 +790,18 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    // ANCHOR
-    pub(crate) fn analyze_union(&mut self, scope_id_opt: Option<ScopeID>, typed_union: &TypedUnion, is_local: bool) {
-        self.check_enum_name(typed_union.name.clone(), typed_union.loc.clone(), is_local);
+    pub(crate) fn analyze_union(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_union: &mut TypedUnion,
+        is_local: bool,
+    ) {
+        self.check_union_name(typed_union.name.clone(), typed_union.loc.clone(), is_local);
         self.analyze_methods(self.module_id, &typed_union.methods);
 
         let mut field_names: Vec<String> = Vec::new();
 
-        for field in &typed_union.fields {
+        for field in &mut typed_union.fields {
             if field_names.contains(&field.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -814,6 +818,13 @@ impl<'a> AnalysisContext<'a> {
                 });
             }
 
+            match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                Some(concrete_type) => {
+                    field.ty = concrete_type;
+                }
+                None => continue,
+            }
+
             field_names.push(field.name.clone());
         }
     }
@@ -823,6 +834,8 @@ impl<'a> AnalysisContext<'a> {
         self.analyze_methods(self.module_id, &typed_enum.methods);
 
         let mut variant_names: Vec<String> = Vec::new();
+
+        // REVIEW Normalize variant types if any explicit type annotation exists.
 
         for variant in &typed_enum.variants {
             let variant_identifier = match variant {
