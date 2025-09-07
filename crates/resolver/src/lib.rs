@@ -1,4 +1,4 @@
-use crate::declsign::{EnumSig, GlobalVarSig, InterfaceSig, StructSig};
+use crate::declsign::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
 use crate::moduleloader::{ModuleAlias, ModuleFilePath, ModuleLoader, ModuleLoaderOptions};
 use crate::scope::*;
 use crate::{
@@ -8,7 +8,7 @@ use crate::{
 use ast::format::module_segments_as_string;
 use ast::{
     AccessSpecifier, GlobalVariable, If, Import, Interface, ModuleImport, ModulePath, ModuleSegment,
-    ModuleSegmentSingle, SelfModifierKind, StringPrefix, SwitchCasePattern,
+    ModuleSegmentSingle, SelfModifierKind, StringPrefix, SwitchCasePattern, Union,
 };
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
@@ -274,7 +274,9 @@ impl Resolver {
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: ResolverDiagKind::SymbolNotFound { name: single_renamed_name },
+                        kind: ResolverDiagKind::SymbolNotFound {
+                            name: single_renamed_name,
+                        },
                         location: Some(DiagLoc::new(
                             self.get_module_file_path(parent_module_id).unwrap(),
                             loc.clone(),
@@ -582,6 +584,24 @@ impl Resolver {
                         interface.span.end,
                     );
                 }
+                Statement::Union(union_decl) => {
+                    if self.duplicate_symbol(
+                        module_id,
+                        union_decl.identifier.name.clone(),
+                        union_decl.loc.clone(),
+                        union_decl.span.end,
+                    ) {
+                        continue;
+                    }
+
+                    self.insert_symbol_name(
+                        module_id,
+                        &union_decl.identifier.name.clone(),
+                        self.get_current_module_file_path(),
+                        union_decl.loc.clone(),
+                        union_decl.span.end,
+                    );
+                }
                 Statement::Typedef(typedef) => {
                     if self.duplicate_symbol(
                         module_id,
@@ -730,6 +750,10 @@ impl Resolver {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
+                Statement::Union(union_stmt) => match self.resolve_union(module_id, None, union_stmt) {
+                    Some(typed_stmt) => Ok(typed_stmt),
+                    None => continue,
+                },
                 Statement::Variable(variable) => Err((variable.loc.clone(), variable.span.end)),
                 Statement::If(if_stmt) => Err((if_stmt.loc.clone(), if_stmt.span.end)),
                 Statement::Return(return_stmt) => Err((return_stmt.loc.clone(), return_stmt.span.end)),
@@ -844,6 +868,78 @@ impl Resolver {
             methods: typed_methods,
             vis: interface.vis.clone(),
             loc: interface.loc.clone(),
+        }))
+    }
+
+    fn resolve_union(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        union_decl: &Union,
+    ) -> Option<TypedStatement> {
+        let union_symbol_id = if local_scope_opt.is_some() {
+            generate_symbol_id()
+        } else {
+            self.lookup_symbol_id(module_id, &union_decl.identifier.name).unwrap()
+        };
+
+        let mut typed_union_fields: Vec<TypedUnionField> = Vec::new();
+
+        for field in &union_decl.fields {
+            match self.resolve_type(module_id, field.ty.clone(), field.loc.clone(), field.span.end) {
+                Some(concrete_type) => {
+                    typed_union_fields.push(TypedUnionField {
+                        name: field.identifier.name.clone(),
+                        ty: concrete_type,
+                        loc: field.loc.clone(),
+                    });
+                }
+                None => continue,
+            }
+        }
+
+        self.check_duplicate_method_names(&union_decl.identifier.name, union_decl.methods.clone());
+
+        let methods = match self.resolve_methods(module_id, &union_decl.methods, union_symbol_id) {
+            Some(methods) => methods,
+            None => return None,
+        };
+
+        let resolved_union = ResolvedUnion {
+            module_id,
+            symbol_id: union_symbol_id,
+            union_sig: UnionSig {
+                name: union_decl.identifier.name.clone(),
+                fields: typed_union_fields.clone(),
+                methods: methods.clone(),
+                vis: union_decl.vis.clone(),
+                loc: union_decl.loc.clone(),
+            },
+        };
+
+        if let Some(local_scope_rc) = &local_scope_opt {
+            let mut local_scope = local_scope_rc.borrow_mut();
+            local_scope.insert(
+                union_decl.identifier.name.clone(),
+                LocalSymbol::new(LocalSymbolKind::Union(resolved_union)),
+            );
+            drop(local_scope);
+        } else {
+            self.insert_symbol_entry(
+                module_id,
+                union_symbol_id,
+                SymbolEntry::new(SymbolEntryKind::Union(resolved_union)),
+            );
+        }
+
+        Some(TypedStatement::Union(TypedUnion {
+            symbol_id: union_symbol_id,
+            module_id,
+            name: union_decl.identifier.name.clone(),
+            fields: typed_union_fields,
+            methods,
+            vis: union_decl.vis.clone(),
+            loc: union_decl.identifier.loc.clone(),
         }))
     }
 
@@ -1187,6 +1283,7 @@ impl Resolver {
         } else {
             self.lookup_symbol_id(module_id, &struct_decl.identifier.name).unwrap()
         };
+
         let mut typed_struct_fields: Vec<TypedStructField> = Vec::new();
 
         for field in &struct_decl.fields {
@@ -1982,6 +2079,14 @@ impl Resolver {
                 }
                 Statement::Enum(enum_decl) => {
                     match self.resolve_enum(module_id, Some(Rc::clone(&local_scope)), enum_decl) {
+                        Some(typed_stmt) => {
+                            typed_body.push(typed_stmt);
+                        }
+                        None => continue,
+                    }
+                }
+                Statement::Union(union_decl) => {
+                    match self.resolve_union(module_id, Some(Rc::clone(&local_scope)), union_decl) {
                         Some(typed_stmt) => {
                             typed_body.push(typed_stmt);
                         }

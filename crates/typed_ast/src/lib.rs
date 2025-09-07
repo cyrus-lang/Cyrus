@@ -1,6 +1,8 @@
 use crate::types::{ConcreteType, TypedUnnamedStructType};
 use ast::{
-    operators::{InfixOperator, PrefixOperator, UnaryOperator}, token::Location, AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind
+    AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind,
+    operators::{InfixOperator, PrefixOperator, UnaryOperator},
+    token::Location,
 };
 use std::collections::HashMap;
 
@@ -291,6 +293,7 @@ pub enum TypedStatement {
     Switch(TypedSwitch),
     Struct(TypedStruct),
     Enum(TypedEnum),
+    Union(TypedUnion),
     Interface(TypedInterface),
     Expression(TypedExpression),
 }
@@ -316,6 +319,7 @@ impl TypedStatement {
             TypedStatement::Interface(typed_interface) => typed_interface.loc.clone(),
             TypedStatement::Expression(typed_expression) => typed_expression.loc.clone(),
             TypedStatement::While(while_stmt) => while_stmt.loc.clone(),
+            TypedStatement::Union(union_stmt) => union_stmt.loc.clone(),
         }
     }
 }
@@ -362,6 +366,24 @@ pub struct TypedStruct {
     pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
     pub packed: bool,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedUnion {
+    pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
+    pub name: String,
+    pub fields: Vec<TypedUnionField>,
+    pub methods: HashMap<String, SymbolID>,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedUnionField {
+    pub name: String,
+    pub ty: ConcreteType,
     pub loc: Location,
 }
 

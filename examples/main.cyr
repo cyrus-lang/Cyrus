@@ -1,10 +1,13 @@
 import std::libc; 
 
-func main() {
-    struct User {
-        name: char*;
-        age: uint;
-    }
+union MyUnion {
+    a: int;
+    a: char*;
 
-    #user = User { name: "Cyrus", age: 2500 }; 
+    func new() MyUnion {
+    }
+}
+
+func main() {
+    
 }
