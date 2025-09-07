@@ -111,8 +111,6 @@ fn prepare_compilation(
         opts.disable_modulefs_cache = true;
     }
 
-    if opts.display_target_machine {}
-
     let file_path = get_entry_source_code_path(opts.base_path.clone(), file_path);
     let final_build_dir = get_final_build_directory_path(opts.base_path.clone(), opts.build_dir.clone());
     ensure_build_dir_subs(opts.base_path.clone(), final_build_dir.clone());

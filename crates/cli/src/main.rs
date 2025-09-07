@@ -92,8 +92,11 @@ struct CompilerOptions {
     )]
     linker: Option<String>,
 
-    #[clap(long, short = 'q', help = "Suppress unnecessary output messages.")]
+    #[clap(long, short = 'q', help = "Suppress unnecessary output messages.", conflicts_with="verbose")]
     quiet: bool,
+
+    #[clap(long, short = 'V', help = "Increase output verbosity.", conflicts_with="quiet")]
+    verbose: bool,
 
     #[clap(long, help = "Disables module filesystem cache.")]
     disable_modulefs_cache: bool,
@@ -107,7 +110,7 @@ struct CompilerOptions {
     #[clap(long = "target-machine", help = "Display Target Machine information.")]
     display_target_machine: bool,
 
-    #[clap(long, value_enum, default_value_t = RelocMode::Default,
+    #[clap(long, value_enum, default_value_t = RelocMode::default(),
     help = "Set the relocation model for code generation."
     )]
     reloc_mode: RelocMode,
@@ -124,6 +127,12 @@ pub enum RelocMode {
     Static,
     PIC,
     DynamicNoPic,
+}
+
+impl Default for RelocMode {
+    fn default() -> Self {
+        Self::PIC
+    }
 }
 
 impl RelocMode {
@@ -198,6 +207,7 @@ impl CompilerOptions {
                 }
             },
             quiet: self.quiet,
+            verbose: self.verbose,
             stdlib_path: self.stdlib.clone(),
             display_target_machine: self.display_target_machine,
             disable_warnings: self.disable_warnings,
