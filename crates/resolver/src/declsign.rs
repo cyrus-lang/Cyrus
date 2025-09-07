@@ -2,7 +2,7 @@ use crate::scope::LocalOrGlobalSymbol;
 use ast::{AccessSpecifier, token::Location};
 use std::collections::HashMap;
 use typed_ast::{
-    ModuleID, SymbolID, TypedEnumVariant, TypedFuncDecl, TypedFuncParams, TypedStructField, types::ConcreteType,
+    types::ConcreteType, ModuleID, SymbolID, TypedEnumVariant, TypedFuncDecl, TypedFuncParams, TypedStructField, TypedUnionField
 };
 
 #[derive(Debug, Clone)]
@@ -12,6 +12,15 @@ pub struct StructSig {
     pub impls: Vec<LocalOrGlobalSymbol>,
     pub methods: HashMap<String, SymbolID>,
     pub packed: bool,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnionSig {
+    pub name: String,
+    pub fields: Vec<TypedUnionField>,
+    pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
     pub loc: Location,
 }

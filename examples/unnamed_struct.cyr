@@ -1,5 +1,11 @@
-import my_libc: std::libc;
+extern func printf(format: const char*, ...) int32;
+
+public config = const struct {
+    host = "127.0.0.1",
+    port = 8080
+};
 
 func main() {
-    my_libc::printf("Hello, Cyrus!\n");
+    printf("host: %s\n", config.host);
+    printf("port: %d\n", config.port);
 }

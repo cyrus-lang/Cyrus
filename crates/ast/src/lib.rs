@@ -134,6 +134,24 @@ pub struct UnnamedStructTypeField {
 }
 
 #[derive(Debug, Clone)]
+pub struct Union {
+    pub identifier: Identifier,
+    pub fields: Vec<UnionField>,
+    pub methods: Vec<FuncDef>,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnionField {
+    pub identifier: Identifier,
+    pub ty: TypeSpecifier,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct Enum {
     pub identifier: Identifier,
     pub variants: Vec<EnumVariant>,
@@ -342,6 +360,7 @@ pub enum Statement {
     Import(Import),
     BlockStatement(BlockStatement),
     Enum(Enum),
+    Union(Union),
     Break(Break),
     Continue(Continue),
     Typedef(Typedef),
