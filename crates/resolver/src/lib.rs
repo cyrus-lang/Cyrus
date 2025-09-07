@@ -266,14 +266,15 @@ impl Resolver {
         // move symbol and it's metadata from imported module to parent module
 
         for single in singles {
-            let single_name = single.identifier.as_string();
+            let single_actual_name = single.identifier.as_string();
+            let single_renamed_name = single.renamed.clone().unwrap_or(single.identifier.clone()).as_string();
 
-            let symbol_id = match self.lookup_symbol_id(imported_module_id, &single_name) {
+            let symbol_id = match self.lookup_symbol_id(imported_module_id, &single_actual_name) {
                 Some(symbol_id) => symbol_id,
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: ResolverDiagKind::SymbolNotFound { name: single_name },
+                        kind: ResolverDiagKind::SymbolNotFound { name: single_renamed_name },
                         location: Some(DiagLoc::new(
                             self.get_module_file_path(parent_module_id).unwrap(),
                             loc.clone(),
@@ -292,11 +293,11 @@ impl Resolver {
                 let mut global_symbols = self.global_symbols.lock().unwrap();
                 let symbol_table = global_symbols.get_mut(&parent_module_id).unwrap();
 
-                if symbol_table.names.contains_key(&single_name) {
+                if symbol_table.names.contains_key(&single_actual_name) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: ResolverDiagKind::DuplicateSymbol {
-                            symbol_name: single_name,
+                            symbol_name: single_renamed_name,
                         },
                         location: Some(DiagLoc::new(
                             self.get_module_file_path(parent_module_id).unwrap(),
@@ -308,7 +309,7 @@ impl Resolver {
                     continue;
                 }
 
-                symbol_table.names.insert(single_name.clone(), symbol_id);
+                symbol_table.names.insert(single_renamed_name.clone(), symbol_id);
                 symbol_table
                     .locs
                     .insert(symbol_id, (loc_file, symbol_entry.get_loc(), 0));
@@ -318,7 +319,7 @@ impl Resolver {
                 symbol_table.entries.insert(symbol_id, symbol_entry);
                 drop(global_symbols);
 
-                self.check_import_single_vis(single_name, vis, loc.clone());
+                self.check_import_single_vis(single_actual_name, vis, loc.clone());
             }
         }
     }

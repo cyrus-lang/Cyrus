@@ -1,14 +1,10 @@
 import std::libc; 
 
-struct User {
-    name: char*;
-    age: uint;
-}
-
 func main() {
-    #user = User { name: "Cyrus", age: 2500 }; 
-    #ptr = &user;
+    struct User {
+        name: char*;
+        age: uint;
+    }
 
-    libc::printf("value: %s\n", ptr->name);
-    libc::printf("value: %d\n", ptr->age);
+    #user = User { name: "Cyrus", age: 2500 }; 
 }

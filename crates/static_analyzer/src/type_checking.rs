@@ -877,9 +877,15 @@ impl<'a> AnalysisContext<'a> {
                 let is_resolved_var_type_const = resolved_var_type.is_const();
 
                 if let Some(unnamed_struct_type) = resolved_var_type.as_const_or_unnamed_struct() {
-                    let mut concrete_type = self
-                        .analyze_unnamed_struct_type(scope_id_opt, unnamed_struct_type, field_access, resolved_var_type)
-                        .unwrap();
+                    let mut concrete_type = match self.analyze_unnamed_struct_type(
+                        scope_id_opt,
+                        unnamed_struct_type,
+                        field_access,
+                        resolved_var_type,
+                    ) {
+                        Some(concrete_type) => concrete_type,
+                        None => return None,
+                    };
 
                     if is_resolved_var_type_const {
                         concrete_type = ConcreteType::Const(Box::new(concrete_type.clone()));
