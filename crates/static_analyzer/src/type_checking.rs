@@ -992,7 +992,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::DuplicateFieldName {
-                        struct_name,
+                        object_name: struct_name,
                         field_name: field_init.name.clone(),
                     },
                     location: Some(DiagLoc::new(

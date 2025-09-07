@@ -99,17 +99,26 @@ impl<'a> CodeGenBuilder<'a> {
                 _ => unreachable!(),
             },
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
-                SymbolEntryKind::Method(_resolved_method) => todo!(),
-                SymbolEntryKind::Typedef(_resolved_typedef) => todo!(),
-                SymbolEntryKind::GlobalVar(_resolved_global_var) => todo!(),
+                SymbolEntryKind::Typedef(..) | SymbolEntryKind::Func(..) | SymbolEntryKind::Interface(..) => {
+                    unreachable!()
+                }
+                SymbolEntryKind::Method(resolved_method) => {
+                    let fn_value = self.get_or_declare_func(resolved_method.symbol_id, resolved_method.func_sig);
+                    LocalIRValue::Func(fn_value)
+                }
+                SymbolEntryKind::GlobalVar(resolved_global_var) => {
+                    let global_value = self.get_or_declare_global_var(resolved_global_var.global_var_sig.clone());
+                    LocalIRValue::GlobalValue(global_value, resolved_global_var.global_var_sig.ty.unwrap())
+                }
                 SymbolEntryKind::Struct(resolved_struct) => {
                     let struct_type =
                         self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig);
 
                     LocalIRValue::Struct(struct_type)
                 }
+                // FIXME
                 SymbolEntryKind::Enum(_resolved_enum) => todo!(),
-                SymbolEntryKind::Func(..) | SymbolEntryKind::Interface(..) => unreachable!(),
+                SymbolEntryKind::Union(_resolved_union) => todo!(),
             },
         }
     }
@@ -199,6 +208,7 @@ impl<'a> CodeGenBuilder<'a> {
             ConcreteType::UnresolvedSymbol(..) => unreachable!(),
             ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Enum(symbol_id)
+                | ResolvedSymbol::Union(symbol_id)
                 | ResolvedSymbol::Typedef(symbol_id)
                 | ResolvedSymbol::NamedStruct(symbol_id)
                 | ResolvedSymbol::Interface(symbol_id)

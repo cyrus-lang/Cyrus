@@ -2,12 +2,10 @@ import std::libc;
 
 union MyUnion {
     a: int;
-    a: char*;
-
-    func new() MyUnion {
-    }
+    b: char*;
 }
 
 func main() {
-    
+    #un: MyUnion;
+    // un.a = 10;
 }

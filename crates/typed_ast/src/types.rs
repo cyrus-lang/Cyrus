@@ -15,6 +15,7 @@ pub enum ConcreteType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResolvedSymbol {
     Enum(SymbolID),
+    Union(SymbolID),
     Typedef(SymbolID),
     NamedStruct(SymbolID),
     Interface(SymbolID),
@@ -27,6 +28,7 @@ pub enum ResolvedSymbol {
 impl ResolvedSymbol {
     pub fn get_symbol_id(&self) -> SymbolID {
         match self {
+            ResolvedSymbol::Union(symbol_id) => *symbol_id,
             ResolvedSymbol::Enum(symbol_id) => *symbol_id,
             ResolvedSymbol::Typedef(symbol_id) => *symbol_id,
             ResolvedSymbol::NamedStruct(symbol_id) => *symbol_id,

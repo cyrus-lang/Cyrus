@@ -2,7 +2,8 @@ use crate::scope::LocalOrGlobalSymbol;
 use ast::{AccessSpecifier, token::Location};
 use std::collections::HashMap;
 use typed_ast::{
-    types::ConcreteType, ModuleID, SymbolID, TypedEnumVariant, TypedFuncDecl, TypedFuncParams, TypedStructField, TypedUnionField
+    ModuleID, SymbolID, TypedEnumVariant, TypedFuncDecl, TypedFuncParams, TypedStructField, TypedUnionField,
+    types::ConcreteType,
 };
 
 #[derive(Debug, Clone)]
