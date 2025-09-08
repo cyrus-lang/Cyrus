@@ -11,6 +11,7 @@ union MyUnion {
 }
 
 func main() {
+
     #un: MyUnion;
     un.a = 10;
 
@@ -18,6 +19,6 @@ func main() {
 
     un.c = Sample { name: "Taha" };
 
-    #clone: Sample = un.c;
-    libc::printf("value: %s\n", clone.name);
+    #name: char* = un.c.name;
+    libc::printf("value: %s\n", name);
 }
