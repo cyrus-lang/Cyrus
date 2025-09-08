@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    UnionInitWithInvalidFields,
     EmptyCaseSwitchStatement,
     TypeMismatchLiteral {
         literal_type: String,
@@ -132,6 +133,9 @@ pub enum AnalyzerDiagKind {
     NonStructSymbol {
         symbol_name: String,
     },
+    NonUnionSymbol {
+        symbol_name: String,
+    },
     DuplicateFuncParameter {
         param_name: String,
         param_idx: u32,
@@ -164,6 +168,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::UnionInitWithInvalidFields => {
+                write!(f, "Union initializer must specify exactly one field.")
+            }
             AnalyzerDiagKind::EmptyCaseSwitchStatement => {
                 write!(
                     f,
@@ -424,6 +431,9 @@ impl fmt::Display for AnalyzerDiagKind {
             }
             AnalyzerDiagKind::NonStructSymbol { symbol_name } => {
                 write!(f, "Symbol '{}' is not a struct.", symbol_name)
+            }
+            AnalyzerDiagKind::NonUnionSymbol { symbol_name } => {
+                write!(f, "Symbol '{}' is not a union.", symbol_name)
             }
             AnalyzerDiagKind::NonTypeSymbol { symbol_name } => {
                 write!(f, "Symbol '{}' is not a type.", symbol_name)

@@ -463,7 +463,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_dereference_expr_type(scope_id_opt, typed_dereference)
             }
             TypedExpressionKind::StructInit(typed_struct_init) => {
-                self.analyze_struct_init_expr_type(scope_id_opt, typed_struct_init)
+                self.analyze_struct_init_expr_type(scope_id_opt, typed_struct_init, expected_type)
             }
             TypedExpressionKind::FuncCall(typed_func_call) => {
                 self.analyze_func_call_expr_type(scope_id_opt, typed_func_call)
@@ -1124,10 +1124,73 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn analyze_union_init_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        union_symbol_id: SymbolID,
+        typed_struct_init: &mut TypedStructInit,
+        expected_type: Option<ConcreteType>,
+    ) -> Option<ConcreteType> {
+        if typed_struct_init.fields.len() > 1 || typed_struct_init.fields.len() == 0 {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UnionInitWithInvalidFields,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_struct_init.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        }
+
+        // FIXME self.module_id must be changed
+        let local_scope_opt = self
+            .resolver
+            .get_scope_ref(self.module_id, scope_id_opt.unwrap())
+            .unwrap();
+
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(Some(local_scope_opt), union_symbol_id)
+            .unwrap();
+
+        let resolved_union = match local_or_global_symbol.as_union() {
+            Some(resolved_union) => resolved_union,
+            None => {
+                let symbol_name = format_concrete_type(
+                    ConcreteType::UnresolvedSymbol(union_symbol_id),
+                    &(self.symbol_formatter)(scope_id_opt),
+                );
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::NonUnionSymbol { symbol_name },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_struct_init.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let field = &mut typed_struct_init.fields[0];
+        self.analyze_typed_expr_type(scope_id_opt, &mut field.value, expected_type);
+
+        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(
+            resolved_union.symbol_id,
+        )))
+    }
+
     fn analyze_struct_init_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_struct_init: &mut TypedStructInit,
+        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         let normalized = self
             .normalize_type(
@@ -1137,12 +1200,36 @@ impl<'a> AnalysisContext<'a> {
             )
             .unwrap();
 
+        let struct_symbol_id = match normalized.as_struct_symbol_id() {
+            Some(symbol_id) => symbol_id,
+            None => {
+                if let Some(union_symbol_id) = normalized.as_union_symbol_id() {
+                    return self.analyze_union_init_expr_type(
+                        scope_id_opt,
+                        union_symbol_id,
+                        typed_struct_init,
+                        expected_type,
+                    );
+                } else {
+                    let symbol_name = format_concrete_type(normalized, &(self.symbol_formatter)(scope_id_opt));
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::NonStructSymbol { symbol_name },
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            typed_struct_init.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
+        };
+
         let resolved_struct = self
-            .resolve_symbol_as_struct(
-                scope_id_opt,
-                normalized.as_struct_symbol_id().unwrap(),
-                typed_struct_init.loc.clone(),
-            )
+            .resolve_symbol_as_struct(scope_id_opt, struct_symbol_id, typed_struct_init.loc.clone())
             .unwrap();
 
         // check duplicate field inits
