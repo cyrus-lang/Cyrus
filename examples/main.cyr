@@ -6,8 +6,5 @@ func main() {
         counter = 0,
     };
 
-    state.counter += 1;
-    state.counter += 1;
-    state.counter += 1;
-    libc::printf("counter: %d\n", state.counter);
+    state.counter++;
 }
