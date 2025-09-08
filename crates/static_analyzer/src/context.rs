@@ -1091,6 +1091,7 @@ impl<'a> AnalysisContext<'a> {
                     let symbol_id = match normalized_type {
                         ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id))
                         | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id)) => symbol_id,
+                        | ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(symbol_id)) => symbol_id,
                         _ => unreachable!(),
                     };
 
