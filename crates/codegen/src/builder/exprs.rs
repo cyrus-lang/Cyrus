@@ -529,16 +529,23 @@ impl<'a> CodeGenBuilder<'a> {
             .resolve_local_or_global_symbol(local_scope_opt.clone(), method_call.symbol_id)
             .unwrap();
 
-        let resolved_struct = local_or_global_symbol.as_struct().unwrap();
-        let method_symbol_id = *resolved_struct
-            .struct_sig
-            .methods
-            .get(&method_call.method_name)
-            .unwrap();
+        let (methods, module_id) = {
+            if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
+                (resolved_struct.struct_sig.methods, resolved_struct.module_id)
+            } else if let Some(resolved_enum) = local_or_global_symbol.as_enum() {
+                (resolved_enum.enum_sig.methods, resolved_enum.module_id)
+            } else if let Some(resolved_union) = local_or_global_symbol.as_union() {
+                (resolved_union.union_sig.methods, resolved_union.module_id)
+            } else {
+                unreachable!()
+            }
+        };
+
+        let method_symbol_id = *methods.get(&method_call.method_name).unwrap();
 
         let symbol_entry = self
             .resolver
-            .lookup_symbol_entry_with_id(resolved_struct.module_id, method_symbol_id)
+            .lookup_symbol_entry_with_id(module_id, method_symbol_id)
             .unwrap();
 
         let func_sig = match symbol_entry.kind {

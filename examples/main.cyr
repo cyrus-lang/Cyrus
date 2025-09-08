@@ -8,17 +8,15 @@ union MyUnion {
     a: int;
     b: char*;
     c: Sample;
+
+    public func get_a(&self) {
+        libc::printf("value: %d\n", self->a);
+    }
 }
 
 func main() {
-
     #un: MyUnion;
     un.a = 10;
 
-    libc::printf("value: %d\n", un.a);
-
-    un.c = Sample { name: "Taha" };
-
-    #name: char* = un.c.name;
-    libc::printf("value: %s\n", name);
+    un.get_a();
 }
