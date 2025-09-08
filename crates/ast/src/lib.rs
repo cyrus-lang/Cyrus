@@ -170,8 +170,8 @@ pub enum EnumVariant {
 
 #[derive(Debug, Clone)]
 pub struct EnumValuedField {
-    pub identifier: Identifier,
     pub field_type: TypeSpecifier,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone)]

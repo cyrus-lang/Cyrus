@@ -127,18 +127,11 @@ impl Parser {
                     });
                 }
 
-                let field_name = self.parse_identifier()?;
-                self.next_token(); // consume field name
-
-                self.expect_current(TokenKind::Colon)?;
-
+                let loc = self.current_token().loc.clone();
                 let field_type = self.parse_type_specifier()?;
                 self.next_token();
 
-                variant_fields.push(EnumValuedField {
-                    identifier: field_name,
-                    field_type: field_type,
-                });
+                variant_fields.push(EnumValuedField { field_type, loc });
 
                 if self.current_token_is(TokenKind::RightParen) {
                     self.next_token();

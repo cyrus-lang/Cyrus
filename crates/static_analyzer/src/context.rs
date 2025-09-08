@@ -145,7 +145,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
-                TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum, false),
+                TypedStatement::Enum(typed_enum) => self.analyze_enum(None, typed_enum, false),
                 TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef),
                 TypedStatement::Union(typed_union) => self.analyze_union(None, typed_union, false),
                 // Not analyzed
@@ -206,7 +206,7 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Reachable
                 }
                 TypedStatement::Enum(typed_enum) => {
-                    self.analyze_enum(typed_enum, true);
+                    self.analyze_enum(Some(block_stmt.scope_id), typed_enum, true);
                     FlowState::Reachable
                 }
                 TypedStatement::Expression(typed_expression) => {
@@ -829,41 +829,29 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_enum(&mut self, typed_enum: &TypedEnum, is_local: bool) {
+    pub(crate) fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnum, is_local: bool) {
         self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
         self.analyze_methods(self.module_id, &typed_enum.methods);
 
         let mut variant_names: Vec<String> = Vec::new();
 
-        // REVIEW Normalize variant types if any explicit type annotation exists.
-
-        for variant in &typed_enum.variants {
+        for variant in &mut typed_enum.variants {
             let variant_identifier = match variant {
                 TypedEnumVariant::Identifier(identifier) => identifier,
-                TypedEnumVariant::Valued(identifier, _) => identifier,
+                TypedEnumVariant::Valued(identifier, typed_expr) => {
+                    typed_expr.concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
+                        Some(concrete_type) => Some(concrete_type),
+                        None => continue,
+                    };
+                    identifier
+                }
                 TypedEnumVariant::Variant(identifier, typed_enum_valued_fields) => {
-                    let mut field_names: Vec<String> = Vec::new();
-
                     for field in typed_enum_valued_fields {
-                        if field_names.contains(&field.name) {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: AnalyzerDiagKind::DuplicateEnumFieldName {
-                                    enum_name: typed_enum.name.clone(),
-                                    field_name: field.name.clone(),
-                                    variant_name: identifier.name.clone(),
-                                },
-                                location: Some(DiagLoc::new(
-                                    self.resolver.get_current_module_file_path(),
-                                    field.loc.clone(),
-                                    0,
-                                )),
-                                hint: Some("Consider to rename the field to a different name.".to_string()),
-                            });
-                            continue;
-                        }
-
-                        field_names.push(field.name.clone());
+                        field.field_type =
+                            match self.normalize_type(scope_id_opt, field.field_type.clone(), field.loc.clone()) {
+                                Some(concrete_type) => concrete_type,
+                                None => continue,
+                            };
                     }
                     identifier
                 }
@@ -1091,7 +1079,7 @@ impl<'a> AnalysisContext<'a> {
                     let symbol_id = match normalized_type {
                         ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id))
                         | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id)) => symbol_id,
-                        | ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(symbol_id)) => symbol_id,
+                        ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(symbol_id)) => symbol_id,
                         _ => unreachable!(),
                     };
 
