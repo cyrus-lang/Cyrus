@@ -1,11 +1,13 @@
 import std::libc; 
 
-enum Color {
-    Red,
-    Valued = "my valued color!",
-    Custom(int, int)
+union DataUnion {
+    a: int;
+    b: float64;
 }
 
 func main() {
-    #a: Color;
+    #un: DataUnion;
+    
+    un.b = 3.14;
+    libc::printf("value: %f\n", un.b);
 }
