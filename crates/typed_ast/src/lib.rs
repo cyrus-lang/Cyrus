@@ -352,7 +352,6 @@ pub enum TypedEnumVariant {
 
 #[derive(Debug, Clone)]
 pub struct TypedEnumValuedField {
-    pub name: String,
     pub field_type: ConcreteType,
     pub loc: Location,
 }

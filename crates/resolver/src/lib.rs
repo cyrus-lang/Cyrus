@@ -965,17 +965,16 @@ impl Resolver {
                         let field_type = match self.resolve_type(
                             module_id,
                             valued_field.field_type.clone(),
-                            valued_field.identifier.loc.clone(),
-                            valued_field.identifier.span.end,
+                            valued_field.loc.clone(),
+                            0,
                         ) {
                             Some(concrete_type) => concrete_type,
                             None => continue,
                         };
 
                         fields.push(TypedEnumValuedField {
-                            name: valued_field.identifier.name.clone(),
                             field_type,
-                            loc: valued_field.identifier.loc.clone(),
+                            loc: valued_field.loc.clone(),
                         });
                     }
                     TypedEnumVariant::Variant(identifier.clone(), fields)

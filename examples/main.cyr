@@ -1,10 +1,11 @@
 import std::libc; 
 
-func main() {
-    #state = struct {
-        name = "Cyrus",
-        counter = 0,
-    };
+enum Color {
+    Red,
+    Valued = "my valued color!",
+    Custom(int, int)
+}
 
-    state.counter++;
+func main() {
+    #a: Color;
 }

@@ -1,5 +1,6 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
 use crate::builder::{
+    abi::{generate_enum_abi_name, generate_struct_abi_name, generate_union_abi_name},
     module::{LoopBlockRefs, SwitchBlockRefs, TerminatedBlockMetadata},
     values::InternalValue,
 };
@@ -220,8 +221,22 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
+    fn build_enum_decl(&self, name: &String) -> StructType<'a> {
+        let module_name = self.get_module_name(self.module_id);
+        self.llvmctx
+            .opaque_struct_type(&generate_enum_abi_name(module_name, name.to_string()))
+    }
+
+    fn build_union_decl(&self, name: &String) -> StructType<'a> {
+        let module_name = self.get_module_name(self.module_id);
+        self.llvmctx
+            .opaque_struct_type(&generate_union_abi_name(module_name, name.to_string()))
+    }
+
     fn build_struct_decl(&self, name: &String) -> StructType<'a> {
-        self.llvmctx.opaque_struct_type(name)
+        let module_name = self.get_module_name(self.module_id);
+        self.llvmctx
+            .opaque_struct_type(&generate_struct_abi_name(module_name, name.to_string()))
     }
 
     fn build_local_struct_def(&mut self, typed_struct: &TypedStruct) {
@@ -303,14 +318,6 @@ impl<'a> CodeGenBuilder<'a> {
 
         struct_type.set_body(&field_types, typed_struct.packed);
         self.build_methods(typed_struct.module_id, &typed_struct.methods);
-    }
-
-    fn build_enum_decl(&self, name: &String) -> StructType<'a> {
-        self.llvmctx.opaque_struct_type(name)
-    }
-
-    fn build_union_decl(&self, name: &String) -> StructType<'a> {
-        self.llvmctx.opaque_struct_type(&format!("union.{}", name))
     }
 
     fn build_union_def(&mut self, typed_union: &TypedUnion) {
