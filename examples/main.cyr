@@ -1,22 +1,13 @@
 import std::libc; 
 
-struct Sample {
-    name: char*;
-}
-
-union MyUnion {
-    a: int;
-    b: char*;
-    c: Sample;
-
-    public func get_a(&self) {
-        libc::printf("value: %d\n", self->a);
-    }
-}
-
 func main() {
-    #un: MyUnion;
-    un.a = 10;
+    #state = struct {
+        name = "Cyrus",
+        counter = 0,
+    };
 
-    un.get_a();
+    state.counter += 1;
+    state.counter += 1;
+    state.counter += 1;
+    libc::printf("counter: %d\n", state.counter);
 }

@@ -627,21 +627,6 @@ impl<'a> AnalysisContext<'a> {
         Some(*array_type.element_type.clone())
     }
 
-    // fn extract_object_symbol_id(
-    //     &mut self,
-    //     scope_id_opt: Option<ScopeID>,
-    //     symbol_id: SymbolID,
-    //     loc: Location,
-    // ) -> Option<SymbolID> {
-    //     let normalized = self.normalize_type(scope_id_opt, var_type, loc.clone())?;
-
-    //     match normalized {
-    //         ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
-    //         ConcreteType::Pointer(concrete_type) => self.extract_object_symbol_id(scope_id_opt, *concrete_type, loc),
-    //         _ => None,
-    //     }
-    // }
-
     fn resolve_var_or_global_var_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -686,46 +671,47 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_unnamed_struct_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        unnamed_struct_type: TypedUnnamedStructType,
-        field_access: &mut TypedFieldAccess,
-        resolved_var_type: ConcreteType,
-    ) -> Option<ConcreteType> {
-        let struct_name = format_concrete_type(resolved_var_type, &(self.symbol_formatter)(scope_id_opt));
+    // FIXME Not required anymore and it's safe to delete it in the future.
+    // fn analyze_unnamed_struct_type(
+    //     &mut self,
+    //     scope_id_opt: Option<ScopeID>,
+    //     unnamed_struct_type: TypedUnnamedStructType,
+    //     field_access: &mut TypedFieldAccess,
+    //     resolved_var_type: ConcreteType,
+    // ) -> Option<ConcreteType> {
+    //     let struct_name = format_concrete_type(resolved_var_type, &(self.symbol_formatter)(scope_id_opt));
 
-        let field_index = match unnamed_struct_type
-            .fields
-            .iter()
-            .position(|typed_struct_field| typed_struct_field.field_name == field_access.field_name)
-        {
-            Some(typed_struct_field) => typed_struct_field,
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name,
-                        field_name: field_access.field_name.clone(),
-                    },
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        field_access.loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
-                return None;
-            }
-        };
+    //     let field_index = match unnamed_struct_type
+    //         .fields
+    //         .iter()
+    //         .position(|typed_struct_field| typed_struct_field.field_name == field_access.field_name)
+    //     {
+    //         Some(typed_struct_field) => typed_struct_field,
+    //         None => {
+    //             self.reporter.report(Diag {
+    //                 level: DiagLevel::Error,
+    //                 kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
+    //                     struct_name,
+    //                     field_name: field_access.field_name.clone(),
+    //                 },
+    //                 location: Some(DiagLoc::new(
+    //                     self.resolver.get_current_module_file_path(),
+    //                     field_access.loc.clone(),
+    //                     0,
+    //                 )),
+    //                 hint: None,
+    //             });
+    //             return None;
+    //         }
+    //     };
 
-        let typed_struct_field = unnamed_struct_type.fields.get(field_index).unwrap();
+    //     let typed_struct_field = unnamed_struct_type.fields.get(field_index).unwrap();
 
-        field_access.field_index = Some(field_index);
-        field_access.field_ty = Some(*typed_struct_field.field_type.clone());
+    //     field_access.field_index = Some(field_index);
+    //     field_access.field_ty = Some(*typed_struct_field.field_type.clone());
 
-        Some(*typed_struct_field.field_type.clone())
-    }
+    //     Some(*typed_struct_field.field_type.clone())
+    // }
 
     fn validate_field_access(
         &mut self,
@@ -890,6 +876,70 @@ impl<'a> AnalysisContext<'a> {
         Some(union_field.ty.clone())
     }
 
+    fn analyze_unnamed_struct_field_access_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        unnamed_struct_type: &TypedUnnamedStructType,
+        field_access: &mut TypedFieldAccess,
+        expected_type: Option<ConcreteType>,
+    ) -> Option<ConcreteType> {
+        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
+
+        field_access.operand.concrete_type = Some(operand_type.clone());
+
+        let field_idx = match unnamed_struct_type
+            .fields
+            .iter()
+            .position(|field| *field.field_name == field_access.field_name.clone())
+        {
+            Some(union_field) => union_field,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                        struct_name: format_concrete_type(
+                            ConcreteType::UnnamedStruct(unnamed_struct_type.clone()),
+                            &(self.symbol_formatter)(scope_id_opt),
+                        ),
+                        field_name: field_access.field_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_access.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let field = &unnamed_struct_type.fields[field_idx];
+        let field_type = match self.normalize_type(scope_id_opt, *field.field_type.clone(), field_access.loc.clone()) {
+            Some(concrete_type) => concrete_type,
+            None => return None,
+        };
+
+        if field_access.is_fat_arrow {
+            field_access.operand = Box::new(TypedExpression {
+                kind: TypedExpressionKind::Dereference(TypedDereference {
+                    operand: field_access.operand.clone(),
+                    loc: field_access.loc.clone(),
+                }),
+                concrete_type: None,
+                loc: field_access.loc.clone(),
+            });
+        }
+
+        field_access.field_index = Some(field_idx);
+        field_access.field_ty = Some(field_type.clone());
+
+        Some(field_type.clone())
+    }
+
     fn analyze_struct_field_access_type(
         &mut self,
         field_access: &mut TypedFieldAccess,
@@ -996,11 +1046,16 @@ impl<'a> AnalysisContext<'a> {
 
             match operand_type {
                 ConcreteType::ResolvedSymbol(resolved_symbol) => resolved_symbol.get_symbol_id(),
-                ConcreteType::Pointer(concrete_type) => {
-                    self.extract_object_symbol_id(scope_id_opt, *concrete_type, field_access.loc.clone()).unwrap()
-                }
-                ConcreteType::UnnamedStruct(typed_unnamed_struct_type) => {
-                    todo!()
+                ConcreteType::Pointer(concrete_type) => self
+                    .extract_object_symbol_id(scope_id_opt, *concrete_type, field_access.loc.clone())
+                    .unwrap(),
+                ConcreteType::UnnamedStruct(unnamed_struct_type) => {
+                    return self.analyze_unnamed_struct_field_access_type(
+                        scope_id_opt,
+                        &unnamed_struct_type,
+                        field_access,
+                        expected_type.clone(),
+                    );
                 }
                 _ => {
                     self.reporter.report(Diag {
@@ -1554,10 +1609,9 @@ impl<'a> AnalysisContext<'a> {
 
             match operand_type {
                 ConcreteType::ResolvedSymbol(resolved_symbol) => resolved_symbol.get_symbol_id(),
-                ConcreteType::Pointer(concrete_type) => {
-                    todo!();
-                }
-                ConcreteType::UnnamedStruct(typed_unnamed_struct_type) => todo!(),
+                ConcreteType::Pointer(concrete_type) => self
+                    .extract_object_symbol_id(scope_id_opt, *concrete_type, loc.clone())
+                    .unwrap(),
                 _ => {
                     dbg!(operand_type);
 

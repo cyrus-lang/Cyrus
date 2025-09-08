@@ -1,7 +1,41 @@
 use crate::{
     SymbolID,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType},
 };
+
+pub fn format_unnamed_struct_type<'a>(
+    typed_unnamed_struct_type: &TypedUnnamedStructType,
+    format_symbol: &(dyn Fn(SymbolID) -> String + 'a),
+) -> String {
+    let mut fmt = String::new();
+
+    if typed_unnamed_struct_type.packed {
+        fmt.push_str("bits");
+    } else {
+        fmt.push_str("struct");
+    };
+
+    fmt.push_str(" { ");
+
+    fmt.push_str(
+        &typed_unnamed_struct_type
+            .fields
+            .iter()
+            .map(|field| {
+                format!(
+                    "{}: {}",
+                    field.field_name,
+                    format_concrete_type(*field.field_type.clone(), format_symbol)
+                )
+            })
+            .collect::<Vec<String>>()
+            .join(", "),
+    );
+
+    fmt.push_str(" }");
+
+    fmt
+}
 
 pub fn format_concrete_type<'a>(
     concrete_type: ConcreteType,
@@ -64,35 +98,8 @@ pub fn format_concrete_type<'a>(
         ConcreteType::Pointer(concrete_type) => {
             format!("{}*", format_concrete_type(*concrete_type, format_symbol))
         }
-        ConcreteType::UnnamedStruct(typed_unnamed_struct_type) => {
-            let mut fmt = String::new();
-
-            if typed_unnamed_struct_type.packed {
-                fmt.push_str("bits");
-            } else {
-                fmt.push_str("struct");
-            };
-
-            fmt.push_str(" { ");
-
-            fmt.push_str(
-                &typed_unnamed_struct_type
-                    .fields
-                    .iter()
-                    .map(|field| {
-                        format!(
-                            "{}: {}",
-                            field.field_name,
-                            format_concrete_type(*field.field_type.clone(), format_symbol)
-                        )
-                    })
-                    .collect::<Vec<String>>()
-                    .join(", "),
-            );
-
-            fmt.push_str(" }");
-
-            fmt
+        ConcreteType::UnnamedStruct(unnamed_struct_type) => {
+            format_unnamed_struct_type(&unnamed_struct_type, format_symbol)
         }
     }
 }
