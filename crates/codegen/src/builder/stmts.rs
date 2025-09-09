@@ -20,6 +20,7 @@ use typed_ast::{
     ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedExpression, TypedExpressionKind, TypedFor,
     TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct, TypedSwitch, TypedSwitchCasePattern,
     TypedUnion, TypedWhile,
+    types::{ConcreteType, ResolvedSymbol},
 };
 
 /// A macro to build the LLVM IR for a loop structure.
@@ -251,7 +252,7 @@ impl<'a> CodeGenBuilder<'a> {
         self.insert_forward_decl_to_registry(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
     }
 
-    fn build_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
+    pub(crate) fn build_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
         for method_symbol_id in methods.values() {
             let symbol_entry = self
                 .resolver
@@ -427,13 +428,31 @@ impl<'a> CodeGenBuilder<'a> {
         false
     }
 
+    fn build_switch_on_enum(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        switch: &TypedSwitch,
+        enum_symbol_id: SymbolID,
+    ) {
+        todo!();
+    }
+
     fn build_switch(&mut self, local_scope_opt: Option<LocalScopeRef>, switch: &TypedSwitch) {
         let smart_switch = self.detect_smart_switch(switch);
 
         let lvalue = self.build_expr(local_scope_opt.clone(), &switch.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
 
-        // TODO build_enum_pattern_matching
+        if matches!(
+            rvalue.value_type,
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..))
+        ) {
+            return self.build_switch_on_enum(
+                local_scope_opt.clone(),
+                switch,
+                rvalue.value_type.as_enum_symbol_id().unwrap(),
+            );
+        }
 
         let mut case_list: SwitchCaseList<'a> = Vec::new();
         let mut block_id = 0;

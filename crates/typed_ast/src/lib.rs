@@ -335,6 +335,7 @@ pub struct TypedInterface {
 
 #[derive(Debug, Clone)]
 pub struct TypedEnum {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
@@ -348,6 +349,16 @@ pub enum TypedEnumVariant {
     Identifier(Identifier),
     Valued(Identifier, Box<TypedExpression>),
     Variant(Identifier, Vec<TypedEnumValuedField>),
+}
+
+impl TypedEnumVariant {
+    pub fn get_identifier(&self) -> &Identifier {
+        match self {
+            TypedEnumVariant::Identifier(identifier) => identifier,
+            TypedEnumVariant::Valued(identifier, ..) => identifier,
+            TypedEnumVariant::Variant(identifier, ..) => identifier,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
