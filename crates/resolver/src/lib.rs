@@ -1030,6 +1030,7 @@ impl Resolver {
         }
 
         Some(TypedStatement::Enum(TypedEnum {
+            module_id,
             symbol_id: enum_symbol_id,
             name: enum_decl.identifier.name.clone(),
             variants,

@@ -1003,6 +1003,65 @@ impl<'a> AnalysisContext<'a> {
         Some(typed_struct_field.ty.clone())
     }
 
+    fn analyze_enum_variant_no_field(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        enum_symbol_id: SymbolID,
+        field_access: &TypedFieldAccess,
+    ) -> Option<ConcreteType> {
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
+            .unwrap();
+        let resolved_enum = local_or_global_symbol.as_enum().unwrap();
+
+        let enum_variant = match resolved_enum
+            .enum_sig
+            .variants
+            .iter()
+            .find(|variant| variant.get_identifier().as_string() == field_access.field_name)
+        {
+            Some(enum_variant) => enum_variant,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::VariantNotDefinedForEnum {
+                        enum_name: resolved_enum.enum_sig.name.clone(),
+                        variant_name: field_access.field_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field_access.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        if matches!(enum_variant, TypedEnumVariant::Variant(..)) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::VariantMissingFields {
+                    enum_name: resolved_enum.enum_sig.name.clone(),
+                    variant_name: field_access.field_name.clone(),
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    field_access.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        }
+
+        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(
+            resolved_enum.symbol_id,
+        )))
+    }
+
     fn analyze_field_access_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1026,14 +1085,37 @@ impl<'a> AnalysisContext<'a> {
                         *instance_symbol_id,
                     );
 
-                    let resolved_var_type = self
-                        .resolve_var_or_global_var_type(
-                            scope_id_opt,
+                    if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
+                        field_access.operand.concrete_type
+                    {
+                        return self.analyze_enum_variant_no_field(
                             local_scope_opt.clone(),
-                            *instance_symbol_id,
-                            field_access.loc.clone(),
-                        )
-                        .unwrap();
+                            enum_symbol_id,
+                            &field_access,
+                        );
+                    }
+
+                    let resolved_var_type = match self.resolve_var_or_global_var_type(
+                        scope_id_opt,
+                        local_scope_opt.clone(),
+                        *instance_symbol_id,
+                        field_access.loc.clone(),
+                    ) {
+                        Some(concrete_type) => concrete_type,
+                        None => {
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: AnalyzerDiagKind::ObjectNotSupportsFields,
+                                location: Some(DiagLoc::new(
+                                    self.resolver.get_current_module_file_path(),
+                                    field_access.loc.clone(),
+                                    0,
+                                )),
+                                hint: None,
+                            });
+                            return None;
+                        }
+                    };
 
                     resolved_var_type
                 }

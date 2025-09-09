@@ -233,16 +233,6 @@ impl<'a> CodeGenBuilder<'a> {
             .into_pointer_value();
         let field_type = typed_field_access.field_ty.clone().unwrap();
 
-        // let field_basic_type: BasicTypeEnum<'a> = self
-        //     .build_concrete_type(local_scope_opt, field_type.clone())
-        //     .try_into()
-        //     .unwrap();
-        // let bit_casted_pointer = self
-        //     .llvmbuilder
-        //     .build_bit_cast(lvalue_pointer, field_basic_type, "union_bitcast")
-        //     .unwrap()
-        //     .into_pointer_value();
-
         InternalValue::new(field_type.clone(), InternalValueKind::LValue(lvalue_pointer))
     }
 
@@ -251,7 +241,25 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         typed_field_access: &TypedFieldAccess,
     ) -> InternalValue<'a> {
-        let lvalue = self.build_expr(local_scope_opt.clone(), &typed_field_access.operand);
+        let lvalue = match &typed_field_access.operand.kind {
+            TypedExpressionKind::Symbol(symbol_id, ..) => {
+                let local_or_global_symbol = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)
+                    .unwrap();
+
+                if let Some(resolved_enum) = local_or_global_symbol.as_enum() {
+                    return self.build_construct_enum_variant_no_field(
+                        local_scope_opt,
+                        resolved_enum,
+                        typed_field_access.field_name.clone(),
+                    );
+                } else {
+                    self.build_lvalue_with_symbol_id(local_scope_opt.clone(), *symbol_id)
+                }
+            }
+            _ => self.build_expr(local_scope_opt.clone(), &typed_field_access.operand),
+        };
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
 
         let struct_type = match typed_field_access.object_symbol_id {
@@ -1215,7 +1223,9 @@ impl<'a> CodeGenBuilder<'a> {
             Some((pointer, concrete_type)) => (pointer.clone(), concrete_type.clone()),
             None => match local_ir_value.as_global_value() {
                 Some((global_value, concrete_type)) => (global_value.as_pointer_value().clone(), concrete_type.clone()),
-                None => panic!("Couldn't find any lvalue with this symbol id."),
+                None => {
+                    panic!("Couldn't find any lvalue with this symbol id.")
+                }
             },
         };
 

@@ -2,6 +2,22 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    NoSuchEnumVariant {
+        enum_name: String,
+        variant_name: String,
+    },
+    ExpressionPatternInAEnumSwitch,
+    SwitchOperandIsNotEnum {
+        expr_type: String,
+    },
+    VariantMissingFields {
+        enum_name: String,
+        variant_name: String,
+    },
+    VariantNotDefinedForEnum {
+        enum_name: String,
+        variant_name: String,
+    },
     UnionInitWithInvalidFields,
     EmptyCaseSwitchStatement,
     TypeMismatchLiteral {
@@ -168,6 +184,34 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::NoSuchEnumVariant {
+                enum_name,
+                variant_name,
+            } => {
+                write!(
+                    f,
+                    "Enum '{}' does not have a variant named '{}'.",
+                    enum_name, variant_name
+                )
+            }
+            AnalyzerDiagKind::ExpressionPatternInAEnumSwitch => {
+                write!(f, "Only enum variants are allowed here.")
+            }
+            AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type } => {
+                write!(f, "Switch expression must be an enum type, but found '{}'.", expr_type)
+            }
+            AnalyzerDiagKind::VariantMissingFields {
+                enum_name,
+                variant_name,
+            } => {
+                write!(f, "Variant '{}.{}' is missing fields.", enum_name, variant_name)
+            }
+            AnalyzerDiagKind::VariantNotDefinedForEnum {
+                enum_name,
+                variant_name,
+            } => {
+                write!(f, "Enum '{}' has no variant named '{}'.", enum_name, variant_name)
+            }
             AnalyzerDiagKind::UnionInitWithInvalidFields => {
                 write!(f, "Union initializer must specify exactly one field.")
             }

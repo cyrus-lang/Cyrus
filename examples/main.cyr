@@ -1,13 +1,18 @@
 import std::libc; 
 
-union DataUnion {
-    a: int;
-    b: float64;
+enum Color {
+    Red,
+    Green,
+    Valued = "my valued color!",
+    Custom(int, int)
 }
 
 func main() {
-    #un: DataUnion;
-    
-    un.b = 3.14;
-    libc::printf("value: %f\n", un.b);
+    #variant = Color.Valued;
+
+    switch (variant) {
+        case .Red:
+            libc::printf("Red\n");
+            break;
+    }
 }
