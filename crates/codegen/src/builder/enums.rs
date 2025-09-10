@@ -1,13 +1,13 @@
 use crate::builder::{
     abi::generate_enum_variant_abi_name,
-    module::CodeGenBuilder,
+    module::{CodeGenBuilder, LocalIRValue},
     values::{InternalValue, InternalValueKind},
 };
 use inkwell::{
     AddressSpace,
     module::Linkage,
-    types::{AnyType, BasicTypeEnum},
-    values::{BasicValue, BasicValueEnum},
+    types::{AnyType, ArrayType, BasicTypeEnum},
+    values::{ArrayValue, BasicValue, BasicValueEnum},
 };
 use resolver::scope::{LocalScopeRef, ResolvedEnum};
 use typed_ast::{
@@ -16,18 +16,56 @@ use typed_ast::{
 };
 
 impl<'a> CodeGenBuilder<'a> {
+    fn copy_payload_to_buffer(&self, src_value: BasicValueEnum<'a>, dest_array_type: ArrayType<'a>) -> ArrayValue<'a> {
+        let array_alloca = self
+            .llvmbuilder
+            .build_alloca(dest_array_type, &format!("alloca"))
+            .unwrap();
+
+        let src_ptr = match src_value {
+            BasicValueEnum::PointerValue(ptr) => ptr,
+            _ => {
+                let tmp_alloca = self.llvmbuilder.build_alloca(src_value.get_type(), "tmp").unwrap();
+                self.llvmbuilder.build_store(tmp_alloca, src_value).unwrap();
+                tmp_alloca
+            }
+        };
+
+        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let dest_i8_ptr = self
+            .llvmbuilder
+            .build_pointer_cast(array_alloca, i8_ptr_type, "dest_i8")
+            .unwrap();
+        let src_i8_ptr = self
+            .llvmbuilder
+            .build_pointer_cast(src_ptr, i8_ptr_type, "src_i8")
+            .unwrap();
+
+        let array_size = dest_array_type.size_of().unwrap();
+
+        self.llvmbuilder
+            .build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, array_size)
+            .unwrap();
+
+        self.llvmbuilder
+            .build_load(dest_array_type, array_alloca, &format!("load"))
+            .unwrap()
+            .into_array_value()
+    }
+
     pub(crate) fn build_construct_enum_variant_no_field(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         resolved_enum: ResolvedEnum,
         variant_name: String,
     ) -> InternalValue<'a> {
-        let enum_struct_type = {
+        let (enum_struct_type, enum_payload_type) = {
             let irreg = self.irreg.borrow();
             let local_ir_value = irreg.get(&resolved_enum.symbol_id).unwrap();
-            let struct_type = local_ir_value.as_struct().unwrap().clone();
+            let enum_ir_value = local_ir_value.as_enum().unwrap().clone();
+            let (struct_type, payload_type) = (enum_ir_value.0.clone(), enum_ir_value.1.clone());
             drop(irreg);
-            struct_type
+            (struct_type, payload_type)
         };
 
         let enum_variant_idx = resolved_enum
@@ -38,34 +76,7 @@ impl<'a> CodeGenBuilder<'a> {
             .unwrap();
         let enum_variant = &resolved_enum.enum_sig.variants[enum_variant_idx];
 
-        let payload_value = match enum_variant {
-            TypedEnumVariant::Identifier(..) => {
-                let ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
-                BasicValueEnum::PointerValue(ptr_type.const_null())
-            }
-            TypedEnumVariant::Valued(identifier, typed_expr) => {
-                let abi_name = generate_enum_variant_abi_name(
-                    self.get_module_name(resolved_enum.module_id),
-                    resolved_enum.enum_sig.name.clone(),
-                    identifier.as_string(),
-                );
-
-                let module = self.llvmmodule.borrow();
-                let global_value_opt = module.get_global(&abi_name);
-                drop(module);
-
-                if let Some(global_value) = global_value_opt {
-                    global_value.as_basic_value_enum()
-                } else {
-                    let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
-                    let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, lvalue);
-                    rvalue.as_basic_value()
-                }
-            }
-            TypedEnumVariant::Variant(..) => unreachable!(),
-        };
-
-        let mut enum_struct_value = enum_struct_type.get_undef();
+        let mut enum_struct_value = enum_struct_type.const_zero();
 
         let variant_number = self
             .llvmctx
@@ -78,11 +89,37 @@ impl<'a> CodeGenBuilder<'a> {
             .unwrap()
             .into_struct_value();
 
-        enum_struct_value = self
-            .llvmbuilder
-            .build_insert_value(enum_struct_value, payload_value, 1, "set")
-            .unwrap()
-            .into_struct_value();
+        match enum_variant {
+            TypedEnumVariant::Identifier(..) => {}
+            TypedEnumVariant::Valued(identifier, typed_expr) => {
+                let abi_name = generate_enum_variant_abi_name(
+                    self.get_module_name(resolved_enum.module_id),
+                    resolved_enum.enum_sig.name.clone(),
+                    identifier.as_string(),
+                );
+
+                let module = self.llvmmodule.borrow();
+                let global_value_opt = module.get_global(&abi_name);
+                drop(module);
+
+                let payload_value = if let Some(global_value) = global_value_opt {
+                    global_value.as_basic_value_enum()
+                } else {
+                    let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
+                    let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, lvalue);
+                    rvalue.as_basic_value()
+                };
+
+                let copied_payload = self.copy_payload_to_buffer(payload_value, enum_payload_type);
+
+                enum_struct_value = self
+                    .llvmbuilder
+                    .build_insert_value(enum_struct_value, copied_payload, 1, "set")
+                    .unwrap()
+                    .into_struct_value();
+            }
+            TypedEnumVariant::Variant(..) => unreachable!(),
+        }
 
         InternalValue::new(
             ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(resolved_enum.symbol_id)),
@@ -97,7 +134,7 @@ impl<'a> CodeGenBuilder<'a> {
         let enum_opaque_struct = {
             let irreg = self.irreg.borrow();
             let local_ir_value = irreg.get(&typed_enum.symbol_id).unwrap();
-            let struct_type = local_ir_value.as_struct().unwrap().clone();
+            let struct_type = local_ir_value.as_enum().unwrap().0.clone();
             drop(irreg);
             struct_type
         };
@@ -165,9 +202,12 @@ impl<'a> CodeGenBuilder<'a> {
         let payload_type = self.llvmctx.i8_type().array_type(payload_size.try_into().unwrap());
         let field_types: &[BasicTypeEnum<'a>; 2] = &[
             BasicTypeEnum::IntType(self.llvmctx.i32_type()),
-            BasicTypeEnum::ArrayType(payload_type),
+            BasicTypeEnum::ArrayType(payload_type.clone()),
         ];
         enum_opaque_struct.set_body(field_types, false);
+
+        // update irreg because payload_type is evaluated now and previous one is fake (zero cap).
+        self.insert_forward_decl_to_registry(typed_enum.symbol_id, LocalIRValue::Enum((enum_opaque_struct, payload_type)));
         self.build_methods(typed_enum.module_id, &typed_enum.methods);
     }
 

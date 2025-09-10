@@ -8,7 +8,7 @@ use inkwell::{
     context::Context,
     module::Module,
     targets::{FileType, TargetMachine},
-    types::StructType,
+    types::{ArrayType, StructType},
     values::{FunctionValue, GlobalValue, PointerValue},
 };
 use resolver::{Resolver, moduleloader::ModuleFilePath};
@@ -143,6 +143,7 @@ pub type LocalIRValueRegistry<'a> = HashMap<LocalIRValueID, LocalIRValue<'a>>;
 pub enum LocalIRValue<'a> {
     Func(FunctionValue<'a>),
     Struct(StructType<'a>),
+    Enum((StructType<'a>, ArrayType<'a>)),
     GlobalValue(GlobalValue<'a>, ConcreteType),
     LValue(PointerValue<'a>, ConcreteType),
 }
@@ -165,6 +166,13 @@ impl<'a> LocalIRValue<'a> {
     pub fn as_struct(&self) -> Option<&StructType<'a>> {
         match self {
             LocalIRValue::Struct(struct_type) => Some(struct_type),
+            _ => None,
+        }
+    }
+
+    pub fn as_enum(&self) -> Option<(&StructType<'a>, &ArrayType<'a>)> {
+        match self {
+            LocalIRValue::Enum((struct_type, payload_type)) => Some((struct_type, payload_type)),
             _ => None,
         }
     }

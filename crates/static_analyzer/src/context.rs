@@ -295,9 +295,11 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_switch_on_enum(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_switch: &TypedSwitch,
+        typed_switch: &mut TypedSwitch,
         enum_symbol_id: SymbolID,
     ) -> FlowState {
+        let mut branch_states = Vec::new();
+
         let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
         let local_or_global_symbol = self
             .resolver
@@ -305,11 +307,14 @@ impl<'a> AnalysisContext<'a> {
             .unwrap();
         let resolved_enum = local_or_global_symbol.as_enum().unwrap();
 
-        for case in &typed_switch.cases {
+        for case in &mut typed_switch.cases {
+            let body_flow_state = self.analyze_block_statement(&mut case.body);
+            branch_states.push(body_flow_state);
+
             for pattern in &case.patterns {
                 let identifier = match pattern {
                     TypedSwitchCasePattern::Identifier(identifier) => identifier,
-                    TypedSwitchCasePattern::EnumVariant(identifier, items) => identifier,
+                    TypedSwitchCasePattern::EnumVariant(identifier, _) => identifier,
                     TypedSwitchCasePattern::Expression(..) => {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -349,8 +354,25 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        if let Some(default_case) = &mut typed_switch.default_case {
+            let body_flow_state = self.analyze_block_statement(default_case);
+            branch_states.push(body_flow_state);
+        } else {
+            branch_states.push(FlowState::Reachable);
+        }
+
         self.control_stack.pop();
-        FlowState::Reachable
+
+        // final decision
+        if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+            FlowState::Returns
+        } else {
+            // merge states
+            branch_states
+                .into_iter()
+                .reduce(|a, b| self.merge_flow_state(a, b))
+                .unwrap_or(FlowState::Unreachable)
+        }
     }
 
     fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
@@ -375,6 +397,7 @@ impl<'a> AnalysisContext<'a> {
             None => return FlowState::Reachable,
         };
 
+        // If operand is an enum → delegate to specialized analyzer
         if matches!(
             operand_concrete_type,
             ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..))
@@ -385,6 +408,8 @@ impl<'a> AnalysisContext<'a> {
                 operand_concrete_type.as_enum_symbol_id().unwrap(),
             );
         }
+
+        let mut branch_states = Vec::new();
 
         for case in &mut typed_switch.cases {
             for pattern in &mut case.patterns {
@@ -443,11 +468,27 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
 
-            self.analyze_block_statement(&mut case.body);
+            let body_flow_state = self.analyze_block_statement(&mut case.body);
+            branch_states.push(body_flow_state);
+        }
+
+        if let Some(default_case) = &mut typed_switch.default_case {
+            let body_flow_state = self.analyze_block_statement(default_case);
+            branch_states.push(body_flow_state);
+        } else {
+            branch_states.push(FlowState::Reachable);
         }
 
         self.control_stack.pop();
-        FlowState::Reachable
+
+        if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+            FlowState::Returns
+        } else {
+            branch_states
+                .into_iter()
+                .reduce(|a, b| self.merge_flow_state(a, b))
+                .unwrap_or(FlowState::Unreachable)
+        }
     }
 
     fn analyze_if_stmt(
@@ -1163,21 +1204,12 @@ impl<'a> AnalysisContext<'a> {
                         )
                         .unwrap();
 
-                    let symbol_id = match normalized_type {
-                        ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id))
-                        | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id)) => symbol_id,
-                        ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(symbol_id)) => symbol_id,
-                        _ => unreachable!(),
-                    };
-
-                    let struct_concrete_type = ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id));
-
                     match typed_self_modifier.kind {
                         SelfModifierKind::Copied => {
-                            typed_self_modifier.ty = Some(struct_concrete_type);
+                            typed_self_modifier.ty = Some(normalized_type);
                         }
                         SelfModifierKind::Referenced => {
-                            typed_self_modifier.ty = Some(ConcreteType::Pointer(Box::new(struct_concrete_type)));
+                            typed_self_modifier.ty = Some(ConcreteType::Pointer(Box::new(normalized_type)));
                         }
                     }
                 }
