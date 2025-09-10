@@ -1,8 +1,9 @@
-import std::libc; 
+import std::libc{printf}; 
 
 enum Color {
     Red,
     Green,
+    Black,
     Valued = "my valued color!",
     Custom(int, int)
 }
@@ -11,8 +12,17 @@ func main() {
     #variant = Color.Valued;
 
     switch (variant) {
-        case .Red:
-            libc::printf("Red\n");
+        case .Red:   
+            printf("Red\n");
+            break;
+        case .Black: 
+            printf("Black\n");
+            break;
+        case .Valued: 
+            printf("Valued\n");
+            break;
+        default:     
+            printf("Unknown\n");
             break;
     }
 }

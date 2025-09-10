@@ -152,6 +152,7 @@ impl<'a> CodeGenBuilder<'a> {
 
             let any_type_enum = match local_ir_value {
                 LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
+                LocalIRValue::Enum((struct_type, ..)) => AnyTypeEnum::StructType(struct_type.clone()),
                 _ => unreachable!(),
             };
 
