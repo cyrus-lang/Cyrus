@@ -671,48 +671,6 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    // FIXME Not required anymore and it's safe to delete it in the future.
-    // fn analyze_unnamed_struct_type(
-    //     &mut self,
-    //     scope_id_opt: Option<ScopeID>,
-    //     unnamed_struct_type: TypedUnnamedStructType,
-    //     field_access: &mut TypedFieldAccess,
-    //     resolved_var_type: ConcreteType,
-    // ) -> Option<ConcreteType> {
-    //     let struct_name = format_concrete_type(resolved_var_type, &(self.symbol_formatter)(scope_id_opt));
-
-    //     let field_index = match unnamed_struct_type
-    //         .fields
-    //         .iter()
-    //         .position(|typed_struct_field| typed_struct_field.field_name == field_access.field_name)
-    //     {
-    //         Some(typed_struct_field) => typed_struct_field,
-    //         None => {
-    //             self.reporter.report(Diag {
-    //                 level: DiagLevel::Error,
-    //                 kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
-    //                     struct_name,
-    //                     field_name: field_access.field_name.clone(),
-    //                 },
-    //                 location: Some(DiagLoc::new(
-    //                     self.resolver.get_current_module_file_path(),
-    //                     field_access.loc.clone(),
-    //                     0,
-    //                 )),
-    //                 hint: None,
-    //             });
-    //             return None;
-    //         }
-    //     };
-
-    //     let typed_struct_field = unnamed_struct_type.fields.get(field_index).unwrap();
-
-    //     field_access.field_index = Some(field_index);
-    //     field_access.field_ty = Some(*typed_struct_field.field_type.clone());
-
-    //     Some(*typed_struct_field.field_type.clone())
-    // }
-
     fn validate_field_access(
         &mut self,
         module_id: ModuleID,
@@ -771,6 +729,7 @@ impl<'a> AnalysisContext<'a> {
 
         result
     }
+
     fn validate_union_field_access(
         &mut self,
         module_id: ModuleID,
@@ -1003,6 +962,93 @@ impl<'a> AnalysisContext<'a> {
         Some(typed_struct_field.ty.clone())
     }
 
+    fn analyze_enum_variant(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
+        enum_symbol_id: SymbolID,
+        method_call: &mut TypedMethodCall,
+    ) -> Option<ConcreteType> {
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
+            .unwrap();
+        let resolved_enum = local_or_global_symbol.as_enum().unwrap();
+
+        let enum_variant = match resolved_enum
+            .enum_sig
+            .variants
+            .iter()
+            .find(|variant| variant.get_identifier().as_string() == method_call.method_name)
+        {
+            Some(enum_variant) => enum_variant,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::VariantNotDefinedForEnum {
+                        enum_name: resolved_enum.enum_sig.name.clone(),
+                        variant_name: method_call.method_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        method_call.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        let valued_fields = match enum_variant {
+            TypedEnumVariant::Variant(_, valued_fields) => {
+                if valued_fields.len() != method_call.args.len() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                            variant_name: method_call.method_name.clone(),
+                            expected: valued_fields.len() as u32,
+                            provided: method_call.args.len() as u32,
+                        },
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            method_call.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    return None;
+                }
+
+                valued_fields
+            }
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::EnumVariantDoesNotAcceptFields {
+                        variant_name: method_call.method_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        method_call.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                return None;
+            }
+        };
+
+        for (typed_expr, enum_valued_field) in method_call.args.iter_mut().zip(valued_fields) {
+            typed_expr.concrete_type =
+                self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(enum_valued_field.field_type.clone()));
+        }
+
+        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(
+            resolved_enum.symbol_id,
+        )))
+    }
+
     fn analyze_enum_variant_no_field(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
@@ -1074,6 +1120,13 @@ impl<'a> AnalysisContext<'a> {
                 None => return None,
             };
 
+        if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
+            field_access.operand.concrete_type
+        {
+            let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+            return self.analyze_enum_variant_no_field(local_scope_opt.clone(), enum_symbol_id, &field_access);
+        }
+
         let object_symbol_id = {
             let operand_type = match &field_access.operand.kind {
                 TypedExpressionKind::Symbol(instance_symbol_id, ..) => {
@@ -1084,16 +1137,6 @@ impl<'a> AnalysisContext<'a> {
                         self.module_id,
                         *instance_symbol_id,
                     );
-
-                    if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
-                        field_access.operand.concrete_type
-                    {
-                        return self.analyze_enum_variant_no_field(
-                            local_scope_opt.clone(),
-                            enum_symbol_id,
-                            &field_access,
-                        );
-                    }
 
                     let resolved_var_type = match self.resolve_var_or_global_var_type(
                         scope_id_opt,
@@ -1745,6 +1788,13 @@ impl<'a> AnalysisContext<'a> {
                 Some(concrete_type) => Some(concrete_type),
                 None => return None,
             };
+
+        if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
+            method_call.operand.concrete_type
+        {
+            let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+            return self.analyze_enum_variant(scope_id_opt, local_scope_opt.clone(), enum_symbol_id, method_call);
+        }
 
         let object_symbol_id = {
             let operand_type = match &method_call.operand.kind {

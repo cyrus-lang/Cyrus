@@ -322,7 +322,7 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    fn build_unnamed_struct_value(
+    pub(crate) fn build_unnamed_struct_value(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         unnamed_struct_value: &TypedUnnamedStructValue,
@@ -540,8 +540,23 @@ impl<'a> CodeGenBuilder<'a> {
         let (methods, module_id) = {
             if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
                 (resolved_struct.struct_sig.methods, resolved_struct.module_id)
-            } else if let Some(resolved_enum) = local_or_global_symbol.as_enum() {
-                (resolved_enum.enum_sig.methods, resolved_enum.module_id)
+            } else if let Some(resolved_enum) = &local_or_global_symbol.as_enum() {
+                let variant_opt = resolved_enum
+                    .enum_sig
+                    .variants
+                    .iter()
+                    .find(|variant| variant.get_identifier().as_string() == method_call.method_name);
+
+                if variant_opt.is_some() {
+                    return self.build_construct_enum_variant(
+                        local_scope_opt,
+                        resolved_enum.clone(),
+                        method_call.method_name.clone(),
+                        &method_call.args,
+                    );
+                } else {
+                    (resolved_enum.enum_sig.methods.clone(), resolved_enum.module_id)
+                }
             } else if let Some(resolved_union) = local_or_global_symbol.as_union() {
                 (resolved_union.union_sig.methods, resolved_union.module_id)
             } else {

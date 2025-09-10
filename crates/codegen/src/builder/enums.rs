@@ -3,6 +3,10 @@ use crate::builder::{
     module::{CodeGenBuilder, LocalIRValue},
     values::{InternalValue, InternalValueKind},
 };
+use ast::{
+    Identifier, UnnamedStructValue, UnnamedStructValueField,
+    token::{Location, Span},
+};
 use inkwell::{
     AddressSpace,
     module::Linkage,
@@ -11,8 +15,8 @@ use inkwell::{
 };
 use resolver::scope::{LocalScopeRef, ResolvedEnum};
 use typed_ast::{
-    TypedEnum, TypedEnumVariant,
-    types::{ConcreteType, ResolvedSymbol},
+    TypedEnum, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue, TypedUnnamedStructValueField,
+    types::{ConcreteType, ResolvedSymbol, TypedUnnamedStructType, TypedUnnamedStructTypeField},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -51,6 +55,101 @@ impl<'a> CodeGenBuilder<'a> {
             .build_load(dest_array_type, array_alloca, &format!("load"))
             .unwrap()
             .into_array_value()
+    }
+
+    pub(crate) fn build_construct_enum_variant(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        resolved_enum: ResolvedEnum,
+        variant_name: String,
+        args: &Vec<TypedExpression>,
+    ) -> InternalValue<'a> {
+        let (enum_struct_type, enum_payload_type) = {
+            let irreg = self.irreg.borrow();
+            let local_ir_value = irreg.get(&resolved_enum.symbol_id).unwrap();
+            let enum_ir_value = local_ir_value.as_enum().unwrap().clone();
+            let (struct_type, payload_type) = (enum_ir_value.0.clone(), enum_ir_value.1.clone());
+            drop(irreg);
+            (struct_type, payload_type)
+        };
+
+        let enum_variant_idx = resolved_enum
+            .enum_sig
+            .variants
+            .iter()
+            .position(|variant| variant.get_identifier().as_string() == variant_name)
+            .unwrap();
+        let enum_variant = &resolved_enum.enum_sig.variants[enum_variant_idx];
+
+        let mut enum_struct_value = enum_struct_type.const_zero();
+
+        let variant_number = self
+            .llvmctx
+            .i32_type()
+            .const_int(enum_variant_idx.try_into().unwrap(), false);
+
+        enum_struct_value = self
+            .llvmbuilder
+            .build_insert_value(enum_struct_value, variant_number, 0, "set")
+            .unwrap()
+            .into_struct_value();
+
+        match enum_variant {
+            TypedEnumVariant::Identifier(..) => unreachable!(),
+            TypedEnumVariant::Valued(..) => unreachable!(),
+            TypedEnumVariant::Variant(_, enum_valued_fields) => {
+                let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
+
+                for (idx, valued_field) in enum_valued_fields.iter().enumerate() {
+                    let arg = &args[idx];
+
+                    fields.push(TypedUnnamedStructValueField {
+                        field_name: format!("field{}", idx),
+                        field_type: Some(valued_field.field_type.clone()),
+                        field_value: Box::new(arg.clone()),
+                        loc: valued_field.loc.clone(),
+                    });
+                }
+
+                let unnamed_struct_type = TypedUnnamedStructType {
+                    fields: fields
+                        .iter()
+                        .map(|field| TypedUnnamedStructTypeField {
+                            field_name: field.field_name.clone(),
+                            field_type: Box::new(field.field_type.clone().unwrap()),
+                            loc: field.loc.clone(),
+                        })
+                        .collect(),
+                    packed: false,
+                    loc: Location::default(),
+                };
+
+                let unnamed_struct_value = TypedUnnamedStructValue {
+                    unnamed_struct_type: Some(unnamed_struct_type),
+                    fields,
+                    packed: false,
+                    is_const: true,
+                    loc: Location::default(),
+                };
+
+                let payload_internal_value =
+                    self.build_unnamed_struct_value(local_scope_opt.clone(), &unnamed_struct_value);
+                let payload_basic_value = payload_internal_value.as_basic_value();
+
+                let copied_payload = self.copy_payload_to_buffer(payload_basic_value, enum_payload_type);
+
+                enum_struct_value = self
+                    .llvmbuilder
+                    .build_insert_value(enum_struct_value, copied_payload, 1, "set")
+                    .unwrap()
+                    .into_struct_value();
+            }
+        }
+
+        InternalValue::new(
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(resolved_enum.symbol_id)),
+            InternalValueKind::RValue(enum_struct_value.as_basic_value_enum()),
+        )
     }
 
     pub(crate) fn build_construct_enum_variant_no_field(
@@ -207,7 +306,10 @@ impl<'a> CodeGenBuilder<'a> {
         enum_opaque_struct.set_body(field_types, false);
 
         // update irreg because payload_type is evaluated now and previous one is fake (zero cap).
-        self.insert_forward_decl_to_registry(typed_enum.symbol_id, LocalIRValue::Enum((enum_opaque_struct, payload_type)));
+        self.insert_forward_decl_to_registry(
+            typed_enum.symbol_id,
+            LocalIRValue::Enum((enum_opaque_struct, payload_type)),
+        );
         self.build_methods(typed_enum.module_id, &typed_enum.methods);
     }
 
