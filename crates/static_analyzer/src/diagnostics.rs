@@ -2,6 +2,14 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    EnumVariantArgCountMismatch {
+        variant_name: String,
+        expected: u32,
+        provided: u32,
+    },
+    EnumVariantDoesNotAcceptFields {
+        variant_name: String,
+    },
     NoSuchEnumVariant {
         enum_name: String,
         variant_name: String,
@@ -184,6 +192,20 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                variant_name,
+                expected,
+                provided,
+            } => {
+                write!(
+                    f,
+                    "Enum variant '{}' expects {} fields, but {} arguments were provided.",
+                    variant_name, expected, provided
+                )
+            }
+            AnalyzerDiagKind::EnumVariantDoesNotAcceptFields { variant_name } => {
+                write!(f, "Enum variant '{}' does not accept fields.", variant_name)
+            }
             AnalyzerDiagKind::NoSuchEnumVariant {
                 enum_name,
                 variant_name,
