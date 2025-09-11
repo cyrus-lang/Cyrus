@@ -3,23 +3,51 @@ use crate::builder::{
     module::{CodeGenBuilder, LocalIRValue},
     values::{InternalValue, InternalValueKind},
 };
-use ast::{
-    Identifier, UnnamedStructValue, UnnamedStructValueField,
-    token::{Location, Span},
-};
+use ast::token::Location;
 use inkwell::{
     AddressSpace,
     module::Linkage,
-    types::{AnyType, ArrayType, BasicTypeEnum},
-    values::{ArrayValue, BasicValue, BasicValueEnum},
+    types::{AnyType, ArrayType, BasicTypeEnum, StructType},
+    values::{ArrayValue, BasicValue, BasicValueEnum, StructValue},
 };
 use resolver::scope::{LocalScopeRef, ResolvedEnum};
 use typed_ast::{
-    TypedEnum, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue, TypedUnnamedStructValueField,
+    TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue,
+    TypedUnnamedStructValueField,
     types::{ConcreteType, ResolvedSymbol, TypedUnnamedStructType, TypedUnnamedStructTypeField},
 };
 
 impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn copy_buffer_to_struct(&self, buffer: ArrayValue<'a>, struct_type: StructType<'a>) -> StructValue<'a> {
+        let struct_alloca = self.llvmbuilder.build_alloca(struct_type, "struct_alloca").unwrap();
+
+        let buffer_alloca = self
+            .llvmbuilder
+            .build_alloca(buffer.get_type(), "buffer_alloca")
+            .unwrap();
+        self.llvmbuilder.build_store(buffer_alloca, buffer).unwrap();
+
+        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let dest_i8_ptr = self
+            .llvmbuilder
+            .build_pointer_cast(struct_alloca, i8_ptr_type, "dest_i8")
+            .unwrap();
+        let src_i8_ptr = self
+            .llvmbuilder
+            .build_pointer_cast(buffer_alloca, i8_ptr_type, "src_i8")
+            .unwrap();
+
+        let struct_size = struct_type.size_of().unwrap();
+        self.llvmbuilder
+            .build_memcpy(dest_i8_ptr, 1, src_i8_ptr, 1, struct_size)
+            .unwrap();
+
+        self.llvmbuilder
+            .build_load(struct_type, struct_alloca, "load_struct")
+            .unwrap()
+            .into_struct_value()
+    }
+
     fn copy_payload_to_buffer(&self, src_value: BasicValueEnum<'a>, dest_array_type: ArrayType<'a>) -> ArrayValue<'a> {
         let array_alloca = self
             .llvmbuilder
@@ -55,6 +83,32 @@ impl<'a> CodeGenBuilder<'a> {
             .build_load(dest_array_type, array_alloca, &format!("load"))
             .unwrap()
             .into_array_value()
+    }
+
+    pub(crate) fn build_enum_struct_type(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        enum_valued_fields: Vec<TypedEnumValuedField>,
+    ) -> StructType<'a> {
+        let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
+
+        for (idx, valued_field) in enum_valued_fields.iter().enumerate() {
+            fields.push(TypedUnnamedStructTypeField {
+                field_name: format!("field{}", idx),
+                field_type: Box::new(valued_field.field_type.clone()),
+                loc: valued_field.loc.clone(),
+            });
+        }
+
+        let unnamed_struct_type = TypedUnnamedStructType {
+            fields,
+            packed: false,
+            loc: Location::default(),
+        };
+
+        self.build_unnamed_struct_type(local_scope_opt, &unnamed_struct_type)
+            .try_into()
+            .unwrap()
     }
 
     pub(crate) fn build_construct_enum_variant(

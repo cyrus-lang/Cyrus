@@ -1974,9 +1974,10 @@ impl Resolver {
                     let mut cases: Vec<TypedSwitchCase> = Vec::new();
 
                     for case in &switch.cases {
-                        let local_scope_borrowed = local_scope.borrow();
-                        let mut case_scope = LocalScope::new(Some(Box::new(local_scope_borrowed.clone())));
-                        drop(local_scope_borrowed);
+                        let case_scope_rc = LocalScope::deep_clone(&local_scope);
+
+                        let case_scope_id = generate_scope_id();
+                        self.insert_scope_ref(module_id, case_scope_id, case_scope_rc.clone());
 
                         let mut patterns: Vec<TypedSwitchCasePattern> = Vec::new();
 
@@ -1989,11 +1990,13 @@ impl Resolver {
                                             None => continue,
                                         };
 
-                                    TypedSwitchCasePattern::Expression(typed_expr)
+                                    let loc = typed_expr.loc.clone();
+                                    TypedSwitchCasePattern::Expression(typed_expr, loc)
                                 }
                                 SwitchCasePattern::Identifier(identifier) => {
                                     let symbol_id = generate_symbol_id();
 
+                                    let mut case_scope = case_scope_rc.borrow_mut();
                                     case_scope.insert(
                                         identifier.name.clone(),
                                         LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
@@ -2008,16 +2011,19 @@ impl Resolver {
                                             },
                                         })),
                                     );
-                                    TypedSwitchCasePattern::Identifier(identifier.name.clone())
-                                }
-                                SwitchCasePattern::EnumVariant(identifier, identifiers) => {
-                                    let symbol_id = generate_symbol_id();
+                                    drop(case_scope);
 
+                                    TypedSwitchCasePattern::Identifier(identifier.name.clone(), identifier.loc.clone())
+                                }
+                                SwitchCasePattern::EnumVariant(identifier, valued_fields) => {
                                     TypedSwitchCasePattern::EnumVariant(
                                         identifier.name.clone(),
-                                        identifiers
+                                        valued_fields
                                             .iter()
                                             .map(|identifier| {
+                                                let symbol_id = generate_symbol_id();
+                                                let mut case_scope = case_scope_rc.borrow_mut();
+
                                                 case_scope.insert(
                                                     identifier.name.clone(),
                                                     LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
@@ -2032,27 +2038,31 @@ impl Resolver {
                                                         },
                                                     })),
                                                 );
-                                                identifier.name.clone()
+                                                drop(case_scope);
+                                                identifier.clone()
                                             })
                                             .collect(),
+                                        identifier.loc.clone(),
                                     )
                                 }
                             };
                             patterns.push(typed_pattern);
                         }
 
-                        let body =
-                            match self.resolve_block_statement(scope_id, Rc::new(RefCell::new(case_scope)), &case.body)
-                            {
-                                Some(typed_block) => typed_block,
-                                None => continue,
-                            };
+                        let mut body = match self.resolve_block_statement(scope_id, case_scope_rc.clone(), &case.body) {
+                            Some(typed_block) => typed_block,
+                            None => continue,
+                        };
+
+                        body.scope_id = case_scope_id;
 
                         cases.push(TypedSwitchCase {
                             patterns,
                             body: Box::new(body),
                             loc: case.loc.clone(),
                         });
+
+                        drop(case_scope_rc);
                     }
 
                     let default_case = {
