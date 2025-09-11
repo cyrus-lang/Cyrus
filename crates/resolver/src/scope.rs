@@ -261,12 +261,20 @@ impl LocalScope {
             None => None,
         }
     }
+
     pub fn resolve_with_symbol_id_mut(&mut self, symbol_id: SymbolID) -> Option<&mut LocalSymbol> {
         match self
             .symbols
             .iter_mut()
             .find(|(_, local_symbol)| local_symbol.get_symbol_id() == symbol_id)
         {
+            Some((_, local_symbol)) => Some(local_symbol),
+            None => None,
+        }
+    }
+
+    pub fn resolve_mut(&mut self, name: &str) -> Option<&mut LocalSymbol> {
+        match self.symbols.iter_mut().find(|(_name, ..)| **_name == name) {
             Some((_, local_symbol)) => Some(local_symbol),
             None => None,
         }

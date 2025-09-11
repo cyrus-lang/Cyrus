@@ -563,9 +563,9 @@ pub struct TypedSwitchCase {
 
 #[derive(Debug, Clone)]
 pub enum TypedSwitchCasePattern {
-    Expression(TypedExpression),
-    Identifier(String),
-    EnumVariant(String, Vec<String>),
+    Expression(TypedExpression, Location),
+    Identifier(String, Location),
+    EnumVariant(String, Vec<Identifier>, Location),
 }
 
 #[derive(Debug, Clone)]

@@ -5,24 +5,24 @@ enum Color {
     Green,
     Black,
     Valued = "my valued color!",
-    Custom(int, int)
+    Custom(int, int, int)
 }
 
 func main() {
-    #variant = Color.Custom(1, 2);
+    #variant = Color.Custom(1, 2, 3);
 
     switch (variant) {
-        case .Red:   
+        case .Red:
             printf("Red\n");
+            break;
+        case .Custom(a, b, c):
+            printf("Color(%d, %d, %d)\n", a, b, c);
             break;
         case .Black: 
             printf("Black\n");
             break;
         case .Valued: 
             printf("Valued\n");
-            break;
-        case .Custom: 
-            printf("Custom\n");
             break;
         default:     
             printf("Unknown\n");
