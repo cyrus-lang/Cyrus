@@ -410,22 +410,16 @@ impl<'a> CodeGenBuilder<'a> {
     // Analyze switch to determine it must be compiled as traditional-switch or smart-switch.
     fn detect_smart_switch(&self, switch: &TypedSwitch) -> bool {
         for case in &switch.cases {
-            if case.patterns.len() > 1 {
-                return true;
-            }
-
-            for pattern in &case.patterns {
-                match pattern {
-                    TypedSwitchCasePattern::Expression(typed_expr, _) => match &typed_expr.kind {
-                        TypedExpressionKind::Literal(typed_literal) => match &typed_literal.kind {
-                            LiteralKind::Integer(..) | LiteralKind::Bool(..) | LiteralKind::Char(..) => continue,
-                            LiteralKind::Float(..) | LiteralKind::String(..) | LiteralKind::Null => return true,
-                        },
-                        _ => return true,
+            match &case.pattern {
+                TypedSwitchCasePattern::Expression(typed_expr, _) => match &typed_expr.kind {
+                    TypedExpressionKind::Literal(typed_literal) => match &typed_literal.kind {
+                        LiteralKind::Integer(..) | LiteralKind::Bool(..) | LiteralKind::Char(..) => continue,
+                        LiteralKind::Float(..) | LiteralKind::String(..) | LiteralKind::Null => return true,
                     },
-                    TypedSwitchCasePattern::Identifier(..) => return true,
-                    TypedSwitchCasePattern::EnumVariant(..) => return true,
-                }
+                    _ => return true,
+                },
+                TypedSwitchCasePattern::Identifier(..) => return true,
+                TypedSwitchCasePattern::EnumVariant(..) => return true,
             }
         }
 
@@ -444,101 +438,96 @@ impl<'a> CodeGenBuilder<'a> {
         for case in &switch.cases {
             let local_scope_opt = self.resolver.get_scope_ref(self.module_id, case.body.scope_id);
 
-            for pattern in &case.patterns {
-                let case_int_value = match pattern {
-                    TypedSwitchCasePattern::Expression(..) => unreachable!(),
-                    TypedSwitchCasePattern::Identifier(identifier, _) => {
-                        let variant_idx = resolved_enum
-                            .enum_sig
-                            .variants
-                            .iter()
-                            .position(|variant| variant.get_identifier().as_string() == *identifier)
-                            .unwrap();
+            let case_int_value = match &case.pattern {
+                TypedSwitchCasePattern::Expression(..) => unreachable!(),
+                TypedSwitchCasePattern::Identifier(identifier, _) => {
+                    let variant_idx = resolved_enum
+                        .enum_sig
+                        .variants
+                        .iter()
+                        .position(|variant| variant.get_identifier().as_string() == *identifier)
+                        .unwrap();
 
-                        self.llvmctx
-                            .i32_type()
-                            .const_int(variant_idx.try_into().unwrap(), false)
-                    }
-                    TypedSwitchCasePattern::EnumVariant(identifier, valued_fields, _) => {
-                        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, case.body.scope_id).unwrap();
-                        let local_scope = local_scope_rc.borrow();
+                    self.llvmctx
+                        .i32_type()
+                        .const_int(variant_idx.try_into().unwrap(), false)
+                }
+                TypedSwitchCasePattern::EnumVariant(identifier, valued_fields, _) => {
+                    let local_scope_rc = self.resolver.get_scope_ref(self.module_id, case.body.scope_id).unwrap();
+                    let local_scope = local_scope_rc.borrow();
 
-                        let variant_idx = resolved_enum
-                            .enum_sig
-                            .variants
-                            .iter()
-                            .position(|variant| variant.get_identifier().as_string() == *identifier)
-                            .unwrap();
+                    let variant_idx = resolved_enum
+                        .enum_sig
+                        .variants
+                        .iter()
+                        .position(|variant| variant.get_identifier().as_string() == *identifier)
+                        .unwrap();
 
-                        let variant_idx_int_value = self
-                            .llvmctx
-                            .i32_type()
-                            .const_int(variant_idx.try_into().unwrap(), false);
+                    let variant_idx_int_value = self
+                        .llvmctx
+                        .i32_type()
+                        .const_int(variant_idx.try_into().unwrap(), false);
 
-                        let enum_valued_fields = match &resolved_enum.enum_sig.variants[variant_idx] {
-                            TypedEnumVariant::Variant(_, enum_valued_fields) => enum_valued_fields,
+                    let enum_valued_fields = match &resolved_enum.enum_sig.variants[variant_idx] {
+                        TypedEnumVariant::Variant(_, enum_valued_fields) => enum_valued_fields,
+                        _ => unreachable!(),
+                    };
+
+                    let enum_struct_type =
+                        self.build_enum_struct_type(local_scope_opt.clone(), enum_valued_fields.clone());
+                    let enum_struct_value = operand_rvalue.as_basic_value().into_struct_value();
+                    let buffer = self.build_enum_extract_payload(enum_struct_value);
+                    let payload_struct_value = self.copy_buffer_to_struct(buffer, enum_struct_type);
+                    let payload_struct_type = payload_struct_value.get_type();
+                    let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
+                    self.llvmbuilder
+                        .build_store(payload_alloca, payload_struct_value)
+                        .unwrap();
+
+                    for (valued_field_idx, valued_field) in valued_fields.iter().enumerate() {
+                        let local_symbol = local_scope.resolve(&valued_field.name).unwrap();
+                        let symbol_id = local_symbol.get_symbol_id();
+                        let resolved_variable = match &local_symbol.kind {
+                            LocalSymbolKind::Variable(resolved_variable) => resolved_variable,
                             _ => unreachable!(),
                         };
 
-                        let enum_struct_type =
-                            self.build_enum_struct_type(local_scope_opt.clone(), enum_valued_fields.clone());
-                        let enum_struct_value = operand_rvalue.as_basic_value().into_struct_value();
-                        let buffer = self.build_enum_extract_payload(enum_struct_value);
-                        let payload_struct_value = self.copy_buffer_to_struct(buffer, enum_struct_type);
-                        let payload_struct_type = payload_struct_value.get_type();
-                        let payload_alloca = self.llvmbuilder.build_alloca(payload_struct_type, "alloca").unwrap();
-                        self.llvmbuilder
-                            .build_store(payload_alloca, payload_struct_value)
+                        let field_pointer = self
+                            .llvmbuilder
+                            .build_struct_gep(
+                                payload_struct_type,
+                                payload_alloca,
+                                valued_field_idx.try_into().unwrap(),
+                                "struct_gep",
+                            )
                             .unwrap();
 
-                        for (valued_field_idx, valued_field) in valued_fields.iter().enumerate() {
-                            let local_symbol = local_scope.resolve(&valued_field.name).unwrap();
-                            let symbol_id = local_symbol.get_symbol_id();
-                            let resolved_variable = match &local_symbol.kind {
-                                LocalSymbolKind::Variable(resolved_variable) => resolved_variable,
-                                _ => unreachable!(),
-                            };
-
-                            let field_pointer = self
-                                .llvmbuilder
-                                .build_struct_gep(
-                                    payload_struct_type,
-                                    payload_alloca,
-                                    valued_field_idx.try_into().unwrap(),
-                                    "struct_gep",
-                                )
-                                .unwrap();
-
-                            let mut irreg = self.irreg.borrow_mut();
-                            irreg.insert(
-                                symbol_id,
-                                LocalIRValue::LValue(
-                                    field_pointer,
-                                    resolved_variable.typed_variable.ty.clone().unwrap(),
-                                ),
-                            );
-                            drop(irreg);
-                        }
-
-                        drop(local_scope);
-                        variant_idx_int_value
+                        let mut irreg = self.irreg.borrow_mut();
+                        irreg.insert(
+                            symbol_id,
+                            LocalIRValue::LValue(field_pointer, resolved_variable.typed_variable.ty.clone().unwrap()),
+                        );
+                        drop(irreg);
                     }
-                };
 
-                let case_internal_value = InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::Int32),
-                    InternalValueKind::RValue(case_int_value.as_basic_value_enum()),
-                );
-
-                case_list.push(SwitchCaseItem {
-                    block_id,
-                    value: case_internal_value,
-                    body: case.body.clone(),
-                });
-
-                if !case.body.exprs.is_empty() {
-                    block_id += 1;
+                    drop(local_scope);
+                    variant_idx_int_value
                 }
+            };
+
+            let case_internal_value = InternalValue::new(
+                ConcreteType::BasicType(BasicConcreteType::Int32),
+                InternalValueKind::RValue(case_int_value.as_basic_value_enum()),
+            );
+
+            case_list.push(SwitchCaseItem {
+                block_id,
+                value: case_internal_value,
+                body: case.body.clone(),
+            });
+
+            if !case.body.exprs.is_empty() {
+                block_id += 1;
             }
         }
         case_list
@@ -677,24 +666,22 @@ impl<'a> CodeGenBuilder<'a> {
         let mut case_list: SwitchCaseList<'a> = Vec::new();
         let mut block_id = 0;
         for case in &switch.cases {
-            for pattern in &case.patterns {
-                let case_pattern_expr = match pattern {
-                    TypedSwitchCasePattern::Expression(typed_expr, _) => typed_expr,
-                    _ => unreachable!(),
-                };
+            let case_pattern_expr = match &case.pattern {
+                TypedSwitchCasePattern::Expression(typed_expr, _) => typed_expr,
+                _ => unreachable!(),
+            };
 
-                let case_lvalue = self.build_expr(local_scope_opt.clone(), case_pattern_expr);
-                let case_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), case_lvalue);
+            let case_lvalue = self.build_expr(local_scope_opt.clone(), case_pattern_expr);
+            let case_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), case_lvalue);
 
-                case_list.push(SwitchCaseItem {
-                    block_id,
-                    value: case_rvalue,
-                    body: case.body.clone(),
-                });
+            case_list.push(SwitchCaseItem {
+                block_id,
+                value: case_rvalue,
+                body: case.body.clone(),
+            });
 
-                if !case.body.exprs.is_empty() {
-                    block_id += 1;
-                }
+            if !case.body.exprs.is_empty() {
+                block_id += 1;
             }
         }
         case_list
