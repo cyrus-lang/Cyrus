@@ -1430,12 +1430,7 @@ impl Parser {
                     Ok(case_pattern)
                 }
 
-                patterns.push(parse_pattern(self)?);
-
-                while self.current_token_is(TokenKind::Comma) {
-                    self.next_token();
-                    patterns.push(parse_pattern(self)?);
-                }
+                let pattern = parse_pattern(self)?;
 
                 self.expect_current(TokenKind::Colon)?;
                 let case_body;
@@ -1451,7 +1446,7 @@ impl Parser {
                 }
 
                 cases.push(SwitchCase {
-                    patterns,
+                    pattern,
                     body: case_body,
                     span: Span::new(case_start, self.current_token().span.end),
                     loc: case_loc,

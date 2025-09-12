@@ -556,7 +556,7 @@ pub struct TypedSwitch {
 
 #[derive(Debug, Clone)]
 pub struct TypedSwitchCase {
-    pub patterns: Vec<TypedSwitchCasePattern>,
+    pub pattern: TypedSwitchCasePattern,
     pub body: Box<TypedBlockStatement>,
     pub loc: Location,
 }
