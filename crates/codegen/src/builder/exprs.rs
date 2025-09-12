@@ -85,7 +85,9 @@ impl<'a> CodeGenBuilder<'a> {
             .try_into()
             .unwrap();
 
-        let array_length_int_value = pointee_basic_ty.into_int_type().const_int(array_length.into(), false);
+        let target_data = self.llvmtm.get_target_data();
+        let ptr_sized_int_type = self.llvmctx.ptr_sized_int_type(&target_data, None);
+        let array_length_int_value = ptr_sized_int_type.const_int(array_length.into(), false);
 
         let compare_result = self
             .llvmbuilder
@@ -466,41 +468,54 @@ impl<'a> CodeGenBuilder<'a> {
             .build_concrete_type(local_scope_opt.clone(), array.array_type.clone())
             .into_array_type();
 
+        let required_len: usize = match array_concrete_type.capacity {
+            TypedArrayCapacity::Fixed(n) => n.try_into().unwrap(),
+            TypedArrayCapacity::Dynamic => todo!(),
+        };
+
         let mut all_const = true;
-        let elements: Vec<BasicValueEnum<'a>> = array
-            .elements
-            .iter()
-            .map(|typed_expr| {
-                let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
-                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
-                let casted_rvalue = self
-                    .build_implicit_cast(local_scope_opt.clone(), *element_type.clone(), rvalue)
-                    .as_basic_value();
-                if !self.is_basic_value_constant(casted_rvalue) {
-                    all_const = false;
-                }
-                casted_rvalue
-            })
-            .collect();
+        let mut elements: Vec<BasicValueEnum<'a>> = Vec::with_capacity(required_len);
+
+        for typed_expr in &array.elements {
+            let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
+            let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+            let casted_rvalue = self
+                .build_implicit_cast(local_scope_opt.clone(), *element_type.clone(), rvalue)
+                .as_basic_value();
+
+            if !self.is_basic_value_constant(casted_rvalue) {
+                all_const = false;
+            }
+
+            elements.push(casted_rvalue);
+        }
+
+        let element_basic_type: BasicTypeEnum<'a> = self
+            .build_concrete_type(local_scope_opt, *element_type)
+            .try_into()
+            .unwrap();
+
+        let zero_value = element_basic_type.const_zero();
+        while elements.len() < required_len {
+            elements.push(zero_value);
+            all_const = false; // not all const anymore
+        }
 
         if all_const {
             let array_value = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
-
             InternalValue::new(
                 array.array_type.clone(),
                 InternalValueKind::RValue(array_value.as_basic_value_enum()),
             )
         } else {
             let mut array_value = array_type.get_undef();
-
-            elements.iter().enumerate().for_each(|(index, element)| {
+            for (index, element) in elements.iter().enumerate() {
                 array_value = self
                     .llvmbuilder
                     .build_insert_value(array_value, *element, index.try_into().unwrap(), "insert")
                     .unwrap()
                     .into_array_value();
-            });
-
+            }
             InternalValue::new(
                 array.array_type.clone(),
                 InternalValueKind::RValue(array_value.as_basic_value_enum()),

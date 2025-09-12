@@ -164,6 +164,10 @@ impl Parser {
         }
     }
 
+    pub fn peek_n_token(&self, n: usize) -> Option<Token> {
+        self.tokens.get(self.cur_token_idx + n).cloned()
+    }
+    
     /// This function peeks at the next token without advancing the lexer. If the token matches
     /// the expected kind, it consumes the token and returns `Ok`. Otherwise, it returns an error
     /// with a message indicating the mismatch.

@@ -31,6 +31,39 @@ impl Parser {
         }
     }
 
+    pub fn is_array_constructor_start(&mut self) -> bool {
+        if !self.matches_type_token(self.current_token().kind) {
+            return false;
+        }
+
+        let mut i = 1; // token after type
+        let mut bracket_count = 0;
+
+        while let Some(tok) = self.peek_n_token(i) {
+            match &tok.kind {
+                TokenKind::LeftBracket => bracket_count += 1,
+                TokenKind::RightBracket => {
+                    if bracket_count == 0 {
+                        return false;
+                    } // unmatched
+                    bracket_count -= 1;
+                    if bracket_count == 0 {
+                        // next token after last closing bracket
+                        if let Some(next_tok) = self.peek_n_token(i + 1) {
+                            return next_tok.kind == TokenKind::LeftBrace;
+                        } else {
+                            return false;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+
+        false
+    }
+
     pub fn matches_type_token(&mut self, token_kind: TokenKind) -> bool {
         if PRIMITIVE_TYPES.contains(&token_kind) {
             true
