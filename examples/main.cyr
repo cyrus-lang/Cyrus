@@ -1,8 +1,14 @@
-extern func printf(format: const char*, ...) int32;
+import std::libc{printf}; 
+
+struct Sample {
+    a: int;
+}
 
 func main() {
-	#a = 0;
-	a -= 1;
+    #list = Sample[3] {
+        Sample { a: 10 }
+    };
 
-	printf("v: %d\n", a);
+    #a = list[0].a;
+    printf("value: %d\n", a);
 }

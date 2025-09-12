@@ -1,6 +1,8 @@
 use crate::types::{ConcreteType, TypedUnnamedStructType};
 use ast::{
-    operators::{InfixOperator, PrefixOperator, UnaryOperator}, token::Location, AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind
+    AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind,
+    operators::{InfixOperator, PrefixOperator, UnaryOperator},
+    token::Location,
 };
 use std::collections::HashMap;
 
@@ -259,6 +261,7 @@ pub struct TypedUnnamedStructValue {
     pub fields: Vec<TypedUnnamedStructValueField>,
     pub unnamed_struct_type: Option<TypedUnnamedStructType>,
     pub packed: bool,
+    pub is_const: bool,
     pub loc: Location,
 }
 
@@ -290,6 +293,7 @@ pub enum TypedStatement {
     Switch(TypedSwitch),
     Struct(TypedStruct),
     Enum(TypedEnum),
+    Union(TypedUnion),
     Interface(TypedInterface),
     Expression(TypedExpression),
 }
@@ -315,6 +319,7 @@ impl TypedStatement {
             TypedStatement::Interface(typed_interface) => typed_interface.loc.clone(),
             TypedStatement::Expression(typed_expression) => typed_expression.loc.clone(),
             TypedStatement::While(while_stmt) => while_stmt.loc.clone(),
+            TypedStatement::Union(union_stmt) => union_stmt.loc.clone(),
         }
     }
 }
@@ -330,6 +335,7 @@ pub struct TypedInterface {
 
 #[derive(Debug, Clone)]
 pub struct TypedEnum {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
@@ -345,9 +351,18 @@ pub enum TypedEnumVariant {
     Variant(Identifier, Vec<TypedEnumValuedField>),
 }
 
+impl TypedEnumVariant {
+    pub fn get_identifier(&self) -> &Identifier {
+        match self {
+            TypedEnumVariant::Identifier(identifier) => identifier,
+            TypedEnumVariant::Valued(identifier, ..) => identifier,
+            TypedEnumVariant::Variant(identifier, ..) => identifier,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedEnumValuedField {
-    pub name: String,
     pub field_type: ConcreteType,
     pub loc: Location,
 }
@@ -361,6 +376,24 @@ pub struct TypedStruct {
     pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
     pub packed: bool,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedUnion {
+    pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
+    pub name: String,
+    pub fields: Vec<TypedUnionField>,
+    pub methods: HashMap<String, SymbolID>,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedUnionField {
+    pub name: String,
+    pub ty: ConcreteType,
     pub loc: Location,
 }
 
@@ -523,16 +556,16 @@ pub struct TypedSwitch {
 
 #[derive(Debug, Clone)]
 pub struct TypedSwitchCase {
-    pub patterns: Vec<TypedSwitchCasePattern>,
+    pub pattern: TypedSwitchCasePattern,
     pub body: Box<TypedBlockStatement>,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub enum TypedSwitchCasePattern {
-    Expression(TypedExpression),
-    Identifier(String),
-    EnumVariant(String, Vec<String>),
+    Expression(TypedExpression, Location),
+    Identifier(String, Location),
+    EnumVariant(String, Vec<Identifier>, Location),
 }
 
 #[derive(Debug, Clone)]

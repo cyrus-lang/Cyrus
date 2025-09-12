@@ -39,7 +39,9 @@ impl<'a> AnalysisContext<'a> {
                             .resolver
                             .get_scope_ref(self.module_id, local_symbol.get_symbol_id());
 
-                        self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
+                        if local_scope_opt.is_some() {
+                            self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
+                        }
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
                         self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
@@ -65,6 +67,7 @@ impl<'a> AnalysisContext<'a> {
                             return None;
                         }
                     };
+
                 let resolved_typedef_opt = match &local_or_global_symbol {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.as_typedef(),
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => symbol_entry.as_typedef(),
@@ -80,7 +83,6 @@ impl<'a> AnalysisContext<'a> {
                 let inner = resolved_typedef.typedef_sig.ty.clone();
                 self.normalize_type(scope_id_opt, inner, loc)
             }
-
             ConcreteType::ResolvedSymbol(ResolvedSymbol::Variable(symbol_id)) => {
                 let local_symbol = self
                     .resolver
@@ -133,8 +135,8 @@ impl<'a> AnalysisContext<'a> {
             }
             ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(_))
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(_))
+            | ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(_))
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Interface(_)) => Some(ty),
-
             ConcreteType::Pointer(inner) => {
                 let inner = self.normalize_type(scope_id_opt, *inner, loc)?;
                 Some(ConcreteType::Pointer(Box::new(inner)))
@@ -177,6 +179,7 @@ impl<'a> AnalysisContext<'a> {
                     Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(s.symbol_id)))
                 }
                 LocalSymbolKind::Enum(e) => Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(e.symbol_id))),
+                LocalSymbolKind::Union(e) => Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(e.symbol_id))),
                 LocalSymbolKind::Interface(i) => {
                     Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Interface(i.symbol_id)))
                 }
@@ -207,6 +210,7 @@ impl<'a> AnalysisContext<'a> {
                     Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(s.symbol_id)))
                 }
                 SymbolEntryKind::Enum(e) => Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(e.symbol_id))),
+                SymbolEntryKind::Union(e) => Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(e.symbol_id))),
                 SymbolEntryKind::Interface(i) => {
                     Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Interface(i.symbol_id)))
                 }

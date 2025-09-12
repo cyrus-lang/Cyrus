@@ -1,4 +1,4 @@
-use crate::declsign::{EnumSig, GlobalVarSig, InterfaceSig, StructSig};
+use crate::declsign::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
 use crate::moduleloader::{ModuleAlias, ModuleFilePath, ModuleLoader, ModuleLoaderOptions};
 use crate::scope::*;
 use crate::{
@@ -8,7 +8,7 @@ use crate::{
 use ast::format::module_segments_as_string;
 use ast::{
     AccessSpecifier, GlobalVariable, If, Import, Interface, ModuleImport, ModulePath, ModuleSegment,
-    ModuleSegmentSingle, SelfModifierKind, StringPrefix, SwitchCasePattern,
+    ModuleSegmentSingle, SelfModifierKind, StringPrefix, SwitchCasePattern, Union,
 };
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
@@ -266,14 +266,17 @@ impl Resolver {
         // move symbol and it's metadata from imported module to parent module
 
         for single in singles {
-            let single_name = single.identifier.as_string();
+            let single_actual_name = single.identifier.as_string();
+            let single_renamed_name = single.renamed.clone().unwrap_or(single.identifier.clone()).as_string();
 
-            let symbol_id = match self.lookup_symbol_id(imported_module_id, &single_name) {
+            let symbol_id = match self.lookup_symbol_id(imported_module_id, &single_actual_name) {
                 Some(symbol_id) => symbol_id,
                 None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
-                        kind: ResolverDiagKind::SymbolNotFound { name: single_name },
+                        kind: ResolverDiagKind::SymbolNotFound {
+                            name: single_renamed_name,
+                        },
                         location: Some(DiagLoc::new(
                             self.get_module_file_path(parent_module_id).unwrap(),
                             loc.clone(),
@@ -292,11 +295,11 @@ impl Resolver {
                 let mut global_symbols = self.global_symbols.lock().unwrap();
                 let symbol_table = global_symbols.get_mut(&parent_module_id).unwrap();
 
-                if symbol_table.names.contains_key(&single_name) {
+                if symbol_table.names.contains_key(&single_actual_name) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: ResolverDiagKind::DuplicateSymbol {
-                            symbol_name: single_name,
+                            symbol_name: single_renamed_name,
                         },
                         location: Some(DiagLoc::new(
                             self.get_module_file_path(parent_module_id).unwrap(),
@@ -308,7 +311,7 @@ impl Resolver {
                     continue;
                 }
 
-                symbol_table.names.insert(single_name.clone(), symbol_id);
+                symbol_table.names.insert(single_renamed_name.clone(), symbol_id);
                 symbol_table
                     .locs
                     .insert(symbol_id, (loc_file, symbol_entry.get_loc(), 0));
@@ -318,7 +321,7 @@ impl Resolver {
                 symbol_table.entries.insert(symbol_id, symbol_entry);
                 drop(global_symbols);
 
-                self.check_import_single_vis(single_name, vis, loc.clone());
+                self.check_import_single_vis(single_actual_name, vis, loc.clone());
             }
         }
     }
@@ -581,6 +584,24 @@ impl Resolver {
                         interface.span.end,
                     );
                 }
+                Statement::Union(union_decl) => {
+                    if self.duplicate_symbol(
+                        module_id,
+                        union_decl.identifier.name.clone(),
+                        union_decl.loc.clone(),
+                        union_decl.span.end,
+                    ) {
+                        continue;
+                    }
+
+                    self.insert_symbol_name(
+                        module_id,
+                        &union_decl.identifier.name.clone(),
+                        self.get_current_module_file_path(),
+                        union_decl.loc.clone(),
+                        union_decl.span.end,
+                    );
+                }
                 Statement::Typedef(typedef) => {
                     if self.duplicate_symbol(
                         module_id,
@@ -629,7 +650,7 @@ impl Resolver {
 
                     self.insert_symbol_name(
                         module_id,
-                        &func_decl.identifier.name.clone(),
+                        &func_decl.get_usable_name(),
                         self.get_current_module_file_path(),
                         func_decl.loc.clone(),
                         func_decl.span.end,
@@ -726,6 +747,10 @@ impl Resolver {
                     None => continue,
                 },
                 Statement::Interface(interface) => match self.resolve_interface(module_id, None, interface) {
+                    Some(typed_stmt) => Ok(typed_stmt),
+                    None => continue,
+                },
+                Statement::Union(union_stmt) => match self.resolve_union(module_id, None, union_stmt) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
@@ -846,6 +871,78 @@ impl Resolver {
         }))
     }
 
+    fn resolve_union(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        union_decl: &Union,
+    ) -> Option<TypedStatement> {
+        let union_symbol_id = if local_scope_opt.is_some() {
+            generate_symbol_id()
+        } else {
+            self.lookup_symbol_id(module_id, &union_decl.identifier.name).unwrap()
+        };
+
+        let mut typed_union_fields: Vec<TypedUnionField> = Vec::new();
+
+        for field in &union_decl.fields {
+            match self.resolve_type(module_id, field.ty.clone(), field.loc.clone(), field.span.end) {
+                Some(concrete_type) => {
+                    typed_union_fields.push(TypedUnionField {
+                        name: field.identifier.name.clone(),
+                        ty: concrete_type,
+                        loc: field.loc.clone(),
+                    });
+                }
+                None => continue,
+            }
+        }
+
+        self.check_duplicate_method_names(&union_decl.identifier.name, union_decl.methods.clone());
+
+        let methods = match self.resolve_methods(module_id, &union_decl.methods, union_symbol_id) {
+            Some(methods) => methods,
+            None => return None,
+        };
+
+        let resolved_union = ResolvedUnion {
+            module_id,
+            symbol_id: union_symbol_id,
+            union_sig: UnionSig {
+                name: union_decl.identifier.name.clone(),
+                fields: typed_union_fields.clone(),
+                methods: methods.clone(),
+                vis: union_decl.vis.clone(),
+                loc: union_decl.loc.clone(),
+            },
+        };
+
+        if let Some(local_scope_rc) = &local_scope_opt {
+            let mut local_scope = local_scope_rc.borrow_mut();
+            local_scope.insert(
+                union_decl.identifier.name.clone(),
+                LocalSymbol::new(LocalSymbolKind::Union(resolved_union)),
+            );
+            drop(local_scope);
+        } else {
+            self.insert_symbol_entry(
+                module_id,
+                union_symbol_id,
+                SymbolEntry::new(SymbolEntryKind::Union(resolved_union)),
+            );
+        }
+
+        Some(TypedStatement::Union(TypedUnion {
+            symbol_id: union_symbol_id,
+            module_id,
+            name: union_decl.identifier.name.clone(),
+            fields: typed_union_fields,
+            methods,
+            vis: union_decl.vis.clone(),
+            loc: union_decl.identifier.loc.clone(),
+        }))
+    }
+
     fn resolve_enum(
         &mut self,
         module_id: ModuleID,
@@ -868,17 +965,16 @@ impl Resolver {
                         let field_type = match self.resolve_type(
                             module_id,
                             valued_field.field_type.clone(),
-                            valued_field.identifier.loc.clone(),
-                            valued_field.identifier.span.end,
+                            valued_field.loc.clone(),
+                            0,
                         ) {
                             Some(concrete_type) => concrete_type,
                             None => continue,
                         };
 
                         fields.push(TypedEnumValuedField {
-                            name: valued_field.identifier.name.clone(),
                             field_type,
-                            loc: valued_field.identifier.loc.clone(),
+                            loc: valued_field.loc.clone(),
                         });
                     }
                     TypedEnumVariant::Variant(identifier.clone(), fields)
@@ -934,6 +1030,7 @@ impl Resolver {
         }
 
         Some(TypedStatement::Enum(TypedEnum {
+            module_id,
             symbol_id: enum_symbol_id,
             name: enum_decl.identifier.name.clone(),
             variants,
@@ -1186,6 +1283,7 @@ impl Resolver {
         } else {
             self.lookup_symbol_id(module_id, &struct_decl.identifier.name).unwrap()
         };
+
         let mut typed_struct_fields: Vec<TypedStructField> = Vec::new();
 
         for field in &struct_decl.fields {
@@ -1876,85 +1974,90 @@ impl Resolver {
                     let mut cases: Vec<TypedSwitchCase> = Vec::new();
 
                     for case in &switch.cases {
-                        let local_scope_borrowed = local_scope.borrow();
-                        let mut case_scope = LocalScope::new(Some(Box::new(local_scope_borrowed.clone())));
-                        drop(local_scope_borrowed);
+                        let case_scope_rc = LocalScope::deep_clone(&local_scope);
 
-                        let mut patterns: Vec<TypedSwitchCasePattern> = Vec::new();
+                        let case_scope_id = generate_scope_id();
+                        self.insert_scope_ref(module_id, case_scope_id, case_scope_rc.clone());
 
-                        for pattern in &case.patterns {
-                            let typed_pattern = match &pattern {
-                                SwitchCasePattern::Expression(expr) => {
-                                    let typed_expr =
-                                        match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &expr) {
-                                            Some(typed_expr) => typed_expr,
-                                            None => continue,
-                                        };
+                        let pattern = match &case.pattern {
+                            SwitchCasePattern::Expression(expr) => {
+                                let typed_expr =
+                                    match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &expr) {
+                                        Some(typed_expr) => typed_expr,
+                                        None => continue,
+                                    };
 
-                                    TypedSwitchCasePattern::Expression(typed_expr)
-                                }
-                                SwitchCasePattern::Identifier(identifier) => {
-                                    let symbol_id = generate_symbol_id();
+                                let loc = typed_expr.loc.clone();
+                                TypedSwitchCasePattern::Expression(typed_expr, loc)
+                            }
+                            SwitchCasePattern::Identifier(identifier) => {
+                                let symbol_id = generate_symbol_id();
 
-                                    case_scope.insert(
-                                        identifier.name.clone(),
-                                        LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
-                                            module_id,
+                                let mut case_scope = case_scope_rc.borrow_mut();
+                                case_scope.insert(
+                                    identifier.name.clone(),
+                                    LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
+                                        module_id,
+                                        symbol_id,
+                                        typed_variable: TypedVariable {
                                             symbol_id,
-                                            typed_variable: TypedVariable {
-                                                symbol_id,
-                                                name: identifier.name.clone(),
-                                                ty: None,
-                                                rhs: None,
-                                                loc: identifier.loc.clone(),
-                                            },
-                                        })),
-                                    );
-                                    TypedSwitchCasePattern::Identifier(identifier.name.clone())
-                                }
-                                SwitchCasePattern::EnumVariant(identifier, identifiers) => {
-                                    let symbol_id = generate_symbol_id();
+                                            name: identifier.name.clone(),
+                                            ty: None,
+                                            rhs: None,
+                                            loc: identifier.loc.clone(),
+                                        },
+                                    })),
+                                );
+                                drop(case_scope);
 
-                                    TypedSwitchCasePattern::EnumVariant(
-                                        identifier.name.clone(),
-                                        identifiers
-                                            .iter()
-                                            .map(|identifier| {
-                                                case_scope.insert(
-                                                    identifier.name.clone(),
-                                                    LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
-                                                        module_id,
+                                TypedSwitchCasePattern::Identifier(identifier.name.clone(), identifier.loc.clone())
+                            }
+                            SwitchCasePattern::EnumVariant(identifier, valued_fields) => {
+                                TypedSwitchCasePattern::EnumVariant(
+                                    identifier.name.clone(),
+                                    valued_fields
+                                        .iter()
+                                        .map(|identifier| {
+                                            let symbol_id = generate_symbol_id();
+                                            let mut case_scope = case_scope_rc.borrow_mut();
+
+                                            case_scope.insert(
+                                                identifier.name.clone(),
+                                                LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
+                                                    module_id,
+                                                    symbol_id,
+                                                    typed_variable: TypedVariable {
                                                         symbol_id,
-                                                        typed_variable: TypedVariable {
-                                                            symbol_id,
-                                                            name: identifier.name.clone(),
-                                                            ty: None,
-                                                            rhs: None,
-                                                            loc: identifier.loc.clone(),
-                                                        },
-                                                    })),
-                                                );
-                                                identifier.name.clone()
-                                            })
-                                            .collect(),
-                                    )
-                                }
-                            };
-                            patterns.push(typed_pattern);
-                        }
+                                                        name: identifier.name.clone(),
+                                                        ty: None,
+                                                        rhs: None,
+                                                        loc: identifier.loc.clone(),
+                                                    },
+                                                })),
+                                            );
+                                            drop(case_scope);
+                                            identifier.clone()
+                                        })
+                                        .collect(),
+                                    identifier.loc.clone(),
+                                )
+                            }
+                        };
 
-                        let body =
-                            match self.resolve_block_statement(scope_id, Rc::new(RefCell::new(case_scope)), &case.body)
-                            {
-                                Some(typed_block) => typed_block,
-                                None => continue,
-                            };
+                        let mut body = match self.resolve_block_statement(scope_id, case_scope_rc.clone(), &case.body) {
+                            Some(typed_block) => typed_block,
+                            None => continue,
+                        };
+
+                        body.scope_id = case_scope_id;
 
                         cases.push(TypedSwitchCase {
-                            patterns,
+                            pattern,
                             body: Box::new(body),
                             loc: case.loc.clone(),
                         });
+
+                        drop(case_scope_rc);
                     }
 
                     let default_case = {
@@ -1981,6 +2084,14 @@ impl Resolver {
                 }
                 Statement::Enum(enum_decl) => {
                     match self.resolve_enum(module_id, Some(Rc::clone(&local_scope)), enum_decl) {
+                        Some(typed_stmt) => {
+                            typed_body.push(typed_stmt);
+                        }
+                        None => continue,
+                    }
+                }
+                Statement::Union(union_decl) => {
+                    match self.resolve_union(module_id, Some(Rc::clone(&local_scope)), union_decl) {
                         Some(typed_stmt) => {
                             typed_body.push(typed_stmt);
                         }
@@ -2689,6 +2800,7 @@ impl Resolver {
                         fields,
                         unnamed_struct_type: None,
                         packed: unnamed_struct_value.packed,
+                        is_const: unnamed_struct_value.is_const,
                         loc: unnamed_struct_value.loc.clone(),
                     }),
                     concrete_type: None,

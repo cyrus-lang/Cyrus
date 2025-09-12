@@ -1,5 +1,5 @@
-use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig};
-use ast::{token::Location, AccessSpecifier};
+use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
+use ast::{AccessSpecifier, token::Location};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedFuncParamKind, TypedVariable};
@@ -28,7 +28,15 @@ pub enum SymbolEntryKind {
     GlobalVar(ResolvedGlobalVar),
     Struct(ResolvedStruct),
     Enum(ResolvedEnum),
+    Union(ResolvedUnion),
     Interface(ResolvedInterface),
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedUnion {
+    pub module_id: ModuleID,
+    pub symbol_id: SymbolID,
+    pub union_sig: UnionSig,
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +119,7 @@ pub enum LocalSymbolKind {
     Enum(ResolvedEnum),
     Typedef(ResolvedTypedef),
     Interface(ResolvedInterface),
+    Union(ResolvedUnion),
 }
 
 #[derive(Debug, Clone)]
@@ -153,6 +162,19 @@ impl LocalOrGlobalSymbol {
         }
     }
 
+    pub fn as_union(&self) -> Option<ResolvedUnion> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Union(resolved_union) => Some(resolved_union.clone()),
+                _ => None,
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Union(resolved_union) => Some(resolved_union.clone()),
+                _ => None,
+            },
+        }
+    }
+
     pub fn as_global_var(&self) -> Option<ResolvedGlobalVar> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(..) => None,
@@ -180,6 +202,7 @@ impl LocalSymbol {
             LocalSymbolKind::Enum(resolved) => resolved.symbol_id,
             LocalSymbolKind::Typedef(resolved) => resolved.symbol_id,
             LocalSymbolKind::Interface(resolved) => resolved.symbol_id,
+            LocalSymbolKind::Union(resolved) => resolved.symbol_id,
         }
     }
 
@@ -238,12 +261,20 @@ impl LocalScope {
             None => None,
         }
     }
+
     pub fn resolve_with_symbol_id_mut(&mut self, symbol_id: SymbolID) -> Option<&mut LocalSymbol> {
         match self
             .symbols
             .iter_mut()
             .find(|(_, local_symbol)| local_symbol.get_symbol_id() == symbol_id)
         {
+            Some((_, local_symbol)) => Some(local_symbol),
+            None => None,
+        }
+    }
+
+    pub fn resolve_mut(&mut self, name: &str) -> Option<&mut LocalSymbol> {
+        match self.symbols.iter_mut().find(|(_name, ..)| **_name == name) {
             Some((_, local_symbol)) => Some(local_symbol),
             None => None,
         }
@@ -282,6 +313,7 @@ impl SymbolEntry {
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.vis.clone(),
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.vis.clone(),
             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.vis.clone(),
+            SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.vis.clone(),
         }
     }
 
@@ -294,6 +326,7 @@ impl SymbolEntry {
             SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.loc.clone(),
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.loc.clone(),
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.interface_sig.loc.clone(),
+            SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.loc.clone(),
         }
     }
 
@@ -306,6 +339,7 @@ impl SymbolEntry {
             SymbolEntryKind::Struct(resolved_struct) => resolved_struct.symbol_id,
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.symbol_id,
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.symbol_id,
+            SymbolEntryKind::Union(resolved_union) => resolved_union.symbol_id,
         }
     }
 
@@ -318,6 +352,7 @@ impl SymbolEntry {
             SymbolEntryKind::Struct(resolved_struct) => resolved_struct.module_id,
             SymbolEntryKind::Enum(resolved_enum) => resolved_enum.module_id,
             SymbolEntryKind::Interface(resolved_interface) => resolved_interface.module_id,
+            SymbolEntryKind::Union(resolved_union) => resolved_union.module_id,
         }
     }
 

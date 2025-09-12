@@ -26,6 +26,8 @@ impl Parser {
                 return self.parse_struct(Some(vis), true);
             } else if self.current_token_is(TokenKind::Enum) {
                 return self.parse_enum(Some(vis));
+            } else if self.current_token_is(TokenKind::Union) {
+                return self.parse_union(Some(vis));
             } else if self.current_token_is(TokenKind::Typedef) {
                 return self.parse_typedef(Some(vis));
             } else if let TokenKind::Identifier { .. } = self.current_token().kind {
@@ -41,6 +43,8 @@ impl Parser {
             return self.parse_struct(None, true);
         } else if self.current_token_is(TokenKind::Enum) {
             return self.parse_enum(None);
+        } else if self.current_token_is(TokenKind::Union) {
+            return self.parse_union(None);
         } else if self.current_token_is(TokenKind::Typedef) {
             return self.parse_typedef(None);
         } else if self.current_token_is(TokenKind::Interface) {
@@ -123,18 +127,11 @@ impl Parser {
                     });
                 }
 
-                let field_name = self.parse_identifier()?;
-                self.next_token(); // consume field name
-
-                self.expect_current(TokenKind::Colon)?;
-
+                let loc = self.current_token().loc.clone();
                 let field_type = self.parse_type_specifier()?;
                 self.next_token();
 
-                variant_fields.push(EnumValuedField {
-                    identifier: field_name,
-                    field_type: field_type,
-                });
+                variant_fields.push(EnumValuedField { field_type, loc });
 
                 if self.current_token_is(TokenKind::RightParen) {
                     self.next_token();
@@ -147,6 +144,119 @@ impl Parser {
         }
 
         return Ok(EnumVariant::Variant(variant_name, variant_fields));
+    }
+
+    fn parse_union_field(&mut self) -> Result<UnionField, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let identifier = self.parse_identifier()?;
+        self.next_token(); // consume identifier
+
+        self.expect_current(TokenKind::Colon)?;
+
+        let type_token = self.parse_type_specifier()?;
+        self.next_token();
+
+        let field = UnionField {
+            identifier,
+            ty: type_token,
+            loc,
+            span: Span {
+                start,
+                end: self.current_token().span.end,
+            },
+        };
+
+        self.expect_current(TokenKind::Semicolon)?;
+        Ok(field)
+    }
+
+    pub fn parse_union(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume union token
+        let identifier = self.parse_identifier()?;
+        self.next_token();
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Statement::Union(Union {
+                identifier,
+                methods: Vec::new(),
+                fields: Vec::new(),
+                vis: vis.unwrap_or(AccessSpecifier::Internal),
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }));
+        }
+
+        let mut fields: Vec<UnionField> = Vec::new();
+        let mut methods: Vec<FuncDef> = Vec::new();
+
+        loop {
+            match self.current_token().kind {
+                TokenKind::RightBrace => {
+                    break;
+                }
+                TokenKind::EOF => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingClosingBrace,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.file_name.clone(),
+                            self.current_token().loc.clone(),
+                            self.current_token().span.end,
+                        )),
+                        hint: None,
+                    });
+                }
+                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                    let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+
+                    let method = match self.parse_func(Some(vis))? {
+                        Statement::FuncDef(func_def) => func_def,
+                        _ => unreachable!(),
+                    };
+                    self.next_token(); // consume right brace
+                    methods.push(method);
+                }
+                TokenKind::Function => {
+                    if let Statement::FuncDef(method) = self.parse_func(None)? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                TokenKind::Identifier { .. } => {
+                    let field = self.parse_union_field()?;
+                    fields.push(field);
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(
+                            self.file_name.clone(),
+                            self.current_token().loc.clone(),
+                            self.current_token().span.end,
+                        )),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        Ok(Statement::Union(Union {
+            identifier,
+            methods,
+            fields,
+            vis: vis.unwrap_or(AccessSpecifier::Internal),
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
     }
 
     pub fn parse_enum(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
@@ -1286,8 +1396,6 @@ impl Parser {
                 let case_start = self.current_token().span.start;
                 self.next_token();
 
-                let mut patterns: Vec<SwitchCasePattern> = Vec::new();
-
                 fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, ParserError> {
                     let case_pattern = if this.current_token_is(TokenKind::Dot) {
                         this.next_token();
@@ -1320,12 +1428,7 @@ impl Parser {
                     Ok(case_pattern)
                 }
 
-                patterns.push(parse_pattern(self)?);
-
-                while self.current_token_is(TokenKind::Comma) {
-                    self.next_token();
-                    patterns.push(parse_pattern(self)?);
-                }
+                let pattern = parse_pattern(self)?;
 
                 self.expect_current(TokenKind::Colon)?;
                 let case_body;
@@ -1341,7 +1444,7 @@ impl Parser {
                 }
 
                 cases.push(SwitchCase {
-                    patterns,
+                    pattern,
                     body: case_body,
                     span: Span::new(case_start, self.current_token().span.end),
                     loc: case_loc,

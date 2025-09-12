@@ -1,11 +1,11 @@
 extern func printf(format: const char*, ...) int32;
 
-config: struct { host: char*, port: int } = struct {
-	host = "127.0.0.1",
-	port = 8080
+public config = const struct {
+    host = "127.0.0.1",
+    port = 8080
 };
 
 func main() {
-	printf("host: %s\n", config.host);
-	printf("port: %d\n", config.port);
+    printf("host: %s\n", config.host);
+    printf("port: %d\n", config.port);
 }

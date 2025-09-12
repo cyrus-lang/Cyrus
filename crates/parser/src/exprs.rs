@@ -14,22 +14,56 @@ use diagcentral::DiagLoc;
 impl Parser {
     pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParserError> {
         let mut left_start = self.current_token().span.start;
-        let mut left = self.parse_prefix_expression()?;
 
-        while self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
-            self.next_token(); // consume the left expression
-            left = self.parse_field_access(left)?;
+        if self.is_array_constructor_start() {
+            let type_specifier = self.parse_type_specifier()?;
+            self.next_token();
+            let expr = self.parse_array(type_specifier)?;
+            return Ok((expr, Span::new(left_start, self.current_token().span.end)));
         }
+
+        let mut left = self.parse_prefix_expression()?;
 
         while self.peek_token_is(TokenKind::LeftBracket) {
             self.next_token();
             left = self.parse_array_index(left)?;
         }
 
+        while self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
+            self.next_token(); // consume the left expression
+            left = self.parse_field_access(left)?;
+        }
+
         if self.peek_token_is(TokenKind::Assign) {
             self.next_token();
             let expr = self.parse_assignment(left, AssignmentKind::Default, left_start)?;
             return Ok((expr, Span::new(left_start, self.current_token().span.end)));
+        }
+
+        if self.peek_token_is(TokenKind::Increment) {
+            self.next_token();
+            let loc = self.current_token().loc.clone();
+            return Ok((
+                Expression::Unary(UnaryExpression {
+                    operand: Box::new(left),
+                    op: UnaryOperator::PostIncrement,
+                    span: Span::new(left_start, self.current_token().span.end),
+                    loc,
+                }),
+                Span::new(left_start, self.current_token().span.end),
+            ));
+        } else if self.peek_token_is(TokenKind::Decrement) {
+            self.next_token();
+            let loc = self.current_token().loc.clone();
+            return Ok((
+                Expression::Unary(UnaryExpression {
+                    operand: Box::new(left),
+                    op: UnaryOperator::PostDecrement,
+                    span: Span::new(left_start, self.current_token().span.end),
+                    loc: loc.clone(),
+                }),
+                Span::new(left_start, self.current_token().span.end),
+            ));
         }
 
         while self.current_token().kind != TokenKind::EOF && precedence < token_precedence_of(self.peek_token().kind) {
@@ -63,28 +97,25 @@ impl Parser {
 
         let expr = match &self.current_token().clone().kind {
             TokenKind::Typecast => self.parse_cast_expression()?,
-            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value()?,
+            TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
+            TokenKind::Const => {
+                if self.peek_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Bits) {
+                    self.next_token();
+                    self.parse_unnamed_struct_value(true)?
+                } else {
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
+                        hint: None,
+                    });
+                }
+            }
             TokenKind::Identifier { .. } => {
                 let module_import = self.parse_module_import()?;
 
                 if self.current_token_is(TokenKind::LeftBrace) {
                     self.parse_struct_init(module_import)?
-                } else if self.peek_token_is(TokenKind::Increment) {
-                    self.next_token();
-                    Expression::Unary(UnaryExpression {
-                        operand: Box::new(Expression::ModuleImport(module_import.clone())),
-                        op: UnaryOperator::PostIncrement,
-                        span: Span::new(start, self.current_token().span.end),
-                        loc: loc.clone(),
-                    })
-                } else if self.peek_token_is(TokenKind::Decrement) {
-                    self.next_token();
-                    Expression::Unary(UnaryExpression {
-                        operand: Box::new(Expression::ModuleImport(module_import.clone())),
-                        op: UnaryOperator::PostDecrement,
-                        span: Span::new(start, self.current_token().span.end),
-                        loc: loc.clone(),
-                    })
                 } else {
                     Expression::ModuleImport(module_import)
                 }
@@ -215,7 +246,7 @@ impl Parser {
                 expr
             }
             _ => {
-                if self.matches_type_token(self.current_token().kind) {
+                if self.is_array_constructor_start() {
                     let type_specifier = self.parse_type_specifier()?;
 
                     if self.peek_token_is(TokenKind::LeftBrace) {
@@ -802,9 +833,11 @@ impl Parser {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
+        let index = Box::new(self.parse_single_array_index()?);
+
         let mut base_index = Expression::ArrayIndex(ArrayIndex {
             operand: Box::new(expr),
-            index: Box::new(self.parse_single_array_index()?),
+            index,
             span: Span::new(start, self.current_token().span.end),
             loc: loc.clone(),
         });
@@ -958,7 +991,7 @@ impl Parser {
         }))
     }
 
-    pub fn parse_unnamed_struct_value(&mut self) -> Result<Expression, ParserError> {
+    pub fn parse_unnamed_struct_value(&mut self, is_const: bool) -> Result<Expression, ParserError> {
         let struct_start = self.current_token().span.start;
 
         let packed = {
@@ -1064,6 +1097,7 @@ impl Parser {
         Ok(Expression::UnnamedStructValue(UnnamedStructValue {
             fields,
             packed,
+            is_const,
             loc: self.current_token().loc.clone(),
             span: Span::new(struct_start, self.current_token().span.end),
         }))

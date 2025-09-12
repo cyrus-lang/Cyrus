@@ -2,6 +2,33 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    SwitchFallthroughIntoValuedFieldCase,
+    EnumVariantArgCountMismatch {
+        variant_name: String,
+        expected: u32,
+        provided: u32,
+    },
+    EnumVariantDoesNotAcceptFields {
+        variant_name: String,
+    },
+    NoSuchEnumVariant {
+        enum_name: String,
+        variant_name: String,
+    },
+    ExpressionPatternInAEnumSwitch,
+    SwitchOperandIsNotEnum {
+        expr_type: String,
+    },
+    VariantMissingFields {
+        enum_name: String,
+        variant_name: String,
+    },
+    VariantNotDefinedForEnum {
+        enum_name: String,
+        variant_name: String,
+    },
+    UnionInitWithInvalidFields,
+    EmptyCaseSwitchStatement,
     TypeMismatchLiteral {
         literal_type: String,
         expected_type: String,
@@ -53,7 +80,7 @@ pub enum AnalyzerDiagKind {
         found_type: String,
     },
     ArrayIndexOnNonArrayOperand,
-    StructHasNoFieldNamed {
+    ObjectHasNoFieldNamed {
         struct_name: String,
         field_name: String,
     },
@@ -131,6 +158,9 @@ pub enum AnalyzerDiagKind {
     NonStructSymbol {
         symbol_name: String,
     },
+    NonUnionSymbol {
+        symbol_name: String,
+    },
     DuplicateFuncParameter {
         param_name: String,
         param_idx: u32,
@@ -139,7 +169,7 @@ pub enum AnalyzerDiagKind {
         param_name: String,
     },
     DuplicateFieldName {
-        struct_name: String,
+        object_name: String,
         field_name: String,
     },
     DuplicateEnumVariantName {
@@ -163,6 +193,60 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                variant_name,
+                expected,
+                provided,
+            } => {
+                write!(
+                    f,
+                    "Enum variant '{}' expects {} fields, but {} arguments were provided.",
+                    variant_name, expected, provided
+                )
+            }
+            AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase => {
+                write!(f, "Falling through into a case with fields may cause undefined behavior.")
+            }
+            AnalyzerDiagKind::EnumVariantDoesNotAcceptFields { variant_name } => {
+                write!(f, "Enum variant '{}' does not accept fields.", variant_name)
+            }
+            AnalyzerDiagKind::NoSuchEnumVariant {
+                enum_name,
+                variant_name,
+            } => {
+                write!(
+                    f,
+                    "Enum '{}' does not have a variant named '{}'.",
+                    enum_name, variant_name
+                )
+            }
+            AnalyzerDiagKind::ExpressionPatternInAEnumSwitch => {
+                write!(f, "Only enum variants are allowed here.")
+            }
+            AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type } => {
+                write!(f, "Switch expression must be an enum type, but found '{}'.", expr_type)
+            }
+            AnalyzerDiagKind::VariantMissingFields {
+                enum_name,
+                variant_name,
+            } => {
+                write!(f, "Variant '{}.{}' is missing fields.", enum_name, variant_name)
+            }
+            AnalyzerDiagKind::VariantNotDefinedForEnum {
+                enum_name,
+                variant_name,
+            } => {
+                write!(f, "Enum '{}' has no variant named '{}'.", enum_name, variant_name)
+            }
+            AnalyzerDiagKind::UnionInitWithInvalidFields => {
+                write!(f, "Union initializer must specify exactly one field.")
+            }
+            AnalyzerDiagKind::EmptyCaseSwitchStatement => {
+                write!(
+                    f,
+                    "Switch statement must contain at least one case or consider to remove it or replace it with a if statement."
+                )
+            }
             AnalyzerDiagKind::TypeMismatchLiteral {
                 literal_type,
                 expected_type,
@@ -296,7 +380,7 @@ impl fmt::Display for AnalyzerDiagKind {
                 write!(f, "Global variable expression is not valid at compile time.")
             }
             AnalyzerDiagKind::CannotAssignToConstLValue => {
-                write!(f, "Cannot assign to immutable variable.")
+                write!(f, "Cannot assign to immutable lvalue.")
             }
             AnalyzerDiagKind::StructMissingFields {
                 struct_name,
@@ -313,11 +397,11 @@ impl fmt::Display for AnalyzerDiagKind {
                     struct_name
                 )
             }
-            AnalyzerDiagKind::StructHasNoFieldNamed {
+            AnalyzerDiagKind::ObjectHasNoFieldNamed {
                 struct_name,
                 field_name,
             } => {
-                write!(f, "Struct '{}' has no field named '{}'.", struct_name, field_name)
+                write!(f, "'{}' has no field named '{}'.", struct_name, field_name)
             }
             AnalyzerDiagKind::InvalidIntegerLiteralSuffix => {
                 write!(f, "Invalid integer literal suffix.")
@@ -381,13 +465,13 @@ impl fmt::Display for AnalyzerDiagKind {
             }
 
             AnalyzerDiagKind::DuplicateFieldName {
-                struct_name,
+                object_name,
                 field_name,
             } => {
                 write!(
                     f,
-                    "Duplicate declaration of field '{}' in struct '{}'.",
-                    field_name, struct_name
+                    "Duplicate declaration of field '{}' in '{}'.",
+                    field_name, object_name
                 )
             }
             AnalyzerDiagKind::FuncCallArgsCountMismatch {
@@ -417,6 +501,9 @@ impl fmt::Display for AnalyzerDiagKind {
             }
             AnalyzerDiagKind::NonStructSymbol { symbol_name } => {
                 write!(f, "Symbol '{}' is not a struct.", symbol_name)
+            }
+            AnalyzerDiagKind::NonUnionSymbol { symbol_name } => {
+                write!(f, "Symbol '{}' is not a union.", symbol_name)
             }
             AnalyzerDiagKind::NonTypeSymbol { symbol_name } => {
                 write!(f, "Symbol '{}' is not a type.", symbol_name)

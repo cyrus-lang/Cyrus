@@ -103,6 +103,7 @@ pub struct AddressOf {
 pub struct UnnamedStructValue {
     pub fields: Vec<UnnamedStructValueField>,
     pub packed: bool,
+    pub is_const: bool,
     pub loc: Location,
     pub span: Span,
 }
@@ -133,6 +134,24 @@ pub struct UnnamedStructTypeField {
 }
 
 #[derive(Debug, Clone)]
+pub struct Union {
+    pub identifier: Identifier,
+    pub fields: Vec<UnionField>,
+    pub methods: Vec<FuncDef>,
+    pub vis: AccessSpecifier,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnionField {
+    pub identifier: Identifier,
+    pub ty: TypeSpecifier,
+    pub loc: Location,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct Enum {
     pub identifier: Identifier,
     pub variants: Vec<EnumVariant>,
@@ -151,8 +170,8 @@ pub enum EnumVariant {
 
 #[derive(Debug, Clone)]
 pub struct EnumValuedField {
-    pub identifier: Identifier,
     pub field_type: TypeSpecifier,
+    pub loc: Location
 }
 
 #[derive(Debug, Clone)]
@@ -341,6 +360,7 @@ pub enum Statement {
     Import(Import),
     BlockStatement(BlockStatement),
     Enum(Enum),
+    Union(Union),
     Break(Break),
     Continue(Continue),
     Typedef(Typedef),
@@ -547,7 +567,7 @@ pub struct Switch {
 
 #[derive(Debug, Clone)]
 pub struct SwitchCase {
-    pub patterns: Vec<SwitchCasePattern>,
+    pub pattern: SwitchCasePattern,
     pub body: BlockStatement,
     pub span: Span,
     pub loc: Location,

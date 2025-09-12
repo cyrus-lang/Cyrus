@@ -96,6 +96,7 @@ impl<'a> AnalysisContext<'a> {
                             LocalSymbolKind::Interface(resolved_interface) => {
                                 resolved_interface.interface_sig.name.clone()
                             }
+                            LocalSymbolKind::Union(resolved_union) => resolved_union.union_sig.name.clone(),
                         },
                         LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
                             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.name.clone(),
@@ -109,6 +110,7 @@ impl<'a> AnalysisContext<'a> {
                             SymbolEntryKind::Interface(resolved_interface) => {
                                 resolved_interface.interface_sig.name.clone()
                             }
+                            SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.name.clone(),
                         },
                     }
                 })
@@ -143,8 +145,9 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
                 TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
-                TypedStatement::Enum(typed_enum) => self.analyze_enum(typed_enum, false),
+                TypedStatement::Enum(typed_enum) => self.analyze_enum(None, typed_enum, false),
                 TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef),
+                TypedStatement::Union(typed_union) => self.analyze_union(None, typed_union, false),
                 // Not analyzed
                 TypedStatement::Import(_) => continue,
                 // Invalid top-level statements
@@ -203,7 +206,7 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Reachable
                 }
                 TypedStatement::Enum(typed_enum) => {
-                    self.analyze_enum(typed_enum, true);
+                    self.analyze_enum(Some(block_stmt.scope_id), typed_enum, true);
                     FlowState::Reachable
                 }
                 TypedStatement::Expression(typed_expression) => {
@@ -229,6 +232,10 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedStatement::Typedef(typed_typedef) => {
                     self.analyze_typedef(Some(block_stmt.scope_id), typed_typedef);
+                    FlowState::Reachable
+                }
+                TypedStatement::Union(typed_union) => {
+                    self.analyze_union(Some(block_stmt.scope_id), typed_union, true);
                     FlowState::Reachable
                 }
                 // Invalid statements
@@ -285,62 +292,308 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
-        self.control_stack.push(ControlContext::Switch(typed_switch.clone()));
+    fn analyze_switch_on_enum(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_switch: &mut TypedSwitch,
+        enum_symbol_id: SymbolID,
+    ) -> FlowState {
+        let mut branch_states = Vec::new();
 
-        let operand_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_switch.operand, None) {
-            Some(concrete_type) => concrete_type,
-            None => return FlowState::Reachable,
-        };
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
+            .unwrap();
+        let mut resolved_enum = local_or_global_symbol.as_enum().unwrap();
 
-        for case in &mut typed_switch.cases {
-            for pattern in &mut case.patterns {
-                match pattern {
-                    TypedSwitchCasePattern::Expression(typed_expr) => {
-                        let pattern_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
-                            Some(concrete_type) => concrete_type,
-                            None => continue,
-                        };
+        // Here instead of a simple for, we need peekable iterator to check next case
 
-                        if !self.check_type_mismatch(
-                            scope_id_opt,
-                            pattern_concrete_type.clone(),
-                            operand_concrete_type.clone(),
-                            typed_switch.loc.clone(),
-                        ) {
-                            let operand_type = format_concrete_type(
-                                operand_concrete_type.clone(),
-                                &(self.symbol_formatter)(scope_id_opt),
-                            );
-                            let pattern_type =
-                                format_concrete_type(pattern_concrete_type, &(self.symbol_formatter)(scope_id_opt));
+        let mut iter = typed_switch.cases.iter_mut().peekable();
 
+        while let Some(case) = iter.next() {
+            let identifier = match &case.pattern {
+                TypedSwitchCasePattern::Identifier(identifier, _) => identifier,
+                TypedSwitchCasePattern::EnumVariant(identifier, valued_fields, loc) => {
+                    let mut field_names: Vec<String> = Vec::new();
+
+                    for valued_field in valued_fields {
+                        if field_names.contains(&valued_field.name) {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
-                                kind: AnalyzerDiagKind::TypeMismatchInCasePattern {
-                                    operand_type,
-                                    pattern_type,
+                                kind: AnalyzerDiagKind::DuplicateEnumVariantName {
+                                    enum_name: resolved_enum.enum_sig.name.clone(),
+                                    variant_name: valued_field.as_string(),
                                 },
                                 location: Some(DiagLoc::new(
                                     self.resolver.get_current_module_file_path(),
-                                    case.loc.clone(),
+                                    loc.clone(),
                                     0,
                                 )),
                                 hint: None,
                             });
                             continue;
                         }
+
+                        field_names.push(valued_field.as_string());
                     }
-                    TypedSwitchCasePattern::Identifier(_) => todo!(),
-                    TypedSwitchCasePattern::EnumVariant(_, _items) => todo!(),
+
+                    identifier
                 }
+                TypedSwitchCasePattern::Expression(..) => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::ExpressionPatternInAEnumSwitch,
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            typed_switch.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    continue;
+                }
+            };
+
+            let mut variant_opt = resolved_enum
+                .enum_sig
+                .variants
+                .iter_mut()
+                .find(|variant| variant.get_identifier().as_string() == *identifier);
+
+            if variant_opt.is_none() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::NoSuchEnumVariant {
+                        enum_name: resolved_enum.enum_sig.name.clone(),
+                        variant_name: identifier.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        typed_switch.loc.clone(),
+                        0,
+                    )),
+                    hint: None,
+                });
+                continue;
             }
 
-            self.analyze_block_statement(&mut case.body);
+            if let TypedSwitchCasePattern::EnumVariant(_, valued_fields, loc) = &case.pattern {
+                let actual_enum_fields_len = match &mut variant_opt {
+                    Some(typed_enum_variant) => match typed_enum_variant {
+                        TypedEnumVariant::Variant(_, enum_valued_fields) => enum_valued_fields.len(),
+                        _ => unreachable!(),
+                    },
+                    None => unreachable!(),
+                };
+
+                if valued_fields.len() != actual_enum_fields_len {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::EnumVariantArgCountMismatch {
+                            variant_name: variant_opt.unwrap().get_identifier().as_string(),
+                            expected: actual_enum_fields_len as u32,
+                            provided: valued_fields.len() as u32,
+                        },
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    continue;
+                }
+
+                match &mut variant_opt {
+                    Some(typed_enum_variant) => match typed_enum_variant {
+                        TypedEnumVariant::Variant(identifier, enum_valued_fields) => {
+                            // normalize and then update valued_field type in local scope
+                            let local_scope_rc =
+                                self.resolver.get_scope_ref(self.module_id, case.body.scope_id).unwrap();
+
+                            for (enum_valued_field_idx, enum_valued_field) in enum_valued_fields.iter_mut().enumerate()
+                            {
+                                enum_valued_field.field_type = match self.normalize_type(
+                                    scope_id_opt,
+                                    enum_valued_field.field_type.clone(),
+                                    identifier.loc.clone(),
+                                ) {
+                                    Some(concrete_type) => concrete_type,
+                                    None => continue,
+                                };
+
+                                let mut local_scope = local_scope_rc.borrow_mut();
+                                let valued_field = &valued_fields[enum_valued_field_idx];
+                                let local_symbol = local_scope.resolve_mut(&valued_field.name).unwrap();
+                                match &mut local_symbol.kind {
+                                    LocalSymbolKind::Variable(resolved_variable) => {
+                                        resolved_variable.typed_variable.ty =
+                                            Some(enum_valued_field.field_type.clone());
+                                    }
+                                    _ => unreachable!(),
+                                }
+                                drop(local_scope);
+                            }
+                        }
+                        _ => unreachable!(),
+                    },
+                    None => unreachable!(),
+                };
+            }
+
+            let body_flow_state = self.analyze_block_statement(&mut case.body);
+            branch_states.push(body_flow_state);
+
+            if body_flow_state == FlowState::Reachable {
+                if let Some(next_case) = iter.next() {
+                    if let TypedSwitchCasePattern::EnumVariant(..) = &next_case.pattern {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase,
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_current_module_file_path(),
+                                next_case.loc.clone(),
+                                0,
+                            )),
+                            hint: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        if let Some(default_case) = &mut typed_switch.default_case {
+            let body_flow_state = self.analyze_block_statement(default_case);
+            branch_states.push(body_flow_state);
+        } else {
+            branch_states.push(FlowState::Reachable);
         }
 
         self.control_stack.pop();
-        FlowState::Reachable
+
+        // final decision
+        if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+            FlowState::Returns
+        } else {
+            // merge states
+            branch_states
+                .into_iter()
+                .reduce(|a, b| self.merge_flow_state(a, b))
+                .unwrap_or(FlowState::Unreachable)
+        }
+    }
+
+    fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
+        self.control_stack.push(ControlContext::Switch(typed_switch.clone()));
+
+        if typed_switch.cases.is_empty() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::EmptyCaseSwitchStatement,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    typed_switch.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return FlowState::Reachable;
+        }
+
+        let operand_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_switch.operand, None) {
+            Some(concrete_type) => concrete_type,
+            None => return FlowState::Reachable,
+        };
+
+        // If operand is an enum → delegate to specialized analyzer
+        if matches!(
+            operand_concrete_type,
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..))
+        ) {
+            return self.analyze_switch_on_enum(
+                scope_id_opt,
+                typed_switch,
+                operand_concrete_type.as_enum_symbol_id().unwrap(),
+            );
+        }
+
+        let mut branch_states = Vec::new();
+
+        for case in &mut typed_switch.cases {
+            match &mut case.pattern {
+                TypedSwitchCasePattern::Expression(typed_expr, _) => {
+                    let pattern_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
+                        Some(concrete_type) => concrete_type,
+                        None => continue,
+                    };
+
+                    if !self.check_type_mismatch(
+                        scope_id_opt,
+                        pattern_concrete_type.clone(),
+                        operand_concrete_type.clone(),
+                        typed_switch.loc.clone(),
+                    ) {
+                        let operand_type =
+                            format_concrete_type(operand_concrete_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                        let pattern_type =
+                            format_concrete_type(pattern_concrete_type, &(self.symbol_formatter)(scope_id_opt));
+
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::TypeMismatchInCasePattern {
+                                operand_type,
+                                pattern_type,
+                            },
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_current_module_file_path(),
+                                case.loc.clone(),
+                                0,
+                            )),
+                            hint: None,
+                        });
+                        continue;
+                    }
+                }
+                TypedSwitchCasePattern::Identifier(..) | TypedSwitchCasePattern::EnumVariant(..) => {
+                    let expr_type =
+                        format_concrete_type(operand_concrete_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type },
+                        location: Some(DiagLoc::new(
+                            self.resolver.get_current_module_file_path(),
+                            typed_switch.loc.clone(),
+                            0,
+                        )),
+                        hint: None,
+                    });
+                    continue;
+                }
+            }
+
+            let body_flow_state = self.analyze_block_statement(&mut case.body);
+            branch_states.push(body_flow_state);
+        }
+
+        if let Some(default_case) = &mut typed_switch.default_case {
+            let body_flow_state = self.analyze_block_statement(default_case);
+            branch_states.push(body_flow_state);
+        } else {
+            branch_states.push(FlowState::Reachable);
+        }
+
+        self.control_stack.pop();
+
+        if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+            FlowState::Returns
+        } else {
+            branch_states
+                .into_iter()
+                .reduce(|a, b| self.merge_flow_state(a, b))
+                .unwrap_or(FlowState::Unreachable)
+        }
     }
 
     fn analyze_if_stmt(
@@ -539,6 +792,9 @@ impl<'a> AnalysisContext<'a> {
         loc: Location,
     ) {
         let compatible_type = match (global_var_type.clone(), expr_type.clone()) {
+            (ConcreteType::Const(concrete_type1), ConcreteType::Const(concrete_type2)) => {
+                concrete_type1 == concrete_type2
+            }
             (ConcreteType::Const(concrete_type1), concrete_type2) => *concrete_type1 == concrete_type2,
             (concrete_type1, ConcreteType::Const(concrete_type2)) => concrete_type1 == *concrete_type2,
             (concrete_type1, concrete_type2) => concrete_type1 == concrete_type2,
@@ -588,14 +844,6 @@ impl<'a> AnalysisContext<'a> {
             None => Some(typed_global_var.expr.clone().unwrap().concrete_type.unwrap()),
         };
 
-        if let Some(typed_expr) = &typed_global_var.expr {
-            self.check_global_var_assignment_type(
-                typed_global_var.ty.clone().unwrap(),
-                typed_expr.concrete_type.clone().unwrap(),
-                typed_global_var.loc.clone(),
-            );
-        }
-
         update_global_symbol_type!(self, typed_global_var.module_id, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
                 resolved_var.global_var_sig.ty = typed_global_var.ty.clone();
@@ -627,6 +875,14 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         }
+
+        if let Some(typed_expr) = &typed_global_var.expr {
+            self.check_global_var_assignment_type(
+                typed_global_var.ty.clone().unwrap(),
+                typed_expr.concrete_type.clone().unwrap(),
+                typed_global_var.loc.clone(),
+            );
+        }
     }
 
     fn analyze_local_unused_symbols(&mut self, scope_id: ScopeID) {
@@ -657,6 +913,10 @@ impl<'a> AnalysisContext<'a> {
                     LocalSymbolKind::Interface(resolved_interface) => (
                         resolved_interface.interface_sig.name.clone(),
                         resolved_interface.interface_sig.loc.clone(),
+                    ),
+                    LocalSymbolKind::Union(resolved_union) => (
+                        resolved_union.union_sig.name.clone(),
+                        resolved_union.union_sig.loc.clone(),
                     ),
                 };
 
@@ -706,6 +966,10 @@ impl<'a> AnalysisContext<'a> {
                     SymbolEntryKind::Enum(resolved_enum) => {
                         (resolved_enum.enum_sig.name.clone(), resolved_enum.enum_sig.loc.clone())
                     }
+                    SymbolEntryKind::Union(resolved_union) => (
+                        resolved_union.union_sig.name.clone(),
+                        resolved_union.union_sig.loc.clone(),
+                    ),
                     SymbolEntryKind::Interface(resolved_interface) => (
                         resolved_interface.interface_sig.name.clone(),
                         resolved_interface.interface_sig.loc.clone(),
@@ -742,7 +1006,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::DuplicateFieldName {
-                        struct_name: typed_struct.name.clone(),
+                        object_name: typed_struct.name.clone(),
                         field_name: field.name.clone(),
                     },
                     location: Some(DiagLoc::new(
@@ -759,39 +1023,68 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub(crate) fn analyze_enum(&mut self, typed_enum: &TypedEnum, is_local: bool) {
+    pub(crate) fn analyze_union(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_union: &mut TypedUnion,
+        is_local: bool,
+    ) {
+        self.check_union_name(typed_union.name.clone(), typed_union.loc.clone(), is_local);
+        self.analyze_methods(self.module_id, &typed_union.methods);
+
+        let mut field_names: Vec<String> = Vec::new();
+
+        for field in &mut typed_union.fields {
+            if field_names.contains(&field.name) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::DuplicateFieldName {
+                        field_name: field.name.clone(),
+                        object_name: typed_union.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(
+                        self.resolver.get_current_module_file_path(),
+                        field.loc.clone(),
+                        0,
+                    )),
+                    hint: Some("Consider to rename the field to a different name.".to_string()),
+                });
+            }
+
+            match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                Some(concrete_type) => {
+                    field.ty = concrete_type;
+                }
+                None => continue,
+            }
+
+            field_names.push(field.name.clone());
+        }
+    }
+
+    pub(crate) fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnum, is_local: bool) {
         self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
         self.analyze_methods(self.module_id, &typed_enum.methods);
 
         let mut variant_names: Vec<String> = Vec::new();
 
-        for variant in &typed_enum.variants {
+        for variant in &mut typed_enum.variants {
             let variant_identifier = match variant {
                 TypedEnumVariant::Identifier(identifier) => identifier,
-                TypedEnumVariant::Valued(identifier, _) => identifier,
+                TypedEnumVariant::Valued(identifier, typed_expr) => {
+                    typed_expr.concrete_type = match self.analyze_typed_expr_type(scope_id_opt, typed_expr, None) {
+                        Some(concrete_type) => Some(concrete_type),
+                        None => continue,
+                    };
+                    identifier
+                }
                 TypedEnumVariant::Variant(identifier, typed_enum_valued_fields) => {
-                    let mut field_names: Vec<String> = Vec::new();
-
                     for field in typed_enum_valued_fields {
-                        if field_names.contains(&field.name) {
-                            self.reporter.report(Diag {
-                                level: DiagLevel::Error,
-                                kind: AnalyzerDiagKind::DuplicateEnumFieldName {
-                                    enum_name: typed_enum.name.clone(),
-                                    field_name: field.name.clone(),
-                                    variant_name: identifier.name.clone(),
-                                },
-                                location: Some(DiagLoc::new(
-                                    self.resolver.get_current_module_file_path(),
-                                    field.loc.clone(),
-                                    0,
-                                )),
-                                hint: Some("Consider to rename the field to a different name.".to_string()),
-                            });
-                            continue;
-                        }
-
-                        field_names.push(field.name.clone());
+                        field.field_type =
+                            match self.normalize_type(scope_id_opt, field.field_type.clone(), field.loc.clone()) {
+                                Some(concrete_type) => concrete_type,
+                                None => continue,
+                            };
                     }
                     identifier
                 }
@@ -1016,20 +1309,12 @@ impl<'a> AnalysisContext<'a> {
                         )
                         .unwrap();
 
-                    let symbol_id = match normalized_type {
-                        ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id))
-                        | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id)) => symbol_id,
-                        _ => unreachable!(),
-                    };
-
-                    let struct_concrete_type = ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id));
-
                     match typed_self_modifier.kind {
                         SelfModifierKind::Copied => {
-                            typed_self_modifier.ty = Some(struct_concrete_type);
+                            typed_self_modifier.ty = Some(normalized_type);
                         }
                         SelfModifierKind::Referenced => {
-                            typed_self_modifier.ty = Some(ConcreteType::Pointer(Box::new(struct_concrete_type)));
+                            typed_self_modifier.ty = Some(ConcreteType::Pointer(Box::new(normalized_type)));
                         }
                     }
                 }
@@ -1245,12 +1530,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if assign.kind == AssignmentKind::Default {
-            if !self.check_type_mismatch(
-                scope_id_opt,
-                rhs_type.clone(),
-                lhs_type.clone(),
-                assign.loc.clone(),
-            ) {
+            if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), assign.loc.clone()) {
                 let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
                 let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
 

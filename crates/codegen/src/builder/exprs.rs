@@ -85,7 +85,9 @@ impl<'a> CodeGenBuilder<'a> {
             .try_into()
             .unwrap();
 
-        let array_length_int_value = pointee_basic_ty.into_int_type().const_int(array_length.into(), false);
+        let target_data = self.llvmtm.get_target_data();
+        let ptr_sized_int_type = self.llvmctx.ptr_sized_int_type(&target_data, None);
+        let array_length_int_value = ptr_sized_int_type.const_int(array_length.into(), false);
 
         let compare_result = self
             .llvmbuilder
@@ -222,21 +224,59 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
+    fn build_union_field_access(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        typed_field_access: &TypedFieldAccess,
+    ) -> InternalValue<'a> {
+        let lvalue_pointer = self
+            .build_expr(local_scope_opt.clone(), &typed_field_access.operand)
+            .as_basic_value()
+            .into_pointer_value();
+        let field_type = typed_field_access.field_ty.clone().unwrap();
+
+        InternalValue::new(field_type.clone(), InternalValueKind::LValue(lvalue_pointer))
+    }
+
     fn build_field_access(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         typed_field_access: &TypedFieldAccess,
     ) -> InternalValue<'a> {
-        let lvalue = self.build_expr(local_scope_opt.clone(), &typed_field_access.operand);
+        let lvalue = match &typed_field_access.operand.kind {
+            TypedExpressionKind::Symbol(symbol_id, ..) => {
+                let local_or_global_symbol = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)
+                    .unwrap();
+
+                if let Some(resolved_enum) = local_or_global_symbol.as_enum() {
+                    return self.build_construct_enum_variant_no_field(
+                        local_scope_opt,
+                        resolved_enum,
+                        typed_field_access.field_name.clone(),
+                    );
+                } else {
+                    self.build_lvalue_with_symbol_id(local_scope_opt.clone(), *symbol_id)
+                }
+            }
+            _ => self.build_expr(local_scope_opt.clone(), &typed_field_access.operand),
+        };
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
 
         let struct_type = match typed_field_access.object_symbol_id {
             Some(object_symbol_id) => {
                 let local_or_global_symbol = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), object_symbol_id)
                     .unwrap();
 
+                // handle union field access
+                if let Some(..) = local_or_global_symbol.as_union() {
+                    return self.build_union_field_access(local_scope_opt.clone(), typed_field_access);
+                }
+
+                // handle struct field access
                 let resolved_struct = match &local_or_global_symbol {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_struct() {
                         Some(resolved_struct) => resolved_struct,
@@ -284,7 +324,7 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    fn build_unnamed_struct_value(
+    pub(crate) fn build_unnamed_struct_value(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         unnamed_struct_value: &TypedUnnamedStructValue,
@@ -428,41 +468,54 @@ impl<'a> CodeGenBuilder<'a> {
             .build_concrete_type(local_scope_opt.clone(), array.array_type.clone())
             .into_array_type();
 
+        let required_len: usize = match array_concrete_type.capacity {
+            TypedArrayCapacity::Fixed(n) => n.try_into().unwrap(),
+            TypedArrayCapacity::Dynamic => todo!(),
+        };
+
         let mut all_const = true;
-        let elements: Vec<BasicValueEnum<'a>> = array
-            .elements
-            .iter()
-            .map(|typed_expr| {
-                let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
-                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
-                let casted_rvalue = self
-                    .build_implicit_cast(local_scope_opt.clone(), *element_type.clone(), rvalue)
-                    .as_basic_value();
-                if !self.is_basic_value_constant(casted_rvalue) {
-                    all_const = false;
-                }
-                casted_rvalue
-            })
-            .collect();
+        let mut elements: Vec<BasicValueEnum<'a>> = Vec::with_capacity(required_len);
+
+        for typed_expr in &array.elements {
+            let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
+            let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+            let casted_rvalue = self
+                .build_implicit_cast(local_scope_opt.clone(), *element_type.clone(), rvalue)
+                .as_basic_value();
+
+            if !self.is_basic_value_constant(casted_rvalue) {
+                all_const = false;
+            }
+
+            elements.push(casted_rvalue);
+        }
+
+        let element_basic_type: BasicTypeEnum<'a> = self
+            .build_concrete_type(local_scope_opt, *element_type)
+            .try_into()
+            .unwrap();
+
+        let zero_value = element_basic_type.const_zero();
+        while elements.len() < required_len {
+            elements.push(zero_value);
+            all_const = false; // not all const anymore
+        }
 
         if all_const {
             let array_value = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
-
             InternalValue::new(
                 array.array_type.clone(),
                 InternalValueKind::RValue(array_value.as_basic_value_enum()),
             )
         } else {
             let mut array_value = array_type.get_undef();
-
-            elements.iter().enumerate().for_each(|(index, element)| {
+            for (index, element) in elements.iter().enumerate() {
                 array_value = self
                     .llvmbuilder
                     .build_insert_value(array_value, *element, index.try_into().unwrap(), "insert")
                     .unwrap()
                     .into_array_value();
-            });
-
+            }
             InternalValue::new(
                 array.array_type.clone(),
                 InternalValueKind::RValue(array_value.as_basic_value_enum()),
@@ -499,16 +552,38 @@ impl<'a> CodeGenBuilder<'a> {
             .resolve_local_or_global_symbol(local_scope_opt.clone(), method_call.symbol_id)
             .unwrap();
 
-        let resolved_struct = local_or_global_symbol.as_struct().unwrap();
-        let method_symbol_id = *resolved_struct
-            .struct_sig
-            .methods
-            .get(&method_call.method_name)
-            .unwrap();
+        let (methods, module_id) = {
+            if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
+                (resolved_struct.struct_sig.methods, resolved_struct.module_id)
+            } else if let Some(resolved_enum) = &local_or_global_symbol.as_enum() {
+                let variant_opt = resolved_enum
+                    .enum_sig
+                    .variants
+                    .iter()
+                    .find(|variant| variant.get_identifier().as_string() == method_call.method_name);
+
+                if variant_opt.is_some() {
+                    return self.build_construct_enum_variant(
+                        local_scope_opt,
+                        resolved_enum.clone(),
+                        method_call.method_name.clone(),
+                        &method_call.args,
+                    );
+                } else {
+                    (resolved_enum.enum_sig.methods.clone(), resolved_enum.module_id)
+                }
+            } else if let Some(resolved_union) = local_or_global_symbol.as_union() {
+                (resolved_union.union_sig.methods, resolved_union.module_id)
+            } else {
+                unreachable!()
+            }
+        };
+
+        let method_symbol_id = *methods.get(&method_call.method_name).unwrap();
 
         let symbol_entry = self
             .resolver
-            .lookup_symbol_entry_with_id(resolved_struct.module_id, method_symbol_id)
+            .lookup_symbol_entry_with_id(module_id, method_symbol_id)
             .unwrap();
 
         let func_sig = match symbol_entry.kind {
@@ -993,8 +1068,8 @@ impl<'a> CodeGenBuilder<'a> {
 
         let get_signed = || {
             let rhs_signed = rhs_rvalue.value_type.as_basic_type().unwrap().is_signed();
-            let lhs_signed = lhs_rvalue.value_type.as_basic_type().unwrap().is_signed();
-            assert!(lhs_signed == rhs_signed);
+            // let lhs_signed = lhs_rvalue.value_type.as_basic_type().unwrap().is_signed();
+            // assert!(lhs_signed == rhs_signed);
             rhs_signed
         };
 
@@ -1178,7 +1253,9 @@ impl<'a> CodeGenBuilder<'a> {
             Some((pointer, concrete_type)) => (pointer.clone(), concrete_type.clone()),
             None => match local_ir_value.as_global_value() {
                 Some((global_value, concrete_type)) => (global_value.as_pointer_value().clone(), concrete_type.clone()),
-                None => panic!("Couldn't find any lvalue with this symbol id."),
+                None => {
+                    panic!("Couldn't find any lvalue with this symbol id.")
+                }
             },
         };
 

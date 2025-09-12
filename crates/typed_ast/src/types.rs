@@ -15,6 +15,7 @@ pub enum ConcreteType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResolvedSymbol {
     Enum(SymbolID),
+    Union(SymbolID),
     Typedef(SymbolID),
     NamedStruct(SymbolID),
     Interface(SymbolID),
@@ -27,6 +28,7 @@ pub enum ResolvedSymbol {
 impl ResolvedSymbol {
     pub fn get_symbol_id(&self) -> SymbolID {
         match self {
+            ResolvedSymbol::Union(symbol_id) => *symbol_id,
             ResolvedSymbol::Enum(symbol_id) => *symbol_id,
             ResolvedSymbol::Typedef(symbol_id) => *symbol_id,
             ResolvedSymbol::NamedStruct(symbol_id) => *symbol_id,
@@ -97,6 +99,16 @@ impl ConcreteType {
         match self {
             ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::NamedStruct(symbol_id) => Some(*symbol_id),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn as_union_symbol_id(&self) -> Option<SymbolID> {
+        match self {
+            ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
+                ResolvedSymbol::Union(symbol_id) => Some(*symbol_id),
                 _ => None,
             },
             _ => None,
