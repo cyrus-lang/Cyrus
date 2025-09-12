@@ -1,14 +1,13 @@
 import std::libc{printf}; 
 
-struct Sample {
+struct Foo {
     a: int;
 }
 
-func main() {
-    #list = Sample[3] {
-        Sample { a: 10 }
-    };
+struct Bar {
+    b: Foo;
+}
 
-    #a = list[0].a;
-    printf("value: %d\n", a);
+func main() {
+    
 }
