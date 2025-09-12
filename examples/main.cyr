@@ -10,6 +10,7 @@ enum Color {
 
 func main() {
     // #variant = Color.Red;
+    // #variant = Color.Valued;
     #variant = Color.Custom(1, 2, 3);
 
     switch (variant) {

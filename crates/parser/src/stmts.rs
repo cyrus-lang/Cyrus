@@ -1396,8 +1396,6 @@ impl Parser {
                 let case_start = self.current_token().span.start;
                 self.next_token();
 
-                let mut patterns: Vec<SwitchCasePattern> = Vec::new();
-
                 fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, ParserError> {
                     let case_pattern = if this.current_token_is(TokenKind::Dot) {
                         this.next_token();

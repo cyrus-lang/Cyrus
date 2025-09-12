@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    SwitchFallthroughIntoValuedFieldCase,
     EnumVariantArgCountMismatch {
         variant_name: String,
         expected: u32,
@@ -202,6 +203,9 @@ impl fmt::Display for AnalyzerDiagKind {
                     "Enum variant '{}' expects {} fields, but {} arguments were provided.",
                     variant_name, expected, provided
                 )
+            }
+            AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase => {
+                write!(f, "Falling through into a case with fields may cause undefined behavior.")
             }
             AnalyzerDiagKind::EnumVariantDoesNotAcceptFields { variant_name } => {
                 write!(f, "Enum variant '{}' does not accept fields.", variant_name)
