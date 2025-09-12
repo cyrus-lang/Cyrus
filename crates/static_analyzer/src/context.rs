@@ -144,7 +144,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
                 TypedStatement::Interface(typed_interface) => self.analyze_interface(typed_interface),
-                TypedStatement::Struct(typed_struct) => self.analyze_struct(typed_struct, false),
+                TypedStatement::Struct(typed_struct) => self.analyze_struct(None, typed_struct, false),
                 TypedStatement::Enum(typed_enum) => self.analyze_enum(None, typed_enum, false),
                 TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef),
                 TypedStatement::Union(typed_union) => self.analyze_union(None, typed_union, false),
@@ -202,7 +202,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::While(typed_while) => self.analyze_while_loop(Some(block_stmt.scope_id), typed_while),
                 TypedStatement::Switch(typed_switch) => self.analyze_switch(Some(block_stmt.scope_id), typed_switch),
                 TypedStatement::Struct(typed_struct) => {
-                    self.analyze_struct(typed_struct, true);
+                    self.analyze_struct(Some(block_stmt.scope_id), typed_struct, true);
                     FlowState::Reachable
                 }
                 TypedStatement::Enum(typed_enum) => {
@@ -995,13 +995,17 @@ impl<'a> AnalysisContext<'a> {
         drop(global_symbols);
     }
 
-    pub(crate) fn analyze_struct(&mut self, typed_struct: &TypedStruct, is_local: bool) {
+    pub(crate) fn analyze_struct(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_struct: &mut TypedStruct,
+        is_local: bool,
+    ) {
         self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
-        self.analyze_methods(self.module_id, &typed_struct.methods);
 
         let mut field_names: Vec<String> = Vec::new();
 
-        for field in &typed_struct.fields {
+        for field in &mut typed_struct.fields {
             if field_names.contains(&field.name) {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -1019,8 +1023,15 @@ impl<'a> AnalysisContext<'a> {
                 continue;
             }
 
+            field.ty = match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
+                Some(concrete_type) => concrete_type,
+                None => continue,
+            };
+
             field_names.push(field.name.clone());
         }
+
+        self.analyze_methods(self.module_id, &typed_struct.methods);
     }
 
     pub(crate) fn analyze_union(
