@@ -307,7 +307,11 @@ impl<'a> AnalysisContext<'a> {
             .unwrap();
         let mut resolved_enum = local_or_global_symbol.as_enum().unwrap();
 
-        for case in &mut typed_switch.cases {
+        // Here instead of a simple for, we need peekable iterator to check next case
+
+        let mut iter = typed_switch.cases.iter_mut().peekable();
+
+        while let Some(case) = iter.next() {
             let identifier = match &case.pattern {
                 TypedSwitchCasePattern::Identifier(identifier, _) => identifier,
                 TypedSwitchCasePattern::EnumVariant(identifier, valued_fields, loc) => {
@@ -440,6 +444,23 @@ impl<'a> AnalysisContext<'a> {
 
             let body_flow_state = self.analyze_block_statement(&mut case.body);
             branch_states.push(body_flow_state);
+
+            if body_flow_state == FlowState::Reachable {
+                if let Some(next_case) = iter.next() {
+                    if let TypedSwitchCasePattern::EnumVariant(..) = &next_case.pattern {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase,
+                            location: Some(DiagLoc::new(
+                                self.resolver.get_current_module_file_path(),
+                                next_case.loc.clone(),
+                                0,
+                            )),
+                            hint: None,
+                        });
+                    }
+                }
+            }
         }
 
         if let Some(default_case) = &mut typed_switch.default_case {
