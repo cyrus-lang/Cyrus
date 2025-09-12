@@ -2125,7 +2125,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let typed_array_type = match &typed_array.array_type {
+        let typed_array_type = match typed_array.array_type.clone() {
             ConcreteType::Array(typed_array_type) => typed_array_type,
             _ => unreachable!(),
         };
@@ -2134,28 +2134,40 @@ impl<'a> AnalysisContext<'a> {
             if typed_array.elements.len() != fixed_capacity.try_into().unwrap() {}
         }
 
-        for (element_index, element) in typed_array.elements.iter_mut().enumerate() {
-            let element_type =
-                match self.analyze_typed_expr_type(scope_id_opt, element, Some(*typed_array_type.element_type.clone()))
-                {
-                    Some(concrete_type) => concrete_type,
-                    None => continue,
-                };
+        typed_array.array_type =
+            match self.normalize_type(scope_id_opt, typed_array.array_type.clone(), typed_array.loc.clone()) {
+                Some(concrete_type) => concrete_type,
+                None => return None,
+            };
 
-            if !self.check_type_mismatch(
+        for (argument_idx, argument) in typed_array.elements.iter_mut().enumerate() {
+            let argument_type = match self.analyze_typed_expr_type(
                 scope_id_opt,
-                element_type.clone(),
-                *typed_array_type.element_type.clone(),
-                element.loc.clone(),
+                argument,
+                Some(*typed_array_type.element_type.clone()),
             ) {
-                let element_type = format_concrete_type(element_type, &formatter_closure);
+                Some(concrete_type) => concrete_type,
+                None => continue,
+            };
+
+            let element_type = match self.normalize_type(
+                scope_id_opt,
+                *typed_array_type.element_type.clone(),
+                argument.loc.clone(),
+            ) {
+                Some(concrete_type) => concrete_type,
+                None => continue,
+            };
+
+            if !self.check_type_mismatch(scope_id_opt, argument_type.clone(), element_type, argument.loc.clone()) {
+                let element_type = format_concrete_type(argument_type, &formatter_closure);
                 let expected_type = format_concrete_type(*typed_array_type.element_type.clone(), &formatter_closure);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::ArrayElementTypeMismatch {
                         element_type,
-                        element_index: element_index.try_into().unwrap(),
+                        element_index: argument_idx.try_into().unwrap(),
                         expected_type,
                     },
                     location: Some(DiagLoc::new(

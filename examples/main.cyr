@@ -1,33 +1,14 @@
 import std::libc{printf}; 
 
-enum Color {
-    Red,
-    Green,
-    Black,
-    Valued = "my valued color!",
-    Custom(int, int, int)
+struct Sample {
+    a: int;
 }
 
 func main() {
-    // #variant = Color.Red;
-    // #variant = Color.Valued;
-    #variant = Color.Custom(1, 2, 3);
+    #list = Sample[3] {
+        Sample { a: 10 }
+    };
 
-    switch (variant) {
-        case .Red:
-            printf("Red\n");
-            break;
-        case .Custom(a, b, c):
-            printf("Color(%d, %d, %d)\n", a, b, c);
-            break;
-        case .Black: 
-            printf("Black\n");
-            break;
-        case .Valued: 
-            printf("Valued\n");
-            break;
-        default:     
-            printf("Unknown\n");
-            break;
-    }
+    #a = list[0].a;
+    printf("value: %d\n", a);
 }

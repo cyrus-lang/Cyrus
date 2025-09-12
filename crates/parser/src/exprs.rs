@@ -14,16 +14,24 @@ use diagcentral::DiagLoc;
 impl Parser {
     pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParserError> {
         let mut left_start = self.current_token().span.start;
-        let mut left = self.parse_prefix_expression()?;
 
-        while self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
-            self.next_token(); // consume the left expression
-            left = self.parse_field_access(left)?;
+        if self.is_array_constructor_start() {
+            let type_specifier = self.parse_type_specifier()?;
+            self.next_token();
+            let expr = self.parse_array(type_specifier)?;
+            return Ok((expr, Span::new(left_start, self.current_token().span.end)));
         }
+
+        let mut left = self.parse_prefix_expression()?;
 
         while self.peek_token_is(TokenKind::LeftBracket) {
             self.next_token();
             left = self.parse_array_index(left)?;
+        }
+
+        while self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
+            self.next_token(); // consume the left expression
+            left = self.parse_field_access(left)?;
         }
 
         if self.peek_token_is(TokenKind::Assign) {
@@ -238,7 +246,7 @@ impl Parser {
                 expr
             }
             _ => {
-                if self.matches_type_token(self.current_token().kind) {
+                if self.is_array_constructor_start() {
                     let type_specifier = self.parse_type_specifier()?;
 
                     if self.peek_token_is(TokenKind::LeftBrace) {
@@ -825,9 +833,11 @@ impl Parser {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
+        let index = Box::new(self.parse_single_array_index()?);
+
         let mut base_index = Expression::ArrayIndex(ArrayIndex {
             operand: Box::new(expr),
-            index: Box::new(self.parse_single_array_index()?),
+            index,
             span: Span::new(start, self.current_token().span.end),
             loc: loc.clone(),
         });
