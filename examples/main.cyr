@@ -1,9 +1,11 @@
-MAX_SIZE: const int = 10;
+MAX_SIZE: const int = 4;
 
 struct Bar {
-    a: int[MAX_SIZE];
+    a: int[4];
 }
 
 func main() {
-    
+  #instance = Bar {
+    a: int[3] {},
+  };
 }

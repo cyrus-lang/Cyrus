@@ -233,8 +233,10 @@ impl<'a> CodeGenBuilder<'a> {
 
                 let array_capacity = match typed_array_type.capacity {
                     TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
-                        TypedArrayFixedCapacityValue::Expr(..) => {
-                            unreachable!()
+                        TypedArrayFixedCapacityValue::Expr(typed_expr) => {
+                            let internal_value = self.build_expr(local_scope_opt, &typed_expr);
+                            let int_value = internal_value.as_basic_value().into_int_value();
+                            int_value.get_zero_extended_constant().unwrap() as usize
                         }
                         TypedArrayFixedCapacityValue::Value(value) => value,
                     },

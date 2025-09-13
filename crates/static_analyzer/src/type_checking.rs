@@ -15,8 +15,7 @@ use typed_ast::{
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
-        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedUnnamedStructType,
-        TypedUnnamedStructTypeField,
+        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
     *,
 };
@@ -401,16 +400,6 @@ impl<'a> AnalysisContext<'a> {
         typed_expr: &mut TypedExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        self.analyze_typed_expr_type_internal(scope_id_opt, typed_expr, expected_type, false)
-    }
-
-    pub(crate) fn analyze_typed_expr_type_internal(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        typed_expr: &mut TypedExpression,
-        expected_type: Option<ConcreteType>,
-        resolve_global_var_as_raw_value: bool,
-    ) -> Option<ConcreteType> {
         // lowering
         match &mut typed_expr.kind {
             TypedExpressionKind::Assignment(typed_assignment) => {
@@ -443,23 +432,14 @@ impl<'a> AnalysisContext<'a> {
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
                         if let Some(resolved_global_var) = symbol_entry.as_global_var() {
-                            // ANCHOR
-                            // ANCHOR
-                            // ANCHOR
-                            // ANCHOR
-                            // ANCHOR
-                            dbg!(resolve_global_var_as_raw_value);
+                            if let Some(mut typed_expr) = resolved_global_var.global_var_sig.rhs.clone() {
+                                self.analyze_typed_expr_type(scope_id_opt, &mut typed_expr, expected_type);
 
-                            if resolve_global_var_as_raw_value
-                                && resolved_global_var.global_var_sig.ty.clone().unwrap().is_const()
-                            {
-                                if let Some(typed_expr) = &resolved_global_var.global_var_sig.rhs {
-                                    dbg!(typed_expr.clone());
-                                    todo!();
-                                } else {
-                                    // ERROR
-                                    todo!();
-                                }
+                                update_global_symbol_type!(self, resolved_global_var.module_id, resolved_global_var.symbol_id,
+                                    SymbolEntryKind::GlobalVar(global_var) => global_var, {
+                                        global_var.global_var_sig.rhs = Some(typed_expr);
+                                    }
+                                );
                             }
                         }
 
@@ -2162,26 +2142,6 @@ impl<'a> AnalysisContext<'a> {
                 Some(concrete_type) => concrete_type,
                 None => return None,
             };
-
-        match &mut typed_array.array_type {
-            ConcreteType::Array(typed_array_type) => match &mut typed_array_type.capacity {
-                TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
-                    TypedArrayFixedCapacityValue::Expr(typed_expr) => {
-                        todo!();
-                        // self.analyze_typed_expr_type(
-                        //     scope_id_opt,
-                        //     typed_expr,
-                        //     Some(ConcreteType::BasicType(BasicConcreteType::Int)),
-                        // );
-                    }
-                    TypedArrayFixedCapacityValue::Value(value) => value,
-                },
-                TypedArrayCapacity::Dynamic => {
-                    todo!();
-                }
-            },
-            _ => unreachable!(),
-        };
 
         for (argument_idx, argument) in typed_array.elements.iter_mut().enumerate() {
             let argument_type = match self.analyze_typed_expr_type(
