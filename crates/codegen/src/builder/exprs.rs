@@ -18,7 +18,7 @@ use typed_ast::{
     TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
     TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit, TypedUnaryExpression,
     TypedUnnamedStructValue,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -469,7 +469,18 @@ impl<'a> CodeGenBuilder<'a> {
             .into_array_type();
 
         let required_len: usize = match &array_concrete_type.capacity {
-            TypedArrayCapacity::Fixed(capacity_value) => capacity_value.as_value().unwrap(),
+            TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
+                TypedArrayFixedCapacityValue::Expr(typed_expr) => {
+                    let internal_value = self.build_expr(local_scope_opt.clone(), typed_expr);
+                    let int_value = internal_value
+                        .as_basic_value()
+                        .into_int_value()
+                        .get_zero_extended_constant()
+                        .unwrap();
+                    int_value as usize
+                }
+                TypedArrayFixedCapacityValue::Value(value) => *value,
+            },
             TypedArrayCapacity::Dynamic => todo!(),
         };
 
@@ -1240,6 +1251,20 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> InternalValue<'a> {
+        let local_or_global_value = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+            .unwrap();
+
+        if let LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) = &local_or_global_value {
+            if let Some(resolved_global_var) = symbol_entry.as_global_var() {
+                return self.build_expr(
+                    local_scope_opt,
+                    &resolved_global_var.global_var_sig.rhs.clone().unwrap(),
+                );
+            }
+        }
+
         let irreg = self.irreg.borrow();
         let local_ir_value_opt = irreg.get(&symbol_id).cloned();
         drop(irreg);

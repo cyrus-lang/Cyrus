@@ -209,11 +209,11 @@ impl<'a> AnalysisContext<'a> {
                     self.analyze_enum(Some(block_stmt.scope_id), typed_enum, true);
                     FlowState::Reachable
                 }
-                TypedStatement::Expression(typed_expression) => {
+                TypedStatement::Expression(typed_expr) => {
                     self.analyze_typed_expr_type(
                         Some(block_stmt.scope_id),
-                        typed_expression,
-                        typed_expression.concrete_type.clone(),
+                        typed_expr,
+                        typed_expr.concrete_type.clone(),
                     );
                     FlowState::Reachable
                 }
@@ -1022,7 +1022,7 @@ impl<'a> AnalysisContext<'a> {
                 });
                 continue;
             }
-            
+
             field.ty = match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
                 Some(concrete_type) => concrete_type,
                 None => continue,
