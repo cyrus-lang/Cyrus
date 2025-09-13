@@ -11,7 +11,10 @@ use inkwell::{
 use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntryKind};
 use typed_ast::{
     SymbolID,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType},
+    types::{
+        BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        TypedUnnamedStructType,
+    },
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -190,6 +193,7 @@ impl<'a> CodeGenBuilder<'a> {
 
                         match local_ir_value {
                             LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
+                            LocalIRValue::Enum((struct_type, _)) => AnyTypeEnum::StructType(struct_type.clone()),
                             _ => unreachable!(),
                         }
                     }
@@ -223,15 +227,21 @@ impl<'a> CodeGenBuilder<'a> {
             ConcreteType::BasicType(basic_concrete_type) => self.build_basic_concrete_type(basic_concrete_type),
             ConcreteType::Array(typed_array_type) => {
                 let element_type: BasicTypeEnum = self
-                    .build_concrete_type(local_scope_opt, *typed_array_type.element_type)
+                    .build_concrete_type(local_scope_opt.clone(), *typed_array_type.element_type)
                     .try_into()
                     .unwrap();
 
                 let array_capacity = match typed_array_type.capacity {
-                    TypedArrayCapacity::Fixed(fixed) => fixed,
+                    TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
+                        TypedArrayFixedCapacityValue::Expr(..) => {
+                            unreachable!()
+                        }
+                        TypedArrayFixedCapacityValue::Value(value) => value,
+                    },
                     TypedArrayCapacity::Dynamic => todo!(),
                 };
-                AnyTypeEnum::ArrayType(element_type.array_type(array_capacity))
+
+                AnyTypeEnum::ArrayType(element_type.array_type(array_capacity.try_into().unwrap()))
             }
             ConcreteType::Const(concrete_type) => self.build_concrete_type(local_scope_opt, *concrete_type),
             ConcreteType::Pointer(_) => {

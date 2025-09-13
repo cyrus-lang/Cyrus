@@ -27,14 +27,14 @@ pub struct TypedProgramTree {
 
 // Expressions
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedExpression {
     pub kind: TypedExpressionKind,
     pub concrete_type: Option<ConcreteType>,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypedExpressionKind {
     Symbol(SymbolID, Location),
     Literal(TypedLiteral),
@@ -56,13 +56,13 @@ pub enum TypedExpressionKind {
     ConcreteType(ConcreteType),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedSizeOfExpression {
     pub expr: Box<TypedExpression>,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedLiteral {
     pub ty: Option<ConcreteType>,
     pub kind: LiteralKind,
@@ -151,21 +151,21 @@ pub struct TypedIdentifier {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedPrefixExpression {
     pub op: PrefixOperator,
     pub operand: Box<TypedExpression>,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnaryExpression {
     pub operand: Box<TypedExpression>,
     pub op: UnaryOperator,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedInfixExpression {
     pub op: InfixOperator,
     pub lhs: Box<TypedExpression>,
@@ -173,7 +173,7 @@ pub struct TypedInfixExpression {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedAssignment {
     pub lhs: Box<TypedExpression>,
     pub rhs: Box<TypedExpression>,
@@ -181,61 +181,61 @@ pub struct TypedAssignment {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedCast {
     pub operand: Box<TypedExpression>,
     pub target_type: ConcreteType,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedArray {
     pub array_type: ConcreteType,
     pub elements: Vec<TypedExpression>,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedArrayIndex {
     pub operand: Box<TypedExpression>,
     pub index: Box<TypedExpression>,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedAddressOf {
     pub operand: Box<TypedExpression>,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedDereference {
     pub operand: Box<TypedExpression>,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructInit {
     pub symbol_id: SymbolID,
     pub fields: Vec<TypedStructFieldInit>,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructFieldInit {
     pub name: String,
     pub value: TypedExpression,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncCall {
     pub symbol_id: SymbolID,
     pub args: Vec<TypedExpression>,
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedFieldAccess {
     pub operand: Box<TypedExpression>,
     pub field_name: String,
@@ -246,7 +246,7 @@ pub struct TypedFieldAccess {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedMethodCall {
     pub symbol_id: SymbolID,
     pub operand: Box<TypedExpression>,
@@ -256,7 +256,7 @@ pub struct TypedMethodCall {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValue {
     pub fields: Vec<TypedUnnamedStructValueField>,
     pub unnamed_struct_type: Option<TypedUnnamedStructType>,
@@ -265,7 +265,7 @@ pub struct TypedUnnamedStructValue {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnnamedStructValueField {
     pub field_name: String,
     pub field_type: Option<ConcreteType>,

@@ -2,8 +2,8 @@ use crate::scope::LocalOrGlobalSymbol;
 use ast::{AccessSpecifier, token::Location};
 use std::collections::HashMap;
 use typed_ast::{
-    ModuleID, SymbolID, TypedEnumVariant, TypedFuncDecl, TypedFuncParams, TypedStructField, TypedUnionField,
-    types::ConcreteType,
+    ModuleID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncDecl, TypedFuncParams, TypedStructField,
+    TypedUnionField, types::ConcreteType,
 };
 
 #[derive(Debug, Clone)]
@@ -67,6 +67,7 @@ pub struct GlobalVarSig {
     pub module_id: ModuleID,
     pub name: String,
     pub ty: Option<ConcreteType>,
+    pub rhs: Option<TypedExpression>,
     pub vis: AccessSpecifier,
     pub loc: Location,
 }

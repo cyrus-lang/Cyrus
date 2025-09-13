@@ -21,14 +21,14 @@ pub enum InfixOperator {
     ShiftLeft,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PrefixOperator {
     Bang,
     Minus,
     BitwiseNot
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOperator {
     PreIncrement,
     PreDecrement,

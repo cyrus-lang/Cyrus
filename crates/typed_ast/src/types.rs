@@ -1,4 +1,4 @@
-use crate::SymbolID;
+use crate::{SymbolID, TypedExpression};
 use ast::token::{Location, TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -310,8 +310,30 @@ impl PartialEq for TypedArrayType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedArrayCapacity {
-    Fixed(u32),
+    Fixed(TypedArrayFixedCapacityValue),
     Dynamic,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedArrayFixedCapacityValue {
+    Expr(Box<TypedExpression>),
+    Value(usize),
+}
+
+impl TypedArrayFixedCapacityValue {
+    pub fn as_value(&self) -> Option<usize> {
+        match self {
+            TypedArrayFixedCapacityValue::Expr(..) => None,
+            TypedArrayFixedCapacityValue::Value(value) => Some(*value),
+        }
+    }
+
+    pub fn as_expr(&self) -> Option<Box<TypedExpression>> {
+        match self {
+            TypedArrayFixedCapacityValue::Expr(typed_expr) => Some(typed_expr.clone()),
+            TypedArrayFixedCapacityValue::Value(..) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

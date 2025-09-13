@@ -306,7 +306,7 @@ pub struct ArrayTypeSpecifier {
 
 #[derive(Debug, Clone)]
 pub enum ArrayCapacity {
-    Fixed(TokenKind),
+    Fixed(Box<Expression>),
     Dynamic,
 }
 

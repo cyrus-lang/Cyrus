@@ -4,7 +4,7 @@ use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID,
-    types::{ConcreteType, ResolvedSymbol},
+    types::{ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -44,6 +44,7 @@ impl<'a> AnalysisContext<'a> {
                         }
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
+                        dbg!(symbol_entry.clone());
                         self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
                     }
                 }
@@ -106,7 +107,6 @@ impl<'a> AnalysisContext<'a> {
                 self.report_non_type_symbol(symbol_id, loc);
                 None
             }
-
             ConcreteType::ResolvedSymbol(ResolvedSymbol::GlobalVar(symbol_id)) => {
                 let symbol_entry = self.resolver.resolve_global_symbol(symbol_id).unwrap();
                 let resolved_global_var_opt = symbol_entry.as_global_var();
@@ -119,7 +119,6 @@ impl<'a> AnalysisContext<'a> {
                 self.report_non_type_symbol(symbol_id, loc);
                 None
             }
-
             ConcreteType::ResolvedSymbol(ResolvedSymbol::Func(..))
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Method(..)) => {
                 // Convert function symbol to its function TYPE (signature) and normalize it.
@@ -147,6 +146,17 @@ impl<'a> AnalysisContext<'a> {
             }
             ConcreteType::Array(arr) => {
                 let mut arr = arr;
+
+                match &arr.capacity {
+                    TypedArrayCapacity::Fixed(capacity_value) => match capacity_value.clone() {
+                        TypedArrayFixedCapacityValue::Expr(mut typed_expr) => {
+                            self.analyze_typed_expr_type_internal(scope_id_opt, &mut typed_expr, None, true);
+                        }
+                        TypedArrayFixedCapacityValue::Value(_) => {}
+                    },
+                    TypedArrayCapacity::Dynamic => {}
+                }
+
                 arr.element_type = Box::new(self.normalize_type(scope_id_opt, *arr.element_type, loc.clone())?);
                 Some(ConcreteType::Array(arr))
             }

@@ -1022,7 +1022,7 @@ impl<'a> AnalysisContext<'a> {
                 });
                 continue;
             }
-
+            
             field.ty = match self.normalize_type(scope_id_opt, field.ty.clone(), field.loc.clone()) {
                 Some(concrete_type) => concrete_type,
                 None => continue,

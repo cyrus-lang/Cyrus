@@ -947,15 +947,16 @@ impl Parser {
                 }
 
                 if let TypeSpecifier::Array(inner_type_specifier, ..) = data_type.clone() {
+                    let data_type = TypeSpecifier::Array(ArrayTypeSpecifier {
+                        size: ArrayCapacity::Fixed(Box::new(Expression::Literal(Literal {
+                            kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap(), None),
+                            span: Span::new(untyped_array_start, self.current_token().span.end),
+                            loc: loc.clone(),
+                        }))),
+                        element_type: inner_type_specifier.element_type,
+                    });
                     elements.push(Expression::Array(Array {
-                        data_type: TypeSpecifier::Array(ArrayTypeSpecifier {
-                            size: ArrayCapacity::Fixed(TokenKind::Literal(Literal {
-                                kind: LiteralKind::Integer(untyped_array.len().try_into().unwrap(), None),
-                                span: Span::new(untyped_array_start, self.current_token().span.end),
-                                loc: loc.clone(),
-                            })),
-                            element_type: inner_type_specifier.element_type,
-                        }),
+                        data_type,
                         elements: untyped_array,
                         span: Span::new(untyped_array_start, self.current_token().span.end),
                         loc: loc.clone(),
