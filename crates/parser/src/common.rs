@@ -167,9 +167,9 @@ impl Parser {
         if self.current_token_is(TokenKind::RightBracket) {
             return Ok(ArrayCapacity::Dynamic);
         }
-        let capacity = self.current_token().kind;
+        let capacity = self.parse_expression(Precedence::Lowest)?.0;
         self.expect_peek(TokenKind::RightBracket)?;
-        Ok(ArrayCapacity::Fixed(capacity))
+        Ok(ArrayCapacity::Fixed(Box::new(capacity)))
     }
 
     pub fn parse_single_array_index(&mut self) -> Result<Expression, ParserError> {

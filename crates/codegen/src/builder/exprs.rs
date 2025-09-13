@@ -207,8 +207,8 @@ impl<'a> CodeGenBuilder<'a> {
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &array_index.operand);
         let array_type = lvalue.value_type.as_array_type().unwrap();
-        let array_capacity = match array_type.capacity {
-            TypedArrayCapacity::Fixed(fixed) => fixed,
+        let array_capacity = match &array_type.capacity {
+            TypedArrayCapacity::Fixed(capacity_value) => capacity_value.as_value().unwrap(),
             TypedArrayCapacity::Dynamic => todo!(),
         };
 
@@ -220,7 +220,7 @@ impl<'a> CodeGenBuilder<'a> {
             lvalue.as_basic_value().into_pointer_value(),
             *array_type.element_type.clone(),
             index_rvalue,
-            array_capacity,
+            array_capacity.try_into().unwrap(),
         )
     }
 
@@ -468,8 +468,8 @@ impl<'a> CodeGenBuilder<'a> {
             .build_concrete_type(local_scope_opt.clone(), array.array_type.clone())
             .into_array_type();
 
-        let required_len: usize = match array_concrete_type.capacity {
-            TypedArrayCapacity::Fixed(n) => n.try_into().unwrap(),
+        let required_len: usize = match &array_concrete_type.capacity {
+            TypedArrayCapacity::Fixed(capacity_value) => capacity_value.as_value().unwrap(),
             TypedArrayCapacity::Dynamic => todo!(),
         };
 

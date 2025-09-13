@@ -1,11 +1,7 @@
-import std::libc{printf}; 
-
-struct Foo {
-    a: int;
-}
+MAX_SIZE: const int = 10;
 
 struct Bar {
-    b: Foo;
+    a: int[MAX_SIZE];
 }
 
 func main() {

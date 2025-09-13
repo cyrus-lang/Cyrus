@@ -15,7 +15,8 @@ use typed_ast::{
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
-        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType, TypedUnnamedStructTypeField,
+        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedUnnamedStructType,
+        TypedUnnamedStructTypeField,
     },
     *,
 };
@@ -400,6 +401,16 @@ impl<'a> AnalysisContext<'a> {
         typed_expr: &mut TypedExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
+        self.analyze_typed_expr_type_internal(scope_id_opt, typed_expr, expected_type, false)
+    }
+
+    pub(crate) fn analyze_typed_expr_type_internal(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_expr: &mut TypedExpression,
+        expected_type: Option<ConcreteType>,
+        resolve_global_var_as_raw_value: bool,
+    ) -> Option<ConcreteType> {
         // lowering
         match &mut typed_expr.kind {
             TypedExpressionKind::Assignment(typed_assignment) => {
@@ -431,6 +442,27 @@ impl<'a> AnalysisContext<'a> {
                         self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
+                        if let Some(resolved_global_var) = symbol_entry.as_global_var() {
+                            // ANCHOR
+                            // ANCHOR
+                            // ANCHOR
+                            // ANCHOR
+                            // ANCHOR
+                            dbg!(resolve_global_var_as_raw_value);
+
+                            if resolve_global_var_as_raw_value
+                                && resolved_global_var.global_var_sig.ty.clone().unwrap().is_const()
+                            {
+                                if let Some(typed_expr) = &resolved_global_var.global_var_sig.rhs {
+                                    dbg!(typed_expr.clone());
+                                    todo!();
+                                } else {
+                                    // ERROR
+                                    todo!();
+                                }
+                            }
+                        }
+
                         self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
                     }
                 }
@@ -2125,26 +2157,37 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
-        let typed_array_type = match typed_array.array_type.clone() {
-            ConcreteType::Array(typed_array_type) => typed_array_type,
-            _ => unreachable!(),
-        };
-
-        if let TypedArrayCapacity::Fixed(fixed_capacity) = typed_array_type.capacity {
-            if typed_array.elements.len() != fixed_capacity.try_into().unwrap() {}
-        }
-
         typed_array.array_type =
             match self.normalize_type(scope_id_opt, typed_array.array_type.clone(), typed_array.loc.clone()) {
                 Some(concrete_type) => concrete_type,
                 None => return None,
             };
 
+        match &mut typed_array.array_type {
+            ConcreteType::Array(typed_array_type) => match &mut typed_array_type.capacity {
+                TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
+                    TypedArrayFixedCapacityValue::Expr(typed_expr) => {
+                        todo!();
+                        // self.analyze_typed_expr_type(
+                        //     scope_id_opt,
+                        //     typed_expr,
+                        //     Some(ConcreteType::BasicType(BasicConcreteType::Int)),
+                        // );
+                    }
+                    TypedArrayFixedCapacityValue::Value(value) => value,
+                },
+                TypedArrayCapacity::Dynamic => {
+                    todo!();
+                }
+            },
+            _ => unreachable!(),
+        };
+
         for (argument_idx, argument) in typed_array.elements.iter_mut().enumerate() {
             let argument_type = match self.analyze_typed_expr_type(
                 scope_id_opt,
                 argument,
-                Some(*typed_array_type.element_type.clone()),
+                Some(*typed_array.array_type.as_array_type().unwrap().element_type.clone()),
             ) {
                 Some(concrete_type) => concrete_type,
                 None => continue,
@@ -2152,7 +2195,7 @@ impl<'a> AnalysisContext<'a> {
 
             let element_type = match self.normalize_type(
                 scope_id_opt,
-                *typed_array_type.element_type.clone(),
+                *typed_array.array_type.as_array_type().unwrap().element_type.clone(),
                 argument.loc.clone(),
             ) {
                 Some(concrete_type) => concrete_type,
@@ -2161,7 +2204,10 @@ impl<'a> AnalysisContext<'a> {
 
             if !self.check_type_mismatch(scope_id_opt, argument_type.clone(), element_type, argument.loc.clone()) {
                 let element_type = format_concrete_type(argument_type, &formatter_closure);
-                let expected_type = format_concrete_type(*typed_array_type.element_type.clone(), &formatter_closure);
+                let expected_type = format_concrete_type(
+                    *typed_array.array_type.as_array_type().unwrap().element_type.clone(),
+                    &formatter_closure,
+                );
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -2180,7 +2226,9 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        Some(ConcreteType::Array(typed_array_type.clone()))
+        Some(ConcreteType::Array(
+            typed_array.array_type.as_array_type().unwrap().clone(),
+        ))
     }
 
     fn analyze_cast_expr_type(&mut self, scope_id_opt: Option<ScopeID>, cast: &mut TypedCast) -> Option<ConcreteType> {

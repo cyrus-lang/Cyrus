@@ -23,8 +23,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::types::{
-    BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayType, TypedUnnamedStructType,
-    TypedUnnamedStructTypeField,
+    BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+    TypedUnnamedStructType, TypedUnnamedStructTypeField,
 };
 use typed_ast::{SymbolID, *};
 
@@ -409,6 +409,7 @@ impl Resolver {
 
     fn resolve_type(
         &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
         module_id: ModuleID,
         type_specifier: TypeSpecifier,
         loc: Location,
@@ -422,50 +423,38 @@ impl Resolver {
                 }),
             },
             TypeSpecifier::Const(type_specifier) => Ok(ConcreteType::Const(Box::new(self.resolve_type(
+                local_scope_opt,
                 module_id,
                 *type_specifier,
                 loc.clone(),
                 span_end,
             )?))),
             TypeSpecifier::Dereference(type_specifier) => Ok(ConcreteType::Pointer(Box::new(self.resolve_type(
+                local_scope_opt,
                 module_id,
                 *type_specifier,
                 loc.clone(),
                 span_end,
             )?))),
             TypeSpecifier::Array(array_type_specifier) => Ok({
-                let element_type =
-                    match self.resolve_type(module_id, *array_type_specifier.element_type, loc.clone(), span_end) {
-                        Some(concrete_type) => concrete_type,
-                        None => return None,
-                    };
+                let element_type = match self.resolve_type(
+                    local_scope_opt.clone(),
+                    module_id,
+                    *array_type_specifier.element_type,
+                    loc.clone(),
+                    span_end,
+                ) {
+                    Some(concrete_type) => concrete_type,
+                    None => return None,
+                };
 
                 let capacity = match &array_type_specifier.size {
-                    ArrayCapacity::Fixed(token_kind) => {
-                        let fixed_capacity = match match token_kind {
-                            TokenKind::Literal(literal) => match &literal.kind {
-                                LiteralKind::Integer(integer_literal, _) => Some(integer_literal),
-                                _ => None,
-                            },
-                            _ => None,
-                        } {
-                            Some(const_int) => const_int,
-                            None => {
-                                self.reporter.report(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: ResolverDiagKind::InvalidArrayCapacity,
-                                    location: Some(DiagLoc::new(
-                                        self.get_current_module_file_path(),
-                                        loc.clone(),
-                                        span_end,
-                                    )),
-                                    hint: None,
-                                });
-                                return None;
-                            }
+                    ArrayCapacity::Fixed(expr) => {
+                        let typed_expr = match self.resolve_expr(module_id, local_scope_opt, expr) {
+                            Some(typed_expr) => typed_expr,
+                            None => return None,
                         };
-
-                        TypedArrayCapacity::Fixed((*fixed_capacity).try_into().unwrap())
+                        TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(Box::new(typed_expr)))
                     }
                     ArrayCapacity::Dynamic => TypedArrayCapacity::Dynamic,
                 };
@@ -480,7 +469,13 @@ impl Resolver {
                 let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
 
                 for field in &unnamed_struct_type.fields {
-                    match self.resolve_type(module_id, field.field_type.clone(), field.loc.clone(), field.span.end) {
+                    match self.resolve_type(
+                        local_scope_opt.clone(),
+                        module_id,
+                        field.field_type.clone(),
+                        field.loc.clone(),
+                        field.span.end,
+                    ) {
                         Some(concrete_type) => {
                             fields.push(TypedUnnamedStructTypeField {
                                 field_name: field.field_name.name.clone(),
@@ -886,7 +881,13 @@ impl Resolver {
         let mut typed_union_fields: Vec<TypedUnionField> = Vec::new();
 
         for field in &union_decl.fields {
-            match self.resolve_type(module_id, field.ty.clone(), field.loc.clone(), field.span.end) {
+            match self.resolve_type(
+                local_scope_opt.clone(),
+                module_id,
+                field.ty.clone(),
+                field.loc.clone(),
+                field.span.end,
+            ) {
                 Some(concrete_type) => {
                     typed_union_fields.push(TypedUnionField {
                         name: field.identifier.name.clone(),
@@ -963,6 +964,7 @@ impl Resolver {
                     let mut fields: Vec<TypedEnumValuedField> = Vec::new();
                     for valued_field in enum_valued_fields {
                         let field_type = match self.resolve_type(
+                            local_scope_opt.clone(),
                             module_id,
                             valued_field.field_type.clone(),
                             valued_field.loc.clone(),
@@ -1044,6 +1046,7 @@ impl Resolver {
         let concrete_type = {
             if let Some(type_specifier) = &global_var.type_specifier {
                 match self.resolve_type(
+                    None,
                     module_id,
                     type_specifier.clone(),
                     global_var.loc.clone(),
@@ -1080,6 +1083,7 @@ impl Resolver {
                     module_id,
                     name: global_var.identifier.name.clone(),
                     ty: concrete_type.clone(),
+                    rhs: typed_expr.clone(),
                     vis: global_var.vis.clone(),
                     loc: global_var.loc.clone(),
                 },
@@ -1287,7 +1291,13 @@ impl Resolver {
         let mut typed_struct_fields: Vec<TypedStructField> = Vec::new();
 
         for field in &struct_decl.fields {
-            match self.resolve_type(module_id, field.ty.clone(), field.loc.clone(), field.span.end) {
+            match self.resolve_type(
+                local_scope_opt.clone(),
+                module_id,
+                field.ty.clone(),
+                field.loc.clone(),
+                field.span.end,
+            ) {
                 Some(concrete_type) => {
                     typed_struct_fields.push(TypedStructField {
                         name: field.identifier.name.clone(),
@@ -1411,6 +1421,7 @@ impl Resolver {
         }));
 
         let return_type = match self.resolve_type(
+            local_scope_opt.clone(),
             module_id,
             return_type_specifier,
             func_decl.loc.clone(),
@@ -1428,6 +1439,7 @@ impl Resolver {
                     let param_type = match &func_param.ty {
                         Some(type_specifier) => {
                             match self.resolve_type(
+                                local_scope_opt.clone(),
                                 module_id,
                                 type_specifier.clone(),
                                 func_param.loc.clone(),
@@ -1498,6 +1510,7 @@ impl Resolver {
                     FuncVariadicParams::UntypedCStyle => Some(TypedFuncVariadicParams::UntypedCStyle),
                     FuncVariadicParams::Typed(identifier, type_specifier) => {
                         let variadic_type = match self.resolve_type(
+                            local_scope_opt.clone(),
                             module_id,
                             type_specifier.clone(),
                             identifier.loc.clone(),
@@ -1650,6 +1663,7 @@ impl Resolver {
         match self.lookup_symbol_id(module_id, &typedef.identifier.name.clone()) {
             Some(symbol_id) => {
                 match self.resolve_type(
+                    local_scope_opt.clone(),
                     module_id,
                     typedef.type_specifier.clone(),
                     typedef.loc.clone(),
@@ -1713,11 +1727,11 @@ impl Resolver {
     fn declare_local_variable(
         &mut self,
         module_id: ModuleID,
-        scope: LocalScopeRef,
+        local_scope_rc: LocalScopeRef,
         variable: &Variable,
     ) -> Option<TypedVariable> {
-        let scope_borrowed = scope.borrow();
-        if scope_borrowed.resolve(&variable.identifier.name.clone()).is_some() {
+        let local_scope = local_scope_rc.borrow();
+        if local_scope.resolve(&variable.identifier.name.clone()).is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: ResolverDiagKind::DuplicateSymbolInThisScope {
@@ -1731,11 +1745,12 @@ impl Resolver {
                 hint: None,
             });
         }
-        drop(scope_borrowed);
+        drop(local_scope);
 
         let var_type = {
             if let Some(var_type_specifier) = &variable.ty {
                 match self.resolve_type(
+                    Some(local_scope_rc.clone()),
                     module_id,
                     var_type_specifier.clone(),
                     variable.loc.clone(),
@@ -1751,7 +1766,7 @@ impl Resolver {
 
         let typed_rhs = {
             if let Some(rhs) = &variable.rhs {
-                match self.resolve_expr(module_id, Some(Rc::clone(&scope)), rhs) {
+                match self.resolve_expr(module_id, Some(local_scope_rc.clone()), rhs) {
                     Some(typed_expr) => Some(typed_expr),
                     None => {
                         return None;
@@ -1778,7 +1793,7 @@ impl Resolver {
             typed_variable: typed_variable.clone(),
         };
 
-        let mut scope_borrowed = scope.borrow_mut();
+        let mut scope_borrowed = local_scope_rc.borrow_mut();
         scope_borrowed.insert(
             variable.identifier.name.clone(),
             LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
@@ -2372,11 +2387,6 @@ impl Resolver {
                 })
             }
             Expression::StructInit(struct_init) => {
-                // FIXME I guess not required anymore.
-                // if is_unscoped_expr!(struct_init.struct_name.loc.clone(), struct_init.struct_name.span.end) {
-                //     return None;
-                // }
-
                 let symbol_id = match self.resolve_local_module_import(
                     local_scope_opt.clone(),
                     module_id,
@@ -2498,11 +2508,16 @@ impl Resolver {
                 })
             }
             Expression::Array(arr) => {
-                let array_type =
-                    match self.resolve_type(module_id, arr.data_type.clone(), arr.loc.clone(), arr.span.end) {
-                        Some(concrete_type) => concrete_type,
-                        None => return None,
-                    };
+                let array_type = match self.resolve_type(
+                    local_scope_opt.clone(),
+                    module_id,
+                    arr.data_type.clone(),
+                    arr.loc.clone(),
+                    arr.span.end,
+                ) {
+                    Some(concrete_type) => concrete_type,
+                    None => return None,
+                };
 
                 let mut typed_elements: Vec<TypedExpression> = Vec::new();
 
@@ -2557,11 +2572,16 @@ impl Resolver {
                     None => return None,
                 };
 
-                let target_type =
-                    match self.resolve_type(module_id, cast.target_type.clone(), cast.loc.clone(), cast.span.end) {
-                        Some(concrete_type) => concrete_type,
-                        None => return None,
-                    };
+                let target_type = match self.resolve_type(
+                    local_scope_opt,
+                    module_id,
+                    cast.target_type.clone(),
+                    cast.loc.clone(),
+                    cast.span.end,
+                ) {
+                    Some(concrete_type) => concrete_type,
+                    None => return None,
+                };
 
                 Some(TypedExpression {
                     kind: TypedExpressionKind::Cast(TypedCast {
@@ -2576,7 +2596,13 @@ impl Resolver {
             Expression::TypeSpecifier(type_specifier) => {
                 let (loc, span_end) = type_specifier.get_loc();
 
-                match self.resolve_type(module_id, type_specifier.clone(), loc.clone(), span_end) {
+                match self.resolve_type(
+                    local_scope_opt,
+                    module_id,
+                    type_specifier.clone(),
+                    loc.clone(),
+                    span_end,
+                ) {
                     Some(concrete_type) => Some(TypedExpression {
                         kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
                         concrete_type: Some(concrete_type),
@@ -2661,7 +2687,9 @@ impl Resolver {
                                         let len = string_value.len() + 1;
                                         Some(ConcreteType::Array(TypedArrayType {
                                             element_type: Box::new(ConcreteType::BasicType(BasicConcreteType::Char)),
-                                            capacity: TypedArrayCapacity::Fixed(len.try_into().unwrap()),
+                                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
+                                                len,
+                                            )),
                                             loc: literal.loc.clone(),
                                         }))
                                     }
@@ -2768,6 +2796,7 @@ impl Resolver {
                     let field_type = {
                         if let Some(type_specifier) = &field.field_type {
                             match self.resolve_type(
+                                local_scope_opt.clone(),
                                 module_id,
                                 type_specifier.clone(),
                                 field.loc.clone(),
