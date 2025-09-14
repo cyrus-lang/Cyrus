@@ -1,11 +1,15 @@
+import std::libc{printf};
+
 MAX_SIZE: const int = 4;
 
 struct Bar {
-    a: int[4];
+    a: int[MAX_SIZE];
 }
 
 func main() {
-  #instance = Bar {
-    a: int[3] {},
-  };
+    #bar: Bar;
+//   #instance = Bar {
+//     a: int[3] {},
+//   };
+    printf("v: %d\n", (bar.a)[MAX_SIZE - 1]);
 }

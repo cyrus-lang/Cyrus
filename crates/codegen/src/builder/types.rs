@@ -13,7 +13,7 @@ use typed_ast::{
     SymbolID,
     types::{
         BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedUnnamedStructType,
+        TypedArrayType, TypedUnnamedStructType,
     },
 };
 
@@ -204,6 +204,24 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
+    pub(crate) fn build_array_capacity(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        typed_array_type: &TypedArrayType,
+    ) -> usize {
+        match &typed_array_type.capacity {
+            TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
+                TypedArrayFixedCapacityValue::Expr(typed_expr) => {
+                    let internal_value = self.build_expr(local_scope_opt, &typed_expr);
+                    let int_value = internal_value.as_basic_value().into_int_value();
+                    int_value.get_zero_extended_constant().unwrap() as usize
+                }
+                TypedArrayFixedCapacityValue::Value(value) => *value,
+            },
+            TypedArrayCapacity::Dynamic => todo!(),
+        }
+    }
+
     pub(crate) fn build_concrete_type(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
@@ -227,21 +245,11 @@ impl<'a> CodeGenBuilder<'a> {
             ConcreteType::BasicType(basic_concrete_type) => self.build_basic_concrete_type(basic_concrete_type),
             ConcreteType::Array(typed_array_type) => {
                 let element_type: BasicTypeEnum = self
-                    .build_concrete_type(local_scope_opt.clone(), *typed_array_type.element_type)
+                    .build_concrete_type(local_scope_opt.clone(), *typed_array_type.element_type.clone())
                     .try_into()
                     .unwrap();
 
-                let array_capacity = match typed_array_type.capacity {
-                    TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
-                        TypedArrayFixedCapacityValue::Expr(typed_expr) => {
-                            let internal_value = self.build_expr(local_scope_opt, &typed_expr);
-                            let int_value = internal_value.as_basic_value().into_int_value();
-                            int_value.get_zero_extended_constant().unwrap() as usize
-                        }
-                        TypedArrayFixedCapacityValue::Value(value) => value,
-                    },
-                    TypedArrayCapacity::Dynamic => todo!(),
-                };
+                let array_capacity = self.build_array_capacity(local_scope_opt, &typed_array_type);
 
                 AnyTypeEnum::ArrayType(element_type.array_type(array_capacity.try_into().unwrap()))
             }

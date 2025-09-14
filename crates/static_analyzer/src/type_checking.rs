@@ -616,6 +616,7 @@ impl<'a> AnalysisContext<'a> {
             };
 
         if !index_concrete_type
+            .get_const_inner()
             .as_basic_type()
             .and_then(|b| Some(b.is_integer()))
             .is_some()
