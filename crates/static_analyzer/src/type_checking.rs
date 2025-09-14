@@ -432,6 +432,22 @@ impl<'a> AnalysisContext<'a> {
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
                         if let Some(resolved_global_var) = symbol_entry.as_global_var() {
+                            if scope_id_opt.is_none()
+                                && !resolved_global_var.global_var_sig.ty.clone().unwrap().is_const()
+                            {
+                                self.reporter.report(Diag {
+                                    level: DiagLevel::Error,
+                                    kind: AnalyzerDiagKind::ValueIsNotACompTimeConst,
+                                    location: Some(DiagLoc::new(
+                                        self.resolver.get_current_module_file_path(),
+                                        typed_expr.loc.clone(),
+                                        0,
+                                    )),
+                                    hint: None,
+                                });
+                                return None;
+                            }
+
                             if let Some(mut typed_expr) = resolved_global_var.global_var_sig.rhs.clone() {
                                 self.analyze_typed_expr_type(scope_id_opt, &mut typed_expr, expected_type);
 

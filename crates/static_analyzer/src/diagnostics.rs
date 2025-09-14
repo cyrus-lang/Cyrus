@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    ValueIsNotACompTimeConst, 
     SwitchFallthroughIntoValuedFieldCase,
     EnumVariantArgCountMismatch {
         variant_name: String,
@@ -203,6 +204,9 @@ impl fmt::Display for AnalyzerDiagKind {
                     "Enum variant '{}' expects {} fields, but {} arguments were provided.",
                     variant_name, expected, provided
                 )
+            }
+            AnalyzerDiagKind::ValueIsNotACompTimeConst => {
+                write!(f, "Value is not a compile-time constant.")
             }
             AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase => {
                 write!(f, "Falling through into a case with fields may cause undefined behavior.")
