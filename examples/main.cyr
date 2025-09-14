@@ -7,9 +7,6 @@ struct Bar {
 }
 
 func main() {
-    #bar: Bar;
-//   #instance = Bar {
-//     a: int[3] {},
-//   };
-    printf("v: %d\n", (bar.a)[MAX_SIZE - 1]);
+    #a = MAX_SIZE - 1;
+    printf("v: %d\n", a);
 }
