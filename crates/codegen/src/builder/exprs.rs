@@ -18,7 +18,7 @@ use typed_ast::{
     TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
     TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit, TypedUnaryExpression,
     TypedUnnamedStructValue,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -207,10 +207,7 @@ impl<'a> CodeGenBuilder<'a> {
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &array_index.operand);
         let array_type = lvalue.value_type.as_array_type().unwrap();
-        let array_capacity = match &array_type.capacity {
-            TypedArrayCapacity::Fixed(capacity_value) => capacity_value.as_value().unwrap(),
-            TypedArrayCapacity::Dynamic => todo!(),
-        };
+        let array_capacity = self.build_array_capacity(local_scope_opt.clone(), array_type);
 
         let index_lvalue = self.build_expr(local_scope_opt.clone(), &array_index.index);
         let index_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), index_lvalue);
@@ -468,21 +465,7 @@ impl<'a> CodeGenBuilder<'a> {
             .build_concrete_type(local_scope_opt.clone(), array.array_type.clone())
             .into_array_type();
 
-        let required_len: usize = match &array_concrete_type.capacity {
-            TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
-                TypedArrayFixedCapacityValue::Expr(typed_expr) => {
-                    let internal_value = self.build_expr(local_scope_opt.clone(), typed_expr);
-                    let int_value = internal_value
-                        .as_basic_value()
-                        .into_int_value()
-                        .get_zero_extended_constant()
-                        .unwrap();
-                    int_value as usize
-                }
-                TypedArrayFixedCapacityValue::Value(value) => *value,
-            },
-            TypedArrayCapacity::Dynamic => todo!(),
-        };
+        let required_len = self.build_array_capacity(local_scope_opt.clone(), &array_concrete_type);
 
         let mut all_const = true;
         let mut elements: Vec<BasicValueEnum<'a>> = Vec::with_capacity(required_len);
