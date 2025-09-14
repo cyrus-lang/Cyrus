@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol_type};
 use ast::{
-    AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind,
+    AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator},
     token::{Location, TokenKind},
 };
@@ -15,7 +15,8 @@ use typed_ast::{
     format::format_concrete_type,
     types::{
         BasicConcreteType::{self, *},
-        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedUnnamedStructType, TypedUnnamedStructTypeField,
+        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+        TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
     *,
 };
@@ -262,7 +263,24 @@ impl<'a> AnalysisContext<'a> {
                 typed_literal.ty = Some(ty.clone());
                 Some(ty)
             }
-            LiteralKind::String(_, _) => {
+            LiteralKind::String(value, prefix_opt) => {
+                if let Some(prefix) = &prefix_opt {
+                    match prefix {
+                        StringPrefix::C => {}
+                        StringPrefix::B => {
+                            let ty = ConcreteType::Array(TypedArrayType {
+                                element_type: Box::new(ConcreteType::Const(Box::new(ConcreteType::BasicType(
+                                    BasicConcreteType::Char,
+                                )))),
+                                capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value.len())),
+                                loc: typed_literal.loc.clone(),
+                            });
+                            typed_literal.ty = Some(ty.clone());
+                            return Some(ty);
+                        }
+                    }
+                }
+
                 let ty = ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)));
                 typed_literal.ty = Some(ty.clone());
                 Some(ty)
