@@ -454,7 +454,18 @@ impl Resolver {
                             Some(typed_expr) => typed_expr,
                             None => return None,
                         };
-                        TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(Box::new(typed_expr)))
+
+                        if let TypedExpressionKind::Literal(typed_literal) = &typed_expr.kind {
+                            if let LiteralKind::Integer(value, ..) = &typed_literal.kind {
+                                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
+                                    (*value).try_into().unwrap(),
+                                ))
+                            } else {
+                                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(Box::new(typed_expr)))
+                            }
+                        } else {
+                            TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(Box::new(typed_expr)))
+                        }
                     }
                     ArrayCapacity::Dynamic => TypedArrayCapacity::Dynamic,
                 };
