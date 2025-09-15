@@ -12,5 +12,8 @@ parser:
 run:
 	cargo run -j24 -p cli -- run ./examples/main.cyr --stdlib=./stdlib --disable-warnings
 
+build:
+	cargo build -j24
+
 test: 
 	cargo test -j24 --all
