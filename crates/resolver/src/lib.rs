@@ -187,7 +187,10 @@ impl Resolver {
                 }
             };
 
-            let module_id = generate_module_id();
+            let module_id = {
+                self.get_module_id_by_file_path(module_file_path.clone())
+                    .unwrap_or(generate_module_id())
+            };
 
             if visiting.contains(module_file_path.clone()) {
                 // Cycle import detected.
@@ -3041,6 +3044,16 @@ impl Resolver {
         };
         drop(file_paths);
         file_path
+    }
+
+    fn get_module_id_by_file_path(&self, module_file_path: ModuleFilePath) -> Option<ModuleID> {
+        let file_paths = self.file_paths.lock().unwrap();
+        let module_id_opt = match file_paths.iter().find(|(_, fp)| **fp == module_file_path) {
+            Some((module_id, _)) => Some(*module_id),
+            None => None,
+        };
+        drop(file_paths);
+        module_id_opt
     }
 
     pub fn get_module_file_path(&self, module_id: ModuleID) -> Option<ModuleFilePath> {

@@ -1,0 +1,5 @@
+import std::libc;
+
+public func sample() {
+    libc::printf("Hello, World!\n");
+}

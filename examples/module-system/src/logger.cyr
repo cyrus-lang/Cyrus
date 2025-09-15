@@ -1,10 +1,5 @@
 import std::libc;
 
-public struct Person {
-	name: char*;
-	age: uint;
-}
-
 public struct Logger {
 	group_name: char*;
 
