@@ -148,6 +148,7 @@ impl<'a> CodeGenBuilder<'a> {
             let local_ir_value_opt = irreg.get(&irreg_symbol_id).cloned();
             drop(irreg);
 
+
             let local_ir_value = match local_ir_value_opt {
                 Some(local_ir_value) => local_ir_value,
                 None => self.build_concrete_type_declare_fresh(local_or_global_symbol),

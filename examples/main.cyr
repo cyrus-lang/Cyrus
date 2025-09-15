@@ -1,7 +1,13 @@
 import sample;
 import std::libc{printf};
 
+struct Sample {
+    a: int;
+}
+
 func main() {
-    printf("Hello, World!\n");
+    sizeof(Sample);
+    // printf("value: %d\n", );
+
     // sample::sample();
 }
