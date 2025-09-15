@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol_type};
 use ast::{
     AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, StringPrefix,
@@ -11,6 +9,7 @@ use resolver::{
     declsign::FuncSig,
     scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, ResolvedUnion, SymbolEntryKind},
 };
+use std::collections::HashMap;
 use typed_ast::{
     format::format_concrete_type,
     types::{
@@ -425,6 +424,44 @@ impl<'a> AnalysisContext<'a> {
                     typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
                 }
             }
+            TypedExpressionKind::Prefix(prefix_expr) => match &prefix_expr.op {
+                PrefixOperator::Bang => {
+                    let operand_type = match self.analyze_typed_expr_type(
+                        scope_id_opt,
+                        &mut prefix_expr.operand,
+                        expected_type.clone(),
+                    ) {
+                        Some(concrete_type) => concrete_type,
+                        None => return None,
+                    };
+
+                    let null_literal_expr = TypedExpression {
+                        kind: TypedExpressionKind::Literal(TypedLiteral {
+                            ty: Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                                BasicConcreteType::Void,
+                            )))),
+                            kind: LiteralKind::Null,
+                            loc: prefix_expr.loc.clone(),
+                        }),
+                        concrete_type: None,
+                        loc: prefix_expr.loc.clone(),
+                    };
+
+                    if operand_type.is_pointer() {
+                        *typed_expr = TypedExpression {
+                            kind: TypedExpressionKind::Infix(TypedInfixExpression {
+                                op: InfixOperator::NotEqual,
+                                lhs: prefix_expr.operand.clone(),
+                                rhs: Box::new(null_literal_expr),
+                                loc: prefix_expr.loc.clone(),
+                            }),
+                            concrete_type: None,
+                            loc: prefix_expr.loc.clone(),
+                        };
+                    }
+                }
+                _ => {}
+            },
             _ => {}
         }
 
@@ -1854,16 +1891,22 @@ impl<'a> AnalysisContext<'a> {
                         *instance_symbol_id,
                     );
 
-                    let resolved_var_type = self
-                        .resolve_var_or_global_var_type(
-                            scope_id_opt,
-                            local_scope_opt.clone(),
-                            *instance_symbol_id,
-                            method_call.loc.clone(),
-                        )
-                        .unwrap();
+                    if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(..))) =
+                        method_call.operand.concrete_type
+                    {
+                        method_call.operand.concrete_type.clone().unwrap()
+                    } else {
+                        let resolved_var_type = self
+                            .resolve_var_or_global_var_type(
+                                scope_id_opt,
+                                local_scope_opt.clone(),
+                                *instance_symbol_id,
+                                method_call.loc.clone(),
+                            )
+                            .unwrap();
 
-                    resolved_var_type
+                        resolved_var_type
+                    }
                 }
                 _ => {
                     match self.analyze_typed_expr_type(scope_id_opt, &mut method_call.operand, expected_type.clone()) {
@@ -1879,8 +1922,6 @@ impl<'a> AnalysisContext<'a> {
                     .extract_object_symbol_id(scope_id_opt, *concrete_type, loc.clone())
                     .unwrap(),
                 _ => {
-                    dbg!(operand_type);
-
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::ObjectNotSupportsFields,

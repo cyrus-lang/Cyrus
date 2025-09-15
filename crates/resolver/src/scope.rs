@@ -136,40 +136,40 @@ impl LocalOrGlobalSymbol {
         }
     }
 
-    pub fn as_struct(&self) -> Option<ResolvedStruct> {
+    pub fn as_struct(&self) -> Option<&ResolvedStruct> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
-                LocalSymbolKind::Struct(resolved_struct) => Some(resolved_struct.clone()),
+                LocalSymbolKind::Struct(resolved_struct) => Some(resolved_struct),
                 _ => None,
             },
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
-                SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct.clone()),
+                SymbolEntryKind::Struct(resolved_struct) => Some(resolved_struct),
                 _ => None,
             },
         }
     }
 
-    pub fn as_enum(&self) -> Option<ResolvedEnum> {
+    pub fn as_enum(&self) -> Option<&ResolvedEnum> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
-                LocalSymbolKind::Enum(resolved_enum) => Some(resolved_enum.clone()),
+                LocalSymbolKind::Enum(resolved_enum) => Some(resolved_enum),
                 _ => None,
             },
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
-                SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum.clone()),
+                SymbolEntryKind::Enum(resolved_enum) => Some(resolved_enum),
                 _ => None,
             },
         }
     }
 
-    pub fn as_union(&self) -> Option<ResolvedUnion> {
+    pub fn as_union(&self) -> Option<&ResolvedUnion> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
-                LocalSymbolKind::Union(resolved_union) => Some(resolved_union.clone()),
+                LocalSymbolKind::Union(resolved_union) => Some(resolved_union),
                 _ => None,
             },
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
-                SymbolEntryKind::Union(resolved_union) => Some(resolved_union.clone()),
+                SymbolEntryKind::Union(resolved_union) => Some(resolved_union),
                 _ => None,
             },
         }

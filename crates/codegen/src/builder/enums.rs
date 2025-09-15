@@ -114,7 +114,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_construct_enum_variant(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        resolved_enum: ResolvedEnum,
+        resolved_enum: &ResolvedEnum,
         variant_name: String,
         args: &Vec<TypedExpression>,
     ) -> InternalValue<'a> {
@@ -209,7 +209,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_construct_enum_variant_no_field(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        resolved_enum: ResolvedEnum,
+        resolved_enum: &ResolvedEnum,
         variant_name: String,
     ) -> InternalValue<'a> {
         let (enum_struct_type, enum_payload_type) = {

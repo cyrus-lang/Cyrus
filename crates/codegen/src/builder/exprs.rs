@@ -28,7 +28,7 @@ impl<'a> CodeGenBuilder<'a> {
         typed_expr: &TypedExpression,
     ) -> InternalValue<'a> {
         match &typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id, ..) => self.build_lvalue_with_symbol_id(local_scope_opt, *symbol_id),
+            TypedExpressionKind::Symbol(symbol_id, _) => self.build_lvalue_with_symbol_id(local_scope_opt, *symbol_id),
             TypedExpressionKind::Literal(typed_literal) => self.build_literal(local_scope_opt, typed_literal),
             TypedExpressionKind::Prefix(typed_prefix_expr) => {
                 self.build_prefix_expr(local_scope_opt, typed_prefix_expr)
@@ -58,8 +58,8 @@ impl<'a> CodeGenBuilder<'a> {
                 self.build_unnamed_struct_value(local_scope_opt, typed_unnamed_struct_value)
             }
             TypedExpressionKind::MethodCall(method_call) => self.build_method_call(local_scope_opt, method_call),
-            TypedExpressionKind::SizeOfExpression(typed_size_of_expression) => {
-                self.build_sizeof(local_scope_opt, typed_size_of_expression)
+            TypedExpressionKind::SizeOfExpression(typed_size_of_expr) => {
+                self.build_sizeof(local_scope_opt, typed_size_of_expr)
             }
             TypedExpressionKind::ConcreteType(..) => unreachable!(),
         }
@@ -548,7 +548,7 @@ impl<'a> CodeGenBuilder<'a> {
 
         let (methods, module_id) = {
             if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
-                (resolved_struct.struct_sig.methods, resolved_struct.module_id)
+                (resolved_struct.struct_sig.methods.clone(), resolved_struct.module_id)
             } else if let Some(resolved_enum) = &local_or_global_symbol.as_enum() {
                 let variant_opt = resolved_enum
                     .enum_sig
@@ -559,7 +559,7 @@ impl<'a> CodeGenBuilder<'a> {
                 if variant_opt.is_some() {
                     return self.build_construct_enum_variant(
                         local_scope_opt,
-                        resolved_enum.clone(),
+                        resolved_enum,
                         method_call.method_name.clone(),
                         &method_call.args,
                     );
@@ -567,7 +567,7 @@ impl<'a> CodeGenBuilder<'a> {
                     (resolved_enum.enum_sig.methods.clone(), resolved_enum.module_id)
                 }
             } else if let Some(resolved_union) = local_or_global_symbol.as_union() {
-                (resolved_union.union_sig.methods, resolved_union.module_id)
+                (resolved_union.union_sig.methods.clone(), resolved_union.module_id)
             } else {
                 unreachable!()
             }
@@ -1149,39 +1149,69 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
+    fn build_sizeof_type(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        concrete_type: &ConcreteType,
+    ) -> InternalValue<'a> {
+        let any_type = self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone());
+        let size_internal_value = InternalValue::new(
+            ConcreteType::BasicType(BasicConcreteType::SizeT),
+            InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
+        );
+        return self.build_implicit_cast(
+            local_scope_opt,
+            ConcreteType::BasicType(BasicConcreteType::SizeT),
+            size_internal_value,
+        );
+    }
+
+    fn build_sizeof_expr(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        typed_expr: &TypedExpression,
+    ) -> InternalValue<'a> {
+        let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
+        let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+
+        let any_type = self.build_concrete_type(local_scope_opt.clone(), rvalue.value_type);
+        let size_internal_value = InternalValue::new(
+            ConcreteType::BasicType(BasicConcreteType::SizeT),
+            InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
+        );
+        self.build_implicit_cast(
+            local_scope_opt,
+            ConcreteType::BasicType(BasicConcreteType::SizeT),
+            size_internal_value,
+        )
+    }
+
     fn build_sizeof(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         sizeof_expr: &TypedSizeOfExpression,
     ) -> InternalValue<'a> {
         match &sizeof_expr.expr.kind {
-            TypedExpressionKind::ConcreteType(concrete_type) => {
-                let any_type = self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone());
-                let size_internal_value = InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::SizeT),
-                    InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
-                );
-                self.build_implicit_cast(
-                    local_scope_opt,
-                    ConcreteType::BasicType(BasicConcreteType::SizeT),
-                    size_internal_value,
-                )
-            }
-            _ => {
-                let lvalue = self.build_expr(local_scope_opt.clone(), &sizeof_expr.expr);
-                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+            TypedExpressionKind::ConcreteType(concrete_type) => self.build_sizeof_type(local_scope_opt, concrete_type),
+            TypedExpressionKind::Symbol(symbol_id, _) => {
+                let local_or_global_symbol = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)
+                    .unwrap();
 
-                let any_type = self.build_concrete_type(local_scope_opt.clone(), rvalue.value_type);
-                let size_internal_value = InternalValue::new(
-                    ConcreteType::BasicType(BasicConcreteType::SizeT),
-                    InternalValueKind::RValue(BasicValueEnum::IntValue(any_type.size_of().unwrap())),
-                );
-                self.build_implicit_cast(
-                    local_scope_opt,
-                    ConcreteType::BasicType(BasicConcreteType::SizeT),
-                    size_internal_value,
-                )
+                if local_or_global_symbol.as_struct().is_some()
+                    || local_or_global_symbol.as_enum().is_some()
+                    || local_or_global_symbol.as_union().is_some()
+                {
+                    return self.build_sizeof_type(
+                        local_scope_opt,
+                        &ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(*symbol_id)),
+                    );
+                }
+
+                self.build_sizeof_expr(local_scope_opt, &sizeof_expr.expr)
             }
+            _ => self.build_sizeof_expr(local_scope_opt, &sizeof_expr.expr),
         }
     }
 
@@ -1234,12 +1264,12 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> InternalValue<'a> {
-        let local_or_global_value = self
+        let local_or_global_symbol = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
             .unwrap();
 
-        if let LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) = &local_or_global_value {
+        if let LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) = &local_or_global_symbol {
             if let Some(resolved_global_var) = symbol_entry.as_global_var() {
                 return self.build_expr(
                     local_scope_opt,
@@ -1261,9 +1291,7 @@ impl<'a> CodeGenBuilder<'a> {
             Some((pointer, concrete_type)) => (pointer.clone(), concrete_type.clone()),
             None => match local_ir_value.as_global_value() {
                 Some((global_value, concrete_type)) => (global_value.as_pointer_value().clone(), concrete_type.clone()),
-                None => {
-                    panic!("Couldn't find any lvalue with this symbol id.")
-                }
+                None => panic!("Couldn't find any lvalue with this symbol id."),
             },
         };
 

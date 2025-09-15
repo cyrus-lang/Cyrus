@@ -305,7 +305,8 @@ impl<'a> AnalysisContext<'a> {
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
             .unwrap();
-        let mut resolved_enum = local_or_global_symbol.as_enum().unwrap();
+
+        let mut resolved_enum = local_or_global_symbol.as_enum().unwrap().clone();
 
         // Here instead of a simple for, we need peekable iterator to check next case
 
