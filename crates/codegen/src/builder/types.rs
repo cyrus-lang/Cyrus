@@ -229,7 +229,15 @@ impl<'a> CodeGenBuilder<'a> {
         concrete_type: ConcreteType,
     ) -> AnyTypeEnum<'a> {
         match concrete_type {
-            ConcreteType::UnresolvedSymbol(..) => unreachable!(),
+            ConcreteType::UnresolvedSymbol(..) => {
+                if cfg!(debug_assertions) {
+                    dbg!(self.blockreg.current_block_ref.clone());
+
+                    panic!("Unresolved symbol in codegen: {concrete_type:?}");
+                }
+
+                unreachable!()
+            },
             ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Enum(symbol_id)
                 | ResolvedSymbol::Union(symbol_id)

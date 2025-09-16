@@ -1,5 +1,14 @@
 import std::libc;
+import std::libc::abi;
 
 public func sample() {
     libc::printf("Hello, World!\n");
+}
+
+struct Sample {
+    a: int;
+
+    public func change(&self, new_a: int) {
+        self->a = new_a;
+    }
 }

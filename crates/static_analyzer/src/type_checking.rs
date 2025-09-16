@@ -1284,11 +1284,11 @@ impl<'a> AnalysisContext<'a> {
                 },
             };
 
-            match operand_type {
-                ConcreteType::ResolvedSymbol(resolved_symbol) => resolved_symbol.get_symbol_id(),
-                ConcreteType::Pointer(concrete_type) => self
-                    .extract_object_symbol_id(scope_id_opt, *concrete_type, field_access.loc.clone())
-                    .unwrap(),
+            match match operand_type {
+                ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+                ConcreteType::Pointer(concrete_type) => {
+                    self.extract_object_symbol_id(scope_id_opt, *concrete_type, field_access.loc.clone())
+                }
                 ConcreteType::UnnamedStruct(unnamed_struct_type) => {
                     return self.analyze_unnamed_struct_field_access_type(
                         scope_id_opt,
@@ -1297,7 +1297,10 @@ impl<'a> AnalysisContext<'a> {
                         expected_type.clone(),
                     );
                 }
-                _ => {
+                _ => None,
+            } {
+                Some(symbol_id) => symbol_id,
+                None => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::ObjectNotSupportsFields,
@@ -2668,7 +2671,6 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExpressionKind::Symbol(symbol_id, ..) => *symbol_id,
             _ => {
-                todo!();
                 self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
                 return Some(ConcreteType::BasicType(BasicConcreteType::SizeT));
             }

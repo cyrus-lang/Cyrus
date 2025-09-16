@@ -30,9 +30,17 @@ pub fn main() {
                 println!("  {}", file_path);
             });
 
-            let mut resolver = Resolver::new(module_loader_opts, file_path);
+            let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
             let module_id = generate_module_id();
-            let typed_program_tree = resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true);
+            let typed_program_tree = resolver
+                .resolve_module(
+                    module_id,
+                    node.as_program(),
+                    &mut Visiting::new(),
+                    true,
+                    file_path.clone(),
+                )
+                .unwrap();
             if resolver.reporter.has_errors() {
                 resolver.reporter.display();
                 exit(1);

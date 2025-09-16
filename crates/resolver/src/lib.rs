@@ -54,7 +54,8 @@ pub struct Resolver {
 
 // Used to check import cycles.
 pub struct Visiting {
-    pub file_paths: HashSet<ModuleFilePath>,
+    pub active: Vec<ModuleFilePath>,   // DFS stack, preserves order
+    pub done: HashSet<ModuleFilePath>, // modules fully resolved
 }
 
 impl Resolver {
@@ -136,6 +137,7 @@ impl Resolver {
 
     fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, mut visiting: &mut Visiting) {
         let mut duplicate_import = false;
+
         for module_path in &import.paths {
             let already_loaded = self
                 .already_imported_modules
@@ -170,6 +172,8 @@ impl Resolver {
             .load_module(import.clone(), self.get_current_module_file_path());
 
         for loaded_module in loaded_modules_list {
+            self.already_imported_modules.clear();
+
             let (module_alias, module_file_path, program_tree) = match loaded_module {
                 Ok(module_ast_and_file_path) => module_ast_and_file_path,
                 Err(diag_kind) => {
@@ -192,25 +196,24 @@ impl Resolver {
                     .unwrap_or(generate_module_id())
             };
 
-            if visiting.contains(module_file_path.clone()) {
-                // Cycle import detected.
+            if visiting.active.contains(&module_file_path) {
+                // cycle detected
+                let cycle_start = visiting.active.iter().position(|p| p == &module_file_path).unwrap();
+                // slice the DFS stack to get the exact cycle chain
+                let cycle_chain: Vec<ModuleFilePath> = visiting.active[cycle_start..].to_vec();
+
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: ResolverDiagKind::ImportCycle {
-                        module_names: {
-                            let file_paths = self.file_paths.lock().unwrap();
-                            let module_names = visiting.file_paths.clone().into_iter().collect();
-                            drop(file_paths);
-                            module_names
-                        },
+                        module_names: cycle_chain,
                     },
                     location: None,
                     hint: None,
                 });
-                continue;
+                return;
             }
 
-            visiting.insert(module_file_path.clone());
+            visiting.active.push(module_file_path.clone());
 
             if self.skip_module_if_loaded_once(module_file_path.clone()) {
                 match module_alias {
@@ -227,9 +230,9 @@ impl Resolver {
                     }
                 }
             } else {
-                self.insert_module_file_path(module_id, module_file_path);
+                self.insert_module_file_path(module_id, module_file_path.clone());
 
-                match self.resolve_module(module_id, program_tree.as_ref(), &mut visiting, false) {
+                match self.resolve_module(module_id, program_tree.as_ref(), &mut visiting, false, module_file_path) {
                     Some(typed_program_tree) => {
                         let module_file_path = self.get_current_module_file_path();
 
@@ -354,15 +357,14 @@ impl Resolver {
         ast: &ProgramTree,
         mut visiting: &mut Visiting,
         is_master: bool,
+        module_file_path: ModuleFilePath,
     ) -> Option<Rc<RefCell<TypedProgramTree>>> {
         self.current_module = Some(module_id);
         self.init_imported_modules_for_module();
-        self.already_imported_modules.clear();
-        visiting.file_paths.clear();
 
         if is_master {
             self.insert_module_file_path(module_id, self.master_module_file_path.clone());
-            visiting.insert(self.master_module_file_path.clone());
+            visiting.active.push(self.master_module_file_path.clone());
         }
 
         let mut analyzed = self.analyzed_modules.lock().unwrap();
@@ -394,18 +396,19 @@ impl Resolver {
         let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree { body: typed_body }));
 
         if is_master {
-            let module_file_path = self.get_current_module_file_path();
-
             let mut program_trees = self.program_trees.lock().unwrap();
             let module_name = get_module_name(module_file_path.clone());
             program_trees.push((
                 module_name,
-                module_file_path,
+                module_file_path.clone(),
                 self.current_module.unwrap(),
                 typed_program_tree.clone(),
             ));
             drop(program_trees);
         }
+
+        visiting.active.pop();
+        visiting.done.insert(module_file_path);
 
         Some(typed_program_tree.clone())
     }
@@ -3145,19 +3148,8 @@ pub fn generate_module_id() -> ModuleID {
 impl Visiting {
     pub fn new() -> Self {
         Self {
-            file_paths: HashSet::new(),
+            active: Vec::new(),
+            done: HashSet::new(),
         }
-    }
-
-    pub fn contains(&self, file_path: ModuleFilePath) -> bool {
-        self.file_paths.contains(&file_path)
-    }
-
-    pub fn insert(&mut self, file_path: ModuleFilePath) {
-        self.file_paths.insert(file_path);
-    }
-
-    pub fn remove(&mut self, file_path: ModuleFilePath) {
-        self.file_paths.remove(&file_path);
     }
 }
