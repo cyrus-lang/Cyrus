@@ -209,7 +209,7 @@ impl Parser {
                 let expr;
                 if self.matches_type_token(self.current_token().kind) {
                     let type_specifier = self.parse_type_specifier()?;
-                    expr = Expression::TypeSpecifier(type_specifier);
+                    expr = Expression::TypeSpecifier(type_specifier)
                 } else {
                     expr = self.parse_expression(Precedence::Lowest)?.0;
                 }

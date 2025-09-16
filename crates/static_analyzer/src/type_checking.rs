@@ -2657,13 +2657,39 @@ impl<'a> AnalysisContext<'a> {
         sizeof_expr: &mut TypedSizeOfExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        match &sizeof_expr.expr.kind {
+        let symbol_id = match &sizeof_expr.expr.kind {
             TypedExpressionKind::ConcreteType(concrete_type) => {
-                self.normalize_type(scope_id_opt, concrete_type.clone(), sizeof_expr.loc.clone())?;
-            },
-            _ => {
-                self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
+                if let ConcreteType::UnresolvedSymbol(symbol_id) = concrete_type {
+                    *symbol_id
+                } else {
+                    self.normalize_type(scope_id_opt, concrete_type.clone(), sizeof_expr.loc.clone())?;
+                    return Some(ConcreteType::BasicType(BasicConcreteType::SizeT));
+                }
             }
+            TypedExpressionKind::Symbol(symbol_id, ..) => *symbol_id,
+            _ => {
+                todo!();
+                self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
+                return Some(ConcreteType::BasicType(BasicConcreteType::SizeT));
+            }
+        };
+
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .unwrap();
+
+        if local_or_global_symbol.as_global_var().is_some() || local_or_global_symbol.as_variable().is_some() {
+            // consider as expr
+            self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
+        } else {
+            // consider as type
+            self.normalize_type(
+                scope_id_opt,
+                ConcreteType::UnresolvedSymbol(symbol_id),
+                sizeof_expr.loc.clone(),
+            )?;
         }
 
         Some(ConcreteType::BasicType(BasicConcreteType::SizeT))

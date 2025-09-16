@@ -2621,21 +2621,38 @@ impl Resolver {
             Expression::TypeSpecifier(type_specifier) => {
                 let (loc, span_end) = type_specifier.get_loc();
 
-                match self.resolve_type(
-                    local_scope_opt,
-                    module_id,
-                    type_specifier.clone(),
-                    loc.clone(),
-                    span_end,
-                ) {
-                    Some(concrete_type) => Some(TypedExpression {
-                        kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
-                        value_category: ValueCategory::Rvalue,
-                        concrete_type: Some(concrete_type),
-                        loc,
-                    }),
-                    None => return None,
-                }
+                let symbol_id = match type_specifier {
+                    TypeSpecifier::Identifier(identifier) => {
+                        resolve_local_identifier!(identifier)
+                    }
+                    TypeSpecifier::ModuleImport(module_import) => {
+                        self.resolve_module_import(module_id, module_import.clone())?
+                    }
+                    _ => match self.resolve_type(
+                        local_scope_opt,
+                        module_id,
+                        type_specifier.clone(),
+                        loc.clone(),
+                        span_end,
+                    ) {
+                        Some(concrete_type) => {
+                            return Some(TypedExpression {
+                                kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
+                                value_category: ValueCategory::Rvalue,
+                                concrete_type: Some(concrete_type),
+                                loc,
+                            });
+                        }
+                        None => return None,
+                    },
+                };
+
+                Some(TypedExpression {
+                    kind: TypedExpressionKind::Symbol(symbol_id, type_specifier.get_loc().0.clone()),
+                    value_category: ValueCategory::Lvalue,
+                    concrete_type: None,
+                    loc,
+                })
             }
             Expression::Assignment(assignment) => {
                 let lhs = match self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.lhs) {

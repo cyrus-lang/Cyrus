@@ -1,6 +1,9 @@
 import std::libc{printf};
 
+struct Sample {
+    a: int;
+}
+
 func main() {
-    #sz = sizeof(int*);
-    printf("value: %d\n", sz);
+    printf("value: %d\n", sizeof(Sample));
 }
