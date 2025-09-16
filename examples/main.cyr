@@ -4,18 +4,13 @@ struct Sample {
     a: void*;
 }
 
-// PI: void*; // FIXME
-
 func main() {
     #a = 10;
     #sample = Sample { a: null };
     #ptr = &sample;
 
-    if (sample.a == null) {
-        printf("null a\n");
-    }
-
-    if (ptr->a == null) {
+    #v: void* = ptr->a;
+    if (!ptr->a){
         printf("null aaaaaaa\n");
     }
 

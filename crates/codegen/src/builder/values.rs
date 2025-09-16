@@ -7,6 +7,10 @@ use resolver::scope::LocalScopeRef;
 use typed_ast::types::ConcreteType;
 
 impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn build_zero_init_value(&mut self, basic_type: BasicTypeEnum<'a>) -> BasicValueEnum<'a> {
+        basic_type.const_zero()
+    }
+
     pub(crate) fn build_load_lvalue_to_rvalue(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
