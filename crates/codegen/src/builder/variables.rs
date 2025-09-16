@@ -81,7 +81,9 @@ impl<'a> CodeGenBuilder<'a> {
                 .build_concrete_type(None, global_var.ty.clone().unwrap())
                 .try_into()
                 .unwrap();
-            global_value.set_initializer(&basic_type.const_zero());
+
+            let zero_init_value = self.build_zero_init_value(basic_type);
+            global_value.set_initializer(&zero_init_value);
         }
 
         self.insert_forward_decl_to_registry(
@@ -136,6 +138,11 @@ impl<'a> CodeGenBuilder<'a> {
         };
 
         let alloca = self.llvmbuilder.build_alloca(basic_type, &variable.name).unwrap();
+
+        if variable.rhs.is_none() {
+            let zero_init_value = self.build_zero_init_value(basic_type);
+            self.llvmbuilder.build_store(alloca, zero_init_value).unwrap();
+        }
 
         self.insert_forward_decl_to_registry(variable.symbol_id, LocalIRValue::LValue(alloca, concrete_type));
 

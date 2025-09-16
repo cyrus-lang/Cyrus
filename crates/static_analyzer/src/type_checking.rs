@@ -437,13 +437,27 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if operand_type.is_pointer() {
+            let lhs = match &mut prefix_expr.operand.kind {
+                TypedExpressionKind::FieldAccess(typed_field_access) => {
+                    typed_field_access.is_fat_arrow = false;
+                    prefix_expr.operand.clone()
+                }
+                TypedExpressionKind::MethodCall(typed_method_call) => {
+                    typed_method_call.is_fat_arrow = false;
+                    prefix_expr.operand.clone()
+                }
+                _ => prefix_expr.operand.clone(),
+            };
+
+            let new_infix_expr = TypedExpressionKind::Infix(TypedInfixExpression {
+                op: InfixOperator::Equal,
+                lhs,
+                rhs: Box::new(null_literal_expr),
+                loc: prefix_expr.loc.clone(),
+            });
+
             Some(TypedExpression {
-                kind: TypedExpressionKind::Infix(TypedInfixExpression {
-                    op: InfixOperator::Equal,
-                    lhs: prefix_expr.operand.clone(),
-                    rhs: Box::new(null_literal_expr),
-                    loc: prefix_expr.loc.clone(),
-                }),
+                kind: new_infix_expr,
                 value_category: ValueCategory::Rvalue,
                 concrete_type: None,
                 loc: prefix_expr.loc.clone(),
