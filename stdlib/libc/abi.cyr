@@ -1,5 +1,5 @@
-public type c_int = int32;
-public type c_uint = uint32;
+public type c_int = int;
+public type c_uint = uint;
 
 public type c_int8_t = int8;
 public type c_int16_t = int16;
