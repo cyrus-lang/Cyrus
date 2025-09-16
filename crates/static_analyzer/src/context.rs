@@ -1508,6 +1508,7 @@ impl<'a> AnalysisContext<'a> {
                 kind: infix_expr,
                 concrete_type: None,
                 loc: assign.loc.clone(),
+                value_category: ValueCategory::Rvalue,
             }),
             kind: AssignmentKind::Default,
             loc: assign.loc.clone(),

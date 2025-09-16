@@ -1,13 +1,23 @@
-import sample;
 import std::libc{printf};
 
 struct Sample {
-    a: int;
+    a: void*;
 }
 
-func main() {
-    sizeof(Sample);
-    // printf("value: %d\n", );
+// PI: void*; // FIXME
 
-    // sample::sample();
+func main() {
+    #a = 10;
+    #sample = Sample { a: null };
+    #ptr = &sample;
+
+    if (sample.a == null) {
+        printf("null a\n");
+    }
+
+    if (ptr->a == null) {
+        printf("null aaaaaaa\n");
+    }
+
+    printf("end\n");
 }

@@ -2349,6 +2349,7 @@ impl Resolver {
                         object_symbol_id: None,
                         loc: field_access.loc.clone(),
                     }),
+                    value_category: ValueCategory::Lvalue,
                     concrete_type: None,
                     loc: field_access.loc.clone(),
                 })
@@ -2396,6 +2397,7 @@ impl Resolver {
                         loc: method_call.loc.clone(),
                         args,
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: method_call.loc.clone(),
                 })
@@ -2433,6 +2435,7 @@ impl Resolver {
                         fields: field_inits,
                         loc: struct_init.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: struct_init.loc.clone(),
                 })
@@ -2443,6 +2446,7 @@ impl Resolver {
                     Some(TypedExpression {
                         kind: TypedExpressionKind::Symbol(symbol_id, identifier.loc.clone()),
                         concrete_type: None,
+                        value_category: ValueCategory::Lvalue,
                         loc: module_import.loc.clone(),
                     })
                 } else {
@@ -2450,6 +2454,7 @@ impl Resolver {
                         Some(symbol_id) => Some(TypedExpression {
                             kind: TypedExpressionKind::Symbol(symbol_id, module_import.loc.clone()),
                             concrete_type: None,
+                            value_category: ValueCategory::Lvalue,
                             loc: module_import.loc.clone(),
                         }),
                         None => return None,
@@ -2461,6 +2466,7 @@ impl Resolver {
                 Some(TypedExpression {
                     kind: TypedExpressionKind::Symbol(symbol_id, identifier.loc.clone()),
                     concrete_type: None,
+                    value_category: ValueCategory::Lvalue,
                     loc: identifier.loc.clone(),
                 })
             }
@@ -2517,6 +2523,7 @@ impl Resolver {
                         args: typed_args,
                         loc: func_call.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: func_call.loc.clone(),
                 })
@@ -2548,6 +2555,7 @@ impl Resolver {
                         elements: typed_elements,
                         loc: arr.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: arr.loc.clone(),
                 })
@@ -2563,6 +2571,7 @@ impl Resolver {
                         op: bin.op.clone(),
                         loc: bin.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: bin.loc.clone(),
                 })
@@ -2576,6 +2585,7 @@ impl Resolver {
                         op: prefix.op.clone(),
                         loc: prefix.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: prefix.loc.clone(),
                 })
@@ -2603,6 +2613,7 @@ impl Resolver {
                         target_type,
                         loc: cast.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: cast.loc.clone(),
                 })
@@ -2619,6 +2630,7 @@ impl Resolver {
                 ) {
                     Some(concrete_type) => Some(TypedExpression {
                         kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
+                        value_category: ValueCategory::Rvalue,
                         concrete_type: Some(concrete_type),
                         loc,
                     }),
@@ -2643,6 +2655,7 @@ impl Resolver {
                         kind: assignment.kind.clone(),
                         loc: assignment.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: assignment.loc.clone(),
                 })
@@ -2733,6 +2746,7 @@ impl Resolver {
                 Some(TypedExpression {
                     kind: TypedExpressionKind::Literal(typed_literal.clone()),
                     concrete_type: None,
+                    value_category: ValueCategory::Rvalue,
                     loc: typed_literal.loc.clone(),
                 })
             }
@@ -2748,6 +2762,7 @@ impl Resolver {
                         operand: Box::new(operand),
                         loc: unary.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: unary.loc.clone(),
                 })
@@ -2769,6 +2784,7 @@ impl Resolver {
                         index: Box::new(index),
                         loc: array_index.loc.clone(),
                     }),
+                    value_category: ValueCategory::Lvalue,
                     concrete_type: None,
                     loc: array_index.loc.clone(),
                 })
@@ -2784,6 +2800,7 @@ impl Resolver {
                         operand: Box::new(operand),
                         loc: address_of.loc.clone(),
                     }),
+                    value_category: ValueCategory::Lvalue,
                     concrete_type: None,
                     loc: address_of.loc.clone(),
                 })
@@ -2799,6 +2816,7 @@ impl Resolver {
                         operand: Box::new(operand),
                         loc: dereference.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: dereference.loc.clone(),
                 })
@@ -2846,6 +2864,7 @@ impl Resolver {
                         is_const: unnamed_struct_value.is_const,
                         loc: unnamed_struct_value.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: unnamed_struct_value.loc.clone(),
                 })
@@ -2861,6 +2880,7 @@ impl Resolver {
                         expr: Box::new(typed_expr),
                         loc: size_of_expression.loc.clone(),
                     }),
+                    value_category: ValueCategory::Rvalue,
                     concrete_type: None,
                     loc: size_of_expression.loc.clone(),
                 })

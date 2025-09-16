@@ -9,3 +9,4 @@ public extern func fprintf(stream: abi::c_file, format: const char*, ...) int32;
 public extern func malloc(size: size_t) void*;
 public extern func free(ptr: void*) void;
 public extern func exit(status: int32) void;
+public extern func strncpy(dest: char*, src: const char*, count: size_t) char*;
