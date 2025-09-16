@@ -1060,7 +1060,7 @@ impl<'a> CodeGenBuilder<'a> {
         let lhs_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lhs_lvalue.clone());
         let rhs_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), rhs_lvalue.clone());
 
-        let signed = rhs_rvalue.value_type.as_basic_type().unwrap().is_signed();
+        let get_signed = || rhs_rvalue.value_type.as_basic_type().unwrap().is_signed();
 
         match infix_expr.op {
             InfixOperator::Add => self.build_add(lhs_rvalue, rhs_rvalue),
@@ -1069,28 +1069,28 @@ impl<'a> CodeGenBuilder<'a> {
             InfixOperator::Div => self.build_div(lhs_rvalue, rhs_rvalue),
             InfixOperator::Rem => self.build_rem(lhs_rvalue, rhs_rvalue),
             InfixOperator::LessThan => {
-                if signed {
+                if get_signed() {
                     self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLT, FloatPredicate::OLT)
                 } else {
                     self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULT, FloatPredicate::OLT)
                 }
             }
             InfixOperator::LessEqual => {
-                if signed {
+                if get_signed() {
                     self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SLE, FloatPredicate::OLE)
                 } else {
                     self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::ULE, FloatPredicate::OLE)
                 }
             }
             InfixOperator::GreaterThan => {
-                if signed {
+                if get_signed() {
                     self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGT, FloatPredicate::OGT)
                 } else {
                     self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGT, FloatPredicate::OGT)
                 }
             }
             InfixOperator::GreaterEqual => {
-                if signed {
+                if get_signed() {
                     self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::SGE, FloatPredicate::OGE)
                 } else {
                     self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGE, FloatPredicate::OGE)

@@ -1,18 +1,6 @@
 import std::libc{printf};
 
-struct Sample {
-    a: void*;
-}
-
 func main() {
-    #a = 10;
-    #sample = Sample { a: null };
-    #ptr = &sample;
-
-    #v: void* = ptr->a;
-    if (!ptr->a){
-        printf("null aaaaaaa\n");
-    }
-
-    printf("end\n");
+    #sz = sizeof(int*);
+    printf("value: %d\n", sz);
 }
