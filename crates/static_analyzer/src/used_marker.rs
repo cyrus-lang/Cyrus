@@ -3,7 +3,7 @@ use resolver::scope::LocalScopeRef;
 use typed_ast::{ModuleID, SymbolID};
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn mark_symbol_used_once(&mut self, module_id: ModuleID, symbol_id: SymbolID) {
+    pub(crate) fn mark_symbol_used_once(&mut self, _module_id: ModuleID, _symbol_id: SymbolID) {
         // let mut global_symbols = self.resolver.global_symbols.lock().unwrap();
         // let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         // let symbol_entry = symbol_table

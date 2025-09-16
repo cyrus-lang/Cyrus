@@ -31,7 +31,14 @@ pub struct TypedProgramTree {
 pub struct TypedExpression {
     pub kind: TypedExpressionKind,
     pub concrete_type: Option<ConcreteType>,
+    pub value_category: ValueCategory,
     pub loc: Location,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ValueCategory {
+    Lvalue,
+    Rvalue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -80,6 +87,16 @@ impl TypedLiteral {
             LiteralKind::Null => "null",
         }
         .to_string()
+    }
+}
+
+impl TypedExpression {
+    pub fn is_lvalue(&self) -> bool {
+        self.value_category == ValueCategory::Lvalue
+    }
+
+    pub fn is_rvalue(&self) -> bool {
+        self.value_category == ValueCategory::Rvalue
     }
 }
 

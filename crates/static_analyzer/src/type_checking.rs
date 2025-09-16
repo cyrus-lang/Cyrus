@@ -411,6 +411,48 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
+    fn lower_prefix_bang_with_pointer_operand(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        expected_type: Option<ConcreteType>,
+        prefix_expr: &mut TypedPrefixExpression,
+    ) -> Option<TypedExpression> {
+        let operand_type =
+            match self.analyze_typed_expr_type(scope_id_opt, &mut prefix_expr.operand, expected_type.clone()) {
+                Some(concrete_type) => concrete_type,
+                None => return None,
+            };
+
+        let null_literal_expr = TypedExpression {
+            kind: TypedExpressionKind::Literal(TypedLiteral {
+                ty: Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                    BasicConcreteType::Void,
+                )))),
+                kind: LiteralKind::Null,
+                loc: prefix_expr.loc.clone(),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: prefix_expr.loc.clone(),
+        };
+
+        if operand_type.is_pointer() {
+            Some(TypedExpression {
+                kind: TypedExpressionKind::Infix(TypedInfixExpression {
+                    op: InfixOperator::Equal,
+                    lhs: prefix_expr.operand.clone(),
+                    rhs: Box::new(null_literal_expr),
+                    loc: prefix_expr.loc.clone(),
+                }),
+                value_category: ValueCategory::Rvalue,
+                concrete_type: None,
+                loc: prefix_expr.loc.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
     pub(crate) fn analyze_typed_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -426,39 +468,11 @@ impl<'a> AnalysisContext<'a> {
             }
             TypedExpressionKind::Prefix(prefix_expr) => match &prefix_expr.op {
                 PrefixOperator::Bang => {
-                    let operand_type = match self.analyze_typed_expr_type(
-                        scope_id_opt,
-                        &mut prefix_expr.operand,
-                        expected_type.clone(),
-                    ) {
-                        Some(concrete_type) => concrete_type,
-                        None => return None,
+                    if let Some(lowered_typed_expr) =
+                        self.lower_prefix_bang_with_pointer_operand(scope_id_opt, expected_type.clone(), prefix_expr)
+                    {
+                        *typed_expr = lowered_typed_expr;
                     };
-
-                    let null_literal_expr = TypedExpression {
-                        kind: TypedExpressionKind::Literal(TypedLiteral {
-                            ty: Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                                BasicConcreteType::Void,
-                            )))),
-                            kind: LiteralKind::Null,
-                            loc: prefix_expr.loc.clone(),
-                        }),
-                        concrete_type: None,
-                        loc: prefix_expr.loc.clone(),
-                    };
-
-                    if operand_type.is_pointer() {
-                        *typed_expr = TypedExpression {
-                            kind: TypedExpressionKind::Infix(TypedInfixExpression {
-                                op: InfixOperator::NotEqual,
-                                lhs: prefix_expr.operand.clone(),
-                                rhs: Box::new(null_literal_expr),
-                                loc: prefix_expr.loc.clone(),
-                            }),
-                            concrete_type: None,
-                            loc: prefix_expr.loc.clone(),
-                        };
-                    }
                 }
                 _ => {}
             },
@@ -908,6 +922,7 @@ impl<'a> AnalysisContext<'a> {
                     loc: field_access.loc.clone(),
                 }),
                 concrete_type: None,
+                value_category: ValueCategory::Lvalue,
                 loc: field_access.loc.clone(),
             });
         }
@@ -972,6 +987,7 @@ impl<'a> AnalysisContext<'a> {
                     operand: field_access.operand.clone(),
                     loc: field_access.loc.clone(),
                 }),
+                value_category: ValueCategory::Lvalue,
                 concrete_type: None,
                 loc: field_access.loc.clone(),
             });
@@ -1035,6 +1051,7 @@ impl<'a> AnalysisContext<'a> {
                     loc: field_access.loc.clone(),
                 }),
                 concrete_type: None,
+                value_category: ValueCategory::Lvalue,
                 loc: field_access.loc.clone(),
             });
         }
@@ -1576,7 +1593,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         address_of: &mut TypedAddressOf,
     ) -> Option<ConcreteType> {
-        if !address_of.operand.kind.is_lvalue() {
+        if !address_of.operand.is_lvalue() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::AddressOfRvalue,
@@ -1614,21 +1631,23 @@ impl<'a> AnalysisContext<'a> {
 
         dereference.operand.concrete_type = Some(operand_type.clone());
 
+        if !dereference.operand.is_lvalue() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::DerefNonPointerValue,
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    dereference.loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
+            return None;
+        }
+
         let pointer_inner_type = match operand_type {
             ConcreteType::Pointer(concrete_type) => *concrete_type,
-            _ => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::DerefNonPointerValue,
-                    location: Some(DiagLoc::new(
-                        self.resolver.get_current_module_file_path(),
-                        dereference.loc.clone(),
-                        0,
-                    )),
-                    hint: None,
-                });
-                return None;
-            }
+            _ => unreachable!(),
         };
 
         if pointer_inner_type.is_void() {
@@ -2101,12 +2120,6 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        {
-            // FIXME I still don't know why this isn't working?
-            // But i know i can fix it in the future and does not matter for me at moment =/
-            // self.mark_func_used(local_scope_opt, module_id, method_symbol_id);
-        }
-
         self.check_func_call(
             scope_id_opt,
             &mut resolved_method.func_sig,
@@ -2151,7 +2164,7 @@ impl<'a> AnalysisContext<'a> {
             result = false;
         }
 
-        if operand_concrete_type.is_pointer() && !method_call.is_fat_arrow {
+        if method_call.operand.is_lvalue() && !method_call.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::UseFatArrow,
@@ -2163,7 +2176,7 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
             result = false;
-        } else if !operand_concrete_type.is_pointer() && method_call.is_fat_arrow {
+        } else if !method_call.operand.is_lvalue() && method_call.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InvalidFatArrow,
@@ -2343,6 +2356,22 @@ impl<'a> AnalysisContext<'a> {
         let rhs_type = rhs_type.get_const_inner();
 
         if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
+            let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidInfix {
+                    lhs_type: lhs_type_str,
+                    rhs_type: rhs_type_str,
+                },
+                location: Some(DiagLoc::new(
+                    self.resolver.get_current_module_file_path(),
+                    loc.clone(),
+                    0,
+                )),
+                hint: None,
+            });
             return None;
         }
 
