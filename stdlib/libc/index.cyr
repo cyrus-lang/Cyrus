@@ -4,9 +4,10 @@ public extern stdout: abi::c_file;
 public extern stderr: abi::c_file;
 public extern stdin: abi::c_file;
 
-public extern func printf(format: const char*, ...) int32;
+public extern func printf(format: abi::c_char*, ...) int32;
 public extern func fprintf(stream: abi::c_file, format: const char*, ...) int32;
-public extern func malloc(size: size_t) void*;
+public extern func malloc(size: abi::c_size_t) void*;
 public extern func free(ptr: void*) void;
-public extern func exit(status: int32) void;
-public extern func strncpy(dest: char*, src: const char*, count: size_t) char*;
+public extern func exit(status: abi::c_int) void;
+public extern func realloc(ptr: void*, size: abi::c_size_t) void*;
+public extern func strncpy(dest: abi::c_char*, src: const abi::c_char*, count: abi::c_size_t) abi::c_char*;
