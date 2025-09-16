@@ -58,7 +58,7 @@ fn get_program_trees(
 
     let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
     let module_id = generate_module_id();
-    match resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true) {
+    match resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true, file_path.clone()) {
         Some(..) => {}
         None => unreachable!(),
     };
@@ -314,7 +314,7 @@ pub(crate) fn command_semantic_only(mut options: CompilerOptions, file_path: Str
 
     let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
     let module_id = generate_module_id();
-    match resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true) {
+    match resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true, file_path.clone()) {
         Some(..) => {}
         None => unreachable!(),
     };

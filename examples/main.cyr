@@ -1,9 +1,12 @@
+import sample;
 import std::libc{printf};
-
-struct Sample {
-    a: int;
-}
+import std::libc::abi{c_int};
 
 func main() {
-    printf("value: %d\n", sizeof(Sample));
+    #sample = sample::Sample{a: 10};
+    #ptr = &sample;
+
+    sample.change(5);
+
+    printf("value: %d\n", ptr->a);
 }
