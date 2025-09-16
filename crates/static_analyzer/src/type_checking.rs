@@ -2178,7 +2178,7 @@ impl<'a> AnalysisContext<'a> {
             result = false;
         }
 
-        if method_call.operand.is_lvalue() && !method_call.is_fat_arrow {
+        if operand_concrete_type.is_pointer() && !method_call.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::UseFatArrow,
@@ -2190,7 +2190,7 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
             result = false;
-        } else if !method_call.operand.is_lvalue() && method_call.is_fat_arrow {
+        } else if !operand_concrete_type.is_pointer() && method_call.is_fat_arrow {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InvalidFatArrow,
@@ -2657,7 +2657,14 @@ impl<'a> AnalysisContext<'a> {
         sizeof_expr: &mut TypedSizeOfExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
+        match &sizeof_expr.expr.kind {
+            TypedExpressionKind::ConcreteType(concrete_type) => {
+                self.normalize_type(scope_id_opt, concrete_type.clone(), sizeof_expr.loc.clone())?;
+            },
+            _ => {
+                self.analyze_typed_expr_type(scope_id_opt, &mut sizeof_expr.expr, expected_type);
+            }
+        }
 
         Some(ConcreteType::BasicType(BasicConcreteType::SizeT))
     }
