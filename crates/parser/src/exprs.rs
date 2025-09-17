@@ -5,6 +5,7 @@ use crate::prec::*;
 use ast::operators::InfixOperator;
 use ast::operators::PrefixOperator;
 use ast::operators::UnaryOperator;
+use ast::source_loc::SourceLoc;
 use ast::token::*;
 use ast::*;
 use diagcentral::Diag;
@@ -106,7 +107,10 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc.clone(),
+                            self.file_name.clone(),
+                        ))),
                         hint: None,
                     });
                 }
@@ -153,7 +157,10 @@ impl Parser {
                         return Err(Diag {
                             kind: ParserDiagKind::InvalidToken(token_kind.clone()),
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                self.current_token().loc.clone(),
+                                self.file_name.clone(),
+                            ))),
                             hint: Some(String::from("Wanted increment or decrement operator.")),
                         });
                     }
@@ -179,7 +186,10 @@ impl Parser {
                         return Err(Diag {
                             kind: ParserDiagKind::InvalidToken(token_kind.clone()),
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                self.current_token().loc.clone(),
+                                self.file_name.clone(),
+                            ))),
                             hint: None,
                         });
                     }
@@ -232,7 +242,7 @@ impl Parser {
                         return Err(Diag {
                             kind: ParserDiagKind::InvalidPrefixOperator(token_kind.clone()),
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                             hint: None,
                         });
                     }
@@ -254,6 +264,8 @@ impl Parser {
                 expr
             }
             _ => {
+                let loc = self.current_token().loc;
+
                 if self.is_array_constructor_start() {
                     let type_specifier = self.parse_type_specifier()?;
 
@@ -267,7 +279,8 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
+
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
                         hint: None,
                     });
                 }
@@ -283,7 +296,10 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        self.current_token().loc.clone(),
+                        self.file_name.clone(),
+                    ))),
                     hint: None,
                 });
             }
@@ -357,7 +373,7 @@ impl Parser {
                         return Some(Err(Diag {
                             kind: ParserDiagKind::InvalidInfixOperator(self.current_token().kind),
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(self.file_name.clone(), loc, self.current_token().span.end)),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                             hint: None,
                         }));
                     }
@@ -429,11 +445,7 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::ExpectedIdentifier,
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
-                        loc.clone(),
-                        self.current_token().span.end,
-                    )),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                     hint: None,
                 });
             }
@@ -509,11 +521,7 @@ impl Parser {
                                     self.current_token().kind,
                                 ),
                                 level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(
-                                    self.file_name.clone(),
-                                    loc.clone(),
-                                    self.current_token().span.end,
-                                )),
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                                 hint: None,
                             });
                         }
@@ -541,11 +549,7 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::ExpectedIdentifier,
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
-                            self.file_name.clone(),
-                            loc.clone(),
-                            self.current_token().span.end,
-                        )),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                         hint: None,
                     });
                 }
@@ -573,11 +577,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingClosingParen,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc.clone(),
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                 hint: None,
             });
         }
@@ -602,11 +602,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingOpeningParen,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc.clone(),
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                 hint: None,
             });
         }
@@ -616,11 +612,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingClosingParen,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc.clone(),
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                 hint: None,
             });
         }
@@ -650,11 +642,7 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
-                        loc.clone(),
-                        self.current_token().span.end,
-                    )),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                     hint: None,
                 });
             }
@@ -686,11 +674,7 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    loc.clone(),
-                    self.current_token().span.end,
-                )),
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                 hint: None,
             });
         }
@@ -743,11 +727,10 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::MissingClosingBrace,
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc,
                             self.file_name.clone(),
-                            self.current_token().loc.clone(),
-                            self.current_token().span.end,
-                        )),
+                        ))),
                         hint: None,
                     });
                 }
@@ -764,11 +747,10 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc,
                             self.file_name.clone(),
-                            self.current_token().loc.clone(),
-                            self.current_token().span.end,
-                        )),
+                        ))),
                         hint: None,
                     });
                 }
@@ -806,11 +788,7 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::InvalidAssignOperator(token_kind),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
-                        loc.clone(),
-                        self.current_token().span.end,
-                    )),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                     hint: None,
                 });
             }
@@ -878,11 +856,10 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::NonArrayDataTypeForArrayConstruction,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
                     self.file_name.clone(),
-                    loc.clone(),
-                    self.current_token().span.end,
-                )),
+                ))),
                 hint: None,
             });
         }
@@ -891,11 +868,10 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::MissingOpeningBrace,
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
                     self.file_name.clone(),
-                    loc.clone(),
-                    self.current_token().span.end,
-                )),
+                ))),
                 hint: None,
             });
         }
@@ -923,11 +899,10 @@ impl Parser {
                         return Err(Diag {
                             kind: ParserDiagKind::InvalidUntypedArrayConstructor,
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                self.current_token().loc.clone(),
                                 self.file_name.clone(),
-                                loc.clone(),
-                                self.current_token().span.end,
-                            )),
+                            ))),
                             hint: None,
                         });
                     }
@@ -944,11 +919,7 @@ impl Parser {
                         return Err(Diag {
                             kind: ParserDiagKind::InvalidToken(self.peek_token().kind),
                             level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(
-                                self.file_name.clone(),
-                                loc.clone(),
-                                self.current_token().span.end,
-                            )),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
                             hint: None,
                         });
                     }
@@ -1014,11 +985,10 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        self.current_token().loc,
                         self.file_name.clone(),
-                        self.current_token().loc.clone(),
-                        self.current_token().span.end,
-                    )),
+                    ))),
                     hint: None,
                 });
             }
@@ -1036,11 +1006,10 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::MissingClosingBrace,
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc,
                             self.file_name.clone(),
-                            self.current_token().loc.clone(),
-                            self.current_token().span.end,
-                        )),
+                        ))),
                         hint: None,
                     });
                 }
@@ -1092,11 +1061,10 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc,
                             self.file_name.clone(),
-                            self.current_token().loc.clone(),
-                            self.current_token().span.end,
-                        )),
+                        ))),
                         hint: None,
                     });
                 }

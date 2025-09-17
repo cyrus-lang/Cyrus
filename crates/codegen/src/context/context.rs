@@ -276,7 +276,6 @@ impl CodeGenContext {
                         self.resolver_rc.clone(),
                         *module_id,
                         module_name.to_string(),
-                        module_file_path.clone(),
                     );
 
                     match self.output_kind.clone() {

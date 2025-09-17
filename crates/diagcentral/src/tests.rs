@@ -22,11 +22,15 @@ mod tests {
         let diag = Diag {
             level: DiagLevel::Error,
             kind: DummyDiagKind::Mismatch,
-            location: Some(DiagLoc::new("sample.cyr".to_string(), Location::new(5, 10), 10)),
+            location: Some(DiagLoc::new(SourceLoc {
+                line: 5,
+                column: 10,
+                file_path: "sample.cyr".to_string(),
+            })),
             hint: Some("A simple example of hint message.".to_string()),
         };
 
-        let reporter = DiagReporter::new().report(diag.clone());
+        DiagReporter::new().report(diag.clone());
         let output = DiagReporter::format_panel(&diag);
         assert!(output.contains("error"));
         assert!(output.contains("Type mismatch occurred"));

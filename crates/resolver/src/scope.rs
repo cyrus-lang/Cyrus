@@ -1,5 +1,5 @@
 use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
-use ast::{AccessSpecifier, token::Location};
+use ast::{AccessSpecifier, source_loc::SourceLoc};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::{ModuleID, ScopeID, SymbolID, TypedBlockStatement, TypedFuncParamKind, TypedVariable};
@@ -11,7 +11,6 @@ pub struct SymbolTable {
     pub entries: HashMap<SymbolID, SymbolEntry>,
     pub names: HashMap<String, SymbolID>,
     pub scopes: HashMap<ScopeID, LocalScopeRef>,
-    pub locs: HashMap<SymbolID, (String, Location, usize)>,
 }
 
 #[derive(Debug, Clone)]
@@ -294,7 +293,6 @@ impl SymbolTable {
             entries: HashMap::new(),
             names: HashMap::new(),
             scopes: HashMap::new(),
-            locs: HashMap::new(),
         }
     }
 }
@@ -317,7 +315,7 @@ impl SymbolEntry {
         }
     }
 
-    pub fn get_loc(&self) -> Location {
+    pub fn get_loc(&self) -> SourceLoc {
         match &self.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.loc.clone(),
             SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig.loc.clone(),

@@ -5,7 +5,7 @@ use crate::builder::{
 use ast::{
     LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
-    token::Location,
+    source_loc::SourceLoc,
 };
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
@@ -113,8 +113,7 @@ impl<'a> CodeGenBuilder<'a> {
                     "panic: Index out of bounds!\nAttempted to access index %d in an array of size {}.",
                     array_length
                 ),
-                Location::default(),
-                0,
+                SourceLoc::default(),
             )
             .0;
 
@@ -1334,11 +1333,11 @@ impl<'a> CodeGenBuilder<'a> {
             LiteralKind::String(value, string_prefix) => {
                 if let Some(prefix) = string_prefix {
                     match prefix {
-                        StringPrefix::C => self.build_c_style_string(value.clone(), literal.loc.clone(), 0),
-                        StringPrefix::B => self.build_byte_string(value.clone(), literal.loc.clone(), 0),
+                        StringPrefix::C => self.build_c_style_string(value.clone(), literal.loc.clone()),
+                        StringPrefix::B => self.build_byte_string(value.clone(), literal.loc.clone()),
                     }
                 } else {
-                    self.build_string_literal(value.clone(), literal.loc.clone(), 0)
+                    self.build_string_literal(value.clone(), literal.loc.clone())
                 }
             }
         };

@@ -3,7 +3,7 @@ use crate::builder::{
     module::{CodeGenBuilder, LocalIRValue},
     values::{InternalValue, InternalValueKind},
 };
-use ast::token::Location;
+use ast::source_loc::SourceLoc;
 use inkwell::{
     AddressSpace,
     module::Linkage,
@@ -103,7 +103,7 @@ impl<'a> CodeGenBuilder<'a> {
         let unnamed_struct_type = TypedUnnamedStructType {
             fields,
             packed: false,
-            loc: Location::default(),
+            loc: SourceLoc::default(),
         };
 
         self.build_unnamed_struct_type(local_scope_opt, &unnamed_struct_type)
@@ -175,7 +175,7 @@ impl<'a> CodeGenBuilder<'a> {
                         })
                         .collect(),
                     packed: false,
-                    loc: Location::default(),
+                    loc: SourceLoc::default(),
                 };
 
                 let unnamed_struct_value = TypedUnnamedStructValue {
@@ -183,7 +183,7 @@ impl<'a> CodeGenBuilder<'a> {
                     fields,
                     packed: false,
                     is_const: true,
-                    loc: Location::default(),
+                    loc: SourceLoc::default(),
                 };
 
                 let payload_internal_value =

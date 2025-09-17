@@ -1,7 +1,6 @@
-use std::fmt;
-
-use ast::token::{Location, Span};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
+use std::fmt;
+use ast::source_loc::SourceLoc;
 
 #[derive(Debug, Clone)]
 pub enum LexicalDiagKind {
@@ -11,7 +10,7 @@ pub enum LexicalDiagKind {
     UnterminatedMultiLineComment,
     InvalidChar(char),
     EmptyCharLiteral,
-    CharLiteralMustBeASingleUnit
+    CharLiteralMustBeASingleUnit,
 }
 
 impl fmt::Display for LexicalDiagKind {
@@ -42,17 +41,15 @@ impl fmt::Display for LexicalDiagKind {
     }
 }
 
-pub fn lexer_invalid_char_error(
-    file: String,
-    line: usize,
-    column: usize,
-    ch: char,
-    span: Span,
-) -> Diag<LexicalDiagKind> {
+pub fn lexer_invalid_char_error(file: String, line: usize, column: usize, ch: char) -> Diag<LexicalDiagKind> {
     Diag {
         level: DiagLevel::Error,
         kind: LexicalDiagKind::InvalidChar(ch),
-        location: Some(DiagLoc::new(file, Location::new(line, column), span.end)),
+        location: Some(DiagLoc::new(SourceLoc {
+            file_path: file,
+            column,
+            line,
+        })),
         hint: None,
     }
 }

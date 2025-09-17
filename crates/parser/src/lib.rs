@@ -1,3 +1,4 @@
+use ast::source_loc::SourceLoc;
 use ast::token::*;
 use ast::*;
 use diagcentral::Diag;
@@ -167,7 +168,7 @@ impl Parser {
     pub fn peek_n_token(&self, n: usize) -> Option<Token> {
         self.tokens.get(self.cur_token_idx + n).cloned()
     }
-    
+
     /// This function peeks at the next token without advancing the lexer. If the token matches
     /// the expected kind, it consumes the token and returns `Ok`. Otherwise, it returns an error
     /// with a message indicating the mismatch.
@@ -180,11 +181,10 @@ impl Parser {
         Err(Diag {
             kind: ParserDiagKind::InvalidToken(self.current_token().kind),
             level: DiagLevel::Error,
-            location: Some(DiagLoc::new(
+            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                self.current_token().loc,
                 self.file_name.clone(),
-                self.current_token().loc.clone(),
-                self.current_token().span.end,
-            )),
+            ))),
             hint: None,
         })
     }
@@ -200,11 +200,10 @@ impl Parser {
         Err(Diag {
             kind: ParserDiagKind::UnexpectedToken(self.current_token().kind, token_kind),
             level: DiagLevel::Error,
-            location: Some(DiagLoc::new(
+            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                self.current_token().loc,
                 self.file_name.clone(),
-                self.current_token().loc.clone(),
-                self.current_token().span.end,
-            )),
+            ))),
             hint: None,
         })
     }

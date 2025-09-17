@@ -1,5 +1,5 @@
 use crate::{builder::module::CodeGenBuilder, diagnostics::CodeGenDiagKind};
-use ast::token::Location;
+use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use inkwell::{
     module::Linkage,
@@ -9,51 +9,45 @@ use inkwell::{
 use utils::escaping::unescape_string;
 
 impl<'ctx> CodeGenBuilder<'ctx> {
-    fn unescape_or_exit(&self, value: &str, loc: &Location, span_end: usize) -> String {
+    fn unescape_or_exit(&self, value: &str, loc: &SourceLoc) -> String {
         match unescape_string(&unescape_string(value).unwrap_or_else(|e| {
-            self.report_unescape_error(&e.to_string(), loc, span_end);
+            self.report_unescape_error(&e.to_string(), loc);
             unreachable!()
         })) {
             Ok(v) => v,
             Err(err) => {
-                self.report_unescape_error(&err.to_string(), loc, span_end);
+                self.report_unescape_error(&err.to_string(), loc);
                 unreachable!()
             }
         }
     }
 
-    fn report_unescape_error(&self, err: &str, loc: &Location, span_end: usize) {
+    fn report_unescape_error(&self, err: &str, loc: &SourceLoc) {
         DiagReporter::display_single(Diag {
             level: DiagLevel::Error,
             kind: CodeGenDiagKind::UnescapeError { err: err.to_string() },
             location: Some(DiagLoc {
-                file: self.module_file_path.clone(),
+                file: loc.file_path.clone(),
                 line: loc.line,
                 column: loc.column,
-                length: span_end,
             }),
             hint: None,
         });
     }
 
-    pub(crate) fn build_byte_string(&self, value: String, loc: Location, span_end: usize) -> BasicValueEnum<'ctx> {
-        let unescaped = self.unescape_or_exit(&value, &loc, span_end);
+    pub(crate) fn build_byte_string(&self, value: String, loc: SourceLoc) -> BasicValueEnum<'ctx> {
+        let unescaped = self.unescape_or_exit(&value, &loc);
         let const_str = self.llvmctx.const_string(unescaped.as_bytes(), true);
 
         const_str.as_basic_value_enum()
     }
 
-    pub(crate) fn build_c_style_string(&self, value: String, loc: Location, span_end: usize) -> BasicValueEnum<'ctx> {
-        self.build_string_literal(value, loc, span_end)
+    pub(crate) fn build_c_style_string(&self, value: String, loc: SourceLoc) -> BasicValueEnum<'ctx> {
+        self.build_string_literal(value, loc)
     }
 
-    pub(crate) fn build_global_str(
-        &self,
-        value: String,
-        loc: Location,
-        span_end: usize,
-    ) -> (GlobalValue<'ctx>, ArrayType<'ctx>) {
-        let unescaped = self.unescape_or_exit(&value, &loc, span_end);
+    pub(crate) fn build_global_str(&self, value: String, loc: SourceLoc) -> (GlobalValue<'ctx>, ArrayType<'ctx>) {
+        let unescaped = self.unescape_or_exit(&value, &loc);
         let const_str = self.llvmctx.const_string(unescaped.as_bytes(), true);
 
         let llvmmodule = self.llvmmodule.borrow_mut();
@@ -68,8 +62,8 @@ impl<'ctx> CodeGenBuilder<'ctx> {
         (global_str, const_str.get_type())
     }
 
-    pub(crate) fn build_string_literal(&self, value: String, loc: Location, span_end: usize) -> BasicValueEnum<'ctx> {
-        let (global_str, _) = self.build_global_str(value, loc, span_end);
+    pub(crate) fn build_string_literal(&self, value: String, loc: SourceLoc) -> BasicValueEnum<'ctx> {
+        let (global_str, _) = self.build_global_str(value, loc);
 
         global_str.as_pointer_value().as_basic_value_enum()
     }

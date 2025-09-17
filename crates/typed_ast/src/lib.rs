@@ -1,8 +1,6 @@
 use crate::types::{ConcreteType, TypedUnnamedStructType};
 use ast::{
-    AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind,
-    operators::{InfixOperator, PrefixOperator, UnaryOperator},
-    token::Location,
+    operators::{InfixOperator, PrefixOperator, UnaryOperator}, source_loc::SourceLoc, AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind
 };
 use std::collections::HashMap;
 
@@ -32,7 +30,7 @@ pub struct TypedExpression {
     pub kind: TypedExpressionKind,
     pub concrete_type: Option<ConcreteType>,
     pub value_category: ValueCategory,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -43,7 +41,7 @@ pub enum ValueCategory {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedExpressionKind {
-    Symbol(SymbolID, Location),
+    Symbol(SymbolID, SourceLoc),
     Literal(TypedLiteral),
     Prefix(TypedPrefixExpression),
     Infix(TypedInfixExpression),
@@ -66,14 +64,14 @@ pub enum TypedExpressionKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedSizeOfExpression {
     pub expr: Box<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedLiteral {
     pub ty: Option<ConcreteType>,
     pub kind: LiteralKind,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 impl TypedLiteral {
@@ -165,21 +163,21 @@ impl TypedExpressionKind {
 pub struct TypedIdentifier {
     pub name: String,
     pub symbol_id: SymbolID,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedPrefixExpression {
     pub op: PrefixOperator,
     pub operand: Box<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedUnaryExpression {
     pub operand: Box<TypedExpression>,
     pub op: UnaryOperator,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -187,7 +185,7 @@ pub struct TypedInfixExpression {
     pub op: InfixOperator,
     pub lhs: Box<TypedExpression>,
     pub rhs: Box<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -195,61 +193,61 @@ pub struct TypedAssignment {
     pub lhs: Box<TypedExpression>,
     pub rhs: Box<TypedExpression>,
     pub kind: AssignmentKind,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedCast {
     pub operand: Box<TypedExpression>,
     pub target_type: ConcreteType,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedArray {
     pub array_type: ConcreteType,
     pub elements: Vec<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedArrayIndex {
     pub operand: Box<TypedExpression>,
     pub index: Box<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedAddressOf {
     pub operand: Box<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedDereference {
     pub operand: Box<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructInit {
     pub symbol_id: SymbolID,
     pub fields: Vec<TypedStructFieldInit>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructFieldInit {
     pub name: String,
     pub value: TypedExpression,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncCall {
     pub symbol_id: SymbolID,
     pub args: Vec<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -260,7 +258,7 @@ pub struct TypedFieldAccess {
     pub field_ty: Option<ConcreteType>,
     pub object_symbol_id: Option<SymbolID>,
     pub is_fat_arrow: bool,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -270,7 +268,7 @@ pub struct TypedMethodCall {
     pub method_name: String,
     pub args: Vec<TypedExpression>,
     pub is_fat_arrow: bool,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -279,7 +277,7 @@ pub struct TypedUnnamedStructValue {
     pub unnamed_struct_type: Option<TypedUnnamedStructType>,
     pub packed: bool,
     pub is_const: bool,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -287,7 +285,7 @@ pub struct TypedUnnamedStructValueField {
     pub field_name: String,
     pub field_type: Option<ConcreteType>,
     pub field_value: Box<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 // Statements
@@ -316,7 +314,7 @@ pub enum TypedStatement {
 }
 
 impl TypedStatement {
-    pub fn get_loc(&self) -> Location {
+    pub fn get_loc(&self) -> SourceLoc {
         match self {
             TypedStatement::Import(typed_import) => typed_import.loc.clone(),
             TypedStatement::Variable(typed_variable) => typed_variable.loc.clone(),
@@ -347,7 +345,7 @@ pub struct TypedInterface {
     pub symbol_id: SymbolID,
     pub methods: Vec<TypedFuncDecl>,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -358,7 +356,7 @@ pub struct TypedEnum {
     pub variants: Vec<TypedEnumVariant>,
     pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -381,7 +379,7 @@ impl TypedEnumVariant {
 #[derive(Debug, Clone)]
 pub struct TypedEnumValuedField {
     pub field_type: ConcreteType,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -393,7 +391,7 @@ pub struct TypedStruct {
     pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
     pub packed: bool,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -404,14 +402,14 @@ pub struct TypedUnion {
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedUnionField {
     pub name: String,
     pub ty: ConcreteType,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -419,13 +417,13 @@ pub struct TypedStructField {
     pub name: String,
     pub ty: ConcreteType,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedReturn {
     pub argument: Option<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -436,7 +434,7 @@ pub struct TypedGlobalVariable {
     pub ty: Option<ConcreteType>,
     pub expr: Option<TypedExpression>,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -444,7 +442,7 @@ pub struct TypedTypedef {
     pub name: String,
     pub ty: ConcreteType,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -452,22 +450,22 @@ pub struct TypedImport {
     pub resolved_path: Vec<String>,
     pub alias: Option<String>,
     pub module_id: ModuleID,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedBlockStatement {
     pub scope_id: ScopeID,
     pub exprs: Vec<TypedStatement>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 impl TypedBlockStatement {
-    pub fn new_empty(scope_id: ScopeID) -> Self {
+    pub fn new_empty(scope_id: ScopeID, loc: SourceLoc) -> Self {
         Self {
             scope_id,
             exprs: Vec::new(),
-            loc: Location::default(),
+            loc,
         }
     }
 }
@@ -478,7 +476,7 @@ pub struct TypedVariable {
     pub name: String,
     pub ty: Option<ConcreteType>,
     pub rhs: Option<TypedExpression>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -487,7 +485,7 @@ pub struct TypedIf {
     pub consequent: Box<TypedBlockStatement>,
     pub branches: Vec<TypedIf>,
     pub alternate: Option<Box<TypedBlockStatement>>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -499,7 +497,7 @@ pub struct TypedFuncDef {
     pub body: Box<TypedBlockStatement>,
     pub return_type: ConcreteType,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -510,7 +508,7 @@ pub struct TypedFuncDecl {
     pub return_type: ConcreteType,
     pub vis: AccessSpecifier,
     pub renamed_as: Option<String>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -537,14 +535,14 @@ pub struct TypedSelfModifier {
     pub self_symbol_id: Option<SymbolID>,
     pub ty: Option<ConcreteType>,
     pub kind: SelfModifierKind,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncParam {
     pub name: String,
     pub ty: ConcreteType,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -553,14 +551,14 @@ pub struct TypedFor {
     pub condition: Option<TypedExpression>,
     pub increment: Option<TypedExpression>,
     pub body: Box<TypedBlockStatement>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedWhile {
     pub condition: TypedExpression,
     pub body: Box<TypedBlockStatement>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -568,29 +566,29 @@ pub struct TypedSwitch {
     pub operand: TypedExpression,
     pub cases: Vec<TypedSwitchCase>,
     pub default_case: Option<TypedBlockStatement>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedSwitchCase {
     pub pattern: TypedSwitchCasePattern,
     pub body: Box<TypedBlockStatement>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub enum TypedSwitchCasePattern {
-    Expression(TypedExpression, Location),
-    Identifier(String, Location),
-    EnumVariant(String, Vec<Identifier>, Location),
+    Expression(TypedExpression, SourceLoc),
+    Identifier(String, SourceLoc),
+    EnumVariant(String, Vec<Identifier>, SourceLoc),
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedBreak {
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedContinue {
-    pub loc: Location,
+    pub loc: SourceLoc,
 }

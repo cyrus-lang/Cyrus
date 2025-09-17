@@ -8,6 +8,7 @@ use crate::{
 pub mod format;
 pub mod operators;
 pub mod token;
+pub mod source_loc;
 
 #[derive(Debug)]
 pub enum Node {

@@ -2,6 +2,7 @@ use crate::Parser;
 use crate::ParserError;
 use crate::diagnostics::ParserDiagKind;
 use crate::prec::Precedence;
+use ast::source_loc::SourceLoc;
 use ast::token::*;
 use ast::*;
 use diagcentral::Diag;
@@ -20,11 +21,10 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::ExpectedIdentifier,
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
                         self.current_token().loc.clone(),
-                        self.current_token().span.end,
-                    )),
+                        self.file_name.clone(),
+                    ))),
                     hint: None,
                 });
             }
@@ -127,11 +127,10 @@ impl Parser {
             _ => Err(Diag {
                 kind: ParserDiagKind::InvalidTypeToken(current.kind),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
                     self.current_token().loc.clone(),
-                    self.current_token().span.end,
-                )),
+                    self.file_name.clone(),
+                ))),
                 hint: None,
             }),
         };
@@ -179,11 +178,10 @@ impl Parser {
             return Err(Diag {
                 kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                 level: DiagLevel::Error,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
                     self.current_token().loc.clone(),
-                    self.current_token().span.end,
-                )),
+                    self.file_name.clone(),
+                ))),
                 hint: None,
             });
         }
@@ -215,7 +213,10 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::InvalidToken(token.kind),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(self.file_name.clone(), token.loc, token.span.end)),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        token.loc.clone(),
+                        self.file_name.clone(),
+                    ))),
                     hint: None,
                 });
             }
@@ -239,11 +240,10 @@ impl Parser {
                 return Err(Diag {
                     kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                     level: DiagLevel::Error,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
                         self.current_token().loc.clone(),
-                        self.current_token().span.end,
-                    )),
+                        self.file_name.clone(),
+                    ))),
                     hint: None,
                 });
             }
@@ -261,11 +261,10 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::MissingClosingBrace,
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
-                            self.file_name.clone(),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc.clone(),
-                            self.current_token().span.end,
-                        )),
+                            self.file_name.clone(),
+                        ))),
                         hint: None,
                     });
                 }
@@ -301,11 +300,10 @@ impl Parser {
                     return Err(Diag {
                         kind: ParserDiagKind::InvalidToken(self.current_token().kind),
                         level: DiagLevel::Error,
-                        location: Some(DiagLoc::new(
-                            self.file_name.clone(),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
                             self.current_token().loc.clone(),
-                            self.current_token().span.end,
-                        )),
+                            self.file_name.clone(),
+                        ))),
                         hint: None,
                     });
                 }

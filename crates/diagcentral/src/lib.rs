@@ -1,4 +1,4 @@
-use ast::token::Location;
+use ast::source_loc::SourceLoc;
 
 pub mod reporter;
 mod tests;
@@ -14,7 +14,6 @@ pub struct DiagLoc {
     pub file: String,
     pub line: usize,
     pub column: usize,
-    pub length: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,12 +25,11 @@ pub struct Diag<K> {
 }
 
 impl DiagLoc {
-    pub fn new(file: String, loc: Location, span_end: usize) -> Self {
+    pub fn new(loc: SourceLoc) -> Self {
         Self {
-            file,
+            file: loc.file_path,
             line: loc.line,
             column: loc.column,
-            length: span_end,
         }
     }
 }

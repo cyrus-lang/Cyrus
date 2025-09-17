@@ -1,5 +1,5 @@
-use crate::{SymbolID, TypedExpression};
-use ast::token::{Location, TokenKind};
+use crate::{SourceLoc, SymbolID, TypedExpression};
+use ast::token::TokenKind;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConcreteType {
@@ -42,10 +42,6 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
-    pub fn get_loc(&self) -> Location {
-        todo!()
-    }
-
     pub fn is_bool(&self) -> bool {
         matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
     }
@@ -299,7 +295,7 @@ impl TryFrom<TokenKind> for ConcreteType {
 pub struct TypedArrayType {
     pub element_type: Box<ConcreteType>,
     pub capacity: TypedArrayCapacity,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 impl PartialEq for TypedArrayType {
@@ -340,7 +336,7 @@ impl TypedArrayFixedCapacityValue {
 pub struct TypedUnnamedStructType {
     pub fields: Vec<TypedUnnamedStructTypeField>,
     pub packed: bool,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 impl PartialEq for TypedUnnamedStructType {
@@ -353,7 +349,7 @@ impl PartialEq for TypedUnnamedStructType {
 pub struct TypedUnnamedStructTypeField {
     pub field_name: String,
     pub field_type: Box<ConcreteType>,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 impl PartialEq for TypedUnnamedStructTypeField {
