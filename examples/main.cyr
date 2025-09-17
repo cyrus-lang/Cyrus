@@ -1,12 +1,14 @@
-import sample;
-import std::libc{printf};
 import std::libc::abi{c_int};
+import std::libc{printf, malloc};
+// import sample;
 
 func main() {
-    #sample = sample::Sample{a: 10};
-    #ptr = &sample;
+    // #sample = sample::Sample{a: 10};
+    // #ptr = &sample;
 
-    sample.change(5);
+    // sample.change(5);
+       
+    malloc(10);
 
-    printf("value: %d\n", ptr->a);
+    // printf("value: %d\n", ptr->a);
 }

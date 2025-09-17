@@ -140,6 +140,7 @@ impl<'a> AnalysisContext<'a> {
 
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
+                TypedStatement::Import(..) => continue,
                 TypedStatement::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
                 TypedStatement::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
@@ -148,8 +149,6 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Enum(typed_enum) => self.analyze_enum(None, typed_enum, false),
                 TypedStatement::Typedef(typed_typedef) => self.analyze_typedef(None, typed_typedef),
                 TypedStatement::Union(typed_union) => self.analyze_union(None, typed_union, false),
-                // Not analyzed
-                TypedStatement::Import(_) => continue,
                 // Invalid top-level statements
                 TypedStatement::Variable(_)
                 | TypedStatement::BlockStatement(_)
@@ -1301,7 +1300,7 @@ impl<'a> AnalysisContext<'a> {
         );
     }
 
-    fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: Location) {
+    pub(crate) fn normalize_func_params(&mut self, params: &mut TypedFuncParams, loc: Location) {
         // analyze static arguments
         for param in params.list.iter_mut() {
             match param {

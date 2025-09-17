@@ -148,7 +148,6 @@ impl<'a> CodeGenBuilder<'a> {
             let local_ir_value_opt = irreg.get(&irreg_symbol_id).cloned();
             drop(irreg);
 
-
             let local_ir_value = match local_ir_value_opt {
                 Some(local_ir_value) => local_ir_value,
                 None => self.build_concrete_type_declare_fresh(local_or_global_symbol),
@@ -229,15 +228,9 @@ impl<'a> CodeGenBuilder<'a> {
         concrete_type: ConcreteType,
     ) -> AnyTypeEnum<'a> {
         match concrete_type {
-            ConcreteType::UnresolvedSymbol(..) => {
-                if cfg!(debug_assertions) {
-                    dbg!(self.blockreg.current_block_ref.clone());
-
-                    panic!("Unresolved symbol in codegen: {concrete_type:?}");
-                }
-
-                unreachable!()
-            },
+            ConcreteType::UnresolvedSymbol(symbol_id) => {
+                self.build_concrete_type_from_symbol_id(local_scope_opt, symbol_id)
+            }
             ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
                 ResolvedSymbol::Enum(symbol_id)
                 | ResolvedSymbol::Union(symbol_id)
