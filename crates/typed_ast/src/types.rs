@@ -42,6 +42,10 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
+    pub fn is_enum(&self) -> bool {
+        matches!(self, ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..)))
+    }
+
     pub fn is_bool(&self) -> bool {
         matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
     }

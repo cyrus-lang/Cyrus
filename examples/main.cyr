@@ -1,11 +1,16 @@
 import std::libc{printf, malloc};
 
+enum DataType { 
+    Int,
+    Float,
+    Text    
+}
+
 func main() {
-    #n: size_t = 5;
-    #ptr = cast(int*, malloc(sizeof(int) * n));
-    // #arr: int[n];
+    // #a = DataType.Int;
+    // #b = DataType.Text;
 
-    ptr[0] = 10;
+    // a == b;
 
-    printf("value: %d\n", ptr[0]);
+    // printf("value: %d\n", ptr[0]);
 }
