@@ -6,6 +6,7 @@ use crate::{
     diagnostics::ResolverDiagKind,
 };
 use ast::format::module_segments_as_string;
+use ast::source_loc::SourceLoc;
 use ast::{
     AccessSpecifier, GlobalVariable, If, Import, Interface, ModuleImport, ModulePath, ModuleSegment,
     ModuleSegmentSingle, SelfModifierKind, StringPrefix, SwitchCasePattern, Union,
@@ -78,7 +79,11 @@ impl Resolver {
 
     fn resolve_module_import(&mut self, module_id: ModuleID, mut module_import: ModuleImport) -> Option<SymbolID> {
         if let Some(identifier) = module_import.as_identifier() {
-            return self.resolve_identifier(module_id, identifier, module_import.loc.clone(), module_import.span.end);
+            return self.resolve_identifier(
+                module_id,
+                identifier,
+                SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
+            );
         }
 
         assert!(module_import.segments.len() >= 2);
@@ -94,11 +99,10 @@ impl Resolver {
                     kind: ResolverDiagKind::ModuleImportNotFound {
                         module_name: module_import_alias,
                     },
-                    location: Some(DiagLoc::new(
-                        self.get_current_module_file_path(),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
                         module_import.loc.clone(),
-                        module_import.span.end,
-                    )),
+                        self.get_current_module_file_path(),
+                    ))),
                     hint: None,
                 });
                 return None;
@@ -114,11 +118,10 @@ impl Resolver {
                         symbol_name,
                         module_name: module_import_alias,
                     },
-                    location: Some(DiagLoc::new(
-                        self.get_current_module_file_path(),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
                         module_import.loc.clone(),
-                        module_import.span.end,
-                    )),
+                        self.get_current_module_file_path(),
+                    ))),
                     hint: None,
                 });
                 return None;
@@ -150,11 +153,10 @@ impl Resolver {
                     kind: ResolverDiagKind::ImportTwice {
                         module_name: module_segments_as_string(module_path.segments.clone()),
                     },
-                    location: Some(DiagLoc::new(
-                        self.get_current_module_file_path(),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
                         import.loc.clone(),
-                        import.span.end,
-                    )),
+                        self.get_current_module_file_path(),
+                    ))),
                     hint: Some("Consider to remove previous declaration.".to_string()),
                 });
                 duplicate_import = true;
@@ -180,11 +182,10 @@ impl Resolver {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: diag_kind,
-                        location: Some(DiagLoc::new(
-                            self.get_current_module_file_path(),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
                             import.loc.clone(),
-                            import.span.end,
-                        )),
+                            self.get_current_module_file_path(),
+                        ))),
                         hint: None,
                     });
                     continue;
@@ -280,18 +281,15 @@ impl Resolver {
                         kind: ResolverDiagKind::SymbolNotFound {
                             name: single_renamed_name,
                         },
-                        location: Some(DiagLoc::new(
-                            self.get_module_file_path(parent_module_id).unwrap(),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
                             loc.clone(),
-                            0,
-                        )),
+                            self.get_module_file_path(parent_module_id).unwrap(),
+                        ))),
                         hint: None,
                     });
                     continue;
                 }
             };
-
-            let loc_file = self.get_module_file_path(imported_module_id).unwrap();
 
             let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
             {
@@ -304,20 +302,16 @@ impl Resolver {
                         kind: ResolverDiagKind::DuplicateSymbol {
                             symbol_name: single_renamed_name,
                         },
-                        location: Some(DiagLoc::new(
-                            self.get_module_file_path(parent_module_id).unwrap(),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
                             loc.clone(),
-                            0,
-                        )),
+                            self.get_module_file_path(parent_module_id).unwrap(),
+                        ))),
                         hint: None,
                     });
                     continue;
                 }
 
                 symbol_table.names.insert(single_renamed_name.clone(), symbol_id);
-                symbol_table
-                    .locs
-                    .insert(symbol_id, (loc_file, symbol_entry.get_loc(), 0));
 
                 let vis = symbol_entry.get_vis();
 
@@ -336,7 +330,10 @@ impl Resolver {
                 kind: ResolverDiagKind::ImportSinglePrivateSymbol {
                     symbol_name: single_name,
                 },
-                location: Some(DiagLoc::new(self.get_current_module_file_path(), loc.clone(), 0)),
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    loc,
+                    self.get_current_module_file_path(),
+                ))),
                 hint: None,
             });
         }
@@ -476,7 +473,7 @@ impl Resolver {
                 ConcreteType::Array(TypedArrayType {
                     element_type: Box::new(element_type),
                     capacity,
-                    loc: loc.clone(),
+                    loc: SourceLoc::from_loc(loc.clone(), self.get_current_module_file_path()),
                 })
             }),
             TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
@@ -494,7 +491,7 @@ impl Resolver {
                             fields.push(TypedUnnamedStructTypeField {
                                 field_name: field.field_name.name.clone(),
                                 field_type: Box::new(concrete_type),
-                                loc: field.loc.clone(),
+                                loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
                             });
                         }
                         None => continue,
@@ -504,7 +501,7 @@ impl Resolver {
                 Ok(ConcreteType::UnnamedStruct(TypedUnnamedStructType {
                     fields,
                     packed: unnamed_struct_type.packed,
-                    loc: unnamed_struct_type.loc.clone(),
+                    loc: SourceLoc::from_loc(unnamed_struct_type.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
             TypeSpecifier::ModuleImport(module_import) => match self.resolve_module_import(module_id, module_import) {
@@ -530,7 +527,10 @@ impl Resolver {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: diag_kind,
-                    location: Some(DiagLoc::new(self.get_current_module_file_path(), loc, span_end)),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        loc,
+                        self.get_current_module_file_path(),
+                    ))),
                     hint: None,
                 });
                 None
@@ -545,29 +545,13 @@ impl Resolver {
         drop(global_symbols);
     }
 
-    fn insert_symbol_name(
-        &mut self,
-        module_id: ModuleID,
-        name: &String,
-        loc_file: String,
-        loc: Location,
-        span_end: usize,
-    ) -> SymbolID {
+    fn insert_symbol_name(&mut self, module_id: ModuleID, name: &String) -> SymbolID {
         let symbol_id = generate_symbol_id();
         let mut global_symbols = self.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get_mut(&module_id).unwrap();
         symbol_table.names.insert(name.clone(), symbol_id);
-        symbol_table.locs.insert(symbol_id, (loc_file, loc, span_end));
         drop(global_symbols);
         symbol_id
-    }
-
-    fn get_symbol_loc(&self, module_id: ModuleID, symbol_id: SymbolID) -> Option<(String, Location, usize)> {
-        let mut global_symbols = self.global_symbols.lock().unwrap();
-        let symbol_table = global_symbols.get_mut(&module_id).unwrap();
-        let option = symbol_table.locs.get(&symbol_id).cloned();
-        drop(global_symbols);
-        option
     }
 
     // Scans the top-level AST for declarations (typedefs, functions, structs, etc.)
@@ -579,145 +563,89 @@ impl Resolver {
                     if self.duplicate_symbol(
                         module_id,
                         interface.identifier.name.clone(),
-                        interface.loc.clone(),
-                        interface.span.end,
+                        SourceLoc::from_loc(interface.loc.clone(), self.get_current_module_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(
-                        module_id,
-                        &interface.identifier.name.clone(),
-                        self.get_current_module_file_path(),
-                        interface.loc.clone(),
-                        interface.span.end,
-                    );
+                    self.insert_symbol_name(module_id, &interface.identifier.name.clone());
                 }
                 Statement::Union(union_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         union_decl.identifier.name.clone(),
-                        union_decl.loc.clone(),
-                        union_decl.span.end,
+                        SourceLoc::from_loc(union_decl.loc.clone(), self.get_current_module_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(
-                        module_id,
-                        &union_decl.identifier.name.clone(),
-                        self.get_current_module_file_path(),
-                        union_decl.loc.clone(),
-                        union_decl.span.end,
-                    );
+                    self.insert_symbol_name(module_id, &union_decl.identifier.name.clone());
                 }
                 Statement::Typedef(typedef) => {
                     if self.duplicate_symbol(
                         module_id,
                         typedef.identifier.name.clone(),
-                        typedef.loc.clone(),
-                        typedef.span.end,
+                        SourceLoc::from_loc(typedef.loc.clone(), self.get_current_module_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(
-                        module_id,
-                        &typedef.identifier.name.clone(),
-                        self.get_current_module_file_path(),
-                        typedef.loc.clone(),
-                        typedef.span.end,
-                    );
+                    self.insert_symbol_name(module_id, &typedef.identifier.name.clone());
                 }
                 Statement::FuncDef(func_def) => {
                     if self.duplicate_symbol(
                         module_id,
                         func_def.identifier.name.clone(),
-                        func_def.loc.clone(),
-                        func_def.span.end,
+                        SourceLoc::from_loc(func_def.loc.clone(), self.get_current_module_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(
-                        module_id,
-                        &func_def.identifier.name.clone(),
-                        self.get_current_module_file_path(),
-                        func_def.loc.clone(),
-                        func_def.span.end,
-                    );
+                    self.insert_symbol_name(module_id, &func_def.identifier.name.clone());
                 }
                 Statement::FuncDecl(func_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         func_decl.identifier.name.clone(),
-                        func_decl.loc.clone(),
-                        func_decl.span.end,
+                        SourceLoc::from_loc(func_decl.loc.clone(), self.get_current_module_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(
-                        module_id,
-                        &func_decl.get_usable_name(),
-                        self.get_current_module_file_path(),
-                        func_decl.loc.clone(),
-                        func_decl.span.end,
-                    );
+                    self.insert_symbol_name(module_id, &func_decl.get_usable_name());
                 }
                 Statement::GlobalVariable(global_variable) => {
                     if self.duplicate_symbol(
                         module_id,
                         global_variable.identifier.name.clone(),
-                        global_variable.loc.clone(),
-                        global_variable.span.end,
+                        SourceLoc::from_loc(global_variable.loc.clone(), self.get_current_module_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(
-                        module_id,
-                        &global_variable.identifier.name.clone(),
-                        self.get_current_module_file_path(),
-                        global_variable.loc.clone(),
-                        global_variable.span.end,
-                    );
+                    self.insert_symbol_name(module_id, &global_variable.identifier.name.clone());
                 }
                 Statement::Struct(struct_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         struct_decl.identifier.name.clone(),
-                        struct_decl.loc.clone(),
-                        struct_decl.span.end,
+                        SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(
-                        module_id,
-                        &struct_decl.identifier.name.clone(),
-                        self.get_current_module_file_path(),
-                        struct_decl.loc.clone(),
-                        struct_decl.span.end,
-                    );
+                    self.insert_symbol_name(module_id, &struct_decl.identifier.name.clone());
                 }
                 Statement::Enum(enum_decl) => {
                     if self.duplicate_symbol(
                         module_id,
                         enum_decl.identifier.name.clone(),
-                        enum_decl.loc.clone(),
-                        enum_decl.span.end,
+                        SourceLoc::from_loc(enum_decl.loc.clone(), self.get_current_module_file_path()),
                     ) {
                         continue;
                     }
 
-                    self.insert_symbol_name(
-                        module_id,
-                        &enum_decl.identifier.name.clone(),
-                        self.get_current_module_file_path(),
-                        enum_decl.loc.clone(),
-                        enum_decl.span.end,
-                    );
+                    self.insert_symbol_name(module_id, &enum_decl.identifier.name.clone());
                 }
                 _ => {}
             };
@@ -729,7 +657,7 @@ impl Resolver {
         let mut typed_body: Vec<TypedStatement> = Vec::new();
 
         for stmt in ast.body.as_ref() {
-            let valid_top_level_stmt: Result<TypedStatement, (Location, usize)> = match stmt {
+            let valid_top_level_stmt: Result<TypedStatement, SourceLoc> = match stmt {
                 Statement::Import(..) => continue,
                 Statement::GlobalVariable(global_var) => match self.resolve_global_var(module_id, global_var) {
                     Some(typed_stmt) => Ok(typed_stmt),
@@ -763,17 +691,42 @@ impl Resolver {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Variable(variable) => Err((variable.loc.clone(), variable.span.end)),
-                Statement::If(if_stmt) => Err((if_stmt.loc.clone(), if_stmt.span.end)),
-                Statement::Return(return_stmt) => Err((return_stmt.loc.clone(), return_stmt.span.end)),
-                Statement::For(for_stmt) => Err((for_stmt.loc.clone(), for_stmt.span.end)),
-                Statement::Foreach(foreach) => Err((foreach.loc.clone(), foreach.span.end)),
-                Statement::Switch(switch) => Err((switch.loc.clone(), switch.span.end)),
-                Statement::BlockStatement(block_statement) => {
-                    Err((block_statement.loc.clone(), block_statement.span.end))
-                }
-                Statement::Break(break_stmt) => Err((break_stmt.loc.clone(), break_stmt.span.end)),
-                Statement::Continue(continue_stmt) => Err((continue_stmt.loc.clone(), continue_stmt.span.end)),
+                Statement::Variable(variable) => Err(SourceLoc::from_loc(
+                    variable.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
+                Statement::If(if_stmt) => Err(SourceLoc::from_loc(
+                    if_stmt.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
+                Statement::Return(return_stmt) => Err(SourceLoc::from_loc(
+                    return_stmt.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
+                Statement::For(for_stmt) => Err(SourceLoc::from_loc(
+                    for_stmt.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
+                Statement::Foreach(foreach) => Err(SourceLoc::from_loc(
+                    foreach.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
+                Statement::Switch(switch) => Err(SourceLoc::from_loc(
+                    switch.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
+                Statement::BlockStatement(block_statement) => Err(SourceLoc::from_loc(
+                    block_statement.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
+                Statement::Break(break_stmt) => Err(SourceLoc::from_loc(
+                    break_stmt.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
+                Statement::Continue(continue_stmt) => Err(SourceLoc::from_loc(
+                    continue_stmt.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
                 Statement::Expression(..) => continue,
                 Statement::While(..) => continue,
             };
@@ -782,11 +735,11 @@ impl Resolver {
                 Ok(typed_stmt) => {
                     typed_body.push(typed_stmt);
                 }
-                Err((loc, span_end)) => {
+                Err(loc) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: ResolverDiagKind::InvalidTopLevelStatement,
-                        location: Some(DiagLoc::new(self.get_current_module_file_path(), loc, span_end)),
+                        location: Some(DiagLoc::new(loc)),
                         hint: None,
                     });
                 }
@@ -817,11 +770,10 @@ impl Resolver {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: ResolverDiagKind::RenameInterfaceMethod,
-                            location: Some(DiagLoc::new(
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                func_decl.loc.clone(),
                                 self.get_current_module_file_path(),
-                                interface.loc.clone(),
-                                interface.span.end,
-                            )),
+                            ))),
                             hint: None,
                         });
                     }
@@ -836,7 +788,7 @@ impl Resolver {
                         return_type,
                         vis: func_decl.vis.clone(),
                         renamed_as: None,
-                        loc: func_decl.loc.clone(),
+                        loc: SourceLoc::from_loc(func_decl.loc.clone(), self.get_current_module_file_path()),
                     };
 
                     typed_methods.push(typed_func_decl);
@@ -852,7 +804,7 @@ impl Resolver {
                 name: interface.identifier.name.clone(),
                 methods: typed_methods.clone(),
                 vis: interface.vis.clone(),
-                loc: interface.loc.clone(),
+                loc: SourceLoc::from_loc(interface.loc.clone(), self.get_current_module_file_path()),
             },
         };
 
@@ -876,7 +828,7 @@ impl Resolver {
             symbol_id: interface_symbol_id,
             methods: typed_methods,
             vis: interface.vis.clone(),
-            loc: interface.loc.clone(),
+            loc: SourceLoc::from_loc(interface.loc.clone(), self.get_current_module_file_path()),
         }))
     }
 
@@ -906,7 +858,7 @@ impl Resolver {
                     typed_union_fields.push(TypedUnionField {
                         name: field.identifier.name.clone(),
                         ty: concrete_type,
-                        loc: field.loc.clone(),
+                        loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
                     });
                 }
                 None => continue,
@@ -928,7 +880,7 @@ impl Resolver {
                 fields: typed_union_fields.clone(),
                 methods: methods.clone(),
                 vis: union_decl.vis.clone(),
-                loc: union_decl.loc.clone(),
+                loc: SourceLoc::from_loc(union_decl.loc.clone(), self.get_current_module_file_path()),
             },
         };
 
@@ -954,7 +906,7 @@ impl Resolver {
             fields: typed_union_fields,
             methods,
             vis: union_decl.vis.clone(),
-            loc: union_decl.identifier.loc.clone(),
+            loc: SourceLoc::from_loc(union_decl.identifier.loc.clone(), self.get_current_module_file_path()),
         }))
     }
 
@@ -990,7 +942,7 @@ impl Resolver {
 
                         fields.push(TypedEnumValuedField {
                             field_type,
-                            loc: valued_field.loc.clone(),
+                            loc: SourceLoc::from_loc(valued_field.loc.clone(), self.get_current_module_file_path()),
                         });
                     }
                     TypedEnumVariant::Variant(identifier.clone(), fields)
@@ -1026,7 +978,7 @@ impl Resolver {
                 methods: methods.clone(),
                 variants: variants.clone(),
                 vis: enum_decl.vis.clone(),
-                loc: enum_decl.loc.clone(),
+                loc: SourceLoc::from_loc(enum_decl.loc.clone(), self.get_current_module_file_path()),
             },
         };
 
@@ -1052,7 +1004,7 @@ impl Resolver {
             variants,
             methods,
             vis: enum_decl.vis.clone(),
-            loc: enum_decl.identifier.loc.clone(),
+            loc: SourceLoc::from_loc(enum_decl.identifier.loc.clone(), self.get_current_module_file_path()),
         }))
     }
 
@@ -1099,7 +1051,7 @@ impl Resolver {
                     ty: concrete_type.clone(),
                     rhs: typed_expr.clone(),
                     vis: global_var.vis.clone(),
-                    loc: global_var.loc.clone(),
+                    loc: SourceLoc::from_loc(global_var.loc.clone(), self.get_current_module_file_path()),
                 },
             })),
         );
@@ -1111,7 +1063,7 @@ impl Resolver {
             ty: concrete_type,
             expr: typed_expr,
             vis: global_var.vis.clone(),
-            loc: global_var.loc.clone(),
+            loc: SourceLoc::from_loc(global_var.loc.clone(), self.get_current_module_file_path()),
         }))
     }
 
@@ -1128,11 +1080,10 @@ impl Resolver {
                         struct_name: struct_name.to_string(),
                         method_name: method_name.clone(),
                     },
-                    location: Some(DiagLoc::new(
-                        self.get_current_module_file_path(),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
                         func_def.loc.clone(),
-                        0,
-                    )),
+                        self.get_current_module_file_path(),
+                    ))),
                     hint: Some("Consider to rename the method to a different name.".to_string()),
                 });
                 continue;
@@ -1179,13 +1130,8 @@ impl Resolver {
                         })
                         .collect();
 
-                    let symbol_id = self.insert_symbol_name(
-                        module_id,
-                        &method_resolve_name,
-                        self.get_current_module_file_path(),
-                        func_def.loc.clone(),
-                        func_def.span.end,
-                    );
+                    let symbol_id = self.insert_symbol_name(module_id, &method_resolve_name);
+
                     methods.insert(method_name.clone(), symbol_id);
                     self.insert_symbol_entry(
                         module_id,
@@ -1203,7 +1149,7 @@ impl Resolver {
                                 },
                                 return_type,
                                 vis: func_def.vis.clone(),
-                                loc: func_def.loc.clone(),
+                                loc: SourceLoc::from_loc(func_def.loc.clone(), self.get_current_module_file_path()),
                             },
                             func_body: None,
                         })),
@@ -1317,7 +1263,7 @@ impl Resolver {
                         name: field.identifier.name.clone(),
                         vis: field.vis.clone(),
                         ty: concrete_type,
-                        loc: field.loc.clone(),
+                        loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
                     });
                 }
                 None => continue,
@@ -1367,11 +1313,10 @@ impl Resolver {
                         kind: ResolverDiagKind::SymbolNotFound {
                             name: identifier.as_string(),
                         },
-                        location: Some(DiagLoc::new(
-                            self.get_current_module_file_path(),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
                             identifier.loc.clone(),
-                            identifier.span.end,
-                        )),
+                            self.get_current_module_file_path(),
+                        ))),
                         hint: None,
                     });
                     continue;
@@ -1391,7 +1336,7 @@ impl Resolver {
                 packed: struct_decl.packed,
                 methods: methods.clone(),
                 vis: struct_decl.vis.clone(),
-                loc: struct_decl.loc.clone(),
+                loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
             },
         };
 
@@ -1418,7 +1363,7 @@ impl Resolver {
             methods,
             vis: struct_decl.vis.clone(),
             packed: struct_decl.packed.clone(),
-            loc: struct_decl.loc.clone(),
+            loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
         }))
     }
 
@@ -1467,11 +1412,10 @@ impl Resolver {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: ResolverDiagKind::InvalidUntypedFuncParam,
-                                location: Some(DiagLoc::new(
-                                    self.get_current_module_file_path(),
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(
                                     func_param.loc.clone(),
-                                    func_param.span.end,
-                                )),
+                                    self.get_current_module_file_path(),
+                                ))),
                                 hint: None,
                             });
                             continue;
@@ -1491,7 +1435,10 @@ impl Resolver {
                                     name: func_param.identifier.name.clone(),
                                     ty: Some(param_type.clone()),
                                     rhs: None,
-                                    loc: func_param.loc.clone(),
+                                    loc: SourceLoc::from_loc(
+                                        func_param.loc.clone(),
+                                        self.get_current_module_file_path(),
+                                    ),
                                 },
                             })),
                         );
@@ -1501,7 +1448,7 @@ impl Resolver {
                     typed_func_params.push(TypedFuncParamKind::FuncParam(TypedFuncParam {
                         name: func_param.identifier.name.clone(),
                         ty: param_type,
-                        loc: func_param.loc.clone(),
+                        loc: SourceLoc::from_loc(func_param.loc.clone(), self.get_current_module_file_path()),
                     }));
                 }
                 FuncParamKind::SelfModifier(self_modifier) => {
@@ -1510,7 +1457,7 @@ impl Resolver {
                         self_symbol_id: None,
                         ty: None,
                         kind: self_modifier.kind.clone(),
-                        loc: self_modifier.loc.clone(),
+                        loc: SourceLoc::from_loc(self_modifier.loc.clone(), self.get_current_module_file_path()),
                     };
 
                     typed_func_params.push(TypedFuncParamKind::SelfModifier(typed_self_modifier));
@@ -1548,7 +1495,10 @@ impl Resolver {
                                         name: identifier.name.clone(),
                                         ty: Some(variadic_type.clone()),
                                         rhs: None,
-                                        loc: identifier.loc.clone(),
+                                        loc: SourceLoc::from_loc(
+                                            identifier.loc.clone(),
+                                            self.get_current_module_file_path(),
+                                        ),
                                     },
                                 })),
                             );
@@ -1588,7 +1538,7 @@ impl Resolver {
                             },
                             return_type: return_type.clone(),
                             vis: func_decl.vis.clone(),
-                            loc: func_decl.loc.clone(),
+                            loc: SourceLoc::from_loc(func_decl.loc.clone(), self.get_current_module_file_path()),
                         },
                     })),
                 );
@@ -1606,7 +1556,7 @@ impl Resolver {
                         Some(identifier) => Some(identifier.as_string()),
                         None => None,
                     },
-                    loc: func_decl.loc.clone(),
+                    loc: SourceLoc::from_loc(func_decl.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
             None => None,
@@ -1640,7 +1590,7 @@ impl Resolver {
                             },
                             return_type: return_type.clone(),
                             vis: func_def.vis.clone(),
-                            loc: func_def.loc.clone(),
+                            loc: SourceLoc::from_loc(func_def.loc.clone(), self.get_current_module_file_path()),
                         },
                     })),
                 );
@@ -1660,7 +1610,7 @@ impl Resolver {
                     },
                     return_type,
                     vis: func_def.vis.clone(),
-                    loc: func_def.loc.clone(),
+                    loc: SourceLoc::from_loc(func_def.loc.clone(), self.get_current_module_file_path()),
                     body: Box::new(typed_func_body),
                 }))
             }
@@ -1691,7 +1641,7 @@ impl Resolver {
                                 name: typedef.identifier.name.clone(),
                                 ty: concrete_type.clone(),
                                 vis: typedef.vis.clone(),
-                                loc: typedef.loc.clone(),
+                                loc: SourceLoc::from_loc(typedef.loc.clone(), self.get_current_module_file_path()),
                             },
                         };
 
@@ -1714,7 +1664,7 @@ impl Resolver {
                             name: typedef.identifier.name.clone(),
                             ty: concrete_type,
                             vis: typedef.vis.clone(),
-                            loc: typedef.loc.clone(),
+                            loc: SourceLoc::from_loc(typedef.loc.clone(), self.get_current_module_file_path()),
                         }))
                     }
                     None => None,
@@ -1726,11 +1676,10 @@ impl Resolver {
                     kind: ResolverDiagKind::SymbolNotFound {
                         name: typedef.identifier.name.clone(),
                     },
-                    location: Some(DiagLoc::new(
-                        self.get_current_module_file_path(),
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
                         typedef.loc.clone(),
-                        typedef.span.end,
-                    )),
+                        self.get_current_module_file_path(),
+                    ))),
                     hint: None,
                 });
                 None
@@ -1751,11 +1700,10 @@ impl Resolver {
                 kind: ResolverDiagKind::DuplicateSymbolInThisScope {
                     symbol_name: variable.identifier.name.clone(),
                 },
-                location: Some(DiagLoc::new(
-                    self.get_current_module_file_path(),
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
                     variable.loc.clone(),
-                    variable.span.end,
-                )),
+                    self.get_current_module_file_path(),
+                ))),
                 hint: None,
             });
         }
@@ -1798,7 +1746,7 @@ impl Resolver {
             name: variable.identifier.name.clone(),
             ty: var_type,
             rhs: typed_rhs,
-            loc: variable.loc.clone(),
+            loc: SourceLoc::from_loc(variable.loc.clone(), self.get_current_module_file_path()),
         };
 
         let resolved_var = ResolvedVariable {
@@ -1864,7 +1812,7 @@ impl Resolver {
             consequent: typed_consequent,
             alternate: typed_alternate,
             branches,
-            loc: if_stmt.loc.clone(),
+            loc: SourceLoc::from_loc(if_stmt.loc.clone(), self.get_current_module_file_path()),
         })
     }
 
@@ -1915,7 +1863,7 @@ impl Resolver {
 
                     typed_body.push(TypedStatement::Return(TypedReturn {
                         argument,
-                        loc: return_stmt.loc.clone(),
+                        loc: SourceLoc::from_loc(return_stmt.loc.clone(), self.get_current_module_file_path()),
                     }));
                 }
                 Statement::Foreach(..) => todo!(),
@@ -1968,7 +1916,7 @@ impl Resolver {
                         condition,
                         increment,
                         body: for_typed_body,
-                        loc: for_stmt.loc.clone(),
+                        loc: SourceLoc::from_loc(for_stmt.loc.clone(), self.get_current_module_file_path()),
                     }));
                 }
                 Statement::While(while_stmt) => {
@@ -1991,7 +1939,7 @@ impl Resolver {
                     typed_body.push(TypedStatement::While(TypedWhile {
                         condition,
                         body: while_typed_body,
-                        loc: while_stmt.loc.clone(),
+                        loc: SourceLoc::from_loc(while_stmt.loc.clone(), self.get_current_module_file_path()),
                     }));
                 }
                 Statement::Switch(switch) => {
@@ -2033,13 +1981,19 @@ impl Resolver {
                                             name: identifier.name.clone(),
                                             ty: None,
                                             rhs: None,
-                                            loc: identifier.loc.clone(),
+                                            loc: SourceLoc::from_loc(
+                                                identifier.loc.clone(),
+                                                self.get_current_module_file_path(),
+                                            ),
                                         },
                                     })),
                                 );
                                 drop(case_scope);
 
-                                TypedSwitchCasePattern::Identifier(identifier.name.clone(), identifier.loc.clone())
+                                TypedSwitchCasePattern::Identifier(
+                                    identifier.name.clone(),
+                                    SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                                )
                             }
                             SwitchCasePattern::EnumVariant(identifier, valued_fields) => {
                                 TypedSwitchCasePattern::EnumVariant(
@@ -2060,7 +2014,10 @@ impl Resolver {
                                                         name: identifier.name.clone(),
                                                         ty: None,
                                                         rhs: None,
-                                                        loc: identifier.loc.clone(),
+                                                        loc: SourceLoc::from_loc(
+                                                            identifier.loc.clone(),
+                                                            self.get_current_module_file_path(),
+                                                        ),
                                                     },
                                                 })),
                                             );
@@ -2068,7 +2025,7 @@ impl Resolver {
                                             identifier.clone()
                                         })
                                         .collect(),
-                                    identifier.loc.clone(),
+                                    SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
                                 )
                             }
                         };
@@ -2083,7 +2040,7 @@ impl Resolver {
                         cases.push(TypedSwitchCase {
                             pattern,
                             body: Box::new(body),
-                            loc: case.loc.clone(),
+                            loc: SourceLoc::from_loc(case.loc.clone(), self.get_current_module_file_path()),
                         });
 
                         drop(case_scope_rc);
@@ -2108,7 +2065,7 @@ impl Resolver {
                         operand,
                         cases,
                         default_case,
-                        loc: switch.loc.clone(),
+                        loc: SourceLoc::from_loc(switch.loc.clone(), self.get_current_module_file_path()),
                     }));
                 }
                 Statement::Enum(enum_decl) => {
@@ -2157,12 +2114,12 @@ impl Resolver {
                 }
                 Statement::Break(break_stmt) => {
                     typed_body.push(TypedStatement::Break(TypedBreak {
-                        loc: break_stmt.loc.clone(),
+                        loc: SourceLoc::from_loc(break_stmt.loc.clone(), self.get_current_module_file_path()),
                     }));
                 }
                 Statement::Continue(continue_stmt) => {
                     typed_body.push(TypedStatement::Continue(TypedContinue {
-                        loc: continue_stmt.loc.clone(),
+                        loc: SourceLoc::from_loc(continue_stmt.loc.clone(), self.get_current_module_file_path()),
                     }));
                 }
                 Statement::Typedef(typedef) => {
@@ -2182,17 +2139,11 @@ impl Resolver {
         Some(TypedBlockStatement {
             scope_id,
             exprs: typed_body,
-            loc: block_statement.loc.clone(),
+            loc: SourceLoc::from_loc(block_statement.loc.clone(), self.get_current_module_file_path()),
         })
     }
 
-    fn resolve_identifier(
-        &mut self,
-        module_id: ModuleID,
-        identifier: Identifier,
-        loc: Location,
-        span_end: usize,
-    ) -> Option<u32> {
+    fn resolve_identifier(&mut self, module_id: ModuleID, identifier: Identifier, loc: SourceLoc) -> Option<u32> {
         match self.lookup_symbol_id(module_id, &identifier.name) {
             Some(symbol_id) => Some(symbol_id),
             None => {
@@ -2201,10 +2152,9 @@ impl Resolver {
                     kind: ResolverDiagKind::SymbolNotFound {
                         name: identifier.name.clone(),
                     },
-                    location: Some(DiagLoc::new(self.get_current_module_file_path(), loc.clone(), span_end)),
+                    location: Some(DiagLoc::new(loc)),
                     hint: None,
                 });
-
                 return None;
             }
         }
@@ -2241,11 +2191,10 @@ impl Resolver {
                         kind: ResolverDiagKind::SymbolNotFound {
                             name: module_segments_as_string(module_import.segments.clone()),
                         },
-                        location: Some(DiagLoc::new(
-                            self.get_current_module_file_path(),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
                             module_import.loc.clone(),
-                            module_import.span.end,
-                        )),
+                            self.get_current_module_file_path(),
+                        ))),
                         hint: None,
                     });
                     return None;
@@ -2268,7 +2217,10 @@ impl Resolver {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: ResolverDiagKind::RequiresLocalScope,
-                        location: Some(DiagLoc::new(self.get_current_module_file_path(), $loc, $span_end)),
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            $loc,
+                            self.get_current_module_file_path(),
+                        ))),
                         hint: None,
                     });
                 }
@@ -2316,11 +2268,10 @@ impl Resolver {
                                     kind: ResolverDiagKind::SymbolNotFound {
                                         name: $identifier.name.clone(),
                                     },
-                                    location: Some(DiagLoc::new(
-                                        self.get_current_module_file_path(),
+                                    location: Some(DiagLoc::new(SourceLoc::from_loc(
                                         $identifier.loc.clone(),
-                                        $identifier.span.end,
-                                    )),
+                                        self.get_current_module_file_path(),
+                                    ))),
                                     hint: None,
                                 });
 
@@ -2347,11 +2298,11 @@ impl Resolver {
                         field_index: None,
                         field_ty: None,
                         object_symbol_id: None,
-                        loc: field_access.loc.clone(),
+                        loc: SourceLoc::from_loc(field_access.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Lvalue,
                     concrete_type: None,
-                    loc: field_access.loc.clone(),
+                    loc: SourceLoc::from_loc(field_access.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::MethodCall(method_call) => {
@@ -2366,11 +2317,10 @@ impl Resolver {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: ResolverDiagKind::InvalidOperandForMethodCall,
-                            location: Some(DiagLoc::new(
-                                self.get_current_module_file_path(),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
                                 method_call.loc.clone(),
-                                method_call.span.end,
-                            )),
+                                self.get_current_module_file_path(),
+                            ))),
                             hint: None,
                         });
                         return None;
@@ -2394,12 +2344,12 @@ impl Resolver {
                         operand: Box::new(operand),
                         method_name: method_call.method_name.name.clone(),
                         is_fat_arrow: method_call.is_fat_arrow,
-                        loc: method_call.loc.clone(),
+                        loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
                         args,
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: method_call.loc.clone(),
+                    loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::StructInit(struct_init) => {
@@ -2425,7 +2375,7 @@ impl Resolver {
                     field_inits.push(TypedStructFieldInit {
                         name: field_init.identifier.name.clone(),
                         value,
-                        loc: field_init.loc.clone(),
+                        loc: SourceLoc::from_loc(field_init.loc.clone(), self.get_current_module_file_path()),
                     });
                 }
 
@@ -2433,29 +2383,35 @@ impl Resolver {
                     kind: TypedExpressionKind::StructInit(TypedStructInit {
                         symbol_id,
                         fields: field_inits,
-                        loc: struct_init.loc.clone(),
+                        loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: struct_init.loc.clone(),
+                    loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::ModuleImport(module_import) => {
                 if let Some(identifier) = module_import.as_identifier() {
                     let symbol_id = resolve_local_identifier!(identifier);
                     Some(TypedExpression {
-                        kind: TypedExpressionKind::Symbol(symbol_id, identifier.loc.clone()),
+                        kind: TypedExpressionKind::Symbol(
+                            symbol_id,
+                            SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                        ),
                         concrete_type: None,
                         value_category: ValueCategory::Lvalue,
-                        loc: module_import.loc.clone(),
+                        loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
                     })
                 } else {
                     match self.resolve_module_import(module_id, module_import.clone()) {
                         Some(symbol_id) => Some(TypedExpression {
-                            kind: TypedExpressionKind::Symbol(symbol_id, module_import.loc.clone()),
+                            kind: TypedExpressionKind::Symbol(
+                                symbol_id,
+                                SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
+                            ),
                             concrete_type: None,
                             value_category: ValueCategory::Lvalue,
-                            loc: module_import.loc.clone(),
+                            loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
                         }),
                         None => return None,
                     }
@@ -2464,10 +2420,13 @@ impl Resolver {
             Expression::Identifier(identifier) => {
                 let symbol_id = resolve_local_identifier!(identifier);
                 Some(TypedExpression {
-                    kind: TypedExpressionKind::Symbol(symbol_id, identifier.loc.clone()),
+                    kind: TypedExpressionKind::Symbol(
+                        symbol_id,
+                        SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                    ),
                     concrete_type: None,
                     value_category: ValueCategory::Lvalue,
-                    loc: identifier.loc.clone(),
+                    loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::FuncCall(func_call) => {
@@ -2479,8 +2438,7 @@ impl Resolver {
                     Expression::Identifier(identifier) => match self.resolve_identifier(
                         module_id,
                         identifier.clone(),
-                        func_call.loc.clone(),
-                        func_call.span.end,
+                        SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
                     ) {
                         Some(resolved) => resolved,
                         None => return None,
@@ -2495,11 +2453,10 @@ impl Resolver {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
                             kind: ResolverDiagKind::InvalidOperandForFuncCall,
-                            location: Some(DiagLoc::new(
-                                self.get_current_module_file_path(),
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
                                 func_call.loc.clone(),
-                                func_call.span.end,
-                            )),
+                                self.get_current_module_file_path(),
+                            ))),
                             hint: None,
                         });
                         return None;
@@ -2521,11 +2478,11 @@ impl Resolver {
                     kind: TypedExpressionKind::FuncCall(TypedFuncCall {
                         symbol_id,
                         args: typed_args,
-                        loc: func_call.loc.clone(),
+                        loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: func_call.loc.clone(),
+                    loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::Array(arr) => {
@@ -2553,11 +2510,11 @@ impl Resolver {
                     kind: TypedExpressionKind::Array(TypedArray {
                         array_type,
                         elements: typed_elements,
-                        loc: arr.loc.clone(),
+                        loc: SourceLoc::from_loc(arr.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: arr.loc.clone(),
+                    loc: SourceLoc::from_loc(arr.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::Infix(bin) => {
@@ -2569,11 +2526,11 @@ impl Resolver {
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
                         op: bin.op.clone(),
-                        loc: bin.loc.clone(),
+                        loc: SourceLoc::from_loc(bin.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: bin.loc.clone(),
+                    loc: SourceLoc::from_loc(bin.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::Prefix(prefix) => {
@@ -2583,11 +2540,11 @@ impl Resolver {
                     kind: TypedExpressionKind::Prefix(TypedPrefixExpression {
                         operand: Box::new(operand),
                         op: prefix.op.clone(),
-                        loc: prefix.loc.clone(),
+                        loc: SourceLoc::from_loc(prefix.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: prefix.loc.clone(),
+                    loc: SourceLoc::from_loc(prefix.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::Cast(cast) => {
@@ -2611,11 +2568,11 @@ impl Resolver {
                     kind: TypedExpressionKind::Cast(TypedCast {
                         operand: Box::new(operand),
                         target_type,
-                        loc: cast.loc.clone(),
+                        loc: SourceLoc::from_loc(cast.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: cast.loc.clone(),
+                    loc: SourceLoc::from_loc(cast.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::TypeSpecifier(type_specifier) => {
@@ -2640,7 +2597,7 @@ impl Resolver {
                                 kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
                                 value_category: ValueCategory::Rvalue,
                                 concrete_type: Some(concrete_type),
-                                loc,
+                                loc: SourceLoc::from_loc(loc.clone(), self.get_current_module_file_path()),
                             });
                         }
                         None => return None,
@@ -2648,10 +2605,13 @@ impl Resolver {
                 };
 
                 Some(TypedExpression {
-                    kind: TypedExpressionKind::Symbol(symbol_id, type_specifier.get_loc().0.clone()),
+                    kind: TypedExpressionKind::Symbol(
+                        symbol_id,
+                        SourceLoc::from_loc(type_specifier.get_loc().0.clone(), self.get_current_module_file_path()),
+                    ),
                     value_category: ValueCategory::Lvalue,
                     concrete_type: None,
-                    loc,
+                    loc: SourceLoc::from_loc(loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::Assignment(assignment) => {
@@ -2670,11 +2630,11 @@ impl Resolver {
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
                         kind: assignment.kind.clone(),
-                        loc: assignment.loc.clone(),
+                        loc: SourceLoc::from_loc(assignment.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: assignment.loc.clone(),
+                    loc: SourceLoc::from_loc(assignment.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::Literal(literal) => {
@@ -2688,11 +2648,10 @@ impl Resolver {
                                         self.reporter.report(Diag {
                                             level: DiagLevel::Error,
                                             kind: ResolverDiagKind::InvalidLiteralSuffix,
-                                            location: Some(DiagLoc::new(
-                                                self.get_current_module_file_path(),
+                                            location: Some(DiagLoc::new(SourceLoc::from_loc(
                                                 literal.loc.clone(),
-                                                literal.span.end,
-                                            )),
+                                                self.get_current_module_file_path(),
+                                            ))),
                                             hint: None,
                                         });
                                         return None;
@@ -2710,11 +2669,10 @@ impl Resolver {
                                         self.reporter.report(Diag {
                                             level: DiagLevel::Error,
                                             kind: ResolverDiagKind::InvalidLiteralSuffix,
-                                            location: Some(DiagLoc::new(
-                                                self.get_current_module_file_path(),
+                                            location: Some(DiagLoc::new(SourceLoc::from_loc(
                                                 literal.loc.clone(),
-                                                literal.span.end,
-                                            )),
+                                                self.get_current_module_file_path(),
+                                            ))),
                                             hint: None,
                                         });
                                         return None;
@@ -2734,7 +2692,10 @@ impl Resolver {
                                             capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
                                                 len,
                                             )),
-                                            loc: literal.loc.clone(),
+                                            loc: SourceLoc::from_loc(
+                                                literal.loc.clone(),
+                                                self.get_current_module_file_path(),
+                                            ),
                                         }))
                                     }
                                     StringPrefix::C => Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
@@ -2757,7 +2718,7 @@ impl Resolver {
                 let typed_literal = TypedLiteral {
                     ty: literal_type,
                     kind: literal.kind.clone(),
-                    loc: literal.loc.clone(),
+                    loc: SourceLoc::from_loc(literal.loc.clone(), self.get_current_module_file_path()),
                 };
 
                 Some(TypedExpression {
@@ -2777,11 +2738,11 @@ impl Resolver {
                     kind: TypedExpressionKind::Unary(TypedUnaryExpression {
                         op: unary.op.clone(),
                         operand: Box::new(operand),
-                        loc: unary.loc.clone(),
+                        loc: SourceLoc::from_loc(unary.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: unary.loc.clone(),
+                    loc: SourceLoc::from_loc(unary.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::ArrayIndex(array_index) => {
@@ -2799,11 +2760,11 @@ impl Resolver {
                     kind: TypedExpressionKind::ArrayIndex(TypedArrayIndex {
                         operand: Box::new(operand),
                         index: Box::new(index),
-                        loc: array_index.loc.clone(),
+                        loc: SourceLoc::from_loc(array_index.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Lvalue,
                     concrete_type: None,
-                    loc: array_index.loc.clone(),
+                    loc: SourceLoc::from_loc(array_index.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::AddressOf(address_of) => {
@@ -2815,11 +2776,11 @@ impl Resolver {
                 Some(TypedExpression {
                     kind: TypedExpressionKind::AddressOf(TypedAddressOf {
                         operand: Box::new(operand),
-                        loc: address_of.loc.clone(),
+                        loc: SourceLoc::from_loc(address_of.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Lvalue,
                     concrete_type: None,
-                    loc: address_of.loc.clone(),
+                    loc: SourceLoc::from_loc(address_of.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::Dereference(dereference) => {
@@ -2831,11 +2792,11 @@ impl Resolver {
                 Some(TypedExpression {
                     kind: TypedExpressionKind::Dereference(TypedDereference {
                         operand: Box::new(operand),
-                        loc: dereference.loc.clone(),
+                        loc: SourceLoc::from_loc(dereference.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: dereference.loc.clone(),
+                    loc: SourceLoc::from_loc(dereference.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::UnnamedStructValue(unnamed_struct_value) => {
@@ -2869,7 +2830,7 @@ impl Resolver {
                         field_name: field.field_name.name.clone(),
                         field_type,
                         field_value: Box::new(field_value),
-                        loc: field.loc.clone(),
+                        loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
                     });
                 }
 
@@ -2879,11 +2840,11 @@ impl Resolver {
                         unnamed_struct_type: None,
                         packed: unnamed_struct_value.packed,
                         is_const: unnamed_struct_value.is_const,
-                        loc: unnamed_struct_value.loc.clone(),
+                        loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: unnamed_struct_value.loc.clone(),
+                    loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.get_current_module_file_path()),
                 })
             }
             Expression::SizeOfExpression(size_of_expression) => {
@@ -2895,32 +2856,24 @@ impl Resolver {
                 Some(TypedExpression {
                     kind: TypedExpressionKind::SizeOfExpression(TypedSizeOfExpression {
                         expr: Box::new(typed_expr),
-                        loc: size_of_expression.loc.clone(),
+                        loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,
                     concrete_type: None,
-                    loc: size_of_expression.loc.clone(),
+                    loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.get_current_module_file_path()),
                 })
             }
         }
     }
 
-    fn duplicate_symbol(&mut self, module_id: ModuleID, symbol_name: String, loc: Location, span_end: usize) -> bool {
+    fn duplicate_symbol(&mut self, module_id: ModuleID, symbol_name: String, loc: SourceLoc) -> bool {
         match self.lookup_symbol_id(module_id, &symbol_name) {
-            Some(symbol_id) => {
-                let previous_decl = match self.get_symbol_loc(module_id, symbol_id) {
-                    Some(previous_decl) => previous_decl,
-                    None => return false,
-                };
-
+            Some(..) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: ResolverDiagKind::DuplicateSymbol { symbol_name },
-                    location: Some(DiagLoc::new(self.get_current_module_file_path(), loc.clone(), span_end)),
-                    hint: Some(format!(
-                        "Previous declaration: {}:{}:{}.",
-                        previous_decl.0, previous_decl.1.line, previous_decl.1.column
-                    )),
+                    location: Some(DiagLoc::new(loc)),
+                    hint: None,
                 });
 
                 true

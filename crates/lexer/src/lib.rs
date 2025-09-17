@@ -1,3 +1,4 @@
+use ast::source_loc::SourceLoc;
 use ast::token::*;
 use ast::{Literal, LiteralKind, StringPrefix};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
@@ -408,13 +409,7 @@ impl Lexer {
                 } else if self.is_numeric(self.ch) {
                     return self.read_number();
                 } else {
-                    lexer_invalid_char_error(
-                        self.file_name.clone(),
-                        self.line,
-                        self.column - 1,
-                        self.ch,
-                        Span::new(self.column - 1, self.column),
-                    );
+                    lexer_invalid_char_error(self.file_name.clone(), self.line, self.column - 1, self.ch);
                     exit(1);
                 }
             }
@@ -449,11 +444,11 @@ impl Lexer {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: LexicalDiagKind::CharLiteralMustBeASingleUnit,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
-                        Location::new(self.line, self.column),
-                        self.column,
-                    )),
+                    location: Some(DiagLoc::new(SourceLoc {
+                        line: self.line,
+                        column: self.column,
+                        file_path: self.file_name.clone()
+                    })),
                     hint: Some("Use a string literal for multi-byte characters or emojis.".to_string()),
                 });
             }
@@ -464,11 +459,11 @@ impl Lexer {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: LexicalDiagKind::UnterminatedStringLiteral,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
-                        Location::new(self.line, self.column),
-                        self.column,
-                    )),
+                    location: Some(DiagLoc::new(SourceLoc {
+                        line: self.line,
+                        column: self.column,
+                        file_path: self.file_name.clone()
+                    })),
                     hint: None,
                 });
             }
@@ -495,11 +490,11 @@ impl Lexer {
             display_single_diag!(Diag {
                 level: DiagLevel::Error,
                 kind: LexicalDiagKind::EmptyCharLiteral,
-                location: Some(DiagLoc::new(
-                    self.file_name.clone(),
-                    Location::new(self.line, self.column),
-                    self.column,
-                )),
+                location: Some(DiagLoc::new(SourceLoc {
+                    line: self.line,
+                    column: self.column,
+                    file_path: self.file_name.clone()
+                })),
                 hint: None,
             });
         }
@@ -523,11 +518,11 @@ impl Lexer {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: LexicalDiagKind::UnterminatedStringLiteral,
-                    location: Some(DiagLoc::new(
-                        self.file_name.clone(),
-                        Location::new(self.line, self.column),
-                        self.column,
-                    )),
+                    location: Some(DiagLoc::new(SourceLoc {
+                        line: self.line,
+                        column: self.column,
+                        file_path: self.file_name.clone()
+                    })),
                     hint: None,
                 });
             }
@@ -613,11 +608,11 @@ impl Lexer {
                     display_single_diag!(Diag {
                         level: DiagLevel::Error,
                         kind: LexicalDiagKind::InvalidIntegerLiteral,
-                        location: Some(DiagLoc::new(
-                            self.file_name.clone(),
-                            Location::new(self.line, self.column),
-                            self.column,
-                        )),
+                        location: Some(DiagLoc::new(SourceLoc {
+                            line: self.line,
+                            column: self.column,
+                            file_path: self.file_name.clone()
+                        })),
                         hint: None,
                     });
                 }
@@ -675,11 +670,11 @@ impl Lexer {
                         display_single_diag!(Diag {
                             level: DiagLevel::Error,
                             kind: LexicalDiagKind::InvalidFloatLiteral,
-                            location: Some(DiagLoc::new(
-                                self.file_name.clone(),
-                                Location::new(self.line, self.column),
-                                self.column,
-                            )),
+                            location: Some(DiagLoc::new(SourceLoc {
+                                line: self.line,
+                                column: self.column,
+                                file_path: self.file_name.clone()
+                            })),
                             hint: None,
                         });
                     }
@@ -695,11 +690,11 @@ impl Lexer {
                         display_single_diag!(Diag {
                             level: DiagLevel::Error,
                             kind: LexicalDiagKind::InvalidIntegerLiteral,
-                            location: Some(DiagLoc::new(
-                                self.file_name.clone(),
-                                Location::new(self.line, self.column),
-                                self.column,
-                            )),
+                            location: Some(DiagLoc::new(SourceLoc {
+                                line: self.line,
+                                column: self.column,
+                                file_path: self.file_name.clone()
+                            })),
                             hint: None,
                         });
                     }
@@ -789,11 +784,11 @@ impl Lexer {
                     display_single_diag!(Diag {
                         level: DiagLevel::Error,
                         kind: LexicalDiagKind::UnterminatedMultiLineComment,
-                        location: Some(DiagLoc::new(
-                            self.file_name.clone(),
-                            Location::new(self.line, self.column),
-                            self.column,
-                        )),
+                        location: Some(DiagLoc::new(SourceLoc {
+                            line: self.line,
+                            column: self.column,
+                            file_path: self.file_name.clone()
+                        })),
                         hint: None,
                     });
                 }

@@ -11,7 +11,7 @@ use inkwell::{
     types::{ArrayType, StructType},
     values::{FunctionValue, GlobalValue, PointerValue},
 };
-use resolver::{Resolver, moduleloader::ModuleFilePath};
+use resolver::Resolver;
 use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
 use typed_ast::{ModuleID, TypedProgramTree, types::ConcreteType};
 
@@ -23,7 +23,6 @@ pub struct CodeGenModule<'module> {
 
 pub(crate) struct CodeGenBuilder<'a> {
     pub module_id: ModuleID,
-    pub module_file_path: ModuleFilePath,
     pub llvmmodule: Rc<RefCell<Module<'a>>>,
     pub llvmbuilder: Builder<'a>,
     pub llvmctx: &'a Context,
@@ -56,7 +55,6 @@ impl<'module> CodeGenModule<'module> {
         resolver_rc: Rc<Resolver>,
         module_id: ModuleID,
         module_name: String,
-        module_file_path: ModuleFilePath,
     ) -> CodeGenModuleOutput<'a> {
         let llvmmodule = self.ctx.create_module(&module_name);
         let builder = self.ctx.create_builder();
@@ -74,7 +72,6 @@ impl<'module> CodeGenModule<'module> {
 
         let mut codegen_builder = CodeGenBuilder {
             module_id,
-            module_file_path,
             llvmmodule: llvmmodule.clone(),
             llvmbuilder: builder,
             llvmctx: &self.ctx,

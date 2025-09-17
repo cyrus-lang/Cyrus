@@ -1,5 +1,7 @@
 use crate::diagnostics::ResolverDiagKind;
-use ast::{Import, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string};
+use ast::{
+    Import, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string, source_loc::SourceLoc,
+};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
 use lexer::Lexer;
 use parser::Parser;
@@ -55,11 +57,10 @@ impl ModuleLoader {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: ResolverDiagKind::ModuleCannotImportItself,
-                    location: Some(DiagLoc::new(
-                        current_module_file_path,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
                         import.loc.clone(),
-                        import.span.end,
-                    )),
+                        current_module_file_path
+                    ))),
                     hint: None,
                 });
             }
@@ -99,7 +100,7 @@ impl ModuleLoader {
                     let module_alias = match sub_import.segments.last().unwrap() {
                         ModuleSegment::SubModule(identifier) => {
                             ModuleAlias::Group(sub_import.alias.clone().unwrap_or(identifier.name.clone()))
-                        },
+                        }
                         ModuleSegment::Single(module_segment_singles) => {
                             ModuleAlias::Single(module_segment_singles.clone())
                         }
@@ -199,7 +200,7 @@ impl ModuleLoader {
 
         Ok(module_file_path)
     }
-    
+
     fn get_stdlib_modules_path(&self) -> String {
         match self.opts.stdlib_path.clone() {
             Some(stdlib_path) => stdlib_path,

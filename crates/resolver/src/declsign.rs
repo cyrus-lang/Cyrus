@@ -1,5 +1,5 @@
 use crate::scope::LocalOrGlobalSymbol;
-use ast::{AccessSpecifier, token::Location};
+use ast::{source_loc::SourceLoc, AccessSpecifier};
 use std::collections::HashMap;
 use typed_ast::{
     ModuleID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncDecl, TypedFuncParams, TypedStructField,
@@ -14,7 +14,7 @@ pub struct StructSig {
     pub methods: HashMap<String, SymbolID>,
     pub packed: bool,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -23,7 +23,7 @@ pub struct UnionSig {
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ pub struct FuncSig {
     pub return_type: ConcreteType,
     pub is_func_decl: bool,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ pub struct EnumSig {
     pub methods: HashMap<String, SymbolID>,
     pub variants: Vec<TypedEnumVariant>,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +51,7 @@ pub struct TypedefSig {
     pub name: String,
     pub ty: ConcreteType,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -59,7 +59,7 @@ pub struct InterfaceSig {
     pub name: String,
     pub methods: Vec<TypedFuncDecl>,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -69,5 +69,5 @@ pub struct GlobalVarSig {
     pub ty: Option<ConcreteType>,
     pub rhs: Option<TypedExpression>,
     pub vis: AccessSpecifier,
-    pub loc: Location,
+    pub loc: SourceLoc,
 }

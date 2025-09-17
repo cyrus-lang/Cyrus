@@ -1,5 +1,5 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
-use ast::token::Location;
+use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
@@ -14,7 +14,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         ty: ConcreteType,
-        loc: Location,
+        loc: SourceLoc,
     ) -> Option<ConcreteType> {
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
 
@@ -240,7 +240,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
-        loc: Location,
+        loc: SourceLoc,
     ) -> Option<ResolvedStruct> {
         let local_scope_opt = {
             if let Some(scope_id) = scope_id_opt {
@@ -270,7 +270,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::NonStructSymbol { symbol_name },
-                    location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+                    location: Some(DiagLoc::new(loc)),
                     hint: None,
                 });
 
@@ -287,7 +287,7 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         symbol_id: SymbolID,
-        loc: Location,
+        loc: SourceLoc,
     ) -> Option<ConcreteType> {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
 
@@ -332,22 +332,22 @@ impl<'a> AnalysisContext<'a> {
         concrete_type_opt
     }
 
-    fn report_cyclic_type_def(&mut self, symbol: String, loc: Location) {
+    fn report_cyclic_type_def(&mut self, symbol: String, loc: SourceLoc) {
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: AnalyzerDiagKind::CyclicTypeDefinition { symbol },
-            location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+            location: Some(DiagLoc::new(loc)),
             hint: None,
         });
     }
 
-    fn report_non_type_symbol(&mut self, symbol_id: SymbolID, loc: Location) {
+    fn report_non_type_symbol(&mut self, symbol_id: SymbolID, loc: SourceLoc) {
         let symbol_name = (self.symbol_formatter)(None)(symbol_id);
 
         self.reporter.report(Diag {
             level: DiagLevel::Error,
             kind: AnalyzerDiagKind::NonTypeSymbol { symbol_name },
-            location: Some(DiagLoc::new(self.resolver.get_current_module_file_path(), loc, 0)),
+            location: Some(DiagLoc::new(loc)),
             hint: None,
         });
     }
