@@ -1030,37 +1030,10 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_enum_variant(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
         enum_symbol_id: SymbolID,
+        enum_variant: &TypedEnumVariant,
         method_call: &mut TypedMethodCall,
     ) -> Option<ConcreteType> {
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
-            .unwrap();
-        let resolved_enum = local_or_global_symbol.as_enum().unwrap();
-
-        let enum_variant = match resolved_enum
-            .enum_sig
-            .variants
-            .iter()
-            .find(|variant| variant.get_identifier().as_string() == method_call.method_name)
-        {
-            Some(enum_variant) => enum_variant,
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::VariantNotDefinedForEnum {
-                        enum_name: resolved_enum.enum_sig.name.clone(),
-                        variant_name: method_call.method_name.clone(),
-                    },
-                    location: Some(DiagLoc::new(method_call.loc.clone())),
-                    hint: None,
-                });
-                return None;
-            }
-        };
-
         let valued_fields = match enum_variant {
             TypedEnumVariant::Variant(_, valued_fields) => {
                 if valued_fields.len() != method_call.args.len() {
@@ -1097,9 +1070,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(enum_valued_field.field_type.clone()));
         }
 
-        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(
-            resolved_enum.symbol_id,
-        )))
+        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)))
     }
 
     fn analyze_enum_variant_no_field(
@@ -1776,7 +1747,21 @@ impl<'a> AnalysisContext<'a> {
             method_call.operand.concrete_type
         {
             let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
-            return self.analyze_enum_variant(scope_id_opt, local_scope_opt.clone(), enum_symbol_id, method_call);
+            let local_or_global_symbol = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id)
+                .unwrap();
+            let resolved_enum = local_or_global_symbol.as_enum().unwrap();
+
+            let enum_variant_opt = resolved_enum
+                .enum_sig
+                .variants
+                .iter()
+                .find(|variant| variant.get_identifier().as_string() == method_call.method_name);
+
+            if let Some(enum_variant) = enum_variant_opt {
+                return self.analyze_enum_variant(scope_id_opt, enum_symbol_id, enum_variant, method_call);
+            }
         }
 
         let object_symbol_id = {
@@ -2182,6 +2167,35 @@ impl<'a> AnalysisContext<'a> {
         )
     }
 
+    fn analyze_compare_enums(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        lhs_type: ConcreteType,
+        rhs_type: ConcreteType,
+    ) -> Option<ConcreteType> {
+        let enum_symbol_id1 = lhs_type.as_enum_symbol_id().unwrap();
+        let enum_symbol_id2 = rhs_type.as_enum_symbol_id().unwrap();
+
+        let local_or_global_symbol1 = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id1)
+            .unwrap();
+
+        let local_or_global_symbol2 = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id2)
+            .unwrap();
+
+        let resolved_enum1 = local_or_global_symbol1.as_enum()?;
+        let resolved_enum2 = local_or_global_symbol2.as_enum()?;
+
+        if resolved_enum1.symbol_id == resolved_enum2.symbol_id {
+            Some(ConcreteType::BasicType(BasicConcreteType::Bool))
+        } else {
+            None
+        }
+    }
+
     fn analyze_compare_expr(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -2193,7 +2207,27 @@ impl<'a> AnalysisContext<'a> {
         let lhs_type = lhs_type.get_const_inner();
         let rhs_type = rhs_type.get_const_inner();
 
-        if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
+        if lhs_type.is_enum() && rhs_type.is_enum() {
+            let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+            let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+
+            let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+            match self.analyze_compare_enums(local_scope_opt, lhs_type.clone(), rhs_type.clone()) {
+                Some(concrete_type) => return Some(concrete_type),
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::InvalidInfix {
+                            lhs_type: lhs_type_str,
+                            rhs_type: rhs_type_str,
+                        },
+                        location: Some(DiagLoc::new(loc.clone())),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
+        } else if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), loc.clone()) {
             let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
             let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 

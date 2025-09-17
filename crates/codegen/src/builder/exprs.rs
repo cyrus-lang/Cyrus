@@ -911,7 +911,13 @@ impl<'a> CodeGenBuilder<'a> {
                     InternalValueKind::RValue(cmp.as_basic_value_enum()),
                 )
             }
-            _ => unreachable!(),
+            _ => {
+                if lhs_rvalue.value_type.is_enum() && rhs_rvalue.value_type.is_enum() {
+                    todo!();
+                }
+
+                unreachable!()
+            },
         }
     }
 
