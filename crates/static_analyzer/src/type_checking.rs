@@ -666,15 +666,9 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if !operand_type.is_array()
-            || array_index
-                .operand
-                .concrete_type
-                .clone()
-                .unwrap()
-                .as_array_type()
-                .is_none()
-        {
+        let is_operand_array = operand_type.is_array();
+
+        if !(operand_type.is_pointer() || is_operand_array) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::ArrayIndexOnNonArrayOperand,
@@ -705,11 +699,30 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(array_index.loc.clone())),
                 hint: None,
             });
+            return None;
         }
 
         let concrete_type = array_index.operand.concrete_type.clone().unwrap();
-        let array_type = concrete_type.as_array_type().unwrap();
-        Some(*array_type.element_type.clone())
+
+        if is_operand_array {
+            let array_type = concrete_type.as_array_type().unwrap();
+            Some(*array_type.element_type.clone())
+        } else {
+            // array index on pointer operand
+            let element_type = concrete_type.get_pointer_inner().unwrap();
+
+            if element_type.is_void() {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::DerefVoidPointerValue,
+                    location: Some(DiagLoc::new(array_index.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+
+            Some(element_type.clone())
+        }
     }
 
     fn resolve_var_or_global_var_type(
