@@ -54,8 +54,8 @@ pub struct Resolver {
 
 // Used to check import cycles.
 pub struct Visiting {
-    pub active: Vec<ModuleFilePath>,   // DFS stack, preserves order
-    pub done: HashSet<ModuleFilePath>, // modules fully resolved
+    pub active: HashSet<ModuleFilePath>, // stack of modules currently being resolved
+    pub done: HashSet<ModuleFilePath>,   // modules fully resolved
 }
 
 impl Resolver {
@@ -196,24 +196,21 @@ impl Resolver {
                     .unwrap_or(generate_module_id())
             };
 
-            if visiting.active.contains(&module_file_path) {
-                // cycle detected
-                let cycle_start = visiting.active.iter().position(|p| p == &module_file_path).unwrap();
-                // slice the DFS stack to get the exact cycle chain
-                let cycle_chain: Vec<ModuleFilePath> = visiting.active[cycle_start..].to_vec();
+            // FIXME
+            // if visiting.active.contains(&module_file_path) {
+            //     // Cycle import detected.
+            //     self.reporter.report(Diag {
+            //         level: DiagLevel::Error,
+            //         kind: ResolverDiagKind::ImportCycle {
+            //             module_names: visiting.active.iter().cloned().collect(),
+            //         },
+            //         location: None,
+            //         hint: None,
+            //     });
+            //     continue;
+            // }
 
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ImportCycle {
-                        module_names: cycle_chain,
-                    },
-                    location: None,
-                    hint: None,
-                });
-                return;
-            }
-
-            visiting.active.push(module_file_path.clone());
+            visiting.active.insert(module_file_path.clone());
 
             if self.skip_module_if_loaded_once(module_file_path.clone()) {
                 match module_alias {
@@ -364,7 +361,7 @@ impl Resolver {
 
         if is_master {
             self.insert_module_file_path(module_id, self.master_module_file_path.clone());
-            visiting.active.push(self.master_module_file_path.clone());
+            visiting.active.insert(self.master_module_file_path.clone());
         }
 
         let mut analyzed = self.analyzed_modules.lock().unwrap();
@@ -407,7 +404,7 @@ impl Resolver {
             drop(program_trees);
         }
 
-        visiting.active.pop();
+        visiting.active.remove(&module_file_path);
         visiting.done.insert(module_file_path);
 
         Some(typed_program_tree.clone())
@@ -733,7 +730,7 @@ impl Resolver {
 
         for stmt in ast.body.as_ref() {
             let valid_top_level_stmt: Result<TypedStatement, (Location, usize)> = match stmt {
-                Statement::Import(_) => continue,
+                Statement::Import(..) => continue,
                 Statement::GlobalVariable(global_var) => match self.resolve_global_var(module_id, global_var) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
@@ -3148,7 +3145,7 @@ pub fn generate_module_id() -> ModuleID {
 impl Visiting {
     pub fn new() -> Self {
         Self {
-            active: Vec::new(),
+            active: HashSet::new(),
             done: HashSet::new(),
         }
     }

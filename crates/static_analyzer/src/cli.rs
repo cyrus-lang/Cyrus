@@ -3,7 +3,12 @@ use lexer::Lexer;
 use parser::Parser;
 use resolver::{Resolver, Visiting, generate_module_id, moduleloader::ModuleLoaderOptions};
 use static_analyzer::context::AnalysisContext;
-use std::{env, process::exit, sync::{Arc, Mutex}, vec};
+use std::{
+    env,
+    process::exit,
+    sync::{Arc, Mutex},
+    vec,
+};
 use utils::fs::read_file;
 
 pub fn main() {
@@ -32,10 +37,10 @@ pub fn main() {
                 println!("  {}", file_path);
             });
 
-            let mut resolver = Resolver::new(module_loader_opts, file_path);
+            let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
             let module_id = generate_module_id();
             let typed_program_tree =
-                match resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true) {
+                match resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true, file_path) {
                     Some(program_tree) => program_tree,
                     None => panic!(),
                 };
@@ -46,7 +51,13 @@ pub fn main() {
 
             {
                 let entry_points = Arc::new(Mutex::new(Vec::new()));
-                let mut analyzer = AnalysisContext::new(&resolver, module_id, typed_program_tree.clone(), entry_points.clone(), false);
+                let mut analyzer = AnalysisContext::new(
+                    &resolver,
+                    module_id,
+                    typed_program_tree.clone(),
+                    entry_points.clone(),
+                    false,
+                );
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
                 if analyzer.reporter.has_errors() {

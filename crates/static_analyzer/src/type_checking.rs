@@ -1860,6 +1860,8 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
         };
+        
+        self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
 
         self.mark_func_used(local_scope_opt, module_id, func_call.symbol_id);
         let return_type = self.check_func_call(

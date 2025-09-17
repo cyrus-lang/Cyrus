@@ -1,8 +1,8 @@
-import std::libc;
+import std::libc{printf, malloc, strncpy, free, realloc};
 import std::libc::abi;
 
 public func sample() {
-    libc::printf("Hello, World!\n");
+    printf("Hello, World!\n");
 }
 
 struct Sample {
