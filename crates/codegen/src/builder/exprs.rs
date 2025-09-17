@@ -199,25 +199,62 @@ impl<'a> CodeGenBuilder<'a> {
         InternalValue::new(pointee_ty, InternalValueKind::LValue(pointer_value))
     }
 
+    fn build_array_index_on_pointer(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        lvalue: PointerValue<'a>,
+        index: InternalValue<'a>,
+        element_type: ConcreteType,
+    ) -> InternalValue<'a> {
+        let element_basic_type: BasicTypeEnum<'a> = self
+            .build_concrete_type(local_scope_opt, element_type.clone())
+            .try_into()
+            .unwrap();
+
+        let pointer_value = unsafe {
+            self.llvmbuilder
+                .build_gep(
+                    element_basic_type,
+                    lvalue,
+                    &[index.as_basic_value().into_int_value()],
+                    "gep",
+                )
+                .unwrap()
+        };
+
+        InternalValue::new(element_type, InternalValueKind::LValue(pointer_value))
+    }
+
     fn build_array_index(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         array_index: &TypedArrayIndex,
     ) -> InternalValue<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &array_index.operand);
-        let array_type = lvalue.value_type.as_array_type().unwrap();
-        let array_capacity = self.build_array_capacity(local_scope_opt.clone(), array_type);
 
         let index_lvalue = self.build_expr(local_scope_opt.clone(), &array_index.index);
         let index_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), index_lvalue);
 
-        self.build_runtime_inbounds_check(
-            local_scope_opt,
-            lvalue.as_basic_value().into_pointer_value(),
-            *array_type.element_type.clone(),
-            index_rvalue,
-            array_capacity.try_into().unwrap(),
-        )
+        if let Some(array_type) = lvalue.value_type.as_array_type() {
+            let array_capacity = self.build_array_capacity(local_scope_opt.clone(), array_type);
+
+            self.build_runtime_inbounds_check(
+                local_scope_opt,
+                lvalue.as_basic_value().into_pointer_value(),
+                *array_type.element_type.clone(),
+                index_rvalue,
+                array_capacity.try_into().unwrap(),
+            )
+        } else if let Some(element_type) = lvalue.value_type.get_pointer_inner() {
+            self.build_array_index_on_pointer(
+                local_scope_opt,
+                lvalue.as_basic_value().into_pointer_value(),
+                index_rvalue,
+                element_type,
+            )
+        } else {
+            unreachable!()
+        }
     }
 
     fn build_union_field_access(
