@@ -7,10 +7,12 @@ enum DataType {
 }
 
 func main() {
-    // #a = DataType.Int;
-    // #b = DataType.Text;
+    #a = DataType.Int;
+    #b = DataType.Int;
 
-    // a == b;
-
-    // printf("value: %d\n", ptr[0]);
+    if (a == b) {
+        printf("equal\n");
+    } else {
+        printf("not equal\n");
+    }
 }

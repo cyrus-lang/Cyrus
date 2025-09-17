@@ -8,16 +8,73 @@ use inkwell::{
     AddressSpace,
     module::Linkage,
     types::{AnyType, ArrayType, BasicTypeEnum, StructType},
-    values::{ArrayValue, BasicValue, BasicValueEnum, StructValue},
+    values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, StructValue},
 };
 use resolver::scope::{LocalScopeRef, ResolvedEnum};
 use typed_ast::{
-    TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue,
+    SymbolID, TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue,
     TypedUnnamedStructValueField,
-    types::{ConcreteType, ResolvedSymbol, TypedUnnamedStructType, TypedUnnamedStructTypeField},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedUnnamedStructType, TypedUnnamedStructTypeField},
 };
 
 impl<'a> CodeGenBuilder<'a> {
+    fn extract_enum_variant_number(&self, struct_value: StructValue<'a>) -> IntValue<'a> {
+        self.llvmbuilder
+            .build_extract_value(struct_value, 0, "extract")
+            .unwrap()
+            .into_int_value()
+    }
+
+    pub(crate) fn build_compare_enum_variants(
+        &self,
+        local_scope_opt: Option<LocalScopeRef>,
+        enum_symbol_id1: SymbolID,
+        enum_symbol_id2: SymbolID,
+        lhs: InternalValue<'a>,
+        rhs: InternalValue<'a>,
+    ) -> InternalValue<'a> {
+        let resolved_enum1 = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id1)
+            .unwrap()
+            .as_enum()
+            .unwrap();
+
+        let resolved_enum2 = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id2)
+            .unwrap()
+            .as_enum()
+            .unwrap();
+
+        let struct_value1 = lhs.as_basic_value().into_struct_value();
+        let struct_value2 = rhs.as_basic_value().into_struct_value();
+
+        let variant_number1 = self.extract_enum_variant_number(struct_value1);
+        let variant_number2 = self.extract_enum_variant_number(struct_value2);
+
+        let variant_number_concrete_type = ConcreteType::BasicType(BasicConcreteType::UInt32);
+
+        let variant_number_cmp_result = self.build_cmp_eq(
+            local_scope_opt,
+            InternalValue::new(
+                variant_number_concrete_type.clone(),
+                InternalValueKind::RValue(variant_number1.as_basic_value_enum()),
+            ),
+            InternalValue::new(
+                variant_number_concrete_type,
+                InternalValueKind::RValue(variant_number2.as_basic_value_enum()),
+            ),
+        );
+
+        // TODO Compare payload if both of them are valued_fields enum variant.
+
+        InternalValue::new(
+            ConcreteType::BasicType(BasicConcreteType::Bool),
+            InternalValueKind::RValue(variant_number_cmp_result.as_basic_value()),
+        )
+    }
+
     pub(crate) fn copy_buffer_to_struct(&self, buffer: ArrayValue<'a>, struct_type: StructType<'a>) -> StructValue<'a> {
         let struct_alloca = self.llvmbuilder.build_alloca(struct_type, "struct_alloca").unwrap();
 
