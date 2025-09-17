@@ -877,6 +877,7 @@ impl<'a> CodeGenBuilder<'a> {
 
     pub(crate) fn build_cmp_eq(
         &self,
+        local_scope_opt: Option<LocalScopeRef>,
         lhs_rvalue: InternalValue<'a>,
         rhs_rvalue: InternalValue<'a>,
     ) -> InternalValue<'a> {
@@ -913,11 +914,20 @@ impl<'a> CodeGenBuilder<'a> {
             }
             _ => {
                 if lhs_rvalue.value_type.is_enum() && rhs_rvalue.value_type.is_enum() {
-                    todo!();
+                    let enum_symbol_id1 = lhs_rvalue.value_type.as_enum_symbol_id().unwrap();
+                    let enum_symbol_id2 = rhs_rvalue.value_type.as_enum_symbol_id().unwrap();
+
+                    return self.build_compare_enum_variants(
+                        local_scope_opt,
+                        enum_symbol_id1,
+                        enum_symbol_id2,
+                        lhs_rvalue.clone(),
+                        rhs_rvalue.clone(),
+                    );
                 }
 
                 unreachable!()
-            },
+            }
         }
     }
 
@@ -1138,7 +1148,7 @@ impl<'a> CodeGenBuilder<'a> {
                     self.build_cmp(lhs_rvalue, rhs_rvalue, IntPredicate::UGE, FloatPredicate::OGE)
                 }
             }
-            InfixOperator::Equal => self.build_cmp_eq(lhs_rvalue, rhs_rvalue),
+            InfixOperator::Equal => self.build_cmp_eq(local_scope_opt, lhs_rvalue, rhs_rvalue),
             InfixOperator::NotEqual => self.build_cmp_neq(lhs_rvalue, rhs_rvalue),
             InfixOperator::Or => self.build_logical_or(lhs_rvalue, rhs_rvalue),
             InfixOperator::And => self.build_logical_and(lhs_rvalue, rhs_rvalue),

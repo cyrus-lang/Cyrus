@@ -937,7 +937,7 @@ impl<'a> CodeGenBuilder<'a> {
                     let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), internal_value.clone());
                     let operand_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), operand.clone());
 
-                    self.build_cmp_eq(rvalue, operand_rvalue)
+                    self.build_cmp_eq(local_scope_opt.clone(), rvalue, operand_rvalue)
                 };
                 let condition_basic_value: BasicValueEnum<'a> = condition_internal_value.as_basic_value();
 
