@@ -32,6 +32,7 @@ impl<'a> CodeGenBuilder<'a> {
         enum_symbol_id2: SymbolID,
         lhs: InternalValue<'a>,
         rhs: InternalValue<'a>,
+        cmp_eq: bool
     ) -> InternalValue<'a> {
         let resolved_enum1 = self
             .resolver
@@ -55,17 +56,33 @@ impl<'a> CodeGenBuilder<'a> {
 
         let variant_number_concrete_type = ConcreteType::BasicType(BasicConcreteType::UInt32);
 
-        let variant_number_cmp_result = self.build_cmp_eq(
-            local_scope_opt,
-            InternalValue::new(
-                variant_number_concrete_type.clone(),
-                InternalValueKind::RValue(variant_number1.as_basic_value_enum()),
-            ),
-            InternalValue::new(
-                variant_number_concrete_type,
-                InternalValueKind::RValue(variant_number2.as_basic_value_enum()),
-            ),
-        );
+        let variant_number_cmp_result;
+
+        if cmp_eq {
+            variant_number_cmp_result = self.build_cmp_eq(
+                local_scope_opt,
+                InternalValue::new(
+                    variant_number_concrete_type.clone(),
+                    InternalValueKind::RValue(variant_number1.as_basic_value_enum()),
+                ),
+                InternalValue::new(
+                    variant_number_concrete_type,
+                    InternalValueKind::RValue(variant_number2.as_basic_value_enum()),
+                ),
+            );
+        } else {
+            variant_number_cmp_result = self.build_cmp_neq(
+                local_scope_opt, 
+                InternalValue::new(
+                    variant_number_concrete_type.clone(),
+                    InternalValueKind::RValue(variant_number1.as_basic_value_enum()),
+                ),
+                InternalValue::new(
+                    variant_number_concrete_type,
+                    InternalValueKind::RValue(variant_number2.as_basic_value_enum()),
+                ),
+            );
+        }
 
         // TODO Compare payload if both of them are valued_fields enum variant.
 

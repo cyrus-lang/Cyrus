@@ -675,11 +675,11 @@ impl Resolver {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Struct(struct_decl) => match self.resolve_struct(module_id, None, struct_decl) {
+                Statement::Struct(struct_decl) => match self.resolve_struct(module_id, None, struct_decl, None) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Enum(enum_decl) => match self.resolve_enum(module_id, None, enum_decl) {
+                Statement::Enum(enum_decl) => match self.resolve_enum(module_id, None, enum_decl, None) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
@@ -687,7 +687,7 @@ impl Resolver {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
-                Statement::Union(union_stmt) => match self.resolve_union(module_id, None, union_stmt) {
+                Statement::Union(union_stmt) => match self.resolve_union(module_id, None, union_stmt, None) {
                     Some(typed_stmt) => Ok(typed_stmt),
                     None => continue,
                 },
@@ -837,6 +837,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         union_decl: &Union,
+        is_local: Option<ScopeID>,
     ) -> Option<TypedStatement> {
         let union_symbol_id = if local_scope_opt.is_some() {
             generate_symbol_id()
@@ -907,6 +908,7 @@ impl Resolver {
             methods,
             vis: union_decl.vis.clone(),
             loc: SourceLoc::from_loc(union_decl.identifier.loc.clone(), self.get_current_module_file_path()),
+            is_local: is_local,
         }))
     }
 
@@ -915,6 +917,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         enum_decl: &Enum,
+        is_local: Option<ScopeID>,
     ) -> Option<TypedStatement> {
         let enum_symbol_id = if local_scope_opt.is_some() {
             generate_symbol_id()
@@ -1005,6 +1008,7 @@ impl Resolver {
             methods,
             vis: enum_decl.vis.clone(),
             loc: SourceLoc::from_loc(enum_decl.identifier.loc.clone(), self.get_current_module_file_path()),
+            is_local,
         }))
     }
 
@@ -1241,6 +1245,7 @@ impl Resolver {
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
         struct_decl: &Struct,
+        is_local: Option<ScopeID>,
     ) -> Option<TypedStatement> {
         let struct_symbol_id = if local_scope_opt.is_some() {
             generate_symbol_id() // new symbol
@@ -1364,6 +1369,7 @@ impl Resolver {
             vis: struct_decl.vis.clone(),
             packed: struct_decl.packed.clone(),
             loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
+            is_local,
         }))
     }
 
@@ -2069,7 +2075,7 @@ impl Resolver {
                     }));
                 }
                 Statement::Enum(enum_decl) => {
-                    match self.resolve_enum(module_id, Some(Rc::clone(&local_scope)), enum_decl) {
+                    match self.resolve_enum(module_id, Some(Rc::clone(&local_scope)), enum_decl, Some(scope_id)) {
                         Some(typed_stmt) => {
                             typed_body.push(typed_stmt);
                         }
@@ -2077,7 +2083,7 @@ impl Resolver {
                     }
                 }
                 Statement::Union(union_decl) => {
-                    match self.resolve_union(module_id, Some(Rc::clone(&local_scope)), union_decl) {
+                    match self.resolve_union(module_id, Some(Rc::clone(&local_scope)), union_decl, Some(scope_id)) {
                         Some(typed_stmt) => {
                             typed_body.push(typed_stmt);
                         }
@@ -2093,7 +2099,7 @@ impl Resolver {
                     }
                 }
                 Statement::Struct(struct_decl) => {
-                    match self.resolve_struct(module_id, Some(local_scope.clone()), struct_decl) {
+                    match self.resolve_struct(module_id, Some(local_scope.clone()), struct_decl, Some(scope_id)) {
                         Some(typed_stmt) => {
                             typed_body.push(typed_stmt);
                         }
