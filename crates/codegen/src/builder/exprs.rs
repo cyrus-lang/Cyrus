@@ -561,6 +561,7 @@ impl<'a> CodeGenBuilder<'a> {
             BasicValueEnum::StructValue(struct_value) => struct_value.is_const(),
             BasicValueEnum::ArrayValue(array_value) => array_value.is_const(),
             BasicValueEnum::VectorValue(vector_value) => vector_value.is_const(),
+            BasicValueEnum::ScalableVectorValue(..) => unreachable!(),
         }
     }
 
