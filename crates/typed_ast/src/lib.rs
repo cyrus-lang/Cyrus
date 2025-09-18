@@ -352,6 +352,7 @@ pub struct TypedInterface {
 pub struct TypedEnum {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
+    pub is_local: Option<ScopeID>,
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
     pub methods: HashMap<String, SymbolID>,
@@ -386,6 +387,7 @@ pub struct TypedEnumValuedField {
 pub struct TypedStruct {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
+    pub is_local: Option<ScopeID>,
     pub name: String,
     pub fields: Vec<TypedStructField>,
     pub methods: HashMap<String, SymbolID>,
@@ -398,6 +400,7 @@ pub struct TypedStruct {
 pub struct TypedUnion {
     pub module_id: ModuleID,
     pub symbol_id: SymbolID,
+    pub is_local: Option<ScopeID>,
     pub name: String,
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,

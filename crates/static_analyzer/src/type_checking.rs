@@ -1,4 +1,4 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol_type};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol};
 use ast::{
     AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator},
@@ -523,7 +523,7 @@ impl<'a> AnalysisContext<'a> {
                             if let Some(mut typed_expr) = resolved_global_var.global_var_sig.rhs.clone() {
                                 self.analyze_typed_expr_type(scope_id_opt, &mut typed_expr, expected_type);
 
-                                update_global_symbol_type!(self, resolved_global_var.module_id, resolved_global_var.symbol_id,
+                                update_global_symbol!(self, resolved_global_var.module_id, resolved_global_var.symbol_id,
                                     SymbolEntryKind::GlobalVar(global_var) => global_var, {
                                         global_var.global_var_sig.rhs = Some(typed_expr);
                                     }
@@ -1236,8 +1236,6 @@ impl<'a> AnalysisContext<'a> {
                 resolved_struct.struct_sig.methods.clone(),
                 resolved_struct.symbol_id,
             );
-        } else if let Some(_resolved_enum) = local_or_global_symbol.as_enum() {
-            todo!();
         } else if let Some(resolved_union) = &local_or_global_symbol.as_union() {
             return self.analyze_union_field_access_type(scope_id_opt, resolved_union, field_access, expected_type);
         } else {
@@ -1704,7 +1702,7 @@ impl<'a> AnalysisContext<'a> {
             false,
         );
 
-        update_global_symbol_type!(self, func_sig.module_id, func_call.symbol_id,
+        update_global_symbol!(self, func_sig.module_id, func_call.symbol_id,
             SymbolEntryKind::Func(resolved_func) => resolved_func, {
                 resolved_func.func_sig = func_sig.clone();
             }

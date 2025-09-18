@@ -1,19 +1,5 @@
-import std::libc{putchar};
+import std::libc{printf, malloc};
 
 func main() {
-    putchar('a');
-    // #a = DataType.Int;
-    // #b = DataType.Int;
-
-    // if (a == b) {
-    //     printf("equal\n");
-    // } else {
-    //     printf("not equal\n");
-    // }
+    struct Sample { a: void*; }
 }
-
-// enum DataType { 
-//     Int,
-//     Float,
-//     Text    
-// }

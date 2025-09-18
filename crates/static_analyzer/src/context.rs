@@ -29,7 +29,7 @@ enum ControlContext {
 }
 
 #[macro_export]
-macro_rules! update_global_symbol_type {
+macro_rules! update_global_symbol {
     ($self:expr, $module_id:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
         let mut global_symbols = $self.resolver.global_symbols.lock().unwrap();
         let symbol_table = global_symbols.get_mut(&$module_id).unwrap();
@@ -38,8 +38,29 @@ macro_rules! update_global_symbol_type {
                 let $var = $var;
                 $body
             }
-            _ => unreachable!(),
+            _ => {
+                unreachable!()
+            }
         }
+    }};
+}
+
+#[macro_export]
+macro_rules! update_local_symbol {
+    ($self:expr, $scope_id:expr, $symbol_id:expr, $pattern:pat => $var:ident, $body:block) => {{
+        let local_scope_rc = $self.resolver.get_scope_ref($self.module_id, $scope_id).unwrap();
+        let mut local_scope = local_scope_rc.borrow_mut();
+        let local_symbol = local_scope.resolve_with_symbol_id_mut($symbol_id).unwrap();
+        match &mut local_symbol.kind {
+            $pattern => {
+                let $var = $var;
+                $body
+            }
+            _ => {
+                unreachable!()
+            }
+        }
+        drop(local_scope);
     }};
 }
 
@@ -775,7 +796,7 @@ impl<'a> AnalysisContext<'a> {
             None => Some(typed_global_var.expr.clone().unwrap().concrete_type.unwrap()),
         };
 
-        update_global_symbol_type!(self, typed_global_var.module_id, typed_global_var.symbol_id,
+        update_global_symbol!(self, typed_global_var.module_id, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
                 resolved_var.global_var_sig.ty = typed_global_var.ty.clone();
             }
@@ -923,6 +944,22 @@ impl<'a> AnalysisContext<'a> {
         typed_struct: &mut TypedStruct,
         is_local: bool,
     ) {
+        fn update_struct_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_struct: &TypedStruct) {
+            if let Some(scope_id) = typed_struct.is_local {
+                update_local_symbol!(this, scope_id, typed_struct.symbol_id,
+                    LocalSymbolKind::Struct(resolved_struct) => resolved_struct, {
+                        resolved_struct.struct_sig.fields = typed_struct.fields.clone();
+                    }
+                )
+            } else {
+                update_global_symbol!(this, typed_struct.module_id, typed_struct.symbol_id,
+                    SymbolEntryKind::Struct(resolved_struct) => resolved_struct, {
+                        resolved_struct.struct_sig.fields = typed_struct.fields.clone();
+                    }
+                );
+            }
+        }
+
         self.check_struct_name(typed_struct.name.clone(), typed_struct.loc.clone(), is_local);
 
         let mut field_names: Vec<String> = Vec::new();
@@ -950,6 +987,9 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_methods(self.module_id, &typed_struct.methods);
+
+        // update symbol entry
+        update_struct_symbol_entry(self, &typed_struct);
     }
 
     pub(crate) fn analyze_union(
@@ -958,6 +998,22 @@ impl<'a> AnalysisContext<'a> {
         typed_union: &mut TypedUnion,
         is_local: bool,
     ) {
+        fn update_union_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_union: &TypedUnion) {
+            if let Some(scope_id) = typed_union.is_local {
+                update_local_symbol!(this, scope_id, typed_union.symbol_id,
+                    LocalSymbolKind::Union(resolved_union) => resolved_union, {
+                        resolved_union.union_sig.fields = typed_union.fields.clone();
+                    }
+                )
+            } else {
+                update_global_symbol!(this, typed_union.module_id, typed_union.symbol_id,
+                    SymbolEntryKind::Union(resolved_union) => resolved_union, {
+                        resolved_union.union_sig.fields = typed_union.fields.clone();
+                    }
+                );
+            }
+        }
+
         self.check_union_name(typed_union.name.clone(), typed_union.loc.clone(), is_local);
         self.analyze_methods(self.module_id, &typed_union.methods);
 
@@ -985,9 +1041,27 @@ impl<'a> AnalysisContext<'a> {
 
             field_names.push(field.name.clone());
         }
+
+        update_union_symbol_entry(self, &typed_union);
     }
 
     pub(crate) fn analyze_enum(&mut self, scope_id_opt: Option<ScopeID>, typed_enum: &mut TypedEnum, is_local: bool) {
+        fn update_enum_symbol_entry<'b>(this: &mut AnalysisContext<'b>, typed_enum: &TypedEnum) {
+            if let Some(scope_id) = typed_enum.is_local {
+                update_local_symbol!(this, scope_id, typed_enum.symbol_id,
+                    LocalSymbolKind::Enum(resolved_enum) => resolved_enum, {
+                        resolved_enum.enum_sig.variants = typed_enum.variants.clone();
+                    }
+                )
+            } else {
+                update_global_symbol!(this, typed_enum.module_id, typed_enum.symbol_id,
+                    SymbolEntryKind::Enum(resolved_enum) => resolved_enum, {
+                        resolved_enum.enum_sig.variants = typed_enum.variants.clone();
+                    }
+                );
+            }
+        }
+
         self.check_enum_name(typed_enum.name.clone(), typed_enum.loc.clone(), is_local);
         self.analyze_methods(self.module_id, &typed_enum.methods);
 
@@ -1033,6 +1107,8 @@ impl<'a> AnalysisContext<'a> {
 
             variant_names.push(variant_identifier.name.clone());
         }
+
+        update_enum_symbol_entry(self, &typed_enum);
     }
 
     pub(crate) fn check_duplicate_param_names(
