@@ -13,10 +13,6 @@
       pkgs = import nixpkgs {
         inherit system overlays;
       };
-
-      rustToolchain = pkgs.rust-bin.nightly.latest.default.override {
-        extensions = [ "rust-src" "rust-analyzer" "cargo" "clippy" ];
-      };
     in
     {
       ## -----------------------------
@@ -30,7 +26,7 @@
           cargoLock = { lockFile = ./Cargo.lock; };
 
           nativeBuildInputs = with pkgs; [
-            rustToolchain
+            rustup
             gcc
             libgcc
             glibc
@@ -68,16 +64,16 @@
             enableSharedLibraries = false;
           };
 
-          nativeBuildInputs = [
-            rustToolchain
-            pkgs.pkgsCross.mingwW64.llvm_18.lib
-            pkgs.pkgsCross.mingwW64.llvm_18.dev
-            pkgs.pkgsCross.mingwW64.stdenv.cc
-            pkgs.pkgsCross.mingwW64.buildPackages.binutils
-            pkgs.pkgsCross.mingwW64.zlib
-            pkgs.pkgsCross.mingwW64.libffi
-            pkgs.pkgsCross.mingwW64.libxml2
-            pkgs.pkgsCross.mingwW64.ncurses
+          nativeBuildInputs = with pkgs; [
+            rustup
+            pkgsCross.mingwW64.llvm_18.lib
+            pkgsCross.mingwW64.llvm_18.dev
+            pkgsCross.mingwW64.stdenv.cc
+            pkgsCross.mingwW64.buildPackages.binutils
+            pkgsCross.mingwW64.zlib
+            pkgsCross.mingwW64.libffi
+            pkgsCross.mingwW64.libxml2
+            pkgsCross.mingwW64.ncurses
           ];
 
           buildPhase = ''
@@ -99,7 +95,7 @@
         linux = pkgs.mkShell {
           name = "cyrus-dev-linux";
           buildInputs = with pkgs; [
-            rustToolchain
+            rustup
             gcc
             libgcc
             glibc
@@ -123,20 +119,37 @@
 
         windows = pkgs.mkShell {
           name = "cyrus-dev-windows";
-          buildInputs = [
-            rustToolchain
-            pkgs.pkgsCross.mingwW64.stdenv.cc
-            pkgs.pkgsCross.mingwW64.buildPackages.binutils
-            pkgs.pkgsCross.mingwW64.buildPackages.gcc
-            pkgs.pkgsCross.mingwW64.zlib
-            pkgs.pkgsCross.mingwW64.libffi
-            pkgs.pkgsCross.mingwW64.libxml2
-            pkgs.pkgsCross.mingwW64.ncurses
+          buildInputs = with pkgs; [
+            rustup
+            zig
+            cargo-zigbuild
+            pkgsCross.mingwW64.stdenv.cc
+            pkgsCross.mingwW64.buildPackages.binutils
+            pkgsCross.mingwW64.buildPackages.gcc
+            pkgsCross.mingwW64.zlib
+            pkgsCross.mingwW64.libffi
+            pkgsCross.mingwW64.libxml2
+            pkgsCross.mingwW64.ncurses
           ];
-          shellHook = ''
-            export PATH="$PATH:/home/taha/.cargo/bin"
-            export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
-            alias cyrus-win="cargo build --target x86_64-pc-windows-gnu -Zbuild-std"
+          shellHook = ''    
+            # Ensure nightly toolchain is installed
+            rustup install nightly 2>/dev/null || true
+            rustup default nightly
+
+            export CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
+            export CXX_x86_64_pc_windows_gnu=x86_64-w64-mingw32-g++
+
+            # Add Windows target
+            rustup target add x86_64-pc-windows-gnu --toolchain nightly 2>/dev/null || true
+
+            echo ${pkgs.pkgsCross.mingwW64.libffi}
+
+            # Export library/include paths for cross-compile
+            export LIBRARY_PATH="${pkgs.pkgsCross.mingwW64.libffi}/lib:${pkgs.pkgsCross.mingwW64.zlib}/lib:${pkgs.pkgsCross.mingwW64.libxml2}/lib:${pkgs.pkgsCross.mingwW64.ncurses}/lib:$LIBRARY_PATH"
+            export C_INCLUDE_PATH="${pkgs.pkgsCross.mingwW64.libffi}/include:${pkgs.pkgsCross.mingwW64.zlib}/include:${pkgs.pkgsCross.mingwW64.libxml2}/include:${pkgs.pkgsCross.mingwW64.ncurses}/include:$C_INCLUDE_PATH"
+            export PKG_CONFIG_PATH="${pkgs.pkgsCross.mingwW64.libffi}/lib/pkgconfig:${pkgs.pkgsCross.mingwW64.zlib}/lib/pkgconfig:${pkgs.pkgsCross.mingwW64.libxml2}/lib/pkgconfig:${pkgs.pkgsCross.mingwW64.ncurses}/lib/pkgconfig:$PKG_CONFIG_PATH"
+    
+            alias build-cyrus-win="RUSTFLAGS="-C link-args=" cargo zigbuild --target x86_64-pc-windows-gnu -j24 --release"
           '';
         };
       };
