@@ -13,79 +13,132 @@
       pkgs = import nixpkgs {
         inherit system overlays;
       };
+
       rustToolchain = pkgs.rust-bin.nightly.latest.default.override {
         extensions = [ "rust-src" "rust-analyzer" "cargo" "clippy" ];
       };
     in
     {
-      packages.${system}.default = pkgs.rustPlatform.buildRustPackage {
-        pname = "cyrus";
-        version = "latest";
-        src = ./.;
-        cargoLock = {
-          lockFile = ./Cargo.lock;
+      ## -----------------------------
+      ## Packages
+      ## -----------------------------
+      packages.${system} = {
+        linux = pkgs.rustPlatform.buildRustPackage {
+          pname = "cyrus";
+          version = "latest";
+          src = ./.;
+          cargoLock = { lockFile = ./Cargo.lock; };
+
+          nativeBuildInputs = with pkgs; [
+            rustToolchain
+            gcc
+            libgcc
+            glibc
+            glibc.static
+            gcc_multi
+            clang-tools
+            clang
+            libffi
+            libffi.dev
+            isl
+            llvm_18.lib
+            llvm_18.dev
+            libxml2
+          ];
+
+          buildPhase = ''
+            export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
+            export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
+            cargo build --release
+          '';
+
+          installPhase = ''
+            mkdir -p $out/bin
+            cp target/release/cyrus $out/bin/
+          '';
         };
 
-        nativeBuildInputs = with pkgs; [
-          rustToolchain
-          gcc
-          libgcc
-          glibc
-          glibc.static
-          gcc_multi
-          clang-tools
-          clang
-          libffi
-          libffi.dev
-          isl
-          llvm_18.lib
-          llvm_18.dev
-          libxml2
-        ];
+        windows = pkgs.rustPlatform.buildRustPackage {
+          pname = "cyrus";
+          version = "latest";
+          src = ./.;
+          cargoLock = { lockFile = ./Cargo.lock; };
 
-        buildPhase = ''
-          export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
-          export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
-          cargo build --release
-        '';
+          llvmPackages_18.override = {
+            enableSharedLibraries = false;
+          };
 
-        installPhase = ''
-          mkdir -p $out/bin
-          cp target/release/cyrus $out/bin/
-        '';
+          nativeBuildInputs = [
+            rustToolchain
+            pkgs.pkgsCross.mingwW64.llvm_18.lib
+            pkgs.pkgsCross.mingwW64.llvm_18.dev
+            pkgs.pkgsCross.mingwW64.stdenv.cc
+            pkgs.pkgsCross.mingwW64.buildPackages.binutils
+            pkgs.pkgsCross.mingwW64.zlib
+            pkgs.pkgsCross.mingwW64.libffi
+            pkgs.pkgsCross.mingwW64.libxml2
+            pkgs.pkgsCross.mingwW64.ncurses
+          ];
 
-        meta = {
-          license = pkgs.lib.licenses.mit;
-          description = "Cyrus Programming Language";
-          homepage = "https://github.com/cyrus-lang/Cyrus-Lang";
+          buildPhase = ''
+            export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
+            cargo build --release --target x86_64-pc-windows-gnu -Zbuild-std
+          '';
+
+          installPhase = ''
+            mkdir -p $out/bin
+            cp target/x86_64-pc-windows-gnu/release/cyrus.exe $out/bin/
+          '';
         };
       };
 
-      devShells.${system}.default = pkgs.mkShell {
-        name = "cyrus-dev-shell";
+      ## -----------------------------
+      ## Dev shells
+      ## -----------------------------
+      devShells.${system} = {
+        linux = pkgs.mkShell {
+          name = "cyrus-dev-linux";
+          buildInputs = with pkgs; [
+            rustToolchain
+            gcc
+            libgcc
+            glibc
+            glibc.static
+            gcc_multi
+            clang-tools
+            clang
+            libffi
+            libffi.dev
+            isl
+            llvm_18.lib
+            llvm_18.dev
+            libxml2
+          ];
+          shellHook = ''
+            export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
+            export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
+            alias cyrus="cargo run -j24 --"
+          '';
+        };
 
-        buildInputs = with pkgs; [
-          rustToolchain
-          gcc
-          libgcc
-          glibc
-          glibc.static
-          gcc_multi
-          clang-tools
-          clang
-          libffi
-          libffi.dev
-          isl
-          llvm_18.lib
-          llvm_18.dev
-          libxml2
-        ];
-
-        shellHook = ''
-          export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
-          export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
-          alias cyrus="cargo run -j24 --"
-        '';
+        windows = pkgs.mkShell {
+          name = "cyrus-dev-windows";
+          buildInputs = [
+            rustToolchain
+            pkgs.pkgsCross.mingwW64.stdenv.cc
+            pkgs.pkgsCross.mingwW64.buildPackages.binutils
+            pkgs.pkgsCross.mingwW64.buildPackages.gcc
+            pkgs.pkgsCross.mingwW64.zlib
+            pkgs.pkgsCross.mingwW64.libffi
+            pkgs.pkgsCross.mingwW64.libxml2
+            pkgs.pkgsCross.mingwW64.ncurses
+          ];
+          shellHook = ''
+            export PATH="$PATH:/home/taha/.cargo/bin"
+            export LLVM_SYS_180_PREFIX="${pkgs.llvm_18.dev}"
+            alias cyrus-win="cargo build --target x86_64-pc-windows-gnu -Zbuild-std"
+          '';
+        };
       };
     };
 }

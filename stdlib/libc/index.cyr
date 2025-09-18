@@ -11,3 +11,4 @@ public extern func free(ptr: void*) void;
 public extern func exit(status: abi::c_int) void;
 public extern func realloc(ptr: void*, size: abi::c_size_t) void*;
 public extern func strncpy(dest: abi::c_char*, src: const abi::c_char*, count: abi::c_size_t) abi::c_char*;
+public extern func putchar(ch: abi::c_char) abi::c_int;
