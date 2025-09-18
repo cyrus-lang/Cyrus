@@ -1,18 +1,19 @@
-import std::libc{printf, malloc};
-
-enum DataType { 
-    Int,
-    Float,
-    Text    
-}
+import std::libc{putchar};
 
 func main() {
-    #a = DataType.Int;
-    #b = DataType.Int;
+    putchar('a');
+    // #a = DataType.Int;
+    // #b = DataType.Int;
 
-    if (a == b) {
-        printf("equal\n");
-    } else {
-        printf("not equal\n");
-    }
+    // if (a == b) {
+    //     printf("equal\n");
+    // } else {
+    //     printf("not equal\n");
+    // }
 }
+
+// enum DataType { 
+//     Int,
+//     Float,
+//     Text    
+// }
