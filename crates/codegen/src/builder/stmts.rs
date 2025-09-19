@@ -131,6 +131,12 @@ impl<'a> CodeGenBuilder<'a> {
         let fn_value = match local_ir_value {
             Some(local_ir_value) => local_ir_value.as_func().unwrap().clone(),
             None => {
+                let module = self.llvmmodule.borrow();
+                if let Some(fn_value) = module.get_function(&func_sig.name) {
+                    return fn_value;
+                }
+                drop(module);
+
                 let fn_value = self.build_func_decl(
                     func_sig.name.clone(),
                     func_sig.is_func_decl,
