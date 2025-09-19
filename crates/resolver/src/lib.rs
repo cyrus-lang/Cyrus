@@ -267,6 +267,7 @@ impl Resolver {
         singles: &Vec<ModuleSegmentSingle>,
         loc: Location,
     ) {
+        let mut imported_symbols_ids: Vec<SymbolID> = Vec::new();
         // move symbol and it's metadata from imported module to parent module
 
         for single in singles {
@@ -290,6 +291,8 @@ impl Resolver {
                     continue;
                 }
             };
+
+            imported_symbols_ids.push(symbol_id);
 
             let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
             {

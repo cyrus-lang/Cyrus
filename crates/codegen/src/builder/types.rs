@@ -90,8 +90,8 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_concrete_type_declare_fresh(&mut self, local_or_global_symbol: LocalOrGlobalSymbol) -> LocalIRValue<'a> {
-        match local_or_global_symbol {
-            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
+        match &local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
                 LocalSymbolKind::Struct(resolved_struct) => {
                     let struct_type =
                         self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig);
@@ -99,19 +99,29 @@ impl<'a> CodeGenBuilder<'a> {
                     LocalIRValue::Struct(struct_type)
                 }
                 LocalSymbolKind::Enum(_resolved_enum) => todo!(),
-                _ => unreachable!(),
+                _ => {
+                    if cfg!(debug_assertions) {
+                        dbg!(local_or_global_symbol.clone());
+                    }
+
+                    unreachable!()
+                }
             },
-            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
-                SymbolEntryKind::Typedef(..) | SymbolEntryKind::Func(..) | SymbolEntryKind::Interface(..) => {
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Typedef(..) => {
+                    unreachable!()
+                }
+                SymbolEntryKind::Func(..) | SymbolEntryKind::Interface(..) => {
                     unreachable!()
                 }
                 SymbolEntryKind::Method(resolved_method) => {
-                    let fn_value = self.get_or_declare_func(resolved_method.symbol_id, resolved_method.func_sig);
+                    let fn_value =
+                        self.get_or_declare_func(resolved_method.symbol_id, resolved_method.func_sig.clone());
                     LocalIRValue::Func(fn_value)
                 }
                 SymbolEntryKind::GlobalVar(resolved_global_var) => {
                     let global_value = self.get_or_declare_global_var(resolved_global_var.global_var_sig.clone());
-                    LocalIRValue::GlobalValue(global_value, resolved_global_var.global_var_sig.ty.unwrap())
+                    LocalIRValue::GlobalValue(global_value, resolved_global_var.global_var_sig.ty.clone().unwrap())
                 }
                 SymbolEntryKind::Struct(resolved_struct) => {
                     let struct_type =
@@ -148,18 +158,22 @@ impl<'a> CodeGenBuilder<'a> {
             let local_ir_value_opt = irreg.get(&irreg_symbol_id).cloned();
             drop(irreg);
 
-            let local_ir_value = match local_ir_value_opt {
-                Some(local_ir_value) => local_ir_value,
-                None => self.build_concrete_type_declare_fresh(local_or_global_symbol),
-            };
+            if let Some(typedef) = local_or_global_symbol.as_typedef() {
+                self.build_concrete_type(local_scope_opt, typedef.typedef_sig.ty.clone())
+            } else {
+                let local_ir_value = match local_ir_value_opt {
+                    Some(local_ir_value) => local_ir_value,
+                    None => self.build_concrete_type_declare_fresh(local_or_global_symbol),
+                };
 
-            let any_type_enum = match local_ir_value {
-                LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
-                LocalIRValue::Enum((struct_type, ..)) => AnyTypeEnum::StructType(struct_type.clone()),
-                _ => unreachable!(),
-            };
+                let any_type_enum = match local_ir_value {
+                    LocalIRValue::Struct(struct_type) => AnyTypeEnum::StructType(struct_type.clone()),
+                    LocalIRValue::Enum((struct_type, ..)) => AnyTypeEnum::StructType(struct_type.clone()),
+                    _ => unreachable!(),
+                };
 
-            any_type_enum
+                any_type_enum
+            }
         } else {
             let module_id = self.resolver.lookup_symbol_id_in_modules(symbol_id).unwrap();
             let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, symbol_id).unwrap();

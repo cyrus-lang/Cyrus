@@ -1,6 +1,8 @@
 use crate::types::{ConcreteType, TypedUnnamedStructType};
 use ast::{
-    operators::{InfixOperator, PrefixOperator, UnaryOperator}, source_loc::SourceLoc, AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind
+    AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind,
+    operators::{InfixOperator, PrefixOperator, UnaryOperator},
+    source_loc::SourceLoc,
 };
 use std::collections::HashMap;
 
@@ -292,7 +294,6 @@ pub struct TypedUnnamedStructValueField {
 
 #[derive(Debug, Clone)]
 pub enum TypedStatement {
-    Import(TypedImport),
     Variable(TypedVariable),
     Typedef(TypedTypedef),
     GlobalVariable(TypedGlobalVariable),
@@ -316,7 +317,6 @@ pub enum TypedStatement {
 impl TypedStatement {
     pub fn get_loc(&self) -> SourceLoc {
         match self {
-            TypedStatement::Import(typed_import) => typed_import.loc.clone(),
             TypedStatement::Variable(typed_variable) => typed_variable.loc.clone(),
             TypedStatement::Typedef(typed_typedef) => typed_typedef.loc.clone(),
             TypedStatement::GlobalVariable(typed_global_variable) => typed_global_variable.loc.clone(),
@@ -445,14 +445,6 @@ pub struct TypedTypedef {
     pub name: String,
     pub ty: ConcreteType,
     pub vis: AccessSpecifier,
-    pub loc: SourceLoc,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypedImport {
-    pub resolved_path: Vec<String>,
-    pub alias: Option<String>,
-    pub module_id: ModuleID,
     pub loc: SourceLoc,
 }
 

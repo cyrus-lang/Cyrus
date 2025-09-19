@@ -400,7 +400,6 @@ impl<'a> CodeGenBuilder<'a> {
                 // Invalid statements
                 TypedStatement::FuncDef(_) => unreachable!(),
                 TypedStatement::FuncDecl(_) => unreachable!(),
-                TypedStatement::Import(_) => unreachable!(),
                 TypedStatement::GlobalVariable(_) => unreachable!(),
             }
         }

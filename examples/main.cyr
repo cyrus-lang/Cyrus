@@ -1,17 +1,6 @@
-import std::libc{printf, malloc};
+import std::libc{fprintf, stdout};
+import std::libc::abi{c_int};
 
-enum Color {
-    Red,
-    Custom(int, int, int)
-}
-
-func main() {
-    #color1 = Color.Custom(0x0, 0x1, 0x2);
-    #color2 = Color.Custom(0x0, 0x2, 0x3);
-
-    if (color1 == color2) {
-        printf("equal\n");
-    } else {
-        printf("not equal\n");
-    }
+func main() {    
+    fprintf(stdout, "Hello, Cyrus!\n");
 }
