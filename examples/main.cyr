@@ -1,5 +1,4 @@
 import std::libc{fprintf, stdout};
-import std::libc::abi{c_int};
 
 func main() {    
     fprintf(stdout, "Hello, Cyrus!\n");
