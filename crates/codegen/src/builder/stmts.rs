@@ -389,8 +389,7 @@ impl<'a> CodeGenBuilder<'a> {
                     self.build_union_def(typed_union);
                 }
                 TypedStatement::Expression(typed_expr) => {
-                    let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
-                    self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+                    self.build_expr(local_scope_opt.clone(), typed_expr);
                 }
                 TypedStatement::BlockStatement(typed_block_statement) => {
                     self.build_block_statement(typed_block_statement);
@@ -1135,14 +1134,14 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_if(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_if: &TypedIf) {
+        let cond = self.build_expr(local_scope_opt.clone(), &typed_if.condition);
+
         let current_block = self.blockreg.current_block_ref.unwrap();
         let current_func = self.blockreg.current_func_ref.unwrap();
 
         let then_block = self.llvmctx.append_basic_block(current_func, "if.then");
         let else_block = self.llvmctx.append_basic_block(current_func, "if.else");
         let end_block = self.llvmctx.append_basic_block(current_func, "if.end");
-
-        let cond = self.build_expr(local_scope_opt.clone(), &typed_if.condition);
 
         self.llvmbuilder.position_at_end(current_block);
         if !self.is_block_terminated(current_block) {
