@@ -1,12 +1,12 @@
 use crate::diagnostics::CodeGenDiagKind;
-use diagcentral::{Diag, DiagLevel, display_single_diag};
+use diagcentral::{Diag, DiagLevel, display_single_custom_diag, display_single_diag};
 use project_layout::{MANIFEST_FILENAME, SOURCES_DIR_PATH};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::{self, File},
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
 };
 use utils::{fs::read_file, generate_random_hex::generate_random_hex};
 
@@ -115,13 +115,23 @@ impl BuildManifest {
     }
 
     pub fn read_manifest(&self) -> Option<Self> {
-        let manifest_filepath = format!(
-            "{}/{}/{}",
-            self.base_path.clone().unwrap_or(String::new()),
-            self.build_dir,
-            MANIFEST_FILENAME
-        );
-        let file_content = std::fs::read_to_string(manifest_filepath.to_string()).ok()?;
+        let mut manifest_filepath = match &self.base_path {
+            Some(path_str) => PathBuf::from(path_str),
+            None => PathBuf::from("."),
+        };
+
+        manifest_filepath.push(&self.build_dir);
+        manifest_filepath.push(MANIFEST_FILENAME);
+
+        let file_content = match fs::read_to_string(&manifest_filepath) {
+            Ok(content) => content,
+            Err(err) => {
+                if err.kind() != std::io::ErrorKind::NotFound {
+                    display_single_custom_diag!("Failed to read 'build_manifest.json'.".to_string());
+                }
+                return None;
+            }
+        };
 
         match serde_json::from_str::<BuildManifest>(&file_content) {
             Ok(manifest) => Some(manifest),
@@ -129,7 +139,7 @@ impl BuildManifest {
                 display_single_diag!(Diag {
                     level: DiagLevel::Error,
                     kind: CodeGenDiagKind::FailedToParseBuildManifest {
-                        file_path: manifest_filepath,
+                        file_path: manifest_filepath.display().to_string(),
                         err: err.to_string()
                     },
                     location: None,

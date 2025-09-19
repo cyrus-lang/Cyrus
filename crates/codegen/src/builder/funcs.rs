@@ -121,10 +121,15 @@ impl<'a> CodeGenBuilder<'a> {
             }
         };
 
-        let llvmmodule = self.llvmmodule.borrow();
-        let fn_value = llvmmodule.add_function(&func_abi_name, fn_type, Some(linkage));
+        let module = self.llvmmodule.borrow();
+        if let Some(fn_value) = module.get_function(&func_abi_name) {
+            self.add_func_attrs(fn_value);
+            return fn_value;
+        }
+
+        let fn_value = module.add_function(&func_abi_name, fn_type, Some(linkage));
         self.add_func_attrs(fn_value);
-        drop(llvmmodule);
+        drop(module);
         fn_value
     }
 

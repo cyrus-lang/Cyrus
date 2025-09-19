@@ -12,7 +12,7 @@ use inkwell::{
     values::{FunctionValue, GlobalValue, PointerValue},
 };
 use resolver::Resolver;
-use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fs, path::Path, rc::Rc};
 use typed_ast::{ModuleID, TypedProgramTree, types::ConcreteType};
 
 pub struct CodeGenModule<'module> {
@@ -110,8 +110,17 @@ impl<'a> CodeGenModuleOutput<'a> {
 
     pub fn emit_llvm_ir(&self, output_file_path: String) {
         let llvmmodule = self.llvmmodule.borrow();
-        let llvmir_path = format!("{}/{}.ll", output_file_path, self.module_name);
-        llvmmodule.print_to_file(llvmir_path).unwrap();
+        let output_path = Path::new(&output_file_path);
+
+        if let Some(parent) = output_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                eprintln!("Error creating directory: {}", e);
+                return;
+            }
+        }
+
+        let llvmir_path = output_path.join(format!("{}.ll", self.module_name));
+        llvmmodule.print_to_file(&llvmir_path).unwrap();
         drop(llvmmodule);
     }
 

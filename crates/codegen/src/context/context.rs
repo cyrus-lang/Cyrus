@@ -239,6 +239,7 @@ impl CodeGenContext {
         typed_modules: Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
     ) {
         let build_manifest_guard = self.build_manifest.lock().unwrap();
+        
         let mut build_manifest = build_manifest_guard.read_manifest().unwrap_or_else(|| {
             build_manifest_guard.save_manifest();
             BuildManifest::new(self.opts.base_path.clone(), self.final_build_dir.clone())
@@ -255,7 +256,8 @@ impl CodeGenContext {
                 output_kind,
                 OutputKind::ByteCode(_) | OutputKind::Asm(_) | OutputKind::LlvmIr(_)
             ) && build_manifest.check_source_code_changed(module_file_path.clone())
-                || disable_modulefs_cache || build_manifest.is_first_build
+                || disable_modulefs_cache
+                || build_manifest.is_first_build
         }
 
         typed_modules
@@ -272,11 +274,8 @@ impl CodeGenContext {
                     utils::tui::tui_compiled(module_file_path.clone());
 
                     let codegen_module = CodeGenModule::new(&self.opts, program_tree.clone());
-                    let codegen_output = codegen_module.codegen(
-                        self.resolver_rc.clone(),
-                        *module_id,
-                        module_name.to_string(),
-                    );
+                    let codegen_output =
+                        codegen_module.codegen(self.resolver_rc.clone(), *module_id, module_name.to_string());
 
                     match self.output_kind.clone() {
                         OutputKind::LlvmIr(output_path) => codegen_output.emit_llvm_ir(output_path),
@@ -302,8 +301,17 @@ impl CodeGenContext {
                             let obj_file_path = Path::new(&self.final_build_dir)
                                 .join(OBJECTS_FILENAME)
                                 .join(obj_file_name);
-                            codegen_output.emit_obj(&obj_file_path);
-                            self.insert_compiled_object(obj_file_path.to_str().unwrap().to_string());
+                            let obj_file_path_str = obj_file_path.to_str().unwrap().to_string();
+
+                            if let Some(cache_obj_file_path) = build_manifest.objects.get(module_file_path) {
+                                self.insert_compiled_object(cache_obj_file_path.clone());
+                            } else {
+                                codegen_output.emit_obj(&obj_file_path);
+                                self.insert_compiled_object(obj_file_path_str.clone());
+                                build_manifest
+                                    .objects
+                                    .insert(module_file_path.clone(), obj_file_path_str);
+                            }
                         }
                         OutputKind::None => {}
                     }
