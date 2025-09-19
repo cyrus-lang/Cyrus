@@ -234,6 +234,7 @@ impl<'a> AnalysisContext<'a> {
                         typed_expr,
                         typed_expr.concrete_type.clone(),
                     );
+
                     FlowState::Reachable
                 }
                 TypedStatement::Interface(typed_interface) => {

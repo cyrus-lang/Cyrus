@@ -12,7 +12,7 @@ use inkwell::{
 };
 use resolver::scope::{LocalScopeRef, ResolvedEnum};
 use typed_ast::{
-    SymbolID, TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue,
+    TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue,
     TypedUnnamedStructValueField,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedUnnamedStructType, TypedUnnamedStructTypeField},
 };
@@ -25,71 +25,163 @@ impl<'a> CodeGenBuilder<'a> {
             .into_int_value()
     }
 
+    fn extract_enum_payload(&self, struct_value: StructValue<'a>) -> ArrayValue<'a> {
+        self.llvmbuilder
+            .build_extract_value(struct_value, 1, "extract")
+            .unwrap()
+            .into_array_value()
+    }
+
     pub(crate) fn build_compare_enum_variants(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        enum_symbol_id1: SymbolID,
-        enum_symbol_id2: SymbolID,
         lhs: InternalValue<'a>,
         rhs: InternalValue<'a>,
-        cmp_eq: bool
+        cmp_eq: bool,
     ) -> InternalValue<'a> {
-        let resolved_enum1 = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id1)
-            .unwrap()
-            .as_enum()
-            .unwrap();
-
-        let resolved_enum2 = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id2)
-            .unwrap()
-            .as_enum()
-            .unwrap();
-
         let struct_value1 = lhs.as_basic_value().into_struct_value();
         let struct_value2 = rhs.as_basic_value().into_struct_value();
 
-        let variant_number1 = self.extract_enum_variant_number(struct_value1);
-        let variant_number2 = self.extract_enum_variant_number(struct_value2);
+        let tag1 = self.extract_enum_variant_number(struct_value1);
+        let tag2 = self.extract_enum_variant_number(struct_value2);
 
-        let variant_number_concrete_type = ConcreteType::BasicType(BasicConcreteType::UInt32);
-
-        let variant_number_cmp_result;
-
-        if cmp_eq {
-            variant_number_cmp_result = self.build_cmp_eq(
+        let tag_concrete_type = ConcreteType::BasicType(BasicConcreteType::UInt32);
+        let tag_cmp_result = if cmp_eq {
+            self.build_cmp_eq(
                 local_scope_opt,
                 InternalValue::new(
-                    variant_number_concrete_type.clone(),
-                    InternalValueKind::RValue(variant_number1.as_basic_value_enum()),
+                    tag_concrete_type.clone(),
+                    InternalValueKind::RValue(tag1.as_basic_value_enum()),
                 ),
-                InternalValue::new(
-                    variant_number_concrete_type,
-                    InternalValueKind::RValue(variant_number2.as_basic_value_enum()),
-                ),
-            );
+                InternalValue::new(tag_concrete_type, InternalValueKind::RValue(tag2.as_basic_value_enum())),
+            )
         } else {
-            variant_number_cmp_result = self.build_cmp_neq(
-                local_scope_opt, 
+            self.build_cmp_neq(
+                local_scope_opt,
                 InternalValue::new(
-                    variant_number_concrete_type.clone(),
-                    InternalValueKind::RValue(variant_number1.as_basic_value_enum()),
+                    tag_concrete_type.clone(),
+                    InternalValueKind::RValue(tag1.as_basic_value_enum()),
                 ),
-                InternalValue::new(
-                    variant_number_concrete_type,
-                    InternalValueKind::RValue(variant_number2.as_basic_value_enum()),
-                ),
-            );
-        }
+                InternalValue::new(tag_concrete_type, InternalValueKind::RValue(tag2.as_basic_value_enum())),
+            )
+        };
 
-        // TODO Compare payload if both of them are valued_fields enum variant.
+        let current_func = self.blockreg.current_func_ref.unwrap();
+        let payload_block = self.llvmctx.append_basic_block(current_func, "enum_cmp.payload");
+        let exit_block = self.llvmctx.append_basic_block(current_func, "enum_cmp.exit");
+
+        let entry_block = self.blockreg.current_block_ref.unwrap();
+
+        self.llvmbuilder
+            .build_conditional_branch(
+                tag_cmp_result.as_basic_value().into_int_value(),
+                payload_block,
+                exit_block,
+            )
+            .unwrap();
+
+        self.blockreg.current_block_ref = Some(payload_block);
+        self.llvmbuilder.position_at_end(payload_block);
+
+        let payload1 = self.extract_enum_payload(struct_value1);
+        let payload2 = self.extract_enum_payload(struct_value2);
+
+        let memcmp_result = self.build_memcmp_for_arrays(payload1, payload2);
+
+        let i32_zero = self.llvmctx.i32_type().const_zero();
+        let payload_eq = self
+            .llvmbuilder
+            .build_int_compare(inkwell::IntPredicate::EQ, memcmp_result, i32_zero, "payload_eq")
+            .unwrap();
+
+        self.llvmbuilder.build_unconditional_branch(exit_block).unwrap();
+
+        let payload_cmp_block = self.blockreg.current_block_ref.unwrap();
+
+        self.blockreg.current_block_ref = Some(exit_block);
+        self.llvmbuilder.position_at_end(exit_block);
+
+        let phi = self
+            .llvmbuilder
+            .build_phi(self.llvmctx.bool_type(), "enum_cmp_phi")
+            .unwrap();
+
+        phi.add_incoming(&[(&self.llvmctx.bool_type().const_zero(), entry_block)]);
+        phi.add_incoming(&[(&payload_eq, payload_cmp_block)]);
 
         InternalValue::new(
             ConcreteType::BasicType(BasicConcreteType::Bool),
-            InternalValueKind::RValue(variant_number_cmp_result.as_basic_value()),
+            InternalValueKind::RValue(phi.as_basic_value()),
         )
+    }
+
+    fn build_memcmp_for_arrays(&self, lhs_arr: ArrayValue<'a>, rhs_arr: ArrayValue<'a>) -> IntValue<'a> {
+        let i32_type = self.llvmctx.i32_type();
+        let i8_ptr_type = self.llvmctx.ptr_type(AddressSpace::default());
+        let target_data = self.llvmtm.get_target_data();
+        let ptr_sized_int_type = self.llvmctx.ptr_sized_int_type(&target_data, None);
+
+        let module = self.llvmmodule.borrow();
+        let memcmp = match module.get_function("memcmp") {
+            Some(func) => func,
+            None => {
+                let fn_type = i32_type.fn_type(
+                    &[
+                        i8_ptr_type.into(),        // const void* lhs
+                        i8_ptr_type.into(),        // const void* rhs
+                        ptr_sized_int_type.into(), // size_t len
+                    ],
+                    false,
+                );
+                module.add_function("memcmp", fn_type, None)
+            }
+        };
+
+        let lhs_alloca = self.llvmbuilder.build_alloca(lhs_arr.get_type(), "lhs_alloca").unwrap();
+        let rhs_alloca = self.llvmbuilder.build_alloca(rhs_arr.get_type(), "rhs_alloca").unwrap();
+
+        self.llvmbuilder.build_store(lhs_alloca, lhs_arr).unwrap();
+        self.llvmbuilder.build_store(rhs_alloca, rhs_arr).unwrap();
+
+        let zero = self.llvmctx.i32_type().const_zero();
+        let gep_idx = &[zero, zero];
+        let lhs_ptr = unsafe {
+            self.llvmbuilder
+                .build_in_bounds_gep(lhs_arr.get_type(), lhs_alloca, gep_idx, "lhs_gep")
+                .unwrap()
+        };
+        let rhs_ptr = unsafe {
+            self.llvmbuilder
+                .build_in_bounds_gep(rhs_arr.get_type(), rhs_alloca, gep_idx, "rhs_gep")
+                .unwrap()
+        };
+
+        let lhs_cast = self
+            .llvmbuilder
+            .build_pointer_cast(lhs_ptr, i8_ptr_type, "lhs_cast")
+            .unwrap();
+        let rhs_cast = self
+            .llvmbuilder
+            .build_pointer_cast(rhs_ptr, i8_ptr_type, "rhs_cast")
+            .unwrap();
+
+        let byte_size = target_data.get_bit_size(&lhs_arr.get_type()) / 8;
+        let len_val = ptr_sized_int_type.const_int(byte_size as u64, false);
+
+        let cmp = self
+            .llvmbuilder
+            .build_call(
+                memcmp,
+                &[lhs_cast.into(), rhs_cast.into(), len_val.into()],
+                "memcmp_call",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+
+        drop(module);
+        cmp.into_int_value()
     }
 
     pub(crate) fn copy_buffer_to_struct(&self, buffer: ArrayValue<'a>, struct_type: StructType<'a>) -> StructValue<'a> {

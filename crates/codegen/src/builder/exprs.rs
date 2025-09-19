@@ -877,7 +877,7 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn build_cmp_eq(
-        &self,
+        &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         lhs_rvalue: InternalValue<'a>,
         rhs_rvalue: InternalValue<'a>,
@@ -915,16 +915,11 @@ impl<'a> CodeGenBuilder<'a> {
             }
             _ => {
                 if lhs_rvalue.value_type.is_enum() && rhs_rvalue.value_type.is_enum() {
-                    let enum_symbol_id1 = lhs_rvalue.value_type.as_enum_symbol_id().unwrap();
-                    let enum_symbol_id2 = rhs_rvalue.value_type.as_enum_symbol_id().unwrap();
-
                     return self.build_compare_enum_variants(
                         local_scope_opt,
-                        enum_symbol_id1,
-                        enum_symbol_id2,
                         lhs_rvalue.clone(),
                         rhs_rvalue.clone(),
-                        true
+                        true,
                     );
                 }
 
@@ -933,7 +928,12 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_cmp_neq(&self, local_scope_opt: Option<LocalScopeRef>, lhs_rvalue: InternalValue<'a>, rhs_rvalue: InternalValue<'a>) -> InternalValue<'a> {
+    pub(crate) fn build_cmp_neq(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        lhs_rvalue: InternalValue<'a>,
+        rhs_rvalue: InternalValue<'a>,
+    ) -> InternalValue<'a> {
         match (lhs_rvalue.as_basic_value(), rhs_rvalue.as_basic_value()) {
             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                 let cmp = self
@@ -967,21 +967,16 @@ impl<'a> CodeGenBuilder<'a> {
             }
             _ => {
                 if lhs_rvalue.value_type.is_enum() && rhs_rvalue.value_type.is_enum() {
-                    let enum_symbol_id1 = lhs_rvalue.value_type.as_enum_symbol_id().unwrap();
-                    let enum_symbol_id2 = rhs_rvalue.value_type.as_enum_symbol_id().unwrap();
-
                     return self.build_compare_enum_variants(
                         local_scope_opt,
-                        enum_symbol_id1,
-                        enum_symbol_id2,
                         lhs_rvalue.clone(),
                         rhs_rvalue.clone(),
-                        false
+                        false,
                     );
                 }
 
                 unreachable!()
-            },
+            }
         }
     }
 

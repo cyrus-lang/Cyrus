@@ -143,7 +143,11 @@ impl Parser {
             }
         }
 
-        return Ok(EnumVariant::Identifier(variant_name));
+        if variant_fields.is_empty() {
+            Ok(EnumVariant::Identifier(variant_name))
+        } else {
+            Ok(EnumVariant::Variant(variant_name, variant_fields))
+        }
     }
 
     fn parse_union_field(&mut self) -> Result<UnionField, ParserError> {
