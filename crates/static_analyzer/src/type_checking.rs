@@ -507,7 +507,7 @@ impl<'a> AnalysisContext<'a> {
                         self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
                     }
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
-                        if let Some(resolved_global_var) = symbol_entry.as_global_var() {
+                        if let Some(mut resolved_global_var) = symbol_entry.as_global_var().cloned() {
                             if scope_id_opt.is_none()
                                 && !resolved_global_var.global_var_sig.ty.clone().unwrap().is_const()
                             {
@@ -518,6 +518,13 @@ impl<'a> AnalysisContext<'a> {
                                     hint: None,
                                 });
                                 return None;
+                            }
+
+                            if let Some(concrete_type) = &resolved_global_var.global_var_sig.ty {
+                                resolved_global_var.global_var_sig.ty = Some(
+                                    self.normalize_type(scope_id_opt, concrete_type.clone(), typed_expr.loc.clone())
+                                        .unwrap(),
+                                );
                             }
 
                             if let Some(mut typed_expr) = resolved_global_var.global_var_sig.rhs.clone() {

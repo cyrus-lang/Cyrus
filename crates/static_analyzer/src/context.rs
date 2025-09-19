@@ -160,7 +160,6 @@ impl<'a> AnalysisContext<'a> {
 
         for mut typed_stmt in &mut body {
             match &mut typed_stmt {
-                TypedStatement::Import(..) => continue,
                 TypedStatement::GlobalVariable(typed_global_var) => self.analyze_global_var(typed_global_var),
                 TypedStatement::FuncDef(typed_func_def) => self.analyze_func_def(typed_func_def),
                 TypedStatement::FuncDecl(typed_func_decl) => self.analyze_func_decl(typed_func_decl),
@@ -255,10 +254,9 @@ impl<'a> AnalysisContext<'a> {
                     FlowState::Reachable
                 }
                 // Invalid statements
-                TypedStatement::FuncDef(_)
-                | TypedStatement::FuncDecl(_)
-                | TypedStatement::Import(_)
-                | TypedStatement::GlobalVariable(_) => unreachable!(),
+                TypedStatement::FuncDef(_) | TypedStatement::FuncDecl(_) | TypedStatement::GlobalVariable(_) => {
+                    unreachable!()
+                }
             }
         }
 

@@ -161,6 +161,19 @@ impl LocalOrGlobalSymbol {
         }
     }
 
+    pub fn as_typedef(&self) -> Option<&ResolvedTypedef> {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Typedef(resolved_typedef) => Some(resolved_typedef),
+                _ => None,
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Typedef(resolved_typedef) => Some(resolved_typedef),
+                _ => None,
+            },
+        }
+    }
+
     pub fn as_union(&self) -> Option<&ResolvedUnion> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
