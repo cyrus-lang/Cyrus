@@ -456,8 +456,6 @@ impl<'a> CodeGenBuilder<'a> {
         let rhs_lvalue = self.build_expr(local_scope_opt.clone(), &assign.rhs);
         let rhs_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), rhs_lvalue);
 
-        // dbg!(lhs_lvalue.clone());
-        // assert!(lhs_lvalue.as_basic_value().is_pointer_value() == true);
         let pointer_value = lhs_lvalue.as_basic_value().into_pointer_value();
 
         self.llvmbuilder

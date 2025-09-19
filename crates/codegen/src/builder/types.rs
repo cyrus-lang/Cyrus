@@ -100,10 +100,6 @@ impl<'a> CodeGenBuilder<'a> {
                 }
                 LocalSymbolKind::Enum(_resolved_enum) => todo!(),
                 _ => {
-                    if cfg!(debug_assertions) {
-                        dbg!(local_or_global_symbol.clone());
-                    }
-
                     unreachable!()
                 }
             },
