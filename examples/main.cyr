@@ -1,24 +1,29 @@
-func main() { 
-    sizeof(10) - 1;
-    // printf("len: %d\n", len);
+import std::libc{printf, malloc};
+
+public enum DataType {
+    Int,
+    Text
 }
-// import std::libc{printf};
 
-// struct Foo {
-//     values: Bar[3];
-// }
+public union ValueData {
+    int_value: int;
+    text_value: char*;
+}
 
-// struct Bar {
-//     name: char*;
-//     age: int;
-// }
+public struct Value {
+    public v: int;
+}
 
-// func main() {    
-//     #foo = Foo {
-//         values: Bar[3] {
-//             Bar { name: "Taha", age: 18 }
-//         }
-//     };
+public struct Row { 
+    public values: Value*;
+}
 
+public struct Column {
+    public name: char[64];
+}
+
+func main() {
+    #row: Row = Row { values: cast(Value*, malloc(sizeof(Value))) };
+    row.values[0].v = 0;
     
-// }
+}

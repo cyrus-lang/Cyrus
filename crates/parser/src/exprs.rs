@@ -18,6 +18,12 @@ impl Parser {
         let mut left = self.parse_prefix_expression()?;
 
         loop {
+            if self.peek_token_is(TokenKind::Assign) {
+                self.next_token();
+                let expr = self.parse_assignment(left, AssignmentKind::Default, left_start)?;
+                return Ok((expr, Span::new(left_start, self.current_token().span.end)));
+            }
+
             if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
                 self.next_token(); // consume . or ->
                 left = self.parse_field_access(left)?;
@@ -31,10 +37,9 @@ impl Parser {
             }
 
             if self.peek_token_is(TokenKind::Increment) {
-                self.next_token(); // consume '++' token (current_token now is '++')
+                self.next_token(); // consume '++'
                 let loc = self.current_token().loc.clone();
                 let span = Span::new(left_start, self.current_token().span.end);
-                self.next_token(); // advance to token AFTER '++' so caller sees next token
                 return Ok((
                     Expression::Unary(UnaryExpression {
                         operand: Box::new(left),
@@ -48,7 +53,6 @@ impl Parser {
                 self.next_token(); // consume '--'
                 let loc = self.current_token().loc.clone();
                 let span = Span::new(left_start, self.current_token().span.end);
-                self.next_token(); // advance past '--'
                 return Ok((
                     Expression::Unary(UnaryExpression {
                         operand: Box::new(left),
@@ -70,15 +74,23 @@ impl Parser {
                             left_start = b.span.start;
                         }
                     }
-                    None => {}
+                    None => {
+                        dbg!(left.clone());
+
+                        return Ok((
+                            left,
+                            Span {
+                                start: left_start,
+                                end: self.current_token().span.end,
+                            },
+                        ));
+                    }
                 }
             } else {
                 break;
             }
         }
 
-        // current_token now points to the last token that belongs to the expression.
-        // Capture end from that token, then advance so the caller sees token *after* the expression.
         let end = self.current_token().span.end;
         Ok((left, Span { start: left_start, end }))
     }
