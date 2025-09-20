@@ -128,7 +128,7 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
     let temp_file_path = temp.to_str().unwrap().to_string();
 
     let context = CodeGenContext::new(
-        final_build_dir,
+        final_build_dir.clone(),
         opts.clone(),
         OutputKind::Executable(temp_file_path.clone()),
         resolver_rc,
@@ -147,6 +147,7 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
 
     if temp.exists() {
         std::fs::remove_file(temp_file_path).unwrap();
+        std::fs::remove_dir_all(final_build_dir).unwrap();
     }
 }
 

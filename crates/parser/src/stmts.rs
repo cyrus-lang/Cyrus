@@ -1232,6 +1232,7 @@ impl Parser {
     pub fn parse_block_statement(&mut self) -> Result<BlockStatement, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut block_statement: Vec<Statement> = Vec::new();

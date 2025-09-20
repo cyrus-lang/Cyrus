@@ -1,7 +1,12 @@
-import std::libc{fprintf, stdout};
+struct Foo {
+    values: Bar[3];
+}
+
+struct Bar {}
 
 func main() {    
-    fprintf(stdout, "Hello, Cyrus!\n");
-    fprintf(stdout, "Hello, Cyrus 2!\n");
-    fprintf(stdout, "Hello, Cyrus 3!\n");
+    #sample = Foo { 
+        values: Bar[3]{}
+    };
+    sample->values[0];
 }
