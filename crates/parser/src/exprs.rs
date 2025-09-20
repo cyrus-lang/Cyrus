@@ -15,70 +15,72 @@ use diagcentral::DiagLoc;
 impl Parser {
     pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParserError> {
         let mut left_start = self.current_token().span.start;
-
         let mut left = self.parse_prefix_expression()?;
 
-        while self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
-            self.next_token(); // consume the left expression
-            left = self.parse_field_access(left)?;
-        }
+        loop {
+            // Handle field access and pointer access
+            if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
+                self.next_token(); // consume . or ->
+                left = self.parse_field_access(left)?;
+                continue;
+            }
 
-        while self.peek_token_is(TokenKind::LeftBracket) {
-            self.next_token();
-            left = self.parse_array_index(left)?;
-        }
+            // Handle array indexing
+            if self.peek_token_is(TokenKind::LeftBracket) {
+                self.next_token(); // consume [
+                left = self.parse_array_index(left)?;
+                continue;
+            }
 
-        if self.peek_token_is(TokenKind::Assign) {
-            self.next_token();
-            let expr = self.parse_assignment(left, AssignmentKind::Default, left_start)?;
-            return Ok((expr, Span::new(left_start, self.current_token().span.end)));
-        }
+            // Handle assignment
+            if self.peek_token_is(TokenKind::Assign) {
+                self.next_token();
+                let expr = self.parse_assignment(left, AssignmentKind::Default, left_start)?;
+                return Ok((expr, Span::new(left_start, self.current_token().span.end)));
+            }
 
-        if self.peek_token_is(TokenKind::Increment) {
-            self.next_token();
-            let loc = self.current_token().loc.clone();
-            return Ok((
-                Expression::Unary(UnaryExpression {
-                    operand: Box::new(left),
-                    op: UnaryOperator::PostIncrement,
-                    span: Span::new(left_start, self.current_token().span.end),
-                    loc,
-                }),
-                Span::new(left_start, self.current_token().span.end),
-            ));
-        } else if self.peek_token_is(TokenKind::Decrement) {
-            self.next_token();
-            let loc = self.current_token().loc.clone();
-            return Ok((
-                Expression::Unary(UnaryExpression {
-                    operand: Box::new(left),
-                    op: UnaryOperator::PostDecrement,
-                    span: Span::new(left_start, self.current_token().span.end),
-                    loc: loc.clone(),
-                }),
-                Span::new(left_start, self.current_token().span.end),
-            ));
-        }
+            // Handle post-increment/decrement
+            if self.peek_token_is(TokenKind::Increment) {
+                self.next_token();
+                let loc = self.current_token().loc.clone();
+                return Ok((
+                    Expression::Unary(UnaryExpression {
+                        operand: Box::new(left),
+                        op: UnaryOperator::PostIncrement,
+                        span: Span::new(left_start, self.current_token().span.end),
+                        loc,
+                    }),
+                    Span::new(left_start, self.current_token().span.end),
+                ));
+            } else if self.peek_token_is(TokenKind::Decrement) {
+                self.next_token();
+                let loc = self.current_token().loc.clone();
+                return Ok((
+                    Expression::Unary(UnaryExpression {
+                        operand: Box::new(left),
+                        op: UnaryOperator::PostDecrement,
+                        span: Span::new(left_start, self.current_token().span.end),
+                        loc,
+                    }),
+                    Span::new(left_start, self.current_token().span.end),
+                ));
+            }
 
-        while self.current_token().kind != TokenKind::EOF && precedence < token_precedence_of(self.peek_token().kind) {
-            match self.parse_infix_expression(left.clone(), left_start) {
-                Some(infix) => {
-                    left = infix?;
-
-                    if let Expression::Infix(b) = left.clone() {
-                        left_start = b.span.start;
+            // Handle infix operators (binary expressions)
+            if self.current_token().kind != TokenKind::EOF && precedence < token_precedence_of(self.peek_token().kind) {
+                match self.parse_infix_expression(left.clone(), left_start) {
+                    Some(infix) => {
+                        left = infix?;
+                        if let Expression::Infix(b) = left.clone() {
+                            left_start = b.span.start;
+                        }
+                        continue;
                     }
-                }
-                None => {
-                    return Ok((
-                        left,
-                        Span {
-                            start: left_start,
-                            end: self.current_token().span.end,
-                        },
-                    ));
+                    None => {}
                 }
             }
+
+            break;
         }
 
         let end = self.current_token().span.end;
