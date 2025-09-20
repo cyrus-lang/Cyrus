@@ -1,12 +1,24 @@
-struct Foo {
-    values: Bar[3];
+func main() { 
+    sizeof(10) - 1;
+    // printf("len: %d\n", len);
 }
+// import std::libc{printf};
 
-struct Bar {}
+// struct Foo {
+//     values: Bar[3];
+// }
 
-func main() {    
-    #sample = Foo { 
-        values: Bar[3]{}
-    };
-    sample->values[0].foo;
-}
+// struct Bar {
+//     name: char*;
+//     age: int;
+// }
+
+// func main() {    
+//     #foo = Foo {
+//         values: Bar[3] {
+//             Bar { name: "Taha", age: 18 }
+//         }
+//     };
+
+    
+// }

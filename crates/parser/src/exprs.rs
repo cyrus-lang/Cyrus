@@ -18,71 +18,67 @@ impl Parser {
         let mut left = self.parse_prefix_expression()?;
 
         loop {
-            // Handle field access and pointer access
             if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
                 self.next_token(); // consume . or ->
                 left = self.parse_field_access(left)?;
                 continue;
             }
 
-            // Handle array indexing
             if self.peek_token_is(TokenKind::LeftBracket) {
                 self.next_token(); // consume [
                 left = self.parse_array_index(left)?;
                 continue;
             }
 
-            // Handle assignment
-            if self.peek_token_is(TokenKind::Assign) {
-                self.next_token();
-                let expr = self.parse_assignment(left, AssignmentKind::Default, left_start)?;
-                return Ok((expr, Span::new(left_start, self.current_token().span.end)));
-            }
-
-            // Handle post-increment/decrement
             if self.peek_token_is(TokenKind::Increment) {
-                self.next_token();
+                self.next_token(); // consume '++' token (current_token now is '++')
                 let loc = self.current_token().loc.clone();
+                let span = Span::new(left_start, self.current_token().span.end);
+                self.next_token(); // advance to token AFTER '++' so caller sees next token
                 return Ok((
                     Expression::Unary(UnaryExpression {
                         operand: Box::new(left),
                         op: UnaryOperator::PostIncrement,
-                        span: Span::new(left_start, self.current_token().span.end),
+                        span: span.clone(),
                         loc,
                     }),
-                    Span::new(left_start, self.current_token().span.end),
+                    span,
                 ));
             } else if self.peek_token_is(TokenKind::Decrement) {
-                self.next_token();
+                self.next_token(); // consume '--'
                 let loc = self.current_token().loc.clone();
+                let span = Span::new(left_start, self.current_token().span.end);
+                self.next_token(); // advance past '--'
                 return Ok((
                     Expression::Unary(UnaryExpression {
                         operand: Box::new(left),
                         op: UnaryOperator::PostDecrement,
-                        span: Span::new(left_start, self.current_token().span.end),
+                        span: span.clone(),
                         loc,
                     }),
-                    Span::new(left_start, self.current_token().span.end),
+                    span,
                 ));
             }
 
-            // Handle infix operators (binary expressions)
-            if self.current_token().kind != TokenKind::EOF && precedence < token_precedence_of(self.peek_token().kind) {
+            // infix handling (respect precedence)
+            let peek_prec = token_precedence_of(self.peek_token().kind);
+            if self.peek_token().kind != TokenKind::EOF && precedence < peek_prec {
                 match self.parse_infix_expression(left.clone(), left_start) {
                     Some(infix) => {
                         left = infix?;
                         if let Expression::Infix(b) = left.clone() {
                             left_start = b.span.start;
                         }
-                        continue;
                     }
                     None => {}
                 }
+            } else {
+                break;
             }
-
-            break;
         }
 
+        // current_token now points to the last token that belongs to the expression.
+        // Capture end from that token, then advance so the caller sees token *after* the expression.
         let end = self.current_token().span.end;
         Ok((left, Span { start: left_start, end }))
     }
@@ -92,6 +88,7 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         let expr = match &self.current_token().clone().kind {
+            TokenKind::SizeOf => self.parse_sizeof_expression()?,
             TokenKind::Typecast => self.parse_cast_expression()?,
             TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
             TokenKind::Const => {
@@ -204,29 +201,6 @@ impl Parser {
                 })
             }
             TokenKind::Literal(value) => Expression::Literal(value.clone()),
-            TokenKind::SizeOf => {
-                let start = self.current_token().span.start;
-                let loc = self.current_token().loc;
-
-                self.next_token();
-                self.expect_current(TokenKind::LeftParen)?;
-
-                let expr;
-                if self.matches_type_token(self.current_token().kind) {
-                    let type_specifier = self.parse_type_specifier()?;
-                    expr = Expression::TypeSpecifier(type_specifier)
-                } else {
-                    expr = self.parse_expression(Precedence::Lowest)?.0;
-                }
-
-                self.expect_peek(TokenKind::RightParen)?;
-
-                Expression::SizeOfExpression(SizeOfExpression {
-                    expr: Box::new(expr),
-                    loc,
-                    span: Span::new(start, self.current_token().span.end),
-                })
-            }
             token_kind @ TokenKind::Minus | token_kind @ TokenKind::Bang | token_kind @ TokenKind::Tilde => {
                 let start = self.current_token().span.start;
                 let prefix_operator = match token_kind {
@@ -291,6 +265,51 @@ impl Parser {
         } else {
             Ok(expr)
         }
+    }
+
+    fn parse_sizeof_expression(&mut self) -> Result<Expression, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc;
+
+        self.next_token(); // consume sizeof
+
+        if !self.current_token_is(TokenKind::LeftParen) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingOpeningParen,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
+                hint: None,
+            });
+        }
+
+        self.next_token(); // consume left paren
+
+        let expr = if let Some(token) = self.peek_n_token(1) {
+            if self.matches_type_token(self.current_token().kind) && self.matches_type_token(token.kind) {
+                let type_specifier = self.parse_type_specifier()?;
+                Expression::TypeSpecifier(type_specifier)
+            } else {
+                self.parse_expression(Precedence::Lowest)?.0
+            }
+        } else {
+            self.parse_expression(Precedence::Lowest)?.0
+        };
+
+        if !self.peek_token_is(TokenKind::RightParen) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingClosingParen,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
+                hint: None,
+            });
+        }
+        self.next_token();
+
+        Ok(Expression::SizeOfExpression(SizeOfExpression {
+            expr: Box::new(expr),
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
     }
 
     pub fn parse_infix_expression(
@@ -676,6 +695,18 @@ impl Parser {
 
         let mut field_inits: Vec<FieldInit> = Vec::new();
         self.expect_current(TokenKind::LeftBrace)?;
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Expression::StructInit(StructInit {
+                struct_name,
+                field_inits,
+                loc,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+            }));
+        }
 
         loop {
             let field_name = self.parse_identifier()?;
