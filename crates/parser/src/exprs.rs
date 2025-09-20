@@ -16,23 +16,16 @@ impl Parser {
     pub fn parse_expression(&mut self, precedence: Precedence) -> Result<(Expression, Span), ParserError> {
         let mut left_start = self.current_token().span.start;
 
-        if self.is_array_constructor_start() {
-            let type_specifier = self.parse_type_specifier()?;
-            self.next_token();
-            let expr = self.parse_array(type_specifier)?;
-            return Ok((expr, Span::new(left_start, self.current_token().span.end)));
-        }
-
         let mut left = self.parse_prefix_expression()?;
-
-        while self.peek_token_is(TokenKind::LeftBracket) {
-            self.next_token();
-            left = self.parse_array_index(left)?;
-        }
 
         while self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
             self.next_token(); // consume the left expression
             left = self.parse_field_access(left)?;
+        }
+
+        while self.peek_token_is(TokenKind::LeftBracket) {
+            self.next_token();
+            left = self.parse_array_index(left)?;
         }
 
         if self.peek_token_is(TokenKind::Assign) {
@@ -264,26 +257,14 @@ impl Parser {
                 expr
             }
             _ => {
-                let loc = self.current_token().loc;
+                let type_specifier = self.parse_type_specifier()?;
 
-                if self.is_array_constructor_start() {
-                    let type_specifier = self.parse_type_specifier()?;
-
-                    if self.peek_token_is(TokenKind::LeftBrace) {
-                        self.next_token();
-                        return Ok(self.parse_array(type_specifier)?);
-                    }
-
-                    Expression::TypeSpecifier(type_specifier)
-                } else {
-                    return Err(Diag {
-                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
-                        level: DiagLevel::Error,
-
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
-                        hint: None,
-                    });
+                if self.peek_token_is(TokenKind::LeftBrace) {
+                    self.next_token();
+                    return Ok(self.parse_array(type_specifier)?);
                 }
+
+                Expression::TypeSpecifier(type_specifier)
             }
         };
 
@@ -694,18 +675,6 @@ impl Parser {
         let mut field_inits: Vec<FieldInit> = Vec::new();
         self.expect_current(TokenKind::LeftBrace)?;
 
-        if self.current_token_is(TokenKind::RightBrace) {
-            return Ok(Expression::StructInit(StructInit {
-                struct_name: struct_name.clone(),
-                field_inits: Vec::new(),
-                loc: loc.clone(),
-                span: Span {
-                    start,
-                    end: self.current_token().span.end,
-                },
-            }));
-        }
-
         loop {
             let field_name = self.parse_identifier()?;
             let field_loc = self.current_token().loc.clone();
@@ -819,30 +788,73 @@ impl Parser {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
-        let index = Box::new(self.parse_single_array_index()?);
+        let index_expr = self.parse_single_array_index()?;
+        let mut indexes_backup: Vec<Expression> = vec![index_expr.clone()];
 
         let mut base_index = Expression::ArrayIndex(ArrayIndex {
-            operand: Box::new(expr),
-            index,
+            operand: Box::new(expr.clone()),
+            index: Box::new(index_expr.clone()),
             span: Span::new(start, self.current_token().span.end),
             loc: loc.clone(),
         });
 
+        // handle chained indices ident[a][b][c]
         if self.peek_token_is(TokenKind::LeftBracket) {
             self.next_token();
         }
 
         while self.current_token_is(TokenKind::LeftBracket) {
+            let index_expr = self.parse_single_array_index()?;
+
             base_index = Expression::ArrayIndex(ArrayIndex {
                 operand: Box::new(base_index),
-                index: Box::new(self.parse_single_array_index()?),
+                index: Box::new(index_expr.clone()),
                 span: Span::new(start, self.current_token().span.end),
                 loc: loc.clone(),
             });
 
+            indexes_backup.push(index_expr);
+
             if self.peek_token_is(TokenKind::LeftBracket) {
                 self.next_token();
             }
+        }
+
+        // ambiguity resolution!
+        if self.peek_token_is(TokenKind::LeftBrace) {
+            let element_type = {
+                match expr.clone() {
+                    Expression::Identifier(identifier) => TypeSpecifier::Identifier(identifier),
+                    Expression::ModuleImport(module_import) => TypeSpecifier::ModuleImport(module_import),
+                    Expression::TypeSpecifier(type_specifier) => type_specifier,
+                    _ => {
+                        return Err(Diag {
+                            kind: ParserDiagKind::InvalidToken(self.peek_token().kind),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
+                            hint: None,
+                        });
+                    }
+                }
+            };
+
+            let mut base_array = ArrayTypeSpecifier {
+                size: ArrayCapacity::Fixed(Box::new(indexes_backup.remove(0))),
+                element_type: Box::new(element_type),
+            };
+
+            for index in &indexes_backup {
+                base_array = ArrayTypeSpecifier {
+                    size: ArrayCapacity::Fixed(Box::new(index.clone())),
+                    element_type: Box::new(TypeSpecifier::Array(base_array)),
+                };
+            }
+
+            // parse the initializer block
+            self.next_token();
+            let array_const = self.parse_array(TypeSpecifier::Array(base_array))?;
+
+            return Ok(array_const);
         }
 
         Ok(base_index)

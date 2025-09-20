@@ -7,8 +7,8 @@ use crate::{
 
 pub mod format;
 pub mod operators;
-pub mod token;
 pub mod source_loc;
+pub mod token;
 
 #[derive(Debug)]
 pub enum Node {
@@ -172,7 +172,7 @@ pub enum EnumVariant {
 #[derive(Debug, Clone)]
 pub struct EnumValuedField {
     pub field_type: TypeSpecifier,
-    pub loc: Location
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
