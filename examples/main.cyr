@@ -8,5 +8,5 @@ func main() {
     #sample = Foo { 
         values: Bar[3]{}
     };
-    sample->values[0];
+    sample->values[0].foo;
 }
