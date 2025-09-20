@@ -3,6 +3,7 @@ use ast::token::TokenKind;
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Precedence {
     Lowest,
+    Sizeof,
     Or,          // ||
     And,         // &&
     Equals,      // ==, !=
@@ -39,6 +40,8 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
         | TokenKind::Caret
         | TokenKind::ShiftLeft
         | TokenKind::ShiftRight => Precedence::Bitwise,
+        
+        TokenKind::SizeOf => Precedence::Sizeof,
 
         // Calls and indexing
         TokenKind::LeftParen => Precedence::Call,

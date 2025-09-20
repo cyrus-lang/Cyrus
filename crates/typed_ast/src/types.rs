@@ -25,6 +25,20 @@ pub enum ResolvedSymbol {
     Method(SymbolID),
 }
 
+impl ConcreteType {
+    pub fn as_rvalue(&self, lvalue: bool) -> Self {
+        if lvalue {
+            match self {
+                ConcreteType::Array(typed_array_type) => *typed_array_type.element_type.clone(),
+                ConcreteType::Pointer(concrete_type) => concrete_type.get_pointer_inner().unwrap(),
+                _ => self.clone(),
+            }
+        } else {
+            self.clone()
+        }
+    }
+}
+
 impl ResolvedSymbol {
     pub fn get_symbol_id(&self) -> SymbolID {
         match self {
