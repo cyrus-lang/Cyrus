@@ -801,27 +801,23 @@ impl<'a> AnalysisContext<'a> {
             result = false;
         }
 
-        // ANCHOR
-        // FIXME
-        // if operand_concrete_type.is_pointer() && !field_access.is_fat_arrow {
-        //     self.reporter.report(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: AnalyzerDiagKind::UseFatArrow,
-        //         location: Some(DiagLoc::new(field_access.loc.clone())),
-        //         hint: None,
-        //     });
-        //     result = false;
-        // } else if !operand_concrete_type.is_pointer() && field_access.is_fat_arrow {
-        //     dbg!(operand_concrete_type.clone());
-
-        //     self.reporter.report(Diag {
-        //         level: DiagLevel::Error,
-        //         kind: AnalyzerDiagKind::InvalidFatArrow,
-        //         location: Some(DiagLoc::new(field_access.loc.clone())),
-        //         hint: Some("Use '.' instead of '->'.".to_string()),
-        //     });
-        //     result = false;
-        // }
+        if operand_concrete_type.is_pointer() && !field_access.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UseFatArrow,
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: None,
+            });
+            result = false;
+        } else if !operand_concrete_type.is_pointer() && field_access.is_fat_arrow {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidFatArrow,
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: Some("Use '.' instead of '->'.".to_string()),
+            });
+            result = false;
+        }
 
         result
     }
