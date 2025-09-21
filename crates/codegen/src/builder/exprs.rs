@@ -276,7 +276,7 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         typed_field_access: &TypedFieldAccess,
     ) -> InternalValue<'a> {
-        let lvalue = match &typed_field_access.operand.kind {
+        let mut lvalue = match &typed_field_access.operand.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => {
                 let local_or_global_symbol = self
                     .resolver
@@ -295,6 +295,17 @@ impl<'a> CodeGenBuilder<'a> {
             }
             _ => self.build_expr(local_scope_opt.clone(), &typed_field_access.operand),
         };
+
+        if typed_field_access.operand.concrete_type.clone().unwrap().is_pointer() {
+            lvalue = self.build_dereference(
+                local_scope_opt.clone(),
+                &TypedDereference {
+                    operand: typed_field_access.operand.clone(),
+                    loc: typed_field_access.loc.clone(),
+                },
+            );
+        }
+
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
 
         let struct_type = match typed_field_access.object_symbol_id {

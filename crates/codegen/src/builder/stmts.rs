@@ -1133,7 +1133,8 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_if(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_if: &TypedIf) {
-        let cond = self.build_expr(local_scope_opt.clone(), &typed_if.condition);
+        let cond_lvalue = self.build_expr(local_scope_opt.clone(), &typed_if.condition);
+        let cond_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), cond_lvalue);
 
         let current_block = self.blockreg.current_block_ref.unwrap();
         let current_func = self.blockreg.current_func_ref.unwrap();
@@ -1145,7 +1146,7 @@ impl<'a> CodeGenBuilder<'a> {
         self.llvmbuilder.position_at_end(current_block);
         if !self.is_block_terminated(current_block) {
             self.llvmbuilder
-                .build_conditional_branch(cond.as_basic_value().into_int_value(), then_block, else_block)
+                .build_conditional_branch(cond_rvalue.as_basic_value().into_int_value(), then_block, else_block)
                 .unwrap();
             self.mark_block_terminated(current_block);
         }

@@ -1,29 +1,30 @@
 import std::libc{printf, malloc};
 
-public enum DataType {
-    Int,
-    Text
+struct Item {
+    public bar: int;
 }
 
-public union ValueData {
-    int_value: int;
-    text_value: char*;
-}
-
-public struct Value {
-    public v: int;
-}
-
-public struct Row { 
-    public values: Value*;
-}
-
-public struct Column {
-    public name: char[64];
+struct Foo {
+    public values: Item[3];
+    public truth: int*;
 }
 
 func main() {
-    #row: Row = Row { values: cast(Value*, malloc(sizeof(Value))) };
-    row.values[0].v = 0;
-    
+    #a = 666;
+    #foo = Foo {
+        values: Item[3] {
+            Item { bar: 10 },
+            Item { bar: 20 },
+            Item { bar: 30 },
+        },
+        truth: &a
+    };
+
+    #foo_ref = &foo;
+
+    if (!foo_ref->truth) {
+        printf("here we are\n");
+    } else {
+        printf("bitch\n");
+    }
 }
