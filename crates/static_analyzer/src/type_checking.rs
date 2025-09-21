@@ -430,17 +430,7 @@ impl<'a> AnalysisContext<'a> {
         };
 
         if operand_type.is_pointer() {
-            let lhs = match &mut prefix_expr.operand.kind {
-                TypedExpressionKind::FieldAccess(typed_field_access) => {
-                    typed_field_access.is_fat_arrow = false;
-                    prefix_expr.operand.clone()
-                }
-                TypedExpressionKind::MethodCall(typed_method_call) => {
-                    typed_method_call.is_fat_arrow = false;
-                    prefix_expr.operand.clone()
-                }
-                _ => prefix_expr.operand.clone(),
-            };
+            let lhs = prefix_expr.operand.clone();
 
             let new_infix_expr = TypedExpressionKind::Infix(TypedInfixExpression {
                 op: InfixOperator::Equal,
@@ -778,22 +768,22 @@ impl<'a> AnalysisContext<'a> {
 
     fn validate_field_access(
         &mut self,
-        operand_concrete_type: ConcreteType,
+        operand: &TypedExpression,
         field_access: &TypedFieldAccess,
         field_vis: AccessSpecifier,
-        struct_methods: HashMap<String, SymbolID>,
-        struct_name: String,
+        struct_methods: &HashMap<String, SymbolID>,
+        struct_name: &str,
     ) -> bool {
         let mut result = true;
+
         let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
         let field_access_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
-
         if !(field_access_from_struct_methods || field_vis.is_private()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InternalFieldAccess {
                     field_name: field_access.field_name.clone(),
-                    struct_name,
+                    struct_name: struct_name.to_string(),
                 },
                 location: Some(DiagLoc::new(field_access.loc.clone())),
                 hint: None,
@@ -801,22 +791,32 @@ impl<'a> AnalysisContext<'a> {
             result = false;
         }
 
-        if operand_concrete_type.is_pointer() && !field_access.is_fat_arrow {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::UseFatArrow,
-                location: Some(DiagLoc::new(field_access.loc.clone())),
-                hint: None,
-            });
-            result = false;
-        } else if !operand_concrete_type.is_pointer() && field_access.is_fat_arrow {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::InvalidFatArrow,
-                location: Some(DiagLoc::new(field_access.loc.clone())),
-                hint: Some("Use '.' instead of '->'.".to_string()),
-            });
-            result = false;
+        let is_pointer = operand.concrete_type.clone().unwrap().is_pointer();
+        let is_struct = operand.concrete_type.clone().unwrap().is_resolved_symbol();
+
+        // operator vs type
+        if field_access.is_fat_arrow {
+            if !is_pointer {
+                dbg!(field_access.operand.concrete_type.clone());
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InvalidFatArrow,
+                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    hint: Some("Use '.' instead of '->'.".to_string()),
+                });
+                result = false;
+            }
+        } else {
+            if !is_struct {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::UseFatArrow,
+                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
+                });
+                result = false;
+            }
         }
 
         result
@@ -978,6 +978,7 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_struct_field_access_type(
         &mut self,
+        scope_id_opt: Option<ScopeID>,
         field_access: &mut TypedFieldAccess,
         struct_name: String,
         struct_fields: Vec<TypedStructField>,
@@ -1003,28 +1004,19 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let typed_struct_field = struct_fields.get(field_index).unwrap();
+        let mut typed_struct_field = struct_fields.get(field_index).unwrap().clone();
+        typed_struct_field.ty = self
+            .normalize_type(scope_id_opt, typed_struct_field.ty.clone(), field_access.loc.clone())
+            .unwrap();
 
         if !self.validate_field_access(
-            field_access.operand.concrete_type.clone().unwrap(),
+            &field_access.operand,
             &field_access,
             typed_struct_field.vis.clone(),
-            struct_methods,
-            struct_name.clone(),
+            &struct_methods,
+            &struct_name,
         ) {
             return None;
-        }
-
-        if field_access.is_fat_arrow {
-            field_access.operand = Box::new(TypedExpression {
-                kind: TypedExpressionKind::Dereference(TypedDereference {
-                    operand: field_access.operand.clone(),
-                    loc: field_access.loc.clone(),
-                }),
-                concrete_type: None,
-                value_category: ValueCategory::Lvalue,
-                loc: field_access.loc.clone(),
-            });
         }
 
         field_access.field_index = Some(field_index);
@@ -1237,6 +1229,7 @@ impl<'a> AnalysisContext<'a> {
 
         if let Some(resolved_struct) = local_or_global_symbol.as_struct() {
             return self.analyze_struct_field_access_type(
+                scope_id_opt,
                 field_access,
                 resolved_struct.struct_sig.name.clone(),
                 resolved_struct.struct_sig.fields.clone(),

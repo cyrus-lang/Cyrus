@@ -15,15 +15,18 @@ use resolver::{
 use static_analyzer::context::AnalysisContext;
 use std::{
     cell::RefCell,
-    env,
+    env, fs,
     io::{self, Write},
     path::Path,
-    process::exit,
+    process::{Command, exit},
     rc::Rc,
     sync::{Arc, Mutex},
 };
 use typed_ast::{ModuleID, TypedProgramTree};
-use utils::fs::{ensure_output_dir, get_directory_of_file};
+use utils::{
+    fs::{ensure_output_dir, get_directory_of_file},
+    generate_random_hex::generate_random_hex,
+};
 
 fn get_program_trees(
     options: &mut CodeGenOptions,
@@ -58,7 +61,13 @@ fn get_program_trees(
 
     let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
     let module_id = generate_module_id();
-    match resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true, file_path.clone()) {
+    match resolver.resolve_module(
+        module_id,
+        node.as_program(),
+        &mut Visiting::new(),
+        true,
+        file_path.clone(),
+    ) {
         Some(..) => {}
         None => unreachable!(),
     };
@@ -124,13 +133,13 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let mut temp = env::temp_dir();
-    temp.push("path");
-    let temp_file_path = temp.to_str().unwrap().to_string();
+    temp.push(format!("exec_{}", generate_random_hex()));
+    let temp_file_path = temp.clone();
 
     let context = CodeGenContext::new(
         final_build_dir.clone(),
         opts.clone(),
-        OutputKind::Executable(temp_file_path.clone()),
+        OutputKind::Executable(temp_file_path.to_string_lossy().to_string()),
         resolver_rc,
         file_path,
     );
@@ -138,16 +147,34 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
     if opts.display_target_machine {
         context.display_target_machine_information();
     }
+
     context.compile_modules(program_trees);
 
-    let mut executable_command = std::process::Command::new(&temp_file_path);
-    let output = executable_command.output().unwrap();
-    io::stdout().write_all(&output.stdout).unwrap();
-    io::stderr().write_all(&output.stderr).unwrap();
+    match Command::new(&temp_file_path).output() {
+        Ok(output) => {
+            if let Err(e) = io::stdout().write_all(&output.stdout) {
+                eprintln!("Failed to write stdout: {e}");
+            }
+            if let Err(e) = io::stderr().write_all(&output.stderr) {
+                eprintln!("Failed to write stderr: {e}");
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "Failed to execute temporary program `{}`: {e}",
+                temp_file_path.display()
+            );
+        }
+    }
 
-    if temp.exists() {
-        std::fs::remove_file(temp_file_path).unwrap();
-        std::fs::remove_dir_all(final_build_dir).unwrap();
+    // Cleanup: remove temporary executable
+    if let Err(e) = fs::remove_file(&temp_file_path) {
+        eprintln!("Warning: failed to remove temp file {}: {e}", temp_file_path.display());
+    }
+
+    // Cleanup: remove build directory
+    if let Err(e) = fs::remove_dir_all(&final_build_dir) {
+        eprintln!("Warning: failed to remove build directory {}: {e}", final_build_dir);
     }
 }
 
@@ -315,7 +342,13 @@ pub(crate) fn command_semantic_only(mut options: CompilerOptions, file_path: Str
 
     let mut resolver = Resolver::new(module_loader_opts, file_path.clone());
     let module_id = generate_module_id();
-    match resolver.resolve_module(module_id, node.as_program(), &mut Visiting::new(), true, file_path.clone()) {
+    match resolver.resolve_module(
+        module_id,
+        node.as_program(),
+        &mut Visiting::new(),
+        true,
+        file_path.clone(),
+    ) {
         Some(..) => {}
         None => unreachable!(),
     };

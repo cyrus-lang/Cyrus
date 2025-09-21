@@ -26,6 +26,13 @@ pub enum ResolvedSymbol {
 }
 
 impl ConcreteType {
+    pub fn is_resolved_symbol(&self) -> bool {
+        match self {
+            ConcreteType::ResolvedSymbol(..) => true,
+            _ => false,
+        }
+    }
+
     pub fn as_rvalue(&self, lvalue: bool) -> Self {
         if lvalue {
             match self {
