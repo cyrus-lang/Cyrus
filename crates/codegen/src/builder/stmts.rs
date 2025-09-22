@@ -1133,58 +1133,97 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_if(&mut self, local_scope_opt: Option<LocalScopeRef>, typed_if: &TypedIf) {
-        let cond_lvalue = self.build_expr(local_scope_opt.clone(), &typed_if.condition);
-        let cond_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), cond_lvalue);
-
         let current_block = self.blockreg.current_block_ref.unwrap();
         let current_func = self.blockreg.current_func_ref.unwrap();
 
-        let then_block = self.llvmctx.append_basic_block(current_func, "if.then");
-        let else_block = self.llvmctx.append_basic_block(current_func, "if.else");
+        // C3-style: always create an exit block (join point)
         let end_block = self.llvmctx.append_basic_block(current_func, "if.end");
 
+        // Create then/else blocks only if they actually have bodies; otherwise they target end_block.
+        let then_has_body = !typed_if.consequent.exprs.is_empty();
+        let else_has_body = typed_if.alternate.as_ref().map_or(false, |b| !b.exprs.is_empty());
+
+        let then_block = if then_has_body {
+            self.llvmctx.append_basic_block(current_func, "if.then")
+        } else {
+            end_block
+        };
+
+        let else_block = if else_has_body {
+            self.llvmctx.append_basic_block(current_func, "if.else")
+        } else {
+            end_block
+        };
+
+        // --- condition ---
+        let cond_lvalue = self.build_expr(local_scope_opt.clone(), &typed_if.condition);
+        let cond_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), cond_lvalue);
+        let cond_i1 = cond_rvalue.as_basic_value().into_int_value();
+
+        // position at the current block and emit branch
         self.llvmbuilder.position_at_end(current_block);
-        if !self.is_block_terminated(current_block) {
+
+        if then_block != else_block {
+            // Normal case: have distinct targets for then/else
             self.llvmbuilder
-                .build_conditional_branch(cond_rvalue.as_basic_value().into_int_value(), then_block, else_block)
+                .build_conditional_branch(cond_i1, then_block, else_block)
                 .unwrap();
+            self.mark_block_terminated(current_block);
+        } else {
+            // Degenerate case: both sides are the end block (no then/else bodies)
+            // Following C3, only emit a branch to the exit if it's actually needed.
+            // Here we conservatively emit the branch — if the current block already had a terminator,
+            // mark_block_terminated prevented us from being here.
+            self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
             self.mark_block_terminated(current_block);
         }
 
-        // build then block
-        self.llvmbuilder.position_at_end(then_block);
-        self.blockreg.current_block_ref = Some(then_block);
-        self.build_block_statement(&typed_if.consequent);
-        if !self.is_block_terminated(then_block) {
-            self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
-            self.mark_block_terminated(then_block);
+        // --- then block (emit only if we created a distinct block) ---
+        if then_block != end_block {
+            self.llvmbuilder.position_at_end(then_block);
+            self.blockreg.current_block_ref = Some(then_block);
+
+            // emit then body
+            self.build_block_statement(&typed_if.consequent);
+
+            // Unconditionally (C3) jump to exit — but avoid double terminator:
+            let then_insert = self.llvmbuilder.get_insert_block().unwrap();
+            if then_insert.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
+                self.mark_block_terminated(then_block);
+            }
         }
 
+        // --- else and else-if chain (supporting your branches) ---
+        // If you have `typed_if.branches` for else-if, handle them as a chain.
+        // We'll implement them in a C3-ish way: create new blocks as needed and ensure each then jumps to end.
         let mut current_else_block = else_block;
 
         for else_if in &typed_if.branches {
+            // create blocks for this else-if pair
             let new_else_block = self.llvmctx.append_basic_block(current_func, "else_if");
             let new_then_block = self.llvmctx.append_basic_block(current_func, "else_if.then");
 
+            // finish off previous else-like block by emitting cond -> (new_then, new_else)
             self.llvmbuilder.position_at_end(current_else_block);
-            let else_if_cond = self.build_expr(local_scope_opt.clone(), &else_if.condition);
-
             if !self.is_block_terminated(current_else_block) {
-                self.llvmbuilder
-                    .build_conditional_branch(
-                        else_if_cond.as_basic_value().into_int_value(),
-                        new_then_block,
-                        new_else_block,
-                    )
-                    .unwrap();
+                let else_if_cond_lval = self.build_expr(local_scope_opt.clone(), &else_if.condition);
+                let else_if_cond_rval = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), else_if_cond_lval);
+                let else_if_i1 = else_if_cond_rval.as_basic_value().into_int_value();
 
+                self.llvmbuilder
+                    .build_conditional_branch(else_if_i1, new_then_block, new_else_block)
+                    .unwrap();
                 self.mark_block_terminated(current_else_block);
             }
 
+            // emit the else-if's then body
             self.llvmbuilder.position_at_end(new_then_block);
             self.blockreg.current_block_ref = Some(new_then_block);
             self.build_block_statement(&else_if.consequent);
-            if !self.is_block_terminated(new_then_block) {
+
+            let then_insert = self.llvmbuilder.get_insert_block().unwrap();
+            if then_insert.get_terminator().is_none() {
                 self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
                 self.mark_block_terminated(new_then_block);
             }
@@ -1192,17 +1231,18 @@ impl<'a> CodeGenBuilder<'a> {
             current_else_block = new_else_block;
         }
 
-        // build else block
-        self.llvmbuilder.position_at_end(current_else_block);
-        self.blockreg.current_block_ref = Some(current_else_block);
-        if let Some(alternate) = &typed_if.alternate {
-            self.build_block_statement(&alternate);
-        }
+        if current_else_block != end_block {
+            self.llvmbuilder.position_at_end(current_else_block);
+            self.blockreg.current_block_ref = Some(current_else_block);
+            if let Some(alternate) = &typed_if.alternate {
+                self.build_block_statement(&alternate);
+            }
 
-        let current_block = self.blockreg.current_block_ref.unwrap();
-        if !self.is_block_terminated(current_block) {
-            self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
-            self.mark_block_terminated(current_block);
+            let else_insert = self.llvmbuilder.get_insert_block().unwrap();
+            if else_insert.get_terminator().is_none() {
+                self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
+                self.mark_block_terminated(current_else_block);
+            }
         }
 
         self.llvmbuilder.position_at_end(end_block);
