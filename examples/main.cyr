@@ -1,30 +1,31 @@
 import std::libc{printf, malloc};
 
-struct Item {
-    public bar: int;
-}
+func main() void {
+    for (#i = 0; i < 10; i++) {
+        if (i % 2 == 0) {
+            printf("Always think positive.\n");
 
-struct Foo {
-    public values: Item[3];
-    public truth: int*;
-}
+            for (#s = 0; s < 10; s++) {
+                printf("j=%d.\n", s);
+            }
+                
+            if (i == 10) {
+                printf("I=10.\n");
 
-func main() {
-    #a = 666;
-    #foo = Foo {
-        values: Item[3] {
-            Item { bar: 10 },
-            Item { bar: 20 },
-            Item { bar: 30 },
-        },
-        truth: &a
-    };
+                for (#j = 0; j < 10; j++) {
+                    printf("j=%d.\n", j);
+                }
+            } 
+            else {
+                printf("unknown.\n");
+            }
 
-    #foo_ref = &foo;
-
-    if (!foo_ref->truth) {
-        printf("here we are\n");
-    } else {
-        printf("bitch\n");
+            for (#j = 0; j < 10; j++) {
+                printf("j=%d.\n", j);
+            }
+        }
+        else {
+            printf("Negative.\n");
+        }
     }
 }
