@@ -1136,12 +1136,13 @@ impl<'a> CodeGenBuilder<'a> {
         let current_block = self.blockreg.current_block_ref.unwrap();
         let current_func = self.blockreg.current_func_ref.unwrap();
 
-        // C3-style: always create an exit block (join point)
         let end_block = self.llvmctx.append_basic_block(current_func, "if.end");
 
-        // Create then/else blocks only if they actually have bodies; otherwise they target end_block.
         let then_has_body = !typed_if.consequent.exprs.is_empty();
-        let else_has_body = typed_if.alternate.as_ref().map_or(false, |b| !b.exprs.is_empty());
+        let else_has_body = typed_if
+            .alternate
+            .as_ref()
+            .map_or(false, |block_stmt| !block_stmt.exprs.is_empty());
 
         let then_block = if then_has_body {
             self.llvmctx.append_basic_block(current_func, "if.then")
@@ -1155,38 +1156,28 @@ impl<'a> CodeGenBuilder<'a> {
             end_block
         };
 
-        // --- condition ---
         let cond_lvalue = self.build_expr(local_scope_opt.clone(), &typed_if.condition);
         let cond_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), cond_lvalue);
         let cond_i1 = cond_rvalue.as_basic_value().into_int_value();
 
-        // position at the current block and emit branch
         self.llvmbuilder.position_at_end(current_block);
 
         if then_block != else_block {
-            // Normal case: have distinct targets for then/else
             self.llvmbuilder
                 .build_conditional_branch(cond_i1, then_block, else_block)
                 .unwrap();
             self.mark_block_terminated(current_block);
         } else {
-            // Degenerate case: both sides are the end block (no then/else bodies)
-            // Following C3, only emit a branch to the exit if it's actually needed.
-            // Here we conservatively emit the branch — if the current block already had a terminator,
-            // mark_block_terminated prevented us from being here.
             self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
             self.mark_block_terminated(current_block);
         }
 
-        // --- then block (emit only if we created a distinct block) ---
         if then_block != end_block {
             self.llvmbuilder.position_at_end(then_block);
             self.blockreg.current_block_ref = Some(then_block);
 
-            // emit then body
             self.build_block_statement(&typed_if.consequent);
 
-            // Unconditionally (C3) jump to exit — but avoid double terminator:
             let then_insert = self.llvmbuilder.get_insert_block().unwrap();
             if then_insert.get_terminator().is_none() {
                 self.llvmbuilder.build_unconditional_branch(end_block).unwrap();
@@ -1194,9 +1185,6 @@ impl<'a> CodeGenBuilder<'a> {
             }
         }
 
-        // --- else and else-if chain (supporting your branches) ---
-        // If you have `typed_if.branches` for else-if, handle them as a chain.
-        // We'll implement them in a C3-ish way: create new blocks as needed and ensure each then jumps to end.
         let mut current_else_block = else_block;
 
         for else_if in &typed_if.branches {
