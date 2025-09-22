@@ -10,7 +10,7 @@ members = [
     "crates/typed_ast",
     "crates/cli",
     "crates/static_analyzer",
-    "crates/resolver", "tmp/hello-world",
+    "crates/resolver",
 ]
 default-members = ["crates/cli"]
 
