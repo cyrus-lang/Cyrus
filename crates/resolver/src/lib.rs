@@ -880,6 +880,7 @@ impl Resolver {
             module_id,
             symbol_id: union_symbol_id,
             union_sig: UnionSig {
+                symbol_id: union_symbol_id,
                 name: union_decl.identifier.name.clone(),
                 fields: typed_union_fields.clone(),
                 methods: methods.clone(),
@@ -980,6 +981,7 @@ impl Resolver {
             module_id,
             symbol_id: enum_symbol_id,
             enum_sig: EnumSig {
+                symbol_id: enum_symbol_id,
                 name: enum_decl.identifier.name.clone(),
                 methods: methods.clone(),
                 variants: variants.clone(),

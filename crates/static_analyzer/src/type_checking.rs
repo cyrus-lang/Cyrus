@@ -40,15 +40,9 @@ impl<'a> AnalysisContext<'a> {
                 self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
             }
             (ConcreteType::Array(array_type1), ConcreteType::Array(array_type2)) => {
-                let capacity = {
-                    match (array_type1.capacity, array_type2.capacity) {
-                        (TypedArrayCapacity::Fixed(size1), TypedArrayCapacity::Fixed(size2)) => size1 == size2,
-                        (TypedArrayCapacity::Dynamic, TypedArrayCapacity::Dynamic) => true,
-                        _ => false,
-                    }
-                };
+                let valid_capacity = self.check_const_str_to_array_assignment(array_type1.clone(), array_type2.clone());
 
-                capacity
+                valid_capacity
                     && self.check_type_mismatch(scope_id_opt, *array_type1.element_type, *array_type2.element_type, loc)
             }
             (ConcreteType::Pointer(inner_concrete_type1), ConcreteType::Pointer(inner_concrete_type2)) => {
@@ -134,6 +128,37 @@ impl<'a> AnalysisContext<'a> {
             _ => false,
         }
     }
+
+    fn check_const_str_to_array_assignment(&self, value_type: TypedArrayType, target_type: TypedArrayType) -> bool {
+        match (value_type.capacity, target_type.capacity) {
+            (
+                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value_capacity)),
+                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(target_capacity)),
+            ) => value_capacity <= target_capacity,
+            _ => false, // not valid
+        }
+    }   
+
+    // TODO ============= Create new module called `constant folding`=============
+
+    // fn extract_const_global_var_expr(&self, typed_expr: &TypedExpression) -> usize {
+    //     match typed_expr.kind {
+    //         TypedExpressionKind::Symbol(_, source_loc) => todo!(),
+    //         TypedExpressionKind::Literal(typed_literal) => todo!(),
+    //         TypedExpressionKind::Prefix(typed_prefix_expression) => todo!(),
+    //         TypedExpressionKind::Infix(typed_infix_expression) => todo!(),
+    //         TypedExpressionKind::Unary(typed_unary_expression) => todo!(),
+    //         TypedExpressionKind::Array(typed_array) => todo!(),
+    //         TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
+    //     }
+    //     todo!();
+    // }
+
+    // fn const_expr_as_raw_integer(&self) {
+
+    // }
+
+    // =============                    END                             =============
 
     fn check_explicit_typecast(&mut self, value_type: ConcreteType, target_type: ConcreteType) -> bool {
         match (value_type, target_type) {

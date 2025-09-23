@@ -81,6 +81,12 @@ pub enum BuildDir {
     Provided(String),
 }
 
+impl BuildDir {
+    pub fn build_dir_provided(&self) -> bool {
+        matches!(&self, BuildDir::Provided(..))
+    }
+}
+
 impl CodeGenOptions {
     pub fn default() -> Self {
         Self {

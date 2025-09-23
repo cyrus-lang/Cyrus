@@ -10,7 +10,10 @@ use inkwell::{
     types::{AnyType, ArrayType, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, StructValue},
 };
-use resolver::scope::{LocalScopeRef, ResolvedEnum};
+use resolver::{
+    declsign::EnumSig,
+    scope::{LocalScopeRef, ResolvedEnum},
+};
 use typed_ast::{
     TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue,
     TypedUnnamedStructValueField,
@@ -251,7 +254,7 @@ impl<'a> CodeGenBuilder<'a> {
             .into_array_value()
     }
 
-    pub(crate) fn build_enum_struct_type(
+    pub(crate) fn build_enum_valued_field_variant_struct_type(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         enum_valued_fields: Vec<TypedEnumValuedField>,
@@ -446,94 +449,103 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    pub(crate) fn build_enum_def(&mut self, typed_enum: &TypedEnum) {
-        let local_scope_opt = None;
+    pub(crate) fn build_enum_struct_type(&mut self, enum_sig: &EnumSig) -> (StructType<'a>, ArrayType<'a>) {
+        let enum_opaque_struct = self.llvmctx.opaque_struct_type(&enum_sig.name);
 
-        let enum_name = typed_enum.name.clone();
-        let enum_opaque_struct = {
-            let irreg = self.irreg.borrow();
-            let local_ir_value = irreg.get(&typed_enum.symbol_id).unwrap();
-            let struct_type = local_ir_value.as_enum().unwrap().0.clone();
-            drop(irreg);
-            struct_type
-        };
-
-        let mut enum_iota = 0;
         let mut payload_size = 0;
 
-        typed_enum.variants.iter().for_each(|variant| {
+        // traverse variants only to find max payload size.
+        enum_sig.variants.iter().for_each(|variant| {
             match variant {
                 TypedEnumVariant::Identifier(_) => {
                     // no payload
                 }
-                TypedEnumVariant::Valued(identifier, typed_expr) => {
-                    let lvalue = self.build_expr(local_scope_opt.clone(), &**typed_expr);
-                    let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+                TypedEnumVariant::Valued(_, typed_expr) => {
+                    let lvalue = self.build_expr(None, &**typed_expr);
+                    let rvalue = self.build_load_lvalue_to_rvalue(None, lvalue);
                     let basic_rvalue = rvalue.as_basic_value();
 
-                    let store_size = {
-                        self.llvmtm
-                            .get_target_data()
-                            .get_store_size(&basic_rvalue.get_type().as_any_type_enum())
-                    };
+                    let store_size = self
+                        .llvmtm
+                        .get_target_data()
+                        .get_store_size(&basic_rvalue.get_type().as_any_type_enum());
 
-                    if store_size > payload_size {
-                        payload_size = store_size;
-                    }
-
-                    let module = self.llvmmodule.borrow_mut();
-                    let global_value = module.add_global(
-                        basic_rvalue.get_type(),
-                        None,
-                        &generate_enum_variant_abi_name(
-                            self.get_module_name(self.module_id),
-                            enum_name.clone(),
-                            identifier.name.clone(),
-                        ),
-                    );
-                    global_value.set_linkage(Linkage::External);
-                    global_value.set_initializer(&basic_rvalue);
-                    global_value.set_constant(true);
-                    drop(module);
+                    payload_size = payload_size.max(store_size);
                 }
                 TypedEnumVariant::Variant(_, enum_valued_fields) => {
                     let variant_fields: Vec<BasicTypeEnum<'a>> = enum_valued_fields
                         .iter()
-                        .map(|enum_valued_field| {
-                            TryInto::<BasicTypeEnum<'a>>::try_into(
-                                self.build_concrete_type(local_scope_opt.clone(), enum_valued_field.field_type.clone()),
-                            )
-                            .unwrap()
+                        .map(|f| {
+                            TryInto::<BasicTypeEnum<'a>>::try_into(self.build_concrete_type(None, f.field_type.clone()))
+                                .unwrap()
                         })
                         .collect();
 
                     let struct_type = self.llvmctx.struct_type(&variant_fields, false);
-                    let store_size = { self.llvmtm.get_target_data().get_store_size(&struct_type) };
-                    if store_size > payload_size {
-                        payload_size = store_size;
-                    }
+                    let store_size = self.llvmtm.get_target_data().get_store_size(&struct_type);
+                    payload_size = payload_size.max(store_size);
                 }
             }
-
-            enum_iota += 1;
         });
 
         let payload_type = self.llvmctx.i8_type().array_type(payload_size.try_into().unwrap());
         let field_types: &[BasicTypeEnum<'a>; 2] = &[
-            BasicTypeEnum::IntType(self.llvmctx.i32_type()),
-            BasicTypeEnum::ArrayType(payload_type.clone()),
+            BasicTypeEnum::IntType(self.llvmctx.i32_type()), // tag
+            BasicTypeEnum::ArrayType(payload_type.clone()),  // payload
         ];
+
         enum_opaque_struct.set_body(field_types, false);
 
-        // update irreg because payload_type is evaluated now and previous one is fake (zero cap).
+        (enum_opaque_struct, payload_type)
+    }
+
+    pub(crate) fn build_enum_def(&mut self, typed_enum: &TypedEnum) {
+        let enum_name = typed_enum.name.clone();
+
+        let (enum_opaque_struct, payload_type) = self.build_enum_struct_type(&typed_enum_as_enum_sig(typed_enum));
+
         self.insert_forward_decl_to_registry(
             typed_enum.symbol_id,
             LocalIRValue::Enum((enum_opaque_struct, payload_type)),
         );
+
+        typed_enum.variants.iter().for_each(|variant| {
+            if let TypedEnumVariant::Valued(identifier, typed_expr) = variant {
+                let lvalue = self.build_expr(None, &**typed_expr);
+                let rvalue = self.build_load_lvalue_to_rvalue(None, lvalue);
+                let basic_rvalue = rvalue.as_basic_value();
+
+                let module = self.llvmmodule.borrow_mut();
+                let global_value = module.add_global(
+                    basic_rvalue.get_type(),
+                    None,
+                    &generate_enum_variant_abi_name(
+                        self.get_module_name(self.module_id),
+                        enum_name.clone(),
+                        identifier.name.clone(),
+                    ),
+                );
+                global_value.set_linkage(Linkage::External);
+                global_value.set_initializer(&basic_rvalue);
+                global_value.set_constant(true);
+            }
+        });
+
         self.build_methods(typed_enum.module_id, &typed_enum.methods);
     }
 
     pub(crate) fn build_local_enum_def(&self, _typed_enum: &TypedEnum) {
         todo!();
+    }
+}
+
+fn typed_enum_as_enum_sig(typed_enum: &TypedEnum) -> EnumSig {
+    EnumSig {
+        symbol_id: typed_enum.symbol_id,
+        name: typed_enum.name.clone(),
+        methods: typed_enum.methods.clone(),
+        variants: typed_enum.variants.clone(),
+        vis: typed_enum.vis.clone(),
+        loc: typed_enum.loc.clone(),
     }
 }
