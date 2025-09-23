@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    NegativeArrayCapacity,
     ValueIsNotACompTimeConst, 
     SwitchFallthroughIntoValuedFieldCase,
     EnumVariantArgCountMismatch {
@@ -204,6 +205,9 @@ impl fmt::Display for AnalyzerDiagKind {
                     "Enum variant '{}' expects {} fields, but {} arguments were provided.",
                     variant_name, expected, provided
                 )
+            }
+            AnalyzerDiagKind::NegativeArrayCapacity => {
+                write!(f, "Array capacity cannot be a negative integer.")
             }
             AnalyzerDiagKind::ValueIsNotACompTimeConst => {
                 write!(f, "Value is not a compile-time constant.")
