@@ -137,28 +137,7 @@ impl<'a> AnalysisContext<'a> {
             ) => value_capacity <= target_capacity,
             _ => false, // not valid
         }
-    }   
-
-    // TODO ============= Create new module called `constant folding`=============
-
-    // fn extract_const_global_var_expr(&self, typed_expr: &TypedExpression) -> usize {
-    //     match typed_expr.kind {
-    //         TypedExpressionKind::Symbol(_, source_loc) => todo!(),
-    //         TypedExpressionKind::Literal(typed_literal) => todo!(),
-    //         TypedExpressionKind::Prefix(typed_prefix_expression) => todo!(),
-    //         TypedExpressionKind::Infix(typed_infix_expression) => todo!(),
-    //         TypedExpressionKind::Unary(typed_unary_expression) => todo!(),
-    //         TypedExpressionKind::Array(typed_array) => todo!(),
-    //         TypedExpressionKind::UnnamedStructValue(typed_unnamed_struct_value) => todo!(),
-    //     }
-    //     todo!();
-    // }
-
-    // fn const_expr_as_raw_integer(&self) {
-
-    // }
-
-    // =============                    END                             =============
+    }
 
     fn check_explicit_typecast(&mut self, value_type: ConcreteType, target_type: ConcreteType) -> bool {
         match (value_type, target_type) {

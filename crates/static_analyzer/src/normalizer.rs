@@ -4,7 +4,10 @@ use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue},
+    types::{
+        BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        TypedArrayType,
+    },
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -134,30 +137,38 @@ impl<'a> AnalysisContext<'a> {
                 let inner = self.normalize_type(scope_id_opt, *inner, loc)?;
                 Some(ConcreteType::Const(Box::new(inner)))
             }
-            ConcreteType::Array(arr) => {
-                let mut arr = arr;
-
-                match &mut arr.capacity {
-                    TypedArrayCapacity::Fixed(capacity_value) => match capacity_value.clone() {
-                        TypedArrayFixedCapacityValue::Expr(mut typed_expr) => {
-                            typed_expr.concrete_type = self.analyze_typed_expr_type(
-                                scope_id_opt,
-                                &mut typed_expr,
-                                Some(ConcreteType::BasicType(BasicConcreteType::SizeT)),
-                            );
-
-                            arr.capacity = TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(typed_expr));
-                        }
-                        TypedArrayFixedCapacityValue::Value(_) => {}
-                    },
-                    TypedArrayCapacity::Dynamic => {}
-                }
-
-                arr.element_type = Box::new(self.normalize_type(scope_id_opt, *arr.element_type, loc.clone())?);
-                Some(ConcreteType::Array(arr))
-            }
+            ConcreteType::Array(arr) => match self.normalize_array_capacity(scope_id_opt, arr, loc) {
+                Some(arr_type) => Some(ConcreteType::Array(arr_type)),
+                None => None,
+            },
             ConcreteType::BasicType(_) | ConcreteType::UnnamedStruct(_) => Some(ty),
         }
+    }
+
+    fn normalize_array_capacity(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        mut arr: TypedArrayType,
+        loc: SourceLoc,
+    ) -> Option<TypedArrayType> {
+        match &mut arr.capacity {
+            TypedArrayCapacity::Fixed(capacity_value) => match capacity_value.clone() {
+                TypedArrayFixedCapacityValue::Expr(mut typed_expr) => {
+                    if let Some(value) = self.const_expr_as_raw_integer(scope_id_opt, &typed_expr) {
+                        arr.capacity = TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value));
+                    } else {
+                        typed_expr.concrete_type = self.analyze_typed_expr_type(scope_id_opt, &mut typed_expr, None);
+
+                        arr.capacity = TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(typed_expr));
+                    }
+                }
+                TypedArrayFixedCapacityValue::Value(_) => {}
+            },
+            TypedArrayCapacity::Dynamic => {}
+        }
+
+        arr.element_type = Box::new(self.normalize_type(scope_id_opt, *arr.element_type, loc.clone())?);
+        Some(arr)
     }
 
     pub(crate) fn resolve_full_type_from_local_or_global_symbol(

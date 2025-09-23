@@ -1,9 +1,9 @@
 import std::libc{printf, malloc};
 
-STR_LEN: int = 4;
+STR_LEN: const int = 4;
 
 func main() {
-    #a: char[4] = "Taha";
+    #a: char[STR_LEN] = b"Taha";
 
     printf("str: %s\n", &a);
     // sample(1);
