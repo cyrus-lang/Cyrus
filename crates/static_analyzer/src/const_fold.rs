@@ -179,9 +179,6 @@ impl<'a> AnalysisContext<'a> {
 
                 Some(result)
             }
-            TypedExpressionKind::SizeOfExpression(typed_size_of_expr) => {
-                todo!();
-            }
             _ => None,
         };
 
