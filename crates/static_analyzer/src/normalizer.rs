@@ -4,10 +4,7 @@ use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID,
-    types::{
-        BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedArrayType,
-    },
+    types::{ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -155,16 +152,22 @@ impl<'a> AnalysisContext<'a> {
             TypedArrayCapacity::Fixed(capacity_value) => match capacity_value.clone() {
                 TypedArrayFixedCapacityValue::Expr(mut typed_expr) => {
                     if let Some(value) = self.const_expr_as_raw_integer(scope_id_opt, &typed_expr) {
-                        arr.capacity = TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value));
+                        if let Ok(unsigned_integer) = value.try_into() {
+                            arr.capacity =
+                                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(unsigned_integer));
+                        } else {
+                            todo!();
+                        }
                     } else {
                         typed_expr.concrete_type = self.analyze_typed_expr_type(scope_id_opt, &mut typed_expr, None);
-
                         arr.capacity = TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(typed_expr));
                     }
                 }
                 TypedArrayFixedCapacityValue::Value(_) => {}
             },
-            TypedArrayCapacity::Dynamic => {}
+            TypedArrayCapacity::Dynamic => {
+                todo!();
+            }
         }
 
         arr.element_type = Box::new(self.normalize_type(scope_id_opt, *arr.element_type, loc.clone())?);

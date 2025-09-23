@@ -1,5 +1,5 @@
 use crate::{diagnostics::AnalyzerDiagKind, type_cache::TypeResolverCaches};
-use ast::{AssignmentKind, SelfModifierKind, source_loc::SourceLoc};
+use ast::{AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
@@ -773,7 +773,22 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVariable) {
-        if let Some(expr) = &mut typed_global_var.expr {
+        if let Some(mut expr) = typed_global_var.expr.clone() {
+            if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
+                let integer_concrete_type = Some(ConcreteType::BasicType(BasicConcreteType::Int));
+
+                expr = TypedExpression {
+                    kind: TypedExpressionKind::Literal(TypedLiteral {
+                        ty: integer_concrete_type.clone(),
+                        kind: LiteralKind::Integer(integer, None),
+                        loc: expr.loc.clone(),
+                    }),
+                    concrete_type: integer_concrete_type,
+                    value_category: ValueCategory::Rvalue,
+                    loc: expr.loc.clone(),
+                };
+            }
+
             if !expr.kind.is_comptime_valid() {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -784,10 +799,12 @@ impl<'a> AnalysisContext<'a> {
                 return;
             }
 
-            expr.concrete_type = match self.analyze_typed_expr_type(None, expr, typed_global_var.ty.clone()) {
+            expr.concrete_type = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
                 Some(concrete_type) => Some(concrete_type),
                 None => return,
             };
+
+            typed_global_var.expr = Some(expr);
         }
 
         typed_global_var.ty = match &typed_global_var.ty {
@@ -797,6 +814,7 @@ impl<'a> AnalysisContext<'a> {
 
         update_global_symbol!(self, typed_global_var.module_id, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
+                resolved_var.global_var_sig.rhs = typed_global_var.expr.clone();
                 resolved_var.global_var_sig.ty = typed_global_var.ty.clone();
             }
         );
