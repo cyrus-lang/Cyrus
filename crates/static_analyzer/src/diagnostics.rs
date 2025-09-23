@@ -3,7 +3,7 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
     NegativeArrayCapacity,
-    ValueIsNotACompTimeConst, 
+    ValueIsNotACompTimeConst,
     SwitchFallthroughIntoValuedFieldCase,
     EnumVariantArgCountMismatch {
         variant_name: String,
@@ -121,6 +121,11 @@ pub enum AnalyzerDiagKind {
         argument_idx: u32,
         argument_type: String,
     },
+    FuncCallParamTypeMismatch {
+        param_type: String,
+        argument_idx: u32,
+        argument_type: String,
+    },
     ArrayElementTypeMismatch {
         element_type: String,
         element_index: u32,
@@ -213,7 +218,10 @@ impl fmt::Display for AnalyzerDiagKind {
                 write!(f, "Value is not a compile-time constant.")
             }
             AnalyzerDiagKind::SwitchFallthroughIntoValuedFieldCase => {
-                write!(f, "Falling through into a case with fields may cause undefined behavior.")
+                write!(
+                    f,
+                    "Falling through into a case with fields may cause undefined behavior."
+                )
             }
             AnalyzerDiagKind::EnumVariantDoesNotAcceptFields { variant_name } => {
                 write!(f, "Enum variant '{}' does not accept fields.", variant_name)
@@ -501,6 +509,17 @@ impl fmt::Display for AnalyzerDiagKind {
                 write!(
                     f,
                     "Argument at index {} has type '{}', but the variadic parameter expects type '{}'.",
+                    argument_idx, argument_type, param_type
+                )
+            }
+            AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                param_type,
+                argument_idx,
+                argument_type,
+            } => {
+                write!(
+                    f,
+                    "Argument at index {} has type '{}', but the expected parameter type is '{}'.",
                     argument_idx, argument_type, param_type
                 )
             }
