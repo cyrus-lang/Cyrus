@@ -150,7 +150,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<TypedArrayType> {
         match &mut arr.capacity {
             TypedArrayCapacity::Fixed(capacity_value) => match capacity_value.clone() {
-                TypedArrayFixedCapacityValue::Expr(mut typed_expr) => {
+                TypedArrayFixedCapacityValue::Expr(typed_expr) => {
                     if let Some(value) = self.const_expr_as_raw_integer(scope_id_opt, &typed_expr) {
                         if let Ok(unsigned_integer) = value.try_into() {
                             arr.capacity =
@@ -159,8 +159,7 @@ impl<'a> AnalysisContext<'a> {
                             todo!();
                         }
                     } else {
-                        typed_expr.concrete_type = self.analyze_typed_expr_type(scope_id_opt, &mut typed_expr, None);
-                        arr.capacity = TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Expr(typed_expr));
+                        return None;
                     }
                 }
                 TypedArrayFixedCapacityValue::Value(_) => {}
