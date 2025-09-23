@@ -1,31 +1,20 @@
 import std::libc{printf, malloc};
 
-func main() void {
-    for (#i = 0; i < 10; i++) {
-        if (i % 2 == 0) {
-            printf("Always think positive.\n");
+enum Color {
+    Black,
+    Purple,
+    Custom(int, int, int)
+}
 
-            for (#s = 0; s < 10; s++) {
-                printf("j=%d.\n", s);
-            }
-                
-            if (i == 10) {
-                printf("I=10.\n");
+func main() {
+    #inst1 = Color.Black;
+    #inst2 = Color.Black;
 
-                for (#j = 0; j < 10; j++) {
-                    printf("j=%d.\n", j);
-                }
-            } 
-            else {
-                printf("unknown.\n");
-            }
-
-            for (#j = 0; j < 10; j++) {
-                printf("j=%d.\n", j);
-            }
-        }
-        else {
-            printf("Negative.\n");
-        }
+    // #res = inst1 == inst2;
+    // printf("res: %d\n", res);
+    if (inst1 == inst2) {
+        printf("equal\n");
+    } else {
+        printf("not equal\n");
     }
 }
