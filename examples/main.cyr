@@ -1,8 +1,5 @@
 import std::libc{printf, malloc};
 
-STR_LEN: const int = 10;
-
 func main() {
-    #a: char[STR_LEN] = b"Taha";
-    printf("str: %s\n", &a);
+    
 }

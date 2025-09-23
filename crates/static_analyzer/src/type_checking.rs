@@ -798,7 +798,6 @@ impl<'a> AnalysisContext<'a> {
         let is_pointer = operand.concrete_type.clone().unwrap().is_pointer();
         let is_struct = operand.concrete_type.clone().unwrap().is_resolved_symbol();
 
-        // operator vs type
         if field_access.is_fat_arrow {
             if !is_pointer {
                 dbg!(field_access.operand.concrete_type.clone());
@@ -1610,7 +1609,14 @@ impl<'a> AnalysisContext<'a> {
 
         // Analyze static arguments
         let start_idx = if instance_method_call { 1 } else { 0 };
-        for (param, arg) in func_sig.params.list.iter_mut().skip(start_idx).zip(args.iter_mut()) {
+        for (param_idx, (param, arg)) in func_sig
+            .params
+            .list
+            .iter_mut()
+            .skip(start_idx)
+            .zip(args.iter_mut())
+            .enumerate()
+        {
             let param_type = match param {
                 TypedFuncParamKind::FuncParam(p) => {
                     let normalized = self.normalize_type(scope_id_opt, p.ty.clone(), p.loc.clone()).unwrap();
@@ -1628,7 +1634,24 @@ impl<'a> AnalysisContext<'a> {
                     s.ty.clone().unwrap()
                 }
             };
-            let _ = self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type));
+
+            let arg_type = match self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type.clone())) {
+                Some(concrete_type) => concrete_type,
+                None => continue,
+            };
+
+            if !self.check_type_mismatch(scope_id_opt, arg_type.clone(), param_type.clone(), arg.loc.clone()) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                        param_type: format_concrete_type(param_type.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                        argument_type: format_concrete_type(arg_type, &(self.symbol_formatter)(scope_id_opt)),
+                        argument_idx: param_idx as u32,
+                    },
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: None,
+                });
+            }
         }
 
         // Check for duplicate parameter names
@@ -1960,7 +1983,6 @@ impl<'a> AnalysisContext<'a> {
         if !self.validate_method_call(
             scope_id_opt,
             object_symbol_id,
-            method_call.operand.concrete_type.clone().unwrap(),
             method_call,
             first_param_opt,
             object_methods,
@@ -1985,7 +2007,6 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         instance_symbol_id: SymbolID,
-        operand_concrete_type: ConcreteType,
         method_call: &TypedMethodCall,
         first_param_opt: Option<&TypedFuncParamKind>,
         object_methods: HashMap<String, SymbolID>,
@@ -2009,42 +2030,52 @@ impl<'a> AnalysisContext<'a> {
             result = false;
         }
 
-        if operand_concrete_type.is_pointer() && !method_call.is_fat_arrow {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::UseFatArrow,
-                location: Some(DiagLoc::new(method_call.loc.clone())),
-                hint: None,
-            });
-            result = false;
-        } else if !operand_concrete_type.is_pointer() && method_call.is_fat_arrow {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::InvalidFatArrow,
-                location: Some(DiagLoc::new(method_call.loc.clone())),
-                hint: Some("Use '.' instead of '->'.".to_string()),
-            });
-            result = false;
-        } else {
-            if let Some(first_param) = first_param_opt {
-                if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
-                    if typed_self_modifier.kind == SelfModifierKind::Referenced && operand_concrete_type.is_const() {
-                        let instance_name = (self.symbol_formatter)(scope_id_opt)(instance_symbol_id);
+        let is_pointer = method_call.operand.concrete_type.clone().unwrap().is_pointer();
+        let is_struct = method_call.operand.concrete_type.clone().unwrap().is_resolved_symbol();
+        let is_operand_const = method_call.operand.concrete_type.clone().unwrap().is_const();
 
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
-                                method_name: method_call.method_name.clone(),
-                                instance_name: instance_name.clone(),
-                            },
-                            location: Some(DiagLoc::new(method_call.loc.clone())),
-                            hint: Some(format!(
-                                "Instance '{}' is declared as 'const' and cannot be modified.",
-                                instance_name
-                            )),
-                        });
-                        result = false;
-                    }
+        if method_call.is_fat_arrow {
+            if !is_pointer {
+                dbg!(method_call.operand.concrete_type.clone());
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InvalidFatArrow,
+                    location: Some(DiagLoc::new(method_call.loc.clone())),
+                    hint: Some("Use '.' instead of '->'.".to_string()),
+                });
+                result = false;
+            }
+        } else {
+            if !is_struct {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::UseFatArrow,
+                    location: Some(DiagLoc::new(method_call.loc.clone())),
+                    hint: Some("Use '->' when accessing through a pointer.".to_string()),
+                });
+                result = false;
+            }
+        }
+
+        if let Some(first_param) = first_param_opt {
+            if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
+                if typed_self_modifier.kind == SelfModifierKind::Referenced && is_operand_const {
+                    let instance_name = (self.symbol_formatter)(scope_id_opt)(instance_symbol_id);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::MutationPossibleMethodCallOnConstInstance {
+                            method_name: method_call.method_name.clone(),
+                            instance_name: instance_name.clone(),
+                        },
+                        location: Some(DiagLoc::new(method_call.loc.clone())),
+                        hint: Some(format!(
+                            "Instance '{}' is declared as 'const' and cannot be modified.",
+                            instance_name
+                        )),
+                    });
+                    result = false;
                 }
             }
         }
