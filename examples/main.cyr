@@ -1,20 +1,12 @@
 import std::libc{printf, malloc};
 
-enum Color {
-    Black,
-    Purple,
-    Custom(int, int, int)
-}
+STR_LEN: int = 4;
 
 func main() {
-    #inst1 = Color.Black;
-    #inst2 = Color.Black;
+    #a: char[4] = "Taha";
 
-    // #res = inst1 == inst2;
-    // printf("res: %d\n", res);
-    if (inst1 == inst2) {
-        printf("equal\n");
-    } else {
-        printf("not equal\n");
-    }
+    printf("str: %s\n", &a);
+    // sample(1);
 }
+
+// func sample(a: int*) {}

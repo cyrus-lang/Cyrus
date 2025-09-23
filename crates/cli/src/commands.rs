@@ -167,14 +167,16 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
         }
     }
 
-    // Cleanup: remove temporary executable
+    // remove temporary executable
     if let Err(e) = fs::remove_file(&temp_file_path) {
         eprintln!("Warning: failed to remove temp file {}: {e}", temp_file_path.display());
     }
 
-    // Cleanup: remove build directory
-    if let Err(e) = fs::remove_dir_all(&final_build_dir) {
-        eprintln!("Warning: failed to remove build directory {}: {e}", final_build_dir);
+    // remove build directory
+    if !options.build_dir.build_dir_provided() {
+        if let Err(e) = fs::remove_dir_all(&final_build_dir) {
+            eprintln!("Warning: failed to remove build directory {}: {e}", final_build_dir);
+        }
     }
 }
 

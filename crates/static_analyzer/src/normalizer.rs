@@ -120,16 +120,7 @@ impl<'a> AnalysisContext<'a> {
             }
             ConcreteType::ResolvedSymbol(ResolvedSymbol::Func(..))
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Method(..)) => {
-                // Convert function symbol to its function TYPE (signature) and normalize it.
-                // let f = self.resolver.get_function(self.module_id, symbol_id);
-                // if let Some(f) = f {
-                //     let fty = ConcreteType::from_function_sig(&f.sig); // define this
-                //     return self.normalize_type(scope_id_opt, fty, loc);
-                // }
-                // self.report_non_type_symbol(symbol_id, loc);
-                // None
-                // FIXME
-                todo!();
+                unreachable!()
             }
             ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(_))
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(_))

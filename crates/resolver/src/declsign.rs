@@ -19,6 +19,7 @@ pub struct StructSig {
 
 #[derive(Debug, Clone)]
 pub struct UnionSig {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
@@ -39,6 +40,7 @@ pub struct FuncSig {
 
 #[derive(Debug, Clone)]
 pub struct EnumSig {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub methods: HashMap<String, SymbolID>,
     pub variants: Vec<TypedEnumVariant>,
