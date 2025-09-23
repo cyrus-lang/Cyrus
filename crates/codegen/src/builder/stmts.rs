@@ -7,7 +7,7 @@ use ast::LiteralKind;
 use inkwell::{
     basic_block::BasicBlock,
     types::{AnyType, BasicTypeEnum, StructType},
-    values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, StructValue},
+    values::{BasicValue, BasicValueEnum, IntValue},
 };
 use resolver::{
     declsign::{StructSig, UnionSig},
@@ -420,20 +420,6 @@ impl<'a> CodeGenBuilder<'a> {
             }
         }
         case_list
-    }
-
-    fn build_enum_extract_index(&self, struct_value: StructValue<'a>) -> IntValue<'a> {
-        self.llvmbuilder
-            .build_extract_value(struct_value, 0, "extract")
-            .unwrap()
-            .into_int_value()
-    }
-
-    fn build_enum_extract_payload(&self, struct_value: StructValue<'a>) -> ArrayValue<'a> {
-        self.llvmbuilder
-            .build_extract_value(struct_value, 1, "extract")
-            .unwrap()
-            .into_array_value()
     }
 
     fn build_switch_on_enum(

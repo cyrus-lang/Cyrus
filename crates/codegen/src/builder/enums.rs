@@ -21,14 +21,14 @@ use typed_ast::{
 };
 
 impl<'a> CodeGenBuilder<'a> {
-    fn extract_enum_variant_number(&self, struct_value: StructValue<'a>) -> IntValue<'a> {
+    pub(crate) fn build_enum_extract_index(&self, struct_value: StructValue<'a>) -> IntValue<'a> {
         self.llvmbuilder
             .build_extract_value(struct_value, 0, "extract")
             .unwrap()
             .into_int_value()
     }
 
-    fn extract_enum_payload(&self, struct_value: StructValue<'a>) -> ArrayValue<'a> {
+    pub(crate) fn build_enum_extract_payload(&self, struct_value: StructValue<'a>) -> ArrayValue<'a> {
         self.llvmbuilder
             .build_extract_value(struct_value, 1, "extract")
             .unwrap()
@@ -45,8 +45,8 @@ impl<'a> CodeGenBuilder<'a> {
         let struct_value1 = lhs.as_basic_value().into_struct_value();
         let struct_value2 = rhs.as_basic_value().into_struct_value();
 
-        let tag1 = self.extract_enum_variant_number(struct_value1);
-        let tag2 = self.extract_enum_variant_number(struct_value2);
+        let tag1 = self.build_enum_extract_index(struct_value1);
+        let tag2 = self.build_enum_extract_index(struct_value2);
 
         let tag_concrete_type = ConcreteType::BasicType(BasicConcreteType::UInt32);
         let tag_cmp_result = if cmp_eq {
@@ -86,8 +86,8 @@ impl<'a> CodeGenBuilder<'a> {
         self.blockreg.current_block_ref = Some(payload_block);
         self.llvmbuilder.position_at_end(payload_block);
 
-        let payload1 = self.extract_enum_payload(struct_value1);
-        let payload2 = self.extract_enum_payload(struct_value2);
+        let payload1 = self.build_enum_extract_payload(struct_value1);
+        let payload2 = self.build_enum_extract_payload(struct_value2);
 
         let memcmp_result = self.build_memcmp_for_arrays(payload1, payload2);
 
