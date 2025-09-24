@@ -72,7 +72,7 @@ jobs:
           path: |
             ~/rpmbuild/RPMS/**/*.rpm
             ~/rpmbuild/SPECS/cyrus.spec
-   build-linux-arch:
+  build-linux-arch:
         runs-on: ubuntu-latest
         container: archlinux:rolling
         steps:
