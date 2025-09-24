@@ -155,8 +155,6 @@ impl CodeGenContext {
             linker_command.arg("-lc");
         }
 
-        linker_command.arg("-flto");
-
         linker_command.arg("-funroll-loops");
         linker_command.arg("-flto");
 
@@ -166,6 +164,15 @@ impl CodeGenContext {
 
         linker_command.arg("-o").arg(output_path);
         linker_command.args(object_files_str_list);
+
+        linker_command.args(self.opts.linker_flags.clone());
+
+        if !self.opts.sanitizer.is_empty() {
+            let sanitizer_flags: Vec<String> = self.opts.sanitizer.iter().map(|s| s.to_string()).collect();
+            let joined_flags = sanitizer_flags.join(",");
+            let sanitize_flag = format!("-fsanitize={}", joined_flags);
+            linker_command.arg(sanitize_flag);
+        }
 
         if self.opts.verbose {
             println!("{:?}", linker_command);
@@ -239,7 +246,7 @@ impl CodeGenContext {
         typed_modules: Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
     ) {
         let build_manifest_guard = self.build_manifest.lock().unwrap();
-        
+
         let mut build_manifest = build_manifest_guard.read_manifest().unwrap_or_else(|| {
             build_manifest_guard.save_manifest();
             BuildManifest::new(self.opts.base_path.clone(), self.final_build_dir.clone())
