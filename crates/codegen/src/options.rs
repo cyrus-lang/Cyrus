@@ -2,45 +2,12 @@ use core::fmt;
 use inkwell::targets::{CodeModel, RelocMode};
 use serde::Deserialize;
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
-pub enum RelocModeOptions {
-    Default,
-    Static,
-    PIC,
-    DynamicNoPic,
-}
-
-#[derive(Deserialize, Debug, Clone, PartialEq)]
-pub enum CodeModelOptions {
-    Default,
-    Tiny,
-    Small,
-    Kernel,
-    Medium,
-    Large,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct CodeGenLinkerOptions {
-    pub link_static: bool,
-    pub pie: bool,
-    pub no_pie: bool,
-}
-
-impl Default for CodeGenLinkerOptions {
-    fn default() -> Self {
-        Self {
-            link_static: false,
-            pie: true,
-            no_pie: false,
-        }
-    }
-}
-
 #[derive(Deserialize, Debug, Clone)]
 pub struct CodeGenOptions {
+    pub sanitizer: Vec<CodeGenSanitizer>,
     pub linker: Option<String>,
     pub linker_options: CodeGenLinkerOptions,
+    pub linker_flags: Vec<String>,
     pub base_path: Option<String>,
     pub project_type: Option<String>,
     pub project_name: Option<String>,
@@ -113,6 +80,8 @@ impl CodeGenOptions {
             disable_modulefs_cache: false,
             disable_warnings: false,
             linker_options: CodeGenLinkerOptions::default(),
+            linker_flags: Vec::new(),
+            sanitizer: Vec::new(),
         }
     }
 
@@ -144,6 +113,16 @@ impl CodeGenOptions {
                 let mut sources = self.source_dirs.clone();
                 sources.extend(instance.source_dirs);
                 sources
+            },
+            linker_flags: {
+                let mut linker_flags = self.linker_flags.clone();
+                linker_flags.extend(instance.linker_flags);
+                linker_flags
+            },
+            sanitizer: {
+                let mut sanitizer = self.sanitizer.clone();
+                sanitizer.extend(instance.sanitizer);
+                sanitizer
             },
             quiet: instance.quiet || self.quiet,
             verbose: instance.verbose || self.verbose,
@@ -319,6 +298,58 @@ impl CodeModelOptions {
         } {
             Some(v) => Some(format!("--code-model={}", v)),
             None => None,
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub enum RelocModeOptions {
+    Default,
+    Static,
+    PIC,
+    DynamicNoPic,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub enum CodeModelOptions {
+    Default,
+    Tiny,
+    Small,
+    Kernel,
+    Medium,
+    Large,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct CodeGenLinkerOptions {
+    pub link_static: bool,
+    pub pie: bool,
+    pub no_pie: bool,
+}
+
+impl Default for CodeGenLinkerOptions {
+    fn default() -> Self {
+        Self {
+            link_static: false,
+            pie: true,
+            no_pie: false,
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub enum CodeGenSanitizer {
+    Address,
+    Undefined,
+    Thread,
+}
+
+impl fmt::Display for CodeGenSanitizer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CodeGenSanitizer::Address => write!(f, "address"),
+            CodeGenSanitizer::Undefined => write!(f, "undefined"),
+            CodeGenSanitizer::Thread => write!(f, "thread"),
         }
     }
 }
