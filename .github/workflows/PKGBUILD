@@ -1,0 +1,36 @@
+# Maintainer: Cyrus Team <you@example.com>
+
+pkgname=cyrus
+# Dynamically get version from the Rust crate
+rust_version=$(sed -n 's/^version\s*=\s*"\(.*\)"/\1/p' ../../crates/cli/Cargo.toml | head -n1)
+pkgver=$rust_version
+pkgrel=1
+pkgdesc="Cyrus Programming Language"
+arch=('x86_64')
+url="https://github.com/cyrus-lang/Cyrus"
+license=('GPL3')
+depends=()
+makedepends=('rust' 'cargo' 'llvm' 'clang' 'libffi' 'libxml2' 'isl')
+source=("cyrus-${pkgver}.tar.gz")
+sha256sums=('SKIP')  # Replace with real checksum
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    cargo build --release --locked
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+
+    # Install binary
+    install -Dm755 "target/release/cyrus" "$pkgdir/usr/bin/cyrus"
+
+    # Install stdlib
+    install -d "$pkgdir/usr/share/cyrus"
+    cp -r stdlib "$pkgdir/usr/share/cyrus/"
+
+    # Install environment variable script
+    install -d "$pkgdir/etc/profile.d"
+    echo 'export CYRUS_STDLIB_PATH=/usr/share/cyrus/stdlib' > "$pkgdir/etc/profile.d/cyrus.sh"
+    chmod 644 "$pkgdir/etc/profile.d/cyrus.sh"
+}

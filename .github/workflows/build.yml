@@ -58,7 +58,7 @@ jobs:
         run: |
           rpmdev-setuptree
           mkdir -p ~/rpmbuild/SOURCES
-          tar czf ~/rpmbuild/SOURCES/cyrus-0.0.1.tar.gz . --exclude=.git
+          tar --warning=no-file-changed --ignore-failed-read -czf cyrus-0.0.1.tar.gz .
           cp .github/workflows/cyrus.spec ~/rpmbuild/SPECS/
 
       - name: Build RPM
@@ -73,3 +73,24 @@ jobs:
           path: |
             ~/rpmbuild/RPMS/**/*.rpm
             ~/rpmbuild/SPECS/cyrus.spec
+  build-linux-arch:
+        runs-on: archlinux:rolling
+        steps:
+          - uses: actions/checkout@v4
+    
+          - name: Install dependencies
+            run: |
+              pacman -Sy --noconfirm --needed base-devel rust llvm clang libffi libxml2 isl
+    
+          - name: Build PKGBUILD
+            run: |
+              cd .github/workflows
+              makepkg -sri --noconfirm
+    
+          - name: Upload Arch package
+            uses: actions/upload-artifact@v4
+            with:
+              name: cyrus-arch
+              path: |
+                .github/workflows/*.pkg.tar.zst
+  
