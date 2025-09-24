@@ -1,13 +1,17 @@
 import std::libc{printf, malloc};
 
+struct Foo {
+    public func bar(&self) {
+        printf("bar\n");
+    }
+}
+
 struct Sample {
-    name: char[4];
+    foo: Foo;
 }
 
 func main() {
-    #inst = Sample {
-        name: b"Taha"
-    };
-    
+    #inst = Sample { foo: Foo{} };
+    inst.foo.bar();
 }
 

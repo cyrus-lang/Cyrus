@@ -2322,22 +2322,6 @@ impl Resolver {
                     None => return None,
                 };
 
-                let symbol_id = match operand.kind {
-                    TypedExpressionKind::Symbol(symbol_id, ..) => symbol_id,
-                    _ => {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: ResolverDiagKind::InvalidOperandForMethodCall,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                method_call.loc.clone(),
-                                self.get_current_module_file_path(),
-                            ))),
-                            hint: None,
-                        });
-                        return None;
-                    }
-                };
-
                 let mut args: Vec<TypedExpression> = Vec::new();
 
                 for arg in &method_call.args {
@@ -2351,8 +2335,8 @@ impl Resolver {
 
                 Some(TypedExpression {
                     kind: TypedExpressionKind::MethodCall(TypedMethodCall {
-                        symbol_id,
                         operand: Box::new(operand),
+                        object_symbol_id: None,
                         method_name: method_call.method_name.name.clone(),
                         is_fat_arrow: method_call.is_fat_arrow,
                         loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),

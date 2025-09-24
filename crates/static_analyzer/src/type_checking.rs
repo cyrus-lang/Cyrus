@@ -1929,7 +1929,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        method_call.symbol_id = struct_id;
+        method_call.object_symbol_id = Some(struct_id);
         let symbol_entry = self.resolver.lookup_symbol_entry_with_id(module_id, struct_id).unwrap();
 
         let (object_name, object_methods, object_module_id) = {
@@ -2503,11 +2503,7 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        let rhs_type = match self.analyze_typed_expr_type(
-            scope_id_opt,
-            &mut infix_expr.rhs,
-            expected_type.or(Some(lhs_type.clone())),
-        ) {
+        let rhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut infix_expr.rhs, Some(lhs_type.clone())) {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
