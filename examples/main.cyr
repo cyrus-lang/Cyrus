@@ -1,7 +1,12 @@
 import std::string{String};
 import std::libc{printf, malloc, free};
 
+func alloc() {
+    #ptr = malloc(24);
+}
+
 func main() {
-    #a = 10;    
+    printf("Hello, Cyrus!\n");
+    alloc();
 }
 

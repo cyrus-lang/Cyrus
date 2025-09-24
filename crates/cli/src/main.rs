@@ -1,5 +1,7 @@
 use clap::{Parser, ValueEnum};
-use codegen::options::{BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, RelocModeOptions};
+use codegen::options::{
+    BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, RelocModeOptions,
+};
 use commands::*;
 use diagcentral::display_single_custom_diag;
 use project_layout::PROJECT_FILE_PATH;
@@ -112,6 +114,9 @@ struct CompilerOptions {
     #[clap(long, help = "Disables all warnings.")]
     disable_warnings: bool,
 
+    #[clap(long, help = "Build artifacts in release mode, with optimizations.")]
+    release: bool,
+
     #[clap(long, help = "Set cyrus standard library path.")]
     stdlib: Option<String>,
 
@@ -119,10 +124,7 @@ struct CompilerOptions {
     display_target_machine: bool,
 
     #[clap(long = "sanitize", help = "Enables dynamic code analysis for bug detection.")]
-    #[clap(
-        value_enum,
-        value_delimiter = ','
-    )]
+    #[clap(value_enum, value_delimiter = ',')]
     pub sanitizer: Vec<Sanitizer>,
 
     #[clap(long, value_enum, default_value_t = RelocMode::default(),
@@ -214,6 +216,7 @@ impl Sanitizer {
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            release: self.release,
             sanitizer: self.sanitizer.iter().map(|s| s.to_compiler_sanitizer()).collect(),
             linker_flags: self.linkerflags.clone(),
             linker_options: CodeGenLinkerOptions::default(),

@@ -164,8 +164,12 @@ impl CodeGenContext {
 
         linker_command.arg("-o").arg(output_path);
         linker_command.args(object_files_str_list);
-
         linker_command.args(self.opts.linker_flags.clone());
+
+        if !self.opts.release {
+            linker_command.arg("-g");
+            linker_command.arg("-fno-omit-frame-pointer");
+        }
 
         if !self.opts.sanitizer.is_empty() {
             let sanitizer_flags: Vec<String> = self.opts.sanitizer.iter().map(|s| s.to_string()).collect();

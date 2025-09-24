@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct CodeGenOptions {
+    pub release: bool,
     pub sanitizer: Vec<CodeGenSanitizer>,
     pub linker: Option<String>,
     pub linker_options: CodeGenLinkerOptions,
@@ -82,11 +83,13 @@ impl CodeGenOptions {
             linker_options: CodeGenLinkerOptions::default(),
             linker_flags: Vec::new(),
             sanitizer: Vec::new(),
+            release: false,
         }
     }
 
     pub fn override_options(&mut self, instance: Self) {
         *self = Self {
+            release: instance.release || self.release,
             linker: instance.linker.or(self.linker.clone()),
             project_type: instance.project_type.or(self.project_type.clone()),
             project_name: instance.project_name.or(self.project_name.clone()),

@@ -109,6 +109,7 @@
             llvm_18.lib
             llvm_18.dev
             libxml2
+            lldb_18
           ];
           shellHook = ''
             export LIBRARY_PATH="${pkgs.glibc.static}/lib:${pkgs.glibc}/lib:${pkgs.gcc_multi}/lib:${pkgs.llvm_18.lib}/lib:${pkgs.libxml2}/lib:$LIBRARY_PATH"
