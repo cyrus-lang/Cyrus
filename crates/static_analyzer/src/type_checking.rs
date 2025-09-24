@@ -810,8 +810,6 @@ impl<'a> AnalysisContext<'a> {
 
         if field_access.is_fat_arrow {
             if !is_pointer {
-                dbg!(field_access.operand.concrete_type.clone());
-
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::InvalidFatArrow,
@@ -1852,9 +1850,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        // FIXME self.module_id must be changed
         let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
-
         let local_or_global_symbol = match self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
