@@ -541,7 +541,8 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         if all_const {
-            let array_value = unsafe { ArrayValue::new_const_array(&array_type, &elements) };
+            let array_value = unsafe { ArrayValue::new_const_array(&array_type.get_element_type(), &elements) };
+
             InternalValue::new(
                 array.array_type.clone(),
                 InternalValueKind::RValue(array_value.as_basic_value_enum()),
