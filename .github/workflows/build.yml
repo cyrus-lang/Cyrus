@@ -2,9 +2,9 @@ name: Build Cyrus
 
 on:
   push:
-    branches: [main]
+    branches: ['*']
   pull_request:
-    branches: [main]
+    branches: ['*']
 
 jobs:
   build-linux-ubuntu:
