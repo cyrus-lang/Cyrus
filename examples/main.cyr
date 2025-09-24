@@ -1,16 +1,13 @@
 import std::libc{printf, malloc};
 
-enum Type {
-    Int,
-    Float,
-    Char
+struct Sample {
+    name: char[4];
 }
 
 func main() {
-    #types = Type[3] {
-        Type.Char,
-        Type.Char,
-        Type.Float
+    #inst = Sample {
+        name: b"Taha"
     };
+    
 }
 

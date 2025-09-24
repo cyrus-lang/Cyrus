@@ -144,7 +144,7 @@ impl<'a> AnalysisContext<'a> {
             (
                 TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value_capacity)),
                 TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(target_capacity)),
-            ) => value_capacity <= target_capacity,
+            ) => value_capacity == target_capacity,
             _ => false, // not valid
         }
     }
