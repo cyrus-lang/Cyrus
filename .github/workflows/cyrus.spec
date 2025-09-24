@@ -1,4 +1,4 @@
-%global rust_version %(sed -n 's/^version\s*=\s*"\(.*\)"/\1/p' ../../Cargo.toml | head -n1)
+%global rust_version %(sed -n 's/^version\s*=\s*"\(.*\)"/\1/p' ../SOURCES/crates/cli/Cargo.toml | head -n1)
 
 Name:           cyrus
 Version:        %{rust_version}
