@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use codegen::options::{BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeModelOptions, RelocModeOptions};
+use codegen::options::{BuildDir, CodeGenLinkerOptions, CodeGenOptions, CodeGenSanitizer, CodeModelOptions, RelocModeOptions};
 use commands::*;
 use diagcentral::display_single_custom_diag;
 use project_layout::PROJECT_FILE_PATH;
@@ -71,6 +71,9 @@ struct CompilerOptions {
     #[clap(long = "sources", value_name = "SOURCES", help = "Source files.")]
     source_dirs: Vec<String>,
 
+    #[clap(long = "linker-flags", short = 'z', help = "Adds custom flags to the linker.")]
+    linkerflags: Vec<String>,
+
     #[clap(
         long = "build-dir",
         value_name = "PATH",
@@ -92,10 +95,15 @@ struct CompilerOptions {
     )]
     linker: Option<String>,
 
-    #[clap(long, short = 'q', help = "Suppress unnecessary output messages.", conflicts_with="verbose")]
+    #[clap(
+        long,
+        short = 'q',
+        help = "Suppress unnecessary output messages.",
+        conflicts_with = "verbose"
+    )]
     quiet: bool,
 
-    #[clap(long, short = 'V', help = "Increase output verbosity.", conflicts_with="quiet")]
+    #[clap(long, short = 'V', help = "Increase output verbosity.", conflicts_with = "quiet")]
     verbose: bool,
 
     #[clap(long, help = "Disables module filesystem cache.")]
@@ -110,6 +118,13 @@ struct CompilerOptions {
     #[clap(long = "target-machine", help = "Display Target Machine information.")]
     display_target_machine: bool,
 
+    #[clap(long = "sanitize", help = "Enables dynamic code analysis for bug detection.")]
+    #[clap(
+        value_enum,
+        value_delimiter = ','
+    )]
+    pub sanitizer: Vec<Sanitizer>,
+
     #[clap(long, value_enum, default_value_t = RelocMode::default(),
     help = "Set the relocation model for code generation."
     )]
@@ -119,6 +134,13 @@ struct CompilerOptions {
     help = "Set the code model for code generation."
     )]
     code_model: CodeModel,
+}
+
+#[derive(Deserialize, Debug, Clone, ValueEnum)]
+pub enum Sanitizer {
+    Address,
+    Undefined,
+    Thread,
 }
 
 #[derive(Deserialize, Debug, Clone, ValueEnum)]
@@ -179,9 +201,21 @@ impl LinkerCompilerOptions {
     }
 }
 
+impl Sanitizer {
+    pub fn to_compiler_sanitizer(&self) -> CodeGenSanitizer {
+        match self {
+            Sanitizer::Address => CodeGenSanitizer::Address,
+            Sanitizer::Undefined => CodeGenSanitizer::Undefined,
+            Sanitizer::Thread => CodeGenSanitizer::Thread,
+        }
+    }
+}
+
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
         CodeGenOptions {
+            sanitizer: self.sanitizer.iter().map(|s| s.to_compiler_sanitizer()).collect(),
+            linker_flags: self.linkerflags.clone(),
             linker_options: CodeGenLinkerOptions::default(),
             linker: self.linker.clone().or(Some("cc".to_string())),
             disable_modulefs_cache: self.disable_modulefs_cache,

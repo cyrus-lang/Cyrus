@@ -1,22 +1,26 @@
 import std::string{String};
-import std::libc{printf, malloc};
+import std::libc{printf, malloc, free};
 
-struct Foo {
-    name: String;
+// struct Foo {
+//     name: String;
 
-    public func bar(&self) {
-        printf("name: %s\n", self->name.c_str());
-    }
-}
+//     public func bar(&self) {
+//         printf("name: %s\n", self->name.c_str());
+//     }
+// }
 
 struct Sample {
-    foo: Foo;
+    // foo: Foo;
 }
 
 func main() {
-    #inst = Sample { foo: Foo { name: String.new("Taha") } };
-    inst.foo.name.free();
-    inst.foo.name = String.new("Changed!");
-    inst.foo.bar();
+    #ptr = malloc(4);
+
+    free(ptr);
+    // #inst = Sample { foo: Foo { name: String.new("Taha") } };
+    // inst.foo.name.free();
+    // inst.foo.name = String.new("Changed!");
+    // inst.foo.bar();
+    // inst.foo.name.free();
 }
 
