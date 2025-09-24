@@ -590,7 +590,7 @@ impl<'a> CodeGenBuilder<'a> {
     ) -> InternalValue<'a> {
         let local_or_global_symbol = self
             .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), method_call.symbol_id)
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), method_call.object_symbol_id.unwrap())
             .unwrap();
 
         let (methods, module_id) = {

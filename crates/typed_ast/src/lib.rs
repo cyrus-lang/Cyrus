@@ -255,18 +255,18 @@ pub struct TypedFuncCall {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFieldAccess {
     pub operand: Box<TypedExpression>,
+    pub object_symbol_id: Option<SymbolID>,
     pub field_name: String,
     pub field_index: Option<usize>,
     pub field_ty: Option<ConcreteType>,
-    pub object_symbol_id: Option<SymbolID>,
     pub is_fat_arrow: bool,
     pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedMethodCall {
-    pub symbol_id: SymbolID,
     pub operand: Box<TypedExpression>,
+    pub object_symbol_id: Option<SymbolID>,
     pub method_name: String,
     pub args: Vec<TypedExpression>,
     pub is_fat_arrow: bool,
