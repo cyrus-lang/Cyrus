@@ -1,0 +1,46 @@
+public type c_int = int;
+public type c_uint = uint;
+
+public type c_int8_t = int8;
+public type c_int16_t = int16;
+public type c_int32_t = int32;
+public type c_int64_t = int64;
+public type c_int128_t = int128;
+
+public type c_uint8_t = uint8;
+public type c_uint16_t = uint16;
+public type c_uint32_t = uint32;
+public type c_uint64_t = uint64;
+public type c_uint128_t = uint128;
+
+public type c_signed_char = int8;
+public type c_unsigned_char = uint8;
+public type c_char = char;
+
+public type c_short = int16;
+public type c_unsigned_short = uint16;
+public type c_unsigned_int = uint32;
+public type c_long = int;
+public type c_unsigned_long = uint;
+public type c_long_long = int64;
+public type c_unsigned_long_long = uint64;
+
+public type c_bool = bool;
+public type c_void = void;
+public type c_size_t = size_t;
+public type c_ptrdiff_t = size_t;
+
+public type c_intptr_t = intptr;
+public type c_uintptr_t = uintptr;
+
+public type c_float = float32;
+public type c_double = float64;
+public type c_long_double = float128;
+
+public type c_wchar = int32;
+public type c_wint = int32;
+public type c_char16 = uint16;
+public type c_char32 = uint32;
+
+public type c_sig_atomic_t = int32;
+public type c_file = void*;

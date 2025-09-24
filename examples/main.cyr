@@ -1,0 +1,19 @@
+import std::libc{putchar};
+
+func main() {
+    putchar('a');
+    // #a = DataType.Int;
+    // #b = DataType.Int;
+
+    // if (a == b) {
+    //     printf("equal\n");
+    // } else {
+    //     printf("not equal\n");
+    // }
+}
+
+// enum DataType { 
+//     Int,
+//     Float,
+//     Text    
+// }

@@ -1,0 +1,1549 @@
+use crate::Parser;
+use crate::ParserError;
+use crate::diagnostics::ParserDiagKind;
+use crate::prec::Precedence;
+use ast::source_loc::SourceLoc;
+use ast::token::*;
+use ast::*;
+use diagcentral::Diag;
+use diagcentral::DiagLevel;
+use diagcentral::DiagLoc;
+
+const SWITCH_ENDING_TOKENS: &[TokenKind; 3] = &[TokenKind::Case, TokenKind::Default, TokenKind::RightBrace];
+
+impl Parser {
+    pub fn parse_statement(&mut self, toplevel: bool) -> Result<Statement, ParserError> {
+        if self.current_token_is(TokenKind::Extern)
+            || self.current_token_is(TokenKind::Inline)
+            || self.current_token_is(TokenKind::Public)
+        {
+            let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+
+            if self.current_token_is(TokenKind::Function) {
+                return self.parse_func(Some(vis));
+            } else if self.current_token_is(TokenKind::Struct) {
+                return self.parse_struct(Some(vis), false);
+            } else if self.current_token_is(TokenKind::Bits) {
+                return self.parse_struct(Some(vis), true);
+            } else if self.current_token_is(TokenKind::Enum) {
+                return self.parse_enum(Some(vis));
+            } else if self.current_token_is(TokenKind::Union) {
+                return self.parse_union(Some(vis));
+            } else if self.current_token_is(TokenKind::Typedef) {
+                return self.parse_typedef(Some(vis));
+            } else if let TokenKind::Identifier { .. } = self.current_token().kind {
+                return self.parse_global_variable(Some(vis));
+            } else if self.current_token_is(TokenKind::Interface) {
+                return self.parse_interface(Some(vis));
+            }
+        } else if self.current_token_is(TokenKind::Function) {
+            return self.parse_func(None);
+        } else if self.current_token_is(TokenKind::Struct) {
+            return self.parse_struct(None, false);
+        } else if self.current_token_is(TokenKind::Bits) {
+            return self.parse_struct(None, true);
+        } else if self.current_token_is(TokenKind::Enum) {
+            return self.parse_enum(None);
+        } else if self.current_token_is(TokenKind::Union) {
+            return self.parse_union(None);
+        } else if self.current_token_is(TokenKind::Typedef) {
+            return self.parse_typedef(None);
+        } else if self.current_token_is(TokenKind::Interface) {
+            return self.parse_interface(None);
+        } else if let TokenKind::Identifier { .. } = self.current_token().kind {
+            if toplevel && (self.peek_token_is(TokenKind::Colon) || self.peek_token_is(TokenKind::Assign)) {
+                return self.parse_global_variable(None);
+            }
+        }
+
+        if !toplevel {
+            match self.current_token().kind {
+                TokenKind::If => self.parse_if(),
+                TokenKind::Hashtag => self.parse_variable(),
+                TokenKind::Return => self.parse_return(),
+                TokenKind::For => self.parse_for_loop(),
+                TokenKind::While => self.parse_while_loop(),
+                TokenKind::Foreach => self.parse_foreach(),
+                TokenKind::Break => self.parse_break(),
+                TokenKind::Continue => self.parse_continue(),
+                TokenKind::Switch => self.parse_switch(),
+                TokenKind::LeftBrace => {
+                    let block_statement = self.parse_block_statement()?;
+                    Ok(Statement::BlockStatement(block_statement))
+                }
+                _ => self.parse_expression_statement(),
+            }
+        } else {
+            match self.current_token().kind {
+                TokenKind::Import => self.parse_import(),
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc,
+                            self.file_name.clone(),
+                        ))),
+                        hint: None,
+                    });
+                }
+            }
+        }
+    }
+
+    pub fn parse_expression_statement(&mut self) -> Result<Statement, ParserError> {
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
+        self.expect_peek(TokenKind::Semicolon)?;
+        Ok(Statement::Expression(expr))
+    }
+
+    pub fn parse_enum_field(&mut self) -> Result<EnumVariant, ParserError> {
+        let loc = self.current_token().loc.clone();
+
+        let variant_name = self.parse_identifier()?;
+        self.next_token();
+
+        let mut variant_fields: Vec<EnumValuedField> = Vec::new();
+
+        if self.current_token_is(TokenKind::Comma) || self.current_token_is(TokenKind::RightBrace) {
+            return Ok(EnumVariant::Identifier(variant_name));
+        } else if self.current_token_is(TokenKind::Assign) {
+            self.next_token(); // consume assign
+            let value = self.parse_expression(Precedence::Lowest)?.0;
+            self.next_token(); // consume last token of the expression
+            return Ok(EnumVariant::Valued(variant_name, Box::new(value)));
+        } else if self.current_token_is(TokenKind::LeftParen) {
+            self.next_token(); // consume left paren
+
+            loop {
+                if self.current_token_is(TokenKind::RightParen) {
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                        hint: Some(String::from(
+                            "Consider to add a field to enum variant or remove the parenthesis.",
+                        )),
+                    });
+                }
+
+                let loc = self.current_token().loc.clone();
+                let field_type = self.parse_type_specifier()?;
+                self.next_token();
+
+                variant_fields.push(EnumValuedField { field_type, loc });
+
+                if self.current_token_is(TokenKind::RightParen) {
+                    self.next_token();
+                    break;
+                } else {
+                    self.expect_current(TokenKind::Comma)?;
+                    continue;
+                }
+            }
+        }
+
+        return Ok(EnumVariant::Variant(variant_name, variant_fields));
+    }
+
+    fn parse_union_field(&mut self) -> Result<UnionField, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let identifier = self.parse_identifier()?;
+        self.next_token(); // consume identifier
+
+        self.expect_current(TokenKind::Colon)?;
+
+        let type_token = self.parse_type_specifier()?;
+        self.next_token();
+
+        let field = UnionField {
+            identifier,
+            ty: type_token,
+            loc,
+            span: Span {
+                start,
+                end: self.current_token().span.end,
+            },
+        };
+
+        self.expect_current(TokenKind::Semicolon)?;
+        Ok(field)
+    }
+
+    pub fn parse_union(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume union token
+        let identifier = self.parse_identifier()?;
+        self.next_token();
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Statement::Union(Union {
+                identifier,
+                methods: Vec::new(),
+                fields: Vec::new(),
+                vis: vis.unwrap_or(AccessSpecifier::Internal),
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }));
+        }
+
+        let mut fields: Vec<UnionField> = Vec::new();
+        let mut methods: Vec<FuncDef> = Vec::new();
+
+        loop {
+            match self.current_token().kind {
+                TokenKind::RightBrace => {
+                    break;
+                }
+                TokenKind::EOF => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingClosingBrace,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc,
+                            self.file_name.clone(),
+                        ))),
+                        hint: None,
+                    });
+                }
+                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                    let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+
+                    let method = match self.parse_func(Some(vis))? {
+                        Statement::FuncDef(func_def) => func_def,
+                        _ => unreachable!(),
+                    };
+                    self.next_token(); // consume right brace
+                    methods.push(method);
+                }
+                TokenKind::Function => {
+                    if let Statement::FuncDef(method) = self.parse_func(None)? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                TokenKind::Identifier { .. } => {
+                    let field = self.parse_union_field()?;
+                    fields.push(field);
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc,
+                            self.file_name.clone(),
+                        ))),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        Ok(Statement::Union(Union {
+            identifier,
+            methods,
+            fields,
+            vis: vis.unwrap_or(AccessSpecifier::Internal),
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
+    }
+
+    pub fn parse_enum(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+        let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
+        let loc = self.current_token().loc.clone();
+        let start = self.current_token().span.start;
+
+        self.next_token(); // parse enum keyword
+
+        let enum_name = self.parse_identifier()?;
+        self.next_token(); // consume enum name
+
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut enum_fields: Vec<EnumVariant> = Vec::new();
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Statement::Enum(Enum {
+                identifier: enum_name,
+                variants: enum_fields,
+                methods: Vec::new(),
+                vis,
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }));
+        }
+
+        enum_fields.push(self.parse_enum_field()?);
+
+        while self.current_token_is(TokenKind::Comma) {
+            self.expect_current(TokenKind::Comma)?;
+
+            if self.current_token_is(TokenKind::RightBrace) {
+                break;
+            }
+
+            enum_fields.push(self.parse_enum_field()?);
+            if self.peek_token_is(TokenKind::RightBrace)
+                || self.peek_token_is(TokenKind::Function)
+                || self.peek_token_is(TokenKind::Extern)
+                || self.peek_token_is(TokenKind::Public)
+                || self.peek_token_is(TokenKind::Inline)
+            {
+                break;
+            }
+        }
+
+        // consume optional comma at the end of the variant
+        if self.current_token_is(TokenKind::Comma) {
+            self.next_token();
+        }
+
+        let mut methods: Vec<FuncDef> = Vec::new();
+
+        loop {
+            match self.current_token().kind {
+                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                    let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+                    if let Statement::FuncDef(method) = self.parse_func(Some(vis))? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                TokenKind::Function => {
+                    if let Statement::FuncDef(method) = self.parse_func(None)? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+
+        Ok(Statement::Enum(Enum {
+            identifier: enum_name,
+            variants: enum_fields,
+            methods,
+            vis,
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
+    }
+
+    pub fn parse_struct(&mut self, vis: Option<AccessSpecifier>, packed: bool) -> Result<Statement, ParserError> {
+        let loc = self.current_token().loc.clone();
+        let struct_start = self.current_token().span.start.clone();
+
+        let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
+        self.next_token(); // consume struct token
+
+        let struct_name = self.parse_identifier()?;
+        self.next_token(); // consume struct name
+
+        let mut impls: Vec<Identifier> = Vec::new();
+
+        if self.current_token_is(TokenKind::Colon) {
+            self.next_token();
+
+            loop {
+                match self.current_token().kind {
+                    TokenKind::LeftBrace => {
+                        self.next_token();
+                        break;
+                    }
+                    TokenKind::EOF => {
+                        return Err(Diag {
+                            kind: ParserDiagKind::MissingOpeningBrace,
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                            hint: None,
+                        });
+                    }
+                    TokenKind::Identifier { name: inherit_struct } => {
+                        self.next_token();
+                        impls.push(Identifier {
+                            name: inherit_struct,
+                            span: self.current_token().span.clone(),
+                            loc: loc.clone(),
+                        });
+                    }
+                    TokenKind::Comma => {
+                        self.next_token();
+                        continue;
+                    }
+                    _ => {
+                        return Err(Diag {
+                            kind: ParserDiagKind::ExpectedIdentifier,
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                            hint: None,
+                        });
+                    }
+                }
+            }
+        } else {
+            self.expect_current(TokenKind::LeftBrace)?;
+        }
+
+        let mut fields: Vec<StructField> = Vec::new();
+        let mut methods: Vec<FuncDef> = Vec::new();
+
+        loop {
+            match self.current_token().kind {
+                TokenKind::RightBrace => {
+                    break;
+                }
+                TokenKind::EOF => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingClosingBrace,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc,
+                            self.file_name.clone(),
+                        ))),
+                        hint: None,
+                    });
+                }
+                TokenKind::Extern | TokenKind::Public | TokenKind::Inline => {
+                    let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
+
+                    if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
+                        let field = self.parse_struct_field(None)?;
+                        fields.push(field);
+                    } else {
+                        if let Statement::FuncDef(method) = self.parse_func(Some(vis))? {
+                            self.next_token(); // consume right brace
+                            methods.push(method);
+                        } else {
+                            unreachable!();
+                        }
+                    }
+                }
+                TokenKind::Function => {
+                    if let Statement::FuncDef(method) = self.parse_func(None)? {
+                        self.next_token(); // consume right brace
+                        methods.push(method);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                TokenKind::Identifier { .. } => {
+                    let field = self.parse_struct_field(None)?;
+                    fields.push(field);
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc,
+                            self.file_name.clone(),
+                        ))),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        Ok(Statement::Struct(Struct {
+            identifier: struct_name,
+            impls,
+            vis,
+            fields,
+            methods,
+            packed,
+            loc,
+            span: Span {
+                start: struct_start,
+                end: self.current_token().span.end,
+            },
+        }))
+    }
+
+    fn parse_struct_field(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<StructField, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let identifier = self.parse_identifier()?;
+        self.next_token(); // consume identifier
+
+        self.expect_current(TokenKind::Colon)?;
+
+        let type_token = self.parse_type_specifier()?;
+        self.next_token();
+
+        let field = StructField {
+            identifier,
+            ty: type_token,
+            vis: access_specifier.unwrap_or(AccessSpecifier::Internal),
+            loc,
+            span: Span {
+                start,
+                end: self.current_token().span.end,
+            },
+        };
+
+        self.expect_current(TokenKind::Semicolon)?;
+        Ok(field)
+    }
+
+    pub fn parse_break(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token();
+        if !self.current_token_is(TokenKind::Semicolon) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingSemicolon,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                hint: None,
+            });
+        } else {
+            Ok(Statement::Break(Break {
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }))
+        }
+    }
+
+    pub fn parse_continue(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token();
+        if !self.current_token_is(TokenKind::Semicolon) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingSemicolon,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                hint: None,
+            });
+        } else {
+            Ok(Statement::Continue(Continue {
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }))
+        }
+    }
+
+    pub fn parse_import_module_path(&mut self, module_path: ModulePath) -> Result<ModulePath, ParserError> {
+        if self.current_token_is(TokenKind::LeftBrace) {
+            self.next_token();
+
+            let mut singles: Vec<ModuleSegmentSingle> = Vec::new();
+
+            while !self.current_token_is(TokenKind::RightBrace) {
+                // enable aliasing features for a single
+                let first_identifier = self.parse_identifier()?;
+                self.next_token();
+
+                if self.current_token_is(TokenKind::Colon) {
+                    self.next_token(); // consume colon
+
+                    let second_identifier = self.parse_identifier()?;
+                    self.next_token();
+
+                    let renamed_single = ModuleSegmentSingle {
+                        identifier: second_identifier,
+                        renamed: Some(first_identifier),
+                    };
+                    singles.push(renamed_single);
+                } else {
+                    let single = ModuleSegmentSingle {
+                        identifier: first_identifier,
+                        renamed: None,
+                    };
+                    singles.push(single);
+                }
+
+                if !self.current_token_is(TokenKind::RightBrace) {
+                    self.expect_current(TokenKind::Comma)?;
+                }
+            }
+
+            self.expect_current(TokenKind::RightBrace)?;
+
+            let mut updated_module_path = module_path.clone();
+            updated_module_path.segments.push(ModuleSegment::Single(singles));
+            Ok(updated_module_path)
+        } else {
+            Ok(module_path)
+        }
+    }
+
+    pub fn parse_interface(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+        let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
+
+        self.next_token();
+        let identifier = self.parse_identifier()?;
+        self.next_token();
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut methods: Vec<FuncDecl> = Vec::new();
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            return Ok(Statement::Interface(Interface {
+                identifier,
+                methods,
+                loc,
+                vis,
+                span: Span::new(start, self.current_token().span.end),
+            }));
+        }
+
+        loop {
+            match self.current_token().kind {
+                TokenKind::Function => {
+                    let func_decl = match self.parse_func(Some(vis.clone()))? {
+                        Statement::FuncDecl(func_decl) => func_decl,
+                        _ => {
+                            return Err(Diag {
+                                level: DiagLevel::Error,
+                                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                    self.current_token().loc,
+                                    self.file_name.clone(),
+                                ))),
+                                hint: None,
+                            });
+                        }
+                    };
+
+                    methods.push(func_decl);
+
+                    if !self.peek_token_is(TokenKind::RightBrace) {
+                        self.expect_current(TokenKind::Semicolon)?;
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        self.expect_peek(TokenKind::RightBrace)?;
+
+        Ok(Statement::Interface(Interface {
+            identifier,
+            methods,
+            loc,
+            vis,
+            span: Span::new(start, self.current_token().span.end),
+        }))
+    }
+
+    pub fn parse_import(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume import keyword
+
+        let mut paths: Vec<ModulePath> = Vec::new();
+
+        if self.current_token_is(TokenKind::LeftParen) {
+            self.expect_current(TokenKind::LeftParen)?;
+
+            loop {
+                let mut module_path = self.parse_module_path()?;
+                module_path = self.parse_import_module_path(module_path.clone())?;
+                paths.push(module_path);
+
+                match self.current_token().kind {
+                    TokenKind::RightParen => {
+                        break;
+                    }
+                    TokenKind::Comma => {
+                        self.next_token();
+
+                        if self.current_token_is(TokenKind::RightParen) {
+                            break;
+                        } else {
+                            continue;
+                        }
+                    }
+                    _ => {
+                        return Err(Diag {
+                            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                self.current_token().loc,
+                                self.file_name.clone(),
+                            ))),
+                            hint: None,
+                        });
+                    }
+                }
+            }
+
+            self.expect_current(TokenKind::RightParen)?;
+        } else {
+            let mut module_path = self.parse_module_path()?;
+            module_path = self.parse_import_module_path(module_path.clone())?;
+            paths = vec![module_path];
+        }
+
+        return Ok(Statement::Import(Import {
+            paths,
+            span: Span {
+                start,
+                end: self.current_token().span.end,
+            },
+            loc,
+        }));
+    }
+
+    pub fn parse_func_params(&mut self) -> Result<FuncParams, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let mut variadic: Option<FuncVariadicParams> = None;
+        let mut list: Vec<FuncParamKind> = Vec::new();
+        let mut self_modifier_count: u32 = 0;
+
+        while self.current_token().kind != TokenKind::RightParen {
+            match self.current_token().kind {
+                TokenKind::TripleDot => {
+                    self.next_token(); // consume triple_dot
+
+                    if self.current_token_is(TokenKind::Comma) {
+                        return Err(Diag {
+                            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                self.current_token().loc,
+                                self.file_name.clone(),
+                            ))),
+                            hint: Some("Fixed parameters must be defined before the vargs.".to_string()),
+                        });
+                    }
+
+                    variadic = Some(FuncVariadicParams::UntypedCStyle);
+                    break;
+                }
+                TokenKind::Ampersand => {
+                    self.next_token(); // ampersand
+                    let identifier = self.parse_identifier()?;
+                    self.next_token(); // consume identifier
+
+                    if &identifier.name != "self" {
+                        return Err(Diag {
+                            kind: ParserDiagKind::ExpectedSelfModifier(identifier.name.clone()),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                            hint: None,
+                        });
+                    }
+
+                    self_modifier_count += 1;
+                    list.push(FuncParamKind::SelfModifier(SelfModifier {
+                        kind: SelfModifierKind::Referenced,
+                        loc: loc.clone(),
+                        span: Span::new(start, self.current_token().span.end),
+                    }));
+                }
+                TokenKind::Identifier { name } => {
+                    let param_loc = self.current_token().loc.clone();
+                    let start = self.current_token().span.start;
+                    let identifier = self.parse_identifier()?;
+                    self.next_token(); // consume the identifier
+
+                    if identifier.name == "self" {
+                        self_modifier_count += 1;
+                        list.push(FuncParamKind::SelfModifier(SelfModifier {
+                            kind: SelfModifierKind::Copied,
+                            loc: param_loc,
+                            span: Span::new(start, self.current_token().span.end),
+                        }));
+                    } else {
+                        // get the var type
+
+                        let mut var_type: Option<TypeSpecifier> = None;
+                        if self.current_token_is(TokenKind::Colon) {
+                            self.next_token(); // consume the colon
+
+                            if self.current_token_is(TokenKind::TripleDot) {
+                                self.next_token(); // consume triple dot
+
+                                let variadic_data_type = self.parse_type_specifier()?;
+                                self.next_token();
+
+                                variadic = Some(FuncVariadicParams::Typed(identifier, variadic_data_type));
+                                continue;
+                            } else {
+                                var_type = Some(self.parse_type_specifier()?);
+                                self.next_token();
+                            }
+                        }
+
+                        list.push(FuncParamKind::FuncParam(FuncParam {
+                            identifier: Identifier {
+                                name: name,
+                                span: self.current_token().span.clone(),
+                                loc: param_loc.clone(),
+                            },
+                            ty: var_type,
+                            span: Span {
+                                start: start,
+                                end: self.current_token().span.end,
+                            },
+                            loc: param_loc,
+                        }));
+                    }
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::ExpectedIdentifier,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                        hint: None,
+                    });
+                }
+            }
+
+            // after reading
+            match &self.current_token().kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                }
+                TokenKind::RightParen => {
+                    break;
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingComma,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        if self_modifier_count > 1 {
+            return Err(Diag {
+                kind: ParserDiagKind::SeveralSelfModifierDefinition,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                hint: None,
+            });
+        }
+
+        self.expect_current(TokenKind::RightParen)?;
+
+        Ok(FuncParams { list, variadic })
+    }
+
+    pub fn parse_for_loop_body(&mut self) -> Result<Box<BlockStatement>, ParserError> {
+        let loc = self.current_token().loc.clone();
+
+        let body: Box<BlockStatement>;
+        if self.current_token_is(TokenKind::LeftBrace) {
+            body = Box::new(self.parse_block_statement()?);
+
+            if self.peek_token_is(TokenKind::Semicolon) {
+                self.next_token();
+            }
+        } else {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingOpeningBrace,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                hint: None,
+            });
+        }
+        Ok(body)
+    }
+
+    pub fn parse_foreach(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.end;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume foreach
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let item_identifier = self.parse_identifier()?;
+        self.next_token();
+
+        let mut index_identifier: Option<Identifier> = None;
+
+        if self.current_token_is(TokenKind::Comma) {
+            self.next_token(); // consume comma
+            index_identifier = Some(self.parse_identifier()?);
+            self.next_token();
+        }
+
+        self.expect_current(TokenKind::In)?;
+
+        let expr = self.parse_expression(Precedence::Lowest)?.0;
+        self.next_token();
+
+        self.expect_current(TokenKind::RightParen)?;
+
+        let body = self.parse_block_statement()?;
+
+        Ok(Statement::Foreach(Foreach {
+            item: item_identifier,
+            index: index_identifier,
+            expr,
+            body: Box::new(body),
+            span: Span::new(start, self.current_token().span.end),
+            loc,
+        }))
+    }
+
+    pub fn parse_while_loop(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume while token
+        self.expect_current(TokenKind::LeftParen)?;
+        let condition = self.parse_expression(Precedence::Lowest)?.0;
+        self.next_token();
+        self.expect_current(TokenKind::RightParen)?;
+
+        let body = self.parse_block_statement()?;
+
+        Ok(Statement::While(While {
+            condition,
+            body: Box::new(body),
+            span: Span::new(start, self.current_token().span.end),
+            loc,
+        }))
+    }
+
+    pub fn parse_for_loop(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume for token
+
+        // Check for non-conditional for loop
+        if self.current_token_is(TokenKind::LeftBrace) {
+            let body: Box<BlockStatement>;
+            if self.current_token_is(TokenKind::LeftBrace) {
+                body = Box::new(self.parse_block_statement()?);
+
+                if self.peek_token_is(TokenKind::Semicolon) {
+                    self.next_token();
+                }
+            } else {
+                return Err(Diag {
+                    kind: ParserDiagKind::MissingOpeningBrace,
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                    hint: None,
+                });
+            }
+
+            return Ok(Statement::For(For {
+                initializer: None,
+                condition: None,
+                increment: None,
+                body,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            }));
+        }
+
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let mut initializer: Option<Variable> = None;
+        if !self.current_token_is(TokenKind::Semicolon) {
+            if let Statement::Variable(var) = self.parse_variable()? {
+                initializer = Some(var);
+            }
+        }
+        self.expect_current(TokenKind::Semicolon)?;
+
+        // for loop with only initializer expression
+        if self.peek_token_is(TokenKind::LeftBrace) {
+            self.expect_current(TokenKind::RightParen)?;
+
+            let body = self.parse_for_loop_body()?;
+            return Ok(Statement::For(For {
+                initializer,
+                condition: None,
+                increment: None,
+                body,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            }));
+        }
+
+        let condition = self.parse_expression(Precedence::Lowest)?.0;
+        self.expect_peek(TokenKind::Semicolon)?;
+        self.next_token();
+
+        let mut increment: Option<Expression> = None;
+        if !self.current_token_is(TokenKind::RightParen) {
+            increment = Some(self.parse_expression(Precedence::Lowest)?.0);
+            self.next_token(); // consume increment token
+        }
+
+        self.expect_current(TokenKind::RightParen)?;
+        let body = self.parse_for_loop_body()?;
+
+        Ok(Statement::For(For {
+            initializer,
+            condition: Some(condition),
+            increment,
+            body,
+            span: Span {
+                start,
+                end: self.current_token().span.end,
+            },
+            loc,
+        }))
+    }
+
+    pub fn parse_variable(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume sharp token
+
+        let identifier = self.parse_identifier()?;
+        self.next_token();
+
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::Variable(Variable {
+                identifier,
+                ty: None,
+                rhs: None,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            }));
+        }
+
+        let mut variable_type: Option<TypeSpecifier> = None;
+        if self.current_token_is(TokenKind::Colon) {
+            self.next_token(); // consume the colon
+
+            variable_type = Some(self.parse_type_specifier()?);
+            self.next_token();
+        }
+
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::Variable(Variable {
+                identifier,
+                ty: variable_type,
+                rhs: None,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            }));
+        }
+        self.expect_current(TokenKind::Assign)?;
+
+        let (expr, span) = self.parse_expression(Precedence::Lowest)?;
+        self.expect_peek(TokenKind::Semicolon)?;
+
+        Ok(Statement::Variable(Variable {
+            identifier,
+            rhs: Some(expr),
+            span: Span { start, end: span.end },
+            ty: variable_type,
+            loc,
+        }))
+    }
+
+    pub fn parse_func(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let vis: AccessSpecifier = vis.unwrap_or(AccessSpecifier::Internal);
+
+        self.next_token(); // consume the fn token
+
+        let func_name = self.parse_identifier()?; // export the name of the function
+        self.next_token(); // consume the name of the identifier
+
+        let params = self.parse_func_params()?;
+
+        let return_type: Option<TypeSpecifier>;
+
+        // parse return type
+        if self.current_token_is(TokenKind::LeftBrace) {
+            return_type = None;
+        } else if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::FuncDecl(FuncDecl {
+                identifier: func_name,
+                params,
+                return_type: None,
+                vis,
+                renamed_as: None,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            }));
+        } else if self.current_token_is(TokenKind::As) {
+            self.next_token();
+            let renamed_as = self.parse_identifier()?;
+            self.next_token();
+
+            return Ok(Statement::FuncDecl(FuncDecl {
+                identifier: func_name,
+                params,
+                return_type: None,
+                vis,
+                renamed_as: Some(renamed_as),
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            }));
+        } else {
+            return_type = Some(self.parse_type_specifier()?);
+            self.next_token();
+        }
+
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::FuncDecl(FuncDecl {
+                identifier: func_name,
+                params,
+                return_type,
+                vis,
+                renamed_as: None,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            }));
+        } else if self.current_token_is(TokenKind::As) {
+            self.next_token();
+
+            // parse renamed func decl
+            let renamed_as = self.parse_identifier()?;
+
+            if self.peek_token_is(TokenKind::Semicolon) {
+                self.next_token();
+            } else if self.peek_token_is(TokenKind::LeftBrace) {
+                return Err(Diag {
+                    kind: ParserDiagKind::InvalidToken(self.peek_token().kind),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                    hint: Some(String::from(
+                        "FuncDecl does not accept a body. Use a semicolon `;` instead of a body `{ ... }`.",
+                    )),
+                });
+            }
+
+            return Ok(Statement::FuncDecl(FuncDecl {
+                identifier: func_name,
+                params,
+                return_type,
+                vis,
+                renamed_as: Some(renamed_as),
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            }));
+        }
+
+        let body = Box::new(self.parse_block_statement()?);
+        let end = self.current_token().span.end;
+
+        return Ok(Statement::FuncDef(FuncDef {
+            identifier: func_name,
+            params,
+            body,
+            return_type,
+            vis,
+            span: Span { start, end },
+            loc,
+        }));
+    }
+
+    pub fn parse_return(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume return token
+
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::Return(Return {
+                argument: None,
+                span: Span::new(start, self.current_token().span.end),
+                loc,
+            }));
+        }
+
+        let argument = self.parse_expression(Precedence::Lowest)?.0;
+        self.next_token();
+
+        if !self.current_token_is(TokenKind::Semicolon) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingSemicolon,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                hint: None,
+            });
+        }
+
+        let end = self.peek_token().span.end;
+
+        Ok(Statement::Return(Return {
+            argument: Some(argument),
+            span: Span { start, end },
+            loc,
+        }))
+    }
+
+    pub fn parse_block_statement(&mut self) -> Result<BlockStatement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut block_statement: Vec<Statement> = Vec::new();
+
+        if self.current_token_is(TokenKind::RightBrace) {
+            // detected empty block statement
+            return Ok(BlockStatement {
+                exprs: block_statement,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            });
+        }
+
+        loop {
+            let statement = self.parse_statement(false)?;
+            block_statement.push(statement);
+
+            match self.peek_token().kind {
+                TokenKind::RightBrace => break,
+                _ => {
+                    self.next_token();
+                }
+            }
+        }
+
+        self.expect_peek(TokenKind::RightBrace)?;
+        let end = self.current_token().span.end;
+
+        Ok(BlockStatement {
+            exprs: block_statement,
+            span: Span { start, end },
+            loc,
+        })
+    }
+
+    pub fn parse_global_variable(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+        let loc = self.current_token().loc.clone();
+        let start = self.current_token().span.start;
+        let identifier = self.parse_identifier()?;
+        self.next_token();
+
+        let mut type_specifier: Option<TypeSpecifier> = None;
+        if self.current_token_is(TokenKind::Colon) {
+            self.next_token();
+            type_specifier = Some(self.parse_type_specifier()?);
+            self.next_token();
+        }
+
+        let expr = {
+            if self.current_token_is(TokenKind::Assign) {
+                self.next_token();
+                let expr = Some(self.parse_expression(Precedence::Lowest)?.0);
+                self.next_token();
+                expr
+            } else {
+                None
+            }
+        };
+
+        Ok(Statement::GlobalVariable(GlobalVariable {
+            vis: vis.unwrap_or(AccessSpecifier::Internal),
+            identifier,
+            type_specifier,
+            expr,
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
+    }
+
+    pub fn parse_typedef(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
+        let loc = self.current_token().loc.clone();
+        let start = self.current_token().span.start;
+
+        self.next_token();
+        let identifier = self.parse_identifier()?;
+        self.next_token();
+        self.expect_current(TokenKind::Assign)?;
+        let type_specifier = self.parse_type_specifier()?;
+        self.next_token();
+        Ok(Statement::Typedef(Typedef {
+            vis: vis.unwrap_or(AccessSpecifier::Internal),
+            identifier,
+            type_specifier,
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
+    }
+
+    pub fn parse_case_body(&mut self) -> Result<BlockStatement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let mut block_statement: Vec<Statement> = Vec::new();
+
+        if SWITCH_ENDING_TOKENS.contains(&self.current_token().kind) {
+            // detected empty block statement
+            return Ok(BlockStatement {
+                exprs: block_statement,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            });
+        }
+
+        loop {
+            let statement = self.parse_statement(false)?;
+            block_statement.push(statement);
+
+            if SWITCH_ENDING_TOKENS.contains(&self.peek_token().kind) {
+                break;
+            } else {
+                self.next_token();
+            }
+        }
+
+        let end = self.current_token().span.end;
+
+        Ok(BlockStatement {
+            exprs: block_statement,
+            span: Span { start, end },
+            loc,
+        })
+    }
+
+    pub fn parse_switch(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token();
+        self.expect_current(TokenKind::LeftParen)?;
+        let operand = self.parse_expression(Precedence::Lowest)?.0;
+        self.next_token();
+        self.expect_current(TokenKind::RightParen)?;
+        self.expect_current(TokenKind::LeftBrace)?;
+
+        let mut cases: Vec<SwitchCase> = Vec::new();
+        let mut default_case: Option<BlockStatement> = None;
+
+        loop {
+            if self.current_token_is(TokenKind::Case) {
+                let case_loc = self.current_token().loc.clone();
+                let case_start = self.current_token().span.start;
+                self.next_token();
+
+                fn parse_pattern(this: &mut Parser) -> Result<SwitchCasePattern, ParserError> {
+                    let case_pattern = if this.current_token_is(TokenKind::Dot) {
+                        this.next_token();
+                        let identifier = this.parse_identifier()?;
+                        this.next_token();
+
+                        if this.current_token_is(TokenKind::LeftParen) {
+                            this.next_token();
+                            let mut items: Vec<Identifier> = Vec::new();
+                            loop {
+                                let item = this.parse_identifier()?;
+                                this.next_token();
+                                items.push(item);
+                                if this.current_token_is(TokenKind::RightParen) {
+                                    break;
+                                } else {
+                                    this.expect_current(TokenKind::Comma)?;
+                                }
+                            }
+                            this.expect_current(TokenKind::RightParen)?;
+                            SwitchCasePattern::EnumVariant(identifier, items)
+                        } else {
+                            SwitchCasePattern::Identifier(identifier)
+                        }
+                    } else {
+                        let expr = this.parse_expression(Precedence::Lowest)?.0;
+                        this.next_token();
+                        SwitchCasePattern::Expression(expr)
+                    };
+                    Ok(case_pattern)
+                }
+
+                let pattern = parse_pattern(self)?;
+
+                self.expect_current(TokenKind::Colon)?;
+                let case_body;
+                if SWITCH_ENDING_TOKENS.contains(&self.current_token().kind) {
+                    case_body = BlockStatement {
+                        exprs: Vec::new(),
+                        span: Span::new(case_start, self.current_token().span.end),
+                        loc: case_loc.clone(),
+                    };
+                } else {
+                    case_body = self.parse_case_body()?;
+                    self.next_token();
+                }
+
+                cases.push(SwitchCase {
+                    pattern,
+                    body: case_body,
+                    span: Span::new(case_start, self.current_token().span.end),
+                    loc: case_loc,
+                });
+            } else if self.current_token_is(TokenKind::Default) {
+                self.next_token();
+                self.expect_current(TokenKind::Colon)?;
+                let case_body = self.parse_case_body()?;
+                self.next_token();
+                default_case = Some(case_body);
+                break;
+            } else {
+                break;
+            }
+        }
+
+        if !self.current_token_is(TokenKind::RightBrace) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingClosingBrace,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                hint: None,
+            });
+        }
+
+        Ok(Statement::Switch(Switch {
+            operand,
+            cases,
+            default_case,
+            span: Span::new(start, self.current_token().span.end),
+            loc,
+        }))
+    }
+
+    pub fn parse_if(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let mut branches: Vec<If> = Vec::new();
+        let mut alternate: Option<Box<BlockStatement>> = None;
+
+        self.expect_current(TokenKind::If)?;
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let condition = self.parse_expression(Precedence::Lowest)?.0;
+        self.expect_peek(TokenKind::RightParen)?;
+        self.next_token(); // consume right paren
+
+        let consequent = Box::new(self.parse_block_statement()?);
+
+        if self.peek_token_is(TokenKind::Else) {
+            self.next_token(); // consume right brace
+        }
+
+        while self.current_token_is(TokenKind::Else) {
+            self.next_token(); // consume else token
+
+            if self.current_token_is(TokenKind::If) {
+                let else_if_start = self.current_token().span.start;
+                self.next_token(); // consume if token
+
+                self.expect_current(TokenKind::LeftParen)?;
+                let (condition, _) = self.parse_expression(Precedence::Lowest)?;
+                self.next_token(); // consume last token of the expression
+                self.expect_current(TokenKind::RightParen)?;
+
+                let consequent = Box::new(self.parse_block_statement()?);
+
+                if self.peek_token_is(TokenKind::Else) {
+                    self.next_token(); // consume else token
+                }
+
+                let end = self.current_token().span.end;
+
+                branches.push(If {
+                    condition,
+                    consequent,
+                    branches: Vec::new(),
+                    alternate: None,
+                    span: Span {
+                        start: else_if_start,
+                        end,
+                    },
+                    loc: loc.clone(),
+                });
+            } else {
+                // parse alternate
+                alternate = Some(Box::new(self.parse_block_statement()?));
+
+                if !(self.current_token_is(TokenKind::RightBrace) || self.current_token_is(TokenKind::EOF)) {
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingClosingBrace,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        if !self.current_token_is(TokenKind::RightBrace) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingClosingBrace,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                hint: None,
+            });
+        }
+
+        let end = self.current_token().span.end;
+
+        Ok(Statement::If(If {
+            condition,
+            consequent,
+            branches,
+            alternate,
+            span: Span { start, end },
+            loc,
+        }))
+    }
+}

@@ -1,0 +1,18 @@
+[package]
+name = "parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lexer = { path = "../lexer", version = "*" }
+ast = { path = "../ast", version = "*" }
+utils = { path = "../utils", version = "*" }
+diagcentral = { path = "../diagcentral", version = "*" }
+
+[lib]
+name = "parser"
+path = "./src/lib.rs"
+
+[[bin]]
+name = "parser"
+path = "./src/cli.rs"

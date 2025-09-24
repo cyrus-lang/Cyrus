@@ -1,0 +1,21 @@
+[package]
+name = "resolver"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+diagcentral = { path = "../diagcentral", version = "*" }
+typed_ast = { path = "../typed_ast", version = "*" }
+parser = { path = "../parser", version = "*" }
+lexer = { path = "../lexer", version = "*" }
+utils = { path = "../utils", version = "*" }
+ast = { path = "../ast", version = "*" }
+rand = "0.9.0"
+
+[lib]
+name = "resolver"
+path = "./src/lib.rs"
+
+[[bin]]
+name = "resolver"
+path = "./src/cli.rs"

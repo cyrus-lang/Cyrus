@@ -1,0 +1,22 @@
+import std::libc;
+
+public struct Logger {
+	group_name: char*;
+
+    public func new(group_name: char*) Logger { 
+		Logger.logger_initialized();
+		return Logger { group_name: group_name };
+	}
+
+	public func logf(&self, format: char*) {
+		libc::printf("[info][%s] %s\n", self->group_name, format);
+	}
+
+	public func errorf(self, format: char*) {
+		libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
+	}
+
+    func logger_initialized() {
+        libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
+    }
+}

@@ -1,0 +1,8 @@
+**target**
+*.ll
+tmp/**
+.vscode
+result
+**.o
+build/
+.rustup

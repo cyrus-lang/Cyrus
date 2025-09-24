@@ -1,0 +1,12 @@
+extern func printf(format: const char*, ...);
+extern func malloc(size: uint) void*;
+extern func free(pointer: void*);
+
+func main() {
+    #int_ptr: int* = malloc(sizeof int);
+    *int_ptr = 369;
+
+    printf("value: %d\n", *int_ptr);
+
+    free(int_ptr);
+}

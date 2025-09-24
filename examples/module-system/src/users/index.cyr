@@ -1,0 +1,5 @@
+public extern fn printf(format: const char*, ...): int32;
+
+public fn sample() {
+    // printf("Hello index\n");
+}

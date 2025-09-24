@@ -1,0 +1,16 @@
+[project]
+name = "module-system"
+version = "0.0.1"
+type = "executable"
+authors = ["<John Doe> john_doe@mail.com"]
+
+[dependencies]
+libraries = []
+library_path = []
+
+[compiler]
+cpu = "generic"
+optimize = "o1"
+sources = ["src/*"]
+version = "0.1.0"
+build_dir = "./build"
