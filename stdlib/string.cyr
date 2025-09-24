@@ -1,0 +1,30 @@
+import std::core{panic};
+import std::libc{strlen, malloc, memcpy, free};
+
+public struct String {
+    data: char*;
+    length: size_t;
+    capacity: size_t;
+
+    public func new(init: const char*) String {
+        #len = strlen(init);
+        #cap = len + 1;
+        #inst: String;
+        inst.data = malloc(cap);
+        if (!inst.data) {
+            panic("failed to allocate memory for string.");
+        }
+        memcpy(inst.data, init, len + 1);
+        inst.length = len;
+        inst.capacity = cap;
+        return inst;
+    }
+
+    public func free(&self) {
+       
+    }
+
+    public func c_str(&self) char* {
+        return cast(char*, self->data);
+    }
+}

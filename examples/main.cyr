@@ -1,8 +1,11 @@
+import std::string{String};
 import std::libc{printf, malloc};
 
 struct Foo {
+    name: String;
+
     public func bar(&self) {
-        printf("bar\n");
+        printf("name: %s\n", self->name.c_str());
     }
 }
 
@@ -11,7 +14,9 @@ struct Sample {
 }
 
 func main() {
-    #inst = Sample { foo: Foo{} };
+    #inst = Sample { foo: Foo { name: String.new("Taha") } };
+    inst.foo.name.free();
+    inst.foo.name = String.new("Changed!");
     inst.foo.bar();
 }
 
