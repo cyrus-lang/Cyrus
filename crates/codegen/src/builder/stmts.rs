@@ -1,9 +1,13 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
-use crate::builder::{
-    module::{LoopBlockRefs, SwitchBlockRefs, TerminatedBlockMetadata},
-    values::{InternalValue, InternalValueKind},
+use crate::{
+    builder::{
+        module::{LoopBlockRefs, SwitchBlockRefs, TerminatedBlockMetadata},
+        values::{InternalValue, InternalValueKind},
+    },
+    llvm_set_current_location,
 };
 use ast::LiteralKind;
+use inkwell::debug_info::AsDIScope;
 use inkwell::{
     basic_block::BasicBlock,
     types::{AnyType, BasicTypeEnum, StructType},
@@ -108,6 +112,8 @@ impl<'a> CodeGenBuilder<'a> {
         self.build_forward_decls(stmts);
 
         for stmt in stmts {
+            llvm_set_current_location!(&self, stmt.get_loc());
+
             match stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => self.build_global_var_def(typed_global_var),
                 TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
@@ -257,6 +263,8 @@ impl<'a> CodeGenBuilder<'a> {
         );
 
         for stmt in &block_stmt.exprs {
+            llvm_set_current_location!(&self, stmt.get_loc());
+
             match stmt {
                 TypedStatement::Variable(typed_variable) => {
                     self.build_local_variable(local_scope_opt.clone(), typed_variable);

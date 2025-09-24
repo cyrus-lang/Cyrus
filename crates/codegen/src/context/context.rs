@@ -282,7 +282,7 @@ impl CodeGenContext {
 
                     let codegen_module = CodeGenModule::new(&self.opts, program_tree.clone());
                     let codegen_output =
-                        codegen_module.codegen(self.resolver_rc.clone(), *module_id, module_name.to_string());
+                        codegen_module.codegen(self.resolver_rc.clone(), *module_id, module_name.to_string(), module_file_path.to_string());
 
                     match self.output_kind.clone() {
                         OutputKind::LlvmIr(output_path) => codegen_output.emit_llvm_ir(output_path),

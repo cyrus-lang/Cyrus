@@ -84,9 +84,7 @@ pub fn get_directory_of_file(file_path: String) -> Option<String> {
 }
 
 pub fn file_stem(file_name: &str) -> Option<&str> {
-    Path::new(file_name)
-        .file_stem() // gets "main" from "main.cyr"
-        .and_then(|s| s.to_str()) // convert OsStr to &str
+    Path::new(file_name).file_stem().and_then(|s| s.to_str())
 }
 
 pub fn dylib_extension() -> &'static str {
@@ -101,4 +99,22 @@ pub fn dylib_extension() -> &'static str {
 
 pub fn executable_extension() -> &'static str {
     if cfg!(target_os = "windows") { ".exe" } else { "" }
+}
+
+/// Splits a full file path into directory and filename.
+/// Returns (directory, filename) as `String`s.
+pub fn split_paths(path: &str) -> (String, String) {
+    let path = Path::new(path);
+
+    let filename = path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let directory = path
+        .parent()
+        .map(|d| d.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    (directory, filename)
 }

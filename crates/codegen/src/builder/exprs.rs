@@ -1,7 +1,7 @@
-use crate::builder::{
+use crate::{builder::{
     module::{CodeGenBuilder, LocalIRValue},
     values::{InternalValue, InternalValueKind},
-};
+}, llvm_set_current_location};
 use ast::{
     LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -9,6 +9,7 @@ use ast::{
 };
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
+    debug_info::{AsDIScope, DILocation},
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue},
 };
@@ -27,6 +28,8 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         typed_expr: &TypedExpression,
     ) -> InternalValue<'a> {
+        llvm_set_current_location!(&self, typed_expr.loc);
+
         match &typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, _) => self.build_lvalue_with_symbol_id(local_scope_opt, *symbol_id),
             TypedExpressionKind::Literal(typed_literal) => self.build_literal(local_scope_opt, typed_literal),
