@@ -44,6 +44,13 @@ impl ConcreteType {
             self.clone()
         }
     }
+
+    pub fn is_char(&self) -> bool {
+        match self {
+            ConcreteType::BasicType(BasicConcreteType::Char) => true,
+            _ => false,
+        }
+    }
 }
 
 impl ResolvedSymbol {

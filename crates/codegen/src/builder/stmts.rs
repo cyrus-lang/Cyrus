@@ -232,7 +232,7 @@ impl<'a> CodeGenBuilder<'a> {
         let struct_type = local_ir_value.as_struct().unwrap().clone();
         drop(irreg);
 
-        struct_type.set_body(&[largest_field_type], false);
+        struct_type.set_body(&[largest_field_type], true);
         struct_type
     }
 
@@ -243,7 +243,7 @@ impl<'a> CodeGenBuilder<'a> {
         let local_ir_value = irreg.get(&typed_union.symbol_id).unwrap();
         let struct_type = local_ir_value.as_struct().unwrap().clone();
         drop(irreg);
-        struct_type.set_body(&union_struct_type.get_field_types(), false);
+        struct_type.set_body(&union_struct_type.get_field_types(), true);
         self.build_methods(typed_union.module_id, &typed_union.methods);
 
         self.build_methods(typed_union.module_id, &typed_union.methods);

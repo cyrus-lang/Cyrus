@@ -1,5 +1,16 @@
 import std::libc{printf, malloc};
 
-func main() {
-    
+enum Type {
+    Int,
+    Float,
+    Char
 }
+
+func main() {
+    #types = Type[3] {
+        Type.Char,
+        Type.Char,
+        Type.Float
+    };
+}
+

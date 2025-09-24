@@ -481,7 +481,7 @@ impl<'a> CodeGenBuilder<'a> {
                         })
                         .collect();
 
-                    let struct_type = self.llvmctx.struct_type(&variant_fields, false);
+                    let struct_type = self.llvmctx.struct_type(&variant_fields, true);
                     let store_size = self.llvmtm.get_target_data().get_store_size(&struct_type);
                     payload_size = payload_size.max(store_size);
                 }
@@ -494,19 +494,17 @@ impl<'a> CodeGenBuilder<'a> {
             BasicTypeEnum::ArrayType(payload_type.clone()),  // payload
         ];
 
-        enum_opaque_struct.set_body(field_types, false);
-
+        enum_opaque_struct.set_body(field_types, true);
         (enum_opaque_struct, payload_type)
     }
 
     pub(crate) fn build_enum_def(&mut self, typed_enum: &TypedEnum) {
         let enum_name = typed_enum.name.clone();
 
-        let (enum_opaque_struct, payload_type) = self.build_enum_struct_type(&typed_enum_as_enum_sig(typed_enum));
-
+        let (enum_struct_type, payload_type) = self.build_enum_struct_type(&typed_enum_as_enum_sig(typed_enum));
         self.insert_forward_decl_to_registry(
             typed_enum.symbol_id,
-            LocalIRValue::Enum((enum_opaque_struct, payload_type)),
+            LocalIRValue::Enum((enum_struct_type, payload_type)),
         );
 
         typed_enum.variants.iter().for_each(|variant| {
