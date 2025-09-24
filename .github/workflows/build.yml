@@ -35,7 +35,6 @@ jobs:
           cp ./target/release/cyrus ./cyrus
           cp ./scripts/install.sh ./cyrus
           cp -r ./stdlib ./cyrus
-          cp ./cyrus.spec ./cyrus
 
       - name: Upload as artifact
         uses: actions/upload-artifact@v4
@@ -73,8 +72,9 @@ jobs:
           path: |
             ~/rpmbuild/RPMS/**/*.rpm
             ~/rpmbuild/SPECS/cyrus.spec
-  build-linux-arch:
-        runs-on: archlinux:rolling
+   build-linux-arch:
+        runs-on: ubuntu-latest
+        container: archlinux:rolling
         steps:
           - uses: actions/checkout@v4
     
