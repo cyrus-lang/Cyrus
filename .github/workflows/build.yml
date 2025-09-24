@@ -74,7 +74,7 @@ jobs:
             ~/rpmbuild/SPECS/cyrus.spec
   build-linux-arch:
         runs-on: ubuntu-latest
-        container: archlinux:rolling
+        container: archlinux:latest
         steps:
           - uses: actions/checkout@v4
     
