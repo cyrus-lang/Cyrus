@@ -1,7 +1,44 @@
-import std::string{String};
 import std::libc{printf, malloc, free};
 
+struct Column {
+    name: char*;
+    value: int;
+}
+
+// struct Engine {
+//     schema: Column[2];
+
+//     public func get_col(&self, idx: size_t) {
+//         printf("idx: %d\n", idx);
+//         #column = &self->schema[idx];
+//         printf("name: %s\n", column.name.c_str());
+//     }
+// }
+
+func sample(cols: Column*) {
+    printf("value: %d\n", cols[0].value);
+}
+
 func main() {
-    #a = 10;    
+    #str = b"Taha";
+
+    #schema = Column[2] {
+        Column { name: "Col 1", value: 10 },
+        Column { name: "Col 2", value: 20 },
+    };
+    sample(schema);
+
+    // #engine: Engine* = cast(Engine*, malloc(sizeof(Engine)));
+    
+
+    // engine->schema[0] = Column { name: String.new("Col 1"), value: 10 };
+    // engine->schema[1] = Column { name: String.new("Col 2"), value: 10 };
+    // *engine = Engine {
+    //     schema: columns
+    // };
+
+    // engine->get_col(0);
+    // engine->get_col(1);
+    // printf("name: %s\n", name.c_str());
 }
 

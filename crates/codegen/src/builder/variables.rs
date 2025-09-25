@@ -107,6 +107,7 @@ impl<'a> CodeGenBuilder<'a> {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         variable: &TypedVariable,
+        zero_init_by_default: bool
     ) -> PointerValue<'a> {
         let (basic_type, concrete_type): (BasicTypeEnum<'a>, ConcreteType) = {
             if let Some(concrete_type) = &variable.ty {
@@ -139,7 +140,7 @@ impl<'a> CodeGenBuilder<'a> {
 
         let alloca = self.llvmbuilder.build_alloca(basic_type, &variable.name).unwrap();
 
-        if variable.rhs.is_none() {
+        if zero_init_by_default && variable.rhs.is_none() {
             let zero_init_value = self.build_zero_init_value(basic_type);
             self.llvmbuilder.build_store(alloca, zero_init_value).unwrap();
         }

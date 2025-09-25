@@ -1,7 +1,10 @@
-use crate::{builder::{
-    module::{CodeGenBuilder, LocalIRValue},
-    values::{InternalValue, InternalValueKind},
-}, llvm_set_current_location};
+use crate::{
+    builder::{
+        module::{CodeGenBuilder, LocalIRValue},
+        values::{InternalValue, InternalValueKind},
+    },
+    llvm_set_current_location,
+};
 use ast::{
     LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -9,7 +12,7 @@ use ast::{
 };
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
-    debug_info::{AsDIScope, DILocation},
+    debug_info::AsDIScope,
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue},
 };

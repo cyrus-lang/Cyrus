@@ -267,7 +267,7 @@ impl<'a> CodeGenBuilder<'a> {
 
             match stmt {
                 TypedStatement::Variable(typed_variable) => {
-                    self.build_local_variable(local_scope_opt.clone(), typed_variable);
+                    self.build_local_variable(local_scope_opt.clone(), typed_variable, true);
                 }
                 TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
                 TypedStatement::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
@@ -976,13 +976,13 @@ impl<'a> CodeGenBuilder<'a> {
         // unconditional for loop
         if typed_for.condition.is_none() && typed_for.increment.is_none() {
             if let Some(initializer) = &typed_for.initializer {
-                self.build_local_variable(local_scope_opt.clone(), initializer);
+                self.build_local_variable(local_scope_opt.clone(), initializer, true);
                 self.build_infinite_for_statement(typed_for);
             } else {
                 self.build_infinite_for_statement(typed_for);
             }
         } else if typed_for.increment.is_none() {
-            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap());
+            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap(), true);
 
             self.build_conditional_for_statement(
                 local_scope_opt,
@@ -991,7 +991,7 @@ impl<'a> CodeGenBuilder<'a> {
                 None,
             );
         } else {
-            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap());
+            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap(), true);
 
             self.build_conditional_for_statement(
                 local_scope_opt,
