@@ -1,7 +1,9 @@
+// @stdout: Cyrus!
+// @stdin: 
+// @args:
+
 import std::libc{printf, malloc, free, strncpy};
 import std::string{String};
-
-MAX_STR_LEN: const size_t = 64;
 
 struct Foo {
     name: String;

@@ -15,3 +15,4 @@ public extern func putchar(ch: abi::c_char) abi::c_int;
 public func strdup(src: abi::c_char*) abi::c_char*;
 public func strlen(src: abi::c_char*) abi::c_size_t;
 public extern func memcpy(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size_t) abi::c_void*;
+public extern func fflush(stream: abi::c_file*) abi::c_int;
