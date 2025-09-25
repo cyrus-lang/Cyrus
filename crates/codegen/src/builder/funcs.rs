@@ -47,8 +47,8 @@ impl<'a> CodeGenBuilder<'a> {
             if basic_value.is_pointer_value() {
                 self.insert_forward_decl_to_registry(
                     local_param_symbol_id,
-                    LocalIRValue::LValue(
-                        basic_value.into_pointer_value(),
+                    LocalIRValue::RValue(
+                        basic_value,
                         ConcreteType::Pointer(Box::new(concrete_type)),
                     ),
                 );
