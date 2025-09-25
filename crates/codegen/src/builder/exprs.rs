@@ -1367,9 +1367,16 @@ impl<'a> CodeGenBuilder<'a> {
 
         let (pointer, concrete_type) = match local_ir_value.as_lvalue() {
             Some((pointer, concrete_type)) => (pointer.clone(), concrete_type.clone()),
-            None => match local_ir_value.as_global_value() {
-                Some((global_value, concrete_type)) => (global_value.as_pointer_value().clone(), concrete_type.clone()),
-                None => panic!("Couldn't find any lvalue with this symbol id."),
+            None => match local_ir_value.as_rvalue() {
+                Some((basic_value, concrete_type)) => {
+                    return InternalValue::new(concrete_type.clone(), InternalValueKind::RValue(basic_value.clone()));
+                }
+                None => match local_ir_value.as_global_value() {
+                    Some((global_value, concrete_type)) => {
+                        (global_value.as_pointer_value().clone(), concrete_type.clone())
+                    }
+                    None => panic!("Couldn't find any lvalue with this symbol id."),
+                },
             },
         };
 
