@@ -322,34 +322,34 @@ impl fmt::Display for UnnamedStructValue {
 }
 
 pub fn module_segments_as_string(segments: Vec<ModuleSegment>) -> String {
-    let mut format = String::new();
+    let mut out = String::new();
 
     for (idx, item) in segments.iter().enumerate() {
         match item {
             ModuleSegment::SubModule(identifier) => {
-                format.push_str(&identifier.name);
-                if idx != segments.len() - 1 {
-                    format.push_str("::");
+                out.push_str(&identifier.name);
+                // add '::' only if the next segment exists and is a SubModule
+                if matches!(segments.get(idx + 1), Some(ModuleSegment::SubModule(_))) {
+                    out.push_str("::");
                 }
             }
             ModuleSegment::Single(module_segment_singles) => {
-                format.push('{');
+                out.push('{');
                 for (jdx, single) in module_segment_singles.iter().enumerate() {
                     if let Some(renamed) = &single.renamed {
-                        format.push_str(&format!("{}:", renamed.name));
+                        out.push_str(&format!("{}:", renamed.name));
                     }
-                    format.push_str(&single.identifier.name);
+                    out.push_str(&single.identifier.name);
                     if jdx != module_segment_singles.len() - 1 {
-                        format.push(',');
-                        format.push(' ');
+                        out.push_str(", ");
                     }
                 }
-                format.push('}');
+                out.push('}');
             }
         }
     }
 
-    format
+    out
 }
 
 pub fn format_expressions(exprs: &Vec<Expression>) -> String {

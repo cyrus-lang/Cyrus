@@ -21,7 +21,10 @@ public struct String {
     }
 
     public func free(&self) {
-       
+        free(self->data);
+        self->data = null;
+        self->length = 0;
+        self->capacity = 0;
     }
 
     public func c_str(&self) char* {
