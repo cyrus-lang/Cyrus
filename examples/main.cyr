@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import std::libc{printf, malloc, free};
 
 struct Person {
@@ -16,3 +17,37 @@ func main() {
     printf("%s %d\n", users[0].name, users[0].id);
     free(users);
 }
+=======
+
+import std::libc{printf};
+
+pub config = const struct {
+    host = "127.0.0.1",
+    port = 8080
+};
+
+fn main() {
+    printf("%s %d\n", config.host, config.port);
+}
+
+// import std::libc{printf};
+
+// fn main() {
+//     #list = char*[3] {"Cyrus", "Programming", "Language"};
+
+//     for (#x = 0; x < 5; x++) {
+//         for (#i = 0; i < 3; i++) {
+//             switch (list[i]) {
+//                 case "Cyrus":
+//                     printf("<%s/> ", list[i]);
+//                     break;
+//                 default:
+//                     printf("%s ", list[i]);
+//                     break;
+//             }
+//         }
+
+//         printf("\n");
+//     }
+// }
+>>>>>>> add_more_tests

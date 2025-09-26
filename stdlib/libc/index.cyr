@@ -1,9 +1,10 @@
 import std::libc::abi;
 
-public extern stdout: abi::c_file;
-public extern stderr: abi::c_file;
-public extern stdin: abi::c_file;
+pub extern stdout: abi::c_file;
+pub extern stderr: abi::c_file;
+pub extern stdin: abi::c_file;
 
+<<<<<<< HEAD
 public extern func printf(format: abi::c_char*, ...) abi::c_int;
 public extern func fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
 public extern func malloc(size: abi::c_size_t) abi::c_void*;
@@ -16,3 +17,19 @@ public func strdup(src: abi::c_char*) abi::c_char*;
 public func strlen(src: abi::c_char*) abi::c_size_t;
 public extern func memcpy(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size_t) abi::c_void*;
 public extern func fflush(stream: abi::c_file*) abi::c_int;
+=======
+pub extern fn printf(format: abi::c_char*, ...) abi::c_int;
+pub extern fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
+pub extern fn malloc(size: abi::c_size_t) abi::c_void*;
+pub extern fn free(ptr: abi::c_void*) abi::c_void;
+pub extern fn exit(status: abi::c_int) abi::c_void;
+pub extern fn realloc(ptr: abi::c_void*, size: abi::c_size_t) abi::c_void*;
+pub extern fn strncpy(dest: abi::c_char*, src: abi::c_char*, count: abi::c_size_t) abi::c_char*;
+pub extern fn putchar(ch: abi::c_char) abi::c_int;
+pub fn strdup(src: abi::c_char*) abi::c_char*;
+pub fn strlen(src: abi::c_char*) abi::c_size_t;
+pub extern fn memcpy(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size_t) abi::c_void*;
+pub extern fn fflush(stream: abi::c_file*) abi::c_int;
+pub extern fn strcat(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
+pub extern fn strcpy(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
+>>>>>>> add_more_tests

@@ -1,8 +1,8 @@
-extern func printf(format: const char*, ...);
-extern func malloc(size: uint) void*;
-extern func free(pointer: void*);
+extern fn printf(format: const char*, ...);
+extern fn malloc(size: uint) void*;
+extern fn free(pointer: void*);
 
-func main() {
+fn main() {
     #int_ptr: int* = malloc(sizeof int);
     *int_ptr = 369;
 

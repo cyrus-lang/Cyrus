@@ -2,8 +2,14 @@
 // @stdin: 
 // @args:
 
+<<<<<<< HEAD
 extern func printf(format: const char*, ...) int;
 
 func main() {
+=======
+extern fn printf(format: const char*, ...) int;
+
+fn main() {
+>>>>>>> add_more_tests
     printf("Hello, World\n");
 }

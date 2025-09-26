@@ -835,7 +835,7 @@ impl Lexer {
             "interface" => TokenKind::Interface,
             "type" => TokenKind::Typedef,
             "cast" => TokenKind::Typecast,
-            "func" => TokenKind::Function,
+            "fn" => TokenKind::Function,
             "switch" => TokenKind::Switch,
             "case" => TokenKind::Case,
             "default" => TokenKind::Default,
@@ -859,7 +859,7 @@ impl Lexer {
             "void" => TokenKind::Void,
             "extern" => TokenKind::Extern,
             "inline" => TokenKind::Inline,
-            "public" => TokenKind::Public,
+            "pub" => TokenKind::Public,
             "const" => TokenKind::Const,
             "sizeof" => TokenKind::SizeOf,
             _ => self.lookup_typename(ident.clone()).unwrap_or(TokenKind::Identifier {
