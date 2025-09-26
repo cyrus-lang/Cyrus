@@ -252,7 +252,7 @@ impl<'a> CodeGenBuilder<'a> {
             // REVIEW Seems nasty, but works fine. 
             // This happens because I didn't had the energy to differ lvalue from rvalue in operand of the array_index.
             // Maybe fixed it later. =)
-            
+
             let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue.clone());
 
             if let Some(element_type) = rvalue.value_type.get_pointer_inner() {
@@ -271,7 +271,7 @@ impl<'a> CodeGenBuilder<'a> {
                         self.build_array_index_on_pointer(
                             // actual element type
                             local_scope_opt,
-                            lvalue.as_basic_value().into_pointer_value(),
+                            rvalue.as_basic_value().into_pointer_value(),
                             index_rvalue,
                             element_type,
                         )
@@ -284,7 +284,7 @@ impl<'a> CodeGenBuilder<'a> {
                     self.build_array_index_on_pointer(
                         // actual element type
                         local_scope_opt,
-                        lvalue.as_basic_value().into_pointer_value(),
+                        rvalue.as_basic_value().into_pointer_value(),
                         index_rvalue,
                         element_type,
                     )

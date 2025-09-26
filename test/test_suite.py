@@ -61,7 +61,6 @@ def build_and_run(file_path, metadata, compiler_path, compiler_flags, output_dir
     run_result = subprocess.run(run_cmd, input=metadata.get("stdin") or "", capture_output=True, text=True)
 
     actual_stdout = run_result.stdout.strip()
-    print(actual_stdout)
     expected_stdout = (metadata.get("stdout") or "").strip()
 
     if actual_stdout != expected_stdout:
