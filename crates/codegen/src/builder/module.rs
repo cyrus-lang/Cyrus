@@ -1,4 +1,5 @@
 use crate::{
+    builder::dibuilder::new_di_builder,
     context::context::{get_target_machine, make_module_name},
     options::CodeGenOptions,
 };
@@ -6,10 +7,11 @@ use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
     context::Context,
+    debug_info::{DICompileUnit, DebugInfoBuilder},
     module::Module,
     targets::{FileType, TargetMachine},
     types::{ArrayType, StructType},
-    values::{FunctionValue, GlobalValue, PointerValue},
+    values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue},
 };
 use resolver::Resolver;
 use std::{cell::RefCell, collections::HashMap, fs, path::Path, rc::Rc};
@@ -21,6 +23,11 @@ pub struct CodeGenModule<'module> {
     program_tree: Rc<RefCell<TypedProgramTree>>,
 }
 
+pub(crate) struct CodeGenDIBuilder<'a> {
+    pub dibuilder: DebugInfoBuilder<'a>,
+    pub dicompunit: DICompileUnit<'a>,
+}
+
 pub(crate) struct CodeGenBuilder<'a> {
     pub module_id: ModuleID,
     pub llvmmodule: Rc<RefCell<Module<'a>>>,
@@ -30,6 +37,7 @@ pub(crate) struct CodeGenBuilder<'a> {
     pub irreg: LocalIRValueRegistryRef<'a>,
     pub blockreg: BlockRegistry<'a>,
     pub resolver: Rc<Resolver>,
+    pub dibuilder: CodeGenDIBuilder<'a>,
 }
 
 impl<'a> CodeGenBuilder<'a> {
@@ -55,6 +63,7 @@ impl<'module> CodeGenModule<'module> {
         resolver_rc: Rc<Resolver>,
         module_id: ModuleID,
         module_name: String,
+        module_file_path: String,
     ) -> CodeGenModuleOutput<'a> {
         let llvmmodule = self.ctx.create_module(&module_name);
         let builder = self.ctx.create_builder();
@@ -68,8 +77,10 @@ impl<'module> CodeGenModule<'module> {
 
         llvmmodule.set_triple(&llvmtm.get_triple());
         llvmmodule.set_data_layout(&llvmtm.get_target_data().get_data_layout());
-        let llvmmodule = Rc::new(RefCell::new(llvmmodule));
 
+        let (dibuilder, dicompunit) = new_di_builder(&llvmmodule, module_file_path.clone());
+
+        let llvmmodule = Rc::new(RefCell::new(llvmmodule));
         let mut codegen_builder = CodeGenBuilder {
             module_id,
             llvmmodule: llvmmodule.clone(),
@@ -79,6 +90,7 @@ impl<'module> CodeGenModule<'module> {
             irreg,
             resolver: resolver_rc,
             blockreg: BlockRegistry::new(),
+            dibuilder: CodeGenDIBuilder { dibuilder, dicompunit },
         };
 
         let program_tree_borrowed = self.program_tree.borrow();
@@ -152,6 +164,7 @@ pub enum LocalIRValue<'a> {
     Enum((StructType<'a>, ArrayType<'a>)),
     GlobalValue(GlobalValue<'a>, ConcreteType),
     LValue(PointerValue<'a>, ConcreteType),
+    RValue(BasicValueEnum<'a>, ConcreteType),
 }
 
 impl<'a> LocalIRValue<'a> {
@@ -186,6 +199,13 @@ impl<'a> LocalIRValue<'a> {
     pub fn as_lvalue(&self) -> Option<(&PointerValue<'a>, &ConcreteType)> {
         match self {
             LocalIRValue::LValue(pointer, concrete_type) => Some((pointer, concrete_type)),
+            _ => None,
+        }
+    }
+
+    pub fn as_rvalue(&self) -> Option<(&BasicValueEnum<'a>, &ConcreteType)> {
+        match self {
+            LocalIRValue::RValue(basic_value, concrete_type) => Some((basic_value, concrete_type)),
             _ => None,
         }
     }

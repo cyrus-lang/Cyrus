@@ -1,9 +1,13 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
-use crate::builder::{
-    module::{LoopBlockRefs, SwitchBlockRefs, TerminatedBlockMetadata},
-    values::{InternalValue, InternalValueKind},
+use crate::{
+    builder::{
+        module::{LoopBlockRefs, SwitchBlockRefs, TerminatedBlockMetadata},
+        values::{InternalValue, InternalValueKind},
+    },
+    llvm_set_current_location,
 };
 use ast::LiteralKind;
+use inkwell::debug_info::AsDIScope;
 use inkwell::{
     basic_block::BasicBlock,
     types::{AnyType, BasicTypeEnum, StructType},
@@ -108,6 +112,8 @@ impl<'a> CodeGenBuilder<'a> {
         self.build_forward_decls(stmts);
 
         for stmt in stmts {
+            llvm_set_current_location!(&self, stmt.get_loc());
+
             match stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => self.build_global_var_def(typed_global_var),
                 TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
@@ -226,12 +232,8 @@ impl<'a> CodeGenBuilder<'a> {
                 largest_field_type = basic_type.clone();
             }
         });
-
-        let irreg = self.irreg.borrow();
-        let local_ir_value = irreg.get(&union_sig.symbol_id).unwrap();
-        let struct_type = local_ir_value.as_struct().unwrap().clone();
-        drop(irreg);
-
+        
+        let struct_type = self.llvmctx.struct_type(&field_types, true);
         struct_type.set_body(&[largest_field_type], true);
         struct_type
     }
@@ -257,9 +259,11 @@ impl<'a> CodeGenBuilder<'a> {
         );
 
         for stmt in &block_stmt.exprs {
+            llvm_set_current_location!(&self, stmt.get_loc());
+
             match stmt {
                 TypedStatement::Variable(typed_variable) => {
-                    self.build_local_variable(local_scope_opt.clone(), typed_variable);
+                    self.build_local_variable(local_scope_opt.clone(), typed_variable, true);
                 }
                 TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
                 TypedStatement::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
@@ -968,13 +972,13 @@ impl<'a> CodeGenBuilder<'a> {
         // unconditional for loop
         if typed_for.condition.is_none() && typed_for.increment.is_none() {
             if let Some(initializer) = &typed_for.initializer {
-                self.build_local_variable(local_scope_opt.clone(), initializer);
+                self.build_local_variable(local_scope_opt.clone(), initializer, true);
                 self.build_infinite_for_statement(typed_for);
             } else {
                 self.build_infinite_for_statement(typed_for);
             }
         } else if typed_for.increment.is_none() {
-            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap());
+            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap(), true);
 
             self.build_conditional_for_statement(
                 local_scope_opt,
@@ -983,7 +987,7 @@ impl<'a> CodeGenBuilder<'a> {
                 None,
             );
         } else {
-            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap());
+            self.build_local_variable(local_scope_opt.clone(), &typed_for.initializer.clone().unwrap(), true);
 
             self.build_conditional_for_statement(
                 local_scope_opt,

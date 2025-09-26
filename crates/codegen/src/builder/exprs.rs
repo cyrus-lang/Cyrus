@@ -1,6 +1,9 @@
-use crate::builder::{
-    module::{CodeGenBuilder, LocalIRValue},
-    values::{InternalValue, InternalValueKind},
+use crate::{
+    builder::{
+        module::{CodeGenBuilder, LocalIRValue},
+        values::{InternalValue, InternalValueKind},
+    },
+    llvm_set_current_location,
 };
 use ast::{
     LiteralKind, SelfModifierKind, StringPrefix,
@@ -9,6 +12,7 @@ use ast::{
 };
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
+    debug_info::AsDIScope,
     types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue},
 };
@@ -27,6 +31,8 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         typed_expr: &TypedExpression,
     ) -> InternalValue<'a> {
+        llvm_set_current_location!(&self, typed_expr.loc);
+
         match &typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, _) => self.build_lvalue_with_symbol_id(local_scope_opt, *symbol_id),
             TypedExpressionKind::Literal(typed_literal) => self.build_literal(local_scope_opt, typed_literal),
@@ -202,27 +208,24 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_array_index_on_pointer(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        lvalue: PointerValue<'a>,
-        index: InternalValue<'a>,
-        element_type: ConcreteType,
+        lvalue: PointerValue<'a>,   // should be T*, never [N x T]*
+        index: InternalValue<'a>,   // expected integer index
+        element_type: ConcreteType, // the concrete type of each element (T)
     ) -> InternalValue<'a> {
         let element_basic_type: BasicTypeEnum<'a> = self
             .build_concrete_type(local_scope_opt, element_type.clone())
             .try_into()
             .unwrap();
 
-        let pointer_value = unsafe {
+        let idx_int = index.as_basic_value().into_int_value();
+
+        let element_ptr: PointerValue<'a> = unsafe {
             self.llvmbuilder
-                .build_gep(
-                    element_basic_type,
-                    lvalue,
-                    &[index.as_basic_value().into_int_value()],
-                    "gep",
-                )
+                .build_in_bounds_gep(element_basic_type, lvalue, &[idx_int], "elem_ptr")
                 .unwrap()
         };
 
-        InternalValue::new(element_type, InternalValueKind::LValue(pointer_value))
+        InternalValue::new(element_type, InternalValueKind::LValue(element_ptr))
     }
 
     fn build_array_index(
@@ -245,15 +248,50 @@ impl<'a> CodeGenBuilder<'a> {
                 index_rvalue,
                 array_capacity.try_into().unwrap(),
             )
-        } else if let Some(element_type) = lvalue.value_type.get_pointer_inner() {
-            self.build_array_index_on_pointer(
-                local_scope_opt,
-                lvalue.as_basic_value().into_pointer_value(),
-                index_rvalue,
-                element_type,
-            )
         } else {
-            unreachable!()
+            // REVIEW Seems nasty, but works fine. 
+            // This happens because I didn't had the energy to differ lvalue from rvalue in operand of the array_index.
+            // Maybe fixed it later. =)
+
+            let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue.clone());
+
+            if let Some(element_type) = rvalue.value_type.get_pointer_inner() {
+                // lvalue
+                if let Some(inner_element_type) = element_type.get_pointer_inner() {
+                    // rvalue
+                    self.build_array_index_on_pointer(
+                        // actual element type
+                        local_scope_opt,
+                        rvalue.as_basic_value().into_pointer_value(),
+                        index_rvalue,
+                        inner_element_type,
+                    )
+                } else {
+                    if let Some(element_type) = lvalue.value_type.get_pointer_inner() {
+                        self.build_array_index_on_pointer(
+                            // actual element type
+                            local_scope_opt,
+                            rvalue.as_basic_value().into_pointer_value(),
+                            index_rvalue,
+                            element_type,
+                        )
+                    } else {
+                        unreachable!()
+                    }
+                }
+            } else {
+                if let Some(element_type) = lvalue.value_type.get_pointer_inner() {
+                    self.build_array_index_on_pointer(
+                        // actual element type
+                        local_scope_opt,
+                        rvalue.as_basic_value().into_pointer_value(),
+                        index_rvalue,
+                        element_type,
+                    )
+                } else {
+                    unreachable!()
+                }
+            }
         }
     }
 
@@ -296,14 +334,10 @@ impl<'a> CodeGenBuilder<'a> {
             _ => self.build_expr(local_scope_opt.clone(), &typed_field_access.operand),
         };
 
-        if typed_field_access.operand.concrete_type.clone().unwrap().is_pointer() {
-            lvalue = self.build_dereference(
-                local_scope_opt.clone(),
-                &TypedDereference {
-                    operand: typed_field_access.operand.clone(),
-                    loc: typed_field_access.loc.clone(),
-                },
-            );
+        let operand_concrete_type = typed_field_access.operand.concrete_type.clone().unwrap();
+
+        if operand_concrete_type.is_pointer() && typed_field_access.is_fat_arrow {
+            lvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
         }
 
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
@@ -647,7 +681,17 @@ impl<'a> CodeGenBuilder<'a> {
 
         if let Some(first_param) = func_sig.params.list.first() {
             if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
-                let operand_lvalue = self.build_expr(local_scope_opt.clone(), &method_call.operand);
+                let mut operand_lvalue = self.build_expr(local_scope_opt.clone(), &method_call.operand);
+
+                if method_call.operand.concrete_type.clone().unwrap().is_pointer() {
+                    operand_lvalue = self.build_dereference(
+                        local_scope_opt.clone(),
+                        &TypedDereference {
+                            operand: method_call.operand.clone(),
+                            loc: method_call.loc.clone(),
+                        },
+                    );
+                }
 
                 match typed_self_modifier.kind {
                     SelfModifierKind::Copied => {
@@ -655,11 +699,28 @@ impl<'a> CodeGenBuilder<'a> {
                         args.insert(0, operand_rvalue.as_basic_value().into());
                     }
                     SelfModifierKind::Referenced => {
+                        // Pass operand as basic value (after optional dereference)
                         args.insert(0, operand_lvalue.as_basic_value().into());
                     }
                 }
             }
         }
+
+        // if let Some(first_param) = func_sig.params.list.first() {
+        //     if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
+        //         let operand_lvalue = self.build_expr(local_scope_opt.clone(), &method_call.operand);
+
+        //         match typed_self_modifier.kind {
+        //             SelfModifierKind::Copied => {
+        //                 let operand_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, operand_lvalue);
+        //                 args.insert(0, operand_rvalue.as_basic_value().into());
+        //             }
+        //             SelfModifierKind::Referenced => {
+        //                 args.insert(0, operand_lvalue.as_basic_value().into());
+        //             }
+        //         }
+        //     }
+        // }
 
         let call_result = self
             .llvmbuilder
@@ -1361,9 +1422,16 @@ impl<'a> CodeGenBuilder<'a> {
 
         let (pointer, concrete_type) = match local_ir_value.as_lvalue() {
             Some((pointer, concrete_type)) => (pointer.clone(), concrete_type.clone()),
-            None => match local_ir_value.as_global_value() {
-                Some((global_value, concrete_type)) => (global_value.as_pointer_value().clone(), concrete_type.clone()),
-                None => panic!("Couldn't find any lvalue with this symbol id."),
+            None => match local_ir_value.as_rvalue() {
+                Some((basic_value, concrete_type)) => {
+                    return InternalValue::new(concrete_type.clone(), InternalValueKind::RValue(basic_value.clone()));
+                }
+                None => match local_ir_value.as_global_value() {
+                    Some((global_value, concrete_type)) => {
+                        (global_value.as_pointer_value().clone(), concrete_type.clone())
+                    }
+                    None => panic!("Couldn't find any lvalue with this symbol id."),
+                },
             },
         };
 

@@ -278,11 +278,17 @@ impl CodeGenContext {
                 ) {
                     let new_source_code_hash = build_manifest.hash_source_code(module_file_path.clone());
                     build_manifest.update_source_hash(module_file_path.clone(), new_source_code_hash);
-                    utils::tui::tui_compiled(module_file_path.clone());
+                    if !self.opts.quiet {
+                        utils::tui::tui_compiled(module_file_path.clone());
+                    }
 
                     let codegen_module = CodeGenModule::new(&self.opts, program_tree.clone());
-                    let codegen_output =
-                        codegen_module.codegen(self.resolver_rc.clone(), *module_id, module_name.to_string());
+                    let codegen_output = codegen_module.codegen(
+                        self.resolver_rc.clone(),
+                        *module_id,
+                        module_name.to_string(),
+                        module_file_path.to_string(),
+                    );
 
                     match self.output_kind.clone() {
                         OutputKind::LlvmIr(output_path) => codegen_output.emit_llvm_ir(output_path),
@@ -323,7 +329,9 @@ impl CodeGenContext {
                         OutputKind::None => {}
                     }
                 } else {
-                    utils::tui::tui_skipped(module_file_path.clone());
+                    if !self.opts.quiet {
+                        utils::tui::tui_skipped(module_file_path.clone());
+                    }
                 }
 
                 if !build_manifest.check_source_code_hash_exists(module_file_path.clone()) {
@@ -334,7 +342,9 @@ impl CodeGenContext {
 
         build_manifest.is_first_build = false;
         build_manifest.save_manifest();
-        utils::tui::tui_compile_finished();
+        if !self.opts.quiet {
+            utils::tui::tui_compile_finished();
+        }
 
         if let OutputKind::Executable(output_path) = &self.output_kind {
             self.emit_exec(output_path.clone())

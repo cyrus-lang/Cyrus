@@ -1,0 +1,13 @@
+// @stdout: Cyrus Programming Language
+// @stdin: 
+// @args:
+
+import std::libc{printf};
+
+fn main() {
+    #list = char*[3] {"Cyrus", "Programming", "Language"};
+
+    for (#i = 0; i < 3; i++) {
+        printf("%s ", list[i]);
+    }
+}

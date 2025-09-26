@@ -45,19 +45,13 @@ impl<'a> AnalysisContext<'a> {
                 valid_capacity
                     && self.check_type_mismatch(scope_id_opt, *array_type1.element_type, *array_type2.element_type, loc)
             }
-            (ConcreteType::Array(array_type), ConcreteType::Pointer(inner_concrete_type)) => {
-                self.check_type_mismatch(scope_id_opt, *array_type.element_type, *inner_concrete_type, loc)
-            }
             (ConcreteType::Pointer(inner_concrete_type1), ConcreteType::Pointer(inner_concrete_type2)) => {
-                let is_char_buff_ptr = if let Some(arr_type) = inner_concrete_type1.as_array_type() {
-                    arr_type.element_type.is_char()
+                if let Some(arr_type) = inner_concrete_type1.as_array_type() {
+                    *arr_type.element_type == *inner_concrete_type2
                 } else {
-                    false
-                };
-
-                (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())
-                    || self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
-                    || is_char_buff_ptr
+                    (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())
+                        || self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
+                }
             }
             (ConcreteType::UnnamedStruct(unnamed_struct1), ConcreteType::UnnamedStruct(unnamed_struct2)) => {
                 let packed = unnamed_struct1.packed == unnamed_struct2.packed;
@@ -2139,6 +2133,30 @@ impl<'a> AnalysisContext<'a> {
                     hint: None,
                 });
             }
+        }
+
+        let array_type = typed_array.array_type.as_array_type().unwrap();
+        let array_capacity = match &array_type.capacity {
+            TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
+                TypedArrayFixedCapacityValue::Expr(typed_expr) => {
+                    self.const_expr_as_raw_integer(scope_id_opt, typed_expr)?
+                }
+                TypedArrayFixedCapacityValue::Value(value) => *value as i64,
+            },
+            TypedArrayCapacity::Dynamic => todo!(),
+        };
+
+        if typed_array.elements.len() != array_capacity.try_into().unwrap() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::ArrayElementsCountMismatch {
+                    elements: typed_array.elements.len().try_into().unwrap(),
+                    expected: array_capacity.try_into().unwrap(),
+                },
+                location: Some(DiagLoc::new(typed_array.loc.clone())),
+                hint: None,
+            });
+            return None;
         }
 
         Some(ConcreteType::Array(

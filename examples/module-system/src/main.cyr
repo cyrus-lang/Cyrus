@@ -1,6 +1,6 @@
 import logger{Logger};
 
-func main() {
+fn main() {
 	#my_logger = Logger.new("services.example");
 	my_logger.logf("hello, world...");
 	my_logger.errorf("hello, cyrus...");

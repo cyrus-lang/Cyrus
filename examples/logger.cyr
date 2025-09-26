@@ -1,23 +1,23 @@
 import std::libc;
 
-public struct Logger {
+pub struct Logger {
 	group_name: char*;
 
-    public func new(group_name: char*) Logger { 
+    pub fn new(group_name: char*) Logger { 
 		libc::fprintf(libc::stdout, "Logger initialized successfully.\n");
 		return Logger { group_name: group_name };
 	}
 
-	public func logf(self, format: char*) {
+	pub fn logf(self, format: char*) {
 		libc::fprintf(libc::stdout, "[info][%s] %s\n", self.group_name, format);
 	}
 
-	public func errorf(self, format: char*) {
+	pub fn errorf(self, format: char*) {
 		libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
 	}
 }
 
-func main() {
+fn main() {
 	#logger = Logger.new("services.example");
 
 	logger.logf("Cyrus is on fire!");

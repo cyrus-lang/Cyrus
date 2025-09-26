@@ -1,0 +1,9 @@
+// @stdout: Hello, World
+// @stdin: 
+// @args:
+
+extern fn printf(format: const char*, ...) int;
+
+fn main() {
+    printf("Hello, World\n");
+}

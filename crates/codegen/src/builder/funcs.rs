@@ -43,24 +43,30 @@ impl<'a> CodeGenBuilder<'a> {
             let local_param_symbol_id = local_scope.resolve(&name).unwrap().get_symbol_id();
             drop(local_scope);
 
-            let lvalue_pointer = self.build_local_variable(
-                local_scope_opt.clone(),
-                &TypedVariable {
-                    symbol_id: local_param_symbol_id,
-                    name: name.clone(),
-                    ty: Some(concrete_type.clone()),
-                    rhs: None,
-                    loc,
-                },
-            );
-
             let basic_value = fn_value.get_nth_param(param_idx.try_into().unwrap()).unwrap();
-            self.llvmbuilder.build_store(lvalue_pointer, basic_value).unwrap();
+            if basic_value.is_pointer_value() {
+                self.insert_forward_decl_to_registry(
+                    local_param_symbol_id,
+                    LocalIRValue::RValue(
+                        basic_value,
+                        ConcreteType::Pointer(Box::new(concrete_type)),
+                    ),
+                );
+            } else {
+                let lvalue_pointer = self.build_local_variable(
+                    local_scope_opt.clone(),
+                    &TypedVariable {
+                        symbol_id: local_param_symbol_id,
+                        name: name.clone(),
+                        ty: Some(concrete_type.clone()),
+                        rhs: None,
+                        loc,
+                    },
+                    false,
+                );
 
-            self.insert_forward_decl_to_registry(
-                local_param_symbol_id,
-                LocalIRValue::LValue(lvalue_pointer, concrete_type),
-            );
+                self.llvmbuilder.build_store(lvalue_pointer, basic_value).unwrap();
+            }
         })
     }
 

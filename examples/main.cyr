@@ -1,26 +1,31 @@
-import std::string{String};
-import std::libc{printf, malloc, free};
+import std::libc{printf};
 
-// struct Foo {
-//     name: String;
+pub config = const struct {
+    host = "127.0.0.1",
+    port = 8080
+};
 
-//     public func bar(&self) {
-//         printf("name: %s\n", self->name.c_str());
+fn main() {
+    printf("%s %d\n", config.host, config.port);
+}
+
+// import std::libc{printf};
+
+// fn main() {
+//     #list = char*[3] {"Cyrus", "Programming", "Language"};
+
+//     for (#x = 0; x < 5; x++) {
+//         for (#i = 0; i < 3; i++) {
+//             switch (list[i]) {
+//                 case "Cyrus":
+//                     printf("<%s/> ", list[i]);
+//                     break;
+//                 default:
+//                     printf("%s ", list[i]);
+//                     break;
+//             }
+//         }
+
+//         printf("\n");
 //     }
 // }
-
-struct Sample {
-    // foo: Foo;
-}
-
-func main() {
-    #ptr = malloc(4);
-
-    free(ptr);
-    // #inst = Sample { foo: Foo { name: String.new("Taha") } };
-    // inst.foo.name.free();
-    // inst.foo.name = String.new("Changed!");
-    // inst.foo.bar();
-    // inst.foo.name.free();
-}
-

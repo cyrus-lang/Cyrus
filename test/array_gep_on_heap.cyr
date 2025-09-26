@@ -1,0 +1,22 @@
+// @stdout: Taha 1
+// @stdin: 
+// @args:
+
+import std::libc{printf, malloc, free};
+
+struct Person {
+    id: uint;
+    name: char*;
+}
+
+struct Organization {
+    users: Person*;
+}
+
+fn main() {
+    #users_len: size_t = 2;
+	#users: Person* = malloc(sizeof(Person) * users_len);
+    users[0] = Person { id: 1, name: "Taha" };
+    printf("%s %d\n", users[0].name, users[0].id);
+    free(users);
+}
