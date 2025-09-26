@@ -8,16 +8,16 @@ import std::string{String};
 struct Foo {
     name: String;
 
-    public func display(&self) {
+    pub fn display(&self) {
         printf("name: %s\n", self->name);
     }
 
-    public func free(&self) {
+    pub fn free(&self) {
         self->name.free();
     }
 }
 
-func main() {
+fn main() {
     #inst = Foo {
         name: String.new("Cyrus!")
     };

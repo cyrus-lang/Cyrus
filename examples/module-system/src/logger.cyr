@@ -1,18 +1,18 @@
 import std::libc;
 
-public struct Logger {
+pub struct Logger {
 	group_name: char*;
 
-    public func new(group_name: char*) Logger { 
+    pub fn new(group_name: char*) Logger { 
 		Logger.logger_initialized();
 		return Logger { group_name: group_name };
 	}
 
-	public func logf(&self, format: char*) {
+	pub fn logf(&self, format: char*) {
 		libc::printf("[info][%s] %s\n", self->group_name, format);
 	}
 
-	public func errorf(self, format: char*) {
+	pub fn errorf(self, format: char*) {
 		libc::fprintf(libc::stderr, "[error][%s] %s\n", self.group_name, format);
 	}
 

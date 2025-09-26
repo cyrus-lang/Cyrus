@@ -2135,6 +2135,30 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
+        let array_type = typed_array.array_type.as_array_type().unwrap();
+        let array_capacity = match &array_type.capacity {
+            TypedArrayCapacity::Fixed(capacity_value) => match capacity_value {
+                TypedArrayFixedCapacityValue::Expr(typed_expr) => {
+                    self.const_expr_as_raw_integer(scope_id_opt, typed_expr)?
+                }
+                TypedArrayFixedCapacityValue::Value(value) => *value as i64,
+            },
+            TypedArrayCapacity::Dynamic => todo!(),
+        };
+
+        if typed_array.elements.len() != array_capacity.try_into().unwrap() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::ArrayElementsCountMismatch {
+                    elements: typed_array.elements.len().try_into().unwrap(),
+                    expected: array_capacity.try_into().unwrap(),
+                },
+                location: Some(DiagLoc::new(typed_array.loc.clone())),
+                hint: None,
+            });
+            return None;
+        }
+
         Some(ConcreteType::Array(
             typed_array.array_type.as_array_type().unwrap().clone(),
         ))

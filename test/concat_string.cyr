@@ -1,10 +1,10 @@
-extern func printf(format: const char*, ...);
-extern func strlen(s: const char*) size_t;
-extern func malloc(size: size_t) void*;
-extern func strcpy(dest: char*, src: const char*) char*;
-extern func strcat(dest: char*, src: const char*) char*;
+// @stdout: Hello, Cyrus!
+// @stdin: 
+// @args:
 
-public func concat(s1: const char*, s2: const char*) const char* {
+import std::libc{printf, strlen, malloc, strcpy, strcat, free};
+
+pub fn concat(s1: const char*, s2: const char*) const char* {
     #len1: size_t = strlen(s1);
     #len2: size_t = strlen(s2);
 
@@ -20,11 +20,11 @@ public func concat(s1: const char*, s2: const char*) const char* {
     return result;
 }
 
-func main() {
+fn main() {
     #hello = "Hello, ";
     #world = "Cyrus!";
-
     #combined = concat(hello, world);
 
     printf("%s\n", combined);
+    free(combined);
 }

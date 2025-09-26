@@ -1,12 +1,12 @@
 import std::core{panic};
 import std::libc{strlen, malloc, memcpy, free};
 
-public struct String {
+pub struct String {
     data: char*;
     length: size_t;
     capacity: size_t;
 
-    public func new(init: const char*) String {
+    pub fn new(init: const char*) String {
         #len = strlen(init);
         #cap = len + 1;
         #inst: String;
@@ -20,14 +20,14 @@ public struct String {
         return inst;
     }
 
-    public func free(&self) {
+    pub fn free(&self) {
         free(self->data);
         self->data = null;
         self->length = 0;
         self->capacity = 0;
     }
 
-    public func c_str(&self) char* {
+    pub fn c_str(&self) char* {
         return cast(char*, self->data);
     }
 }

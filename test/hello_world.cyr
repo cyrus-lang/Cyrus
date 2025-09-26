@@ -2,8 +2,8 @@
 // @stdin: 
 // @args:
 
-extern func printf(format: const char*, ...) int;
+extern fn printf(format: const char*, ...) int;
 
-func main() {
+fn main() {
     printf("Hello, World\n");
 }

@@ -13,7 +13,7 @@ struct Organization {
     users: Person*;
 }
 
-func main() {
+fn main() {
     #users_len: size_t = 2;
 	#users: Person* = malloc(sizeof(Person) * users_len);
     users[0] = Person { id: 1, name: "Taha" };
