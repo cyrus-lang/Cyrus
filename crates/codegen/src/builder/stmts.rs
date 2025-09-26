@@ -232,12 +232,8 @@ impl<'a> CodeGenBuilder<'a> {
                 largest_field_type = basic_type.clone();
             }
         });
-
-        let irreg = self.irreg.borrow();
-        let local_ir_value = irreg.get(&union_sig.symbol_id).unwrap();
-        let struct_type = local_ir_value.as_struct().unwrap().clone();
-        drop(irreg);
-
+        
+        let struct_type = self.llvmctx.struct_type(&field_types, true);
         struct_type.set_body(&[largest_field_type], true);
         struct_type
     }

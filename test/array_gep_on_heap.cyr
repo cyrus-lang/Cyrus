@@ -1,3 +1,7 @@
+// @stdout: Taha 1
+// @stdin: 
+// @args:
+
 import std::libc{printf, malloc, free};
 
 struct Person {

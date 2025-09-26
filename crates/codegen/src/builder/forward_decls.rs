@@ -106,7 +106,11 @@ impl<'a> CodeGenBuilder<'a> {
 
         match local_ir_value_opt {
             Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
-            None => self.build_struct_only_type(struct_sig),
+            None => {
+                let struct_type = self.build_struct_only_type(struct_sig);
+                self.insert_forward_decl_to_registry(symbol_id, LocalIRValue::Struct(struct_type));
+                struct_type
+            }
         }
     }
 
@@ -117,7 +121,11 @@ impl<'a> CodeGenBuilder<'a> {
 
         match local_ir_value_opt {
             Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
-            None => self.build_union_struct_type(union_sig),
+            None => {
+                let struct_type = self.build_union_struct_type(union_sig);
+                self.insert_forward_decl_to_registry(symbol_id, LocalIRValue::Struct(struct_type));
+                struct_type
+            }
         }
     }
 
