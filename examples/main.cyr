@@ -1,25 +1,21 @@
 import std::libc{printf, malloc, free, strncpy};
-import std::string{String};
 
-MAX_STR_LEN: const size_t = 64;
+struct Sample {
+	name: char*;
+    age: int;
+}
 
-struct Foo {
-    name: String;
-
-    public func display(&self) {
-        printf("name: %s\n", self->name);
-    }
-
-    public func free(&self) {
-        self->name.free();
-    }
+func display_columns(schema: Sample*) {
+	printf("name %s\n", schema[0].name);
+	printf("name %s\n", schema[1].name);
 }
 
 func main() {
-    #inst = Foo {
-        name: String.new("Cyrus!")
-    };
-    
-    inst.display();
-    inst.free();
+	#columns = Sample[3] {
+		Sample { name: "id", age: 18 },
+		Sample { name: "name", age: 19 },
+		Sample { name: "age", age: 20 },
+	};
+
+	display_columns(&columns);
 }

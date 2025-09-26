@@ -481,7 +481,7 @@ impl<'a> CodeGenBuilder<'a> {
                         })
                         .collect();
 
-                    let struct_type = self.llvmctx.struct_type(&variant_fields, true);
+                    let struct_type = self.llvmctx.struct_type(&variant_fields, false);
                     let store_size = self.llvmtm.get_target_data().get_store_size(&struct_type);
                     payload_size = payload_size.max(store_size);
                 }
@@ -494,7 +494,7 @@ impl<'a> CodeGenBuilder<'a> {
             BasicTypeEnum::ArrayType(payload_type.clone()),  // payload
         ];
 
-        enum_opaque_struct.set_body(field_types, true);
+        enum_opaque_struct.set_body(field_types, false);
         (enum_opaque_struct, payload_type)
     }
 
