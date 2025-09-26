@@ -20,11 +20,7 @@ pub struct String {
         return inst;
     }
 
-<<<<<<< HEAD
-    public func free(&self) {
-=======
     pub fn free(&self) {
->>>>>>> add_more_tests
         free(self->data);
         self->data = null;
         self->length = 0;
