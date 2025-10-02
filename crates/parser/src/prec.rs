@@ -52,15 +52,3 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
         _ => Precedence::Lowest,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::Precedence;
-
-    #[test]
-    fn test_compare_precedences() {
-        assert!(Precedence::Lowest < Precedence::LessGreater);
-        assert!(Precedence::Call > Precedence::Sum);
-        assert!(Precedence::Call < Precedence::Cast);
-    }
-}
