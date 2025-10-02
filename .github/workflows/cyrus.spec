@@ -18,6 +18,8 @@ The Cyrus Programming Language.
 %setup -q
 
 %build
+echo $LLVM_SYS_181_PREFIX
+ls -la $LLVM_SYS_181_PREFIX
 cargo build --release --locked
 
 %install
