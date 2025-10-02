@@ -1,4 +1,4 @@
-%global rust_version %(sed -n 's/^version\s*=\s*"\(.*\)"/\1/p' ../../Cargo.toml | head -n1)
+%global rust_version %(CYRUS_VERSION)
 
 Name:           cyrus
 Version:        %{rust_version}
@@ -11,7 +11,7 @@ URL:            https://github.com/cyrus-lang/Cyrus
 Source0:        cyrus-${rust_version}.tar.gz
 
 BuildRequires:  rust, cargo, llvm, clang, libffi-devel, libxml2-devel, isl-devel
-BuildArch:	x86_64
+BuildArch:	    x86_64
 
 %description
 The Cyrus Programming Language.
@@ -49,4 +49,3 @@ sed -i '/source \/etc\/profile.d\/cyrus.sh/d' /etc/bashrc
 %changelog
 * Fri Sep 05 2025 Cyrus Team <you@example.com> - ${rust_version}-1
 - Initial RPM packaging
-
