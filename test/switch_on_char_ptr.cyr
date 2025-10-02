@@ -1,0 +1,20 @@
+// @stdout: value A: Cyrus
+
+import std::libc;
+
+fn main() {
+    #value: char* = "Cyrus";
+
+    switch (value) {
+        case "Cyrus":
+        // case "Lang":
+            libc::printf("value A: %s\n", value);
+            break;
+        case "Clang":
+            libc::printf("value B: %s\n", value);
+            break;
+        case "Rust":
+            libc::printf("value C: %s\n", value);
+            break;
+    }
+}

@@ -774,19 +774,26 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVariable) {
         if let Some(mut expr) = typed_global_var.expr.clone() {
-            if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
-                let integer_concrete_type = Some(ConcreteType::BasicType(BasicConcreteType::Int));
+            let concrete_type = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
+                Some(concrete_type) => concrete_type,
+                None => return,
+            };
 
-                expr = TypedExpression {
-                    kind: TypedExpressionKind::Literal(TypedLiteral {
-                        ty: integer_concrete_type.clone(),
-                        kind: LiteralKind::Integer(integer, None),
+            if !concrete_type.as_const_or_unnamed_struct().is_some() {
+                if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
+                    let integer_concrete_type = Some(ConcreteType::BasicType(BasicConcreteType::Int));
+
+                    expr = TypedExpression {
+                        kind: TypedExpressionKind::Literal(TypedLiteral {
+                            ty: integer_concrete_type.clone(),
+                            kind: LiteralKind::Integer(integer, None),
+                            loc: expr.loc.clone(),
+                        }),
+                        concrete_type: integer_concrete_type,
+                        value_category: ValueCategory::Rvalue,
                         loc: expr.loc.clone(),
-                    }),
-                    concrete_type: integer_concrete_type,
-                    value_category: ValueCategory::Rvalue,
-                    loc: expr.loc.clone(),
-                };
+                    };
+                }
             }
 
             if !expr.kind.is_comptime_valid() {

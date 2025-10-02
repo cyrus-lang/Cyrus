@@ -131,6 +131,7 @@
             pkgsCross.mingwW64.libffi
             pkgsCross.mingwW64.libxml2
             pkgsCross.mingwW64.ncurses
+            lldb_18
           ];
           shellHook = ''    
             # Ensure nightly toolchain is installed

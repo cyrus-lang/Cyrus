@@ -1,12 +1,33 @@
-import std::string{String};
-import std::libc{printf, malloc, free};
+import std::libc{printf};
 
-func alloc() {
-    #ptr = malloc(24);
-}
+fn main() {}
 
-func main() {
-    printf("Hello, Cyrus!\n");
-    alloc();
-}
+// pub config = const struct {
+//     host = "127.0.0.1",
+//     port = 8080
+// };
 
+// fn main() {
+//     printf("%s %d\n", config.host, config.port);
+// }
+
+// // import std::libc{printf};
+
+// fn main() {
+//     #list = char*[3] {"Cyrus", "Programming", "Language"};
+
+//     for (#x = 0; x < 5; x++) {
+//         for (#i = 0; i < 3; i++) {
+//             switch (list[i]) {
+//                 case "Cyrus":
+//                     printf("<%s/> ", list[i]);
+//                     break;
+//                 default:
+//                     printf("%s ", list[i]);
+//                     break;
+//             }
+//         }
+
+//         printf("\n");
+//     }
+// }

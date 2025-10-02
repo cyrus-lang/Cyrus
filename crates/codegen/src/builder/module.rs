@@ -11,7 +11,7 @@ use inkwell::{
     module::Module,
     targets::{FileType, TargetMachine},
     types::{ArrayType, StructType},
-    values::{FunctionValue, GlobalValue, PointerValue},
+    values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue},
 };
 use resolver::Resolver;
 use std::{cell::RefCell, collections::HashMap, fs, path::Path, rc::Rc};
@@ -164,6 +164,7 @@ pub enum LocalIRValue<'a> {
     Enum((StructType<'a>, ArrayType<'a>)),
     GlobalValue(GlobalValue<'a>, ConcreteType),
     LValue(PointerValue<'a>, ConcreteType),
+    RValue(BasicValueEnum<'a>, ConcreteType),
 }
 
 impl<'a> LocalIRValue<'a> {
@@ -198,6 +199,13 @@ impl<'a> LocalIRValue<'a> {
     pub fn as_lvalue(&self) -> Option<(&PointerValue<'a>, &ConcreteType)> {
         match self {
             LocalIRValue::LValue(pointer, concrete_type) => Some((pointer, concrete_type)),
+            _ => None,
+        }
+    }
+
+    pub fn as_rvalue(&self) -> Option<(&BasicValueEnum<'a>, &ConcreteType)> {
+        match self {
+            LocalIRValue::RValue(basic_value, concrete_type) => Some((basic_value, concrete_type)),
             _ => None,
         }
     }
