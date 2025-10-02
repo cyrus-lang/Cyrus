@@ -4,6 +4,7 @@ use ast::*;
 use diagcentral::Diag;
 use diagcentral::DiagLevel;
 use diagcentral::DiagLoc;
+use diagcentral::display_single_diag;
 use diagcentral::reporter::DiagReporter;
 use lexer::*;
 use std::rc::Rc;
@@ -115,7 +116,20 @@ impl Parser {
     }
 
     pub fn next_token(&mut self) -> Token {
-        let peek_token = self.tokens.get(self.cur_token_idx).unwrap();
+        let peek_token = match self.tokens.get(self.cur_token_idx) {
+            Some(token) => token,
+            None => {
+                display_single_diag!(Diag {
+                    kind: ParserDiagKind::InvalidToken(self.peek_token().kind),
+                    level: DiagLevel::Error,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        self.current_token().loc.clone(),
+                        self.file_name.clone(),
+                    ))),
+                    hint: None,
+                });
+            }
+        };
         self.cur_token_idx += 1;
         peek_token.clone()
     }

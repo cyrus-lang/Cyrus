@@ -249,7 +249,7 @@ impl<'a> CodeGenBuilder<'a> {
                 array_capacity.try_into().unwrap(),
             )
         } else {
-            // REVIEW Seems nasty, but works fine. 
+            // REVIEW Seems nasty, but works fine.
             // This happens because I didn't had the energy to differ lvalue from rvalue in operand of the array_index.
             // Maybe fixed it later. =)
 
@@ -381,8 +381,10 @@ impl<'a> CodeGenBuilder<'a> {
             }
             None => {
                 // handle unnamed struct field access
-                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, lvalue);
-                rvalue.as_basic_value().into_struct_value().get_type()
+                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+                self.build_concrete_type(local_scope_opt, rvalue.value_type)
+                    .try_into()
+                    .unwrap()
             }
         };
 
@@ -1395,22 +1397,6 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> InternalValue<'a> {
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
-            .unwrap();
-
-        if let LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) = &local_or_global_symbol {
-            if let Some(resolved_global_var) = symbol_entry.as_global_var() {
-                if resolved_global_var.global_var_sig.rhs.is_some() {
-                    return self.build_expr(
-                        local_scope_opt,
-                        &resolved_global_var.global_var_sig.rhs.clone().unwrap(),
-                    );
-                }
-            }
-        }
-
         let irreg = self.irreg.borrow();
         let local_ir_value_opt = irreg.get(&symbol_id).cloned();
         drop(irreg);

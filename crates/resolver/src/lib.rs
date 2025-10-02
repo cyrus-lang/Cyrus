@@ -2378,6 +2378,7 @@ impl Resolver {
                     kind: TypedExpressionKind::StructInit(TypedStructInit {
                         symbol_id,
                         fields: field_inits,
+                        is_const: struct_init.is_const,
                         loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
                     }),
                     value_category: ValueCategory::Rvalue,

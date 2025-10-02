@@ -509,6 +509,7 @@ pub struct Struct {
 pub struct StructInit {
     pub struct_name: ModuleImport,
     pub field_inits: Vec<FieldInit>,
+    pub is_const: bool,
     pub loc: Location,
     pub span: Span,
 }
