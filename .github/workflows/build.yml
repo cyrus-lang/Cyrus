@@ -49,7 +49,7 @@ jobs:
     steps:
       - name: Install build tools
         run: |
-          dnf install -y rpm-build rpmdevtools dnf-plugins-core make gcc rust cargo llvm clang
+          dnf install -y rpm-build rpmdevtools dnf-plugins-core make gcc rust cargo llvm clang rsync
 
       - name: Checkout source
         uses: actions/checkout@v4
