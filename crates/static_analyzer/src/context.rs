@@ -772,6 +772,10 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    fn check_global_var_for_const_folding(&self, concrete_type: ConcreteType) -> bool {
+        concrete_type.get_const_inner().as_basic_type().is_some()
+    }
+
     pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVariable) {
         if let Some(mut expr) = typed_global_var.expr.clone() {
             let concrete_type = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
@@ -779,7 +783,7 @@ impl<'a> AnalysisContext<'a> {
                 None => return,
             };
 
-            if !concrete_type.as_const_or_unnamed_struct().is_some() {
+            if self.check_global_var_for_const_folding(concrete_type) {
                 if let Some(integer) = self.const_expr_as_raw_integer(None, &expr) {
                     let integer_concrete_type = Some(ConcreteType::BasicType(BasicConcreteType::Int));
 
@@ -794,16 +798,6 @@ impl<'a> AnalysisContext<'a> {
                         loc: expr.loc.clone(),
                     };
                 }
-            }
-
-            if !expr.kind.is_comptime_valid() {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
-                    location: Some(DiagLoc::new(typed_global_var.loc.clone())),
-                    hint: None,
-                });
-                return;
             }
 
             expr.concrete_type = match self.analyze_typed_expr_type(None, &mut expr, typed_global_var.ty.clone()) {
@@ -829,6 +823,18 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(typed_global_var.loc.clone())),
                 hint: None,
             });
+        }
+
+        if let Some(expr) = &typed_global_var.expr {
+            if !expr.kind.is_comptime_valid() || !matches!(typed_global_var.ty, Some(ConcreteType::Const(..))) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
+                    location: Some(DiagLoc::new(typed_global_var.loc.clone())),
+                    hint: None,
+                });
+                return;
+            }
         }
 
         update_global_symbol!(self, typed_global_var.module_id, typed_global_var.symbol_id,

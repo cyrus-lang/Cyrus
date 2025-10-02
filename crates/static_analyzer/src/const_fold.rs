@@ -92,7 +92,6 @@ impl<'a> AnalysisContext<'a> {
 
                 Some(result)
             }
-
             TypedExpressionKind::Infix(typed_infix_expr) => {
                 let lhs = self.const_expr_as_raw_integer(scope_id_opt, &typed_infix_expr.lhs)?;
                 let rhs = self.const_expr_as_raw_integer(scope_id_opt, &typed_infix_expr.rhs)?;
