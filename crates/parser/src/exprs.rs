@@ -105,6 +105,13 @@ impl Parser {
                 if self.peek_token_is(TokenKind::Struct) || self.peek_token_is(TokenKind::Bits) {
                     self.next_token();
                     self.parse_unnamed_struct_value(true)?
+                } else if let TokenKind::Identifier { .. } = self.peek_token().kind {
+                    self.next_token(); // consume const
+                    let module_import = self.parse_module_import()?;
+                    self.next_token();
+                    let mut struct_init = self.parse_struct_init(module_import)?;
+                    struct_init.is_const = true;
+                    Expression::StructInit(struct_init)
                 } else {
                     return Err(Diag {
                         kind: ParserDiagKind::InvalidToken(self.current_token().kind),
@@ -121,7 +128,7 @@ impl Parser {
                 let module_import = self.parse_module_import()?;
 
                 if self.current_token_is(TokenKind::LeftBrace) {
-                    self.parse_struct_init(module_import)?
+                    Expression::StructInit(self.parse_struct_init(module_import)?)
                 } else {
                     Expression::ModuleImport(module_import)
                 }
@@ -258,7 +265,8 @@ impl Parser {
             if let Expression::ModuleImport(module_import) = expr.clone() {
                 self.next_token(); // consume struct name
                 let struct_init = self.parse_struct_init(module_import)?;
-                return Ok(struct_init);
+
+                return Ok(Expression::StructInit(struct_init));
             } else {
                 return Err(Diag {
                     kind: ParserDiagKind::InvalidToken(self.current_token().kind),
@@ -699,7 +707,7 @@ impl Parser {
         }))
     }
 
-    pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<Expression, ParserError> {
+    pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<StructInit, ParserError> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -707,15 +715,16 @@ impl Parser {
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
-            return Ok(Expression::StructInit(StructInit {
+            return Ok(StructInit {
                 struct_name,
                 field_inits,
+                is_const: false,
                 loc,
                 span: Span {
                     start,
                     end: self.current_token().span.end,
                 },
-            }));
+            });
         }
 
         loop {
@@ -769,15 +778,16 @@ impl Parser {
             }
         }
 
-        return Ok(Expression::StructInit(StructInit {
+        Ok(StructInit {
             struct_name,
             field_inits,
+            is_const: false,
             loc,
             span: Span {
                 start,
                 end: self.current_token().span.end,
             },
-        }));
+        })
     }
 
     pub fn parse_assignment_kind(

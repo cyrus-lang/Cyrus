@@ -1331,7 +1331,7 @@ impl<'a> AnalysisContext<'a> {
             )
             .unwrap();
 
-        let struct_symbol_id = match normalized.as_struct_symbol_id() {
+        let struct_symbol_id = match normalized.get_const_inner().as_struct_symbol_id() {
             Some(symbol_id) => symbol_id,
             None => {
                 if let Some(union_symbol_id) = normalized.as_union_symbol_id() {
@@ -1468,9 +1468,15 @@ impl<'a> AnalysisContext<'a> {
 
         typed_struct_init.symbol_id = normalized.as_struct_symbol_id().unwrap();
 
-        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
-            typed_struct_init.symbol_id,
-        )))
+        if typed_struct_init.is_const {
+            Some(ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(
+                ResolvedSymbol::NamedStruct(typed_struct_init.symbol_id),
+            ))))
+        } else {
+            Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
+                typed_struct_init.symbol_id,
+            )))
+        }
     }
 
     fn analyze_address_of_expr_type(

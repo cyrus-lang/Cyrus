@@ -235,6 +235,7 @@ pub struct TypedDereference {
 pub struct TypedStructInit {
     pub symbol_id: SymbolID,
     pub fields: Vec<TypedStructFieldInit>,
+    pub is_const: bool,
     pub loc: SourceLoc,
 }
 
