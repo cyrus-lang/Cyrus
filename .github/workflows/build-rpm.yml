@@ -18,7 +18,7 @@ jobs:
               libffi-devel libxml2-devel
           
           # Add LLVM repo
-          zypper addrepo https://download.opensuse.org/repositories/devel:/tools:/llvm/openSUSE_Tumbleweed/ llvm
+          zypper addrepo https://download.opensuse.org/repositories/openSUSE:Factory/standard/openSUSE:Factory.repo
           zypper --non-interactive refresh
           zypper --non-interactive install llvm18 llvm18-devel clang18 clang18-devel
 
