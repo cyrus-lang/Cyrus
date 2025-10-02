@@ -9,12 +9,13 @@ on:
 jobs:
   build-linux-rpm:
     runs-on: ubuntu-latest
-    container: fedora:42
+    container: opensuse/leap
     steps:
       - name: Install build tools
         run: |
-          dnf install -y rpm-build rpmdevtools dnf-plugins-core make gcc rust cargo llvm18-static llvm18-libs clang rsync isl-devel libffi-devel libxml2-devel
-          echo "LLVM_SYS_181_PREFIX=/usr/lib64/llvm/18" >> $GITHUB_ENV
+          zypper refresh
+          zypper install -y rpm-build rpmdevtools make gcc rust cargo clang rsync libffi-devel libxml2-devel isl-devel llvm18
+          echo "LLVM_SYS_181_PREFIX=/usr/include/llvm18" >> $GITHUB_ENV
 
       - name: Checkout source
         uses: actions/checkout@v4
@@ -30,7 +31,6 @@ jobs:
           mkdir -p ~/rpmbuild/SOURCES
 
           sed -i "1i %global cyrus_version $CYRUS_VERSION" .github/workflows/cyrus.spec
-
           mkdir cyrus-$CYRUS_VERSION
           rsync -a --exclude '.git' ./ cyrus-$CYRUS_VERSION/
           tar czf ~/rpmbuild/SOURCES/cyrus-$CYRUS_VERSION.tar.gz cyrus-$CYRUS_VERSION
@@ -45,7 +45,7 @@ jobs:
       - name: Upload RPM and spec
         uses: actions/upload-artifact@v4
         with:
-          name: cyrus-fedora-rpm
+          name: cyrus-opensuse-rpm
           path: |
             ~/rpmbuild/RPMS/**/*.rpm
             ~/rpmbuild/SPECS/cyrus.spec
