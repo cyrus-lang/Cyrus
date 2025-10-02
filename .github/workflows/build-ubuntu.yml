@@ -35,7 +35,6 @@ jobs:
           cp ./target/release/cyrus ./cyrus
           cp ./scripts/install.sh ./cyrus
           cp -r ./stdlib ./cyrus
-          cp ./cyrus.spec ./cyrus
 
       - name: Upload as artifact
         uses: actions/upload-artifact@v4
