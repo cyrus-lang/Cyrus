@@ -819,6 +819,18 @@ impl<'a> AnalysisContext<'a> {
             None => Some(typed_global_var.expr.clone().unwrap().concrete_type.unwrap()),
         };
 
+        if matches!(
+            typed_global_var.ty,
+            Some(ConcreteType::BasicType(BasicConcreteType::Void))
+        ) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::VoidVariableType,
+                location: Some(DiagLoc::new(typed_global_var.loc.clone())),
+                hint: None,
+            });
+        }
+
         update_global_symbol!(self, typed_global_var.module_id, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
                 resolved_var.global_var_sig.rhs = typed_global_var.expr.clone();
