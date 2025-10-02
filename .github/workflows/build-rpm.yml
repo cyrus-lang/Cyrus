@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Install build tools
         run: |
-          dnf install -y rpm-build rpmdevtools dnf-plugins-core make gcc rust cargo llvm clang rsync
+          dnf install -y rpm-build rpmdevtools dnf-plugins-core make gcc rust cargo llvm clang rsync isl-devel libffi-devel libxml2-devel
 
       - name: Checkout source
         uses: actions/checkout@v4
