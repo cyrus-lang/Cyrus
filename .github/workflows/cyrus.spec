@@ -43,3 +43,6 @@ source /etc/profile.d/cyrus.sh
 
 %postun
 sed -i '/source \/etc\/profile.d\/cyrus.sh/d' /etc/bashrc
+
+%changelog
+* Fri Sep 05 2025 Cyrus Team <you@example.com> - ${cyrus_version}-1
