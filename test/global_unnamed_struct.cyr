@@ -1,12 +1,14 @@
-// @stdout: 
+// @stdout: (127.0.0.1, 8080)
 
 import std::libc{printf};
 
-pub config = const struct {
-    host = "127.0.0.1",
-    port = 8080
+struct Config { host: char*; port: uint; }
+
+pub config = const Config {
+    host: "127.0.0.1",
+    port: 8080
 };
 
 fn main() {
-    printf("%s %d\n", config.host, config.port);
+    printf("(%s, %d)\n", config.host, config.port);
 }

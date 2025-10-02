@@ -1397,22 +1397,6 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> InternalValue<'a> {
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
-            .unwrap();
-
-        if let LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) = &local_or_global_symbol {
-            if let Some(resolved_global_var) = symbol_entry.as_global_var() {
-                if resolved_global_var.global_var_sig.rhs.is_some() {
-                    return self.build_expr(
-                        local_scope_opt,
-                        &resolved_global_var.global_var_sig.rhs.clone().unwrap(),
-                    );
-                }
-            }
-        }
-
         let irreg = self.irreg.borrow();
         let local_ir_value_opt = irreg.get(&symbol_id).cloned();
         drop(irreg);
