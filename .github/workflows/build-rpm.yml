@@ -13,6 +13,7 @@ jobs:
     steps:
       - name: Install build tools
         run: |
+          zypper addrepo https://download.opensuse.org/repositories/openSUSE:Factory/standard/openSUSE:Factory.repo
           zypper refresh
           zypper install -y rpm-build rpmdevtools make gcc rust cargo clang rsync libffi-devel libxml2-devel isl-devel llvm18
           echo "LLVM_SYS_181_PREFIX=/usr/include/llvm18" >> $GITHUB_ENV
