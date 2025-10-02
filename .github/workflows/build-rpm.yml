@@ -13,7 +13,8 @@ jobs:
     steps:
       - name: Install build tools
         run: |
-          dnf install -y rpm-build rpmdevtools dnf-plugins-core make gcc rust cargo llvm clang rsync isl-devel libffi-devel libxml2-devel
+          dnf install -y rpm-build rpmdevtools dnf-plugins-core make gcc rust cargo llvm18-static llvm18-libs clang rsync isl-devel libffi-devel libxml2-devel
+          echo "LLVM_SYS_181_PREFIX=/usr/lib64/llvm/18" >> $GITHUB_ENV
 
       - name: Checkout source
         uses: actions/checkout@v4
