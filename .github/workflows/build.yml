@@ -54,11 +54,21 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Extract version from Cargo.toml
+        run: |
+          VERSION=$(cd ./crates/cli && sed -n 's/^version\s*=\s*"\(.*\)"/\1/p' ./Cargo.toml | head -n1)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
       - name: Set up RPM build environment
         run: |
           rpmdev-setuptree
           mkdir -p ~/rpmbuild/SOURCES
-          tar czf ~/rpmbuild/SOURCES/cyrus-0.0.1.tar.gz . --exclude=.git
+
+          mkdir cyrus-$VERSION
+          rsync -a --exclude '.git' ./ cyrus-$VERSION/
+          tar czf ~/rpmbuild/SOURCES/cyrus-$VERSION.tar.gz cyrus-$VERSION
+
+          sed -i "s/^Version:.*/Version:        $VERSION/" .github/workflows/cyrus.spec
           cp .github/workflows/cyrus.spec ~/rpmbuild/SPECS/
 
       - name: Build RPM
