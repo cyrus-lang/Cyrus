@@ -17,8 +17,6 @@ jobs:
           zypper --non-interactive install rpm-build rpmdevtools make gcc rust cargo rsync \
               libffi-devel libxml2-devel llvm18 libLLVM18 llvm18-devel clang18 clang18-devel
 
-          echo "LLVM_SYS_181_PREFIX=/usr/lib64/llvm18" >> $GITHUB_ENV
-
       - name: Checkout source
         uses: actions/checkout@v4
 
