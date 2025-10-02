@@ -1188,6 +1188,15 @@ impl<'a> AnalysisContext<'a> {
             match match operand_type {
                 ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
                 ConcreteType::Pointer(concrete_type) => {
+                    if concrete_type.is_void() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::ObjectNotSupportsFields,
+                            location: Some(DiagLoc::new(field_access.loc.clone())),
+                            hint: None,
+                        });
+                        return None;
+                    }
                     self.extract_object_symbol_id(scope_id_opt, *concrete_type, field_access.loc.clone())
                 }
                 ConcreteType::UnnamedStruct(unnamed_struct_type) => {
@@ -1829,9 +1838,20 @@ impl<'a> AnalysisContext<'a> {
 
             match operand_type {
                 ConcreteType::ResolvedSymbol(resolved_symbol) => resolved_symbol.get_symbol_id(),
-                ConcreteType::Pointer(concrete_type) => self
-                    .extract_object_symbol_id(scope_id_opt, *concrete_type, loc.clone())
-                    .unwrap(),
+                ConcreteType::Pointer(concrete_type) => {
+                    if concrete_type.is_void() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::ObjectNotSupportsFields,
+                            location: Some(DiagLoc::new(method_call.loc.clone())),
+                            hint: None,
+                        });
+                        return None;
+                    }
+
+                    self.extract_object_symbol_id(scope_id_opt, *concrete_type, loc.clone())
+                        .unwrap()
+                }
                 _ => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
