@@ -2,15 +2,18 @@ import std::libc{printf};
 
 struct Config { host: char*; port: uint; }
 
-pub config = const Config {
-    host: "127.0.0.1",
-    port: 8080
-};
+// pub config = const Config {
+//     host: "127.0.0.1",
+//     port: 8080
+// };
 
 fn main() {
-    // #a: const Config;
+    #unn = struct { name = "Taha" };
+    #ptr = &unn;
+    
+    printf("name: %s\n", ptr->name);
+    // config.host;
 }
-
 
 // fn main() {
 //     printf("%s %d\n", config.host, config.port);

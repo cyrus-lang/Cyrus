@@ -799,8 +799,13 @@ impl<'a> AnalysisContext<'a> {
             result = false;
         }
 
-        let is_pointer = operand.concrete_type.clone().unwrap().is_pointer();
-        let is_struct = operand.concrete_type.clone().unwrap().is_resolved_symbol();
+        let is_pointer = operand.concrete_type.clone().unwrap().get_const_inner().is_pointer();
+        let is_struct = operand
+            .concrete_type
+            .clone()
+            .unwrap()
+            .get_const_inner()
+            .is_resolved_symbol();
 
         if field_access.is_fat_arrow {
             if !is_pointer {
@@ -897,7 +902,7 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        if !self.validate_union_field_access(operand_type, &field_access) {
+        if !self.validate_union_field_access(operand_type.get_const_inner().clone(), &field_access) {
             return None;
         }
 
@@ -962,18 +967,6 @@ impl<'a> AnalysisContext<'a> {
             Some(concrete_type) => concrete_type,
             None => return None,
         };
-
-        if field_access.is_fat_arrow {
-            field_access.operand = Box::new(TypedExpression {
-                kind: TypedExpressionKind::Dereference(TypedDereference {
-                    operand: field_access.operand.clone(),
-                    loc: field_access.loc.clone(),
-                }),
-                value_category: ValueCategory::Lvalue,
-                concrete_type: None,
-                loc: field_access.loc.clone(),
-            });
-        }
 
         field_access.field_index = Some(field_idx);
         field_access.field_ty = Some(field_type.clone());
@@ -1176,7 +1169,7 @@ impl<'a> AnalysisContext<'a> {
                         }
                     };
 
-                    resolved_var_type
+                    resolved_var_type.get_const_inner().clone()
                 }
                 _ => match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())
                 {
@@ -1196,6 +1189,13 @@ impl<'a> AnalysisContext<'a> {
                             hint: None,
                         });
                         return None;
+                    } else if let Some(unnamed_struct_type) = concrete_type.as_unnamed_struct() {
+                        return self.analyze_unnamed_struct_field_access_type(
+                            scope_id_opt,
+                            &unnamed_struct_type,
+                            field_access,
+                            expected_type.clone(),
+                        );
                     }
                     self.extract_object_symbol_id(scope_id_opt, *concrete_type, field_access.loc.clone())
                 }
