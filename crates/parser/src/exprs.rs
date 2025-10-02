@@ -24,20 +24,20 @@ impl Parser {
                 return Ok((expr, Span::new(left_start, self.current_token().span.end)));
             }
 
-            if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
-                self.next_token(); // consume . or ->
-                left = self.parse_field_access(left)?;
-                continue;
-            }
-
             if self.peek_token_is(TokenKind::LeftBracket) {
-                self.next_token(); // consume [
+                self.next_token();
                 left = self.parse_array_index(left)?;
                 continue;
             }
 
+            if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
+                self.next_token();
+                left = self.parse_field_access(left)?;
+                continue;
+            }
+
             if self.peek_token_is(TokenKind::Increment) {
-                self.next_token(); // consume '++'
+                self.next_token();
                 let loc = self.current_token().loc.clone();
                 let span = Span::new(left_start, self.current_token().span.end);
                 return Ok((
@@ -50,7 +50,7 @@ impl Parser {
                     span,
                 ));
             } else if self.peek_token_is(TokenKind::Decrement) {
-                self.next_token(); // consume '--'
+                self.next_token();
                 let loc = self.current_token().loc.clone();
                 let span = Span::new(left_start, self.current_token().span.end);
                 return Ok((
@@ -75,8 +75,6 @@ impl Parser {
                         }
                     }
                     None => {
-                        dbg!(left.clone());
-
                         return Ok((
                             left,
                             Span {
@@ -133,7 +131,7 @@ impl Parser {
                 let loc = self.current_token().loc.clone();
                 self.next_token();
                 Expression::AddressOf(AddressOf {
-                    expr: Box::new(self.parse_prefix_expression()?),
+                    expr: Box::new(self.parse_expression(Precedence::Lowest)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
                 })
