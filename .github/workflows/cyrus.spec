@@ -1,5 +1,3 @@
-%global rust_version %(CYRUS_VERSION)
-
 Name:           cyrus
 Version:        %{rust_version}
 Release:        1%{?dist}
