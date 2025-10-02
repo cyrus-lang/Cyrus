@@ -13,10 +13,16 @@ jobs:
     steps:
       - name: Install build tools
         run: |
-          zypper addrepo https://download.opensuse.org/repositories/openSUSE:Factory/standard/openSUSE:Factory.repo
-          zypper refresh
-          zypper install -y rpm-build rpmdevtools make gcc rust cargo clang rsync libffi-devel libxml2-devel isl-devel llvm18
-          echo "LLVM_SYS_181_PREFIX=/usr/include/llvm18" >> $GITHUB_ENV
+          zypper --non-interactive refresh
+          zypper --non-interactive install rpm-build rpmdevtools make gcc rust cargo rsync \
+              libffi-devel libxml2-devel
+          
+          # Add LLVM repo
+          zypper addrepo https://download.opensuse.org/repositories/devel:/tools:/llvm/openSUSE_Tumbleweed/ llvm
+          zypper --non-interactive refresh
+          zypper --non-interactive install llvm18 llvm18-devel clang18 clang18-devel
+
+          echo "LLVM_SYS_181_PREFIX=/usr/lib64/llvm18" >> $GITHUB_ENV
 
       - name: Checkout source
         uses: actions/checkout@v4
