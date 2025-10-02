@@ -1,8 +1,22 @@
 import std::libc{printf};
 
 fn main() {
-    #a: void*;
-    a.foo;    
+    for (#i = 0; i < 5; i++) {
+        switch (i) {
+        case 0: 
+            for (#j = 0; j < 10; j++) {
+                printf("@");
+            }
+            break;
+        case 1: 
+            printf("$");
+            break;
+        default:
+            printf("-");
+            break;
+        }
+        printf("\n");
+    }
 }
 
 // pub config = const struct {
