@@ -9,7 +9,7 @@ on:
 jobs:
   build-linux-rpm:
     runs-on: ubuntu-latest
-    container: opensuse/leap
+    container: opensuse/tumbleweed
     steps:
       - name: Install build tools
         run: |
