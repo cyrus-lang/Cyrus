@@ -33,7 +33,7 @@ jobs:
           tar czf ~/rpmbuild/SOURCES/cyrus-$CYRUS_VERSION.tar.gz cyrus-$CYRUS_VERSION
 
           # Prepend evaluated version as a spec macro
-          sed -i "1i %global rust_version $CYRUS_VERSION" .github/workflows/cyrus.spec
+          sed -i "1i %global cyrus_version $CYRUS_VERSION" .github/workflows/cyrus.spec
 
           cp .github/workflows/cyrus.spec ~/rpmbuild/SPECS/
 

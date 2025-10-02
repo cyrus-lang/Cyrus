@@ -1,12 +1,12 @@
 Name:           cyrus
-Version:        %{rust_version}
+Version:        %{cyrus_version}
 Release:        1%{?dist}
 
 Summary:        Cyrus Programming Language
 
 License:        GPL-3.0
 URL:            https://github.com/cyrus-lang/Cyrus
-Source0:        cyrus-${rust_version}.tar.gz
+Source0:        cyrus-${cyrus_version}.tar.gz
 
 BuildRequires:  rust, cargo, llvm, clang, libffi-devel, libxml2-devel, isl-devel
 BuildArch:	    x86_64
@@ -43,7 +43,3 @@ source /etc/profile.d/cyrus.sh
 
 %postun
 sed -i '/source \/etc\/profile.d\/cyrus.sh/d' /etc/bashrc
-
-%changelog
-* Fri Sep 05 2025 Cyrus Team <you@example.com> - ${rust_version}-1
-- Initial RPM packaging
