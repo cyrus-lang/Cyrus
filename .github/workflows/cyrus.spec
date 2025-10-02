@@ -8,7 +8,7 @@ License:        GPL-3.0
 URL:            https://github.com/cyrus-lang/Cyrus
 Source0:        cyrus-%{cyrus_version}.tar.gz
 
-BuildRequires:  rust, cargo, llvm18-static, llvm18-libs, clang, libffi-devel, libxml2-devel, isl-devel
+BuildRequires:  rust, cargo, llvm18, clang, libffi-devel, libxml2-devel, isl-devel
 BuildArch:	    x86_64
 
 %description
