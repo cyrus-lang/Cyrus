@@ -1,15 +1,19 @@
 import std::libc{printf};
 
-pub config = const struct {
-    host = "127.0.0.1",
-    port = 8080
-};
-
 fn main() {
-    printf("%s %d\n", config.host, config.port);
+    
 }
 
-// import std::libc{printf};
+// pub config = const struct {
+//     host = "127.0.0.1",
+//     port = 8080
+// };
+
+// fn main() {
+//     printf("%s %d\n", config.host, config.port);
+// }
+
+// // import std::libc{printf};
 
 // fn main() {
 //     #list = char*[3] {"Cyrus", "Programming", "Language"};

@@ -10,13 +10,13 @@ pub enum Precedence {
     LessGreater, // >, <, >=, <=
     Sum,         // +, -
     Product,     // *, /, %
-    Bitwise,     // &, |, ~, &~
-    Prefix,      // -X, !X
+    Bitwise,     // &, |, ~, &~, ^, <<, >>
+    Prefix,      // -X, !X, &X
+    Cast,        // Type conversion
     Call,        // my_function(x)
     Index,       // array[index]
-    Cast,        // Type conversion
+    Field,       // . and ->
 }
-
 pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
     match token_kind {
         TokenKind::Or => Precedence::Or,
@@ -40,8 +40,10 @@ pub fn token_precedence_of(token_kind: TokenKind) -> Precedence {
         | TokenKind::Caret
         | TokenKind::ShiftLeft
         | TokenKind::ShiftRight => Precedence::Bitwise,
-        
+
         TokenKind::SizeOf => Precedence::Sizeof,
+
+        TokenKind::Dot | TokenKind::FatArrow => Precedence::Field,
 
         // Calls and indexing
         TokenKind::LeftParen => Precedence::Call,
