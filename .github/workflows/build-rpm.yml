@@ -28,11 +28,11 @@ jobs:
           rpmdev-setuptree
           mkdir -p ~/rpmbuild/SOURCES
 
+          sed -i "1i %global cyrus_version $CYRUS_VERSION" .github/workflows/cyrus.spec
+
           mkdir cyrus-$CYRUS_VERSION
           rsync -a --exclude '.git' ./ cyrus-$CYRUS_VERSION/
           tar czf ~/rpmbuild/SOURCES/cyrus-$CYRUS_VERSION.tar.gz cyrus-$CYRUS_VERSION
-
-          sed -i "1i %global cyrus_version $CYRUS_VERSION" .github/workflows/cyrus.spec
 
           cp .github/workflows/cyrus.spec ~/rpmbuild/SPECS/
 
