@@ -2,9 +2,9 @@ name: Build Cyrus
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
+    branches: ["**"]
 
 jobs:
   build-linux-ubuntu:
@@ -42,34 +42,3 @@ jobs:
         with:
           name: cyrus-linux
           path: ./cyrus
-
-  build-linux-rpm:
-    runs-on: ubuntu-latest
-    container: fedora:42
-    steps:
-      - name: Install build tools
-        run: |
-          dnf install -y rpm-build rpmdevtools dnf-plugins-core make gcc rust cargo llvm clang
-
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Set up RPM build environment
-        run: |
-          rpmdev-setuptree
-          mkdir -p ~/rpmbuild/SOURCES
-          tar czf ~/rpmbuild/SOURCES/cyrus-0.0.1.tar.gz . --exclude=.git
-          cp .github/workflows/cyrus.spec ~/rpmbuild/SPECS/
-
-      - name: Build RPM
-        run: |
-          cd ~/rpmbuild/SPECS
-          rpmbuild -ba cyrus.spec
-
-      - name: Upload RPM and spec
-        uses: actions/upload-artifact@v4
-        with:
-          name: cyrus-fedora-rpm
-          path: |
-            ~/rpmbuild/RPMS/**/*.rpm
-            ~/rpmbuild/SPECS/cyrus.spec

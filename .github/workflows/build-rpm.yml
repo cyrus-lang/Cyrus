@@ -1,0 +1,51 @@
+name: Build Cyrus
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  build-linux-rpm:
+    runs-on: ubuntu-latest
+    container: opensuse/tumbleweed
+    steps:
+      - name: Install build tools
+        run: |
+          zypper --non-interactive refresh
+          zypper --non-interactive install rpm-build rpmdevtools make gcc rust cargo rsync \
+              libffi-devel libxml2-devel llvm18 libLLVM18 llvm18-devel clang18 clang18-devel
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Extract version from Cargo.toml
+        run: |
+          CYRUS_VERSION=$(cd ./crates/cli && sed -n 's/^version\s*=\s*"\(.*\)"/\1/p' Cargo.toml | head -n1)
+          echo "CYRUS_VERSION=$CYRUS_VERSION" >> $GITHUB_ENV
+
+      - name: Set up RPM build environment
+        run: |
+          rpmdev-setuptree
+          mkdir -p ~/rpmbuild/SOURCES
+
+          sed -i "1i %global cyrus_version $CYRUS_VERSION" .github/workflows/cyrus.spec
+          mkdir cyrus-$CYRUS_VERSION
+          rsync -a --exclude '.git' ./ cyrus-$CYRUS_VERSION/
+          tar czf ~/rpmbuild/SOURCES/cyrus-$CYRUS_VERSION.tar.gz cyrus-$CYRUS_VERSION
+
+          cp .github/workflows/cyrus.spec ~/rpmbuild/SPECS/
+
+      - name: Build RPM
+        run: |
+          cd ~/rpmbuild/SPECS
+          rpmbuild -ba cyrus.spec
+
+      - name: Upload RPM and spec
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-opensuse-rpm
+          path: |
+            ~/rpmbuild/RPMS/**/*.rpm
+            ~/rpmbuild/SPECS/cyrus.spec
