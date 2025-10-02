@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    VoidVariableType,
     NegativeArrayCapacity,
     ValueIsNotACompTimeConst,
     SwitchFallthroughIntoValuedFieldCase,
@@ -200,6 +201,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::VoidVariableType => {
+                write!(f, "The type 'void' cannot be used in this context.")
+            }
             AnalyzerDiagKind::EnumVariantArgCountMismatch {
                 variant_name,
                 expected,

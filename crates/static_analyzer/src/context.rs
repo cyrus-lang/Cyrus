@@ -1314,6 +1314,16 @@ impl<'a> AnalysisContext<'a> {
                         .normalize_type(None, typed_func_param.ty.clone(), typed_func_param.loc.clone())
                         .unwrap();
 
+                    if matches!(normalized_type, ConcreteType::BasicType(BasicConcreteType::Void)) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::VoidVariableType,
+                            location: Some(DiagLoc::new(typed_func_param.loc.clone())),
+                            hint: None,
+                        });
+                        continue;
+                    }
+
                     typed_func_param.ty = normalized_type.clone();
                 }
                 TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
@@ -1343,6 +1353,18 @@ impl<'a> AnalysisContext<'a> {
                     Some(concrete_type) => concrete_type,
                     None => return,
                 };
+
+                if matches!(
+                    normalized_concrete_type,
+                    ConcreteType::BasicType(BasicConcreteType::Void)
+                ) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::VoidVariableType,
+                        location: Some(DiagLoc::new(loc.clone())),
+                        hint: None,
+                    });
+                }
 
                 *variadic_params = TypedFuncVariadicParams::Typed(identifier.clone(), normalized_concrete_type);
             }
@@ -1457,6 +1479,18 @@ impl<'a> AnalysisContext<'a> {
                     });
                 }
             }
+        }
+
+        if matches!(
+            typed_variable.ty,
+            Some(ConcreteType::BasicType(BasicConcreteType::Void))
+        ) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::VoidVariableType,
+                location: Some(DiagLoc::new(typed_variable.loc.clone())),
+                hint: None,
+            });
         }
 
         if typed_variable.ty.is_some()
