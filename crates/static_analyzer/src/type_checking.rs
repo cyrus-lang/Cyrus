@@ -1169,7 +1169,7 @@ impl<'a> AnalysisContext<'a> {
                         }
                     };
 
-                    resolved_var_type.get_const_inner().clone()
+                    resolved_var_type.clone()
                 }
                 _ => match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())
                 {
@@ -1178,7 +1178,7 @@ impl<'a> AnalysisContext<'a> {
                 },
             };
 
-            match match operand_type {
+            match match operand_type.get_const_inner() {
                 ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
                 ConcreteType::Pointer(concrete_type) => {
                     if concrete_type.is_void() {
@@ -1197,7 +1197,8 @@ impl<'a> AnalysisContext<'a> {
                             expected_type.clone(),
                         );
                     }
-                    self.extract_object_symbol_id(scope_id_opt, *concrete_type, field_access.loc.clone())
+
+                    self.extract_object_symbol_id(scope_id_opt, *concrete_type.clone(), field_access.loc.clone())
                 }
                 ConcreteType::UnnamedStruct(unnamed_struct_type) => {
                     return self.analyze_unnamed_struct_field_access_type(
@@ -1842,7 +1843,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
-            match operand_type {
+            match operand_type.get_const_inner() {
                 ConcreteType::ResolvedSymbol(resolved_symbol) => resolved_symbol.get_symbol_id(),
                 ConcreteType::Pointer(concrete_type) => {
                     if concrete_type.is_void() {
@@ -1855,7 +1856,7 @@ impl<'a> AnalysisContext<'a> {
                         return None;
                     }
 
-                    self.extract_object_symbol_id(scope_id_opt, *concrete_type, loc.clone())
+                    self.extract_object_symbol_id(scope_id_opt, *concrete_type.clone(), loc.clone())
                         .unwrap()
                 }
                 _ => {
@@ -2056,8 +2057,21 @@ impl<'a> AnalysisContext<'a> {
             result = false;
         }
 
-        let is_pointer = method_call.operand.concrete_type.clone().unwrap().is_pointer();
-        let is_struct = method_call.operand.concrete_type.clone().unwrap().is_resolved_symbol();
+        let is_pointer = method_call
+            .operand
+            .concrete_type
+            .clone()
+            .unwrap()
+            .get_const_inner()
+            .is_pointer();
+        let is_struct = method_call
+            .operand
+            .concrete_type
+            .clone()
+            .unwrap()
+            .get_const_inner()
+            .is_resolved_symbol();
+        
         let is_operand_const = method_call.operand.concrete_type.clone().unwrap().is_const();
 
         if method_call.is_fat_arrow {
