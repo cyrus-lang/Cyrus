@@ -1,20 +1,9 @@
-import std::libc{printf};
+import std::libc{printf, scanf};
 
-fn main() {
-    #p = Point.new(10, 20);
-    printf("res: %d\n", p.sum());
+fn sample() {
+    printf("Hello, Cyrus!\n");
 }
 
-struct Point {
-    x: int;
-    y: int;
-    
-    pub fn new(x: int, y: int) const Point {
-        return Point { x: x, y: y };
-    }
-
-    pub fn sum(self) int {
-        self.x++;
-        return self.x + self.y;
-    }
+fn main() {
+    printf("%p\n", cast(void*, sample));
 }

@@ -7,7 +7,7 @@ pub enum ResolverDiagKind {
         module_name: String,
     },
     ImportSinglePrivateSymbol {
-        symbol_name: String
+        symbol_name: String,
     },
     ModuleIndexNotFound {
         module_name: String,
@@ -40,6 +40,7 @@ pub enum ResolverDiagKind {
         found: String,
     },
     InvalidTopLevelStatement,
+    InvalidStatement,
     InvalidArrayCapacity,
     InvalidUntypedFuncParam,
     RequiresLocalScope,
@@ -160,6 +161,9 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::InvalidTopLevelStatement => {
                 write!(f, "Invalid top-level statement.")
+            }
+            ResolverDiagKind::InvalidStatement => {
+                write!(f, "Invalid statement.")
             }
             ResolverDiagKind::InvalidArrayCapacity => {
                 write!(f, "Array capacity must be a positive constant integer.")

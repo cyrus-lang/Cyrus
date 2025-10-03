@@ -150,7 +150,13 @@ impl<'a> CodeGenBuilder<'a> {
 
             let fn_value = self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone());
 
-            self.insert_forward_decl_to_registry(*method_symbol_id, LocalIRValue::Func(fn_value));
+            self.insert_forward_decl_to_registry(
+                *method_symbol_id,
+                LocalIRValue::Func(
+                    fn_value,
+                    ConcreteType::FuncType(self.build_func_type_from_func_sig(&resolved_method.func_sig)),
+                ),
+            );
 
             self.blockreg.current_func_ref = Some(fn_value.clone());
 
@@ -232,7 +238,7 @@ impl<'a> CodeGenBuilder<'a> {
                 largest_field_type = basic_type.clone();
             }
         });
-        
+
         let struct_type = self.llvmctx.struct_type(&field_types, true);
         struct_type.set_body(&[largest_field_type], true);
         struct_type

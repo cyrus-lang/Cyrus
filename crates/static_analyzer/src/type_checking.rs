@@ -187,6 +187,10 @@ impl<'a> AnalysisContext<'a> {
             | (ConcreteType::BasicType(BasicConcreteType::IntPtr), ConcreteType::Pointer(..))
             | (ConcreteType::BasicType(BasicConcreteType::UIntPtr), ConcreteType::Pointer(..)) => true,
 
+            (ConcreteType::FuncType(..), ConcreteType::Pointer(pointer_type)) => {
+                pointer_type.is_void()
+            }
+
             _ => false,
         }
     }

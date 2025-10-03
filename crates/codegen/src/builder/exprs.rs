@@ -1416,7 +1416,14 @@ impl<'a> CodeGenBuilder<'a> {
                     Some((global_value, concrete_type)) => {
                         (global_value.as_pointer_value().clone(), concrete_type.clone())
                     }
-                    None => panic!("Couldn't find any lvalue with this symbol id."),
+                    None => match local_ir_value.as_func() {
+                        Some((fn_value, concrete_type)) => {
+                            return InternalValue::new(concrete_type.clone(), InternalValueKind::FuncValue(*fn_value));
+                        }
+                        None => {
+                            panic!("Couldn't find any lvalue with this symbol id.")
+                        }
+                    },
                 },
             },
         };

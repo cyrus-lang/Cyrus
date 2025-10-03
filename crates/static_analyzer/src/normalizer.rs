@@ -3,8 +3,8 @@ use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
-    ScopeID, SymbolID,
-    types::{ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
+    ScopeID, SymbolID, TypedFuncParamKind,
+    types::{ConcreteType, FuncType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -138,6 +138,27 @@ impl<'a> AnalysisContext<'a> {
                 Some(arr_type) => Some(ConcreteType::Array(arr_type)),
                 None => None,
             },
+            ConcreteType::FuncType(mut func_type) => {
+                let mut new_params = Vec::with_capacity(func_type.params.len());
+                for param in func_type.params {
+                    match self.normalize_type(scope_id_opt, param, loc.clone()) {
+                        Some(normalized) => new_params.push(normalized),
+                        None => return None, // fail whole function type
+                    }
+                }
+                func_type.params = new_params;
+
+                // Normalize return type
+                match self.normalize_type(scope_id_opt, *func_type.ret, loc) {
+                    Some(new_ret) => func_type.ret = Box::new(new_ret),
+                    None => return None,
+                }
+
+                Some(ConcreteType::FuncType(func_type))
+            }
+            ConcreteType::LambdaType(..) => {
+                todo!();
+            }
             ConcreteType::BasicType(_) | ConcreteType::UnnamedStruct(_) => Some(ty),
         }
     }
@@ -213,16 +234,31 @@ impl<'a> AnalysisContext<'a> {
                     // self.normalize_type(scope_id_opt, fty, m.loc.clone())
                     todo!();
                 }
-                SymbolEntryKind::Func(..) => {
-                    // let fty = ConcreteType::from_function_sig(&f.sig);
-                    // self.normalize_type(scope_id_opt, fty, f.loc.clone())
-                    todo!();
-                }
+                SymbolEntryKind::Func(resolved_func) => Some(ConcreteType::FuncType(FuncType {
+                    params: resolved_func
+                        .func_sig
+                        .params
+                        .list
+                        .iter()
+                        .map(|param| match param {
+                            TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
+                            TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                                typed_self_modifier.ty.clone().unwrap()
+                            }
+                        })
+                        .collect(),
+                    ret: Box::new(resolved_func.func_sig.return_type.clone()),
+                    is_varargs: resolved_func.func_sig.params.variadic.is_some(),
+                })),
                 SymbolEntryKind::GlobalVar(resolved_global_var) => {
                     if let Some(ty) = &resolved_global_var.global_var_sig.ty {
                         self.normalize_type(scope_id_opt, ty.clone(), resolved_global_var.global_var_sig.loc.clone())
                     } else {
-                        panic!("Cannot resolve variable type.")
+                        self.analyze_typed_expr_type(
+                            scope_id_opt,
+                            &mut resolved_global_var.global_var_sig.rhs.unwrap(),
+                            None,
+                        )
                     }
                 }
                 SymbolEntryKind::Struct(s) => {

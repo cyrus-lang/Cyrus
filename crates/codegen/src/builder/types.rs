@@ -23,6 +23,10 @@ impl<'a> CodeGenBuilder<'a> {
         target_type: AnyTypeEnum<'a>,
         internal_value: InternalValue<'a>,
     ) -> AnyValueEnum<'a> {
+        if let Some(fn_value) = internal_value.as_func_value() {
+            return self.build_cast_fn_value_to_pointer(fn_value);
+        }
+
         let basic_value = internal_value.as_basic_value();
 
         match target_type {
@@ -113,7 +117,10 @@ impl<'a> CodeGenBuilder<'a> {
                 SymbolEntryKind::Method(resolved_method) => {
                     let fn_value =
                         self.get_or_declare_func(resolved_method.symbol_id, resolved_method.func_sig.clone());
-                    LocalIRValue::Func(fn_value)
+                    LocalIRValue::Func(
+                        fn_value,
+                        ConcreteType::FuncType(self.build_func_type_from_func_sig(&resolved_method.func_sig)),
+                    )
                 }
                 SymbolEntryKind::GlobalVar(resolved_global_var) => {
                     let global_value = self.get_or_declare_global_var(resolved_global_var.global_var_sig.clone());
@@ -276,6 +283,8 @@ impl<'a> CodeGenBuilder<'a> {
             ConcreteType::UnnamedStruct(typed_unnamed_struct_type) => {
                 self.build_unnamed_struct_type(local_scope_opt, &typed_unnamed_struct_type)
             }
+            ConcreteType::FuncType(..) => unreachable!(),
+            ConcreteType::LambdaType(lambda_type) => todo!(),
         }
     }
 

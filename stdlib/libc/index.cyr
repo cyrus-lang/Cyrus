@@ -18,3 +18,4 @@ pub extern fn memcpy(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size_t
 pub extern fn fflush(stream: abi::c_file*) abi::c_int;
 pub extern fn strcat(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
 pub extern fn strcpy(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
+pub extern fn scanf(format: abi::c_char*, ...) abi::c_int;

@@ -9,15 +9,35 @@ use inkwell::{
     },
     module::Linkage,
     types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
-    values::FunctionValue,
+    values::{AnyValueEnum, FunctionValue},
 };
-use resolver::scope::LocalScopeRef;
+use resolver::{declsign::FuncSig, scope::LocalScopeRef};
 use typed_ast::{
     ModuleID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParams, TypedVariable,
-    types::ConcreteType,
+    types::{ConcreteType, FuncType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn build_cast_fn_value_to_pointer(&self, fn_value: FunctionValue<'a>) -> AnyValueEnum<'a> {
+        fn_value.as_global_value().as_pointer_value().into()
+    }
+
+    pub(crate) fn build_func_type_from_func_sig(&self, func_sig: &FuncSig) -> FuncType {
+        FuncType {
+            params: func_sig
+                .params
+                .list
+                .iter()
+                .map(|param| match param {
+                    TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
+                    TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.ty.clone().unwrap(),
+                })
+                .collect(),
+            ret: Box::new(func_sig.return_type.clone()),
+            is_varargs: func_sig.params.variadic.is_some(),
+        }
+    }
+
     pub(crate) fn build_func_params(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
@@ -47,10 +67,7 @@ impl<'a> CodeGenBuilder<'a> {
             if basic_value.is_pointer_value() {
                 self.insert_forward_decl_to_registry(
                     local_param_symbol_id,
-                    LocalIRValue::RValue(
-                        basic_value,
-                        ConcreteType::Pointer(Box::new(concrete_type)),
-                    ),
+                    LocalIRValue::RValue(basic_value, ConcreteType::Pointer(Box::new(concrete_type))),
                 );
             } else {
                 let lvalue_pointer = self.build_local_variable(
@@ -75,7 +92,8 @@ impl<'a> CodeGenBuilder<'a> {
         let irreg = self.irreg.borrow();
         let local_ir_value = irreg.get(&func_def.symbol_id).unwrap();
 
-        let fn_value = local_ir_value.as_func().unwrap().clone();
+        let func = local_ir_value.as_func().unwrap().clone();
+        let fn_value = func.0.clone();
         self.blockreg.current_func_ref = Some(fn_value.clone());
 
         let entry_block = self.llvmctx.append_basic_block(fn_value, "entry");
