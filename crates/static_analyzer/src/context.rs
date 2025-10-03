@@ -773,7 +773,10 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn check_global_var_for_const_folding(&self, concrete_type: ConcreteType) -> bool {
-        concrete_type.get_const_inner().as_basic_type().is_some()
+        match concrete_type.get_const_inner().as_basic_type() {
+            Some(basic_concrete_type) => basic_concrete_type.is_integer(),
+            None => false,
+        }
     }
 
     pub(crate) fn analyze_global_var(&mut self, typed_global_var: &mut TypedGlobalVariable) {
@@ -825,17 +828,17 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        if let Some(expr) = &typed_global_var.expr {
-            if !expr.kind.is_comptime_valid() || !matches!(typed_global_var.ty, Some(ConcreteType::Const(..))) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
-                    location: Some(DiagLoc::new(typed_global_var.loc.clone())),
-                    hint: None,
-                });
-                return;
-            }
-        }
+        // if let Some(expr) = &typed_global_var.expr {
+        //     if !expr.kind.is_comptime_valid() && !matches!(typed_global_var.ty, Some(ConcreteType::Const(..))) {
+        //         self.reporter.report(Diag {
+        //             level: DiagLevel::Error,
+        //             kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
+        //             location: Some(DiagLoc::new(typed_global_var.loc.clone())),
+        //             hint: None,
+        //         });
+        //         return;
+        //     }
+        // }
 
         update_global_symbol!(self, typed_global_var.module_id, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {

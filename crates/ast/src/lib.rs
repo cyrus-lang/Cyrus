@@ -753,3 +753,30 @@ pub struct If {
     pub span: Span,
     pub loc: Location,
 }
+
+impl Statement {
+    pub fn get_loc(&self) -> Location {
+        match self {
+            Statement::Interface(interface) => interface.loc.clone(),
+            Statement::Variable(variable) => variable.loc.clone(),
+            Statement::If(if_stmt) => if_stmt.loc.clone(),
+            Statement::Return(ret) => ret.loc.clone(),
+            Statement::FuncDef(func_def) => func_def.loc.clone(),
+            Statement::FuncDecl(func_decl) => func_decl.loc.clone(),
+            Statement::For(for_stmt) => for_stmt.loc.clone(),
+            Statement::While(while_stmt) => while_stmt.loc.clone(),
+            Statement::Foreach(foreach) => foreach.loc.clone(),
+            Statement::Switch(switch) => switch.loc.clone(),
+            Statement::Struct(struct_stmt) => struct_stmt.loc.clone(),
+            Statement::Import(import) => import.loc.clone(),
+            Statement::BlockStatement(block_stmt) => block_stmt.loc.clone(),
+            Statement::Enum(enum_stmt) => enum_stmt.loc.clone(),
+            Statement::Union(union) => union.loc.clone(),
+            Statement::Break(brk) => brk.loc.clone(),
+            Statement::Continue(cont) => cont.loc.clone(),
+            Statement::Typedef(typedef) => typedef.loc.clone(),
+            Statement::GlobalVariable(global_variable) => global_variable.loc.clone(),
+            Statement::Expression(..) => unreachable!(),
+        }
+    }
+}

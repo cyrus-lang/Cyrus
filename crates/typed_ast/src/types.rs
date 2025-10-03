@@ -10,7 +10,19 @@ pub enum ConcreteType {
     Const(Box<ConcreteType>),
     Pointer(Box<ConcreteType>),
     UnnamedStruct(TypedUnnamedStructType),
+    FuncType(FuncType),
+    LambdaType(LambdaType),
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FuncType {
+    pub params: Vec<ConcreteType>,
+    pub ret: Box<ConcreteType>,   
+    pub is_varargs: bool,         
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LambdaType {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResolvedSymbol {

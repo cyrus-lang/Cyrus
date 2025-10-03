@@ -1,7 +1,7 @@
 use crate::builder::module::CodeGenBuilder;
 use inkwell::{
     types::BasicTypeEnum,
-    values::{BasicValueEnum, PointerValue},
+    values::{BasicValueEnum, FunctionValue, PointerValue},
 };
 use resolver::scope::LocalScopeRef;
 use typed_ast::types::ConcreteType;
@@ -19,6 +19,7 @@ impl<'a> CodeGenBuilder<'a> {
         let pointer = match &internal_value.kind {
             InternalValueKind::LValue(pointer_value) => pointer_value,
             InternalValueKind::RValue(..) => return internal_value,
+            InternalValueKind::FuncValue(..) => return internal_value,
         };
 
         let pointee_ty: BasicTypeEnum<'a> = self
@@ -48,6 +49,7 @@ pub struct InternalValue<'a> {
 pub enum InternalValueKind<'a> {
     LValue(PointerValue<'a>),
     RValue(BasicValueEnum<'a>),
+    FuncValue(FunctionValue<'a>),
 }
 
 impl<'a> InternalValue<'a> {
@@ -59,6 +61,14 @@ impl<'a> InternalValue<'a> {
         match &self.kind {
             InternalValueKind::LValue(pointer) => BasicValueEnum::PointerValue(*pointer),
             InternalValueKind::RValue(value) => value.clone(),
+            InternalValueKind::FuncValue(..) => unreachable!(),
+        }
+    }
+
+    pub fn as_func_value(&self) -> Option<FunctionValue<'a>> {
+        match &self.kind {
+            InternalValueKind::FuncValue(fn_value) => Some(fn_value.clone()),
+            _ => None
         }
     }
 }

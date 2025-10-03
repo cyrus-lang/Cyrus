@@ -159,7 +159,7 @@ pub type LocalIRValueRegistry<'a> = HashMap<LocalIRValueID, LocalIRValue<'a>>;
 
 #[derive(Debug, Clone)]
 pub enum LocalIRValue<'a> {
-    Func(FunctionValue<'a>),
+    Func(FunctionValue<'a>, ConcreteType),
     Struct(StructType<'a>),
     Enum((StructType<'a>, ArrayType<'a>)),
     GlobalValue(GlobalValue<'a>, ConcreteType),
@@ -168,9 +168,9 @@ pub enum LocalIRValue<'a> {
 }
 
 impl<'a> LocalIRValue<'a> {
-    pub fn as_func(&self) -> Option<&FunctionValue<'a>> {
+    pub fn as_func(&self) -> Option<(&FunctionValue<'a>, &ConcreteType)> {
         match self {
-            LocalIRValue::Func(func) => Some(func),
+            LocalIRValue::Func(fn_value, concrete_type) => Some((fn_value, concrete_type)),
             _ => None,
         }
     }

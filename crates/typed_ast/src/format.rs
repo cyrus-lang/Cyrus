@@ -330,5 +330,16 @@ pub fn format_concrete_type<'a>(
         ConcreteType::UnnamedStruct(unnamed_struct_type) => {
             format_unnamed_struct_type(&unnamed_struct_type, format_symbol)
         }
+        ConcreteType::FuncType(func_type) => {
+            let params = func_type
+                .params
+                .iter()
+                .map(|param| format_concrete_type(param.clone(), format_symbol))
+                .collect::<Vec<String>>()
+                .join(", ");
+            let ret = format_concrete_type(*func_type.ret, format_symbol);
+            format!("fn({}) {}", params, ret)
+        }
+        ConcreteType::LambdaType(..) => todo!(),
     }
 }

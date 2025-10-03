@@ -3,8 +3,11 @@ use crate::builder::{
     module::{CodeGenBuilder, LocalIRValue},
 };
 use inkwell::{module::Linkage, types::StructType, values::FunctionValue};
-use resolver::declsign::{EnumSig, FuncSig, StructSig, UnionSig};
-use typed_ast::{SymbolID, TypedStatement};
+use resolver::{
+    declsign::{EnumSig, FuncSig, StructSig, UnionSig},
+    typed_func_decl_as_func_sig, typed_func_def_as_func_sig,
+};
+use typed_ast::{SymbolID, TypedStatement, types::ConcreteType};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_forward_decls(&mut self, stmts: &Vec<TypedStatement>) {
@@ -49,7 +52,15 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_def.return_type.clone(),
                         typed_func_def.vis.clone(),
                     );
-                    self.insert_forward_decl_to_registry(typed_func_def.symbol_id, LocalIRValue::Func(fn_value));
+                    self.insert_forward_decl_to_registry(
+                        typed_func_def.symbol_id,
+                        LocalIRValue::Func(
+                            fn_value,
+                            ConcreteType::FuncType(
+                                self.build_func_type_from_func_sig(&typed_func_def_as_func_sig(typed_func_def)),
+                            ),
+                        ),
+                    );
                 }
                 TypedStatement::FuncDecl(typed_func_decl) => {
                     let fn_value = self.build_func_decl(
@@ -60,7 +71,15 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_decl.return_type.clone(),
                         typed_func_decl.vis.clone(),
                     );
-                    self.insert_forward_decl_to_registry(typed_func_decl.symbol_id, LocalIRValue::Func(fn_value));
+                    self.insert_forward_decl_to_registry(
+                        typed_func_decl.symbol_id,
+                        LocalIRValue::Func(
+                            fn_value,
+                            ConcreteType::FuncType(
+                                self.build_func_type_from_func_sig(&typed_func_decl_as_func_sig(typed_func_decl)),
+                            ),
+                        ),
+                    );
                 }
                 _ => continue,
             }
@@ -79,7 +98,10 @@ impl<'a> CodeGenBuilder<'a> {
         drop(irreg);
 
         let fn_value = match local_ir_value {
-            Some(local_ir_value) => local_ir_value.as_func().unwrap().clone(),
+            Some(local_ir_value) => match local_ir_value.as_func() {
+                Some((fn_value, _)) => fn_value.clone(),
+                None => unreachable!(),
+            },
             None => {
                 let fn_value = self.build_func_decl(
                     func_sig.name.clone(),
@@ -91,7 +113,13 @@ impl<'a> CodeGenBuilder<'a> {
                 );
                 fn_value.set_linkage(Linkage::External);
 
-                self.insert_forward_decl_to_registry(symbol_id, LocalIRValue::Func(fn_value));
+                self.insert_forward_decl_to_registry(
+                    symbol_id,
+                    LocalIRValue::Func(
+                        fn_value,
+                        ConcreteType::FuncType(self.build_func_type_from_func_sig(&func_sig)),
+                    ),
+                );
                 fn_value
             }
         };

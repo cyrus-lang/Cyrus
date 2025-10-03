@@ -498,6 +498,7 @@ pub struct TypedFuncDef {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncDecl {
+    pub module_id: ModuleID,
     pub symbol_id: SymbolID,
     pub name: String,
     pub params: TypedFuncParams,

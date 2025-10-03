@@ -782,6 +782,7 @@ impl Resolver {
                     }
 
                     let typed_func_decl = TypedFuncDecl {
+                        module_id: self.current_module.unwrap(),
                         symbol_id: interface_symbol_id,
                         name: func_decl.identifier.name.clone(),
                         params: TypedFuncParams {
@@ -1555,6 +1556,7 @@ impl Resolver {
                 );
 
                 Some(TypedStatement::FuncDecl(TypedFuncDecl {
+                    module_id,
                     symbol_id,
                     name: func_decl.identifier.name.clone(),
                     params: TypedFuncParams {
@@ -2140,10 +2142,20 @@ impl Resolver {
                     }
                 }
                 // Invalid statements.
-                Statement::GlobalVariable(..) => unreachable!(),
-                Statement::FuncDef(..) => unreachable!(),
-                Statement::FuncDecl(..) => unreachable!(),
-                Statement::Import(..) => unreachable!(),
+                Statement::GlobalVariable(..)
+                | Statement::FuncDef(..)
+                | Statement::FuncDecl(..)
+                | Statement::Import(..) => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: ResolverDiagKind::InvalidStatement,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            stmt.get_loc(),
+                            self.get_current_module_file_path(),
+                        ))),
+                        hint: None,
+                    });
+                }
             }
         }
 
@@ -3097,5 +3109,29 @@ impl Visiting {
             active: HashSet::new(),
             done: HashSet::new(),
         }
+    }
+}
+
+pub fn typed_func_decl_as_func_sig(func_decl: &TypedFuncDecl) -> FuncSig {
+    FuncSig {
+        module_id: func_decl.module_id,
+        name: func_decl.name.clone(),
+        params: func_decl.params.clone(),
+        return_type: func_decl.return_type.clone(),
+        is_func_decl: true,
+        vis: func_decl.vis.clone(),
+        loc: func_decl.loc.clone(),
+    }
+}
+
+pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDef) -> FuncSig {
+    FuncSig {
+        module_id: func_def.module_id,
+        name: func_def.name.clone(),
+        params: func_def.params.clone(),
+        return_type: func_def.return_type.clone(),
+        is_func_decl: false,
+        vis: func_def.vis.clone(),
+        loc: func_def.loc.clone(),
     }
 }
