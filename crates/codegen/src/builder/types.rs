@@ -284,7 +284,7 @@ impl<'a> CodeGenBuilder<'a> {
                 self.build_unnamed_struct_type(local_scope_opt, &typed_unnamed_struct_type)
             }
             ConcreteType::FuncType(..) => unreachable!(),
-            ConcreteType::LambdaType(lambda_type) => todo!(),
+            ConcreteType::LambdaType(..) => todo!(),
         }
     }
 
