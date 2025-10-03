@@ -1,0 +1,20 @@
+import std::libc{printf};
+
+fn main() {
+    #p = Point.new(10, 20);
+    printf("res: %d\n", p.sum());
+}
+
+struct Point {
+    x: int;
+    y: int;
+    
+    pub fn new(x: int, y: int) const Point {
+        return Point { x: x, y: y };
+    }
+
+    pub fn sum(self) int {
+        self.x++;
+        return self.x + self.y;
+    }
+}
