@@ -3,7 +3,7 @@ use ast::{AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
-    declsign::FuncSig,
+    signatures::FuncSig,
     scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
 };
 use std::{

@@ -1,4 +1,4 @@
-use crate::declsign::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
+use crate::signatures::{EnumSig, FuncSig, GlobalVarSig, InterfaceSig, StructSig, TypedefSig, UnionSig};
 use ast::{AccessSpecifier, source_loc::SourceLoc};
 use rand::Rng;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};

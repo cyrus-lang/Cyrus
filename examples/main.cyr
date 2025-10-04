@@ -1,5 +1,14 @@
 import std::libc{printf, scanf};
 
+type SampleFn = fn(int) int;
+
+fn sample(x: int) int {
+    return x;
+}
+
 fn main() {
-    #my_sample: fn(int, int) int;
+    #lambda: SampleFn = sample;
+    lambda();
+
+    // printf("%d\n", 0);
 }

@@ -96,7 +96,6 @@ impl Parser {
     }
 
     pub fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, ParserError> {
-        let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
         self.expect_current(TokenKind::LeftParen)?;
@@ -105,40 +104,23 @@ impl Parser {
         let mut list: Vec<TypeSpecifier> = Vec::new();
 
         while self.current_token().kind != TokenKind::RightParen {
-            match self.current_token().kind {
-                TokenKind::TripleDot => {
-                    self.next_token(); // consume triple_dot
+            if self.current_token_is(TokenKind::TripleDot) {
+                self.next_token(); // consume triple dot
 
-                    if self.current_token_is(TokenKind::Comma) {
-                        return Err(Diag {
-                            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
-                            level: DiagLevel::Error,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                self.current_token().loc,
-                                self.file_name.clone(),
-                            ))),
-                            hint: Some("Fixed parameters must be defined before the vargs.".to_string()),
-                        });
-                    }
-
+                if self.current_token_is(TokenKind::RightParen) {
                     variadic = Some(FuncTypeVariadicParams::UntypedCStyle);
                     break;
-                }
-                _ => {
-                    if self.current_token_is(TokenKind::TripleDot) {
-                        self.next_token(); // consume triple dot
+                } else {
+                    let variadic_data_type = self.parse_type_specifier()?;
+                    self.next_token();
 
-                        let variadic_data_type = self.parse_type_specifier()?;
-                        self.next_token();
-
-                        variadic = Some(FuncTypeVariadicParams::Typed(variadic_data_type));
-                        continue;
-                    } else {
-                        let var_type = self.parse_type_specifier()?;
-                        self.next_token();
-                        list.push(var_type);
-                    }
+                    variadic = Some(FuncTypeVariadicParams::Typed(variadic_data_type));
+                    break;
                 }
+            } else {
+                let var_type = self.parse_type_specifier()?;
+                self.next_token();
+                list.push(var_type);
             }
 
             match &self.current_token().kind {

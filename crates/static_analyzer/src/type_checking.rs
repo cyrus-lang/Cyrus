@@ -7,7 +7,7 @@ use ast::{
 };
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
-    declsign::FuncSig,
+    signatures::FuncSig,
     scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, ResolvedUnion, SymbolEntryKind},
 };
 use std::collections::HashMap;
@@ -64,6 +64,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 packed && fields
             }
+            (ConcreteType::FuncType(func_type1), ConcreteType::FuncType(func_type2)) => func_type1 == func_type2,
             (ConcreteType::BasicType(BasicConcreteType::Null), ConcreteType::Pointer(..)) => true,
             _ => false,
         }
@@ -187,9 +188,7 @@ impl<'a> AnalysisContext<'a> {
             | (ConcreteType::BasicType(BasicConcreteType::IntPtr), ConcreteType::Pointer(..))
             | (ConcreteType::BasicType(BasicConcreteType::UIntPtr), ConcreteType::Pointer(..)) => true,
 
-            (ConcreteType::FuncType(..), ConcreteType::Pointer(pointer_type)) => {
-                pointer_type.is_void()
-            }
+            (ConcreteType::FuncType(..), ConcreteType::Pointer(pointer_type)) => pointer_type.is_void(),
 
             _ => false,
         }
@@ -1686,34 +1685,59 @@ impl<'a> AnalysisContext<'a> {
         Some(func_sig.return_type.clone())
     }
 
+    // FIXME Func Symbol resolution fucked up here.
     fn analyze_func_call_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
     ) -> Option<ConcreteType> {
-        let module_id = self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id).unwrap();
+        // let resolve_func = || -> Option<_> {
+        //     if let Some(local_scope_rc) = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap()) {
+        //         let local_scope = local_scope_rc.borrow();
+        //         match local_scope.resolve_with_symbol_id(func_call.symbol_id) {
+        //             Some(local_symbol) => {
+        //                 dbg!(local_symbol.clone());
+        //                 todo!();
+        //             },
+        //             None => return None,
+        //         }
+        //         drop(local_scope);
+        //     }
 
-        let local_scope_opt = self.resolver.get_scope_ref(module_id, scope_id_opt.unwrap());
-        let local_or_global_symbol = {
-            match self
-                .resolver
-                .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
-            {
-                Some(symbol_entry) => Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry)),
-                None => {
-                    match self
-                        .resolver
-                        .resolve_symbol_from_local_scope(local_scope_opt.clone().unwrap(), func_call.symbol_id)
-                    {
-                        Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol)),
-                        None => None,
-                    }
-                }
-            }
-        }
-        .unwrap();
+        //     None
+        // };
 
-        self.resolver
+        // let local_scope_opt = self.resolver.get_scope_ref(module_id, scope_id_opt.unwrap());
+        // let local_or_global_symbol = {
+        //     match self
+        //         .resolver
+        //         .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
+        //     {
+        //         Some(symbol_entry) => Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry)),
+        //         None => {
+        //             match self
+        //                 .resolver
+        //                 .resolve_symbol_from_local_scope(local_scope_opt.clone().unwrap(), func_call.symbol_id)
+        //             {
+        //                 Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol)),
+        //                 None => None,
+        //             }
+        //         }
+        //     }
+        // }
+        // .unwrap();
+
+        let local_scope_opt: Option<LocalScopeRef>;
+        match self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id) {
+            Some(module_id) => {
+                local_scope_opt = self.resolver.get_scope_ref(module_id, scope_id_opt.unwrap());
+                self.mark_func_used(local_scope_opt.clone(), module_id, func_call.symbol_id);
+            },
+            None => local_scope_opt = None,
+        };
+
+        let local_or_global_symbol = self
+            .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), func_call.symbol_id)
             .unwrap();
 
@@ -1742,7 +1766,6 @@ impl<'a> AnalysisContext<'a> {
 
         self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
 
-        self.mark_func_used(local_scope_opt, module_id, func_call.symbol_id);
         let return_type = self.check_func_call(
             scope_id_opt,
             &mut func_sig,
@@ -2075,7 +2098,7 @@ impl<'a> AnalysisContext<'a> {
             .unwrap()
             .get_const_inner()
             .is_resolved_symbol();
-        
+
         let is_operand_const = method_call.operand.concrete_type.clone().unwrap().is_const();
 
         if method_call.is_fat_arrow {

@@ -283,8 +283,9 @@ impl<'a> CodeGenBuilder<'a> {
             ConcreteType::UnnamedStruct(typed_unnamed_struct_type) => {
                 self.build_unnamed_struct_type(local_scope_opt, &typed_unnamed_struct_type)
             }
-            ConcreteType::FuncType(..) => unreachable!(),
-            ConcreteType::LambdaType(..) => todo!(),
+            ConcreteType::FuncType(..) => {
+                self.llvmctx.ptr_type(AddressSpace::default()).into()
+            },
         }
     }
 

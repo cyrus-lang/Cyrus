@@ -11,7 +11,7 @@ use inkwell::{
     values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, StructValue},
 };
 use resolver::{
-    declsign::EnumSig,
+    signatures::EnumSig,
     scope::{LocalScopeRef, ResolvedEnum},
 };
 use typed_ast::{

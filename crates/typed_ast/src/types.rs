@@ -1,4 +1,4 @@
-use crate::{SourceLoc, SymbolID, TypedExpression};
+use crate::{SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams};
 use ast::token::TokenKind;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -11,18 +11,13 @@ pub enum ConcreteType {
     Pointer(Box<ConcreteType>),
     UnnamedStruct(TypedUnnamedStructType),
     FuncType(FuncType),
-    LambdaType(LambdaType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncType {
-    pub params: Vec<ConcreteType>,
+    pub params: TypedFuncTypeParams,
     pub ret: Box<ConcreteType>,
-    pub is_varargs: bool,
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LambdaType {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResolvedSymbol {

@@ -520,6 +520,18 @@ pub enum TypedFuncVariadicParams {
     Typed(String, ConcreteType),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedFuncTypeParams {
+    pub list: Vec<ConcreteType>,
+    pub variadic: Option<Box<TypedFuncTypeVariadicParams>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedFuncTypeVariadicParams {
+    UntypedCStyle,
+    Typed(ConcreteType),
+}
+
 #[derive(Debug, Clone)]
 pub enum TypedFuncParamKind {
     FuncParam(TypedFuncParam),
