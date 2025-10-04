@@ -3,6 +3,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum ResolverDiagKind {
+    ExpectedIdentifierInImport,
     DuplicateModule {
         module_name: String,
     },
@@ -89,6 +90,12 @@ pub enum ResolverDiagKind {
 impl fmt::Display for ResolverDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ResolverDiagKind::ExpectedIdentifierInImport => {
+                write!(
+                    f,
+                    "Expected an identifier in module import path, but found something else."
+                )
+            }
             ResolverDiagKind::ImportSinglePrivateSymbol { symbol_name } => {
                 write!(f, "Symbol '{}' is private and cannot be imported.", symbol_name)
             }
