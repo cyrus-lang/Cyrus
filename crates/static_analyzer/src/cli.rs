@@ -1,7 +1,7 @@
 use diagcentral::reporter::DiagReporter;
 use lexer::Lexer;
 use parser::Parser;
-use resolver::{Resolver, Visiting, generate_module_id, moduleloader::ModuleLoaderOptions};
+use resolver::{Resolver, Visiting, generate_module_id, modulefsloader::ModuleLoaderOptions};
 use static_analyzer::context::AnalysisContext;
 use std::{
     env,

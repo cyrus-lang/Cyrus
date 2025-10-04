@@ -10,7 +10,7 @@ use parser::Parser;
 use project_layout::{OBJECTS_FILENAME, OUTPUT_FILENAME, PROJECT_FILE_PATH, SOURCES_DIR_PATH};
 use resolver::{
     Resolver, Visiting, generate_module_id,
-    moduleloader::{ModuleFilePath, ModuleLoaderOptions},
+    modulefsloader::{ModuleFilePath, ModuleLoaderOptions},
 };
 use static_analyzer::context::AnalysisContext;
 use std::{

@@ -8,7 +8,7 @@ fn sample(x: int) int {
 
 fn main() {
     #lambda: SampleFn = sample;
-    lambda();
+    // lambda();
 
     // printf("%d\n", 0);
 }

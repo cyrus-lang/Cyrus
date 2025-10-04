@@ -1,6 +1,6 @@
 use lexer::Lexer;
 use parser::Parser;
-use resolver::{Resolver, Visiting, generate_module_id, moduleloader::ModuleLoaderOptions};
+use resolver::{Resolver, Visiting, generate_module_id, modulefsloader::ModuleLoaderOptions};
 use std::{env, process::exit, vec};
 use utils::fs::read_file;
 
