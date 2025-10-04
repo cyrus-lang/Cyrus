@@ -17,8 +17,8 @@ pub enum ConcreteType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FuncType {
     pub params: Vec<ConcreteType>,
-    pub ret: Box<ConcreteType>,   
-    pub is_varargs: bool,         
+    pub ret: Box<ConcreteType>,
+    pub is_varargs: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,7 +37,30 @@ pub enum ResolvedSymbol {
     Method(SymbolID),
 }
 
+impl ResolvedSymbol {
+    pub fn get_symbol_id(&self) -> SymbolID {
+        match self {
+            ResolvedSymbol::Union(symbol_id) => *symbol_id,
+            ResolvedSymbol::Enum(symbol_id) => *symbol_id,
+            ResolvedSymbol::Typedef(symbol_id) => *symbol_id,
+            ResolvedSymbol::NamedStruct(symbol_id) => *symbol_id,
+            ResolvedSymbol::Interface(symbol_id) => *symbol_id,
+            ResolvedSymbol::GlobalVar(symbol_id) => *symbol_id,
+            ResolvedSymbol::Variable(symbol_id) => *symbol_id,
+            ResolvedSymbol::Func(symbol_id) => *symbol_id,
+            ResolvedSymbol::Method(symbol_id) => *symbol_id,
+        }
+    }
+}
+
 impl ConcreteType {
+    pub fn as_func_type(&self) -> Option<&FuncType> {
+        match &self {
+            ConcreteType::FuncType(func_type) => Some(func_type),
+            _ => None,
+        }
+    }
+
     pub fn is_resolved_symbol(&self) -> bool {
         match self {
             ConcreteType::ResolvedSymbol(..) => true,
@@ -63,25 +86,7 @@ impl ConcreteType {
             _ => false,
         }
     }
-}
 
-impl ResolvedSymbol {
-    pub fn get_symbol_id(&self) -> SymbolID {
-        match self {
-            ResolvedSymbol::Union(symbol_id) => *symbol_id,
-            ResolvedSymbol::Enum(symbol_id) => *symbol_id,
-            ResolvedSymbol::Typedef(symbol_id) => *symbol_id,
-            ResolvedSymbol::NamedStruct(symbol_id) => *symbol_id,
-            ResolvedSymbol::Interface(symbol_id) => *symbol_id,
-            ResolvedSymbol::GlobalVar(symbol_id) => *symbol_id,
-            ResolvedSymbol::Variable(symbol_id) => *symbol_id,
-            ResolvedSymbol::Func(symbol_id) => *symbol_id,
-            ResolvedSymbol::Method(symbol_id) => *symbol_id,
-        }
-    }
-}
-
-impl ConcreteType {
     pub fn is_enum(&self) -> bool {
         matches!(self, ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..)))
     }

@@ -283,6 +283,7 @@ pub enum TypeSpecifier {
     ModuleImport(ModuleImport),
     Dereference(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
+    FuncType(Box<FuncType>),
 }
 
 impl TypeSpecifier {
@@ -295,6 +296,7 @@ impl TypeSpecifier {
             TypeSpecifier::ModuleImport(module_import) => (module_import.loc.clone(), module_import.span.end),
             TypeSpecifier::Dereference(inner) => inner.get_loc(),
             TypeSpecifier::UnnamedStruct(struct_type) => (struct_type.loc.clone(), struct_type.span.end),
+            TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
         }
     }
 }
@@ -317,6 +319,26 @@ pub struct UnaryExpression {
     pub op: UnaryOperator,
     pub span: Span,
     pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncType {
+    pub params: FuncTypeParams,
+    pub ret: Box<TypeSpecifier>,
+    pub span: Span,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncTypeParams {
+    pub list: Vec<TypeSpecifier>,
+    pub variadic: Option<FuncTypeVariadicParams>,
+}
+
+#[derive(Debug, Clone)]
+pub enum FuncTypeVariadicParams {
+    UntypedCStyle,
+    Typed(TypeSpecifier),
 }
 
 #[derive(Debug, Clone)]

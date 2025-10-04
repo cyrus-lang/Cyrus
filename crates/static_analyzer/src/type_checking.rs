@@ -1523,7 +1523,7 @@ impl<'a> AnalysisContext<'a> {
 
         dereference.operand.concrete_type = Some(operand_type.clone());
 
-        if !dereference.operand.is_lvalue() {
+        if !dereference.operand.is_lvalue() || operand_type.as_func_type().is_some() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::DerefNonPointerValue,
