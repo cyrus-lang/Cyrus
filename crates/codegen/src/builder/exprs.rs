@@ -533,10 +533,17 @@ impl<'a> CodeGenBuilder<'a> {
         let operand_type = address_of.operand.concrete_type.clone().unwrap();
         let lvalue = self.build_expr(local_scope_opt.clone(), &address_of.operand);
 
-        InternalValue::new(
-            ConcreteType::Pointer(Box::new(operand_type)),
-            InternalValueKind::RValue(lvalue.as_basic_value()),
-        )
+        if let Some(fn_value) = lvalue.as_func_value() {
+            InternalValue::new(
+                ConcreteType::Pointer(Box::new(operand_type)),
+                InternalValueKind::RValue(self.build_cast_fn_value_to_pointer(fn_value).try_into().unwrap()),
+            )
+        } else {
+            InternalValue::new(
+                ConcreteType::Pointer(Box::new(operand_type)),
+                InternalValueKind::RValue(lvalue.as_basic_value()),
+            )
+        }
     }
 
     fn build_array_expr(&mut self, local_scope_opt: Option<LocalScopeRef>, array: &TypedArray) -> InternalValue<'a> {
@@ -707,22 +714,6 @@ impl<'a> CodeGenBuilder<'a> {
                 }
             }
         }
-
-        // if let Some(first_param) = func_sig.params.list.first() {
-        //     if let TypedFuncParamKind::SelfModifier(typed_self_modifier) = first_param {
-        //         let operand_lvalue = self.build_expr(local_scope_opt.clone(), &method_call.operand);
-
-        //         match typed_self_modifier.kind {
-        //             SelfModifierKind::Copied => {
-        //                 let operand_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt, operand_lvalue);
-        //                 args.insert(0, operand_rvalue.as_basic_value().into());
-        //             }
-        //             SelfModifierKind::Referenced => {
-        //                 args.insert(0, operand_lvalue.as_basic_value().into());
-        //             }
-        //         }
-        //     }
-        // }
 
         let call_result = self
             .llvmbuilder
