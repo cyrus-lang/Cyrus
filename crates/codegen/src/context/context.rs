@@ -9,7 +9,7 @@ use inkwell::{
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
 };
 use project_layout::OBJECTS_FILENAME;
-use resolver::{Resolver, moduleloader::ModuleFilePath};
+use resolver::{Resolver, modulefsloader::ModuleFilePath};
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},

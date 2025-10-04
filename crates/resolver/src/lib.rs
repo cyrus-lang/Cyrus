@@ -1,4 +1,4 @@
-use crate::moduleloader::{ModuleAlias, ModuleFilePath, ModuleLoader, ModuleLoaderOptions};
+use crate::modulefsloader::{ModuleAlias, ModuleFilePath, ModuleLoader, ModuleLoaderOptions};
 use crate::scope::*;
 use crate::signatures::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
 use crate::{
@@ -32,9 +32,10 @@ use typed_ast::types::{
 use typed_ast::{SymbolID, *};
 
 mod diagnostics;
-pub mod moduleloader;
+pub mod modulefsloader;
 pub mod scope;
 pub mod signatures;
+pub mod utility;
 
 pub type GlobalSymbolsMutex = Mutex<HashMap<ModuleID, SymbolTable>>;
 type ModuleGroupName = String;
@@ -149,6 +150,82 @@ impl Resolver {
             current_module: None,
             master_module_file_path,
         }
+    }
+
+    /// Entry point for resolving a module.
+    ///
+    /// This function performs a full two-phase resolution of a module:
+    ///   1. **Declaration collection pass** – Collects symbol names (function/struct declarations, etc.)
+    ///      and registers them in the global symbol table for this module.
+    ///   2. **Definition resolution pass** – Resolves the actual definitions and types of the previously
+    ///      declared symbols, producing a fully typed program tree.
+    ///
+    /// It also ensures that:
+    ///   - Each module is only analyzed once (`analyzed_modules` set).
+    ///   - Imports are recursively resolved and linked.
+    ///   - The master (root) module is tracked and its typed tree stored in `program_trees`.
+    ///   - Active/done sets in `Visiting` prevent circular imports and track resolution state.
+    ///
+    pub fn resolve_module(
+        &mut self,
+        module_id: ModuleID,
+        ast: &ProgramTree,
+        mut visiting: &mut Visiting,
+        is_master: bool,
+        module_file_path: ModuleFilePath,
+    ) -> Option<Rc<RefCell<TypedProgramTree>>> {
+        self.current_module = Some(module_id);
+        self.init_imported_modules_for_module();
+
+        if is_master {
+            self.insert_module_file_path(module_id, self.master_module_file_path.clone());
+            visiting.active.insert(self.master_module_file_path.clone());
+        }
+
+        let mut analyzed = self.analyzed_modules.lock().unwrap();
+        if analyzed.contains(&module_id) {
+            return None;
+        }
+        analyzed.insert(module_id);
+        drop(analyzed);
+
+        // Initialize symbol table for this module
+        let mut global_symbols = self.global_symbols.lock().unwrap();
+        global_symbols.insert(module_id, SymbolTable::new());
+        drop(global_symbols);
+
+        // Collect symbol names (first pass).
+        self.resolve_decl_names(module_id, &ast);
+
+        let parent_module_id = module_id;
+
+        // Analyze imports of this module
+        for import in ast.get_imports() {
+            self.resolve_import(parent_module_id, import, &mut visiting);
+        }
+
+        self.current_module = Some(parent_module_id);
+
+        // Collect exact definitions and details of the symbols (second pass).
+        let typed_body = self.resolve_definitions(module_id, &ast);
+        let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree { body: typed_body }));
+
+        if is_master {
+            let mut program_trees = self.program_trees.lock().unwrap();
+            let module_name = get_module_name(module_file_path.clone());
+            program_trees.push((
+                module_name,
+                module_file_path.clone(),
+                self.current_module.unwrap(),
+                typed_program_tree.clone(),
+            ));
+            drop(program_trees);
+        }
+
+        visiting.active.remove(&module_file_path);
+        visiting.done.insert(module_file_path);
+
+        Some(typed_program_tree.clone())
     }
 
     fn resolve_module_import(&mut self, module_id: ModuleID, mut module_import: ModuleImport) -> Option<SymbolID> {
@@ -420,68 +497,6 @@ impl Resolver {
         let mut module_aliases = self.module_aliases.lock().unwrap();
         module_aliases.insert(self.current_module.unwrap(), HashMap::new());
         drop(module_aliases);
-    }
-
-    pub fn resolve_module(
-        &mut self,
-        module_id: ModuleID,
-        ast: &ProgramTree,
-        mut visiting: &mut Visiting,
-        is_master: bool,
-        module_file_path: ModuleFilePath,
-    ) -> Option<Rc<RefCell<TypedProgramTree>>> {
-        self.current_module = Some(module_id);
-        self.init_imported_modules_for_module();
-
-        if is_master {
-            self.insert_module_file_path(module_id, self.master_module_file_path.clone());
-            visiting.active.insert(self.master_module_file_path.clone());
-        }
-
-        let mut analyzed = self.analyzed_modules.lock().unwrap();
-        if analyzed.contains(&module_id) {
-            return None;
-        }
-        analyzed.insert(module_id);
-        drop(analyzed);
-
-        // Initialize symbol table for this module
-        let mut global_symbols = self.global_symbols.lock().unwrap();
-        global_symbols.insert(module_id, SymbolTable::new());
-        drop(global_symbols);
-
-        // Collect symbol names (first pass).
-        self.resolve_decl_names(module_id, &ast);
-
-        let parent_module_id = module_id;
-
-        // Analyze imports of this module
-        for import in ast.get_imports() {
-            self.resolve_import(parent_module_id, import, &mut visiting);
-        }
-
-        self.current_module = Some(parent_module_id);
-
-        // Collect exact definitions and details of the symbols (second pass).
-        let typed_body = self.resolve_definitions(module_id, &ast);
-        let typed_program_tree = Rc::new(RefCell::new(TypedProgramTree { body: typed_body }));
-
-        if is_master {
-            let mut program_trees = self.program_trees.lock().unwrap();
-            let module_name = get_module_name(module_file_path.clone());
-            program_trees.push((
-                module_name,
-                module_file_path.clone(),
-                self.current_module.unwrap(),
-                typed_program_tree.clone(),
-            ));
-            drop(program_trees);
-        }
-
-        visiting.active.remove(&module_file_path);
-        visiting.done.insert(module_file_path);
-
-        Some(typed_program_tree.clone())
     }
 
     fn resolve_type(
@@ -1229,10 +1244,6 @@ impl Resolver {
         }
     }
 
-    pub fn make_method_resolve_name(struct_symbol_id: SymbolID, method_name: String) -> String {
-        format!("{}{}", struct_symbol_id, method_name)
-    }
-
     fn resolve_methods(
         &mut self,
         module_id: ModuleID,
@@ -1250,7 +1261,7 @@ impl Resolver {
             match self.resolve_func(module_id, Some(local_scope_rc.clone()), &func_def.as_func_decl()) {
                 Some((return_type, mut typed_func_params, typed_variadic_param)) => {
                     let method_name = func_def.identifier.name.clone();
-                    let method_resolve_name = Resolver::make_method_resolve_name(struct_symbol_id, method_name.clone());
+                    let method_resolve_name = make_method_resolve_name(struct_symbol_id, method_name.clone());
 
                     // resolve self modifier
                     typed_func_params = typed_func_params
@@ -2982,129 +2993,6 @@ impl Resolver {
         }
     }
 
-    pub fn lookup_symbol_id_in_modules(&self, symbol_id: SymbolID) -> Option<ModuleID> {
-        let global_symbols = self.global_symbols.lock().unwrap();
-        for (module_id, symbol_table) in global_symbols.iter() {
-            match symbol_table
-                .names
-                .iter()
-                .find(|(_, table_symbol_id)| **table_symbol_id == symbol_id)
-            {
-                Some(_) => return Some(*module_id),
-                None => continue,
-            }
-        }
-        drop(global_symbols);
-        None
-    }
-
-    pub fn lookup_symbol_id(&self, module_id: ModuleID, name: &str) -> Option<SymbolID> {
-        let global_symbols = self.global_symbols.lock().unwrap();
-        let option = match global_symbols.get(&module_id) {
-            Some(symbol_table) => match symbol_table.names.get(name) {
-                Some(symbol_id) => Some(*symbol_id),
-                None => None,
-            },
-            None => None,
-        };
-        drop(global_symbols);
-        option
-    }
-
-    pub fn lookup_symbol(&self, module_id: ModuleID, name: &str) -> Option<SymbolEntry> {
-        let global_symbols = self.global_symbols.lock().unwrap();
-        let option = match global_symbols.get(&module_id) {
-            Some(symbol_table) => match symbol_table.names.get(name) {
-                Some(symbol_id) => match symbol_table.entries.get(symbol_id) {
-                    Some(symbol_entry) => Some(symbol_entry.clone()),
-                    None => None,
-                },
-                None => None,
-            },
-            None => None,
-        };
-        drop(global_symbols);
-        option
-    }
-
-    pub fn resolve_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        let module_id = self.lookup_symbol_id_in_modules(symbol_id)?;
-
-        match self.lookup_symbol_entry_with_id(module_id, symbol_id) {
-            Some(global_symbol) => Some(global_symbol),
-            None => None,
-        }
-    }
-
-    pub fn resolve_symbol_from_local_scope(
-        &self,
-        local_scope_rc: LocalScopeRef,
-        symbol_id: SymbolID,
-    ) -> Option<LocalSymbol> {
-        let local_scope = local_scope_rc.borrow();
-        let local_option = match local_scope
-            .symbols
-            .values()
-            .find(|symbol| symbol.get_symbol_id() == symbol_id)
-            .cloned()
-        {
-            Some(local_symbol) => Some(local_symbol),
-            None => None,
-        };
-        drop(local_scope);
-        local_option
-    }
-
-    pub fn resolve_local_or_global_symbol(
-        &self,
-        local_scope_opt: Option<LocalScopeRef>,
-        symbol_id: SymbolID,
-    ) -> Option<LocalOrGlobalSymbol> {
-        let option = {
-            if let Some(local_scope_rc) = local_scope_opt {
-                let local_scope = local_scope_rc.borrow();
-                let local_option = match local_scope
-                    .symbols
-                    .values()
-                    .find(|symbol| symbol.get_symbol_id() == symbol_id)
-                    .cloned()
-                {
-                    Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol)),
-                    None => None,
-                };
-                drop(local_scope);
-                local_option
-            } else {
-                None
-            }
-        };
-
-        match option {
-            Some(local_or_global_symbol) => Some(local_or_global_symbol),
-            None => {
-                let module_id = self.lookup_symbol_id_in_modules(symbol_id)?;
-
-                match self.lookup_symbol_entry_with_id(module_id, symbol_id) {
-                    Some(global_symbol) => Some(LocalOrGlobalSymbol::GlobalSymbol(global_symbol)),
-                    None => None,
-                }
-            }
-        }
-    }
-
-    pub fn lookup_symbol_entry_with_id(&self, module_id: ModuleID, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        let global_symbols = self.global_symbols.lock().unwrap();
-        let option = match global_symbols.get(&module_id) {
-            Some(symbol_table) => match symbol_table.entries.get(&symbol_id) {
-                Some(symbol_entry) => Some(symbol_entry.clone()),
-                None => None,
-            },
-            None => None,
-        };
-        drop(global_symbols);
-        option
-    }
-
     fn insert_module_alias(
         &self,
         parent_module_id: ModuleID,
@@ -3125,17 +3013,6 @@ impl Resolver {
         option
     }
 
-    pub fn get_current_module_file_path(&self) -> ModuleFilePath {
-        let current_module_id = self.current_module.unwrap();
-        let file_paths = self.file_paths.lock().unwrap();
-        let file_path = match file_paths.get(&current_module_id) {
-            Some(child_module_file_path) => child_module_file_path.clone(),
-            None => self.master_module_file_path.clone(),
-        };
-        drop(file_paths);
-        file_path
-    }
-
     fn get_module_id_by_file_path(&self, module_file_path: ModuleFilePath) -> Option<ModuleID> {
         let file_paths = self.file_paths.lock().unwrap();
         let module_id_opt = match file_paths.iter().find(|(_, fp)| **fp == module_file_path) {
@@ -3144,16 +3021,6 @@ impl Resolver {
         };
         drop(file_paths);
         module_id_opt
-    }
-
-    pub fn get_module_file_path(&self, module_id: ModuleID) -> Option<ModuleFilePath> {
-        let file_paths = self.file_paths.lock().unwrap();
-        let file_path = match file_paths.get(&module_id) {
-            Some(module_file_path) => Some(module_file_path.clone()),
-            None => None,
-        };
-        drop(file_paths);
-        file_path
     }
 
     fn insert_module_file_path(&self, module_id: ModuleID, module_file_path: ModuleFilePath) {
@@ -3169,12 +3036,25 @@ impl Resolver {
         drop(global_symbols);
     }
 
-    pub fn get_scope_ref(&self, module_id: ModuleID, scope_id: ScopeID) -> Option<LocalScopeRef> {
-        let global_symbols = self.global_symbols.lock().unwrap();
-        let symbol_table = global_symbols.get(&module_id).unwrap();
-        let option = symbol_table.scopes.get(&scope_id).cloned();
-        drop(global_symbols);
-        option
+    pub fn get_current_module_file_path(&self) -> ModuleFilePath {
+        let current_module_id = self.current_module.unwrap();
+        let file_paths = self.file_paths.lock().unwrap();
+        let file_path = match file_paths.get(&current_module_id) {
+            Some(child_module_file_path) => child_module_file_path.clone(),
+            None => self.master_module_file_path.clone(),
+        };
+        drop(file_paths);
+        file_path
+    }
+
+    pub fn get_module_file_path(&self, module_id: ModuleID) -> Option<ModuleFilePath> {
+        let file_paths = self.file_paths.lock().unwrap();
+        let file_path = match file_paths.get(&module_id) {
+            Some(module_file_path) => Some(module_file_path.clone()),
+            None => None,
+        };
+        drop(file_paths);
+        file_path
     }
 }
 
@@ -3226,4 +3106,8 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDef) -> FuncSig {
         vis: func_def.vis.clone(),
         loc: func_def.loc.clone(),
     }
+}
+
+fn make_method_resolve_name(struct_symbol_id: SymbolID, method_name: String) -> String {
+    format!("{}{}", struct_symbol_id, method_name)
 }

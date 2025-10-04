@@ -128,10 +128,10 @@ impl ModuleLoader {
 
         // starting point
         let module_file_path = String::new();
-        self.resolve_segments(&segments, sources, module_file_path)
+        self.load_module_segments(&segments, sources, module_file_path)
     }
 
-    fn resolve_segments(
+    fn load_module_segments(
         &self,
         segments: &[ModuleSegment],
         sources: Vec<String>,
