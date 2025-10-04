@@ -84,14 +84,12 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
     ) -> Option<LocalOrGlobalSymbol> {
-        // First, try to resolve as a local symbol if a scope is provided.
         if let Some(scope) = local_scope_opt {
             if let Some(local_symbol) = self.resolve_symbol_from_local_scope(scope, symbol_id) {
                 return Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol));
             }
         }
 
-        // If not found locally (or if there was no local scope), resolve as a global symbol.
         self.resolve_global_symbol(symbol_id)
             .map(LocalOrGlobalSymbol::GlobalSymbol)
     }

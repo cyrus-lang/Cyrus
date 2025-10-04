@@ -450,12 +450,10 @@ pub enum ModuleSegment {
 }
 
 impl ModuleSegment {
-    pub fn as_identifier(&self) -> Identifier {
+    pub fn as_identifier_opt(&self) -> Option<Identifier> {
         match self {
-            ModuleSegment::SubModule(identifier) => identifier.clone(),
-            ModuleSegment::Single(_) => {
-                panic!("ModuleSegment is not a SubModule.");
-            }
+            ModuleSegment::SubModule(identifier) => Some(identifier.clone()),
+            ModuleSegment::Single(_) => None,
         }
     }
 }

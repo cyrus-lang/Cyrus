@@ -237,46 +237,63 @@ impl Resolver {
             );
         }
 
-        assert!(module_import.segments.len() >= 2);
-
-        let symbol_name = module_import.segments.pop().unwrap().as_identifier().name;
-
-        let module_import_alias = module_segments_as_string(module_import.segments.clone());
-        let module_id = match self.get_module_alias(module_import_alias.clone()) {
-            Some(module_id) => module_id,
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ModuleImportNotFound {
-                        module_name: module_import_alias,
-                    },
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        module_import.loc.clone(),
-                        self.get_current_module_file_path(),
-                    ))),
-                    hint: None,
-                });
-                return None;
-            }
+        let Some(last_segment) = module_import.segments.pop() else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::ExpectedIdentifierInImport,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    module_import.loc.clone(),
+                    self.get_current_module_file_path(),
+                ))),
+                hint: Some("Import path must include at least one symbol.".into()),
+            });
+            return None;
         };
 
-        let symbol_id = match self.lookup_symbol_id(module_id, &symbol_name) {
-            Some(symbol_id) => symbol_id,
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::SymbolIsNotDefinedInModule {
-                        symbol_name,
-                        module_name: module_import_alias,
-                    },
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        module_import.loc.clone(),
-                        self.get_current_module_file_path(),
-                    ))),
-                    hint: None,
-                });
-                return None;
-            }
+        let Some(symbol_ident) = last_segment.as_identifier_opt() else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::ExpectedIdentifierInImport,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    module_import.loc,
+                    self.get_current_module_file_path(),
+                ))),
+                hint: Some("The last part of an import path must be a symbol name.".into()),
+            });
+            return None;
+        };
+        let symbol_name = symbol_ident.name;
+
+        let module_alias = module_segments_as_string(module_import.segments);
+        let Some(target_module_id) = self.get_module_alias(&module_alias) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::ModuleImportNotFound {
+                    module_name: module_alias,
+                },
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    module_import.loc.clone(),
+                    self.get_current_module_file_path(),
+                ))),
+                hint: None,
+            });
+            return None;
+        };
+
+        let Some(symbol_id) = self.lookup_symbol_id(target_module_id, &symbol_name) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::SymbolIsNotDefinedInModule {
+                    symbol_name,
+                    module_name: module_alias,
+                },
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    module_import.loc.clone(),
+                    self.get_current_module_file_path(),
+                ))),
+                hint: None,
+            });
+            return None;
         };
 
         Some(symbol_id)
@@ -289,6 +306,8 @@ impl Resolver {
         exists
     }
 
+    // REVIEW  Refactor the method.
+    // FIXME   Fix cyclic-import problem here.
     fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, mut visiting: &mut Visiting) {
         let mut duplicate_import = false;
 
@@ -415,46 +434,45 @@ impl Resolver {
         &mut self,
         parent_module_id: ModuleID,
         imported_module_id: ModuleID,
-        singles: &Vec<ModuleSegmentSingle>,
+        singles: &[ModuleSegmentSingle],
         loc: Location,
     ) {
-        let mut imported_symbols_ids: Vec<SymbolID> = Vec::new();
-        // move symbol and it's metadata from imported module to parent module
+        let mut imported_symbol_ids = Vec::new();
 
         for single in singles {
-            let single_actual_name = single.identifier.as_string();
-            let single_renamed_name = single.renamed.clone().unwrap_or(single.identifier.clone()).as_string();
+            let actual_name = single.identifier.as_string();
+            let renamed_name = single.renamed.as_ref().unwrap_or(&single.identifier).as_string();
 
-            let symbol_id = match self.lookup_symbol_id(imported_module_id, &single_actual_name) {
-                Some(symbol_id) => symbol_id,
-                None => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: ResolverDiagKind::SymbolNotFound {
-                            name: single_renamed_name,
-                        },
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            loc.clone(),
-                            self.get_module_file_path(parent_module_id).unwrap(),
-                        ))),
-                        hint: None,
-                    });
-                    continue;
-                }
+            let Some(symbol_id) = self.lookup_symbol_id(imported_module_id, &actual_name) else {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::SymbolNotFound {
+                        name: renamed_name.clone(),
+                    },
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        loc.clone(),
+                        self.get_module_file_path(parent_module_id).unwrap(),
+                    ))),
+                    hint: None,
+                });
+                continue;
             };
 
-            imported_symbols_ids.push(symbol_id);
+            imported_symbol_ids.push(symbol_id);
 
             let symbol_entry = self.resolve_global_symbol(symbol_id).unwrap();
+
             {
                 let mut global_symbols = self.global_symbols.lock().unwrap();
-                let symbol_table = global_symbols.get_mut(&parent_module_id).unwrap();
+                let symbol_table = global_symbols
+                    .get_mut(&parent_module_id)
+                    .expect("parent module should exist in global symbols");
 
-                if symbol_table.names.contains_key(&single_actual_name) {
+                if symbol_table.names.contains_key(&actual_name) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: ResolverDiagKind::DuplicateSymbol {
-                            symbol_name: single_renamed_name,
+                            symbol_name: renamed_name.clone(),
                         },
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             loc.clone(),
@@ -465,14 +483,13 @@ impl Resolver {
                     continue;
                 }
 
-                symbol_table.names.insert(single_renamed_name.clone(), symbol_id);
+                symbol_table.names.insert(renamed_name.clone(), symbol_id);
 
                 let vis = symbol_entry.get_vis();
-
                 symbol_table.entries.insert(symbol_id, symbol_entry);
-                drop(global_symbols);
 
-                self.check_import_single_vis(single_actual_name, vis, loc.clone());
+                drop(global_symbols);
+                self.check_import_single_vis(actual_name, vis, loc.clone());
             }
         }
     }
@@ -501,106 +518,69 @@ impl Resolver {
 
     fn resolve_type(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
+        local_scope: Option<LocalScopeRef>,
         module_id: ModuleID,
         type_specifier: TypeSpecifier,
         loc: Location,
         span_end: usize,
     ) -> Option<ConcreteType> {
-        let resolving_result = match type_specifier {
+        let result = match type_specifier {
             TypeSpecifier::FuncType(func_type) => {
-                let mut list: Vec<ConcreteType> = Vec::new();
+                let params: Vec<ConcreteType> = func_type
+                    .params
+                    .list
+                    .iter()
+                    .filter_map(|param| {
+                        self.resolve_type(local_scope.clone(), module_id, param.clone(), loc.clone(), span_end)
+                    })
+                    .collect();
 
-                for param in &func_type.params.list {
-                    match self.resolve_type(local_scope_opt.clone(), module_id, param.clone(), loc.clone(), span_end) {
-                        Some(concrete_type) => list.push(concrete_type),
-                        None => continue,
+                let variadic = match &func_type.params.variadic {
+                    Some(FuncTypeVariadicParams::UntypedCStyle) => {
+                        Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle))
                     }
-                }
-
-                let mut variadic_param: Option<Box<TypedFuncTypeVariadicParams>> = None;
-                if let Some(variadic) = &func_type.params.variadic {
-                    match variadic {
-                        FuncTypeVariadicParams::UntypedCStyle => {
-                            variadic_param = Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle));
-                        }
-                        FuncTypeVariadicParams::Typed(type_specifier) => {
-                            let concrete_type = match self.resolve_type(
-                                local_scope_opt.clone(),
-                                module_id,
-                                type_specifier.clone(),
-                                loc.clone(),
-                                span_end,
-                            ) {
-                                Some(concrete_type) => concrete_type,
-                                None => return None,
-                            };
-
-                            variadic_param = Some(Box::new(TypedFuncTypeVariadicParams::Typed(concrete_type)));
-                        }
+                    Some(FuncTypeVariadicParams::Typed(spec)) => {
+                        let ct =
+                            self.resolve_type(local_scope.clone(), module_id, spec.clone(), loc.clone(), span_end)?;
+                        Some(Box::new(TypedFuncTypeVariadicParams::Typed(ct)))
                     }
-                }
-
-                let ret = match self.resolve_type(
-                    local_scope_opt.clone(),
-                    module_id,
-                    *func_type.ret,
-                    loc.clone(),
-                    span_end,
-                ) {
-                    Some(concrete_type) => concrete_type,
-                    None => return None,
+                    None => None,
                 };
 
+                let ret = self.resolve_type(local_scope.clone(), module_id, *func_type.ret, loc.clone(), span_end)?;
+
                 Ok(ConcreteType::FuncType(FuncType {
-                    params: TypedFuncTypeParams {
-                        list,
-                        variadic: variadic_param,
-                    },
+                    params: TypedFuncTypeParams { list: params, variadic },
                     ret: Box::new(ret),
                 }))
             }
-            TypeSpecifier::TypeToken(token) => match ConcreteType::try_from(token.kind.clone()) {
-                Ok(concrete_type) => Ok(concrete_type),
-                Err(_) => Err(ResolverDiagKind::TypeNotFound {
+            TypeSpecifier::TypeToken(token) => {
+                ConcreteType::try_from(token.kind.clone()).map_err(|_| ResolverDiagKind::TypeNotFound {
                     name: token.kind.to_string(),
-                }),
-            },
-            TypeSpecifier::Const(type_specifier) => Ok(ConcreteType::Const(Box::new(self.resolve_type(
-                local_scope_opt,
-                module_id,
-                *type_specifier,
-                loc.clone(),
-                span_end,
-            )?))),
-            TypeSpecifier::Dereference(type_specifier) => Ok(ConcreteType::Pointer(Box::new(self.resolve_type(
-                local_scope_opt,
-                module_id,
-                *type_specifier,
-                loc.clone(),
-                span_end,
-            )?))),
-            TypeSpecifier::Array(array_type_specifier) => Ok({
-                let element_type = match self.resolve_type(
-                    local_scope_opt.clone(),
+                })
+            }
+            TypeSpecifier::Const(inner) => {
+                let ct = self.resolve_type(local_scope, module_id, *inner, loc.clone(), span_end)?;
+                Ok(ConcreteType::Const(Box::new(ct)))
+            }
+            TypeSpecifier::Dereference(inner) => {
+                let ct = self.resolve_type(local_scope, module_id, *inner, loc.clone(), span_end)?;
+                Ok(ConcreteType::Pointer(Box::new(ct)))
+            }
+            TypeSpecifier::Array(array_spec) => {
+                let elem_type = self.resolve_type(
+                    local_scope.clone(),
                     module_id,
-                    *array_type_specifier.element_type,
+                    *array_spec.element_type,
                     loc.clone(),
                     span_end,
-                ) {
-                    Some(concrete_type) => concrete_type,
-                    None => return None,
-                };
+                )?;
 
-                let capacity = match &array_type_specifier.size {
+                let capacity = match &array_spec.size {
                     ArrayCapacity::Fixed(expr) => {
-                        let typed_expr = match self.resolve_expr(module_id, local_scope_opt, expr) {
-                            Some(typed_expr) => typed_expr,
-                            None => return None,
-                        };
-
-                        if let TypedExpressionKind::Literal(typed_literal) = &typed_expr.kind {
-                            if let LiteralKind::Integer(value, ..) = &typed_literal.kind {
+                        let typed_expr = self.resolve_expr(module_id, local_scope.clone(), expr)?;
+                        if let TypedExpressionKind::Literal(lit) = &typed_expr.kind {
+                            if let LiteralKind::Integer(value, ..) = &lit.kind {
                                 TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
                                     (*value).try_into().unwrap(),
                                 ))
@@ -614,63 +594,56 @@ impl Resolver {
                     ArrayCapacity::Dynamic => TypedArrayCapacity::Dynamic,
                 };
 
-                ConcreteType::Array(TypedArrayType {
-                    element_type: Box::new(element_type),
+                Ok(ConcreteType::Array(TypedArrayType {
+                    element_type: Box::new(elem_type),
                     capacity,
                     loc: SourceLoc::from_loc(loc.clone(), self.get_current_module_file_path()),
-                })
-            }),
-            TypeSpecifier::UnnamedStruct(unnamed_struct_type) => {
-                let mut fields: Vec<TypedUnnamedStructTypeField> = Vec::new();
-
-                for field in &unnamed_struct_type.fields {
-                    match self.resolve_type(
-                        local_scope_opt.clone(),
+                }))
+            }
+            TypeSpecifier::UnnamedStruct(struct_spec) => {
+                let mut fields = Vec::new();
+                for field in &struct_spec.fields {
+                    if let Some(ft) = self.resolve_type(
+                        local_scope.clone(),
                         module_id,
                         field.field_type.clone(),
                         field.loc.clone(),
                         field.span.end,
                     ) {
-                        Some(concrete_type) => {
-                            fields.push(TypedUnnamedStructTypeField {
-                                field_name: field.field_name.name.clone(),
-                                field_type: Box::new(concrete_type),
-                                loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
-                            });
-                        }
-                        None => continue,
-                    };
+                        fields.push(TypedUnnamedStructTypeField {
+                            field_name: field.field_name.name.clone(),
+                            field_type: Box::new(ft),
+                            loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
+                        });
+                    }
                 }
 
                 Ok(ConcreteType::UnnamedStruct(TypedUnnamedStructType {
                     fields,
-                    packed: unnamed_struct_type.packed,
-                    loc: SourceLoc::from_loc(unnamed_struct_type.loc.clone(), self.get_current_module_file_path()),
+                    packed: struct_spec.packed,
+                    loc: SourceLoc::from_loc(struct_spec.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
-            TypeSpecifier::ModuleImport(module_import) => match self.resolve_module_import(module_id, module_import) {
-                Some(symbol_id) => Ok(ConcreteType::UnresolvedSymbol(symbol_id)),
-                None => return None,
-            },
-            TypeSpecifier::Identifier(identifier) => {
-                match match self.lookup_symbol_id(module_id, &identifier.name.clone()) {
-                    Some(symbol_entry) => Some(symbol_entry),
-                    None => None,
-                } {
-                    Some(symbol_id) => Ok(ConcreteType::UnresolvedSymbol(symbol_id)),
-                    None => Err(ResolverDiagKind::TypeNotFound {
-                        name: identifier.name.clone(),
-                    }),
-                }
-            }
+            TypeSpecifier::ModuleImport(import) => self
+                .resolve_module_import(module_id, import)
+                .map(ConcreteType::UnresolvedSymbol)
+                .ok_or(ResolverDiagKind::TypeNotFound {
+                    name: "import".to_string(),
+                }),
+            TypeSpecifier::Identifier(identifier) => self
+                .lookup_symbol_id(module_id, &identifier.name)
+                .map(ConcreteType::UnresolvedSymbol)
+                .ok_or(ResolverDiagKind::TypeNotFound {
+                    name: identifier.name.clone(),
+                }),
         };
 
-        match resolving_result {
-            Ok(concrete_typed) => Some(concrete_typed),
-            Err(diag_kind) => {
+        match result {
+            Ok(ct) => Some(ct),
+            Err(kind) => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: diag_kind,
+                    kind,
                     location: Some(DiagLoc::new(SourceLoc::from_loc(
                         loc,
                         self.get_current_module_file_path(),
@@ -3005,10 +2978,10 @@ impl Resolver {
         drop(module_aliases);
     }
 
-    fn get_module_alias(&self, group_name: ModuleGroupName) -> Option<ModuleID> {
+    fn get_module_alias(&self, group_name: &ModuleGroupName) -> Option<ModuleID> {
         let module_aliases = self.module_aliases.lock().unwrap();
         let imported_modules = module_aliases.get(&self.current_module.unwrap()).unwrap();
-        let option = imported_modules.get(&group_name).cloned();
+        let option = imported_modules.get(group_name).cloned();
         drop(module_aliases);
         option
     }
