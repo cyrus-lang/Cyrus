@@ -1,12 +1,5 @@
 import std::libc{printf, scanf};
 
-fn sample() {
-    printf("Hello, Cyrus!\n");
-}
-
 fn main() {
-    #my_sample: void* = &sample;
-
-    // my_sample();
-    // printf("%p\n", cast(void*, sample));
+    #my_sample: fn(int, int) int;
 }

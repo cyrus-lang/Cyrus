@@ -144,7 +144,7 @@ pub const PRIMITIVE_TYPES: &[TokenKind] = &[
 
 #[derive(Debug, Clone)]
 pub enum LiteralSuffix {
-    PrimitiveType(TokenKind)
+    PrimitiveType(TokenKind),
 }
 
 impl fmt::Display for TokenKind {

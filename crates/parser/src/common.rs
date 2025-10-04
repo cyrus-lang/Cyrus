@@ -95,11 +95,98 @@ impl Parser {
         Ok(base_type)
     }
 
+    pub fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let mut variadic: Option<FuncTypeVariadicParams> = None;
+        let mut list: Vec<TypeSpecifier> = Vec::new();
+
+        while self.current_token().kind != TokenKind::RightParen {
+            match self.current_token().kind {
+                TokenKind::TripleDot => {
+                    self.next_token(); // consume triple_dot
+
+                    if self.current_token_is(TokenKind::Comma) {
+                        return Err(Diag {
+                            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                            level: DiagLevel::Error,
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                self.current_token().loc,
+                                self.file_name.clone(),
+                            ))),
+                            hint: Some("Fixed parameters must be defined before the vargs.".to_string()),
+                        });
+                    }
+
+                    variadic = Some(FuncTypeVariadicParams::UntypedCStyle);
+                    break;
+                }
+                _ => {
+                    if self.current_token_is(TokenKind::TripleDot) {
+                        self.next_token(); // consume triple dot
+
+                        let variadic_data_type = self.parse_type_specifier()?;
+                        self.next_token();
+
+                        variadic = Some(FuncTypeVariadicParams::Typed(variadic_data_type));
+                        continue;
+                    } else {
+                        let var_type = self.parse_type_specifier()?;
+                        self.next_token();
+                        list.push(var_type);
+                    }
+                }
+            }
+
+            match &self.current_token().kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                }
+                TokenKind::RightParen => {
+                    break;
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::MissingComma,
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        self.expect_current(TokenKind::RightParen)?;
+
+        Ok(FuncTypeParams { list, variadic })
+    }
+
+    fn parse_func_type(&mut self) -> Result<TypeSpecifier, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume function
+
+        let params = self.parse_func_type_params()?;
+        let ret = self.parse_type_specifier()?;
+
+        Ok(TypeSpecifier::FuncType(Box::new(FuncType {
+            params,
+            ret: Box::new(ret),
+            span: Span::new(start, self.current_token().span.end),
+            loc,
+        })))
+    }
+
     fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, ParserError> {
         let current = self.current_token().clone();
 
         let parsed_kind = match current.kind {
             ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
+            TokenKind::Function => self.parse_func_type(),
             TokenKind::Struct | TokenKind::Bits => self.parse_struct_type(),
             TokenKind::Const => {
                 self.next_token(); // consume const

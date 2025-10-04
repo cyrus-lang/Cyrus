@@ -100,6 +100,26 @@ impl fmt::Display for ModuleSegment {
 impl fmt::Display for TypeSpecifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            TypeSpecifier::FuncType(func_type) => {
+                let mut params = func_type
+                    .params
+                    .list
+                    .iter()
+                    .map(|param| param.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                if let Some(variadic) = &func_type.params.variadic {
+                    match variadic {
+                        FuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
+                        FuncTypeVariadicParams::Typed(type_specifier) => {
+                            params.push_str(&format!(", {}...", type_specifier.to_string()))
+                        }
+                    }
+                }
+
+                write!(f, "fn ({}) {}", params, func_type.ret.to_string())
+            }
             TypeSpecifier::TypeToken(token) => write!(f, "{}", token.kind),
             TypeSpecifier::Identifier(identifier) => write!(f, "{}", identifier),
             TypeSpecifier::ModuleImport(module_import) => write!(f, "{}", module_import),
@@ -263,7 +283,7 @@ impl fmt::Display for Expression {
             Expression::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
             Expression::SizeOfExpression(size_of_expression) => {
                 write!(f, "sizeof {}", size_of_expression.expr)
-            },
+            }
         }
     }
 }
