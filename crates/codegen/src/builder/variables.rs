@@ -8,7 +8,7 @@ use inkwell::{
     types::BasicTypeEnum,
     values::{GlobalValue, PointerValue},
 };
-use resolver::{declsign::GlobalVarSig, scope::LocalScopeRef};
+use resolver::{signatures::GlobalVarSig, scope::LocalScopeRef};
 use typed_ast::{TypedExpression, TypedGlobalVariable, TypedVariable, types::ConcreteType};
 
 impl<'a> CodeGenBuilder<'a> {

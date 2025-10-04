@@ -1,15 +1,17 @@
-use crate::declsign::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
 use crate::moduleloader::{ModuleAlias, ModuleFilePath, ModuleLoader, ModuleLoaderOptions};
 use crate::scope::*;
+use crate::signatures::{EnumSig, GlobalVarSig, InterfaceSig, StructSig, UnionSig};
 use crate::{
-    declsign::{FuncSig, TypedefSig},
     diagnostics::ResolverDiagKind,
+    signatures::{FuncSig, TypedefSig},
 };
 use ast::format::module_segments_as_string;
 use ast::source_loc::SourceLoc;
 use ast::{
-    AccessSpecifier, GlobalVariable, If, Import, Interface, ModuleImport, ModulePath, ModuleSegment,
-    ModuleSegmentSingle, SelfModifierKind, StringPrefix, SwitchCasePattern, Union,
+    AccessSpecifier, AddressOf, Array, ArrayIndex, Assignment, Cast, Dereference, FieldAccess, FuncCall,
+    FuncTypeVariadicParams, GlobalVariable, If, Import, InfixExpression, Interface, Literal, MethodCall, ModuleImport,
+    ModulePath, ModuleSegment, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix,
+    StructInit, SwitchCasePattern, UnaryExpression, Union, UnnamedStructValue,
 };
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
@@ -24,15 +26,15 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::types::{
-    BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+    BasicConcreteType, ConcreteType, FuncType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
     TypedUnnamedStructType, TypedUnnamedStructTypeField,
 };
 use typed_ast::{SymbolID, *};
 
-pub mod declsign;
 mod diagnostics;
 pub mod moduleloader;
 pub mod scope;
+pub mod signatures;
 
 pub type GlobalSymbolsMutex = Mutex<HashMap<ModuleID, SymbolTable>>;
 type ModuleGroupName = String;
@@ -57,6 +59,78 @@ pub struct Resolver {
 pub struct Visiting {
     pub active: HashSet<ModuleFilePath>, // stack of modules currently being resolved
     pub done: HashSet<ModuleFilePath>,   // modules fully resolved
+}
+
+macro_rules! is_unscoped_expr {
+    ($self:expr, $local_scope_opt:expr, $loc:expr, $span_end:expr) => {{
+        if $local_scope_opt.is_none() {
+            $self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::RequiresLocalScope,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    $loc,
+                    $self.get_current_module_file_path(),
+                ))),
+                hint: None,
+            });
+        }
+
+        $local_scope_opt.is_none()
+    }};
+}
+
+macro_rules! resolve_local_identifier {
+    ($self:expr, $local_scope_opt:expr, $module_id:expr, $identifier:expr) => {{
+        let local_option = {
+            if let Some(local_scope_rc) = &$local_scope_opt {
+                let symbol_id_opt = {
+                    let local_scope = local_scope_rc.borrow_mut();
+                    match local_scope.resolve(&$identifier.name.clone()).cloned() {
+                        Some(local_symbol) => Some(local_symbol),
+                        None => None,
+                    }
+                };
+
+                match symbol_id_opt {
+                    Some(local_symbol) => Some(local_symbol.get_symbol_id()),
+                    None => None,
+                }
+            } else {
+                None
+            }
+        };
+
+        match local_option {
+            Some(symbol_id) => symbol_id,
+            None => {
+                match $self.resolve_module_import(
+                    $module_id,
+                    ModuleImport {
+                        segments: vec![ModuleSegment::SubModule($identifier.clone())],
+                        loc: $identifier.loc.clone(),
+                        span: $identifier.span.clone(),
+                    },
+                ) {
+                    Some(symbol_id) => symbol_id,
+                    None => {
+                        $self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: ResolverDiagKind::SymbolNotFound {
+                                name: $identifier.name.clone(),
+                            },
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                $identifier.loc.clone(),
+                                $self.get_current_module_file_path(),
+                            ))),
+                            hint: None,
+                        });
+
+                        return None;
+                    }
+                }
+            }
+        }
+    }};
 }
 
 impl Resolver {
@@ -419,6 +493,58 @@ impl Resolver {
         span_end: usize,
     ) -> Option<ConcreteType> {
         let resolving_result = match type_specifier {
+            TypeSpecifier::FuncType(func_type) => {
+                let mut list: Vec<ConcreteType> = Vec::new();
+
+                for param in &func_type.params.list {
+                    match self.resolve_type(local_scope_opt.clone(), module_id, param.clone(), loc.clone(), span_end) {
+                        Some(concrete_type) => list.push(concrete_type),
+                        None => continue,
+                    }
+                }
+
+                let mut variadic_param: Option<Box<TypedFuncTypeVariadicParams>> = None;
+                if let Some(variadic) = &func_type.params.variadic {
+                    match variadic {
+                        FuncTypeVariadicParams::UntypedCStyle => {
+                            variadic_param = Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle));
+                        }
+                        FuncTypeVariadicParams::Typed(type_specifier) => {
+                            let concrete_type = match self.resolve_type(
+                                local_scope_opt.clone(),
+                                module_id,
+                                type_specifier.clone(),
+                                loc.clone(),
+                                span_end,
+                            ) {
+                                Some(concrete_type) => concrete_type,
+                                None => return None,
+                            };
+
+                            variadic_param = Some(Box::new(TypedFuncTypeVariadicParams::Typed(concrete_type)));
+                        }
+                    }
+                }
+
+                let ret = match self.resolve_type(
+                    local_scope_opt.clone(),
+                    module_id,
+                    *func_type.ret,
+                    loc.clone(),
+                    span_end,
+                ) {
+                    Some(concrete_type) => concrete_type,
+                    None => return None,
+                };
+
+                Ok(ConcreteType::FuncType(FuncType {
+                    params: TypedFuncTypeParams {
+                        list,
+                        variadic: variadic_param,
+                    },
+                    ret: Box::new(ret),
+                }))
+            }
             TypeSpecifier::TypeToken(token) => match ConcreteType::try_from(token.kind.clone()) {
                 Ok(concrete_type) => Ok(concrete_type),
                 Err(_) => Err(ResolverDiagKind::TypeNotFound {
@@ -2234,644 +2360,610 @@ impl Resolver {
         local_scope_opt: Option<LocalScopeRef>,
         expr: &Expression,
     ) -> Option<TypedExpression> {
-        macro_rules! is_unscoped_expr {
-            ($loc:expr, $span_end:expr) => {{
-                if local_scope_opt.is_none() {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: ResolverDiagKind::RequiresLocalScope,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            $loc,
-                            self.get_current_module_file_path(),
-                        ))),
-                        hint: None,
-                    });
-                }
-
-                local_scope_opt.is_none()
-            }};
-        }
-
-        macro_rules! resolve_local_identifier {
-            ($identifier:expr) => {{
-                let local_option = {
-                    if let Some(local_scope_rc) = &local_scope_opt {
-                        let symbol_id_opt = {
-                            let local_scope = local_scope_rc.borrow_mut();
-                            match local_scope.resolve(&$identifier.name.clone()).cloned() {
-                                Some(local_symbol) => Some(local_symbol),
-                                None => None,
-                            }
-                        };
-
-                        match symbol_id_opt {
-                            Some(local_symbol) => Some(local_symbol.get_symbol_id()),
-                            None => None,
-                        }
-                    } else {
-                        None
-                    }
-                };
-
-                match local_option {
-                    Some(symbol_id) => symbol_id,
-                    None => {
-                        match self.resolve_module_import(
-                            module_id,
-                            ModuleImport {
-                                segments: vec![ModuleSegment::SubModule($identifier.clone())],
-                                loc: $identifier.loc.clone(),
-                                span: $identifier.span.clone(),
-                            },
-                        ) {
-                            Some(symbol_id) => symbol_id,
-                            None => {
-                                self.reporter.report(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: ResolverDiagKind::SymbolNotFound {
-                                        name: $identifier.name.clone(),
-                                    },
-                                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                        $identifier.loc.clone(),
-                                        self.get_current_module_file_path(),
-                                    ))),
-                                    hint: None,
-                                });
-
-                                return None;
-                            }
-                        }
-                    }
-                }
-            }};
-        }
-
         match expr {
             Expression::FieldAccess(field_access) => {
-                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &field_access.operand) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::FieldAccess(TypedFieldAccess {
-                        operand: Box::new(operand),
-                        field_name: field_access.field_name.name.clone(),
-                        is_fat_arrow: field_access.is_fat_arrow,
-                        field_index: None,
-                        field_ty: None,
-                        object_symbol_id: None,
-                        loc: SourceLoc::from_loc(field_access.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Lvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(field_access.loc.clone(), self.get_current_module_file_path()),
-                })
+                self.resolve_field_access(module_id, local_scope_opt, field_access)
             }
-            Expression::MethodCall(method_call) => {
-                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &method_call.operand) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                let mut args: Vec<TypedExpression> = Vec::new();
-
-                for arg in &method_call.args {
-                    let typed_expr = match self.resolve_expr(module_id, local_scope_opt.clone(), &arg) {
-                        Some(typed_expr) => typed_expr,
-                        None => continue,
-                    };
-
-                    args.push(typed_expr);
-                }
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::MethodCall(TypedMethodCall {
-                        operand: Box::new(operand),
-                        object_symbol_id: None,
-                        method_name: method_call.method_name.name.clone(),
-                        is_fat_arrow: method_call.is_fat_arrow,
-                        loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
-                        args,
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
-                })
+            Expression::MethodCall(method_call) => self.resolve_method_call(module_id, local_scope_opt, method_call),
+            Expression::StructInit(struct_init) => self.resolve_struct_init(module_id, local_scope_opt, struct_init),
+            Expression::ModuleImport(module_import) => {
+                self.resolve_module_import_expr(module_id, local_scope_opt, module_import)
             }
-            Expression::StructInit(struct_init) => {
-                let symbol_id = match self.resolve_local_module_import(
-                    local_scope_opt.clone(),
-                    module_id,
-                    &struct_init.struct_name.clone(),
-                ) {
-                    Some(symbol_id) => symbol_id,
-                    None => {
-                        return None;
-                    }
-                };
+            Expression::Identifier(identifier) => self.resolve_identifier_expr(module_id, local_scope_opt, identifier),
+            Expression::FuncCall(func_call) => self.resolve_func_call(module_id, local_scope_opt, func_call),
+            Expression::Array(arr) => self.resolve_array_expr(module_id, local_scope_opt, arr),
+            Expression::Infix(bin) => self.resolve_infix_expr(module_id, local_scope_opt, bin),
+            Expression::Prefix(prefix) => self.resolve_prefix_expr(module_id, local_scope_opt, prefix),
+            Expression::Cast(cast) => self.resolve_cast_expr(module_id, local_scope_opt, cast),
+            Expression::TypeSpecifier(type_specifier) => {
+                self.resolve_type_specifier_expr(module_id, local_scope_opt, type_specifier)
+            }
+            Expression::Assignment(assignment) => self.resolve_assignment_expr(module_id, local_scope_opt, assignment),
+            Expression::Literal(literal) => self.resolve_literal_expr(literal),
+            Expression::Unary(unary) => self.resolve_unary_expr(module_id, local_scope_opt, unary),
+            Expression::ArrayIndex(array_index) => {
+                self.resolve_array_index_expr(module_id, local_scope_opt, array_index)
+            }
+            Expression::AddressOf(address_of) => self.resolve_address_of_expr(module_id, local_scope_opt, address_of),
+            Expression::Dereference(dereference) => {
+                self.resolve_dereference_expr(module_id, local_scope_opt, dereference)
+            }
+            Expression::UnnamedStructValue(unnamed_struct_value) => {
+                self.resolve_unnamed_struct_value(module_id, local_scope_opt, unnamed_struct_value)
+            }
+            Expression::SizeOfExpression(size_of_expression) => {
+                self.resolve_size_of_expression(module_id, local_scope_opt, size_of_expression)
+            }
+        }
+    }
 
-                let mut field_inits: Vec<TypedStructFieldInit> = Vec::new();
+    fn resolve_field_access(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        field_access: &FieldAccess,
+    ) -> Option<TypedExpression> {
+        let operand = self.resolve_expr(module_id, local_scope_opt, &field_access.operand)?;
 
-                for field_init in &struct_init.field_inits {
-                    let value = match self.resolve_expr(module_id, local_scope_opt.clone(), &field_init.value) {
-                        Some(typed_expr) => typed_expr,
-                        None => continue,
-                    };
+        Some(TypedExpression {
+            kind: TypedExpressionKind::FieldAccess(TypedFieldAccess {
+                operand: Box::new(operand),
+                field_name: field_access.field_name.name.clone(),
+                is_fat_arrow: field_access.is_fat_arrow,
+                field_index: None,
+                field_ty: None,
+                object_symbol_id: None,
+                loc: SourceLoc::from_loc(field_access.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Lvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(field_access.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
 
-                    field_inits.push(TypedStructFieldInit {
+    fn resolve_method_call(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        method_call: &MethodCall,
+    ) -> Option<TypedExpression> {
+        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &method_call.operand)?;
+
+        let args: Vec<TypedExpression> = method_call
+            .args
+            .iter()
+            .filter_map(|arg| self.resolve_expr(module_id, local_scope_opt.clone(), arg))
+            .collect();
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::MethodCall(TypedMethodCall {
+                operand: Box::new(operand),
+                object_symbol_id: None,
+                method_name: method_call.method_name.name.clone(),
+                is_fat_arrow: method_call.is_fat_arrow,
+                loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
+                args,
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_struct_init(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        struct_init: &StructInit,
+    ) -> Option<TypedExpression> {
+        let symbol_id =
+            self.resolve_local_module_import(local_scope_opt.clone(), module_id, &struct_init.struct_name)?;
+
+        let field_inits: Vec<TypedStructFieldInit> = struct_init
+            .field_inits
+            .iter()
+            .filter_map(|field_init| {
+                self.resolve_expr(module_id, local_scope_opt.clone(), &field_init.value)
+                    .map(|value| TypedStructFieldInit {
                         name: field_init.identifier.name.clone(),
                         value,
                         loc: SourceLoc::from_loc(field_init.loc.clone(), self.get_current_module_file_path()),
-                    });
-                }
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::StructInit(TypedStructInit {
-                        symbol_id,
-                        fields: field_inits,
-                        is_const: struct_init.is_const,
-                        loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
-                })
-            }
-            Expression::ModuleImport(module_import) => {
-                if let Some(identifier) = module_import.as_identifier() {
-                    let symbol_id = resolve_local_identifier!(identifier);
-                    Some(TypedExpression {
-                        kind: TypedExpressionKind::Symbol(
-                            symbol_id,
-                            SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
-                        ),
-                        concrete_type: None,
-                        value_category: ValueCategory::Lvalue,
-                        loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
                     })
-                } else {
-                    match self.resolve_module_import(module_id, module_import.clone()) {
-                        Some(symbol_id) => Some(TypedExpression {
-                            kind: TypedExpressionKind::Symbol(
-                                symbol_id,
-                                SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
-                            ),
-                            concrete_type: None,
-                            value_category: ValueCategory::Lvalue,
-                            loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
-                        }),
-                        None => return None,
-                    }
-                }
-            }
-            Expression::Identifier(identifier) => {
-                let symbol_id = resolve_local_identifier!(identifier);
-                Some(TypedExpression {
+            })
+            .collect();
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::StructInit(TypedStructInit {
+                symbol_id,
+                fields: field_inits,
+                is_const: struct_init.is_const,
+                loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_module_import_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        module_import: &ModuleImport,
+    ) -> Option<TypedExpression> {
+        if let Some(identifier) = module_import.as_identifier() {
+            let symbol_id = resolve_local_identifier!(self, local_scope_opt, module_id, identifier);
+            Some(TypedExpression {
+                kind: TypedExpressionKind::Symbol(
+                    symbol_id,
+                    SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                ),
+                concrete_type: None,
+                value_category: ValueCategory::Lvalue,
+                loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
+            })
+        } else {
+            self.resolve_module_import(module_id, module_import.clone())
+                .map(|symbol_id| TypedExpression {
                     kind: TypedExpressionKind::Symbol(
                         symbol_id,
-                        SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                        SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
                     ),
                     concrete_type: None,
                     value_category: ValueCategory::Lvalue,
-                    loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                    loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
                 })
+        }
+    }
+
+    fn resolve_identifier_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        identifier: &Identifier,
+    ) -> Option<TypedExpression> {
+        let symbol_id = resolve_local_identifier!(self, local_scope_opt, module_id, identifier);
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Symbol(
+                symbol_id,
+                SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+            ),
+            concrete_type: None,
+            value_category: ValueCategory::Lvalue,
+            loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_func_call(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        func_call: &FuncCall,
+    ) -> Option<TypedExpression> {
+        if is_unscoped_expr!(self, local_scope_opt, func_call.loc.clone(), func_call.span.end) {
+            return None;
+        }
+
+        let symbol_id = match &*func_call.operand {
+            Expression::Identifier(identifier) => self.resolve_identifier(
+                module_id,
+                identifier.clone(),
+                SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+            )?,
+            Expression::ModuleImport(module_import) => self
+                .resolve_local_module_import(local_scope_opt.clone(), module_id, module_import)
+                .or_else(|| self.resolve_module_import(module_id, module_import.clone()))?,
+            _ => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::InvalidOperandForFuncCall,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        func_call.loc.clone(),
+                        self.get_current_module_file_path(),
+                    ))),
+                    hint: None,
+                });
+                return None;
             }
-            Expression::FuncCall(func_call) => {
-                if is_unscoped_expr!(func_call.loc.clone(), func_call.span.end) {
-                    return None;
-                }
+        };
 
-                let symbol_id = match &*func_call.operand.clone() {
-                    Expression::Identifier(identifier) => match self.resolve_identifier(
-                        module_id,
-                        identifier.clone(),
-                        SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
-                    ) {
-                        Some(resolved) => resolved,
-                        None => return None,
-                    },
-                    Expression::ModuleImport(module_import) => {
-                        match self.resolve_module_import(module_id, module_import.clone()) {
-                            Some(resolved) => resolved,
-                            None => return None,
-                        }
-                    }
-                    _ => {
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: ResolverDiagKind::InvalidOperandForFuncCall,
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                func_call.loc.clone(),
-                                self.get_current_module_file_path(),
-                            ))),
-                            hint: None,
-                        });
-                        return None;
-                    }
-                };
+        let typed_args: Vec<TypedExpression> = func_call
+            .args
+            .iter()
+            .filter_map(|arg| self.resolve_expr(module_id, local_scope_opt.clone(), arg))
+            .collect();
 
-                let mut typed_args: Vec<TypedExpression> = Vec::new();
+        Some(TypedExpression {
+            kind: TypedExpressionKind::FuncCall(TypedFuncCall {
+                symbol_id,
+                args: typed_args,
+                loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
 
-                for arg in &func_call.args {
-                    match self.resolve_expr(module_id, local_scope_opt.clone(), &arg.clone()) {
-                        Some(typed_expr) => {
-                            typed_args.push(typed_expr);
-                        }
-                        None => continue,
-                    }
-                }
+    fn resolve_array_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        arr: &Array,
+    ) -> Option<TypedExpression> {
+        let array_type = self.resolve_type(
+            local_scope_opt.clone(),
+            module_id,
+            arr.data_type.clone(),
+            arr.loc.clone(),
+            arr.span.end,
+        )?;
 
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::FuncCall(TypedFuncCall {
-                        symbol_id,
-                        args: typed_args,
-                        loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
-                })
+        let typed_elements: Vec<TypedExpression> = arr
+            .elements
+            .iter()
+            .filter_map(|item| self.resolve_expr(module_id, local_scope_opt.clone(), item))
+            .collect();
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Array(TypedArray {
+                array_type,
+                elements: typed_elements,
+                loc: SourceLoc::from_loc(arr.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(arr.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_infix_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        bin: &InfixExpression,
+    ) -> Option<TypedExpression> {
+        let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.lhs)?;
+        let rhs = self.resolve_expr(module_id, local_scope_opt, &*bin.rhs)?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Infix(TypedInfixExpression {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+                op: bin.op.clone(),
+                loc: SourceLoc::from_loc(bin.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(bin.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_prefix_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        prefix: &PrefixExpression,
+    ) -> Option<TypedExpression> {
+        let operand = self.resolve_expr(module_id, local_scope_opt, &*prefix.operand)?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Prefix(TypedPrefixExpression {
+                operand: Box::new(operand),
+                op: prefix.op.clone(),
+                loc: SourceLoc::from_loc(prefix.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(prefix.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_cast_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        cast: &Cast,
+    ) -> Option<TypedExpression> {
+        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &*cast.expr)?;
+
+        let target_type = self.resolve_type(
+            local_scope_opt,
+            module_id,
+            cast.target_type.clone(),
+            cast.loc.clone(),
+            cast.span.end,
+        )?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Cast(TypedCast {
+                operand: Box::new(operand),
+                target_type,
+                loc: SourceLoc::from_loc(cast.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(cast.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_type_specifier_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        type_specifier: &TypeSpecifier,
+    ) -> Option<TypedExpression> {
+        let (loc, span_end) = type_specifier.get_loc();
+
+        let symbol_id = match type_specifier {
+            TypeSpecifier::Identifier(identifier) => {
+                resolve_local_identifier!(self, local_scope_opt, module_id, identifier)
             }
-            Expression::Array(arr) => {
-                let array_type = match self.resolve_type(
-                    local_scope_opt.clone(),
-                    module_id,
-                    arr.data_type.clone(),
-                    arr.loc.clone(),
-                    arr.span.end,
-                ) {
-                    Some(concrete_type) => concrete_type,
-                    None => return None,
-                };
-
-                let mut typed_elements: Vec<TypedExpression> = Vec::new();
-
-                for item in &arr.elements {
-                    match self.resolve_expr(module_id, local_scope_opt.clone(), &item.clone()) {
-                        Some(typed_expr) => typed_elements.push(typed_expr),
-                        None => continue,
-                    };
-                }
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::Array(TypedArray {
-                        array_type,
-                        elements: typed_elements,
-                        loc: SourceLoc::from_loc(arr.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(arr.loc.clone(), self.get_current_module_file_path()),
-                })
+            TypeSpecifier::ModuleImport(module_import) => {
+                self.resolve_module_import(module_id, module_import.clone())?
             }
-            Expression::Infix(bin) => {
-                let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.lhs.clone())?;
-                let rhs = self.resolve_expr(module_id, local_scope_opt.clone(), &*bin.rhs.clone())?;
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::Infix(TypedInfixExpression {
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                        op: bin.op.clone(),
-                        loc: SourceLoc::from_loc(bin.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(bin.loc.clone(), self.get_current_module_file_path()),
-                })
-            }
-            Expression::Prefix(prefix) => {
-                let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &*prefix.operand.clone())?;
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::Prefix(TypedPrefixExpression {
-                        operand: Box::new(operand),
-                        op: prefix.op.clone(),
-                        loc: SourceLoc::from_loc(prefix.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(prefix.loc.clone(), self.get_current_module_file_path()),
-                })
-            }
-            Expression::Cast(cast) => {
-                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &*cast.expr.clone()) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                let target_type = match self.resolve_type(
+            _ => {
+                let concrete_type = self.resolve_type(
                     local_scope_opt,
                     module_id,
-                    cast.target_type.clone(),
-                    cast.loc.clone(),
-                    cast.span.end,
-                ) {
-                    Some(concrete_type) => concrete_type,
-                    None => return None,
-                };
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::Cast(TypedCast {
-                        operand: Box::new(operand),
-                        target_type,
-                        loc: SourceLoc::from_loc(cast.loc.clone(), self.get_current_module_file_path()),
-                    }),
+                    type_specifier.clone(),
+                    loc.clone(),
+                    span_end,
+                )?;
+                return Some(TypedExpression {
+                    kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
                     value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(cast.loc.clone(), self.get_current_module_file_path()),
-                })
+                    concrete_type: Some(concrete_type),
+                    loc: SourceLoc::from_loc(loc, self.get_current_module_file_path()),
+                });
             }
-            Expression::TypeSpecifier(type_specifier) => {
-                let (loc, span_end) = type_specifier.get_loc();
+        };
 
-                let symbol_id = match type_specifier {
-                    TypeSpecifier::Identifier(identifier) => {
-                        resolve_local_identifier!(identifier)
-                    }
-                    TypeSpecifier::ModuleImport(module_import) => {
-                        self.resolve_module_import(module_id, module_import.clone())?
-                    }
-                    _ => match self.resolve_type(
-                        local_scope_opt,
-                        module_id,
-                        type_specifier.clone(),
-                        loc.clone(),
-                        span_end,
-                    ) {
-                        Some(concrete_type) => {
-                            return Some(TypedExpression {
-                                kind: TypedExpressionKind::ConcreteType(concrete_type.clone()),
-                                value_category: ValueCategory::Rvalue,
-                                concrete_type: Some(concrete_type),
-                                loc: SourceLoc::from_loc(loc.clone(), self.get_current_module_file_path()),
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Symbol(
+                symbol_id,
+                SourceLoc::from_loc(type_specifier.get_loc().0, self.get_current_module_file_path()),
+            ),
+            value_category: ValueCategory::Lvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(loc, self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_assignment_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        assignment: &Assignment,
+    ) -> Option<TypedExpression> {
+        let lhs = self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.lhs)?;
+        let rhs = self.resolve_expr(module_id, local_scope_opt, &assignment.rhs)?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Assignment(TypedAssignment {
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+                kind: assignment.kind.clone(),
+                loc: SourceLoc::from_loc(assignment.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(assignment.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_literal_expr(&mut self, literal: &Literal) -> Option<TypedExpression> {
+        let literal_type: Option<ConcreteType> = match &literal.kind {
+            LiteralKind::Integer(_, suffix_opt) | LiteralKind::Float(_, suffix_opt) => {
+                if let Some(token_kind) = suffix_opt {
+                    match ConcreteType::try_from(*token_kind.clone()) {
+                        Ok(concrete_type) => Some(concrete_type),
+                        Err(_) => {
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: ResolverDiagKind::InvalidLiteralSuffix,
+                                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                    literal.loc.clone(),
+                                    self.get_current_module_file_path(),
+                                ))),
+                                hint: None,
                             });
+                            return None;
                         }
-                        None => return None,
-                    },
-                };
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::Symbol(
-                        symbol_id,
-                        SourceLoc::from_loc(type_specifier.get_loc().0.clone(), self.get_current_module_file_path()),
-                    ),
-                    value_category: ValueCategory::Lvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(loc.clone(), self.get_current_module_file_path()),
-                })
+                    }
+                } else {
+                    None
+                }
             }
-            Expression::Assignment(assignment) => {
-                let lhs = match self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.lhs) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                let rhs = match self.resolve_expr(module_id, local_scope_opt.clone(), &assignment.rhs) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::Assignment(TypedAssignment {
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                        kind: assignment.kind.clone(),
-                        loc: SourceLoc::from_loc(assignment.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(assignment.loc.clone(), self.get_current_module_file_path()),
-                })
-            }
-            Expression::Literal(literal) => {
-                let literal_type: Option<ConcreteType> = {
-                    match &literal.kind {
-                        LiteralKind::Integer(_, suffix_opt) => {
-                            if let Some(token_kind) = suffix_opt {
-                                match ConcreteType::try_from(*token_kind.clone()) {
-                                    Ok(concrete_type) => Some(concrete_type),
-                                    Err(_) => {
-                                        self.reporter.report(Diag {
-                                            level: DiagLevel::Error,
-                                            kind: ResolverDiagKind::InvalidLiteralSuffix,
-                                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                                literal.loc.clone(),
-                                                self.get_current_module_file_path(),
-                                            ))),
-                                            hint: None,
-                                        });
-                                        return None;
-                                    }
-                                }
-                            } else {
-                                None
-                            }
+            LiteralKind::String(string_value, string_prefix) => {
+                if let Some(string_prefix) = string_prefix {
+                    match string_prefix {
+                        StringPrefix::B => {
+                            let len = string_value.len() + 1;
+                            Some(ConcreteType::Array(TypedArrayType {
+                                element_type: Box::new(ConcreteType::BasicType(BasicConcreteType::Char)),
+                                capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(len)),
+                                loc: SourceLoc::from_loc(literal.loc.clone(), self.get_current_module_file_path()),
+                            }))
                         }
-                        LiteralKind::Float(_, suffix_opt) => {
-                            if let Some(token_kind) = suffix_opt {
-                                match ConcreteType::try_from(*token_kind.clone()) {
-                                    Ok(concrete_type) => Some(concrete_type),
-                                    Err(_) => {
-                                        self.reporter.report(Diag {
-                                            level: DiagLevel::Error,
-                                            kind: ResolverDiagKind::InvalidLiteralSuffix,
-                                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                                literal.loc.clone(),
-                                                self.get_current_module_file_path(),
-                                            ))),
-                                            hint: None,
-                                        });
-                                        return None;
-                                    }
-                                }
-                            } else {
-                                None
-                            }
-                        }
-                        LiteralKind::String(string_value, string_prefix) => {
-                            if let Some(string_prefix) = string_prefix {
-                                match string_prefix {
-                                    StringPrefix::B => {
-                                        let len = string_value.len() + 1;
-                                        Some(ConcreteType::Array(TypedArrayType {
-                                            element_type: Box::new(ConcreteType::BasicType(BasicConcreteType::Char)),
-                                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(
-                                                len,
-                                            )),
-                                            loc: SourceLoc::from_loc(
-                                                literal.loc.clone(),
-                                                self.get_current_module_file_path(),
-                                            ),
-                                        }))
-                                    }
-                                    StringPrefix::C => Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                                        BasicConcreteType::Char,
-                                    )))),
-                                }
-                            } else {
-                                Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                                    BasicConcreteType::Char,
-                                ))))
-                            }
-                        }
-                        LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
-                        LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
-                        LiteralKind::Null => Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                            BasicConcreteType::Void,
+                        StringPrefix::C => Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                            BasicConcreteType::Char,
                         )))),
                     }
-                };
-                let typed_literal = TypedLiteral {
-                    ty: literal_type,
-                    kind: literal.kind.clone(),
-                    loc: SourceLoc::from_loc(literal.loc.clone(), self.get_current_module_file_path()),
-                };
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::Literal(typed_literal.clone()),
-                    concrete_type: None,
-                    value_category: ValueCategory::Rvalue,
-                    loc: typed_literal.loc.clone(),
-                })
-            }
-            Expression::Unary(unary) => {
-                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &*unary.operand) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::Unary(TypedUnaryExpression {
-                        op: unary.op.clone(),
-                        operand: Box::new(operand),
-                        loc: SourceLoc::from_loc(unary.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(unary.loc.clone(), self.get_current_module_file_path()),
-                })
-            }
-            Expression::ArrayIndex(array_index) => {
-                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &array_index.operand) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                let index = match self.resolve_expr(module_id, local_scope_opt.clone(), &array_index.index) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::ArrayIndex(TypedArrayIndex {
-                        operand: Box::new(operand),
-                        index: Box::new(index),
-                        loc: SourceLoc::from_loc(array_index.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Lvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(array_index.loc.clone(), self.get_current_module_file_path()),
-                })
-            }
-            Expression::AddressOf(address_of) => {
-                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &address_of.expr) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::AddressOf(TypedAddressOf {
-                        operand: Box::new(operand),
-                        loc: SourceLoc::from_loc(address_of.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Lvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(address_of.loc.clone(), self.get_current_module_file_path()),
-                })
-            }
-            Expression::Dereference(dereference) => {
-                let operand = match self.resolve_expr(module_id, local_scope_opt.clone(), &dereference.expr) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::Dereference(TypedDereference {
-                        operand: Box::new(operand),
-                        loc: SourceLoc::from_loc(dereference.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(dereference.loc.clone(), self.get_current_module_file_path()),
-                })
-            }
-            Expression::UnnamedStructValue(unnamed_struct_value) => {
-                let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
-
-                for field in &unnamed_struct_value.fields {
-                    let field_type = {
-                        if let Some(type_specifier) = &field.field_type {
-                            match self.resolve_type(
-                                local_scope_opt.clone(),
-                                module_id,
-                                type_specifier.clone(),
-                                field.loc.clone(),
-                                field.span.end,
-                            ) {
-                                Some(concrete_type) => Some(concrete_type),
-                                None => continue,
-                            }
-                        } else {
-                            None
-                        }
-                    };
-
-                    let field_value = match self.resolve_expr(module_id, local_scope_opt.clone(), &*&field.field_value)
-                    {
-                        Some(typed_expr) => typed_expr,
-                        None => continue,
-                    };
-
-                    fields.push(TypedUnnamedStructValueField {
-                        field_name: field.field_name.name.clone(),
-                        field_type,
-                        field_value: Box::new(field_value),
-                        loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
-                    });
+                } else {
+                    Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                        BasicConcreteType::Char,
+                    ))))
                 }
-
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::UnnamedStructValue(TypedUnnamedStructValue {
-                        fields,
-                        unnamed_struct_type: None,
-                        packed: unnamed_struct_value.packed,
-                        is_const: unnamed_struct_value.is_const,
-                        loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.get_current_module_file_path()),
-                })
             }
-            Expression::SizeOfExpression(size_of_expression) => {
-                let typed_expr = match self.resolve_expr(module_id, local_scope_opt, &size_of_expression.expr) {
-                    Some(typed_expr) => typed_expr,
-                    None => return None,
-                };
+            LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
+            LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
+            LiteralKind::Null => Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
+                BasicConcreteType::Void,
+            )))),
+        };
 
-                Some(TypedExpression {
-                    kind: TypedExpressionKind::SizeOfExpression(TypedSizeOfExpression {
-                        expr: Box::new(typed_expr),
-                        loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.get_current_module_file_path()),
-                    }),
-                    value_category: ValueCategory::Rvalue,
-                    concrete_type: None,
-                    loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.get_current_module_file_path()),
-                })
-            }
+        let typed_literal = TypedLiteral {
+            ty: literal_type,
+            kind: literal.kind.clone(),
+            loc: SourceLoc::from_loc(literal.loc.clone(), self.get_current_module_file_path()),
+        };
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Literal(typed_literal.clone()),
+            concrete_type: None,
+            value_category: ValueCategory::Rvalue,
+            loc: typed_literal.loc,
+        })
+    }
+
+    fn resolve_unary_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        unary: &UnaryExpression,
+    ) -> Option<TypedExpression> {
+        let operand = self.resolve_expr(module_id, local_scope_opt, &*unary.operand)?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Unary(TypedUnaryExpression {
+                op: unary.op.clone(),
+                operand: Box::new(operand),
+                loc: SourceLoc::from_loc(unary.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(unary.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_array_index_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        array_index: &ArrayIndex,
+    ) -> Option<TypedExpression> {
+        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &array_index.operand)?;
+        let index = self.resolve_expr(module_id, local_scope_opt, &array_index.index)?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::ArrayIndex(TypedArrayIndex {
+                operand: Box::new(operand),
+                index: Box::new(index),
+                loc: SourceLoc::from_loc(array_index.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Lvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(array_index.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_address_of_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        address_of: &AddressOf,
+    ) -> Option<TypedExpression> {
+        let operand = self.resolve_expr(module_id, local_scope_opt, &address_of.expr)?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::AddressOf(TypedAddressOf {
+                operand: Box::new(operand),
+                loc: SourceLoc::from_loc(address_of.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Lvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(address_of.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_dereference_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        dereference: &Dereference,
+    ) -> Option<TypedExpression> {
+        let operand = self.resolve_expr(module_id, local_scope_opt, &dereference.expr)?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Dereference(TypedDereference {
+                operand: Box::new(operand),
+                loc: SourceLoc::from_loc(dereference.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(dereference.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_unnamed_struct_value(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        unnamed_struct_value: &UnnamedStructValue,
+    ) -> Option<TypedExpression> {
+        let mut fields: Vec<TypedUnnamedStructValueField> = Vec::new();
+
+        for field in &unnamed_struct_value.fields {
+            let field_type = if let Some(type_specifier) = &field.field_type {
+                match self.resolve_type(
+                    local_scope_opt.clone(),
+                    module_id,
+                    type_specifier.clone(),
+                    field.loc.clone(),
+                    field.span.end,
+                ) {
+                    Some(concrete_type) => Some(concrete_type),
+                    None => continue,
+                }
+            } else {
+                None
+            };
+
+            let field_value = match self.resolve_expr(module_id, local_scope_opt.clone(), &field.field_value) {
+                Some(typed_expr) => typed_expr,
+                None => continue,
+            };
+
+            fields.push(TypedUnnamedStructValueField {
+                field_name: field.field_name.name.clone(),
+                field_type,
+                field_value: Box::new(field_value),
+                loc: SourceLoc::from_loc(field.loc.clone(), self.get_current_module_file_path()),
+            });
         }
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::UnnamedStructValue(TypedUnnamedStructValue {
+                fields,
+                unnamed_struct_type: None,
+                packed: unnamed_struct_value.packed,
+                is_const: unnamed_struct_value.is_const,
+                loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(unnamed_struct_value.loc.clone(), self.get_current_module_file_path()),
+        })
+    }
+
+    fn resolve_size_of_expression(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        size_of_expression: &SizeOfExpression,
+    ) -> Option<TypedExpression> {
+        let typed_expr = self.resolve_expr(module_id, local_scope_opt, &size_of_expression.expr)?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::SizeOfExpression(TypedSizeOfExpression {
+                expr: Box::new(typed_expr),
+                loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.get_current_module_file_path()),
+            }),
+            value_category: ValueCategory::Rvalue,
+            concrete_type: None,
+            loc: SourceLoc::from_loc(size_of_expression.loc.clone(), self.get_current_module_file_path()),
+        })
     }
 
     fn duplicate_symbol(&mut self, module_id: ModuleID, symbol_name: String, loc: SourceLoc) -> bool {

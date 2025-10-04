@@ -1,7 +1,7 @@
 use ast::{AssignmentKind, LiteralKind, StringPrefix, operators::UnaryOperator};
 
 use crate::{
-    SymbolID, TypedExpression, TypedExpressionKind,
+    SymbolID, TypedExpression, TypedExpressionKind, TypedFuncTypeVariadicParams,
     types::{
         BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
         TypedUnnamedStructType,
@@ -331,15 +331,25 @@ pub fn format_concrete_type<'a>(
             format_unnamed_struct_type(&unnamed_struct_type, format_symbol)
         }
         ConcreteType::FuncType(func_type) => {
-            let params = func_type
+            let mut params = func_type
                 .params
+                .list
                 .iter()
                 .map(|param| format_concrete_type(param.clone(), format_symbol))
                 .collect::<Vec<String>>()
                 .join(", ");
+
+            if let Some(variadic) = func_type.params.variadic {
+                match *variadic {
+                    TypedFuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
+                    TypedFuncTypeVariadicParams::Typed(concrete_type) => {
+                        params.push_str(&format!(", {}...", format_concrete_type(concrete_type, format_symbol)))
+                    }
+                }
+            }
+
             let ret = format_concrete_type(*func_type.ret, format_symbol);
             format!("fn({}) {}", params, ret)
         }
-        ConcreteType::LambdaType(..) => todo!(),
     }
 }

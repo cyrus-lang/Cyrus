@@ -14,7 +14,7 @@ use inkwell::{
     values::{BasicValue, BasicValueEnum, IntValue},
 };
 use resolver::{
-    declsign::{StructSig, UnionSig},
+    signatures::{StructSig, UnionSig},
     scope::{LocalScopeRef, LocalSymbolKind, ResolvedEnum},
 };
 use std::collections::HashMap;

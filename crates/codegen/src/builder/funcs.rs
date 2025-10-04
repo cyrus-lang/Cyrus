@@ -11,9 +11,10 @@ use inkwell::{
     types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
     values::{AnyValueEnum, FunctionValue},
 };
-use resolver::{declsign::FuncSig, scope::LocalScopeRef};
+use resolver::{signatures::FuncSig, scope::LocalScopeRef};
 use typed_ast::{
-    ModuleID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncVariadicParams, TypedVariable,
+    ModuleID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams,
+    TypedFuncVariadicParams, TypedVariable,
     types::{ConcreteType, FuncType},
 };
 
@@ -24,17 +25,31 @@ impl<'a> CodeGenBuilder<'a> {
 
     pub(crate) fn build_func_type_from_func_sig(&self, func_sig: &FuncSig) -> FuncType {
         FuncType {
-            params: func_sig
-                .params
-                .list
-                .iter()
-                .map(|param| match param {
-                    TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
-                    TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.ty.clone().unwrap(),
-                })
-                .collect(),
+            params: TypedFuncTypeParams {
+                list: func_sig
+                    .params
+                    .list
+                    .iter()
+                    .map(|param| match param {
+                        TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
+                        TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                            typed_self_modifier.ty.clone().unwrap()
+                        }
+                    })
+                    .collect(),
+                variadic: match &func_sig.params.variadic {
+                    Some(variadic) => match variadic {
+                        TypedFuncVariadicParams::UntypedCStyle => {
+                            Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle))
+                        }
+                        TypedFuncVariadicParams::Typed(_, concrete_type) => {
+                            Some(Box::new(TypedFuncTypeVariadicParams::Typed(concrete_type.clone())))
+                        }
+                    },
+                    None => None,
+                },
+            },
             ret: Box::new(func_sig.return_type.clone()),
-            is_varargs: func_sig.params.variadic.is_some(),
         }
     }
 

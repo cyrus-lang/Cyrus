@@ -4,7 +4,7 @@ use crate::builder::{
 };
 use inkwell::{module::Linkage, types::StructType, values::FunctionValue};
 use resolver::{
-    declsign::{EnumSig, FuncSig, StructSig, UnionSig},
+    signatures::{EnumSig, FuncSig, StructSig, UnionSig},
     typed_func_decl_as_func_sig, typed_func_def_as_func_sig,
 };
 use typed_ast::{SymbolID, TypedStatement, types::ConcreteType};
