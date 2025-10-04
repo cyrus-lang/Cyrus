@@ -5,5 +5,8 @@ fn sample() {
 }
 
 fn main() {
-    printf("%p\n", cast(void*, sample));
+    #my_sample: void* = &sample;
+
+    // my_sample();
+    // printf("%p\n", cast(void*, sample));
 }
