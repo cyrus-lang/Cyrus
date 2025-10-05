@@ -3,12 +3,11 @@ import std::libc{printf, scanf};
 type SampleFn = fn(int) int;
 
 fn sample(x: int) int {
+    printf("%d\n", x);
     return x;
 }
 
 fn main() {
     #lambda: SampleFn = sample;
-    // lambda();
-
-    // printf("%d\n", 0);
+    lambda(10);
 }

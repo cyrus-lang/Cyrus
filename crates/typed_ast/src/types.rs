@@ -10,11 +10,11 @@ pub enum ConcreteType {
     Const(Box<ConcreteType>),
     Pointer(Box<ConcreteType>),
     UnnamedStruct(TypedUnnamedStructType),
-    FuncType(FuncType),
+    FuncType(TypedFuncType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FuncType {
+pub struct TypedFuncType {
     pub params: TypedFuncTypeParams,
     pub ret: Box<ConcreteType>,
 }
@@ -49,7 +49,7 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
-    pub fn as_func_type(&self) -> Option<&FuncType> {
+    pub fn as_func_type(&self) -> Option<&TypedFuncType> {
         match &self {
             ConcreteType::FuncType(func_type) => Some(func_type),
             _ => None,

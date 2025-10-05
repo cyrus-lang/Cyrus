@@ -7,15 +7,15 @@ use ast::{
 };
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
-    signatures::FuncSig,
     scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, ResolvedUnion, SymbolEntryKind},
+    signatures::FuncSig,
 };
 use std::collections::HashMap;
 use typed_ast::{
-    format::format_concrete_type,
+    format::{format_concrete_type, format_func_type},
     types::{
         BasicConcreteType::{self, *},
-        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
         TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
     *,
@@ -1685,64 +1685,154 @@ impl<'a> AnalysisContext<'a> {
         Some(func_sig.return_type.clone())
     }
 
-    // FIXME Func Symbol resolution fucked up here.
+    fn check_func_type_call(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        func_type: &mut TypedFuncType,
+        args: &mut Vec<TypedExpression>,
+        loc: SourceLoc,
+    ) -> Option<ConcreteType> {
+        let is_variadic = func_type.params.variadic.is_some();
+        let expected_args_len = func_type.params.list.len();
+        let func_name = format_func_type(func_type, &(self.symbol_formatter)(scope_id_opt));
+
+        // Check argument count
+        if (!is_variadic && args.len() != expected_args_len) || (is_variadic && args.len() < expected_args_len) {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::FuncCallArgsCountMismatch {
+                    args: args.len() as u32,
+                    expected: expected_args_len as u32,
+                    func_name,
+                },
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: None,
+            });
+            return None;
+        }
+
+        // Handle variadic arguments
+        if is_variadic {
+            let static_params_len = func_type.params.list.len();
+            let variadic_args = &mut args[static_params_len..];
+
+            if let Some(var_param) = &func_type.params.variadic {
+                match *var_param.clone() {
+                    TypedFuncTypeVariadicParams::Typed(variadic_param_type) => {
+                        for (idx, arg) in variadic_args.iter_mut().enumerate() {
+                            if let Some(arg_type) =
+                                self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone())
+                            {
+                                if !self.check_type_mismatch(
+                                    scope_id_opt,
+                                    arg_type.clone(),
+                                    variadic_param_type.clone(),
+                                    arg.loc.clone(),
+                                ) {
+                                    self.reporter.report(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: AnalyzerDiagKind::FuncCallVariadicParamTypeMismatch {
+                                            param_type: format_concrete_type(
+                                                variadic_param_type.clone(),
+                                                &(self.symbol_formatter)(scope_id_opt),
+                                            ),
+                                            argument_type: format_concrete_type(
+                                                arg_type,
+                                                &(self.symbol_formatter)(scope_id_opt),
+                                            ),
+                                            argument_idx: (idx + static_params_len) as u32,
+                                        },
+                                        location: Some(DiagLoc::new(loc.clone())),
+                                        hint: None,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    TypedFuncTypeVariadicParams::UntypedCStyle => {
+                        for arg in variadic_args.iter_mut() {
+                            let _ = self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Analyze static arguments
+        let start_idx = 0;
+        for (param_idx, (param, arg)) in func_type
+            .params
+            .list
+            .iter_mut()
+            .skip(start_idx)
+            .zip(args.iter_mut())
+            .enumerate()
+        {
+            let param_type = self.normalize_type(scope_id_opt, param.clone(), loc.clone()).unwrap();
+
+            let arg_type = match self.analyze_typed_expr_type(scope_id_opt, arg, Some(param_type.clone())) {
+                Some(concrete_type) => concrete_type,
+                None => continue,
+            };
+
+            if !self.check_type_mismatch(scope_id_opt, arg_type.clone(), param_type.clone(), arg.loc.clone()) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::FuncCallParamTypeMismatch {
+                        param_type: format_concrete_type(param_type.clone(), &(self.symbol_formatter)(scope_id_opt)),
+                        argument_type: format_concrete_type(arg_type, &(self.symbol_formatter)(scope_id_opt)),
+                        argument_idx: param_idx as u32,
+                    },
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: None,
+                });
+            }
+        }
+
+        Some(*func_type.ret.clone())
+    }
+
+    fn analyze_func_call_on_func_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        func_type: &mut TypedFuncType,
+        args: &mut Vec<TypedExpression>,
+        loc: SourceLoc,
+    ) -> Option<ConcreteType> {
+        self.normalize_func_type_params(&mut func_type.params, loc.clone());
+        let return_type = self.check_func_type_call(scope_id_opt, func_type, args, loc.clone());
+        return_type
+    }
+
     fn analyze_func_call_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
     ) -> Option<ConcreteType> {
-        // let resolve_func = || -> Option<_> {
-        //     if let Some(local_scope_rc) = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap()) {
-        //         let local_scope = local_scope_rc.borrow();
-        //         match local_scope.resolve_with_symbol_id(func_call.symbol_id) {
-        //             Some(local_symbol) => {
-        //                 dbg!(local_symbol.clone());
-        //                 todo!();
-        //             },
-        //             None => return None,
-        //         }
-        //         drop(local_scope);
-        //     }
-
-        //     None
-        // };
-
-        // let local_scope_opt = self.resolver.get_scope_ref(module_id, scope_id_opt.unwrap());
-        // let local_or_global_symbol = {
-        //     match self
-        //         .resolver
-        //         .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
-        //     {
-        //         Some(symbol_entry) => Some(LocalOrGlobalSymbol::GlobalSymbol(symbol_entry)),
-        //         None => {
-        //             match self
-        //                 .resolver
-        //                 .resolve_symbol_from_local_scope(local_scope_opt.clone().unwrap(), func_call.symbol_id)
-        //             {
-        //                 Some(local_symbol) => Some(LocalOrGlobalSymbol::LocalSymbol(local_symbol)),
-        //                 None => None,
-        //             }
-        //         }
-        //     }
-        // }
-        // .unwrap();
-
-        let local_scope_opt: Option<LocalScopeRef>;
-        match self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id) {
-            Some(module_id) => {
-                local_scope_opt = self.resolver.get_scope_ref(module_id, scope_id_opt.unwrap());
-                self.mark_func_used(local_scope_opt.clone(), module_id, func_call.symbol_id);
-            },
-            None => local_scope_opt = None,
-        };
-
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
         let local_or_global_symbol = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt.clone(), func_call.symbol_id)
             .unwrap();
 
         let func_sig_opt = match local_or_global_symbol {
-            LocalOrGlobalSymbol::LocalSymbol(_) => None,
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_variable() {
+                Some(resolved_var) => match &resolved_var.typed_variable.ty {
+                    Some(normalized) => match normalized.as_func_type() {
+                        Some(func_type) => {
+                            return self.analyze_func_call_on_func_type(
+                                scope_id_opt,
+                                &mut func_type.clone(),
+                                &mut func_call.args,
+                                func_call.loc.clone(),
+                            );
+                        }
+                        None => None,
+                    },
+                    None => None,
+                },
+                None => None,
+            },
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
                 SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig),
                 _ => None,

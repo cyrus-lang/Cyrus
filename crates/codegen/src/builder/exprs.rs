@@ -21,8 +21,8 @@ use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedCast, TypedDereference,
     TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
     TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit, TypedUnaryExpression,
-    TypedUnnamedStructValue,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
+    TypedUnnamedStructValue, ValueCategory,
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedFuncType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -733,44 +733,93 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
+    fn build_func_type_call(
+        &mut self,
+        lvalue_symbol_id: SymbolID,
+        local_scope_opt: Option<LocalScopeRef>,
+        func_type: &TypedFuncType,
+        args: &Vec<TypedExpression>,
+    ) -> InternalValue<'a> {
+        let lvalue = self.build_expr(
+            local_scope_opt.clone(),
+            &TypedExpression {
+                kind: TypedExpressionKind::Symbol(lvalue_symbol_id, SourceLoc::default()),
+                concrete_type: Some(ConcreteType::FuncType(func_type.clone())),
+                value_category: ValueCategory::Lvalue,
+                loc: SourceLoc::default(),
+            },
+        );
+        let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+
+        let fn_type = self.build_func_type(func_type.params.clone(), *func_type.ret.clone());
+        let fn_pointer = rvalue.as_basic_value().into_pointer_value();
+        let lowered_args = self.build_func_args(local_scope_opt.clone(), &args);
+        let call_result = self
+            .llvmbuilder
+            .build_indirect_call(fn_type, fn_pointer, &lowered_args, "indirectcall")
+            .unwrap()
+            .try_as_basic_value();
+
+        if let Some(_) = call_result.right() {
+            let null_literal =
+                BasicValueEnum::PointerValue(self.llvmctx.ptr_type(AddressSpace::default()).const_null());
+
+            InternalValue::new(*func_type.ret.clone(), InternalValueKind::RValue(null_literal))
+        } else if let Some(basic_value) = call_result.left() {
+            InternalValue::new(*func_type.ret.clone(), InternalValueKind::RValue(basic_value))
+        } else {
+            unreachable!()
+        }
+    }
+
     fn build_func_call(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         func_call: &TypedFuncCall,
     ) -> InternalValue<'a> {
-        let module_id = self.resolver.lookup_symbol_id_in_modules(func_call.symbol_id).unwrap();
-
-        let symbol_entry = self
+        let local_or_global_symbol = self
             .resolver
-            .lookup_symbol_entry_with_id(module_id, func_call.symbol_id)
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), func_call.symbol_id)
             .unwrap();
 
-        let func_sig = match symbol_entry.kind {
-            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig,
-            SymbolEntryKind::Func(resolved_func) => resolved_func.func_sig,
-            _ => unreachable!(),
+        let func_sig_opt = match local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_variable() {
+                Some(resolved_var) => match &resolved_var.typed_variable.ty {
+                    Some(normalized) => match normalized.as_func_type() {
+                        Some(func_type) => {
+                            return self.build_func_type_call(
+                                func_call.symbol_id,
+                                local_scope_opt,
+                                func_type,
+                                &func_call.args,
+                            );
+                        }
+                        None => None,
+                    },
+                    None => None,
+                },
+                None => None,
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
+                SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig),
+                _ => None,
+            },
         };
+        let func_sig = func_sig_opt.unwrap();
+
         let return_type = func_sig.return_type.clone();
         let fn_value = self.get_or_declare_func(func_call.symbol_id, func_sig);
 
-        let args: Vec<BasicMetadataValueEnum<'a>> = func_call
-            .args
-            .iter()
-            .map(|typed_expr| {
-                let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
-                self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue)
-                    .as_basic_value()
-                    .into()
-            })
-            .collect();
+        let lowered_args = self.build_func_args(local_scope_opt.clone(), &func_call.args);
 
         let call_result = self
             .llvmbuilder
-            .build_call(fn_value, &args, "call")
+            .build_call(fn_value, &lowered_args, "call")
             .unwrap()
             .try_as_basic_value();
 
         if let Some(_) = call_result.right() {
+            // Void return → make a dummy null pointer as RValue
             let null_literal =
                 BasicValueEnum::PointerValue(self.llvmctx.ptr_type(AddressSpace::default()).const_null());
 
@@ -780,6 +829,21 @@ impl<'a> CodeGenBuilder<'a> {
         } else {
             unreachable!()
         }
+    }
+
+    fn build_func_args(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        args: &Vec<TypedExpression>,
+    ) -> Vec<BasicMetadataValueEnum<'a>> {
+        args.iter()
+            .map(|typed_expr| {
+                let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
+                self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue)
+                    .as_basic_value()
+                    .into()
+            })
+            .collect()
     }
 
     fn build_unary_expr(

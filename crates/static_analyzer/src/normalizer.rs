@@ -4,7 +4,7 @@ use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID, TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
-    types::{ConcreteType, FuncType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
+    types::{ConcreteType, TypedFuncType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -246,7 +246,7 @@ impl<'a> AnalysisContext<'a> {
                     // self.normalize_type(scope_id_opt, fty, m.loc.clone())
                     todo!();
                 }
-                SymbolEntryKind::Func(resolved_func) => Some(ConcreteType::FuncType(FuncType {
+                SymbolEntryKind::Func(resolved_func) => Some(ConcreteType::FuncType(TypedFuncType {
                     params: TypedFuncTypeParams {
                         list: resolved_func
                             .func_sig

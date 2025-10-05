@@ -26,7 +26,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::types::{
-    BasicConcreteType, ConcreteType, FuncType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+    BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
     TypedUnnamedStructType, TypedUnnamedStructTypeField,
 };
 use typed_ast::{SymbolID, *};
@@ -549,7 +549,7 @@ impl Resolver {
 
                 let ret = self.resolve_type(local_scope.clone(), module_id, *func_type.ret, loc.clone(), span_end)?;
 
-                Ok(ConcreteType::FuncType(FuncType {
+                Ok(ConcreteType::FuncType(TypedFuncType {
                     params: TypedFuncTypeParams { list: params, variadic },
                     ret: Box::new(ret),
                 }))

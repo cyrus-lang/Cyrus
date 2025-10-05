@@ -3,8 +3,8 @@ use ast::{AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
-    signatures::FuncSig,
     scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
+    signatures::FuncSig,
 };
 use std::{
     cell::RefCell,
@@ -1388,6 +1388,51 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 *variadic_params = TypedFuncVariadicParams::Typed(identifier.clone(), normalized_concrete_type);
+            }
+        }
+    }
+
+    pub(crate) fn normalize_func_type_params(&mut self, params: &mut TypedFuncTypeParams, loc: SourceLoc) {
+        // analyze static arguments
+        for param in params.list.iter_mut() {
+            let normalized_type = self.normalize_type(None, param.clone(), loc.clone()).unwrap();
+
+            if matches!(normalized_type, ConcreteType::BasicType(BasicConcreteType::Void)) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::VoidVariableType,
+                    location: Some(DiagLoc::new(loc.clone())),
+                    hint: None,
+                });
+                continue;
+            }
+
+            *param = normalized_type.clone();
+        }
+
+        if let Some(variadic_params) = &mut params.variadic {
+            match *variadic_params.clone() {
+                TypedFuncTypeVariadicParams::UntypedCStyle => {}
+                TypedFuncTypeVariadicParams::Typed(concrete_type) => {
+                    let normalized_concrete_type = match self.normalize_type(None, concrete_type.clone(), loc.clone()) {
+                        Some(concrete_type) => concrete_type,
+                        None => return,
+                    };
+
+                    if matches!(
+                        normalized_concrete_type,
+                        ConcreteType::BasicType(BasicConcreteType::Void)
+                    ) {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::VoidVariableType,
+                            location: Some(DiagLoc::new(loc.clone())),
+                            hint: None,
+                        });
+                    }
+
+                    *variadic_params = Box::new(TypedFuncTypeVariadicParams::Typed(normalized_concrete_type));
+                }
             }
         }
     }
