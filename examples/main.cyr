@@ -1,19 +1,10 @@
-import std::libc{printf, scanf};
-
-type AddFn = fn(int) int;
-
-fn add_two(x: int) int {
-    return x + 2;
-}
-
-fn call_add_fn(lambda: AddFn, input: int) {
-    printf("result: %d\n", lambda(input));
-}
+import std::libc{printf};
+import sample;
 
 fn main() {
-    #add_fn: AddFn = fn(x: int) int {
-        return x + 1;
+    #lambda: sample::AddFn = fn(x: int) int {
+        return x + 2;
     };
 
-    call_add_fn(add_fn, 10);
+    sample::call_add_fn(lambda, 10);
 }
