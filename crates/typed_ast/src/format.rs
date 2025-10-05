@@ -4,7 +4,7 @@ use crate::{
     SymbolID, TypedExpression, TypedExpressionKind, TypedFuncTypeVariadicParams,
     types::{
         BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedUnnamedStructType,
+        TypedFuncType, TypedUnnamedStructType,
     },
 };
 
@@ -330,26 +330,28 @@ pub fn format_concrete_type<'a>(
         ConcreteType::UnnamedStruct(unnamed_struct_type) => {
             format_unnamed_struct_type(&unnamed_struct_type, format_symbol)
         }
-        ConcreteType::FuncType(func_type) => {
-            let mut params = func_type
-                .params
-                .list
-                .iter()
-                .map(|param| format_concrete_type(param.clone(), format_symbol))
-                .collect::<Vec<String>>()
-                .join(", ");
+        ConcreteType::FuncType(func_type) => format_func_type(&func_type, format_symbol),
+    }
+}
 
-            if let Some(variadic) = func_type.params.variadic {
-                match *variadic {
-                    TypedFuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
-                    TypedFuncTypeVariadicParams::Typed(concrete_type) => {
-                        params.push_str(&format!(", {}...", format_concrete_type(concrete_type, format_symbol)))
-                    }
-                }
+pub fn format_func_type<'a>(func_type: &TypedFuncType, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
+    let mut params = func_type
+        .params
+        .list
+        .iter()
+        .map(|param| format_concrete_type(param.clone(), format_symbol))
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    if let Some(variadic) = func_type.params.variadic.clone() {
+        match *variadic {
+            TypedFuncTypeVariadicParams::UntypedCStyle => params.push_str(", ..."),
+            TypedFuncTypeVariadicParams::Typed(concrete_type) => {
+                params.push_str(&format!(", {}...", format_concrete_type(concrete_type, format_symbol)))
             }
-
-            let ret = format_concrete_type(*func_type.ret, format_symbol);
-            format!("fn({}) {}", params, ret)
         }
     }
+
+    let ret = format_concrete_type(*func_type.ret.clone(), format_symbol);
+    format!("fn({}) {}", params, ret)
 }

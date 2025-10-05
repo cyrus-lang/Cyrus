@@ -140,61 +140,61 @@ impl ModuleLoader {
         let module_name = module_segments_as_string(segments.to_vec());
 
         for (idx, segment) in segments.iter().enumerate() {
-            if let ModuleSegment::SubModule(identifier) = segment {
-                let file_path = format!("{}{}.cyr", module_file_path, identifier.name);
-                let dir_path = format!("{}{}/", module_file_path, identifier.name);
+            match segment {
+                ModuleSegment::SubModule(identifier) => {
+                    let file_path = format!("{}{}.cyr", module_file_path, identifier.name);
+                    let dir_path = format!("{}{}/", module_file_path, identifier.name);
 
-                // when inside a known directory, check directly; otherwise search in sources
-                let file_exists = if Path::new(&file_path).exists() {
-                    Some(PathBuf::from(&file_path))
-                } else {
-                    find_file_from_sources(file_path.clone(), sources.clone())
-                };
+                    let file_exists = if Path::new(&file_path).exists() {
+                        Some(PathBuf::from(&file_path))
+                    } else {
+                        find_file_from_sources(file_path.clone(), sources.clone())
+                    };
 
-                let dir_exists = if Path::new(&dir_path).exists() {
-                    Some(PathBuf::from(&dir_path))
-                } else {
-                    find_file_from_sources(dir_path.clone(), sources.clone())
-                };
+                    let dir_exists = if Path::new(&dir_path).exists() {
+                        Some(PathBuf::from(&dir_path))
+                    } else {
+                        find_file_from_sources(dir_path.clone(), sources.clone())
+                    };
 
-                match (file_exists, dir_exists) {
-                    (Some(..), Some(..)) => {
-                        return Err(ResolverDiagKind::DuplicateModule {
-                            module_name: identifier.name.clone(),
-                        });
-                    }
-                    (Some(file_buf), None) => {
-                        module_file_path = file_buf.to_str().unwrap().to_string();
-                        if idx == segments.len() - 1 {
-                            return Ok(module_file_path);
+                    match (file_exists, dir_exists) {
+                        (Some(_), Some(_)) => {
+                            return Err(ResolverDiagKind::DuplicateModule {
+                                module_name: identifier.name.clone(),
+                            });
                         }
-                    }
-                    (None, Some(dir_buf)) => {
-                        if idx == segments.len() - 1 {
-                            // directory is the final segment → require index.cyr
-                            let index_path = dir_buf.join("index.cyr");
-                            if !index_path.exists() {
-                                return Err(ResolverDiagKind::ModuleIndexNotFound {
-                                    module_name: identifier.name.clone(),
-                                });
+                        (Some(file_buf), None) => {
+                            module_file_path = file_buf.to_str().unwrap().to_string();
+                            if idx == segments.len() - 1 {
+                                return Ok(module_file_path);
                             }
-                            module_file_path = index_path.to_str().unwrap().to_string();
-                            return Ok(module_file_path);
-                        } else {
-                            // not the last segment → descend into directory
+                            // continue to next segment
+                        }
+                        (None, Some(dir_buf)) => {
                             module_file_path = dir_buf.to_str().unwrap().to_string();
-                            if !module_file_path.ends_with('/') {
-                                module_file_path.push('/');
+                            if idx == segments.len() - 1 {
+                                // last segment (require index.cyr)
+                                let index_path = dir_buf.join("index.cyr");
+                                if !index_path.exists() {
+                                    return Err(ResolverDiagKind::ModuleIndexNotFound {
+                                        module_name: identifier.name.clone(),
+                                    });
+                                }
+                                return Ok(index_path.to_str().unwrap().to_string());
+                            } else {
+                                // not last segment (descend into directory)
+                                if !module_file_path.ends_with('/') {
+                                    module_file_path.push('/');
+                                }
                             }
                         }
-                    }
-                    (None, None) => {
-                        return Err(ResolverDiagKind::ModuleNotFound { module_name });
+                        (None, None) => return Err(ResolverDiagKind::ModuleNotFound { module_name }),
                     }
                 }
-            } else if let ModuleSegment::Single(_) = segment {
-                // recurse for single segments
-                return Ok(module_file_path);
+                ModuleSegment::Single(_) => {
+                    // single segment (return current path)
+                    return Ok(module_file_path);
+                }
             }
         }
 

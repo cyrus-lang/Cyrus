@@ -11,11 +11,11 @@ use inkwell::{
     types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
     values::{AnyValueEnum, FunctionValue},
 };
-use resolver::{signatures::FuncSig, scope::LocalScopeRef};
+use resolver::{scope::LocalScopeRef, signatures::FuncSig};
 use typed_ast::{
     ModuleID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams,
     TypedFuncVariadicParams, TypedVariable,
-    types::{ConcreteType, FuncType},
+    types::{ConcreteType, TypedFuncType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -23,8 +23,8 @@ impl<'a> CodeGenBuilder<'a> {
         fn_value.as_global_value().as_pointer_value().into()
     }
 
-    pub(crate) fn build_func_type_from_func_sig(&self, func_sig: &FuncSig) -> FuncType {
-        FuncType {
+    pub(crate) fn build_func_type_from_func_sig(&self, func_sig: &FuncSig) -> TypedFuncType {
+        TypedFuncType {
             params: TypedFuncTypeParams {
                 list: func_sig
                     .params
@@ -149,7 +149,8 @@ impl<'a> CodeGenBuilder<'a> {
             }
         };
 
-        let fn_type = self.build_func_type(params, return_type);
+        let func_type_params = get_func_type_params_from_func_params(&params);
+        let fn_type = self.build_func_type(func_type_params, return_type);
 
         let func_abi_name = {
             if func_name == "main" || use_func_real_name {
@@ -213,21 +214,17 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn build_func_type(&mut self, params: TypedFuncParams, return_type: ConcreteType) -> FunctionType<'a> {
+    pub(crate) fn build_func_type(
+        &mut self,
+        params: TypedFuncTypeParams,
+        return_type: ConcreteType,
+    ) -> FunctionType<'a> {
         let param_types: Vec<BasicMetadataTypeEnum<'a>> = params
             .list
             .iter()
             .map(|param| {
-                let basic_type_enum: BasicTypeEnum<'a> = match param {
-                    TypedFuncParamKind::FuncParam(typed_func_param) => self
-                        .build_concrete_type(None, typed_func_param.ty.clone())
-                        .try_into()
-                        .unwrap(),
-                    TypedFuncParamKind::SelfModifier(self_modifier) => {
-                        let concrete_type = self.build_concrete_type(None, self_modifier.ty.clone().unwrap());
-                        concrete_type.try_into().unwrap()
-                    }
-                };
+                let basic_type_enum: BasicTypeEnum<'a> =
+                    self.build_concrete_type(None, param.clone()).try_into().unwrap();
                 BasicMetadataTypeEnum::from(basic_type_enum.clone())
             })
             .collect();
@@ -249,5 +246,25 @@ impl<'a> CodeGenBuilder<'a> {
             )
         };
         unsafe { FunctionType::new(fn_type) }
+    }
+}
+
+fn get_func_type_params_from_func_params(func_params: &TypedFuncParams) -> TypedFuncTypeParams {
+    TypedFuncTypeParams {
+        list: func_params
+            .list
+            .iter()
+            .map(|param| match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
+                TypedFuncParamKind::SelfModifier(..) => unreachable!(),
+            })
+            .collect(),
+        variadic: match &func_params.variadic {
+            Some(variadic) => Some(Box::new(match variadic {
+                TypedFuncVariadicParams::UntypedCStyle => TypedFuncTypeVariadicParams::UntypedCStyle,
+                TypedFuncVariadicParams::Typed(_, concrete_type) => TypedFuncTypeVariadicParams::Typed(concrete_type.clone()),
+            })),
+            None => None,
+        },
     }
 }
