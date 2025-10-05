@@ -20,13 +20,12 @@ use typed_ast::{
     *,
 };
 
-// FIXME Remove later
 #[allow(unused)]
 #[derive(Debug)]
 enum ControlContext {
-    For(TypedFor),
-    Switch(TypedSwitch),
-    While(TypedWhile),
+    For,
+    Switch,
+    While,
 }
 
 #[macro_export]
@@ -483,7 +482,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
-        self.control_stack.push(ControlContext::Switch(typed_switch.clone()));
+        self.control_stack.push(ControlContext::Switch);
 
         if typed_switch.cases.is_empty() {
             self.reporter.report(Diag {
@@ -616,7 +615,7 @@ impl<'a> AnalysisContext<'a> {
             self.check_expr_type_must_be_condition(concrete_type, typed_while.loc.clone());
         }
 
-        self.control_stack.push(ControlContext::While(typed_while.clone()));
+        self.control_stack.push(ControlContext::While);
         self.analyze_block_statement(&mut typed_while.body);
         self.control_stack.pop();
 
@@ -642,7 +641,7 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone());
         }
 
-        self.control_stack.push(ControlContext::For(typed_for.clone()));
+        self.control_stack.push(ControlContext::For);
         self.analyze_block_statement(&mut typed_for.body);
         self.control_stack.pop();
 
@@ -711,10 +710,10 @@ impl<'a> AnalysisContext<'a> {
             .control_stack
             .iter()
             .rev()
-            .any(|ctx| matches!(ctx, ControlContext::For(_)));
+            .any(|ctx| matches!(ctx, ControlContext::For));
 
         if !inside_loop {
-            // continue cannot be used outside of a loop
+            // cannot be used outside of a loop
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InvalidContinueStatement,

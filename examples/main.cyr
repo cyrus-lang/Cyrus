@@ -1,40 +1,21 @@
-import std::libc{printf, malloc, free};
+import std::libc{printf};
 
-struct Person {
-    id: uint;
-    name: char*;
-}
+type HandlerFn = fn(int, int) void;
 
-struct Organization {
-    users: Person*;
+struct Route {
+    handler: HandlerFn;
+
+    pub fn apply(self) {
+        (self.handler)(4, 5);
+    }
 }
 
 fn main() {
-    #users_len: size_t = 2;
-	#users: Person* = malloc(sizeof(Person) * users_len);
-    users[0] = Person { id: 1, name: "Taha" };
-    printf("%s %d\n", users[0].name, users[0].id);
-    free(users);
+    #route = Route {
+        handler: fn(req: int, res: int) void {
+            printf("%d %d\n", req, res);
+        }
+    };
+
+    route.apply();
 }
-
-// import std::libc{printf};
-
-// type HandlerFn = fn(int, int) void;
-
-// struct Route {
-//     handler: HandlerFn;
-
-//     pub fn apply(self) {
-//         (self.handler)(4, 5);
-//     }
-// }
-
-// fn main() {
-//     #route = Route {
-//         handler: fn(req: int, res: int) void {
-//             printf("%d %d\n", req, res);
-//         }
-//     };
-
-//     route.apply();
-// }
