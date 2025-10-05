@@ -1,10 +1,40 @@
-import std::libc{printf};
+import std::libc{printf, malloc, free};
 
-LAMBDA = fn(x: int) int {
-    return x * 2;
-};
+struct Person {
+    id: uint;
+    name: char*;
+}
+
+struct Organization {
+    users: Person*;
+}
 
 fn main() {
-    #result = LAMBDA(10);
-    printf("res: %d\n", result);
+    #users_len: size_t = 2;
+	#users: Person* = malloc(sizeof(Person) * users_len);
+    users[0] = Person { id: 1, name: "Taha" };
+    printf("%s %d\n", users[0].name, users[0].id);
+    free(users);
 }
+
+// import std::libc{printf};
+
+// type HandlerFn = fn(int, int) void;
+
+// struct Route {
+//     handler: HandlerFn;
+
+//     pub fn apply(self) {
+//         (self.handler)(4, 5);
+//     }
+// }
+
+// fn main() {
+//     #route = Route {
+//         handler: fn(req: int, res: int) void {
+//             printf("%d %d\n", req, res);
+//         }
+//     };
+
+//     route.apply();
+// }

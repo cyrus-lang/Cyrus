@@ -2446,28 +2446,7 @@ impl Resolver {
             return None;
         }
 
-        let symbol_id = match &*func_call.operand {
-            Expression::Identifier(identifier) => self.resolve_identifier(
-                module_id,
-                identifier.clone(),
-                SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
-            )?,
-            Expression::ModuleImport(module_import) => self
-                .resolve_local_module_import(local_scope_opt.clone(), module_id, module_import)
-                .or_else(|| self.resolve_module_import(module_id, module_import.clone()))?,
-            _ => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::InvalidOperandForFuncCall,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        func_call.loc.clone(),
-                        self.get_current_module_file_path(),
-                    ))),
-                    hint: None,
-                });
-                return None;
-            }
-        };
+        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &func_call.operand)?;
 
         let typed_args: Vec<TypedExpression> = func_call
             .args
@@ -2477,7 +2456,7 @@ impl Resolver {
 
         Some(TypedExpression {
             kind: TypedExpressionKind::FuncCall(TypedFuncCall {
-                symbol_id,
+                operand: Box::new(operand),
                 args: typed_args,
                 loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
             }),
@@ -2999,6 +2978,17 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDef) -> FuncSig {
     }
 }
 
+pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
+    TypedFuncType {
+        params: typed_func_params_as_func_type_params(&func_sig.params),
+        return_type: Box::new(func_sig.return_type.clone()),
+    }
+}
+
+fn make_method_resolve_name(struct_symbol_id: SymbolID, method_name: String) -> String {
+    format!("{}{}", struct_symbol_id, method_name)
+}
+
 pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedFuncTypeParams {
     TypedFuncTypeParams {
         list: params
@@ -3006,7 +2996,13 @@ pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedF
             .iter()
             .map(|param| match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
-                TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.ty.clone().unwrap(),
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
+                    let ty = ConcreteType::UnresolvedSymbol(typed_self_modifier.symbol_id.unwrap());
+                    match typed_self_modifier.kind {
+                        SelfModifierKind::Copied => ty,
+                        SelfModifierKind::Referenced => ConcreteType::Pointer(Box::new(ty)),
+                    }
+                }
             })
             .collect(),
         variadic: match &params.variadic {
@@ -3019,15 +3015,4 @@ pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedF
             None => None,
         },
     }
-}
-
-pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
-    TypedFuncType {
-        params: typed_func_params_as_func_type_params(&func_sig.params),
-        return_type: Box::new(func_sig.return_type.clone()),
-    }
-}
-
-fn make_method_resolve_name(struct_symbol_id: SymbolID, method_name: String) -> String {
-    format!("{}{}", struct_symbol_id, method_name)
 }

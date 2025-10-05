@@ -135,6 +135,17 @@ impl LocalOrGlobalSymbol {
         }
     }
 
+    pub fn as_func(&self) -> Option<&ResolvedFunction> {
+        match self {
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Func(resolved_func) => Some(resolved_func),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+
     pub fn as_struct(&self) -> Option<&ResolvedStruct> {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {

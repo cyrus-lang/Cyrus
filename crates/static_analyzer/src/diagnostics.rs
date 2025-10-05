@@ -2,6 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    UninitializedLambda,
     VoidVariableType,
     NegativeArrayCapacity,
     ValueIsNotACompTimeConst,
@@ -201,6 +202,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::UninitializedLambda => {
+                write!(f, "Lambda cannot be left uninitialized.")
+            }
             AnalyzerDiagKind::VoidVariableType => {
                 write!(f, "The type 'void' cannot be used in this context.")
             }
