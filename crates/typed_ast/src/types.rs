@@ -16,7 +16,7 @@ pub enum ConcreteType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncType {
     pub params: TypedFuncTypeParams,
-    pub ret: Box<ConcreteType>,
+    pub return_type: Box<ConcreteType>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

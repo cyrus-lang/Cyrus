@@ -98,6 +98,7 @@ impl Parser {
         let loc = self.current_token().loc.clone();
 
         let expr = match &self.current_token().clone().kind {
+            TokenKind::Function => self.parse_lambda_expr()?,
             TokenKind::SizeOf => self.parse_sizeof_expression()?,
             TokenKind::Typecast => self.parse_cast_expression()?,
             TokenKind::Struct | TokenKind::Bits => self.parse_unnamed_struct_value(false)?,
@@ -283,6 +284,26 @@ impl Parser {
         } else {
             Ok(expr)
         }
+    }
+
+    fn parse_lambda_expr(&mut self) -> Result<Expression, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.next_token(); // consume function
+        let params = self.parse_func_params()?;
+        let return_type = self.parse_type_specifier()?;
+        self.next_token(); // last token of return type
+        
+        let body = self.parse_block_statement()?;
+
+        Ok(Expression::Lambda(Lambda {
+            params,
+            body: Box::new(body),
+            return_type,
+            span: Span::new(start, self.current_token().span.end),
+            loc,
+        }))
     }
 
     fn parse_sizeof_expression(&mut self) -> Result<Expression, ParserError> {

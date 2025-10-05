@@ -60,7 +60,16 @@ pub enum TypedExpressionKind {
     MethodCall(TypedMethodCall),
     UnnamedStructValue(TypedUnnamedStructValue),
     SizeOfExpression(TypedSizeOfExpression),
+    Lambda(TypedLambda),
     ConcreteType(ConcreteType),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedLambda {
+    pub params: TypedFuncParams,
+    pub body: Box<TypedBlockStatement>,
+    pub return_type: ConcreteType,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +113,7 @@ impl TypedExpressionKind {
     pub fn is_comptime_valid(&self) -> bool {
         match self {
             TypedExpressionKind::Literal(_) => true,
+            TypedExpressionKind::Lambda(_) => true,
             TypedExpressionKind::Prefix(prefix) => prefix.operand.kind.is_comptime_valid(),
             TypedExpressionKind::Infix(infix) => {
                 infix.lhs.kind.is_comptime_valid() && infix.rhs.kind.is_comptime_valid()
@@ -157,6 +167,7 @@ impl TypedExpressionKind {
             TypedExpressionKind::Array(_) => false,
             TypedExpressionKind::SizeOfExpression(_) => false,
             TypedExpressionKind::ConcreteType(_) => false,
+            TypedExpressionKind::Lambda(_) => false,
         }
     }
 }
@@ -508,13 +519,13 @@ pub struct TypedFuncDecl {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncParams {
     pub list: Vec<TypedFuncParamKind>,
     pub variadic: Option<TypedFuncVariadicParams>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypedFuncVariadicParams {
     UntypedCStyle,
     Typed(String, ConcreteType),
@@ -532,13 +543,13 @@ pub enum TypedFuncTypeVariadicParams {
     Typed(ConcreteType),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypedFuncParamKind {
     FuncParam(TypedFuncParam),
     SelfModifier(TypedSelfModifier),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedSelfModifier {
     pub symbol_id: Option<SymbolID>,
     pub self_symbol_id: Option<SymbolID>,
@@ -547,7 +558,7 @@ pub struct TypedSelfModifier {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncParam {
     pub name: String,
     pub ty: ConcreteType,
@@ -600,4 +611,10 @@ pub struct TypedBreak {
 #[derive(Debug, Clone)]
 pub struct TypedContinue {
     pub loc: SourceLoc,
+}
+
+impl PartialEq for TypedLambda {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.return_type == other.return_type
+    }
 }

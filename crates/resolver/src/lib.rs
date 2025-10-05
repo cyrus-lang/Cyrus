@@ -8,10 +8,10 @@ use crate::{
 use ast::format::module_segments_as_string;
 use ast::source_loc::SourceLoc;
 use ast::{
-    AccessSpecifier, AddressOf, Array, ArrayIndex, Assignment, Cast, Dereference, FieldAccess, FuncCall,
-    FuncTypeVariadicParams, GlobalVariable, If, Import, InfixExpression, Interface, Literal, MethodCall, ModuleImport,
-    ModulePath, ModuleSegment, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix,
-    StructInit, SwitchCasePattern, UnaryExpression, Union, UnnamedStructValue,
+    AccessSpecifier, AddressOf, Array, ArrayIndex, Assignment, Cast, Dereference, FieldAccess, FuncCall, FuncParams,
+    FuncTypeVariadicParams, GlobalVariable, If, Import, InfixExpression, Interface, Lambda, Literal, MethodCall,
+    ModuleImport, ModulePath, ModuleSegment, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression,
+    StringPrefix, StructInit, SwitchCasePattern, UnaryExpression, Union, UnnamedStructValue,
 };
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
@@ -547,11 +547,17 @@ impl Resolver {
                     None => None,
                 };
 
-                let ret = self.resolve_type(local_scope.clone(), module_id, *func_type.ret, loc.clone(), span_end)?;
+                let return_type = self.resolve_type(
+                    local_scope.clone(),
+                    module_id,
+                    *func_type.return_type,
+                    loc.clone(),
+                    span_end,
+                )?;
 
                 Ok(ConcreteType::FuncType(TypedFuncType {
                     params: TypedFuncTypeParams { list: params, variadic },
-                    ret: Box::new(ret),
+                    return_type: Box::new(return_type),
                 }))
             }
             TypeSpecifier::TypeToken(token) => {
@@ -1446,9 +1452,21 @@ impl Resolver {
             func_decl.span.end,
         )?;
 
-        let mut typed_func_params = Vec::with_capacity(func_decl.params.list.len());
+        let (typed_func_params, typed_variadic_param) =
+            self.resolve_func_params(module_id, local_scope_opt.clone(), &func_decl.params)?;
 
-        for param in &func_decl.params.list {
+        Some((return_type, typed_func_params, typed_variadic_param))
+    }
+
+    fn resolve_func_params(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        params: &FuncParams,
+    ) -> Option<(Vec<TypedFuncParamKind>, Option<TypedFuncVariadicParams>)> {
+        let mut typed_func_params = Vec::with_capacity(params.list.len());
+
+        for param in &params.list {
             match param {
                 FuncParamKind::FuncParam(func_param) => {
                     let param_type = match &func_param.ty {
@@ -1513,7 +1531,7 @@ impl Resolver {
             }
         }
 
-        let typed_variadic_param = func_decl.params.variadic.as_ref().and_then(|variadic| match variadic {
+        let typed_variadic_param = params.variadic.as_ref().and_then(|variadic| match variadic {
             FuncVariadicParams::UntypedCStyle => Some(TypedFuncVariadicParams::UntypedCStyle),
             FuncVariadicParams::Typed(identifier, type_specifier) => {
                 let variadic_type = self.resolve_type(
@@ -1547,7 +1565,7 @@ impl Resolver {
             }
         });
 
-        Some((return_type, typed_func_params, typed_variadic_param))
+        Some((typed_func_params, typed_variadic_param))
     }
 
     fn resolve_func_decl(&mut self, module_id: ModuleID, func_decl: &FuncDecl) -> Option<TypedStatement> {
@@ -2234,16 +2252,61 @@ impl Resolver {
                 self.resolve_array_index_expr(module_id, local_scope_opt, array_index)
             }
             Expression::AddressOf(address_of) => self.resolve_address_of_expr(module_id, local_scope_opt, address_of),
-            Expression::Dereference(dereference) => {
-                self.resolve_dereference_expr(module_id, local_scope_opt, dereference)
-            }
+            Expression::Dereference(dereference) => self.resolve_deref_expr(module_id, local_scope_opt, dereference),
             Expression::UnnamedStructValue(unnamed_struct_value) => {
                 self.resolve_unnamed_struct_value(module_id, local_scope_opt, unnamed_struct_value)
             }
             Expression::SizeOfExpression(size_of_expression) => {
-                self.resolve_size_of_expression(module_id, local_scope_opt, size_of_expression)
+                self.resolve_size_of_expr(module_id, local_scope_opt, size_of_expression)
             }
+            Expression::Lambda(lambda) => self.resolve_lambda_expr(module_id, local_scope_opt, lambda),
         }
+    }
+
+    fn resolve_lambda_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        lambda: &Lambda,
+    ) -> Option<TypedExpression> {
+        let (list, variadic) = self.resolve_func_params(module_id, local_scope_opt.clone(), &lambda.params)?;
+
+        let scope_id = generate_scope_id();
+        let body_scope = match &local_scope_opt {
+            Some(local_scope) => {
+                let body_scope = LocalScope::deep_clone(&local_scope);
+                self.insert_scope_ref(module_id, scope_id, body_scope.clone());
+                body_scope
+            }
+            None => Rc::new(RefCell::new(LocalScope::new(None))),
+        };
+
+        let body = match self.resolve_block_statement(scope_id, body_scope, &lambda.body) {
+            Some(typed_block) => Box::new(typed_block),
+            None => return None,
+        };
+
+        let return_type = self.resolve_type(
+            local_scope_opt,
+            module_id,
+            lambda.return_type.clone(),
+            lambda.loc.clone(),
+            lambda.span.end,
+        )?;
+
+        let loc = SourceLoc::from_loc(lambda.loc.clone(), self.get_current_module_file_path());
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Lambda(TypedLambda {
+                params: TypedFuncParams { list, variadic },
+                body,
+                return_type,
+                loc: loc.clone(),
+            }),
+            concrete_type: None,
+            value_category: ValueCategory::Rvalue,
+            loc,
+        })
     }
 
     fn resolve_field_access(
@@ -2726,7 +2789,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_dereference_expr(
+    fn resolve_deref_expr(
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
@@ -2796,7 +2859,7 @@ impl Resolver {
         })
     }
 
-    fn resolve_size_of_expression(
+    fn resolve_size_of_expr(
         &mut self,
         module_id: ModuleID,
         local_scope_opt: Option<LocalScopeRef>,
@@ -2943,6 +3006,35 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDef) -> FuncSig {
         is_func_decl: false,
         vis: func_def.vis.clone(),
         loc: func_def.loc.clone(),
+    }
+}
+
+pub fn typed_func_params_as_func_type_params(params: &TypedFuncParams) -> TypedFuncTypeParams {
+    TypedFuncTypeParams {
+        list: params
+            .list
+            .iter()
+            .map(|param| match param {
+                TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.ty.clone().unwrap(),
+            })
+            .collect(),
+        variadic: match &params.variadic {
+            Some(variadic) => match variadic {
+                TypedFuncVariadicParams::UntypedCStyle => Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle)),
+                TypedFuncVariadicParams::Typed(_, concrete_type) => {
+                    Some(Box::new(TypedFuncTypeVariadicParams::Typed(concrete_type.clone())))
+                }
+            },
+            None => None,
+        },
+    }
+}
+
+pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
+    TypedFuncType {
+        params: typed_func_params_as_func_type_params(&func_sig.params),
+        return_type: Box::new(func_sig.return_type.clone()),
     }
 }
 

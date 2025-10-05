@@ -8,7 +8,7 @@ use inkwell::{
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
     values::{AnyValue, AnyValueEnum},
 };
-use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntryKind};
+use resolver::{scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntryKind}, typed_func_type_from_func_sig};
 use typed_ast::{
     SymbolID,
     types::{
@@ -119,7 +119,7 @@ impl<'a> CodeGenBuilder<'a> {
                         self.get_or_declare_func(resolved_method.symbol_id, resolved_method.func_sig.clone());
                     LocalIRValue::Func(
                         fn_value,
-                        ConcreteType::FuncType(self.build_func_type_from_func_sig(&resolved_method.func_sig)),
+                        ConcreteType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
                     )
                 }
                 SymbolEntryKind::GlobalVar(resolved_global_var) => {

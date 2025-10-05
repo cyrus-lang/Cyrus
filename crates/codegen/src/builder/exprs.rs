@@ -67,6 +67,7 @@ impl<'a> CodeGenBuilder<'a> {
             TypedExpressionKind::SizeOfExpression(typed_size_of_expr) => {
                 self.build_sizeof(local_scope_opt, typed_size_of_expr)
             }
+            TypedExpressionKind::Lambda(typed_lambda) => self.build_lambda_expr(local_scope_opt, typed_lambda),
             TypedExpressionKind::ConcreteType(..) => unreachable!(),
         }
     }
@@ -751,7 +752,7 @@ impl<'a> CodeGenBuilder<'a> {
         );
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
 
-        let fn_type = self.build_func_type(func_type.params.clone(), *func_type.ret.clone());
+        let fn_type = self.build_func_type(func_type.params.clone(), *func_type.return_type.clone());
         let fn_pointer = rvalue.as_basic_value().into_pointer_value();
         let lowered_args = self.build_func_args(local_scope_opt.clone(), &args);
         let call_result = self
@@ -764,9 +765,9 @@ impl<'a> CodeGenBuilder<'a> {
             let null_literal =
                 BasicValueEnum::PointerValue(self.llvmctx.ptr_type(AddressSpace::default()).const_null());
 
-            InternalValue::new(*func_type.ret.clone(), InternalValueKind::RValue(null_literal))
+            InternalValue::new(*func_type.return_type.clone(), InternalValueKind::RValue(null_literal))
         } else if let Some(basic_value) = call_result.left() {
-            InternalValue::new(*func_type.ret.clone(), InternalValueKind::RValue(basic_value))
+            InternalValue::new(*func_type.return_type.clone(), InternalValueKind::RValue(basic_value))
         } else {
             unreachable!()
         }
@@ -785,7 +786,7 @@ impl<'a> CodeGenBuilder<'a> {
         let func_sig_opt = match local_or_global_symbol {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_variable() {
                 Some(resolved_var) => match &resolved_var.typed_variable.ty {
-                    Some(normalized) => match normalized.as_func_type() {
+                    Some(concrete_type) => match concrete_type.as_func_type() {
                         Some(func_type) => {
                             return self.build_func_type_call(
                                 func_call.symbol_id,

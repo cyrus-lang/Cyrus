@@ -164,8 +164,8 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 // Normalize return type
-                match self.normalize_type(scope_id_opt, *func_type.ret, loc) {
-                    Some(new_ret) => func_type.ret = Box::new(new_ret),
+                match self.normalize_type(scope_id_opt, *func_type.return_type, loc) {
+                    Some(new_ret) => func_type.return_type = Box::new(new_ret),
                     None => return None,
                 }
 
@@ -272,7 +272,7 @@ impl<'a> AnalysisContext<'a> {
                             None => None,
                         },
                     },
-                    ret: Box::new(resolved_func.func_sig.return_type.clone()),
+                    return_type: Box::new(resolved_func.func_sig.return_type.clone()),
                 })),
                 SymbolEntryKind::GlobalVar(resolved_global_var) => {
                     if let Some(ty) = &resolved_global_var.global_var_sig.ty {

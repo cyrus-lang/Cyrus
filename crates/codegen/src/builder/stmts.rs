@@ -14,8 +14,7 @@ use inkwell::{
     values::{BasicValue, BasicValueEnum, IntValue},
 };
 use resolver::{
-    signatures::{StructSig, UnionSig},
-    scope::{LocalScopeRef, LocalSymbolKind, ResolvedEnum},
+    scope::{LocalScopeRef, LocalSymbolKind, ResolvedEnum}, signatures::{StructSig, UnionSig}, typed_func_type_from_func_sig
 };
 use std::collections::HashMap;
 use typed_ast::{
@@ -154,7 +153,7 @@ impl<'a> CodeGenBuilder<'a> {
                 *method_symbol_id,
                 LocalIRValue::Func(
                     fn_value,
-                    ConcreteType::FuncType(self.build_func_type_from_func_sig(&resolved_method.func_sig)),
+                    ConcreteType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
                 ),
             );
 
