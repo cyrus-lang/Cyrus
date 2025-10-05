@@ -819,17 +819,17 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        // if let Some(expr) = &typed_global_var.expr {
-        //     if !expr.kind.is_comptime_valid() && !matches!(typed_global_var.ty, Some(ConcreteType::Const(..))) {
-        //         self.reporter.report(Diag {
-        //             level: DiagLevel::Error,
-        //             kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
-        //             location: Some(DiagLoc::new(typed_global_var.loc.clone())),
-        //             hint: None,
-        //         });
-        //         return;
-        //     }
-        // }
+        if let Some(expr) = &typed_global_var.expr {
+            if !expr.kind.is_comptime_valid() && !matches!(typed_global_var.ty, Some(ConcreteType::Const(..))) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
+                    location: Some(DiagLoc::new(typed_global_var.loc.clone())),
+                    hint: None,
+                });
+                return;
+            }
+        }
 
         update_global_symbol!(self, typed_global_var.module_id, typed_global_var.symbol_id,
             SymbolEntryKind::GlobalVar(resolved_var) => resolved_var, {
@@ -870,47 +870,48 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_local_unused_symbols(&mut self, scope_id: ScopeID) {
-        let local_scope_rc = self.resolver.get_scope_ref(self.module_id, scope_id).unwrap();
-        let local_scope = local_scope_rc.borrow();
-        let symbols_clone = local_scope.symbols.clone();
-        let symbols_iter = symbols_clone.values().into_iter();
-        drop(local_scope);
+        if let Some(local_scope_rc) = self.resolver.get_scope_ref(self.module_id, scope_id) {
+            let local_scope = local_scope_rc.borrow();
+            let symbols_clone = local_scope.symbols.clone();
+            let symbols_iter = symbols_clone.values().into_iter();
+            drop(local_scope);
 
-        for local_symbol in symbols_iter {
-            if !local_symbol.used {
-                let (symbol_name, loc) = match &local_symbol.kind {
-                    LocalSymbolKind::Variable(resolved_variable) => (
-                        resolved_variable.typed_variable.name.clone(),
-                        resolved_variable.typed_variable.loc.clone(),
-                    ),
-                    LocalSymbolKind::Struct(resolved_struct) => (
-                        resolved_struct.struct_sig.name.clone(),
-                        resolved_struct.struct_sig.loc.clone(),
-                    ),
-                    LocalSymbolKind::Enum(resolved_enum) => {
-                        (resolved_enum.enum_sig.name.clone(), resolved_enum.enum_sig.loc.clone())
+            for local_symbol in symbols_iter {
+                if !local_symbol.used {
+                    let (symbol_name, loc) = match &local_symbol.kind {
+                        LocalSymbolKind::Variable(resolved_variable) => (
+                            resolved_variable.typed_variable.name.clone(),
+                            resolved_variable.typed_variable.loc.clone(),
+                        ),
+                        LocalSymbolKind::Struct(resolved_struct) => (
+                            resolved_struct.struct_sig.name.clone(),
+                            resolved_struct.struct_sig.loc.clone(),
+                        ),
+                        LocalSymbolKind::Enum(resolved_enum) => {
+                            (resolved_enum.enum_sig.name.clone(), resolved_enum.enum_sig.loc.clone())
+                        }
+                        LocalSymbolKind::Typedef(resolved_typedef) => (
+                            resolved_typedef.typedef_sig.name.clone(),
+                            resolved_typedef.typedef_sig.loc.clone(),
+                        ),
+                        LocalSymbolKind::Interface(resolved_interface) => (
+                            resolved_interface.interface_sig.name.clone(),
+                            resolved_interface.interface_sig.loc.clone(),
+                        ),
+                        LocalSymbolKind::Union(resolved_union) => (
+                            resolved_union.union_sig.name.clone(),
+                            resolved_union.union_sig.loc.clone(),
+                        ),
+                    };
+
+                    if !self.disable_warnings {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Warning,
+                            kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
+                            location: Some(DiagLoc::new(loc)),
+                            hint: None,
+                        });
                     }
-                    LocalSymbolKind::Typedef(resolved_typedef) => (
-                        resolved_typedef.typedef_sig.name.clone(),
-                        resolved_typedef.typedef_sig.loc.clone(),
-                    ),
-                    LocalSymbolKind::Interface(resolved_interface) => (
-                        resolved_interface.interface_sig.name.clone(),
-                        resolved_interface.interface_sig.loc.clone(),
-                    ),
-                    LocalSymbolKind::Union(resolved_union) => (
-                        resolved_union.union_sig.name.clone(),
-                        resolved_union.union_sig.loc.clone(),
-                    ),
-                };
-
-                if !self.disable_warnings {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Warning,
-                        kind: AnalyzerDiagKind::UnusedSymbol { symbol_name },
-                        location: Some(DiagLoc::new(loc)),
-                        hint: None,
-                    });
                 }
             }
         }

@@ -23,11 +23,7 @@ use typed_ast::{
 };
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_lambda_expr(
-        &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
-        lambda: &TypedLambda,
-    ) -> InternalValue<'a> {
+    pub(crate) fn build_lambda_expr(&mut self, lambda: &TypedLambda) -> InternalValue<'a> {
         let fn_type = self.build_func_type(
             get_func_type_params_from_func_params(&lambda.params),
             lambda.return_type.clone(),
@@ -46,7 +42,11 @@ impl<'a> CodeGenBuilder<'a> {
         self.blockreg.current_block_ref = Some(entry_block);
         self.llvmbuilder.position_at_end(entry_block);
 
-        self.build_func_params(local_scope_opt, &lambda.params, fn_value);
+        let local_scope_rc = self
+            .resolver
+            .get_scope_ref(self.module_id, lambda.body.scope_id)
+            .unwrap();
+        self.build_func_params(Some(local_scope_rc), &lambda.params, fn_value);
         self.build_block_statement(&lambda.body);
 
         let current_block = self.blockreg.current_block_ref.unwrap();

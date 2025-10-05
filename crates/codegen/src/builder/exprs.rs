@@ -67,7 +67,7 @@ impl<'a> CodeGenBuilder<'a> {
             TypedExpressionKind::SizeOfExpression(typed_size_of_expr) => {
                 self.build_sizeof(local_scope_opt, typed_size_of_expr)
             }
-            TypedExpressionKind::Lambda(typed_lambda) => self.build_lambda_expr(local_scope_opt, typed_lambda),
+            TypedExpressionKind::Lambda(typed_lambda) => self.build_lambda_expr(typed_lambda),
             TypedExpressionKind::ConcreteType(..) => unreachable!(),
         }
     }
@@ -803,6 +803,19 @@ impl<'a> CodeGenBuilder<'a> {
             },
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
                 SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig),
+                SymbolEntryKind::GlobalVar(resolved_global_var) => {
+                    match resolved_global_var.global_var_sig.ty.clone().unwrap().as_func_type() {
+                        Some(func_type) => {
+                            return self.build_func_type_call(
+                                func_call.symbol_id,
+                                local_scope_opt,
+                                func_type,
+                                &func_call.args,
+                            );
+                        }
+                        None => None,
+                    }
+                }
                 _ => None,
             },
         };

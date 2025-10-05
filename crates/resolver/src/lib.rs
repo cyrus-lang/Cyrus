@@ -2259,35 +2259,25 @@ impl Resolver {
             Expression::SizeOfExpression(size_of_expression) => {
                 self.resolve_size_of_expr(module_id, local_scope_opt, size_of_expression)
             }
-            Expression::Lambda(lambda) => self.resolve_lambda_expr(module_id, local_scope_opt, lambda),
+            Expression::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
         }
     }
 
-    fn resolve_lambda_expr(
-        &mut self,
-        module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
-        lambda: &Lambda,
-    ) -> Option<TypedExpression> {
-        let (list, variadic) = self.resolve_func_params(module_id, local_scope_opt.clone(), &lambda.params)?;
-
+    fn resolve_lambda_expr(&mut self, module_id: ModuleID, lambda: &Lambda) -> Option<TypedExpression> {
         let scope_id = generate_scope_id();
-        let body_scope = match &local_scope_opt {
-            Some(local_scope) => {
-                let body_scope = LocalScope::deep_clone(&local_scope);
-                self.insert_scope_ref(module_id, scope_id, body_scope.clone());
-                body_scope
-            }
-            None => Rc::new(RefCell::new(LocalScope::new(None))),
-        };
+        let body_scope = LocalScope::new(None);
+        let local_scope_rc = Rc::new(RefCell::new(body_scope));
+        self.insert_scope_ref(module_id, scope_id, local_scope_rc.clone());
 
-        let body = match self.resolve_block_statement(scope_id, body_scope, &lambda.body) {
+        let (list, variadic) = self.resolve_func_params(module_id, Some(local_scope_rc.clone()), &lambda.params)?;
+
+        let body = match self.resolve_block_statement(scope_id, local_scope_rc.clone(), &lambda.body) {
             Some(typed_block) => Box::new(typed_block),
             None => return None,
         };
 
         let return_type = self.resolve_type(
-            local_scope_opt,
+            Some(local_scope_rc),
             module_id,
             lambda.return_type.clone(),
             lambda.loc.clone(),
