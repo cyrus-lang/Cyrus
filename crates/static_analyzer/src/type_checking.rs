@@ -1,4 +1,4 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol, update_local_symbol};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol};
 use ast::{
     AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator},
@@ -7,7 +7,7 @@ use ast::{
 };
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
-    scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedMethod, ResolvedUnion, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, ResolvedUnion, SymbolEntryKind},
     signatures::FuncSig,
     typed_func_params_as_func_type_params,
 };
@@ -807,19 +807,21 @@ impl<'a> AnalysisContext<'a> {
     ) -> bool {
         let mut result = true;
 
-        let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
-        let field_access_from_struct_methods = method_symbol_ids.contains(&self.current_method_symbol_id.unwrap());
-        if !(field_access_from_struct_methods || field_vis.is_private()) {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::InternalFieldAccess {
-                    field_name: field_access.field_name.clone(),
-                    struct_name: struct_name.to_string(),
-                },
-                location: Some(DiagLoc::new(field_access.loc.clone())),
-                hint: None,
-            });
-            result = false;
+        if let Some(current_method_symbol_id) = self.current_method_symbol_id {
+            let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
+            let field_access_from_struct_methods = method_symbol_ids.contains(&current_method_symbol_id);
+            if !(field_access_from_struct_methods || field_vis.is_private()) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InternalFieldAccess {
+                        field_name: field_access.field_name.clone(),
+                        struct_name: struct_name.to_string(),
+                    },
+                    location: Some(DiagLoc::new(field_access.loc.clone())),
+                    hint: None,
+                });
+                result = false;
+            }
         }
 
         let is_pointer = operand.concrete_type.clone().unwrap().get_const_inner().is_pointer();
@@ -1812,130 +1814,31 @@ impl<'a> AnalysisContext<'a> {
         Some(*func_type.return_type.clone())
     }
 
-    fn analyze_func_call_on_func_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        func_type: &mut TypedFuncType,
-        args: &mut Vec<TypedExpression>,
-        loc: SourceLoc,
-    ) -> Option<ConcreteType> {
-        self.normalize_func_type_params(&mut func_type.params, loc.clone());
-        let return_type = self.check_func_type_call(scope_id_opt, func_type, args, loc.clone());
-        return_type
-    }
-
     fn analyze_func_call_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
     ) -> Option<ConcreteType> {
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), func_call.symbol_id)
-            .unwrap();
+        let operand_concrete_type = self.analyze_typed_expr_type(scope_id_opt, &mut func_call.operand, None)?;
 
-        let func_sig_opt = match &local_or_global_symbol {
-            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_variable() {
-                Some(resolved_var) => match &resolved_var.typed_variable.ty {
-                    Some(concrete_type) => {
-                        let normalized =
-                            self.normalize_type(scope_id_opt, concrete_type.clone(), func_call.loc.clone())?;
+        if let Some(mut func_type) = operand_concrete_type.as_func_type().cloned() {
+            self.normalize_func_type_params(&mut func_type.params, func_call.loc.clone());
 
-                        if let Some(scope_id) = scope_id_opt {
-                            update_local_symbol!(self, scope_id, func_call.symbol_id,
-                                LocalSymbolKind::Variable(resolved_var) => resolved_var, {
-                                    resolved_var.typed_variable.ty = Some(normalized.clone());
-                                }
-                            );
-                        }
+            let return_type =
+                self.check_func_type_call(scope_id_opt, &mut func_type, &mut func_call.args, func_call.loc.clone());
 
-                        match normalized.as_func_type() {
-                            Some(func_type) => {
-                                return self.analyze_func_call_on_func_type(
-                                    scope_id_opt,
-                                    &mut func_type.clone(),
-                                    &mut func_call.args,
-                                    func_call.loc.clone(),
-                                );
-                            }
-                            None => None,
-                        }
-                    }
-                    None => None,
-                },
-                None => None,
-            },
-            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
-                SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig.clone()),
-                SymbolEntryKind::GlobalVar(resolved_global_var) => {
-                    let concrete_type = match resolved_global_var.global_var_sig.ty.clone() {
-                        Some(concrete_type) => concrete_type,
-                        None => self
-                            .analyze_typed_expr_type(
-                                scope_id_opt,
-                                &mut resolved_global_var.global_var_sig.rhs.clone().unwrap(),
-                                None,
-                            )
-                            .unwrap(),
-                    };
+            return_type
+        } else {
+            let symbol_name = format_concrete_type(operand_concrete_type, &(self.symbol_formatter)(scope_id_opt));
 
-                    let normalized = self.normalize_type(scope_id_opt, concrete_type, func_call.loc.clone())?;
-
-                    update_global_symbol!(self, resolved_global_var.module_id, func_call.symbol_id,
-                        SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var, {
-                            resolved_global_var.global_var_sig.ty = Some(normalized.clone());
-                        }
-                    );
-
-                    match normalized.as_func_type() {
-                        Some(func_type) => {
-                            return self.analyze_func_call_on_func_type(
-                                scope_id_opt,
-                                &mut func_type.clone(),
-                                &mut func_call.args,
-                                func_call.loc.clone(),
-                            );
-                        }
-                        None => None,
-                    }
-                }
-                _ => None,
-            },
-        };
-
-        let mut func_sig = match func_sig_opt {
-            Some(func_sig) => func_sig,
-            None => {
-                let func_name = (self.symbol_formatter)(scope_id_opt)(func_call.symbol_id);
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::NonFunctionSymbol { symbol_name: func_name },
-                    location: Some(DiagLoc::new(func_call.loc.clone())),
-                    hint: None,
-                });
-                return None;
-            }
-        };
-
-        self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
-
-        let return_type = self.check_func_call(
-            scope_id_opt,
-            &mut func_sig,
-            &mut func_call.args,
-            func_call.loc.clone(),
-            false,
-        );
-
-        update_global_symbol!(self, func_sig.module_id, func_call.symbol_id,
-            SymbolEntryKind::Func(resolved_func) => resolved_func, {
-                resolved_func.func_sig = func_sig.clone();
-            }
-        );
-
-        return_type
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::NonFunctionSymbol { symbol_name },
+                location: Some(DiagLoc::new(func_call.loc.clone())),
+                hint: None,
+            });
+            return None;
+        }
     }
 
     fn extract_object_symbol_id<'b>(
@@ -2172,6 +2075,8 @@ impl<'a> AnalysisContext<'a> {
             .resolver
             .lookup_symbol_entry_with_id(object_module_id, method_symbol_id)
             .unwrap();
+
+        self.current_method_symbol_id = Some(method_symbol_id);
 
         let resolved_method = match &mut method_symbol_entry.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method,

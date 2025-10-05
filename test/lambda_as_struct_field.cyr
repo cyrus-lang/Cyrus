@@ -1,0 +1,25 @@
+// @stdout: 4 5
+// @stdin: 
+// @args:
+
+import std::libc{printf};
+
+type HandlerFn = fn(int, int) void;
+
+struct Route {
+    handler: HandlerFn;
+
+    pub fn apply(self) {
+        (self.handler)(4, 5);
+    }
+}
+
+fn main() {
+    #route = Route {
+        handler: fn(req: int, res: int) void {
+            printf("%d %d\n", req, res);
+        }
+    };
+
+    route.apply();
+}

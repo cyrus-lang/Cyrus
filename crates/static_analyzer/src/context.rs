@@ -819,6 +819,16 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
+        if matches!(typed_global_var.ty, Some(ConcreteType::FuncType(..))) && typed_global_var.expr.is_none() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UninitializedLambda,
+                location: Some(DiagLoc::new(typed_global_var.loc.clone())),
+                hint: None,
+            });
+            return;
+        }
+
         if let Some(expr) = &typed_global_var.expr {
             if !expr.kind.is_comptime_valid() && !matches!(typed_global_var.ty, Some(ConcreteType::Const(..))) {
                 self.reporter.report(Diag {
@@ -1282,6 +1292,7 @@ impl<'a> AnalysisContext<'a> {
 
         // analyze methods bodies
         for (symbol_id, func_sig, mut func_body) in local_methods_list {
+            self.current_method_symbol_id = Some(symbol_id);
             self.current_func = Some(TypedFuncType {
                 params: typed_func_params_as_func_type_params(&func_sig.params),
                 return_type: Box::new(func_sig.return_type.clone()),
@@ -1556,6 +1567,16 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(typed_variable.loc.clone())),
                 hint: None,
             });
+        }
+
+        if matches!(typed_variable.ty, Some(ConcreteType::FuncType(..))) && typed_variable.rhs.is_none() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UninitializedLambda,
+                location: Some(DiagLoc::new(typed_variable.loc.clone())),
+                hint: None,
+            });
+            return;
         }
 
         if typed_variable.ty.is_some()

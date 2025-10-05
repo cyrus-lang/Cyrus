@@ -259,7 +259,7 @@ pub struct TypedStructFieldInit {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFuncCall {
-    pub symbol_id: SymbolID,
+    pub operand: Box<TypedExpression>,
     pub args: Vec<TypedExpression>,
     pub loc: SourceLoc,
 }

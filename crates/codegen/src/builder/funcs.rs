@@ -279,7 +279,7 @@ fn get_func_type_params_from_func_params(func_params: &TypedFuncParams) -> Typed
             .iter()
             .map(|param| match param {
                 TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
-                TypedFuncParamKind::SelfModifier(..) => unreachable!(),
+                TypedFuncParamKind::SelfModifier(typed_self_modifier) => typed_self_modifier.ty.clone().unwrap(),
             })
             .collect(),
         variadic: match &func_params.variadic {

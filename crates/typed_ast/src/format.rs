@@ -157,10 +157,9 @@ pub fn format_typed_expr<'a>(
             return fmt;
         }
         TypedExpressionKind::FuncCall(typed_func_call) => {
-            let func_name = format_symbol(typed_func_call.symbol_id);
             format!(
                 "{}({})",
-                func_name,
+                format_typed_expr(&typed_func_call.operand, format_symbol),
                 format_typed_exprs(&typed_func_call.args, format_symbol)
             )
         }
