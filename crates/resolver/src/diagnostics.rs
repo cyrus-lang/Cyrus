@@ -47,9 +47,6 @@ pub enum ResolverDiagKind {
     RequiresLocalScope,
     InvalidOperandForFuncCall,
     InvalidOperandForMethodCall,
-    SymbolIsNotAFunction {
-        name: String,
-    },
     ImportCycle {
         module_names: Vec<String>,
     },
@@ -192,9 +189,6 @@ impl fmt::Display for ResolverDiagKind {
             }
             ResolverDiagKind::InvalidOperandForMethodCall => {
                 write!(f, "Invalid operand for method call.")
-            }
-            ResolverDiagKind::SymbolIsNotAFunction { name } => {
-                write!(f, "Symbol '{}' is not a function.", name)
             }
             ResolverDiagKind::ImportCycle { module_names } => {
                 write!(

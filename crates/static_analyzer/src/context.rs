@@ -5,6 +5,7 @@ use resolver::{
     Resolver,
     scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     signatures::FuncSig,
+    typed_func_params_as_func_type_params,
 };
 use std::{
     cell::RefCell,
@@ -15,7 +16,7 @@ use std::{
 };
 use typed_ast::{
     format::format_concrete_type,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
+    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedFuncType},
     *,
 };
 
@@ -72,13 +73,14 @@ pub struct AnalysisContext<'a> {
     pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub ty_caches: TypeResolverCaches,
     control_stack: Vec<ControlContext>,
-    pub(crate) cur_func_symbol_id: Option<SymbolID>,
+    pub(crate) current_func: Option<TypedFuncType>,
+    pub(crate) current_method_symbol_id: Option<SymbolID>,
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum FlowState {
+pub(crate) enum FlowState {
     // Execution can continue normally
     Reachable,
     // Execution cannot reach further statements (after return/break/continue)
@@ -144,7 +146,8 @@ impl<'a> AnalysisContext<'a> {
             module_id,
             symbol_formatter,
             control_stack: Vec::new(),
-            cur_func_symbol_id: None,
+            current_func: None,
+            current_method_symbol_id: None,
             entry_points,
             ty_caches: TypeResolverCaches::default(),
             disable_warnings,
@@ -189,7 +192,7 @@ impl<'a> AnalysisContext<'a> {
     }
 
     // Traverse BlockStatement
-    fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) -> FlowState {
+    pub(crate) fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) -> FlowState {
         let mut state = FlowState::Reachable;
 
         for typed_stmt in &mut block_stmt.exprs {
@@ -649,9 +652,9 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturn) -> FlowState {
         let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(Some(scope_id));
 
-        let func_sig = self.get_cur_func_sig();
+        let func_type = self.current_func.clone().unwrap();
         let return_type = self
-            .normalize_type(Some(scope_id), func_sig.return_type, typed_return.loc.clone())
+            .normalize_type(Some(scope_id), *func_type.return_type, typed_return.loc.clone())
             .unwrap();
 
         if return_type.is_void() && typed_return.argument.is_some() {
@@ -729,18 +732,6 @@ impl<'a> AnalysisContext<'a> {
                 location: Some(DiagLoc::new(typed_stmt.get_loc())),
                 hint: None,
             });
-        }
-    }
-
-    fn get_cur_func_sig(&self) -> FuncSig {
-        let symbol_id = self.cur_func_symbol_id.unwrap();
-        let symbol_entry = self
-            .resolver
-            .lookup_symbol_entry_with_id(self.module_id, symbol_id)
-            .unwrap();
-        match symbol_entry.as_func() {
-            Some(resolved_func) => resolved_func.func_sig.clone(),
-            None => symbol_entry.as_method().unwrap().func_sig.clone(),
         }
     }
 
@@ -1209,13 +1200,15 @@ impl<'a> AnalysisContext<'a> {
 
     fn analyze_any_func_def(
         &mut self,
-        symbol_id: SymbolID,
         return_type: &mut ConcreteType,
         params: &mut TypedFuncParams,
         body: &mut TypedBlockStatement,
         loc: SourceLoc,
     ) {
-        self.cur_func_symbol_id = Some(symbol_id);
+        self.current_func = Some(TypedFuncType {
+            params: typed_func_params_as_func_type_params(params),
+            return_type: Box::new(return_type.clone()),
+        });
         let state = self.analyze_block_statement(body);
 
         if !return_type.is_void() && state != FlowState::Returns {
@@ -1251,7 +1244,11 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
-            self.cur_func_symbol_id = Some(*symbol_id);
+            self.current_method_symbol_id = Some(*symbol_id);
+            self.current_func = Some(TypedFuncType {
+                params: typed_func_params_as_func_type_params(&func_sig.params),
+                return_type: Box::new(func_sig.return_type.clone()),
+            });
             self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
 
             // public methods are allowed to not be used
@@ -1259,7 +1256,6 @@ impl<'a> AnalysisContext<'a> {
                 self.mark_symbol_used_once(module_id, *symbol_id);
             }
 
-            self.cur_func_symbol_id = Some(*symbol_id);
             self.normalize_func_params(&mut func_sig.params, func_sig.loc.clone());
 
             func_sig.return_type = match self.normalize_type(None, func_sig.return_type.clone(), func_sig.loc.clone()) {
@@ -1285,7 +1281,10 @@ impl<'a> AnalysisContext<'a> {
 
         // analyze methods bodies
         for (symbol_id, func_sig, mut func_body) in local_methods_list {
-            self.cur_func_symbol_id = Some(symbol_id);
+            self.current_func = Some(TypedFuncType {
+                params: typed_func_params_as_func_type_params(&func_sig.params),
+                return_type: Box::new(func_sig.return_type.clone()),
+            });
             let state = self.analyze_block_statement(&mut func_body);
 
             if !func_sig.return_type.is_void() && state != FlowState::Returns {
@@ -1318,7 +1317,6 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_any_func_def(
-            typed_func_def.symbol_id,
             &mut typed_func_def.return_type,
             &mut typed_func_def.params,
             &mut typed_func_def.body,

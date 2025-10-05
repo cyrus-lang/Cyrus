@@ -5,7 +5,7 @@ use crate::builder::{
 use inkwell::{module::Linkage, types::StructType, values::FunctionValue};
 use resolver::{
     signatures::{EnumSig, FuncSig, StructSig, UnionSig},
-    typed_func_decl_as_func_sig, typed_func_def_as_func_sig,
+    typed_func_decl_as_func_sig, typed_func_def_as_func_sig, typed_func_type_from_func_sig,
 };
 use typed_ast::{SymbolID, TypedStatement, types::ConcreteType};
 
@@ -57,7 +57,7 @@ impl<'a> CodeGenBuilder<'a> {
                         LocalIRValue::Func(
                             fn_value,
                             ConcreteType::FuncType(
-                                self.build_func_type_from_func_sig(&typed_func_def_as_func_sig(typed_func_def)),
+                                typed_func_type_from_func_sig(&typed_func_def_as_func_sig(typed_func_def)),
                             ),
                         ),
                     );
@@ -76,7 +76,7 @@ impl<'a> CodeGenBuilder<'a> {
                         LocalIRValue::Func(
                             fn_value,
                             ConcreteType::FuncType(
-                                self.build_func_type_from_func_sig(&typed_func_decl_as_func_sig(typed_func_decl)),
+                                typed_func_type_from_func_sig(&typed_func_decl_as_func_sig(typed_func_decl)),
                             ),
                         ),
                     );
@@ -117,7 +117,7 @@ impl<'a> CodeGenBuilder<'a> {
                     symbol_id,
                     LocalIRValue::Func(
                         fn_value,
-                        ConcreteType::FuncType(self.build_func_type_from_func_sig(&func_sig)),
+                        ConcreteType::FuncType(typed_func_type_from_func_sig(&func_sig)),
                     ),
                 );
                 fn_value

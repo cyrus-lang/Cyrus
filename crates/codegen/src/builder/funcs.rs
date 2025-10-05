@@ -1,5 +1,9 @@
 use super::module::CodeGenBuilder;
-use crate::builder::{abi::make_func_abi_name, module::LocalIRValue};
+use crate::builder::{
+    abi::make_func_abi_name,
+    module::LocalIRValue,
+    values::{InternalValue, InternalValueKind},
+};
 use ast::AccessSpecifier;
 use inkwell::{
     attributes::{Attribute, AttributeLoc},
@@ -11,46 +15,65 @@ use inkwell::{
     types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
     values::{AnyValueEnum, FunctionValue},
 };
-use resolver::{scope::LocalScopeRef, signatures::FuncSig};
+use resolver::scope::LocalScopeRef;
 use typed_ast::{
     ModuleID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams,
-    TypedFuncVariadicParams, TypedVariable,
+    TypedFuncVariadicParams, TypedLambda, TypedVariable,
     types::{ConcreteType, TypedFuncType},
 };
 
 impl<'a> CodeGenBuilder<'a> {
-    pub(crate) fn build_cast_fn_value_to_pointer(&self, fn_value: FunctionValue<'a>) -> AnyValueEnum<'a> {
-        fn_value.as_global_value().as_pointer_value().into()
+    pub(crate) fn build_lambda_expr(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        lambda: &TypedLambda,
+    ) -> InternalValue<'a> {
+        let fn_type = self.build_func_type(
+            get_func_type_params_from_func_params(&lambda.params),
+            lambda.return_type.clone(),
+        );
+
+        let module = self.llvmmodule.borrow();
+        let fn_value: FunctionValue<'_> = module.add_function("lambda", fn_type, Some(Linkage::Internal));
+        drop(module);
+
+        // clone parent
+        let current_func_clone = self.blockreg.current_func_ref.clone();
+        let current_block_clone = self.blockreg.current_block_ref.clone();
+
+        self.blockreg.current_func_ref = Some(fn_value);
+        let entry_block = self.llvmctx.append_basic_block(fn_value, "entry");
+        self.blockreg.current_block_ref = Some(entry_block);
+        self.llvmbuilder.position_at_end(entry_block);
+
+        self.build_func_params(local_scope_opt, &lambda.params, fn_value);
+        self.build_block_statement(&lambda.body);
+
+        let current_block = self.blockreg.current_block_ref.unwrap();
+        if !self.is_block_terminated(current_block) {
+            self.llvmbuilder.build_return(None).unwrap();
+        }
+
+        let func_type = TypedFuncType {
+            params: get_func_type_params_from_func_params(&lambda.params),
+            return_type: Box::new(lambda.return_type.clone()),
+        };
+
+        // back to parent
+        self.blockreg.current_func_ref = current_func_clone;
+        self.blockreg.current_block_ref = current_block_clone;
+        if let Some(basic_block) = current_block_clone {
+            self.llvmbuilder.position_at_end(basic_block);
+        }
+
+        InternalValue::new(
+            ConcreteType::FuncType(func_type),
+            InternalValueKind::RValue(self.build_cast_fn_value_to_pointer(fn_value).try_into().unwrap()),
+        )
     }
 
-    pub(crate) fn build_func_type_from_func_sig(&self, func_sig: &FuncSig) -> TypedFuncType {
-        TypedFuncType {
-            params: TypedFuncTypeParams {
-                list: func_sig
-                    .params
-                    .list
-                    .iter()
-                    .map(|param| match param {
-                        TypedFuncParamKind::FuncParam(typed_func_param) => typed_func_param.ty.clone(),
-                        TypedFuncParamKind::SelfModifier(typed_self_modifier) => {
-                            typed_self_modifier.ty.clone().unwrap()
-                        }
-                    })
-                    .collect(),
-                variadic: match &func_sig.params.variadic {
-                    Some(variadic) => match variadic {
-                        TypedFuncVariadicParams::UntypedCStyle => {
-                            Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle))
-                        }
-                        TypedFuncVariadicParams::Typed(_, concrete_type) => {
-                            Some(Box::new(TypedFuncTypeVariadicParams::Typed(concrete_type.clone())))
-                        }
-                    },
-                    None => None,
-                },
-            },
-            ret: Box::new(func_sig.return_type.clone()),
-        }
+    pub(crate) fn build_cast_fn_value_to_pointer(&self, fn_value: FunctionValue<'a>) -> AnyValueEnum<'a> {
+        fn_value.as_global_value().as_pointer_value().into()
     }
 
     pub(crate) fn build_func_params(
@@ -262,7 +285,9 @@ fn get_func_type_params_from_func_params(func_params: &TypedFuncParams) -> Typed
         variadic: match &func_params.variadic {
             Some(variadic) => Some(Box::new(match variadic {
                 TypedFuncVariadicParams::UntypedCStyle => TypedFuncTypeVariadicParams::UntypedCStyle,
-                TypedFuncVariadicParams::Typed(_, concrete_type) => TypedFuncTypeVariadicParams::Typed(concrete_type.clone()),
+                TypedFuncVariadicParams::Typed(_, concrete_type) => {
+                    TypedFuncTypeVariadicParams::Typed(concrete_type.clone())
+                }
             })),
             None => None,
         },

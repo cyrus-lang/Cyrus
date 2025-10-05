@@ -77,6 +77,7 @@ pub enum Expression {
     MethodCall(MethodCall),
     UnnamedStructValue(UnnamedStructValue),
     SizeOfExpression(SizeOfExpression),
+    Lambda(Lambda),
 }
 
 #[derive(Debug, Clone)]
@@ -324,7 +325,7 @@ pub struct UnaryExpression {
 #[derive(Debug, Clone)]
 pub struct FuncType {
     pub params: FuncTypeParams,
-    pub ret: Box<TypeSpecifier>,
+    pub return_type: Box<TypeSpecifier>,
     pub span: Span,
     pub loc: Location,
 }
@@ -600,6 +601,15 @@ pub enum SwitchCasePattern {
     Expression(Expression),
     Identifier(Identifier),
     EnumVariant(Identifier, Vec<Identifier>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Lambda {
+    pub params: FuncParams,
+    pub body: Box<BlockStatement>,
+    pub return_type: TypeSpecifier,
+    pub span: Span,
+    pub loc: Location,
 }
 
 #[derive(Debug, Clone)]

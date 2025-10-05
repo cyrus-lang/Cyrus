@@ -1,7 +1,8 @@
 use ast::{AssignmentKind, LiteralKind, StringPrefix, operators::UnaryOperator};
 
 use crate::{
-    SymbolID, TypedExpression, TypedExpressionKind, TypedFuncTypeVariadicParams,
+    SymbolID, TypedExpression, TypedExpressionKind, TypedFuncParamKind, TypedFuncTypeVariadicParams,
+    TypedFuncVariadicParams, TypedLambda,
     types::{
         BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
         TypedFuncType, TypedUnnamedStructType,
@@ -224,6 +225,7 @@ pub fn format_typed_expr<'a>(
             return format!("sizeof({})", operand_fmt);
         }
         TypedExpressionKind::ConcreteType(concrete_type) => format_concrete_type(concrete_type.clone(), format_symbol),
+        TypedExpressionKind::Lambda(typed_lambda) => format_lambda(typed_lambda, format_symbol),
     }
 }
 
@@ -352,6 +354,39 @@ pub fn format_func_type<'a>(func_type: &TypedFuncType, format_symbol: &(dyn Fn(S
         }
     }
 
-    let ret = format_concrete_type(*func_type.ret.clone(), format_symbol);
+    let ret = format_concrete_type(*func_type.return_type.clone(), format_symbol);
     format!("fn({}) {}", params, ret)
+}
+
+pub fn format_lambda<'a>(lambda: &TypedLambda, format_symbol: &(dyn Fn(SymbolID) -> String + 'a)) -> String {
+    let mut params = lambda
+        .params
+        .list
+        .iter()
+        .map(|param| match param {
+            TypedFuncParamKind::FuncParam(typed_func_param) => {
+                format!(
+                    "{}: {}",
+                    typed_func_param.name,
+                    format_concrete_type(typed_func_param.ty.clone(), format_symbol)
+                )
+            }
+            TypedFuncParamKind::SelfModifier(..) => unreachable!(),
+        })
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    if let Some(variadic) = lambda.params.variadic.clone() {
+        match &variadic {
+            TypedFuncVariadicParams::UntypedCStyle => params.push_str(", ..."),
+            TypedFuncVariadicParams::Typed(identifier, concrete_type) => params.push_str(&format!(
+                ", {}: ...{}",
+                identifier,
+                format_concrete_type(concrete_type.clone(), format_symbol)
+            )),
+        }
+    }
+
+    let ret = format_concrete_type(lambda.return_type.clone(), format_symbol);
+    format!("fn({}) {} {{ ... }}", params, ret)
 }

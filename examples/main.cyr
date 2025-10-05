@@ -1,13 +1,19 @@
 import std::libc{printf, scanf};
 
-type SampleFn = fn(int) int;
+type AddFn = fn(int) int;
 
-fn sample(x: int) int {
-    printf("%d\n", x);
-    return x;
+fn add_two(x: int) int {
+    return x + 2;
+}
+
+fn call_add_fn(lambda: AddFn, input: int) {
+    printf("result: %d\n", lambda(input));
 }
 
 fn main() {
-    #lambda: SampleFn = sample;
-    lambda(10);
+    #add_fn: AddFn = fn(x: int) int {
+        return x + 1;
+    };
+
+    call_add_fn(add_fn, 10);
 }

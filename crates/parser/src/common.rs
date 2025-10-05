@@ -157,7 +157,7 @@ impl Parser {
 
         Ok(TypeSpecifier::FuncType(Box::new(FuncType {
             params,
-            ret: Box::new(ret),
+            return_type: Box::new(ret),
             span: Span::new(start, self.current_token().span.end),
             loc,
         })))

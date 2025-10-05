@@ -59,16 +59,16 @@ impl<'a> InternalValue<'a> {
 
     pub fn as_basic_value(&self) -> BasicValueEnum<'a> {
         match &self.kind {
-            InternalValueKind::LValue(pointer) => BasicValueEnum::PointerValue(*pointer),
+            InternalValueKind::LValue(pointer) => (*pointer).into(),
             InternalValueKind::RValue(value) => value.clone(),
-            InternalValueKind::FuncValue(..) => unreachable!(),
+            InternalValueKind::FuncValue(fn_value) => fn_value.as_global_value().as_pointer_value().into(),
         }
     }
 
     pub fn as_func_value(&self) -> Option<FunctionValue<'a>> {
         match &self.kind {
             InternalValueKind::FuncValue(fn_value) => Some(fn_value.clone()),
-            _ => None
+            _ => None,
         }
     }
 }

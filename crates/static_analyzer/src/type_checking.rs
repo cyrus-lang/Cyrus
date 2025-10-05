@@ -1,4 +1,4 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol, update_local_symbol};
 use ast::{
     AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator},
@@ -7,8 +7,9 @@ use ast::{
 };
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::{
-    scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, ResolvedUnion, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, ResolvedMethod, ResolvedUnion, SymbolEntryKind},
     signatures::FuncSig,
+    typed_func_params_as_func_type_params,
 };
 use std::collections::HashMap;
 use typed_ast::{
@@ -597,6 +598,7 @@ impl<'a> AnalysisContext<'a> {
                 });
                 return None;
             }
+            TypedExpressionKind::Lambda(typed_lambda) => self.analyze_lambda_expr(scope_id_opt, typed_lambda),
         };
 
         let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.loc.clone());
@@ -611,6 +613,24 @@ impl<'a> AnalysisContext<'a> {
         }
 
         normalized_type
+    }
+
+    fn analyze_lambda_expr(&mut self, scope_id_opt: Option<ScopeID>, lambda: &mut TypedLambda) -> Option<ConcreteType> {
+        let current_func_clone = self.current_func.clone();
+
+        self.normalize_func_params(&mut lambda.params, lambda.loc.clone());
+        lambda.return_type = self.normalize_type(scope_id_opt, lambda.return_type.clone(), lambda.loc.clone())?;
+        let params = typed_func_params_as_func_type_params(&lambda.params);
+        let func_type = TypedFuncType {
+            params,
+            return_type: Box::new(lambda.return_type.clone()),
+        };
+
+        self.current_func = Some(func_type.clone());
+        self.analyze_block_statement(&mut lambda.body);
+
+        self.current_func = current_func_clone;
+        Some(ConcreteType::FuncType(func_type))
     }
 
     pub(crate) fn check_expr_type_must_be_condition(&mut self, concrete_type: ConcreteType, loc: SourceLoc) {
@@ -788,7 +808,7 @@ impl<'a> AnalysisContext<'a> {
         let mut result = true;
 
         let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
-        let field_access_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
+        let field_access_from_struct_methods = method_symbol_ids.contains(&self.current_method_symbol_id.unwrap());
         if !(field_access_from_struct_methods || field_vis.is_private()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1789,7 +1809,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        Some(*func_type.ret.clone())
+        Some(*func_type.return_type.clone())
     }
 
     fn analyze_func_call_on_func_type(
@@ -1815,26 +1835,39 @@ impl<'a> AnalysisContext<'a> {
             .resolve_local_or_global_symbol(local_scope_opt.clone(), func_call.symbol_id)
             .unwrap();
 
-        let func_sig_opt = match local_or_global_symbol {
+        let func_sig_opt = match &local_or_global_symbol {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_variable() {
                 Some(resolved_var) => match &resolved_var.typed_variable.ty {
-                    Some(normalized) => match normalized.as_func_type() {
-                        Some(func_type) => {
-                            return self.analyze_func_call_on_func_type(
-                                scope_id_opt,
-                                &mut func_type.clone(),
-                                &mut func_call.args,
-                                func_call.loc.clone(),
+                    Some(concrete_type) => {
+                        let normalized =
+                            self.normalize_type(scope_id_opt, concrete_type.clone(), func_call.loc.clone())?;
+
+                        if let Some(scope_id) = scope_id_opt {
+                            update_local_symbol!(self, scope_id, func_call.symbol_id,
+                                LocalSymbolKind::Variable(resolved_var) => resolved_var, {
+                                    resolved_var.typed_variable.ty = Some(normalized.clone());
+                                }
                             );
                         }
-                        None => None,
-                    },
+
+                        match normalized.as_func_type() {
+                            Some(func_type) => {
+                                return self.analyze_func_call_on_func_type(
+                                    scope_id_opt,
+                                    &mut func_type.clone(),
+                                    &mut func_call.args,
+                                    func_call.loc.clone(),
+                                );
+                            }
+                            None => None,
+                        }
+                    }
                     None => None,
                 },
                 None => None,
             },
-            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
-                SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig),
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig.clone()),
                 _ => None,
             },
         };
@@ -2159,7 +2192,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> bool {
         let mut result = true;
         let method_symbol_ids = object_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
-        let method_call_from_struct_methods = method_symbol_ids.contains(&self.cur_func_symbol_id.unwrap());
+        let method_call_from_struct_methods = method_symbol_ids.contains(&self.current_method_symbol_id.unwrap());
 
         if !(method_call_from_struct_methods || resolved_method.func_sig.vis.is_public()) {
             self.reporter.report(Diag {

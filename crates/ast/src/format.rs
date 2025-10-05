@@ -118,7 +118,7 @@ impl fmt::Display for TypeSpecifier {
                     }
                 }
 
-                write!(f, "fn ({}) {}", params, func_type.ret.to_string())
+                write!(f, "fn ({}) {}", params, func_type.return_type.to_string())
             }
             TypeSpecifier::TypeToken(token) => write!(f, "{}", token.kind),
             TypeSpecifier::Identifier(identifier) => write!(f, "{}", identifier),
@@ -205,6 +205,23 @@ impl fmt::Display for InfixOperator {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Expression::Lambda(lambda) => {
+                write!(f, "fn(")?;
+                lambda.params.list.iter().for_each(|param| match param {
+                    FuncParamKind::FuncParam(func_param) => {
+                        write!(
+                            f,
+                            "{}: {}",
+                            func_param.identifier.as_string(),
+                            func_param.ty.clone().unwrap()
+                        )
+                        .unwrap();
+                    }
+                    FuncParamKind::SelfModifier(..) => unreachable!(),
+                });
+                write!(f, ") {}", lambda.return_type.clone())?;
+                write!(f, "{{ {} }}", format_statements(&lambda.body.exprs))
+            }
             Expression::Unary(unary_expr) => {
                 write!(f, "{}{}", unary_expr.op.clone(), unary_expr.operand)
             }
