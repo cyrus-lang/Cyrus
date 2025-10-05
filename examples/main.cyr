@@ -1,10 +1,10 @@
 import std::libc{printf};
-import sample;
+
+LAMBDA = fn(x: int) int {
+    return x * 2;
+};
 
 fn main() {
-    #lambda: sample::AddFn = fn(x: int) int {
-        return x + 2;
-    };
-
-    sample::call_add_fn(lambda, 10);
+    #result = LAMBDA(10);
+    printf("res: %d\n", result);
 }

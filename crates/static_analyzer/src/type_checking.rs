@@ -1868,6 +1868,38 @@ impl<'a> AnalysisContext<'a> {
             },
             LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
                 SymbolEntryKind::Func(resolved_function) => Some(resolved_function.func_sig.clone()),
+                SymbolEntryKind::GlobalVar(resolved_global_var) => {
+                    let concrete_type = match resolved_global_var.global_var_sig.ty.clone() {
+                        Some(concrete_type) => concrete_type,
+                        None => self
+                            .analyze_typed_expr_type(
+                                scope_id_opt,
+                                &mut resolved_global_var.global_var_sig.rhs.clone().unwrap(),
+                                None,
+                            )
+                            .unwrap(),
+                    };
+
+                    let normalized = self.normalize_type(scope_id_opt, concrete_type, func_call.loc.clone())?;
+
+                    update_global_symbol!(self, resolved_global_var.module_id, func_call.symbol_id,
+                        SymbolEntryKind::GlobalVar(resolved_global_var) => resolved_global_var, {
+                            resolved_global_var.global_var_sig.ty = Some(normalized.clone());
+                        }
+                    );
+
+                    match normalized.as_func_type() {
+                        Some(func_type) => {
+                            return self.analyze_func_call_on_func_type(
+                                scope_id_opt,
+                                &mut func_type.clone(),
+                                &mut func_call.args,
+                                func_call.loc.clone(),
+                            );
+                        }
+                        None => None,
+                    }
+                }
                 _ => None,
             },
         };
