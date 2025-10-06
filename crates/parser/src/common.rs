@@ -159,6 +159,7 @@ impl Parser {
             params,
             return_type: Box::new(ret),
             span: Span::new(start, self.current_token().span.end),
+            vis_opt: None,
             loc,
         })))
     }

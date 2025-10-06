@@ -1,5 +1,5 @@
 use crate::{diagnostics::AnalyzerDiagKind, type_cache::TypeResolverCaches};
-use ast::{AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
+use ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
@@ -1213,11 +1213,14 @@ impl<'a> AnalysisContext<'a> {
         return_type: &mut ConcreteType,
         params: &mut TypedFuncParams,
         body: &mut TypedBlockStatement,
+        vis_opt: Option<AccessSpecifier>,
         loc: SourceLoc,
     ) {
         self.current_func = Some(TypedFuncType {
             params: typed_func_params_as_func_type_params(params),
             return_type: Box::new(return_type.clone()),
+            vis_opt,
+            loc: loc.clone(),
         });
         let state = self.analyze_block_statement(body);
 
@@ -1258,6 +1261,8 @@ impl<'a> AnalysisContext<'a> {
             self.current_func = Some(TypedFuncType {
                 params: typed_func_params_as_func_type_params(&func_sig.params),
                 return_type: Box::new(func_sig.return_type.clone()),
+                vis_opt: Some(func_sig.vis.clone()),
+                loc: func_sig.loc.clone(),
             });
             self.check_method_name(func_sig.name.clone(), func_sig.loc.clone());
 
@@ -1295,6 +1300,8 @@ impl<'a> AnalysisContext<'a> {
             self.current_func = Some(TypedFuncType {
                 params: typed_func_params_as_func_type_params(&func_sig.params),
                 return_type: Box::new(func_sig.return_type.clone()),
+                vis_opt: Some(func_sig.vis.clone()),
+                loc: func_sig.loc.clone(),
             });
             let state = self.analyze_block_statement(&mut func_body);
 
@@ -1315,6 +1322,8 @@ impl<'a> AnalysisContext<'a> {
                 m.func_body = Some(func_body);
             }
         }
+
+        self.current_method_symbol_id = None;
     }
 
     fn analyze_func_def(&mut self, typed_func_def: &mut TypedFuncDef) {
@@ -1331,6 +1340,7 @@ impl<'a> AnalysisContext<'a> {
             &mut typed_func_def.return_type,
             &mut typed_func_def.params,
             &mut typed_func_def.body,
+            Some(typed_func_def.vis.clone()),
             typed_func_def.loc.clone(),
         );
     }

@@ -1,5 +1,4 @@
-extern fn printf(format: const char*, ...);
-extern fn exit(status: int);
+import std::libc{printf};
 
 pub fn fibonacci(n: int) int {
     if (n == 0) {

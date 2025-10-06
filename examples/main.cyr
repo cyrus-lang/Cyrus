@@ -1,21 +1,17 @@
+import sample;
 import std::libc{printf};
 
-type HandlerFn = fn(int, int) void;
+struct Sample {
+    pub name: char*;
 
-struct Route {
-    handler: HandlerFn;
-
-    pub fn apply(self) {
-        (self.handler)(4, 5);
+    pub fn display(&self) {
+        // printf("name: %s\n", self->name);
     }
 }
 
 fn main() {
-    #route = Route {
-        handler: fn(req: int, res: int) void {
-            printf("%d %d\n", req, res);
-        }
-    };
+    #inst = Sample { name: "Taha" };
+    inst.display();
 
-    route.apply();
+    #a = inst.name;
 }

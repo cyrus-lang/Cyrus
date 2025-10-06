@@ -137,7 +137,13 @@ impl Parser {
     pub fn current_token_is(&self, token_kind: TokenKind) -> bool {
         let current_token = match self.tokens.get(self.cur_token_idx) {
             Some(token) => token,
-            None => return false,
+            None => {
+                if token_kind == TokenKind::EOF {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
         };
         current_token.kind == token_kind
     }
@@ -145,7 +151,13 @@ impl Parser {
     pub fn peek_token_is(&self, token_kind: TokenKind) -> bool {
         let peek_token = match self.tokens.get(self.cur_token_idx + 1) {
             Some(token) => token,
-            None => return false,
+            None => {
+                if token_kind == TokenKind::EOF {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
         };
         peek_token.kind == token_kind
     }
@@ -187,13 +199,13 @@ impl Parser {
     /// the expected kind, it consumes the token and returns `Ok`. Otherwise, it returns an error
     /// with a message indicating the mismatch.
     pub fn expect_peek(&mut self, token_kind: TokenKind) -> Result<(), ParserError> {
-        if self.peek_token_is(token_kind) {
+        if self.peek_token_is(token_kind.clone()) {
             self.next_token(); // consume current token
             return Ok(());
         }
 
         Err(Diag {
-            kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+            kind: ParserDiagKind::ExpectedToken(token_kind),
             level: DiagLevel::Error,
             location: Some(DiagLoc::new(SourceLoc::from_loc(
                 self.current_token().loc,
