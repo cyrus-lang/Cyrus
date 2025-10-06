@@ -326,6 +326,7 @@ pub struct UnaryExpression {
 pub struct FuncType {
     pub params: FuncTypeParams,
     pub return_type: Box<TypeSpecifier>,
+    pub vis_opt: Option<AccessSpecifier>,
     pub span: Span,
     pub loc: Location,
 }
@@ -657,7 +658,7 @@ impl FuncDecl {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AccessSpecifier {
     Extern,
     Public,

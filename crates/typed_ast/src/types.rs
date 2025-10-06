@@ -1,5 +1,5 @@
 use crate::{SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams};
-use ast::token::TokenKind;
+use ast::{AccessSpecifier, token::TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConcreteType {
@@ -17,6 +17,8 @@ pub enum ConcreteType {
 pub struct TypedFuncType {
     pub params: TypedFuncTypeParams,
     pub return_type: Box<ConcreteType>,
+    pub vis_opt: Option<AccessSpecifier>,
+    pub loc: SourceLoc
 }
 
 #[derive(Debug, Clone, PartialEq)]

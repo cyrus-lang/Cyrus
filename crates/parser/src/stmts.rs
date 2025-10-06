@@ -426,7 +426,7 @@ impl Parser {
                     let vis: AccessSpecifier = self.parse_access_specifier(self.current_token().clone())?;
 
                     if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
-                        let field = self.parse_struct_field(None)?;
+                        let field = self.parse_struct_field(Some(vis))?;
                         fields.push(field);
                     } else {
                         if let Statement::FuncDef(method) = self.parse_func(Some(vis))? {
@@ -478,7 +478,7 @@ impl Parser {
         }))
     }
 
-    fn parse_struct_field(&mut self, access_specifier: Option<AccessSpecifier>) -> Result<StructField, ParserError> {
+    fn parse_struct_field(&mut self, vis: Option<AccessSpecifier>) -> Result<StructField, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -493,7 +493,7 @@ impl Parser {
         let field = StructField {
             identifier,
             ty: type_token,
-            vis: access_specifier.unwrap_or(AccessSpecifier::Internal),
+            vis: vis.unwrap_or(AccessSpecifier::Internal),
             loc,
             span: Span {
                 start,
@@ -1232,6 +1232,18 @@ impl Parser {
     pub fn parse_block_statement(&mut self) -> Result<BlockStatement, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
+
+        if self.peek_token_is(TokenKind::EOF) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingClosingBrace,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc,
+                    self.file_name.clone(),
+                ))),
+                hint: None,
+            });
+        }
 
         self.expect_current(TokenKind::LeftBrace)?;
 

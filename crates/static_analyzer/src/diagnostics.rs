@@ -2,6 +2,9 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    PrivateFunctionCall {
+        name: String,
+    },
     UninitializedLambda,
     VoidVariableType,
     NegativeArrayCapacity,
@@ -202,6 +205,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::PrivateFunctionCall { name } => {
+                write!(f, "Function '{}' is private and cannot be called.", name)
+            }
             AnalyzerDiagKind::UninitializedLambda => {
                 write!(f, "Lambda cannot be left uninitialized.")
             }

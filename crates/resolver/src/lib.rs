@@ -558,6 +558,8 @@ impl Resolver {
                 Ok(ConcreteType::FuncType(TypedFuncType {
                     params: TypedFuncTypeParams { list: params, variadic },
                     return_type: Box::new(return_type),
+                    vis_opt: func_type.vis_opt.clone(),
+                    loc: SourceLoc::from_loc(loc.clone(), self.get_current_module_file_path()),
                 }))
             }
             TypeSpecifier::TypeToken(token) => {
@@ -2982,6 +2984,8 @@ pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
     TypedFuncType {
         params: typed_func_params_as_func_type_params(&func_sig.params),
         return_type: Box::new(func_sig.return_type.clone()),
+        vis_opt: Some(func_sig.vis.clone()),
+        loc: func_sig.loc.clone(),
     }
 }
 

@@ -13,7 +13,7 @@ use resolver::{
 };
 use std::collections::HashMap;
 use typed_ast::{
-    format::{format_concrete_type, format_func_type},
+    format::{format_concrete_type, format_func_type, format_typed_expr},
     types::{
         BasicConcreteType::{self, *},
         ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
@@ -624,6 +624,8 @@ impl<'a> AnalysisContext<'a> {
         let func_type = TypedFuncType {
             params,
             return_type: Box::new(lambda.return_type.clone()),
+            vis_opt: None,
+            loc: lambda.loc.clone(),
         };
 
         self.current_func = Some(func_type.clone());
@@ -807,21 +809,26 @@ impl<'a> AnalysisContext<'a> {
     ) -> bool {
         let mut result = true;
 
-        if let Some(current_method_symbol_id) = self.current_method_symbol_id {
-            let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
-            let field_access_from_struct_methods = method_symbol_ids.contains(&current_method_symbol_id);
-            if !(field_access_from_struct_methods || field_vis.is_private()) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::InternalFieldAccess {
-                        field_name: field_access.field_name.clone(),
-                        struct_name: struct_name.to_string(),
-                    },
-                    location: Some(DiagLoc::new(field_access.loc.clone())),
-                    hint: None,
-                });
-                result = false;
+        let access_violation = {
+            if let Some(current_method_symbol_id) = self.current_method_symbol_id {
+                let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
+                !method_symbol_ids.contains(&current_method_symbol_id) // no violation if access is from internal members
+            } else {
+                !field_vis.is_public() // violation if field is not public
             }
+        };
+
+        if access_violation {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InternalFieldAccess {
+                    field_name: field_access.field_name.clone(),
+                    struct_name: struct_name.to_string(),
+                },
+                location: Some(DiagLoc::new(field_access.loc.clone())),
+                hint: None,
+            });
+            result = false;
         }
 
         let is_pointer = operand.concrete_type.clone().unwrap().get_const_inner().is_pointer();
@@ -1819,6 +1826,20 @@ impl<'a> AnalysisContext<'a> {
         let operand_concrete_type = self.analyze_typed_expr_type(scope_id_opt, &mut func_call.operand, None)?;
 
         if let Some(mut func_type) = operand_concrete_type.as_func_type().cloned() {
+            if let Some(vis) = &func_type.vis_opt {
+                if vis.is_private() {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::PrivateFunctionCall {
+                            name: format_typed_expr(&func_call.operand, &(self.symbol_formatter)(scope_id_opt)),
+                        },
+                        location: Some(DiagLoc::new(func_call.loc.clone())),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
+
             self.normalize_func_type_params(&mut func_type.params, func_call.loc.clone());
 
             let return_type =
@@ -2073,8 +2094,6 @@ impl<'a> AnalysisContext<'a> {
             .lookup_symbol_entry_with_id(object_module_id, method_symbol_id)
             .unwrap();
 
-        self.current_method_symbol_id = Some(method_symbol_id);
-
         let resolved_method = match &mut method_symbol_entry.kind {
             SymbolEntryKind::Method(resolved_method) => resolved_method,
             _ => unreachable!(),
@@ -2125,10 +2144,18 @@ impl<'a> AnalysisContext<'a> {
         resolved_method: &ResolvedMethod,
     ) -> bool {
         let mut result = true;
-        let method_symbol_ids = object_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
-        let method_call_from_struct_methods = method_symbol_ids.contains(&self.current_method_symbol_id.unwrap());
+        let method_vis = &resolved_method.func_sig.vis;
 
-        if !(method_call_from_struct_methods || resolved_method.func_sig.vis.is_public()) {
+        let access_violation = {
+            if let Some(current_method_symbol_id) = self.current_method_symbol_id {
+                let method_symbol_ids = object_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
+                !method_symbol_ids.contains(&current_method_symbol_id) // no violation if access is from internal members
+            } else {
+                !method_vis.is_public() // violation if method is not public
+            }
+        };
+
+        if access_violation {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InternalMethodCall {

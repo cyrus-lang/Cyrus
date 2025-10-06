@@ -273,6 +273,8 @@ impl<'a> AnalysisContext<'a> {
                         },
                     },
                     return_type: Box::new(resolved_func.func_sig.return_type.clone()),
+                    loc: resolved_func.func_sig.loc.clone(),
+                    vis_opt: Some(resolved_func.func_sig.vis.clone()),
                 })),
                 SymbolEntryKind::GlobalVar(resolved_global_var) => {
                     if let Some(ty) = &resolved_global_var.global_var_sig.ty {
