@@ -1,17 +1,6 @@
 import sample;
 import std::libc{printf};
 
-struct Sample {
-    pub name: char*;
-
-    pub fn display(&self) {
-        // printf("name: %s\n", self->name);
-    }
-}
-
 fn main() {
-    #inst = Sample { name: "Taha" };
-    inst.display();
-
-    #a = inst.name;
+    printf("Hello, Cyrus!\n");
 }
