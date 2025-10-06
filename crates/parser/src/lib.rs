@@ -98,11 +98,8 @@ impl Parser {
     pub fn display_parser_errors(&mut self, errors: Vec<ParserError>) {
         let len = errors.len();
         if len > 0 {
-            // Take last 3 errors or fewer if less than 3
-            let start_index = if len > 3 { len - 3 } else { 0 };
-            for error in &errors[start_index..] {
-                DiagReporter::display_single(error.clone());
-            }
+            let diag = errors.first().unwrap().clone();
+            DiagReporter::display_single(diag);
         }
     }
 
