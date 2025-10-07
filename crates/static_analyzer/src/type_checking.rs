@@ -810,13 +810,16 @@ impl<'a> AnalysisContext<'a> {
     ) -> bool {
         let mut result = true;
 
-        let access_violation = {
-            if let Some(current_method_symbol_id) = self.current_method_symbol_id {
-                let method_symbol_ids = struct_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
-                !method_symbol_ids.contains(&current_method_symbol_id) // no violation if access is from internal members
+        let access_violation = if let Some(current_method_symbol_id) = self.current_method_symbol_id {
+            let method_symbol_ids = struct_methods.values().cloned().collect::<Vec<SymbolID>>();
+
+            if method_symbol_ids.contains(&current_method_symbol_id) {
+                false
             } else {
-                !field_vis.is_public() // violation if field is not public
+                !field_vis.is_public()
             }
+        } else {
+            !field_vis.is_public()
         };
 
         if access_violation {
@@ -2146,13 +2149,16 @@ impl<'a> AnalysisContext<'a> {
         let mut result = true;
         let method_vis = &resolved_method.func_sig.vis;
 
-        let access_violation = {
-            if let Some(current_method_symbol_id) = self.current_method_symbol_id {
-                let method_symbol_ids = object_methods.values().into_iter().cloned().collect::<Vec<SymbolID>>();
-                !method_symbol_ids.contains(&current_method_symbol_id) // no violation if access is from internal members
+        let access_violation = if let Some(current_method_symbol_id) = self.current_method_symbol_id {
+            let method_symbol_ids = object_methods.values().cloned().collect::<Vec<SymbolID>>();
+
+            if method_symbol_ids.contains(&current_method_symbol_id) {
+                false
             } else {
-                !method_vis.is_public() // violation if method is not public
+                !method_vis.is_public()
             }
+        } else {
+            !method_vis.is_public()
         };
 
         if access_violation {

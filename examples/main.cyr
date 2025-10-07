@@ -1,40 +1,23 @@
-import std::core{panic};
-import std::libc{strlen, malloc, memcpy, free};
+import std::libc{printf, malloc, free, strncpy};
+import std::string{String};
 
-pub struct String {
-    pub data: char*;
-    pub length: size_t;
-    pub capacity: size_t;
+struct Foo {
+    pub name: String;
 
-    pub fn new(init: const char*) String {
-        #len = strlen(init);
-        #cap = len + 1;
-        #inst: String;
-        inst.data = malloc(cap);
-        if (!inst.data) {
-            panic("failed to allocate memory for string.");
-        }
-        memcpy(inst.data, init, len + 1);
-        inst.length = len;
-        inst.capacity = cap;
-        return inst;
+    pub fn display(&self) {
+        // printf("name: %s\n", self->name);
     }
 
     pub fn free(&self) {
-        free(self->data);
-        self->data = null;
-        self->length = 0;
-        self->capacity = 0;
-    }
-
-    pub fn c_str(&self) char* {
-        return cast(char*, self->data);
+        self->name.free();
     }
 }
 
 fn main() {
-    #str = String.new("Taha");
-
-    printf("name: %s\n", str.c_str());
-    str.free();
+    #inst = Foo {
+        name: String.new("Cyrus!")
+    };
+    
+    inst.display();
+    inst.free();
 }

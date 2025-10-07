@@ -241,18 +241,18 @@ impl Resolver {
                     .unwrap_or(generate_module_id())
             };
 
-            if visiting.active.contains(&module_file_path) {
-                // cycle import detected
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ImportCycle {
-                        module_names: visiting.active.iter().cloned().collect(),
-                    },
-                    location: None,
-                    hint: None,
-                });
-                continue;
-            }
+            // if visiting.active.contains(&module_file_path) {
+            //     // cycle import detected
+            //     self.reporter.report(Diag {
+            //         level: DiagLevel::Error,
+            //         kind: ResolverDiagKind::ImportCycle {
+            //             module_names: visiting.active.iter().cloned().collect(),
+            //         },
+            //         location: None,
+            //         hint: None,
+            //     });
+            //     continue;
+            // }
 
             visiting.active.insert(module_file_path.clone());
 
