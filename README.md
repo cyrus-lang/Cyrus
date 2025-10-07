@@ -2,8 +2,6 @@
   <img src="./docs/logo.png" alt="Cyrus Logo" width="300"/>
 </p>
 
-<h1 align="center" style="border-bottom: none;">Cyrus Programming Language</h1>
-
 <p align="center">
   <a href="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-linux.yml/badge.svg">
     <img src="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-linux.yml/badge.svg" alt="Build Status">
@@ -13,7 +11,8 @@
   </a>
 </p>
 
-<hr/>
+<h1 align="center" style="border-bottom: none;">Cyrus Programming Language</h1>
+
 <br />
 
 Cyrus is a **general-purpose, statically-typed, manually memory-managed programming language** designed for **performance-critical applications**. Leveraging **LLVM** as its backend, Cyrus provides efficient code generation and advanced optimizations. Its syntax is influenced by C, making it familiar to developers experienced with C-like languages.
@@ -34,14 +33,14 @@ Cyrus was born out of frustration with the unnecessary complexity of modern lang
 
 Cyrus makes a different bet: that **simplicity, explicitness, and elegance can coexist without sacrificing performance**.
 
-### Ideal For:
+### Ideal For
 
 - System developers who love C but want a modern evolution without garbage collection  
 - Developers frustrated by Rust’s learning curve, but still wanting safe and performant code  
 - Embedded and OS-level developers needing low runtime overhead and full control  
 - Anyone seeking a beautiful, expressive, low-level language that respects your brain  
 
-### Not Recommended (Yet) For:
+### Not Recommended (Yet) For
 
 - Absolute beginners with no background in system languages  
 - Developers who want automatic memory management and runtime safety without learning allocator logic  
