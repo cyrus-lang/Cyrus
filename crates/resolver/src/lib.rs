@@ -10,8 +10,8 @@ use ast::source_loc::SourceLoc;
 use ast::{
     AccessSpecifier, AddressOf, Array, ArrayIndex, Assignment, Cast, Dereference, FieldAccess, FuncCall, FuncParams,
     FuncTypeVariadicParams, GlobalVariable, If, Import, InfixExpression, Interface, Lambda, Literal, MethodCall,
-    ModuleImport, ModulePath, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix,
-    StructInit, SwitchCasePattern, UnaryExpression, Union, UnnamedStructValue,
+    ModuleImport, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix, StructInit,
+    SwitchCasePattern, UnaryExpression, Union, UnnamedStructValue,
 };
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
@@ -51,8 +51,7 @@ pub struct Resolver {
     pub reporter: DiagReporter<ResolverDiagKind>,
     pub module_loader: ModuleLoader,
     pub master_module_file_path: String,
-    // loaded only for current module (not global)
-    already_imported_modules: Vec<ModulePath>,
+    already_imported_modules: HashSet<ModuleFilePath>,
     current_module: Option<ModuleID>,
 }
 
@@ -90,7 +89,7 @@ impl Resolver {
             module_aliases: Arc::new(Mutex::new(HashMap::new())),
             file_paths: file_paths.clone(),
             program_trees: Arc::new(Mutex::new(Vec::new())),
-            already_imported_modules: Vec::new(),
+            already_imported_modules: HashSet::new(),
             reporter: DiagReporter::new(),
             module_loader: ModuleLoader::new(opts),
             current_module: None,
@@ -181,54 +180,22 @@ impl Resolver {
         exists
     }
 
-    // FIXME   Fix cyclic-import problem here.
-    fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, mut visiting: &mut Visiting) {
-        let mut duplicate_import = false;
+    /// Resolves a module import with duplicate and cycle detection.
+    fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, visiting: &mut Visiting) {
+        let current_module_file_path = self.get_module_file_path(parent_module_id).unwrap();
 
-        for module_path in &import.paths {
-            let already_loaded = self
-                .already_imported_modules
-                .iter()
-                .find(|loaded_module_path| **loaded_module_path == *module_path);
-
-            if already_loaded.is_some() {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ImportTwice {
-                        module_name: module_segments_as_string(module_path.segments.clone()),
-                    },
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        import.loc.clone(),
-                        self.get_current_module_file_path(),
-                    ))),
-                    hint: Some("Consider to remove previous declaration.".to_string()),
-                });
-                duplicate_import = true;
-            }
-
-            self.already_imported_modules.push(module_path.clone());
-        }
-
-        if duplicate_import {
-            return;
-        }
-
-        let loaded_modules_list = self
-            .module_loader
-            .load_module(import.clone(), self.get_current_module_file_path());
+        let loaded_modules_list = self.module_loader.load_module(&import);
 
         for loaded_module in loaded_modules_list {
-            self.already_imported_modules.clear();
-
-            let (module_alias, module_file_path, program_tree) = match loaded_module {
-                Ok(module_ast_and_file_path) => module_ast_and_file_path,
+            let (module_alias, module_path, module_file_path, program_tree) = match loaded_module {
+                Ok(m) => m,
                 Err(diag_kind) => {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: diag_kind,
                         location: Some(DiagLoc::new(SourceLoc::from_loc(
                             import.loc.clone(),
-                            self.get_current_module_file_path(),
+                            current_module_file_path.clone(),
                         ))),
                         hint: None,
                     });
@@ -236,25 +203,63 @@ impl Resolver {
                 }
             };
 
-            let module_id = {
-                self.get_module_id_by_file_path(module_file_path.clone())
-                    .unwrap_or(generate_module_id())
-            };
+            // check for duplicate import in this module
+            if self.already_imported_modules.contains(&module_file_path) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ImportTwice {
+                        module_name: module_segments_as_string(module_path.segments),
+                    },
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        import.loc.clone(),
+                        current_module_file_path.clone(),
+                    ))),
+                    hint: Some("Consider removing the previous declaration.".to_string()),
+                });
+                continue;
+            }
 
-            // if visiting.active.contains(&module_file_path) {
-            //     // cycle import detected
-            //     self.reporter.report(Diag {
-            //         level: DiagLevel::Error,
-            //         kind: ResolverDiagKind::ImportCycle {
-            //             module_names: visiting.active.iter().cloned().collect(),
-            //         },
-            //         location: None,
-            //         hint: None,
-            //     });
-            //     continue;
-            // }
+            self.already_imported_modules.insert(module_file_path.clone());
+
+            // self-import check
+            if self.already_imported_modules.contains(&current_module_file_path) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ModuleCannotImportItself,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        import.loc.clone(),
+                        current_module_file_path.clone(),
+                    ))),
+                    hint: None,
+                });
+                continue;
+            }
+
+            // cycle detection
+            if visiting.active.contains(&module_file_path) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ImportCycle {
+                        module_names: visiting.active.iter().cloned().collect(),
+                    },
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        import.loc.clone(),
+                        current_module_file_path.clone(),
+                    ))),
+                    hint: Some("Break the cycle by removing one import.".to_string()),
+                });
+                continue;
+            }
+
+            if visiting.done.contains(&module_file_path) {
+                continue;
+            }
 
             visiting.active.insert(module_file_path.clone());
+
+            let module_id = self
+                .get_module_id_by_file_path(module_file_path.clone())
+                .unwrap_or_else(generate_module_id);
 
             if self.skip_module_if_loaded_once(module_file_path.clone()) {
                 match module_alias {
@@ -273,33 +278,37 @@ impl Resolver {
             } else {
                 self.insert_module_file_path(module_id, module_file_path.clone());
 
-                match self.resolve_module(module_id, program_tree.as_ref(), &mut visiting, false, module_file_path) {
-                    Some(typed_program_tree) => {
-                        let module_file_path = self.get_current_module_file_path();
+                if let Some(typed_program_tree) = self.resolve_module(
+                    module_id,
+                    program_tree.as_ref(),
+                    visiting,
+                    false,
+                    module_file_path.clone(),
+                ) {
+                    let module_file_path = self.get_current_module_file_path();
+                    let mut program_trees = self.program_trees.lock().unwrap();
+                    let module_name = get_module_name(module_file_path.clone());
+                    program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
+                    drop(program_trees);
 
-                        let mut program_trees = self.program_trees.lock().unwrap();
-                        let module_name = get_module_name(module_file_path.clone());
-                        program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
-                        drop(program_tree);
-                        drop(program_trees);
-
-                        match module_alias {
-                            ModuleAlias::Group(group_name) => {
-                                self.insert_module_alias(parent_module_id, group_name, module_id);
-                            }
-                            ModuleAlias::Single(ref module_segment_singles) => {
-                                self.load_module_import_singles(
-                                    parent_module_id,
-                                    module_id,
-                                    module_segment_singles,
-                                    import.loc.clone(),
-                                );
-                            }
+                    match module_alias {
+                        ModuleAlias::Group(group_name) => {
+                            self.insert_module_alias(parent_module_id, group_name, module_id);
+                        }
+                        ModuleAlias::Single(ref module_segment_singles) => {
+                            self.load_module_import_singles(
+                                parent_module_id,
+                                module_id,
+                                module_segment_singles,
+                                import.loc.clone(),
+                            );
                         }
                     }
-                    None => continue,
-                };
+                }
             }
+
+            visiting.active.remove(&module_file_path);
+            visiting.done.insert(module_file_path);
         }
     }
 

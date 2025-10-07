@@ -1,8 +1,6 @@
 use crate::diagnostics::ResolverDiagKind;
-use ast::{
-    Import, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string, source_loc::SourceLoc,
-};
-use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
+use ast::{Import, ModulePath, ModuleSegment, ModuleSegmentSingle, ProgramTree, format::module_segments_as_string};
+use diagcentral::{Diag, DiagLevel, display_single_diag};
 use lexer::Lexer;
 use parser::Parser;
 use std::{
@@ -38,11 +36,11 @@ impl ModuleLoader {
 
     pub fn load_module(
         &mut self,
-        import: Import,
-        current_module_file_path: String,
-    ) -> Vec<Result<(ModuleAlias, ModuleFilePath, Rc<ProgramTree>), ResolverDiagKind>> {
-        let mut loaded_modules_list: Vec<Result<(ModuleAlias, ModuleFilePath, Rc<ProgramTree>), ResolverDiagKind>> =
-            Vec::new();
+        import: &Import,
+    ) -> Vec<Result<(ModuleAlias, ModulePath, ModuleFilePath, Rc<ProgramTree>), ResolverDiagKind>> {
+        let mut loaded_modules_list: Vec<
+            Result<(ModuleAlias, ModulePath, ModuleFilePath, Rc<ProgramTree>), ResolverDiagKind>,
+        > = Vec::new();
 
         for sub_import in &import.paths {
             let mut module_file_path = match self.get_imported_module_path(sub_import.segments.clone()) {
@@ -52,18 +50,6 @@ impl ModuleLoader {
                     continue;
                 }
             };
-
-            if current_module_file_path == module_file_path {
-                display_single_diag!(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ModuleCannotImportItself,
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        import.loc.clone(),
-                        current_module_file_path
-                    ))),
-                    hint: None,
-                });
-            }
 
             let path_buf = Path::new(&module_file_path);
             if path_buf.is_dir() {
@@ -106,7 +92,12 @@ impl ModuleLoader {
                         }
                     };
 
-                    loaded_modules_list.push(Ok((module_alias, module_file_path.clone(), program_tree_rc)));
+                    loaded_modules_list.push(Ok((
+                        module_alias,
+                        sub_import.clone(),
+                        module_file_path.clone(),
+                        program_tree_rc,
+                    )));
                 }
                 Err(errors) => {
                     parser.display_parser_errors(errors.clone());

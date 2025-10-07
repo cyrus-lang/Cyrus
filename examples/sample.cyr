@@ -1,6 +1,0 @@
-import foo;
-import std::libc{printf};
-
-fn sample() {
-    printf("Hello!\n");
-}
