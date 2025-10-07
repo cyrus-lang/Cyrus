@@ -622,6 +622,7 @@ impl<'a> AnalysisContext<'a> {
         lambda.return_type = self.normalize_type(scope_id_opt, lambda.return_type.clone(), lambda.loc.clone())?;
         let params = typed_func_params_as_func_type_params(&lambda.params);
         let func_type = TypedFuncType {
+            def_module_id: Some(self.module_id),
             params,
             return_type: Box::new(lambda.return_type.clone()),
             vis_opt: None,
@@ -1824,10 +1825,9 @@ impl<'a> AnalysisContext<'a> {
         func_call: &mut TypedFuncCall,
     ) -> Option<ConcreteType> {
         let operand_concrete_type = self.analyze_typed_expr_type(scope_id_opt, &mut func_call.operand, None)?;
-
         if let Some(mut func_type) = operand_concrete_type.as_func_type().cloned() {
             if let Some(vis) = &func_type.vis_opt {
-                if vis.is_private() {
+                if vis.is_private() && func_type.def_module_id != Some(self.module_id) {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::PrivateFunctionCall {

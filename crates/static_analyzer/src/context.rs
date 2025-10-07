@@ -1217,6 +1217,7 @@ impl<'a> AnalysisContext<'a> {
         loc: SourceLoc,
     ) {
         self.current_func = Some(TypedFuncType {
+            def_module_id: Some(self.module_id),
             params: typed_func_params_as_func_type_params(params),
             return_type: Box::new(return_type.clone()),
             vis_opt,
@@ -1259,6 +1260,7 @@ impl<'a> AnalysisContext<'a> {
 
             self.current_method_symbol_id = Some(*symbol_id);
             self.current_func = Some(TypedFuncType {
+                def_module_id: Some(self.module_id),
                 params: typed_func_params_as_func_type_params(&func_sig.params),
                 return_type: Box::new(func_sig.return_type.clone()),
                 vis_opt: Some(func_sig.vis.clone()),
@@ -1298,6 +1300,7 @@ impl<'a> AnalysisContext<'a> {
         for (symbol_id, func_sig, mut func_body) in local_methods_list {
             self.current_method_symbol_id = Some(symbol_id);
             self.current_func = Some(TypedFuncType {
+                def_module_id: Some(self.module_id),
                 params: typed_func_params_as_func_type_params(&func_sig.params),
                 return_type: Box::new(func_sig.return_type.clone()),
                 vis_opt: Some(func_sig.vis.clone()),

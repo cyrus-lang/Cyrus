@@ -242,11 +242,13 @@ impl<'a> AnalysisContext<'a> {
 
             LocalOrGlobalSymbol::GlobalSymbol(entry) => match entry.kind {
                 SymbolEntryKind::Method(..) => {
+                    // FIXME 
                     // let fty = ConcreteType::from_function_sig(&m.sig);
                     // self.normalize_type(scope_id_opt, fty, m.loc.clone())
                     todo!();
                 }
                 SymbolEntryKind::Func(resolved_func) => Some(ConcreteType::FuncType(TypedFuncType {
+                    def_module_id: Some(resolved_func.module_id),
                     params: TypedFuncTypeParams {
                         list: resolved_func
                             .func_sig
