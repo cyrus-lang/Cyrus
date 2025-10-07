@@ -294,7 +294,7 @@ impl Parser {
         let params = self.parse_func_params()?;
         let return_type = self.parse_type_specifier()?;
         self.next_token(); // last token of return type
-        
+
         let body = self.parse_block_statement()?;
 
         Ok(Expression::Lambda(Lambda {
@@ -550,24 +550,6 @@ impl Parser {
                     let span = self.current_token().span.clone();
                     self.next_token(); // consume identifier
 
-                    if self.current_token_is(TokenKind::Colon) {
-                        if module_path.alias.is_none() {
-                            self.next_token();
-                            module_path.alias = Some(identifier);
-                            continue;
-                        } else {
-                            return Err(Diag {
-                                kind: ParserDiagKind::UnexpectedToken(
-                                    TokenKind::DoubleColon,
-                                    self.current_token().kind,
-                                ),
-                                level: DiagLevel::Error,
-                                location: Some(DiagLoc::new(SourceLoc::from_loc(loc.clone(), self.file_name.clone()))),
-                                hint: None,
-                            });
-                        }
-                    }
-
                     module_path.segments.push(ModuleSegment::SubModule(Identifier {
                         name: identifier.clone(),
                         span: span.clone(),
@@ -578,6 +560,14 @@ impl Parser {
                         continue;
                     } else if self.current_token_is(TokenKind::Semicolon) {
                         return Ok(module_path);
+                    } else if self.current_token_is(TokenKind::As) {
+                        self.next_token(); // consume as
+
+                        let alias = self.parse_identifier()?;
+                        self.next_token();
+
+                        module_path.alias = Some(alias.as_string());
+                        break;
                     } else {
                         break;
                     }
