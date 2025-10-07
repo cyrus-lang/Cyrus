@@ -48,20 +48,27 @@ jobs:
           cd ~/rpmbuild/SPECS
           rpmbuild -ba cyrus.spec
 
-      - name: Upload RPM and spec
+      - name: Zip RPM artifacts
+        run: |
+          mkdir -p release-files
+          cp ~/rpmbuild/RPMS/**/*.rpm release-files/
+          cp ~/rpmbuild/SPECS/cyrus.spec release-files/
+          cd release-files
+          zip -r cyrus-rpm.zip .
+          cd ..
+
+      - name: Upload as artifact
         uses: actions/upload-artifact@v4
         with:
           name: cyrus-opensuse-rpm
-          path: |
-            ~/rpmbuild/RPMS/**/*.rpm
-            ~/rpmbuild/SPECS/cyrus.spec
+          path: ./release-files/cyrus-rpm.zip
 
   release:
     needs: build-linux-rpm
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - name: Download artifacts
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: cyrus-opensuse-rpm
@@ -70,6 +77,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ./release-files/**
+          files: ./release-files/cyrus-rpm.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
