@@ -5,12 +5,12 @@
 import std::libc{printf, malloc, free};
 
 struct Person {
-    id: uint;
-    name: char*;
+    pub id: uint;
+    pub name: char*;
 }
 
 struct Organization {
-    users: Person*;
+    pub users: Person*;
 }
 
 fn main() {

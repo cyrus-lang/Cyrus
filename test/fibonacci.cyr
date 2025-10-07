@@ -1,3 +1,7 @@
+// @stdout: 8
+// @stdin: 
+// @args:
+
 import std::libc{printf};
 
 pub fn fibonacci(n: int) int {
@@ -13,7 +17,5 @@ pub fn fibonacci(n: int) int {
 }
 
 fn main() {
-    for (#i = 0; i < 30; i++) {
-        printf("%d\n", fibonacci(i));
-    }
+    printf("%d\n", fibonacci(6));
 }

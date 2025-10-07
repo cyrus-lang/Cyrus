@@ -571,8 +571,8 @@ impl<'a> AnalysisContext<'a> {
             TypedExpressionKind::Dereference(typed_dereference) => {
                 self.analyze_dereference_expr_type(scope_id_opt, typed_dereference)
             }
-            TypedExpressionKind::StructInit(typed_struct_init) => {
-                self.analyze_struct_init_expr_type(scope_id_opt, typed_struct_init, expected_type)
+            TypedExpressionKind::StructInit(struct_init) => {
+                self.analyze_struct_init_expr_type(scope_id_opt, struct_init, expected_type)
             }
             TypedExpressionKind::FuncCall(typed_func_call) => {
                 self.analyze_func_call_expr_type(scope_id_opt, typed_func_call)
@@ -1298,14 +1298,14 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         union_symbol_id: SymbolID,
-        typed_struct_init: &mut TypedStructInit,
+        struct_init: &mut TypedStructInit,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        if typed_struct_init.fields.len() > 1 || typed_struct_init.fields.len() == 0 {
+        if struct_init.fields.len() > 1 || struct_init.fields.len() == 0 {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::UnionInitWithInvalidFields,
-                location: Some(DiagLoc::new(typed_struct_init.loc.clone())),
+                location: Some(DiagLoc::new(struct_init.loc.clone())),
                 hint: None,
             });
             return None;
@@ -1332,14 +1332,14 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::NonUnionSymbol { symbol_name },
-                    location: Some(DiagLoc::new(typed_struct_init.loc.clone())),
+                    location: Some(DiagLoc::new(struct_init.loc.clone())),
                     hint: None,
                 });
                 return None;
             }
         };
 
-        let field = &mut typed_struct_init.fields[0];
+        let field = &mut struct_init.fields[0];
         self.analyze_typed_expr_type(scope_id_opt, &mut field.value, expected_type);
 
         Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(
@@ -1350,14 +1350,14 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_struct_init_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        typed_struct_init: &mut TypedStructInit,
+        struct_init: &mut TypedStructInit,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         let normalized = self
             .normalize_type(
                 scope_id_opt,
-                ConcreteType::UnresolvedSymbol(typed_struct_init.symbol_id),
-                typed_struct_init.loc.clone(),
+                ConcreteType::UnresolvedSymbol(struct_init.symbol_id),
+                struct_init.loc.clone(),
             )
             .unwrap();
 
@@ -1368,7 +1368,7 @@ impl<'a> AnalysisContext<'a> {
                     return self.analyze_union_init_expr_type(
                         scope_id_opt,
                         union_symbol_id,
-                        typed_struct_init,
+                        struct_init,
                         expected_type,
                     );
                 } else {
@@ -1377,7 +1377,7 @@ impl<'a> AnalysisContext<'a> {
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,
                         kind: AnalyzerDiagKind::NonStructSymbol { symbol_name },
-                        location: Some(DiagLoc::new(typed_struct_init.loc.clone())),
+                        location: Some(DiagLoc::new(struct_init.loc.clone())),
                         hint: None,
                     });
                     return None;
@@ -1386,13 +1386,13 @@ impl<'a> AnalysisContext<'a> {
         };
 
         let resolved_struct = self
-            .resolve_symbol_as_struct(scope_id_opt, struct_symbol_id, typed_struct_init.loc.clone())
+            .resolve_symbol_as_struct(scope_id_opt, struct_symbol_id, struct_init.loc.clone())
             .unwrap();
 
         // check duplicate field inits
         let mut field_names: Vec<String> = Vec::new();
-        for field_init in &typed_struct_init.fields {
-            let struct_name = (self.symbol_formatter)(scope_id_opt)(typed_struct_init.symbol_id);
+        for field_init in &struct_init.fields {
+            let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
             if field_names.contains(&field_init.name) {
                 self.reporter.report(Diag {
@@ -1417,7 +1417,7 @@ impl<'a> AnalysisContext<'a> {
             .map(|field| field.name.clone())
             .collect();
 
-        for field_init in &mut typed_struct_init.fields {
+        for field_init in &mut struct_init.fields {
             let field = resolved_struct
                 .struct_sig
                 .fields
@@ -1425,7 +1425,7 @@ impl<'a> AnalysisContext<'a> {
                 .find(|field| field.name == field_init.name);
 
             if field.is_none() {
-                let struct_name = (self.symbol_formatter)(scope_id_opt)(typed_struct_init.symbol_id);
+                let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -1455,7 +1455,7 @@ impl<'a> AnalysisContext<'a> {
                 field_target_type.clone(),
                 field_init.loc.clone(),
             ) {
-                let struct_name = (self.symbol_formatter)(scope_id_opt)(typed_struct_init.symbol_id);
+                let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
                 let expected_type = format_concrete_type(field_target_type, &(self.symbol_formatter)(scope_id_opt));
                 let found_type = format_concrete_type(field_value_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -1467,7 +1467,7 @@ impl<'a> AnalysisContext<'a> {
                         expected_type,
                         found_type,
                     },
-                    location: Some(DiagLoc::new(typed_struct_init.loc.clone())),
+                    location: Some(DiagLoc::new(struct_init.loc.clone())),
                     hint: None,
                 });
             }
@@ -1483,7 +1483,7 @@ impl<'a> AnalysisContext<'a> {
         }
 
         if !missing_fields.is_empty() {
-            let struct_name = (self.symbol_formatter)(scope_id_opt)(typed_struct_init.symbol_id);
+            let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1491,20 +1491,20 @@ impl<'a> AnalysisContext<'a> {
                     struct_name,
                     missing_field_names: missing_fields,
                 },
-                location: Some(DiagLoc::new(typed_struct_init.loc.clone())),
+                location: Some(DiagLoc::new(struct_init.loc.clone())),
                 hint: None,
             });
         }
 
-        typed_struct_init.symbol_id = normalized.as_struct_symbol_id().unwrap();
+        struct_init.symbol_id = normalized.as_struct_symbol_id().unwrap();
 
-        if typed_struct_init.is_const {
+        if struct_init.is_const {
             Some(ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(
-                ResolvedSymbol::NamedStruct(typed_struct_init.symbol_id),
+                ResolvedSymbol::NamedStruct(struct_init.symbol_id),
             ))))
         } else {
             Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
-                typed_struct_init.symbol_id,
+                struct_init.symbol_id,
             )))
         }
     }
