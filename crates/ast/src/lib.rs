@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{hash::{Hash, Hasher}, rc::Rc};
 
 use crate::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -496,6 +496,18 @@ impl PartialEq for ModulePath {
         self_submodules == other_submodules
     }
 }
+
+impl Hash for ModulePath {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for segment in &self.segments {
+            if let ModuleSegment::SubModule(identifier) = segment {
+                identifier.name.hash(state);
+            }
+        }
+    }
+}
+
+impl Eq for ModulePath {}
 
 impl ModulePath {
     pub fn as_module_import(&self) -> ModuleImport {
