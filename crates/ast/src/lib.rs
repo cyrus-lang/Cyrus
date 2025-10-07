@@ -1,4 +1,7 @@
-use std::{hash::{Hash, Hasher}, rc::Rc};
+use std::{
+    hash::{Hash, Hasher},
+    rc::Rc,
+};
 
 use crate::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
@@ -219,11 +222,17 @@ pub struct MethodCall {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identifier {
     pub name: String,
     pub span: Span,
     pub loc: Location,
+}
+
+impl Hash for Identifier {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state); 
+    }
 }
 
 impl Identifier {
@@ -439,7 +448,7 @@ pub struct Return {
     pub loc: Location,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModuleSegmentSingle {
     pub identifier: Identifier,
     pub renamed: Option<Identifier>,
@@ -449,6 +458,13 @@ pub struct ModuleSegmentSingle {
 pub enum ModuleSegment {
     SubModule(Identifier),
     Single(Vec<ModuleSegmentSingle>),
+}
+
+impl Hash for ModuleSegmentSingle {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identifier.hash(state);
+        self.renamed.hash(state);
+    }
 }
 
 impl ModuleSegment {
