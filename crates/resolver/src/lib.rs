@@ -203,7 +203,7 @@ impl Resolver {
                 }
             };
 
-            // self-import check
+            // check for self-import
             if module_file_path == current_module_file_path {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
@@ -217,22 +217,17 @@ impl Resolver {
                 continue;
             }
 
-            // check for duplicate import in this module
-            if self.already_imported_modules.contains(&module_file_path) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ImportTwice {
-                        module_name: module_segments_as_string(module_path.segments.clone()),
-                    },
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        import.loc.clone(),
-                        current_module_file_path.clone(),
-                    ))),
-                    hint: Some("Consider removing the previous declaration.".to_string()),
-                });
-                continue;
+            let module_id = self
+                .get_module_id_by_file_path(module_file_path.clone())
+                .unwrap_or_else(generate_module_id);
+
+            {
+                let mut global_symbols = self.global_symbols.lock().unwrap();
+                global_symbols.entry(module_id).or_insert_with(|| SymbolTable::new());
             }
 
+            // if the module was already processed in another import, do not throw an error
+            let already_directly_imported = self.already_imported_modules.contains(&module_file_path);
             self.already_imported_modules.insert(module_file_path.clone());
 
             // cycle detection
@@ -251,19 +246,26 @@ impl Resolver {
                 continue;
             }
 
-            if visiting.done.contains(&module_file_path) {
-                continue;
-            }
-
+            // mark as active for cycle detection
             visiting.active.insert(module_file_path.clone());
 
-            let module_id = self
-                .get_module_id_by_file_path(module_file_path.clone())
-                .unwrap_or_else(generate_module_id);
-
-            {
-                let mut global_symbols = self.global_symbols.lock().unwrap();
-                global_symbols.entry(module_id).or_insert_with(|| SymbolTable::new());
+            // if already processed, still load the singles for the current module
+            if visiting.done.contains(&module_file_path) {
+                match module_alias {
+                    ModuleAlias::Group(group_name) => {
+                        self.insert_module_alias(parent_module_id, group_name, module_id);
+                    }
+                    ModuleAlias::Single(ref module_segment_singles) => {
+                        self.load_module_import_singles(
+                            parent_module_id,
+                            module_id,
+                            module_segment_singles,
+                            import.loc.clone(),
+                        );
+                    }
+                }
+                visiting.active.remove(&module_file_path);
+                continue;
             }
 
             if self.skip_module_if_loaded_once(module_file_path.clone()) {
@@ -272,7 +274,6 @@ impl Resolver {
                         self.insert_module_alias(parent_module_id, group_name, module_id);
                     }
                     ModuleAlias::Single(ref module_segment_singles) => {
-                        // safe: module_id is now in global_symbols
                         self.load_module_import_singles(
                             parent_module_id,
                             module_id,
@@ -295,11 +296,42 @@ impl Resolver {
                     let mut program_trees = self.program_trees.lock().unwrap();
                     let module_name = get_module_name(module_file_path.clone());
                     program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
+                    drop(program_trees);
+
+                    // load singles after module is fully registered
+                    match module_alias {
+                        ModuleAlias::Group(group_name) => {
+                            self.insert_module_alias(parent_module_id, group_name, module_id);
+                        }
+                        ModuleAlias::Single(ref module_segment_singles) => {
+                            self.load_module_import_singles(
+                                parent_module_id,
+                                module_id,
+                                module_segment_singles,
+                                import.loc.clone(),
+                            );
+                        }
+                    }
                 }
             }
 
             visiting.active.remove(&module_file_path);
             visiting.done.insert(module_file_path);
+
+            // only warn about duplicates if it was a direct import in the same file
+            if already_directly_imported {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ImportTwice {
+                        module_name: module_segments_as_string(module_path.segments.clone()),
+                    },
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        import.loc.clone(),
+                        current_module_file_path.clone(),
+                    ))),
+                    hint: Some("Consider removing the previous declaration.".to_string()),
+                });
+            }
         }
     }
 

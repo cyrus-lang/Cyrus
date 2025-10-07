@@ -1,21 +1,21 @@
 import std::libc::abi;
 
-// pub extern stdout: abi::c_file;
-// pub extern stderr: abi::c_file;
-// pub extern stdin: abi::c_file;
+pub extern stdout: abi::c_file;
+pub extern stderr: abi::c_file;
+pub extern stdin: abi::c_file;
 
 pub extern fn printf(format: abi::c_char*, ...) abi::c_int;
-// pub extern fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
-// pub extern fn malloc(size: abi::c_size_t) abi::c_void*;
-// pub extern fn free(ptr: abi::c_void*) abi::c_void;
-// pub extern fn exit(status: abi::c_int) abi::c_void;
-// pub extern fn realloc(ptr: abi::c_void*, size: abi::c_size_t) abi::c_void*;
-// pub extern fn strncpy(dest: abi::c_char*, src: abi::c_char*, count: abi::c_size_t) abi::c_char*;
-// pub extern fn putchar(ch: abi::c_char) abi::c_int;
-// pub extern fn strdup(src: abi::c_char*) abi::c_char*;
-// pub extern fn strlen(src: abi::c_char*) abi::c_size_t;
-// pub extern fn memcpy(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size_t) abi::c_void*;
-// pub extern fn fflush(stream: abi::c_file*) abi::c_int;
-// pub extern fn strcat(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
-// pub extern fn strcpy(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
-// pub extern fn scanf(format: abi::c_char*, ...) abi::c_int;
+pub extern fn fprintf(stream: abi::c_file, format: abi::c_char*, ...) abi::c_int;
+pub extern fn malloc(size: abi::c_size_t) abi::c_void*;
+pub extern fn free(ptr: abi::c_void*) abi::c_void;
+pub extern fn exit(status: abi::c_int) abi::c_void;
+pub extern fn realloc(ptr: abi::c_void*, size: abi::c_size_t) abi::c_void*;
+pub extern fn strncpy(dest: abi::c_char*, src: abi::c_char*, count: abi::c_size_t) abi::c_char*;
+pub extern fn putchar(ch: abi::c_char) abi::c_int;
+pub extern fn strdup(src: abi::c_char*) abi::c_char*;
+pub extern fn strlen(src: abi::c_char*) abi::c_size_t;
+pub extern fn memcpy(dest: abi::c_void*, src: abi::c_void*, count: abi::c_size_t) abi::c_void*;
+pub extern fn fflush(stream: abi::c_file*) abi::c_int;
+pub extern fn strcat(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
+pub extern fn strcpy(dest: abi::c_char*, src: abi::c_char*) abi::c_char*;
+pub extern fn scanf(format: abi::c_char*, ...) abi::c_int;
