@@ -553,27 +553,20 @@ impl Parser {
 
             while !self.current_token_is(TokenKind::RightBrace) {
                 // enable aliasing features for a single
-                let first_identifier = self.parse_identifier()?;
+                let identifier = self.parse_identifier()?;
                 self.next_token();
 
-                if self.current_token_is(TokenKind::Colon) {
-                    self.next_token(); // consume colon
+                let mut renamed: Option<Identifier> = None;
 
-                    let second_identifier = self.parse_identifier()?;
+                if self.current_token_is(TokenKind::As) {
+                    self.next_token(); // consume as 
+                    
+                    let renamed_identifier = self.parse_identifier()?;
                     self.next_token();
-
-                    let renamed_single = ModuleSegmentSingle {
-                        identifier: second_identifier,
-                        renamed: Some(first_identifier),
-                    };
-                    singles.push(renamed_single);
-                } else {
-                    let single = ModuleSegmentSingle {
-                        identifier: first_identifier,
-                        renamed: None,
-                    };
-                    singles.push(single);
+                    renamed = Some(renamed_identifier);
                 }
+
+                singles.push(ModuleSegmentSingle { identifier, renamed });
 
                 if !self.current_token_is(TokenKind::RightBrace) {
                     self.expect_current(TokenKind::Comma)?;
