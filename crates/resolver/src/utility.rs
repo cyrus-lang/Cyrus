@@ -58,7 +58,6 @@ impl Resolver {
 
     /// Resolves a global symbol from its ID, searching across all modules.
     pub fn resolve_global_symbol(&self, symbol_id: SymbolID) -> Option<SymbolEntry> {
-        // The logic is chained cleanly: find the module, then get the symbol from it.
         let module_id = self.lookup_symbol_id_in_modules(symbol_id)?;
         self.lookup_symbol_entry_with_id(module_id, symbol_id)
     }

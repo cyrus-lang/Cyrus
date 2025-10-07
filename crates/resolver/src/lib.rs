@@ -203,26 +203,8 @@ impl Resolver {
                 }
             };
 
-            // check for duplicate import in this module
-            if self.already_imported_modules.contains(&module_file_path) {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::ImportTwice {
-                        module_name: module_segments_as_string(module_path.segments),
-                    },
-                    location: Some(DiagLoc::new(SourceLoc::from_loc(
-                        import.loc.clone(),
-                        current_module_file_path.clone(),
-                    ))),
-                    hint: Some("Consider removing the previous declaration.".to_string()),
-                });
-                continue;
-            }
-
-            self.already_imported_modules.insert(module_file_path.clone());
-
             // self-import check
-            if self.already_imported_modules.contains(&current_module_file_path) {
+            if module_file_path == current_module_file_path {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: ResolverDiagKind::ModuleCannotImportItself,
@@ -234,6 +216,24 @@ impl Resolver {
                 });
                 continue;
             }
+
+            // check for duplicate import in this module
+            if self.already_imported_modules.contains(&module_file_path) {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ImportTwice {
+                        module_name: module_segments_as_string(module_path.segments.clone()),
+                    },
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        import.loc.clone(),
+                        current_module_file_path.clone(),
+                    ))),
+                    hint: Some("Consider removing the previous declaration.".to_string()),
+                });
+                continue;
+            }
+
+            self.already_imported_modules.insert(module_file_path.clone());
 
             // cycle detection
             if visiting.active.contains(&module_file_path) {
@@ -261,12 +261,18 @@ impl Resolver {
                 .get_module_id_by_file_path(module_file_path.clone())
                 .unwrap_or_else(generate_module_id);
 
+            {
+                let mut global_symbols = self.global_symbols.lock().unwrap();
+                global_symbols.entry(module_id).or_insert_with(|| SymbolTable::new());
+            }
+
             if self.skip_module_if_loaded_once(module_file_path.clone()) {
                 match module_alias {
                     ModuleAlias::Group(group_name) => {
                         self.insert_module_alias(parent_module_id, group_name, module_id);
                     }
                     ModuleAlias::Single(ref module_segment_singles) => {
+                        // safe: module_id is now in global_symbols
                         self.load_module_import_singles(
                             parent_module_id,
                             module_id,
@@ -289,21 +295,6 @@ impl Resolver {
                     let mut program_trees = self.program_trees.lock().unwrap();
                     let module_name = get_module_name(module_file_path.clone());
                     program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
-                    drop(program_trees);
-
-                    match module_alias {
-                        ModuleAlias::Group(group_name) => {
-                            self.insert_module_alias(parent_module_id, group_name, module_id);
-                        }
-                        ModuleAlias::Single(ref module_segment_singles) => {
-                            self.load_module_import_singles(
-                                parent_module_id,
-                                module_id,
-                                module_segment_singles,
-                                import.loc.clone(),
-                            );
-                        }
-                    }
                 }
             }
 
