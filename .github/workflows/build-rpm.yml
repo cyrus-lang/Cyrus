@@ -1,4 +1,4 @@
-name: Build Cyrus RPM
+name: Cyrus RPM
 
 on:
   push:

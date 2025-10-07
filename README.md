@@ -1,19 +1,61 @@
-# Cyrus Lang
+<p align="center">
+  <img src="./docs/logo.png" alt="Cyrus Logo" width="300"/>
+</p>
 
-Cyrus is a general-purpose, statically-typed, manually memory-managed programming language designed for performance-critical applications. It leverages **LLVM** as its compiler backend, providing efficient code generation and optimization capabilities. The language syntax is heavily influenced by C, offering familiarity to developers experienced with C-like languages.
+<h1 align="center" style="border-bottom: none;">Cyrus Programming Language</h1>
 
-## Target Audience
+<p align="center">
+  <a href="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-linux.yml/badge.svg">
+    <img src="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-linux.yml/badge.svg" alt="Build Status">
+  </a>
+  <a href="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-rpm.yml/badge.svg">
+    <img src="https://github.com/cyrus-lang/Cyrus/actions/workflows/build-rpm.yml/badge.svg" alt="Build Status">
+  </a>
+</p>
 
-Cyrus is primarily aimed at experienced programmers who value performance, control, and low-level system interactions. Developers seeking to build high-performance applications that require precise memory management will find this language well-suited to their needs.
+<hr/>
+<br />
 
-## Testing, Documentation, and API References
+Cyrus is a **general-purpose, statically-typed, manually memory-managed programming language** designed for **performance-critical applications**. Leveraging **LLVM** as its backend, Cyrus provides efficient code generation and advanced optimizations. Its syntax is influenced by C, making it familiar to developers experienced with C-like languages.
 
-All information about testing `Cyrus` in a development environment, along with comprehensive documentation and API references, is available on our website at this [link](https://cyrus-lang-v2.netlify.app).
+## 🎯 Target Audience
 
-### Contributing to Documentation
+Cyrus is primarily aimed at **experienced programmers** who value:
 
-If you notice any misspellings, inaccuracies, or areas for improvement in the documentation, we welcome your contributions! Feel free to open an issue or submit a pull request in the [Official Website Repository](https://github.com/cyrus-lang/Official-Website). Your feedback helps us improve the quality of our resources for everyone.
+- Maximum performance and efficiency  
+- Low-level memory control  
+- Precise system-level interactions  
 
-## Open to Contribution
+If you’re building high-performance applications that require fine-grained memory management, Cyrus is the perfect fit.
 
-We highly encourage contributions! If you're interested in helping to shape the future of Cyrus Lang, feel free to fork the repository, propose improvements, or report any issues you encounter. Together, we can make Cyrus even better!
+## 💡 Key Philosophy
+
+Cyrus was born out of frustration with the unnecessary complexity of modern languages. While languages like Rust and Go offer great features, they also come with learning curves, runtimes, or abstractions that many system programmers neither need nor want.
+
+Cyrus makes a different bet: that **simplicity, explicitness, and elegance can coexist without sacrificing performance**.
+
+### Ideal For:
+
+- System developers who love C but want a modern evolution without garbage collection  
+- Developers frustrated by Rust’s learning curve, but still wanting safe and performant code  
+- Embedded and OS-level developers needing low runtime overhead and full control  
+- Anyone seeking a beautiful, expressive, low-level language that respects your brain  
+
+### Not Recommended (Yet) For:
+
+- Absolute beginners with no background in system languages  
+- Developers who want automatic memory management and runtime safety without learning allocator logic  
+
+## 📚 Documentation & API Reference
+
+Comprehensive documentation, API references, and guides for testing Cyrus in a development environment are available on our [official website](https://cyrus-lang-v2.netlify.app).
+
+## 🤝 Open to Contribution
+
+Cyrus is open for contributions! Feel free to:
+
+- Fork the repository  
+- Submit improvements or new features  
+- Report bugs or issues  
+
+Together, we can make **Cyrus Programming Language** even better!

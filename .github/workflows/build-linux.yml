@@ -1,4 +1,4 @@
-name: Build Cyrus
+name: Cyrus Linux
 
 on:
   push:
