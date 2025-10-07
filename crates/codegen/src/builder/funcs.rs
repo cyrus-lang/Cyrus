@@ -55,6 +55,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         let func_type = TypedFuncType {
+            def_module_id: Some(self.module_id),
             params: get_func_type_params_from_func_params(&lambda.params),
             return_type: Box::new(lambda.return_type.clone()),
             vis_opt: None,

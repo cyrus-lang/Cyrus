@@ -1,4 +1,4 @@
-use crate::{SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams};
+use crate::{ModuleID, SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams};
 use ast::{AccessSpecifier, token::TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +15,7 @@ pub enum ConcreteType {
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncType {
+    pub def_module_id: Option<ModuleID>, 
     pub params: TypedFuncTypeParams,
     pub return_type: Box<ConcreteType>,
     pub vis_opt: Option<AccessSpecifier>,

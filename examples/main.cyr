@@ -1,25 +1,40 @@
-// @stdout: 4 5
-// @stdin: 
-// @args:
+import std::core{panic};
+import std::libc{strlen, malloc, memcpy, free};
 
-import std::libc{printf};
+pub struct String {
+    pub data: char*;
+    pub length: size_t;
+    pub capacity: size_t;
 
-type HandlerFn = fn(int, int) void;
+    pub fn new(init: const char*) String {
+        #len = strlen(init);
+        #cap = len + 1;
+        #inst: String;
+        inst.data = malloc(cap);
+        if (!inst.data) {
+            panic("failed to allocate memory for string.");
+        }
+        memcpy(inst.data, init, len + 1);
+        inst.length = len;
+        inst.capacity = cap;
+        return inst;
+    }
 
-struct Route {
-    handler: HandlerFn;
+    pub fn free(&self) {
+        free(self->data);
+        self->data = null;
+        self->length = 0;
+        self->capacity = 0;
+    }
 
-    pub fn apply(self) {
-        (self.handler)(4, 5);
+    pub fn c_str(&self) char* {
+        return cast(char*, self->data);
     }
 }
 
 fn main() {
-    #route = Route {
-        handler: fn(req: int, res: int) void {
-            printf("%d %d\n", req, res);
-        }
-    };
+    #str = String.new("Taha");
 
-    // route.apply();
+    printf("name: %s\n", str.c_str());
+    str.free();
 }

@@ -10,8 +10,8 @@ use ast::source_loc::SourceLoc;
 use ast::{
     AccessSpecifier, AddressOf, Array, ArrayIndex, Assignment, Cast, Dereference, FieldAccess, FuncCall, FuncParams,
     FuncTypeVariadicParams, GlobalVariable, If, Import, InfixExpression, Interface, Lambda, Literal, MethodCall,
-    ModuleImport, ModulePath, ModuleSegment, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression,
-    StringPrefix, StructInit, SwitchCasePattern, UnaryExpression, Union, UnnamedStructValue,
+    ModuleImport, ModulePath, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix,
+    StructInit, SwitchCasePattern, UnaryExpression, Union, UnnamedStructValue,
 };
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
@@ -77,60 +77,6 @@ macro_rules! is_unscoped_expr {
         }
 
         $local_scope_opt.is_none()
-    }};
-}
-
-macro_rules! resolve_local_identifier {
-    ($self:expr, $local_scope_opt:expr, $module_id:expr, $identifier:expr) => {{
-        let local_option = {
-            if let Some(local_scope_rc) = &$local_scope_opt {
-                let symbol_id_opt = {
-                    let local_scope = local_scope_rc.borrow_mut();
-                    match local_scope.resolve(&$identifier.name.clone()).cloned() {
-                        Some(local_symbol) => Some(local_symbol),
-                        None => None,
-                    }
-                };
-
-                match symbol_id_opt {
-                    Some(local_symbol) => Some(local_symbol.get_symbol_id()),
-                    None => None,
-                }
-            } else {
-                None
-            }
-        };
-
-        match local_option {
-            Some(symbol_id) => symbol_id,
-            None => {
-                match $self.resolve_module_import(
-                    $module_id,
-                    ModuleImport {
-                        segments: vec![ModuleSegment::SubModule($identifier.clone())],
-                        loc: $identifier.loc.clone(),
-                        span: $identifier.span.clone(),
-                    },
-                ) {
-                    Some(symbol_id) => symbol_id,
-                    None => {
-                        $self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: ResolverDiagKind::SymbolNotFound {
-                                name: $identifier.name.clone(),
-                            },
-                            location: Some(DiagLoc::new(SourceLoc::from_loc(
-                                $identifier.loc.clone(),
-                                $self.get_current_module_file_path(),
-                            ))),
-                            hint: None,
-                        });
-
-                        return None;
-                    }
-                }
-            }
-        }
     }};
 }
 
@@ -226,77 +172,6 @@ impl Resolver {
         visiting.done.insert(module_file_path);
 
         Some(typed_program_tree.clone())
-    }
-
-    fn resolve_module_import(&mut self, module_id: ModuleID, mut module_import: ModuleImport) -> Option<SymbolID> {
-        if let Some(identifier) = module_import.as_identifier() {
-            return self.resolve_identifier(
-                module_id,
-                identifier,
-                SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
-            );
-        }
-
-        let Some(last_segment) = module_import.segments.pop() else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: ResolverDiagKind::ExpectedIdentifierInImport,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    module_import.loc.clone(),
-                    self.get_current_module_file_path(),
-                ))),
-                hint: Some("Import path must include at least one symbol.".into()),
-            });
-            return None;
-        };
-
-        let Some(symbol_ident) = last_segment.as_identifier_opt() else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: ResolverDiagKind::ExpectedIdentifierInImport,
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    module_import.loc,
-                    self.get_current_module_file_path(),
-                ))),
-                hint: Some("The last part of an import path must be a symbol name.".into()),
-            });
-            return None;
-        };
-        let symbol_name = symbol_ident.name;
-
-        let module_alias = module_segments_as_string(module_import.segments);
-        let Some(target_module_id) = self.get_module_alias(&module_alias) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: ResolverDiagKind::ModuleImportNotFound {
-                    module_name: module_alias,
-                },
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    module_import.loc.clone(),
-                    self.get_current_module_file_path(),
-                ))),
-                hint: None,
-            });
-            return None;
-        };
-
-        let Some(symbol_id) = self.lookup_symbol_id(target_module_id, &symbol_name) else {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: ResolverDiagKind::SymbolIsNotDefinedInModule {
-                    symbol_name,
-                    module_name: module_alias,
-                },
-                location: Some(DiagLoc::new(SourceLoc::from_loc(
-                    module_import.loc.clone(),
-                    self.get_current_module_file_path(),
-                ))),
-                hint: None,
-            });
-            return None;
-        };
-
-        Some(symbol_id)
     }
 
     fn skip_module_if_loaded_once(&self, file_path: String) -> bool {
@@ -554,6 +429,7 @@ impl Resolver {
                 )?;
 
                 Ok(ConcreteType::FuncType(TypedFuncType {
+                    def_module_id: None,
                     params: TypedFuncTypeParams { list: params, variadic },
                     return_type: Box::new(return_type),
                     vis_opt: func_type.vis_opt.clone(),
@@ -2159,21 +2035,36 @@ impl Resolver {
         })
     }
 
-    fn resolve_identifier(&mut self, module_id: ModuleID, identifier: Identifier, loc: SourceLoc) -> Option<u32> {
-        match self.lookup_symbol_id(module_id, &identifier.name) {
-            Some(symbol_id) => Some(symbol_id),
-            None => {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: ResolverDiagKind::SymbolNotFound {
-                        name: identifier.name.clone(),
-                    },
-                    location: Some(DiagLoc::new(loc)),
-                    hint: None,
-                });
-                return None;
+    fn resolve_identifier(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        module_id: ModuleID,
+        identifier: &Identifier,
+    ) -> Option<SymbolID> {
+        if let Some(local_scope_rc) = &local_scope_opt {
+            let local_scope = local_scope_rc.borrow();
+            if let Some(local_symbol) = local_scope.resolve(&identifier.name).cloned() {
+                return Some(local_symbol.get_symbol_id());
             }
         }
+
+        if let Some(symbol_id) = self.lookup_symbol_id(module_id, &identifier.name) {
+            return Some(symbol_id);
+        }
+
+        self.reporter.report(Diag {
+            level: DiagLevel::Error,
+            kind: ResolverDiagKind::SymbolNotFound {
+                name: identifier.name.clone(),
+            },
+            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                identifier.loc.clone(),
+                self.get_current_module_file_path(),
+            ))),
+            hint: None,
+        });
+
+        None
     }
 
     fn resolve_local_module_import(
@@ -2182,43 +2073,320 @@ impl Resolver {
         module_id: ModuleID,
         module_import: &ModuleImport,
     ) -> Option<SymbolID> {
-        let local_option = {
-            if let Some(local_scope_rc) = local_scope_opt.clone() {
-                let symbol_id_option = module_import.as_identifier().and_then(|identifier| {
-                    let local_scope = local_scope_rc.borrow_mut();
-                    local_scope
-                        .resolve(&identifier.name)
-                        .cloned()
-                        .map(|local_symbol| local_symbol.get_symbol_id())
-                });
-                symbol_id_option
-            } else {
-                None
+        if let Some(identifier) = module_import.as_identifier() {
+            if let Some(local_scope_rc) = local_scope_opt {
+                let local_scope = local_scope_rc.borrow();
+                if let Some(local_symbol) = local_scope.resolve(&identifier.name).cloned() {
+                    return Some(local_symbol.get_symbol_id());
+                }
             }
+
+            if let Some(symbol_id) = self.lookup_symbol_id(module_id, &identifier.name) {
+                return Some(symbol_id);
+            }
+
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::SymbolNotFound {
+                    name: identifier.name.clone(),
+                },
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    identifier.loc.clone(),
+                    self.get_current_module_file_path(),
+                ))),
+                hint: None,
+            });
+            return None;
+        }
+
+        self.resolve_module_import(module_id, module_import.clone())
+    }
+
+    fn resolve_module_import(&mut self, module_id: ModuleID, mut module_import: ModuleImport) -> Option<SymbolID> {
+        if module_import.segments.len() == 1 {
+            let maybe_ident = module_import.as_identifier();
+            if let Some(ident) = maybe_ident {
+                if let Some(sym) = self.lookup_symbol_id(module_id, &ident.name) {
+                    return Some(sym);
+                }
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::SymbolNotFound {
+                        name: ident.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        ident.loc.clone(),
+                        self.get_current_module_file_path(),
+                    ))),
+                    hint: None,
+                });
+            } else {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ExpectedIdentifierInImport,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        module_import.loc.clone(),
+                        self.get_current_module_file_path(),
+                    ))),
+                    hint: Some("Import path must include at least one symbol.".into()),
+                });
+            }
+            return None;
+        }
+
+        let Some(last_segment) = module_import.segments.pop() else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::ExpectedIdentifierInImport,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    module_import.loc.clone(),
+                    self.get_current_module_file_path(),
+                ))),
+                hint: Some("Import path must include at least one symbol.".into()),
+            });
+            return None;
         };
 
-        let symbol_id = match local_option {
-            Some(symbol_id) => symbol_id,
-            None => match self.resolve_module_import(module_id, module_import.clone()) {
-                Some(symbol_id) => symbol_id,
-                None => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: ResolverDiagKind::SymbolNotFound {
-                            name: module_segments_as_string(module_import.segments.clone()),
-                        },
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            module_import.loc.clone(),
-                            self.get_current_module_file_path(),
-                        ))),
-                        hint: None,
-                    });
-                    return None;
-                }
-            },
+        let Some(symbol_ident) = last_segment.as_identifier_opt() else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::ExpectedIdentifierInImport,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    module_import.loc,
+                    self.get_current_module_file_path(),
+                ))),
+                hint: Some("The last part of an import path must be a symbol name.".into()),
+            });
+            return None;
+        };
+        let symbol_name = symbol_ident.name;
+
+        let module_alias = module_segments_as_string(module_import.segments);
+        let Some(target_module_id) = self.get_module_alias(&module_alias) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::ModuleImportNotFound {
+                    module_name: module_alias,
+                },
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    module_import.loc.clone(),
+                    self.get_current_module_file_path(),
+                ))),
+                hint: None,
+            });
+            return None;
+        };
+
+        let Some(symbol_id) = self.lookup_symbol_id(target_module_id, &symbol_name) else {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: ResolverDiagKind::SymbolIsNotDefinedInModule {
+                    symbol_name,
+                    module_name: module_alias,
+                },
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    module_import.loc.clone(),
+                    self.get_current_module_file_path(),
+                ))),
+                hint: None,
+            });
+            return None;
         };
 
         Some(symbol_id)
+    }
+
+    // fn resolve_local_module_import(
+    //     &mut self,
+    //     local_scope_opt: Option<LocalScopeRef>,
+    //     module_id: ModuleID,
+    //     module_import: &ModuleImport,
+    // ) -> Option<SymbolID> {
+    //     let local_option = {
+    //         if let Some(local_scope_rc) = local_scope_opt.clone() {
+    //             let symbol_id_option = module_import.as_identifier().and_then(|identifier| {
+    //                 let local_scope = local_scope_rc.borrow_mut();
+    //                 local_scope
+    //                     .resolve(&identifier.name)
+    //                     .cloned()
+    //                     .map(|local_symbol| local_symbol.get_symbol_id())
+    //             });
+    //             symbol_id_option
+    //         } else {
+    //             None
+    //         }
+    //     };
+
+    //     let symbol_id = match local_option {
+    //         Some(symbol_id) => symbol_id,
+    //         None => match self.resolve_module_import(module_id, module_import.clone()) {
+    //             Some(symbol_id) => symbol_id,
+    //             None => {
+    //                 self.reporter.report(Diag {
+    //                     level: DiagLevel::Error,
+    //                     kind: ResolverDiagKind::SymbolNotFound {
+    //                         name: module_segments_as_string(module_import.segments.clone()),
+    //                     },
+    //                     location: Some(DiagLoc::new(SourceLoc::from_loc(
+    //                         module_import.loc.clone(),
+    //                         self.get_current_module_file_path(),
+    //                     ))),
+    //                     hint: None,
+    //                 });
+    //                 return None;
+    //             }
+    //         },
+    //     };
+
+    //     Some(symbol_id)
+    // }
+
+    // fn resolve_module_import(&mut self, module_id: ModuleID, mut module_import: ModuleImport) -> Option<SymbolID> {
+    //     if let Some(identifier) = module_import.as_identifier() {
+    //         return self.resolve_local_module_import(None, module_id, &module_import);
+    //     }
+
+    //     let Some(last_segment) = module_import.segments.pop() else {
+    //         self.reporter.report(Diag {
+    //             level: DiagLevel::Error,
+    //             kind: ResolverDiagKind::ExpectedIdentifierInImport,
+    //             location: Some(DiagLoc::new(SourceLoc::from_loc(
+    //                 module_import.loc.clone(),
+    //                 self.get_current_module_file_path(),
+    //             ))),
+    //             hint: Some("Import path must include at least one symbol.".into()),
+    //         });
+    //         return None;
+    //     };
+
+    //     let Some(symbol_ident) = last_segment.as_identifier_opt() else {
+    //         self.reporter.report(Diag {
+    //             level: DiagLevel::Error,
+    //             kind: ResolverDiagKind::ExpectedIdentifierInImport,
+    //             location: Some(DiagLoc::new(SourceLoc::from_loc(
+    //                 module_import.loc,
+    //                 self.get_current_module_file_path(),
+    //             ))),
+    //             hint: Some("The last part of an import path must be a symbol name.".into()),
+    //         });
+    //         return None;
+    //     };
+    //     let symbol_name = symbol_ident.name;
+
+    //     let module_alias = module_segments_as_string(module_import.segments);
+    //     let Some(target_module_id) = self.get_module_alias(&module_alias) else {
+    //         self.reporter.report(Diag {
+    //             level: DiagLevel::Error,
+    //             kind: ResolverDiagKind::ModuleImportNotFound {
+    //                 module_name: module_alias,
+    //             },
+    //             location: Some(DiagLoc::new(SourceLoc::from_loc(
+    //                 module_import.loc.clone(),
+    //                 self.get_current_module_file_path(),
+    //             ))),
+    //             hint: None,
+    //         });
+    //         return None;
+    //     };
+
+    //     let Some(symbol_id) = self.lookup_symbol_id(target_module_id, &symbol_name) else {
+    //         self.reporter.report(Diag {
+    //             level: DiagLevel::Error,
+    //             kind: ResolverDiagKind::SymbolIsNotDefinedInModule {
+    //                 symbol_name,
+    //                 module_name: module_alias,
+    //             },
+    //             location: Some(DiagLoc::new(SourceLoc::from_loc(
+    //                 module_import.loc.clone(),
+    //                 self.get_current_module_file_path(),
+    //             ))),
+    //             hint: None,
+    //         });
+    //         return None;
+    //     };
+
+    //     Some(symbol_id)
+    // }
+
+    // fn resolve_identifier(
+    //     &mut self,
+    //     local_scope_opt: Option<LocalScopeRef>,
+    //     module_id: ModuleID,
+    //     identifier: &Identifier,
+    // ) -> Option<SymbolID> {
+    //     if let Some(local_scope_rc) = &local_scope_opt {
+    //         let local_scope = local_scope_rc.borrow();
+    //         if let Some(local_symbol) = local_scope.resolve(&identifier.name).cloned() {
+    //             return Some(local_symbol.get_symbol_id());
+    //         }
+    //     }
+
+    //     if let Some(symbol_id) = self.lookup_symbol_id(module_id, &identifier.name) {
+    //         return Some(symbol_id);
+    //     }
+
+    //     if let Some(symbol_id) = self.resolve_module_import(
+    //         module_id,
+    //         ModuleImport {
+    //             segments: vec![ModuleSegment::SubModule(identifier.clone())],
+    //             loc: identifier.loc.clone(),
+    //             span: identifier.span.clone(),
+    //         },
+    //     ) {
+    //         return Some(symbol_id);
+    //     }
+
+    //     self.reporter.report(Diag {
+    //         level: DiagLevel::Error,
+    //         kind: ResolverDiagKind::SymbolNotFound {
+    //             name: identifier.name.clone(),
+    //         },
+    //         location: Some(DiagLoc::new(SourceLoc::from_loc(
+    //             identifier.loc.clone(),
+    //             self.get_current_module_file_path(),
+    //         ))),
+    //         hint: None,
+    //     });
+
+    //     None
+    // }
+
+    fn resolve_identifier_expr(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        module_id: ModuleID,
+        identifier: &Identifier,
+    ) -> Option<TypedExpression> {
+        let symbol_id = self.resolve_identifier(local_scope_opt, module_id, identifier)?;
+        let loc = SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path());
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Symbol(symbol_id, loc.clone()),
+            concrete_type: None,
+            value_category: ValueCategory::Lvalue,
+            loc,
+        })
+    }
+
+    fn resolve_module_import_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        module_import: &ModuleImport,
+    ) -> Option<TypedExpression> {
+        if let Some(identifier) = module_import.as_identifier() {
+            self.resolve_identifier_expr(local_scope_opt, module_id, &identifier)
+        } else {
+            self.resolve_module_import(module_id, module_import.clone())
+                .map(|symbol_id| TypedExpression {
+                    kind: TypedExpressionKind::Symbol(
+                        symbol_id,
+                        SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
+                    ),
+                    concrete_type: None,
+                    value_category: ValueCategory::Lvalue,
+                    loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
+                })
+        }
     }
 
     fn resolve_expr(
@@ -2236,7 +2404,7 @@ impl Resolver {
             Expression::ModuleImport(module_import) => {
                 self.resolve_module_import_expr(module_id, local_scope_opt, module_import)
             }
-            Expression::Identifier(identifier) => self.resolve_identifier_expr(module_id, local_scope_opt, identifier),
+            Expression::Identifier(identifier) => self.resolve_identifier_expr(local_scope_opt, module_id, identifier),
             Expression::FuncCall(func_call) => self.resolve_func_call(module_id, local_scope_opt, func_call),
             Expression::Array(arr) => self.resolve_array_expr(module_id, local_scope_opt, arr),
             Expression::Infix(bin) => self.resolve_infix_expr(module_id, local_scope_opt, bin),
@@ -2387,55 +2555,6 @@ impl Resolver {
         })
     }
 
-    fn resolve_module_import_expr(
-        &mut self,
-        module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
-        module_import: &ModuleImport,
-    ) -> Option<TypedExpression> {
-        if let Some(identifier) = module_import.as_identifier() {
-            let symbol_id = resolve_local_identifier!(self, local_scope_opt, module_id, identifier);
-            Some(TypedExpression {
-                kind: TypedExpressionKind::Symbol(
-                    symbol_id,
-                    SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
-                ),
-                concrete_type: None,
-                value_category: ValueCategory::Lvalue,
-                loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
-            })
-        } else {
-            self.resolve_module_import(module_id, module_import.clone())
-                .map(|symbol_id| TypedExpression {
-                    kind: TypedExpressionKind::Symbol(
-                        symbol_id,
-                        SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
-                    ),
-                    concrete_type: None,
-                    value_category: ValueCategory::Lvalue,
-                    loc: SourceLoc::from_loc(module_import.loc.clone(), self.get_current_module_file_path()),
-                })
-        }
-    }
-
-    fn resolve_identifier_expr(
-        &mut self,
-        module_id: ModuleID,
-        local_scope_opt: Option<LocalScopeRef>,
-        identifier: &Identifier,
-    ) -> Option<TypedExpression> {
-        let symbol_id = resolve_local_identifier!(self, local_scope_opt, module_id, identifier);
-        Some(TypedExpression {
-            kind: TypedExpressionKind::Symbol(
-                symbol_id,
-                SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
-            ),
-            concrete_type: None,
-            value_category: ValueCategory::Lvalue,
-            loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
-        })
-    }
-
     fn resolve_func_call(
         &mut self,
         module_id: ModuleID,
@@ -2578,7 +2697,7 @@ impl Resolver {
 
         let symbol_id = match type_specifier {
             TypeSpecifier::Identifier(identifier) => {
-                resolve_local_identifier!(self, local_scope_opt, module_id, identifier)
+                self.resolve_identifier(local_scope_opt, module_id, &identifier)?
             }
             TypeSpecifier::ModuleImport(module_import) => {
                 self.resolve_module_import(module_id, module_import.clone())?
@@ -2980,6 +3099,7 @@ pub fn typed_func_def_as_func_sig(func_def: &TypedFuncDef) -> FuncSig {
 
 pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
     TypedFuncType {
+        def_module_id: Some(func_sig.module_id),
         params: typed_func_params_as_func_type_params(&func_sig.params),
         return_type: Box::new(func_sig.return_type.clone()),
         vis_opt: Some(func_sig.vis.clone()),
