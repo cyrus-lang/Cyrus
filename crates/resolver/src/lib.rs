@@ -51,8 +51,15 @@ pub struct Resolver {
     pub reporter: DiagReporter<ResolverDiagKind>,
     pub module_loader: ModuleLoader,
     pub master_module_file_path: String,
-    already_imported_modules: HashSet<ModuleFilePath>,
+    already_imported_modules: HashSet<ImportKey>,
     current_module: Option<ModuleID>,
+}
+
+// Track previously imported module + import kind
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ImportKey {
+    module_file_path: String,
+    alias: ModuleAlias,
 }
 
 // Used to check import cycles.
@@ -183,7 +190,6 @@ impl Resolver {
     /// Resolves a module import with duplicate and cycle detection.
     fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, visiting: &mut Visiting) {
         let current_module_file_path = self.get_module_file_path(parent_module_id).unwrap();
-
         let loaded_modules_list = self.module_loader.load_module(&import);
 
         for loaded_module in loaded_modules_list {
@@ -226,9 +232,13 @@ impl Resolver {
                 global_symbols.entry(module_id).or_insert_with(|| SymbolTable::new());
             }
 
-            // if the module was already processed in another import, do not throw an error
-            let already_directly_imported = self.already_imported_modules.contains(&module_file_path);
-            self.already_imported_modules.insert(module_file_path.clone());
+            // check duplicates using module file + alias
+            let import_key = ImportKey {
+                module_file_path: module_file_path.clone(),
+                alias: module_alias.clone(),
+            };
+            let already_directly_imported = self.already_imported_modules.contains(&import_key);
+            self.already_imported_modules.insert(import_key);
 
             // cycle detection
             if visiting.active.contains(&module_file_path) {
@@ -246,10 +256,9 @@ impl Resolver {
                 continue;
             }
 
-            // mark as active for cycle detection
             visiting.active.insert(module_file_path.clone());
 
-            // if already processed, still load the singles for the current module
+            // load symbols even if module was processed
             if visiting.done.contains(&module_file_path) {
                 match module_alias {
                     ModuleAlias::Group(group_name) => {
@@ -298,7 +307,6 @@ impl Resolver {
                     program_trees.push((module_name, module_file_path, module_id, typed_program_tree));
                     drop(program_trees);
 
-                    // load singles after module is fully registered
                     match module_alias {
                         ModuleAlias::Group(group_name) => {
                             self.insert_module_alias(parent_module_id, group_name, module_id);
@@ -318,7 +326,7 @@ impl Resolver {
             visiting.active.remove(&module_file_path);
             visiting.done.insert(module_file_path);
 
-            // only warn about duplicates if it was a direct import in the same file
+            // warn only for exact duplicate (same module + same import type)
             if already_directly_imported {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
