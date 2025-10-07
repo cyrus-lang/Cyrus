@@ -306,7 +306,6 @@ impl Resolver {
         exists
     }
 
-    // REVIEW  Refactor the method.
     // FIXME   Fix cyclic-import problem here.
     fn resolve_import(&mut self, parent_module_id: ModuleID, import: Import, mut visiting: &mut Visiting) {
         let mut duplicate_import = false;
@@ -367,19 +366,18 @@ impl Resolver {
                     .unwrap_or(generate_module_id())
             };
 
-            // FIXME
-            // if visiting.active.contains(&module_file_path) {
-            //     // Cycle import detected.
-            //     self.reporter.report(Diag {
-            //         level: DiagLevel::Error,
-            //         kind: ResolverDiagKind::ImportCycle {
-            //             module_names: visiting.active.iter().cloned().collect(),
-            //         },
-            //         location: None,
-            //         hint: None,
-            //     });
-            //     continue;
-            // }
+            if visiting.active.contains(&module_file_path) {
+                // cycle import detected
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::ImportCycle {
+                        module_names: visiting.active.iter().cloned().collect(),
+                    },
+                    location: None,
+                    hint: None,
+                });
+                continue;
+            }
 
             visiting.active.insert(module_file_path.clone());
 

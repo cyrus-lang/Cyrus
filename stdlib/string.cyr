@@ -2,9 +2,9 @@ import std::core{panic};
 import std::libc{strlen, malloc, memcpy, free};
 
 pub struct String {
-    data: char*;
-    length: size_t;
-    capacity: size_t;
+    pub data: char*;
+    pub length: size_t;
+    pub capacity: size_t;
 
     pub fn new(init: const char*) String {
         #len = strlen(init);

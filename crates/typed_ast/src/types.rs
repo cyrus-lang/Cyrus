@@ -13,12 +13,12 @@ pub enum ConcreteType {
     FuncType(TypedFuncType),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypedFuncType {
     pub params: TypedFuncTypeParams,
     pub return_type: Box<ConcreteType>,
     pub vis_opt: Option<AccessSpecifier>,
-    pub loc: SourceLoc
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -401,5 +401,11 @@ pub struct TypedUnnamedStructTypeField {
 impl PartialEq for TypedUnnamedStructTypeField {
     fn eq(&self, other: &Self) -> bool {
         self.field_name == other.field_name && self.field_type == other.field_type
+    }
+}
+
+impl PartialEq for TypedFuncType {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.return_type == other.return_type
     }
 }
