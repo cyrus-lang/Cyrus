@@ -86,7 +86,15 @@ pub enum AnalyzerDiagKind {
     ArrayNonIntegerIndex {
         found_type: String,
     },
+    TupleNonIntegerIndex {
+        found_type: String,
+    },
     ArrayIndexOnNonArrayOperand,
+    TupleMemberAccessOnNonTupleOperand,
+    TupleIndexOutOfRange {
+        index: usize,
+        length: usize
+    },
     ObjectHasNoFieldNamed {
         struct_name: String,
         field_name: String,
@@ -205,6 +213,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::TupleIndexOutOfRange { index, length } => {
+                write!(f, "Tuple member access with index {} exceeds tuple length {}.", index, length)
+            },
             AnalyzerDiagKind::PrivateFunctionCall { name } => {
                 write!(f, "Function '{}' is private and cannot be called.", name)
             }
@@ -454,8 +465,14 @@ impl fmt::Display for AnalyzerDiagKind {
             AnalyzerDiagKind::ArrayNonIntegerIndex { found_type } => {
                 write!(f, "Array index must be an integer (found '{}').", found_type)
             }
+            AnalyzerDiagKind::TupleNonIntegerIndex { found_type } => {
+                write!(f, "Tuple index must be an integer (found '{}').", found_type)
+            }
             AnalyzerDiagKind::ArrayIndexOnNonArrayOperand => {
                 write!(f, "Cannot index non-array value.")
+            }
+            AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand => {
+                write!(f, "Cannot access member of non-tuple value.")
             }
             AnalyzerDiagKind::AddressOfRvalue => {
                 write!(f, "Cannot take the address of a temporary value.")

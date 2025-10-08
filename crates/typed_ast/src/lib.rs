@@ -63,6 +63,14 @@ pub enum TypedExpressionKind {
     Lambda(TypedLambda),
     Tuple(TypedTupleValue),
     ConcreteType(ConcreteType),
+    TupleMemberAccess(TypedTupleMemberAccess),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedTupleMemberAccess {
+    pub operand: Box<TypedExpression>,
+    pub index: Box<TypedExpression>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +163,7 @@ impl TypedExpressionKind {
                 }),
             TypedExpressionKind::Symbol(..)
             | TypedExpressionKind::ArrayIndex(_)
+            | TypedExpressionKind::TupleMemberAccess(_)
             | TypedExpressionKind::Dereference(_)
             | TypedExpressionKind::FieldAccess(_)
             | TypedExpressionKind::MethodCall(_)
@@ -172,6 +181,7 @@ impl TypedExpressionKind {
             TypedExpressionKind::ArrayIndex(_) => true,
             TypedExpressionKind::Dereference(_) => true,
             TypedExpressionKind::FieldAccess(_) => true,
+            TypedExpressionKind::TupleMemberAccess(_) => true,
             TypedExpressionKind::MethodCall(_) => false,
             TypedExpressionKind::FuncCall(_) => false,
             TypedExpressionKind::StructInit(_) => false,
@@ -652,5 +662,11 @@ impl PartialEq for TypedLambda {
 impl PartialEq for TypedTupleValue {
     fn eq(&self, other: &Self) -> bool {
         self.expr_list == other.expr_list
+    }
+}
+
+impl PartialEq for TypedTupleMemberAccess {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand && self.index == other.index
     }
 }

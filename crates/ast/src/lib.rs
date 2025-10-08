@@ -81,7 +81,16 @@ pub enum Expression {
     UnnamedStructValue(UnnamedStructValue),
     SizeOfExpression(SizeOfExpression),
     Lambda(Lambda),
-    Tuple(TupleValue)
+    Tuple(TupleValue),
+    TupleMemberAccess(TupleMemberAccess)
+}
+
+#[derive(Debug, Clone)]
+pub struct TupleMemberAccess {
+    pub operand: Box<Expression>,
+    pub index: Box<Expression>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

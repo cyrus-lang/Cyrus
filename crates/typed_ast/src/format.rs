@@ -175,6 +175,13 @@ pub fn format_typed_expr<'a>(
             fmt.push_str(&typed_field_access.field_name);
             fmt
         }
+        TypedExpressionKind::TupleMemberAccess(tuple_member_access) => {
+            format!(
+                "{}.{}",
+                format_typed_expr(&tuple_member_access.operand, format_symbol),
+                format_typed_expr(&tuple_member_access.operand, format_symbol)
+            )
+        }
         TypedExpressionKind::MethodCall(typed_method_call) => {
             let mut fmt = String::new();
             let operand_fmt = &format_typed_expr(&typed_method_call.operand, format_symbol);

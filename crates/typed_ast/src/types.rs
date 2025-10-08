@@ -59,6 +59,13 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
+    pub fn as_tuple_type(&self) -> Option<&TypedTupleType> {
+        match &self {
+            ConcreteType::Tuple(tuple_type) => Some(tuple_type),
+            _ => None,
+        }
+    }
+
     pub fn as_func_type(&self) -> Option<&TypedFuncType> {
         match &self {
             ConcreteType::FuncType(func_type) => Some(func_type),
