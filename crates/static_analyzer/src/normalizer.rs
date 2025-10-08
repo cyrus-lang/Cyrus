@@ -4,7 +4,10 @@ use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID, TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
-    types::{ConcreteType, TypedFuncType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
+    types::{
+        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
+        TypedTupleType,
+    },
 };
 
 impl<'a> AnalysisContext<'a> {
@@ -172,6 +175,21 @@ impl<'a> AnalysisContext<'a> {
                 Some(ConcreteType::FuncType(func_type))
             }
             ConcreteType::BasicType(_) | ConcreteType::UnnamedStruct(_) => Some(ty),
+            ConcreteType::Tuple(tuple_type) => {
+                let mut type_list: Vec<ConcreteType> = Vec::new();
+
+                for concrete_type in &tuple_type.type_list {
+                    match self.normalize_type(scope_id_opt, concrete_type.clone(), tuple_type.loc.clone()) {
+                        Some(normalized) => type_list.push(normalized),
+                        None => continue,
+                    }
+                }
+
+                Some(ConcreteType::Tuple(TypedTupleType {
+                    type_list,
+                    loc: tuple_type.loc,
+                }))
+            }
         }
     }
 
@@ -242,7 +260,7 @@ impl<'a> AnalysisContext<'a> {
 
             LocalOrGlobalSymbol::GlobalSymbol(entry) => match entry.kind {
                 SymbolEntryKind::Method(..) => {
-                    // FIXME 
+                    // FIXME
                     // let fty = ConcreteType::from_function_sig(&m.sig);
                     // self.normalize_type(scope_id_opt, fty, m.loc.clone())
                     todo!();

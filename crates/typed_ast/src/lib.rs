@@ -61,7 +61,14 @@ pub enum TypedExpressionKind {
     UnnamedStructValue(TypedUnnamedStructValue),
     SizeOfExpression(TypedSizeOfExpression),
     Lambda(TypedLambda),
+    Tuple(TypedTupleValue),
     ConcreteType(ConcreteType),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedTupleValue {
+    pub expr_list: Vec<TypedExpression>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +121,18 @@ impl TypedExpressionKind {
         match self {
             TypedExpressionKind::Literal(_) => true,
             TypedExpressionKind::Lambda(_) => true,
+            TypedExpressionKind::Tuple(tuple_value) => {
+                let mut comptime_valid = true;
+
+                for expr in &tuple_value.expr_list {
+                    if !expr.kind.is_comptime_valid() {
+                        comptime_valid = false;
+                        break;
+                    }
+                }
+
+                comptime_valid
+            }
             TypedExpressionKind::Prefix(prefix) => prefix.operand.kind.is_comptime_valid(),
             TypedExpressionKind::Infix(infix) => {
                 infix.lhs.kind.is_comptime_valid() && infix.rhs.kind.is_comptime_valid()
@@ -168,6 +187,7 @@ impl TypedExpressionKind {
             TypedExpressionKind::SizeOfExpression(_) => false,
             TypedExpressionKind::ConcreteType(_) => false,
             TypedExpressionKind::Lambda(_) => false,
+            TypedExpressionKind::Tuple(_) => false,
         }
     }
 }
@@ -626,5 +646,11 @@ pub struct TypedContinue {
 impl PartialEq for TypedLambda {
     fn eq(&self, other: &Self) -> bool {
         self.params == other.params && self.return_type == other.return_type
+    }
+}
+
+impl PartialEq for TypedTupleValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr_list == other.expr_list
     }
 }

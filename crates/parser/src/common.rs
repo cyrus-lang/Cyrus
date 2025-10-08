@@ -164,11 +164,68 @@ impl Parser {
         })))
     }
 
+    fn parse_tuple(&mut self) -> Result<TypeSpecifier, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.expect_current(TokenKind::LeftParen)?;
+
+        let mut type_list: Vec<TypeSpecifier> = Vec::new();
+
+        loop {
+            let type_specifier = self.parse_type_specifier()?;
+            self.next_token();
+
+            type_list.push(type_specifier);
+
+            match self.current_token().kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                    continue;
+                }
+                _ => break,
+            }
+        }
+
+        if !self.current_token_is(TokenKind::RightParen) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingClosingParen,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
+                    self.file_name.clone(),
+                ))),
+                hint: None,
+            });
+        }
+
+        if type_list.len() <= 1 {
+            return Err(Diag {
+                kind: ParserDiagKind::SingleElementTupleType,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
+                    self.file_name.clone(),
+                ))),
+                hint: Some(
+                    "If you only need a single element, remove the tuple syntax and use the type directly.".to_string(),
+                ),
+            });
+        }
+
+        Ok(TypeSpecifier::Tuple(TupleType {
+            type_list,
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
+    }
+
     fn parse_base_type_token(&mut self) -> Result<TypeSpecifier, ParserError> {
         let current = self.current_token().clone();
 
         let parsed_kind = match current.kind {
             ref token_kind if PRIMITIVE_TYPES.contains(&token_kind) => Ok(TypeSpecifier::TypeToken(current)),
+            TokenKind::LeftParen => self.parse_tuple(),
             TokenKind::Function => self.parse_func_type(),
             TokenKind::Struct | TokenKind::Bits => self.parse_struct_type(),
             TokenKind::Const => {

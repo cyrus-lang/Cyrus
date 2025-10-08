@@ -225,6 +225,17 @@ pub fn format_typed_expr<'a>(
         }
         TypedExpressionKind::ConcreteType(concrete_type) => format_concrete_type(concrete_type.clone(), format_symbol),
         TypedExpressionKind::Lambda(typed_lambda) => format_lambda(typed_lambda, format_symbol),
+        TypedExpressionKind::Tuple(tuple_value) => {
+            format!(
+                "({})",
+                tuple_value
+                    .expr_list
+                    .iter()
+                    .map(|v| format_typed_expr(v, format_symbol))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )
+        }
     }
 }
 
@@ -332,6 +343,17 @@ pub fn format_concrete_type<'a>(
             format_unnamed_struct_type(&unnamed_struct_type, format_symbol)
         }
         ConcreteType::FuncType(func_type) => format_func_type(&func_type, format_symbol),
+        ConcreteType::Tuple(tuple_type) => {
+            format!(
+                "({})",
+                tuple_type
+                    .type_list
+                    .iter()
+                    .map(|t| format_concrete_type(t.clone(), format_symbol))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )
+        }
     }
 }
 

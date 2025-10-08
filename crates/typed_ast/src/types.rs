@@ -11,11 +11,18 @@ pub enum ConcreteType {
     Pointer(Box<ConcreteType>),
     UnnamedStruct(TypedUnnamedStructType),
     FuncType(TypedFuncType),
+    Tuple(TypedTupleType),
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedTupleType {
+    pub type_list: Vec<ConcreteType>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedFuncType {
-    pub def_module_id: Option<ModuleID>, 
+    pub def_module_id: Option<ModuleID>,
     pub params: TypedFuncTypeParams,
     pub return_type: Box<ConcreteType>,
     pub vis_opt: Option<AccessSpecifier>,
@@ -408,5 +415,11 @@ impl PartialEq for TypedUnnamedStructTypeField {
 impl PartialEq for TypedFuncType {
     fn eq(&self, other: &Self) -> bool {
         self.params == other.params && self.return_type == other.return_type
+    }
+}
+
+impl PartialEq for TypedTupleType {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_list == other.type_list
     }
 }

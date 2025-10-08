@@ -81,6 +81,14 @@ pub enum Expression {
     UnnamedStructValue(UnnamedStructValue),
     SizeOfExpression(SizeOfExpression),
     Lambda(Lambda),
+    Tuple(TupleValue)
+}
+
+#[derive(Debug, Clone)]
+pub struct TupleValue {
+    pub expr_list: Vec<Expression>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -294,6 +302,7 @@ pub enum TypeSpecifier {
     Dereference(Box<TypeSpecifier>),
     UnnamedStruct(UnnamedStructType),
     FuncType(Box<FuncType>),
+    Tuple(TupleType),
 }
 
 impl TypeSpecifier {
@@ -307,8 +316,16 @@ impl TypeSpecifier {
             TypeSpecifier::Dereference(inner) => inner.get_loc(),
             TypeSpecifier::UnnamedStruct(struct_type) => (struct_type.loc.clone(), struct_type.span.end),
             TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
+            TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct TupleType {
+    pub type_list: Vec<TypeSpecifier>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

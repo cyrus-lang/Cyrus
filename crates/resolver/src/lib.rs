@@ -11,7 +11,7 @@ use ast::{
     AccessSpecifier, AddressOf, Array, ArrayIndex, Assignment, Cast, Dereference, FieldAccess, FuncCall, FuncParams,
     FuncTypeVariadicParams, GlobalVariable, If, Import, InfixExpression, Interface, Lambda, Literal, MethodCall,
     ModuleImport, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix, StructInit,
-    SwitchCasePattern, UnaryExpression, Union, UnnamedStructValue,
+    SwitchCasePattern, TupleValue, UnaryExpression, Union, UnnamedStructValue,
 };
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::types::{
     BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
-    TypedUnnamedStructType, TypedUnnamedStructTypeField,
+    TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
 };
 use typed_ast::{SymbolID, *};
 
@@ -437,7 +437,28 @@ impl Resolver {
         loc: Location,
         span_end: usize,
     ) -> Option<ConcreteType> {
-        let result = match type_specifier {
+        let result = match &type_specifier {
+            TypeSpecifier::Tuple(tuple_type) => {
+                let mut type_list: Vec<ConcreteType> = Vec::new();
+
+                for element_type in &tuple_type.type_list {
+                    match self.resolve_type(
+                        local_scope.clone(),
+                        module_id,
+                        element_type.clone(),
+                        loc.clone(),
+                        span_end,
+                    ) {
+                        Some(concrete_type) => type_list.push(concrete_type),
+                        None => continue,
+                    }
+                }
+
+                Ok(ConcreteType::Tuple(TypedTupleType {
+                    type_list,
+                    loc: SourceLoc::from_loc(tuple_type.loc.clone(), self.get_current_module_file_path()),
+                }))
+            }
             TypeSpecifier::FuncType(func_type) => {
                 let params: Vec<ConcreteType> = func_type
                     .params
@@ -463,7 +484,7 @@ impl Resolver {
                 let return_type = self.resolve_type(
                     local_scope.clone(),
                     module_id,
-                    *func_type.return_type,
+                    *func_type.return_type.clone(),
                     loc.clone(),
                     span_end,
                 )?;
@@ -482,18 +503,18 @@ impl Resolver {
                 })
             }
             TypeSpecifier::Const(inner) => {
-                let ct = self.resolve_type(local_scope, module_id, *inner, loc.clone(), span_end)?;
+                let ct = self.resolve_type(local_scope, module_id, *inner.clone(), loc.clone(), span_end)?;
                 Ok(ConcreteType::Const(Box::new(ct)))
             }
             TypeSpecifier::Dereference(inner) => {
-                let ct = self.resolve_type(local_scope, module_id, *inner, loc.clone(), span_end)?;
+                let ct = self.resolve_type(local_scope, module_id, *inner.clone(), loc.clone(), span_end)?;
                 Ok(ConcreteType::Pointer(Box::new(ct)))
             }
             TypeSpecifier::Array(array_spec) => {
                 let elem_type = self.resolve_type(
                     local_scope.clone(),
                     module_id,
-                    *array_spec.element_type,
+                    *array_spec.element_type.clone(),
                     loc.clone(),
                     span_end,
                 )?;
@@ -547,7 +568,7 @@ impl Resolver {
                 }))
             }
             TypeSpecifier::ModuleImport(import) => self
-                .resolve_module_import(module_id, import)
+                .resolve_module_import(module_id, import.clone())
                 .map(ConcreteType::UnresolvedSymbol)
                 .ok_or(ResolverDiagKind::TypeNotFound {
                     name: "import".to_string(),
@@ -2268,7 +2289,34 @@ impl Resolver {
                 self.resolve_size_of_expr(module_id, local_scope_opt, size_of_expression)
             }
             Expression::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
+            Expression::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, local_scope_opt, tuple_value),
         }
+    }
+
+    fn resolve_tuple_expr(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        tuple_value: &TupleValue,
+    ) -> Option<TypedExpression> {
+        let mut expr_list: Vec<TypedExpression> = Vec::new();
+
+        for expr in &tuple_value.expr_list {
+            match self.resolve_expr(module_id, local_scope_opt.clone(), expr) {
+                Some(typed_expr) => expr_list.push(typed_expr),
+                None => continue,
+            }
+        }
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::Tuple(TypedTupleValue {
+                expr_list,
+                loc: SourceLoc::from_loc(tuple_value.loc.clone(), self.get_current_module_file_path()),
+            }),
+            concrete_type: None,
+            value_category: ValueCategory::Rvalue,
+            loc: SourceLoc::from_loc(tuple_value.loc.clone(), self.get_current_module_file_path()),
+        })
     }
 
     fn resolve_lambda_expr(&mut self, module_id: ModuleID, lambda: &Lambda) -> Option<TypedExpression> {
