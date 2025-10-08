@@ -324,6 +324,7 @@ pub enum TypedStatement {
     Union(TypedUnion),
     Interface(TypedInterface),
     Expression(TypedExpression),
+    Defer(TypedDefer),
 }
 
 impl TypedStatement {
@@ -347,8 +348,15 @@ impl TypedStatement {
             TypedStatement::Expression(typed_expression) => typed_expression.loc.clone(),
             TypedStatement::While(while_stmt) => while_stmt.loc.clone(),
             TypedStatement::Union(union_stmt) => union_stmt.loc.clone(),
+            TypedStatement::Defer(typed_defer) => typed_defer.loc.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedDefer {
+    pub operand: Box<TypedStatement>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]
@@ -464,6 +472,7 @@ pub struct TypedTypedef {
 pub struct TypedBlockStatement {
     pub scope_id: ScopeID,
     pub exprs: Vec<TypedStatement>,
+    pub defers: Vec<TypedDefer>,
     pub loc: SourceLoc,
 }
 
@@ -472,6 +481,7 @@ impl TypedBlockStatement {
         Self {
             scope_id,
             exprs: Vec::new(),
+            defers: Vec::new(),
             loc,
         }
     }

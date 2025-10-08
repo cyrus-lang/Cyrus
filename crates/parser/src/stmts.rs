@@ -58,6 +58,7 @@ impl Parser {
 
         if !toplevel {
             match self.current_token().kind {
+                TokenKind::Defer => self.parse_defer(),
                 TokenKind::If => self.parse_if(),
                 TokenKind::Hashtag => self.parse_variable(),
                 TokenKind::Return => self.parse_return(),
@@ -560,7 +561,7 @@ impl Parser {
 
                 if self.current_token_is(TokenKind::As) {
                     self.next_token(); // consume as 
-                    
+
                     let renamed_identifier = self.parse_identifier()?;
                     self.next_token();
                     renamed = Some(renamed_identifier);
@@ -1554,6 +1555,20 @@ impl Parser {
             alternate,
             span: Span { start, end },
             loc,
+        }))
+    }
+
+    pub fn parse_defer(&mut self) -> Result<Statement, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc;
+
+        self.next_token();
+        let stmt = self.parse_statement(false)?;
+
+        Ok(Statement::Defer(Defer {
+            operand: Box::new(stmt),
+            loc,
+            span: Span::new(start, self.current_token().span.end),
         }))
     }
 }
