@@ -1,0 +1,13 @@
+// @stdout: x
+// @stdin: 
+// @args:
+
+import std::libc{printf};
+
+fn main() {
+    #x = 2;
+
+    defer if (x >= 2) {
+        printf("x\n");
+    }
+}
