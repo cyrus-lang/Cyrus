@@ -1,9 +1,8 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
+use crate::context::AnalysisContext;
 use ast::{
     LiteralKind,
     operators::{InfixOperator, PrefixOperator},
 };
-use diagcentral::{Diag, DiagLevel, DiagLoc};
 use resolver::scope::{LocalOrGlobalSymbol, LocalScopeRef};
 use typed_ast::{ScopeID, SymbolID, TypedExpression, TypedExpressionKind, TypedLiteral};
 
@@ -181,16 +180,6 @@ impl<'a> AnalysisContext<'a> {
             _ => None,
         };
 
-        if integer_result.is_none() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
-                location: Some(DiagLoc::new(typed_expr.loc.clone())),
-                hint: None,
-            });
-            return None;
-        } else {
-            Some(integer_result.unwrap())
-        }
+        integer_result
     }
 }

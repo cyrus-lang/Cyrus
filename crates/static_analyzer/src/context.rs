@@ -796,6 +796,14 @@ impl<'a> AnalysisContext<'a> {
                         value_category: ValueCategory::Rvalue,
                         loc: expr.loc.clone(),
                     };
+                } else {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::GlobalVariableExprNotComptimeValid,
+                        location: Some(DiagLoc::new(typed_global_var.loc.clone())),
+                        hint: None,
+                    });
+                    return;
                 }
             }
 
