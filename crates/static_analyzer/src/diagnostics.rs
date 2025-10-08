@@ -80,15 +80,14 @@ pub enum AnalyzerDiagKind {
         symbol_name: String,
     },
     GlobalVariableExprNotComptimeValid,
+    ExprNotComptimeValid,
     CannotAssignToConstLValue,
     InvalidIntegerLiteralSuffix,
     InvalidFloatLiteralSuffix,
     ArrayNonIntegerIndex {
         found_type: String,
     },
-    TupleNonIntegerIndex {
-        found_type: String,
-    },
+    TupleNonIntegerIndex,
     ArrayIndexOnNonArrayOperand,
     TupleMemberAccessOnNonTupleOperand,
     TupleIndexOutOfRange {
@@ -420,6 +419,9 @@ impl fmt::Display for AnalyzerDiagKind {
             AnalyzerDiagKind::GlobalVariableExprNotComptimeValid => {
                 write!(f, "Global variable expression is not valid at compile time.")
             }
+            AnalyzerDiagKind::ExprNotComptimeValid => {
+                write!(f, "Expression is not valid at compile time.")
+            }
             AnalyzerDiagKind::CannotAssignToConstLValue => {
                 write!(f, "Cannot assign to immutable lvalue.")
             }
@@ -465,8 +467,8 @@ impl fmt::Display for AnalyzerDiagKind {
             AnalyzerDiagKind::ArrayNonIntegerIndex { found_type } => {
                 write!(f, "Array index must be an integer (found '{}').", found_type)
             }
-            AnalyzerDiagKind::TupleNonIntegerIndex { found_type } => {
-                write!(f, "Tuple index must be an integer (found '{}').", found_type)
+            AnalyzerDiagKind::TupleNonIntegerIndex => {
+                write!(f, "Tuple index must be an integer.")
             }
             AnalyzerDiagKind::ArrayIndexOnNonArrayOperand => {
                 write!(f, "Cannot index non-array value.")

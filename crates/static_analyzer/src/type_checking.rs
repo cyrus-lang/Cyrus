@@ -600,7 +600,9 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
             TypedExpressionKind::Lambda(typed_lambda) => self.analyze_lambda_expr(scope_id_opt, typed_lambda),
-            TypedExpressionKind::Tuple(tuple_value) => self.analyze_tuple_value(scope_id_opt, tuple_value),
+            TypedExpressionKind::Tuple(tuple_value) => {
+                self.analyze_tuple_value(scope_id_opt, tuple_value, expected_type)
+            }
             TypedExpressionKind::TupleMemberAccess(tuple_member_access) => {
                 self.analyze_tuple_member_access(scope_id_opt, tuple_member_access, expected_type)
             }
@@ -643,9 +645,7 @@ impl<'a> AnalysisContext<'a> {
         if !self.is_integer_type(index_type.clone()) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::ArrayNonIntegerIndex {
-                    found_type: format_concrete_type(index_type, &(self.symbol_formatter)(scope_id_opt)),
-                },
+                kind: AnalyzerDiagKind::TupleNonIntegerIndex,
                 location: Some(DiagLoc::new(tuple_member_access.loc.clone())),
                 hint: None,
             });
@@ -657,9 +657,7 @@ impl<'a> AnalysisContext<'a> {
             None => {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::ArrayNonIntegerIndex {
-                        found_type: format_concrete_type(index_type, &(self.symbol_formatter)(scope_id_opt)),
-                    },
+                    kind: AnalyzerDiagKind::TupleNonIntegerIndex,
                     location: Some(DiagLoc::new(tuple_member_access.loc.clone())),
                     hint: None,
                 });
@@ -714,11 +712,22 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         tuple_value: &mut TypedTupleValue,
+        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         let mut type_list: Vec<ConcreteType> = Vec::new();
 
-        for expr in &mut tuple_value.expr_list {
-            match self.analyze_typed_expr_type(scope_id_opt, expr, None) {
+        let tuple_type_opt = match expected_type {
+            Some(concrete_type) => concrete_type.as_tuple_type().cloned(),
+            None => None,
+        };
+
+        for (idx, expr) in &mut tuple_value.expr_list.iter_mut().enumerate() {
+            let mut expected_type: Option<ConcreteType> = None;
+            if let Some(tuple_type) = &tuple_type_opt {
+                expected_type = tuple_type.type_list.get(idx).cloned();
+            }
+
+            match self.analyze_typed_expr_type(scope_id_opt, expr, expected_type) {
                 Some(concrete_type) => type_list.push(concrete_type),
                 None => continue,
             }

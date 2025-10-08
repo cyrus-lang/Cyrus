@@ -210,6 +210,12 @@ impl<'a> AnalysisContext<'a> {
                             todo!();
                         }
                     } else {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::ExprNotComptimeValid,
+                            location: Some(DiagLoc::new(typed_expr.loc.clone())),
+                            hint: None,
+                        });
                         return None;
                     }
                 }
