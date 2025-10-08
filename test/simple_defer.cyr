@@ -1,0 +1,12 @@
+// @stdout: 1432
+// @stdin: 
+// @args:
+
+import std::libc{printf};
+
+fn main() {
+    printf("1");
+    defer printf("2");
+    defer printf("3");
+    printf("4");
+}
