@@ -149,6 +149,18 @@ impl fmt::Display for TypeSpecifier {
                 }
                 write!(f, "}}")
             }
+            TypeSpecifier::Tuple(tuple_type) => {
+                write!(
+                    f,
+                    "({})",
+                    tuple_type
+                        .type_list
+                        .iter()
+                        .map(|t| t.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
         }
     }
 }
@@ -300,6 +312,18 @@ impl fmt::Display for Expression {
             Expression::TypeSpecifier(type_specifier) => write!(f, "{}", type_specifier),
             Expression::SizeOfExpression(size_of_expression) => {
                 write!(f, "sizeof {}", size_of_expression.expr)
+            }
+            Expression::Tuple(tuple_value) => {
+                write!(
+                    f,
+                    "({})",
+                    tuple_value
+                        .expr_list
+                        .iter()
+                        .map(|t| t.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
             }
         }
     }

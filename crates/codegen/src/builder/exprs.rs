@@ -23,8 +23,8 @@ use resolver::{
 use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedCast, TypedDereference,
     TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
-    TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit, TypedUnaryExpression,
-    TypedUnnamedStructValue,
+    TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit, TypedTupleValue,
+    TypedUnaryExpression, TypedUnnamedStructValue,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedFuncType},
 };
 
@@ -71,7 +71,60 @@ impl<'a> CodeGenBuilder<'a> {
                 self.build_sizeof(local_scope_opt, typed_size_of_expr)
             }
             TypedExpressionKind::Lambda(typed_lambda) => self.build_lambda_expr(typed_lambda),
+            TypedExpressionKind::Tuple(tuple_value) => self.build_tuple_value(local_scope_opt, tuple_value),
             TypedExpressionKind::ConcreteType(..) => unreachable!(),
+        }
+    }
+
+    fn build_tuple_value(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        tuple_value: &TypedTupleValue,
+    ) -> InternalValue<'a> {
+        let mut const_elements = true;
+
+        let basic_values: Vec<BasicValueEnum<'a>> = tuple_value
+            .expr_list
+            .iter()
+            .map(|expr| {
+                let lvalue = self.build_expr(local_scope_opt.clone(), expr);
+                let rvalue = self
+                    .build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue)
+                    .as_basic_value();
+                if !self.is_basic_value_constant(rvalue) {
+                    const_elements = false;
+                }
+                rvalue
+            })
+            .collect();
+
+        let tuple_type = self.get_tuple_type_from_tuple_value(tuple_value);
+        let tuple_struct_type = self
+            .build_tuple_type(local_scope_opt.clone(), &tuple_type)
+            .into_struct_type();
+
+        if const_elements {
+            let tuple_struct_value = tuple_struct_type.const_named_struct(&basic_values);
+
+            InternalValue::new(
+                ConcreteType::Tuple(tuple_type),
+                InternalValueKind::RValue(tuple_struct_value.into()),
+            )
+        } else {
+            let mut tuple_struct_value = tuple_struct_type.get_undef();
+
+            basic_values.iter().enumerate().for_each(|(index, rvalue)| {
+                tuple_struct_value = self
+                    .llvmbuilder
+                    .build_insert_value(tuple_struct_value, *rvalue, index.try_into().unwrap(), "insert")
+                    .unwrap()
+                    .into_struct_value();
+            });
+            
+             InternalValue::new(
+                ConcreteType::Tuple(tuple_type),
+                InternalValueKind::RValue(tuple_struct_value.into()),
+            )
         }
     }
 

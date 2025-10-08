@@ -22,35 +22,38 @@ pub enum ParserDiagKind {
     InvalidInfixOperator(TokenKind),
     InvalidAssignOperator(TokenKind),
     NonArrayDataTypeForArrayConstruction,
+    SingleElementTupleType,
 }
 
 impl fmt::Display for ParserDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ParserDiagKind::SingleElementTupleType => {
+                write!(f, "Tuple type must contain at least two elements.")
+            }
             ParserDiagKind::UnexpectedToken(current, expected) => {
-                write!(f, "Expected token '{}' but got '{}'", expected, current)
+                write!(f, "Expected token '{}' but got '{}'.", expected, current)
             }
             ParserDiagKind::ExpectedToken(expected) => {
-                write!(f, "Expected token '{}'", expected)
+                write!(f, "Expected token '{}'.", expected)
             }
             ParserDiagKind::InvalidToken(token_kind) => {
-                write!(f, "Unexpected token: '{}'", token_kind)
+                write!(f, "Unexpected token: '{}'.", token_kind)
             }
             ParserDiagKind::InvalidTypeToken(token_kind) => {
-                write!(f, "Expected type token but got '{}'", token_kind)
+                write!(f, "Expected type token but got '{}'.", token_kind)
             }
-            ParserDiagKind::MissingClosingBrace => write!(f, "Missing closing brace '}}'"),
-            ParserDiagKind::MissingOpeningBrace => write!(f, "Missing opening brace '{{'"),
-            ParserDiagKind::MissingClosingParen => write!(f, "Missing closing paren ')'"),
-            ParserDiagKind::MissingOpeningParen => write!(f, "Missing opening paren '('"),
-            ParserDiagKind::ExpectedIdentifier => write!(f, "Expected an identifier"),
-            ParserDiagKind::MissingSemicolon => write!(f, "Missing semicolon"),
-            ParserDiagKind::MissingComma => write!(f, "Missing comma"),
+            ParserDiagKind::MissingClosingBrace => write!(f, "Missing closing brace '}}'."),
+            ParserDiagKind::MissingOpeningBrace => write!(f, "Missing opening brace '{{'."),
+            ParserDiagKind::MissingClosingParen => write!(f, "Missing closing paren ')'."),
+            ParserDiagKind::MissingOpeningParen => write!(f, "Missing opening paren '('."),
+            ParserDiagKind::ExpectedIdentifier => write!(f, "Expected an identifier."),
+            ParserDiagKind::MissingSemicolon => write!(f, "Missing semicolon."),
+            ParserDiagKind::MissingComma => write!(f, "Missing comma."),
             ParserDiagKind::IncompleteConditionalForLoop => {
                 write!(
                     f,
-                    "Defined a conditional for loop with incomplete condition. \n
-                    Consider to add a condition to current for loop or change it into unconditional for loop"
+                    "Defined a conditional for loop with incomplete condition. Consider to add a condition to current for loop or change it into unconditional for loop."
                 )
             }
             ParserDiagKind::InvalidUntypedArrayConstructor => {

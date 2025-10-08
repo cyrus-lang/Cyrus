@@ -15,9 +15,7 @@ use std::collections::HashMap;
 use typed_ast::{
     format::{format_concrete_type, format_func_type, format_typed_expr},
     types::{
-        BasicConcreteType::{self, *},
-        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
-        TypedUnnamedStructType, TypedUnnamedStructTypeField,
+        BasicConcreteType::{self, *}, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField
     },
     *,
 };
@@ -66,6 +64,9 @@ impl<'a> AnalysisContext<'a> {
                 packed && fields
             }
             (ConcreteType::FuncType(func_type1), ConcreteType::FuncType(func_type2)) => func_type1 == func_type2,
+            (ConcreteType::Tuple(tuple_type1), ConcreteType::Tuple(tuple_type2)) => {
+                tuple_type1 == tuple_type2
+            }
             (ConcreteType::BasicType(BasicConcreteType::Null), ConcreteType::Pointer(..)) => true,
             _ => false,
         }
@@ -599,6 +600,7 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }
             TypedExpressionKind::Lambda(typed_lambda) => self.analyze_lambda_expr(scope_id_opt, typed_lambda),
+            TypedExpressionKind::Tuple(tuple_value) => self.analyze_tuple_value(scope_id_opt, tuple_value),
         };
 
         let normalized_type = self.normalize_type(scope_id_opt, concrete_type.clone()?, typed_expr.loc.clone());
@@ -634,6 +636,22 @@ impl<'a> AnalysisContext<'a> {
 
         self.current_func = current_func_clone;
         Some(ConcreteType::FuncType(func_type))
+    }
+
+    fn analyze_tuple_value(&mut self, scope_id_opt: Option<ScopeID>, tuple_value: &mut TypedTupleValue) -> Option<ConcreteType> {
+        let mut type_list: Vec<ConcreteType> = Vec::new();
+
+        for expr in &mut tuple_value.expr_list {
+            match self.analyze_typed_expr_type(scope_id_opt, expr, None) {
+                Some(concrete_type) => type_list.push(concrete_type),
+                None => continue,
+            }
+        }
+
+        Some(ConcreteType::Tuple(TypedTupleType {
+            type_list,
+            loc: tuple_value.loc.clone(),
+        }))
     }
 
     pub(crate) fn check_expr_type_must_be_condition(&mut self, concrete_type: ConcreteType, loc: SourceLoc) {

@@ -8,12 +8,15 @@ use inkwell::{
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
     values::{AnyValue, AnyValueEnum},
 };
-use resolver::{scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntryKind}, typed_func_type_from_func_sig};
+use resolver::{
+    scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntryKind},
+    typed_func_type_from_func_sig,
+};
 use typed_ast::{
-    SymbolID,
+    SymbolID, TypedTupleValue,
     types::{
         BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
-        TypedArrayType, TypedUnnamedStructType,
+        TypedArrayType, TypedTupleType, TypedUnnamedStructType,
     },
 };
 
@@ -283,10 +286,42 @@ impl<'a> CodeGenBuilder<'a> {
             ConcreteType::UnnamedStruct(typed_unnamed_struct_type) => {
                 self.build_unnamed_struct_type(local_scope_opt, &typed_unnamed_struct_type)
             }
-            ConcreteType::FuncType(..) => {
-                self.llvmctx.ptr_type(AddressSpace::default()).into()
-            },
+            ConcreteType::FuncType(..) => self.llvmctx.ptr_type(AddressSpace::default()).into(),
+            ConcreteType::Tuple(tuple_type) => self.build_tuple_type(local_scope_opt, &tuple_type),
         }
+    }
+
+    pub(crate) fn get_tuple_type_from_tuple_value(&self, tuple_value: &TypedTupleValue) -> TypedTupleType {
+        TypedTupleType {
+            type_list: self.get_elements_type_from_tuple_value(tuple_value),
+            loc: tuple_value.loc.clone(),
+        }
+    }
+
+    fn get_elements_type_from_tuple_value(&self, tuple_value: &TypedTupleValue) -> Vec<ConcreteType> {
+        tuple_value
+            .expr_list
+            .iter()
+            .map(|expr| expr.concrete_type.clone().unwrap())
+            .collect()
+    }
+
+    pub(crate) fn build_tuple_type(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        tuple_type: &TypedTupleType,
+    ) -> AnyTypeEnum<'a> {
+        let basic_types: Vec<BasicTypeEnum<'a>> = tuple_type
+            .type_list
+            .iter()
+            .map(|concrete_type| {
+                self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone())
+                    .try_into()
+                    .unwrap()
+            })
+            .collect();
+
+        self.llvmctx.struct_type(&basic_types, false).into()
     }
 
     pub(crate) fn build_unnamed_struct_type(

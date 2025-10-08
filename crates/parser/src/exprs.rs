@@ -248,7 +248,14 @@ impl Parser {
                 self.next_token();
                 let expr = self.parse_expression(Precedence::Lowest)?.0;
                 self.next_token(); // consume last token of expr
-                expr
+
+                if self.current_token_is(TokenKind::Comma) {
+                    // considered as tuple construction, not grouped expr
+                    self.next_token();
+                    self.parse_tuple_value(expr)?
+                } else {
+                    expr
+                }
             }
             _ => {
                 let type_specifier = self.parse_type_specifier()?;
@@ -284,6 +291,46 @@ impl Parser {
         } else {
             Ok(expr)
         }
+    }
+
+    fn parse_tuple_value(&mut self, first_expr: Expression) -> Result<Expression, ParserError> {
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        let mut expr_list: Vec<Expression> = vec![first_expr];
+
+        loop {
+            let expr = self.parse_expression(Precedence::Lowest)?.0;
+            self.next_token(); // consume last token
+
+            expr_list.push(expr);
+
+            match self.current_token().kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                    continue;
+                }
+                _ => break,
+            }
+        }
+
+        if !self.current_token_is(TokenKind::RightParen) {
+            return Err(Diag {
+                kind: ParserDiagKind::MissingClosingParen,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
+                    self.file_name.clone(),
+                ))),
+                hint: None,
+            });
+        }
+
+        Ok(Expression::Tuple(TupleValue {
+            expr_list,
+            loc,
+            span: Span::new(start, self.current_token().span.end),
+        }))
     }
 
     fn parse_lambda_expr(&mut self) -> Result<Expression, ParserError> {
