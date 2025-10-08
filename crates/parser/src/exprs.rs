@@ -725,20 +725,32 @@ impl Parser {
                 });
             }
         };
-        let identifier = self.parse_identifier()?;
 
-        if self.peek_token_is(TokenKind::LeftParen) {
-            self.next_token(); // consume identifier
-            return self.parse_method_call(operand, identifier, is_fat_arrow, start, loc);
+        if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
+            let identifier = self.parse_identifier()?;
+
+            if self.peek_token_is(TokenKind::LeftParen) {
+                self.next_token(); // consume identifier
+                return self.parse_method_call(operand, identifier, is_fat_arrow, start, loc);
+            }
+
+            Ok(Expression::FieldAccess(FieldAccess {
+                is_fat_arrow,
+                operand: Box::new(operand),
+                field_name: identifier,
+                span: Span::new(start, self.current_token().span.end),
+                loc,
+            }))
+        } else {
+            let index = self.parse_expression(Precedence::Lowest)?.0;
+
+            Ok(Expression::TupleMemberAccess(TupleMemberAccess {
+                operand: Box::new(operand),
+                index: Box::new(index),
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }))
         }
-
-        Ok(Expression::FieldAccess(FieldAccess {
-            is_fat_arrow,
-            operand: Box::new(operand),
-            field_name: identifier,
-            span: Span::new(start, self.current_token().span.end),
-            loc,
-        }))
     }
 
     pub fn parse_func_call(&mut self, operand: Expression) -> Result<Expression, ParserError> {

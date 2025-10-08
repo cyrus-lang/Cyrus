@@ -23,8 +23,8 @@ use resolver::{
 use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedCast, TypedDereference,
     TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
-    TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit, TypedTupleValue,
-    TypedUnaryExpression, TypedUnnamedStructValue,
+    TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit,
+    TypedTupleMemberAccess, TypedTupleValue, TypedUnaryExpression, TypedUnnamedStructValue,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedFuncType},
 };
 
@@ -72,8 +72,43 @@ impl<'a> CodeGenBuilder<'a> {
             }
             TypedExpressionKind::Lambda(typed_lambda) => self.build_lambda_expr(typed_lambda),
             TypedExpressionKind::Tuple(tuple_value) => self.build_tuple_value(local_scope_opt, tuple_value),
+            TypedExpressionKind::TupleMemberAccess(tuple_member_access) => {
+                self.build_tuple_member_access(local_scope_opt, tuple_member_access)
+            }
             TypedExpressionKind::ConcreteType(..) => unreachable!(),
         }
+    }
+
+    fn build_tuple_member_access(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        tuple_member_access: &TypedTupleMemberAccess,
+    ) -> InternalValue<'a> {
+        let lvalue = self.build_expr(local_scope_opt.clone(), &tuple_member_access.operand);
+        let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+
+        let index_lvalue = self.build_expr(local_scope_opt.clone(), &tuple_member_access.index);
+        let index_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), index_lvalue);
+
+        let index_int_value = index_rvalue
+            .as_basic_value()
+            .into_int_value()
+            .get_zero_extended_constant()
+            .unwrap();
+
+        let extracted_value = self
+            .llvmbuilder
+            .build_extract_value(
+                rvalue.as_basic_value().into_struct_value(),
+                index_int_value.try_into().unwrap(),
+                "extractvalue",
+            )
+            .unwrap();
+
+        let tuple_type = rvalue.value_type.as_tuple_type().unwrap();
+        let element_type = tuple_type.type_list.get(index_int_value as usize).unwrap();
+
+        InternalValue::new(element_type.clone(), InternalValueKind::RValue(extracted_value))
     }
 
     fn build_tuple_value(
@@ -120,8 +155,8 @@ impl<'a> CodeGenBuilder<'a> {
                     .unwrap()
                     .into_struct_value();
             });
-            
-             InternalValue::new(
+
+            InternalValue::new(
                 ConcreteType::Tuple(tuple_type),
                 InternalValueKind::RValue(tuple_struct_value.into()),
             )

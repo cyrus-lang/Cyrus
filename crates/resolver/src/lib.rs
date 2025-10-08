@@ -11,7 +11,7 @@ use ast::{
     AccessSpecifier, AddressOf, Array, ArrayIndex, Assignment, Cast, Dereference, FieldAccess, FuncCall, FuncParams,
     FuncTypeVariadicParams, GlobalVariable, If, Import, InfixExpression, Interface, Lambda, Literal, MethodCall,
     ModuleImport, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix, StructInit,
-    SwitchCasePattern, TupleValue, UnaryExpression, Union, UnnamedStructValue,
+    SwitchCasePattern, TupleMemberAccess, TupleValue, UnaryExpression, Union, UnnamedStructValue,
 };
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
@@ -2290,7 +2290,31 @@ impl Resolver {
             }
             Expression::Lambda(lambda) => self.resolve_lambda_expr(module_id, lambda),
             Expression::Tuple(tuple_value) => self.resolve_tuple_expr(module_id, local_scope_opt, tuple_value),
+            Expression::TupleMemberAccess(tuple_member_access) => {
+                self.resolve_tuple_member_access(module_id, local_scope_opt, tuple_member_access)
+            }
         }
+    }
+
+    fn resolve_tuple_member_access(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        tuple_member_access: &TupleMemberAccess,
+    ) -> Option<TypedExpression> {
+        let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &tuple_member_access.operand)?;
+        let index = self.resolve_expr(module_id, local_scope_opt, &tuple_member_access.index)?;
+
+        Some(TypedExpression {
+            kind: TypedExpressionKind::TupleMemberAccess(TypedTupleMemberAccess {
+                operand: Box::new(operand),
+                index: Box::new(index),
+                loc: SourceLoc::from_loc(tuple_member_access.loc.clone(), self.get_current_module_file_path()),
+            }),
+            concrete_type: None,
+            value_category: ValueCategory::Lvalue,
+            loc: SourceLoc::from_loc(tuple_member_access.loc.clone(), self.get_current_module_file_path()),
+        })
     }
 
     fn resolve_tuple_expr(

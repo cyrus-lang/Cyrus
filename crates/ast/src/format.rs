@@ -325,6 +325,9 @@ impl fmt::Display for Expression {
                         .join(", ")
                 )
             }
+            Expression::TupleMemberAccess(tuple_member_access) => {
+                write!(f, "{}.{}", tuple_member_access.operand, tuple_member_access.index)
+            },
         }
     }
 }
