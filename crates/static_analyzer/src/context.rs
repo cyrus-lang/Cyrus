@@ -173,6 +173,7 @@ impl<'a> AnalysisContext<'a> {
                 // Invalid top-level statements
                 TypedStatement::Variable(_)
                 | TypedStatement::BlockStatement(_)
+                | TypedStatement::Defer(_)
                 | TypedStatement::If(_)
                 | TypedStatement::Return(_)
                 | TypedStatement::Break(_)
@@ -190,7 +191,6 @@ impl<'a> AnalysisContext<'a> {
         self.ast.borrow_mut().body = body;
     }
 
-    // Traverse BlockStatement
     pub(crate) fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) -> FlowState {
         let mut state = FlowState::Reachable;
 
@@ -200,70 +200,76 @@ impl<'a> AnalysisContext<'a> {
                 break;
             }
 
-            state = match typed_stmt {
-                TypedStatement::Variable(typed_variable) => {
-                    self.analyze_variable(Some(block_stmt.scope_id), typed_variable);
-                    FlowState::Reachable
-                }
-                TypedStatement::BlockStatement(typed_block_statement) => {
-                    self.analyze_block_statement(typed_block_statement)
-                }
-                TypedStatement::If(typed_if) => self.analyze_if_stmt(block_stmt.scope_id, typed_if, None),
-                TypedStatement::Return(typed_return) => self.analyze_return(block_stmt.scope_id, typed_return),
-                TypedStatement::Break(typed_break) => {
-                    self.analyze_break(typed_break);
-                    FlowState::Unreachable
-                }
-                TypedStatement::Continue(typed_continue) => {
-                    self.analyze_continue(typed_continue);
-                    FlowState::Unreachable
-                }
-                TypedStatement::For(typed_for) => self.analyze_for_loop(Some(block_stmt.scope_id), typed_for),
-                TypedStatement::While(typed_while) => self.analyze_while_loop(Some(block_stmt.scope_id), typed_while),
-                TypedStatement::Switch(typed_switch) => self.analyze_switch(Some(block_stmt.scope_id), typed_switch),
-                TypedStatement::Struct(typed_struct) => {
-                    self.analyze_struct(Some(block_stmt.scope_id), typed_struct, true);
-                    FlowState::Reachable
-                }
-                TypedStatement::Enum(typed_enum) => {
-                    self.analyze_enum(Some(block_stmt.scope_id), typed_enum, true);
-                    FlowState::Reachable
-                }
-                TypedStatement::Expression(typed_expr) => {
-                    self.analyze_typed_expr_type(
-                        Some(block_stmt.scope_id),
-                        typed_expr,
-                        typed_expr.concrete_type.clone(),
-                    );
+            state = self.analyze_statement(block_stmt.scope_id, typed_stmt);
+        }
 
-                    FlowState::Reachable
-                }
-                TypedStatement::Interface(typed_interface) => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::InternalInterfaceIsNotValid,
-                        location: Some(DiagLoc::new(typed_interface.loc.clone())),
-                        hint: None,
-                    });
-                    FlowState::Reachable
-                }
-                TypedStatement::Typedef(typed_typedef) => {
-                    self.analyze_typedef(Some(block_stmt.scope_id), typed_typedef);
-                    FlowState::Reachable
-                }
-                TypedStatement::Union(typed_union) => {
-                    self.analyze_union(Some(block_stmt.scope_id), typed_union, true);
-                    FlowState::Reachable
-                }
-                // Invalid statements
-                TypedStatement::FuncDef(_) | TypedStatement::FuncDecl(_) | TypedStatement::GlobalVariable(_) => {
-                    unreachable!()
-                }
-            }
+        for defer in &mut block_stmt.defers {
+            self.analyze_statement(block_stmt.scope_id, &mut defer.operand);
         }
 
         self.analyze_local_unused_symbols(block_stmt.scope_id);
         state
+    }
+
+    pub(crate) fn analyze_statement(&mut self, scope_id: ScopeID, typed_stmt: &mut TypedStatement) -> FlowState {
+        match typed_stmt {
+            TypedStatement::Variable(typed_variable) => {
+                self.analyze_variable(Some(scope_id), typed_variable);
+                FlowState::Reachable
+            }
+            TypedStatement::BlockStatement(typed_block_statement) => {
+                self.analyze_block_statement(typed_block_statement)
+            }
+            TypedStatement::If(typed_if) => self.analyze_if_stmt(scope_id, typed_if, None),
+            TypedStatement::Return(typed_return) => self.analyze_return(scope_id, typed_return),
+            TypedStatement::Break(typed_break) => {
+                self.analyze_break(typed_break);
+                FlowState::Unreachable
+            }
+            TypedStatement::Continue(typed_continue) => {
+                self.analyze_continue(typed_continue);
+                FlowState::Unreachable
+            }
+            TypedStatement::For(typed_for) => self.analyze_for_loop(Some(scope_id), typed_for),
+            TypedStatement::While(typed_while) => self.analyze_while_loop(Some(scope_id), typed_while),
+            TypedStatement::Switch(typed_switch) => self.analyze_switch(Some(scope_id), typed_switch),
+            TypedStatement::Struct(typed_struct) => {
+                self.analyze_struct(Some(scope_id), typed_struct, true);
+                FlowState::Reachable
+            }
+            TypedStatement::Enum(typed_enum) => {
+                self.analyze_enum(Some(scope_id), typed_enum, true);
+                FlowState::Reachable
+            }
+            TypedStatement::Expression(typed_expr) => {
+                self.analyze_typed_expr_type(Some(scope_id), typed_expr, typed_expr.concrete_type.clone());
+                FlowState::Reachable
+            }
+            TypedStatement::Interface(typed_interface) => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InternalInterfaceIsNotValid,
+                    location: Some(DiagLoc::new(typed_interface.loc.clone())),
+                    hint: None,
+                });
+                FlowState::Reachable
+            }
+            TypedStatement::Typedef(typed_typedef) => {
+                self.analyze_typedef(Some(scope_id), typed_typedef);
+                FlowState::Reachable
+            }
+            TypedStatement::Union(typed_union) => {
+                self.analyze_union(Some(scope_id), typed_union, true);
+                FlowState::Reachable
+            }
+            // Invalid statements
+            TypedStatement::Defer(..)
+            | TypedStatement::FuncDef(_)
+            | TypedStatement::FuncDecl(_)
+            | TypedStatement::GlobalVariable(_) => {
+                unreachable!()
+            }
+        }
     }
 
     pub fn check_entry_points(entry_points_arc: Arc<Mutex<Vec<SourceLoc>>>) {

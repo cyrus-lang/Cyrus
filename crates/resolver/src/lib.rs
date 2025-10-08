@@ -766,8 +766,15 @@ impl Resolver {
                     continue_stmt.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
+                Statement::Defer(defer) => Err(SourceLoc::from_loc(
+                    defer.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
+                Statement::While(while_stmt) => Err(SourceLoc::from_loc(
+                    while_stmt.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
                 Statement::Expression(..) => continue,
-                Statement::While(..) => continue,
             };
 
             match valid_top_level_stmt {
@@ -1746,324 +1753,28 @@ impl Resolver {
     ) -> Option<TypedBlockStatement> {
         let module_id = self.current_module.unwrap();
         let mut typed_body: Vec<TypedStatement> = Vec::new();
+        let mut defers: Vec<TypedDefer> = Vec::new();
 
         for stmt in &block_statement.exprs {
             match stmt {
-                Statement::Variable(variable) => {
-                    match self.declare_local_variable(module_id, local_scope.clone(), &variable) {
-                        Some(typed_var) => {
-                            typed_body.push(TypedStatement::Variable(typed_var));
-                        }
-                        None => continue,
-                    }
-                }
-                Statement::Expression(expr) => {
-                    match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), expr) {
-                        Some(typed_expr) => {
-                            typed_body.push(TypedStatement::Expression(typed_expr));
-                        }
-                        None => continue,
-                    }
-                }
-                Statement::If(if_stmt) => match self.resolve_if_stmt(module_id, Rc::clone(&local_scope), if_stmt) {
-                    Some(typed_if) => {
-                        typed_body.push(TypedStatement::If(typed_if));
-                    }
-                    None => continue,
-                },
-                Statement::Return(return_stmt) => {
-                    let argument = {
-                        if let Some(argument) = &return_stmt.argument {
-                            match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), argument) {
-                                Some(typed_expr) => Some(typed_expr),
-                                None => continue,
-                            }
-                        } else {
-                            None
-                        }
-                    };
-
-                    typed_body.push(TypedStatement::Return(TypedReturn {
-                        argument,
-                        loc: SourceLoc::from_loc(return_stmt.loc.clone(), self.get_current_module_file_path()),
-                    }));
-                }
-                Statement::Foreach(..) => todo!(),
-                Statement::For(for_stmt) => {
-                    let body_scope_id = generate_scope_id();
-                    let body_scope = LocalScope::deep_clone(&local_scope);
-                    self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
-
-                    let initializer = {
-                        if let Some(variable) = &for_stmt.initializer {
-                            match self.declare_local_variable(module_id, Rc::clone(&body_scope), &variable) {
-                                Some(typed_var) => Some(typed_var),
-                                None => continue,
-                            }
-                        } else {
-                            None
-                        }
-                    };
-
-                    let condition = {
-                        if let Some(expr) = &for_stmt.condition {
-                            match self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), expr) {
-                                Some(typed_expr) => Some(typed_expr),
-                                None => continue,
-                            }
-                        } else {
-                            None
-                        }
-                    };
-
-                    let increment = {
-                        if let Some(expr) = &for_stmt.increment {
-                            match self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), expr) {
-                                Some(typed_expr) => Some(typed_expr),
-                                None => continue,
-                            }
-                        } else {
-                            None
-                        }
-                    };
-
-                    let for_typed_body =
-                        match self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*for_stmt.body) {
-                            Some(typed_block) => Box::new(typed_block),
-                            None => continue,
-                        };
-
-                    typed_body.push(TypedStatement::For(TypedFor {
-                        initializer,
-                        condition,
-                        increment,
-                        body: for_typed_body,
-                        loc: SourceLoc::from_loc(for_stmt.loc.clone(), self.get_current_module_file_path()),
-                    }));
-                }
-                Statement::While(while_stmt) => {
-                    let body_scope_id = generate_scope_id();
-                    let body_scope = LocalScope::deep_clone(&local_scope);
-                    self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
-                    let condition =
-                        match self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), &while_stmt.condition) {
-                            Some(typed_expr) => Some(typed_expr),
-                            None => continue,
-                        }
-                        .unwrap();
-
-                    let while_typed_body =
-                        match self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*while_stmt.body) {
-                            Some(typed_block) => Box::new(typed_block),
-                            None => continue,
-                        };
-
-                    typed_body.push(TypedStatement::While(TypedWhile {
-                        condition,
-                        body: while_typed_body,
-                        loc: SourceLoc::from_loc(while_stmt.loc.clone(), self.get_current_module_file_path()),
-                    }));
-                }
-                Statement::Switch(switch) => {
-                    let operand = match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &switch.operand) {
-                        Some(typed_expr) => typed_expr,
-                        None => continue,
-                    };
-
-                    let mut cases: Vec<TypedSwitchCase> = Vec::new();
-
-                    for case in &switch.cases {
-                        let case_scope_rc = LocalScope::deep_clone(&local_scope);
-
-                        let case_scope_id = generate_scope_id();
-                        self.insert_scope_ref(module_id, case_scope_id, case_scope_rc.clone());
-
-                        let pattern = match &case.pattern {
-                            SwitchCasePattern::Expression(expr) => {
-                                let typed_expr =
-                                    match self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &expr) {
-                                        Some(typed_expr) => typed_expr,
-                                        None => continue,
-                                    };
-
-                                let loc = typed_expr.loc.clone();
-                                TypedSwitchCasePattern::Expression(typed_expr, loc)
-                            }
-                            SwitchCasePattern::Identifier(identifier) => {
-                                let symbol_id = generate_symbol_id();
-
-                                let mut case_scope = case_scope_rc.borrow_mut();
-                                case_scope.insert(
-                                    identifier.name.clone(),
-                                    LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
-                                        module_id,
-                                        symbol_id,
-                                        typed_variable: TypedVariable {
-                                            symbol_id,
-                                            name: identifier.name.clone(),
-                                            ty: None,
-                                            rhs: None,
-                                            loc: SourceLoc::from_loc(
-                                                identifier.loc.clone(),
-                                                self.get_current_module_file_path(),
-                                            ),
-                                        },
-                                    })),
-                                );
-                                drop(case_scope);
-
-                                TypedSwitchCasePattern::Identifier(
-                                    identifier.name.clone(),
-                                    SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
-                                )
-                            }
-                            SwitchCasePattern::EnumVariant(identifier, valued_fields) => {
-                                TypedSwitchCasePattern::EnumVariant(
-                                    identifier.name.clone(),
-                                    valued_fields
-                                        .iter()
-                                        .map(|identifier| {
-                                            let symbol_id = generate_symbol_id();
-                                            let mut case_scope = case_scope_rc.borrow_mut();
-
-                                            case_scope.insert(
-                                                identifier.name.clone(),
-                                                LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
-                                                    module_id,
-                                                    symbol_id,
-                                                    typed_variable: TypedVariable {
-                                                        symbol_id,
-                                                        name: identifier.name.clone(),
-                                                        ty: None,
-                                                        rhs: None,
-                                                        loc: SourceLoc::from_loc(
-                                                            identifier.loc.clone(),
-                                                            self.get_current_module_file_path(),
-                                                        ),
-                                                    },
-                                                })),
-                                            );
-                                            drop(case_scope);
-                                            identifier.clone()
-                                        })
-                                        .collect(),
-                                    SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
-                                )
-                            }
-                        };
-
-                        let mut body = match self.resolve_block_statement(scope_id, case_scope_rc.clone(), &case.body) {
-                            Some(typed_block) => typed_block,
-                            None => continue,
-                        };
-
-                        body.scope_id = case_scope_id;
-
-                        cases.push(TypedSwitchCase {
-                            pattern,
-                            body: Box::new(body),
-                            loc: SourceLoc::from_loc(case.loc.clone(), self.get_current_module_file_path()),
+                Statement::Defer(defer) => {
+                    if let Some(typed_stmt) =
+                        self.resolve_statement(module_id, scope_id, local_scope.clone(), &defer.operand)
+                    {
+                        defers.push(TypedDefer {
+                            operand: Box::new(typed_stmt),
+                            loc: SourceLoc::from_loc(defer.loc.clone(), self.get_current_module_file_path()),
                         });
-
-                        drop(case_scope_rc);
-                    }
-
-                    let default_case = {
-                        if let Some(default_case) = &switch.default_case {
-                            let body_scope_id = generate_scope_id();
-                            let body_scope = LocalScope::deep_clone(&local_scope);
-                            self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
-
-                            match self.resolve_block_statement(scope_id, body_scope.clone(), &default_case) {
-                                Some(typed_block) => Some(typed_block),
-                                None => continue,
-                            }
-                        } else {
-                            None
-                        }
-                    };
-
-                    typed_body.push(TypedStatement::Switch(TypedSwitch {
-                        operand,
-                        cases,
-                        default_case,
-                        loc: SourceLoc::from_loc(switch.loc.clone(), self.get_current_module_file_path()),
-                    }));
-                }
-                Statement::Enum(enum_decl) => {
-                    match self.resolve_enum(module_id, Some(Rc::clone(&local_scope)), enum_decl, Some(scope_id)) {
-                        Some(typed_stmt) => {
-                            typed_body.push(typed_stmt);
-                        }
-                        None => continue,
+                    } else {
+                        continue;
                     }
                 }
-                Statement::Union(union_decl) => {
-                    match self.resolve_union(module_id, Some(Rc::clone(&local_scope)), union_decl, Some(scope_id)) {
-                        Some(typed_stmt) => {
-                            typed_body.push(typed_stmt);
-                        }
-                        None => continue,
+                _ => {
+                    if let Some(typed_stmt) = self.resolve_statement(module_id, scope_id, local_scope.clone(), stmt) {
+                        typed_body.push(typed_stmt);
+                    } else {
+                        continue;
                     }
-                }
-                Statement::Interface(interface) => {
-                    match self.resolve_interface(module_id, Some(local_scope.clone()), interface) {
-                        Some(typed_stmt) => {
-                            typed_body.push(typed_stmt);
-                        }
-                        None => continue,
-                    }
-                }
-                Statement::Struct(struct_decl) => {
-                    match self.resolve_struct(module_id, Some(local_scope.clone()), struct_decl, Some(scope_id)) {
-                        Some(typed_stmt) => {
-                            typed_body.push(typed_stmt);
-                        }
-                        None => continue,
-                    }
-                }
-                Statement::BlockStatement(block_statement) => {
-                    let scope_id = generate_scope_id();
-                    let local_scope_copy = LocalScope::deep_clone(&local_scope);
-                    self.insert_scope_ref(module_id, scope_id, local_scope_copy.clone());
-
-                    match self.resolve_block_statement(scope_id, local_scope_copy, block_statement) {
-                        Some(typed_stmt) => {
-                            typed_body.push(TypedStatement::BlockStatement(typed_stmt));
-                        }
-                        None => continue,
-                    }
-                }
-                Statement::Break(break_stmt) => {
-                    typed_body.push(TypedStatement::Break(TypedBreak {
-                        loc: SourceLoc::from_loc(break_stmt.loc.clone(), self.get_current_module_file_path()),
-                    }));
-                }
-                Statement::Continue(continue_stmt) => {
-                    typed_body.push(TypedStatement::Continue(TypedContinue {
-                        loc: SourceLoc::from_loc(continue_stmt.loc.clone(), self.get_current_module_file_path()),
-                    }));
-                }
-                Statement::Typedef(typedef) => {
-                    match self.resolve_typedef(module_id, Some(local_scope.clone()), &typedef) {
-                        Some(typed_stmt) => typed_body.push(typed_stmt),
-                        None => continue,
-                    }
-                }
-                // Invalid statements.
-                Statement::GlobalVariable(..)
-                | Statement::FuncDef(..)
-                | Statement::FuncDecl(..)
-                | Statement::Import(..) => {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: ResolverDiagKind::InvalidStatement,
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            stmt.get_loc(),
-                            self.get_current_module_file_path(),
-                        ))),
-                        hint: None,
-                    });
                 }
             }
         }
@@ -2071,8 +1782,252 @@ impl Resolver {
         Some(TypedBlockStatement {
             scope_id,
             exprs: typed_body,
+            defers,
             loc: SourceLoc::from_loc(block_statement.loc.clone(), self.get_current_module_file_path()),
         })
+    }
+
+    fn resolve_statement(
+        &mut self,
+        module_id: ModuleID,
+        scope_id: ScopeID,
+        local_scope: LocalScopeRef,
+        stmt: &Statement,
+    ) -> Option<TypedStatement> {
+        match stmt {
+            Statement::Variable(variable) => {
+                let typed_var = self.declare_local_variable(module_id, local_scope.clone(), &variable)?;
+                Some(TypedStatement::Variable(typed_var))
+            }
+            Statement::Expression(expr) => {
+                let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), expr)?;
+                Some(TypedStatement::Expression(typed_expr))
+            }
+            Statement::If(if_stmt) => {
+                let typed_if = self.resolve_if_stmt(module_id, Rc::clone(&local_scope), if_stmt)?;
+                Some(TypedStatement::If(typed_if))
+            }
+            Statement::Return(return_stmt) => {
+                let argument = if let Some(argument) = &return_stmt.argument {
+                    Some(self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), argument)?)
+                } else {
+                    None
+                };
+                Some(TypedStatement::Return(TypedReturn {
+                    argument,
+                    loc: SourceLoc::from_loc(return_stmt.loc.clone(), self.get_current_module_file_path()),
+                }))
+            }
+            Statement::Foreach(..) => todo!(),
+            Statement::For(for_stmt) => {
+                let body_scope_id = generate_scope_id();
+                let body_scope = LocalScope::deep_clone(&local_scope);
+                self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
+
+                let initializer = if let Some(variable) = &for_stmt.initializer {
+                    Some(self.declare_local_variable(module_id, Rc::clone(&body_scope), &variable)?)
+                } else {
+                    None
+                };
+
+                let condition = if let Some(expr) = &for_stmt.condition {
+                    Some(self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), expr)?)
+                } else {
+                    None
+                };
+
+                let increment = if let Some(expr) = &for_stmt.increment {
+                    Some(self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), expr)?)
+                } else {
+                    None
+                };
+
+                let for_typed_body =
+                    Box::new(self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*for_stmt.body)?);
+
+                Some(TypedStatement::For(TypedFor {
+                    initializer,
+                    condition,
+                    increment,
+                    body: for_typed_body,
+                    loc: SourceLoc::from_loc(for_stmt.loc.clone(), self.get_current_module_file_path()),
+                }))
+            }
+            Statement::While(while_stmt) => {
+                let body_scope_id = generate_scope_id();
+                let body_scope = LocalScope::deep_clone(&local_scope);
+                self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
+
+                let condition = self.resolve_expr(module_id, Some(Rc::clone(&body_scope)), &while_stmt.condition)?;
+
+                let while_typed_body =
+                    Box::new(self.resolve_block_statement(body_scope_id, Rc::clone(&body_scope), &*while_stmt.body)?);
+
+                Some(TypedStatement::While(TypedWhile {
+                    condition,
+                    body: while_typed_body,
+                    loc: SourceLoc::from_loc(while_stmt.loc.clone(), self.get_current_module_file_path()),
+                }))
+            }
+            Statement::Switch(switch) => {
+                let operand = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &switch.operand)?;
+
+                let mut cases: Vec<TypedSwitchCase> = Vec::new();
+                for case in &switch.cases {
+                    let case_scope_rc = LocalScope::deep_clone(&local_scope);
+                    let case_scope_id = generate_scope_id();
+                    self.insert_scope_ref(module_id, case_scope_id, case_scope_rc.clone());
+
+                    let pattern = match &case.pattern {
+                        SwitchCasePattern::Expression(expr) => {
+                            let typed_expr = self.resolve_expr(module_id, Some(Rc::clone(&local_scope)), &expr)?;
+                            let loc = typed_expr.loc.clone();
+                            TypedSwitchCasePattern::Expression(typed_expr, loc)
+                        }
+                        SwitchCasePattern::Identifier(identifier) => {
+                            let symbol_id = generate_symbol_id();
+                            let mut case_scope = case_scope_rc.borrow_mut();
+                            case_scope.insert(
+                                identifier.name.clone(),
+                                LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
+                                    module_id,
+                                    symbol_id,
+                                    typed_variable: TypedVariable {
+                                        symbol_id,
+                                        name: identifier.name.clone(),
+                                        ty: None,
+                                        rhs: None,
+                                        loc: SourceLoc::from_loc(
+                                            identifier.loc.clone(),
+                                            self.get_current_module_file_path(),
+                                        ),
+                                    },
+                                })),
+                            );
+                            drop(case_scope);
+
+                            TypedSwitchCasePattern::Identifier(
+                                identifier.name.clone(),
+                                SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                            )
+                        }
+                        SwitchCasePattern::EnumVariant(identifier, valued_fields) => {
+                            TypedSwitchCasePattern::EnumVariant(
+                                identifier.name.clone(),
+                                valued_fields
+                                    .iter()
+                                    .map(|identifier| {
+                                        let symbol_id = generate_symbol_id();
+                                        let mut case_scope = case_scope_rc.borrow_mut();
+                                        case_scope.insert(
+                                            identifier.name.clone(),
+                                            LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
+                                                module_id,
+                                                symbol_id,
+                                                typed_variable: TypedVariable {
+                                                    symbol_id,
+                                                    name: identifier.name.clone(),
+                                                    ty: None,
+                                                    rhs: None,
+                                                    loc: SourceLoc::from_loc(
+                                                        identifier.loc.clone(),
+                                                        self.get_current_module_file_path(),
+                                                    ),
+                                                },
+                                            })),
+                                        );
+                                        drop(case_scope);
+                                        identifier.clone()
+                                    })
+                                    .collect(),
+                                SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                            )
+                        }
+                    };
+
+                    let mut body = self.resolve_block_statement(scope_id, case_scope_rc.clone(), &case.body)?;
+                    body.scope_id = case_scope_id;
+
+                    cases.push(TypedSwitchCase {
+                        pattern,
+                        body: Box::new(body),
+                        loc: SourceLoc::from_loc(case.loc.clone(), self.get_current_module_file_path()),
+                    });
+                    drop(case_scope_rc);
+                }
+
+                let default_case = if let Some(default_case) = &switch.default_case {
+                    let body_scope_id = generate_scope_id();
+                    let body_scope = LocalScope::deep_clone(&local_scope);
+                    self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
+
+                    Some(self.resolve_block_statement(scope_id, body_scope.clone(), &default_case)?)
+                } else {
+                    None
+                };
+
+                Some(TypedStatement::Switch(TypedSwitch {
+                    operand,
+                    cases,
+                    default_case,
+                    loc: SourceLoc::from_loc(switch.loc.clone(), self.get_current_module_file_path()),
+                }))
+            }
+            Statement::Enum(enum_decl) => {
+                let typed_stmt =
+                    self.resolve_enum(module_id, Some(Rc::clone(&local_scope)), enum_decl, Some(scope_id))?;
+                Some(typed_stmt)
+            }
+            Statement::Union(union_decl) => {
+                let typed_stmt =
+                    self.resolve_union(module_id, Some(Rc::clone(&local_scope)), union_decl, Some(scope_id))?;
+                Some(typed_stmt)
+            }
+            Statement::Interface(interface) => {
+                let typed_stmt = self.resolve_interface(module_id, Some(local_scope.clone()), interface)?;
+                Some(typed_stmt)
+            }
+            Statement::Struct(struct_decl) => {
+                let typed_stmt =
+                    self.resolve_struct(module_id, Some(local_scope.clone()), struct_decl, Some(scope_id))?;
+                Some(typed_stmt)
+            }
+            Statement::BlockStatement(block_statement) => {
+                let scope_id = generate_scope_id();
+                let local_scope_copy = LocalScope::deep_clone(&local_scope);
+                self.insert_scope_ref(module_id, scope_id, local_scope_copy.clone());
+
+                let typed_stmt = self.resolve_block_statement(scope_id, local_scope_copy, block_statement)?;
+                Some(TypedStatement::BlockStatement(typed_stmt))
+            }
+            Statement::Break(break_stmt) => Some(TypedStatement::Break(TypedBreak {
+                loc: SourceLoc::from_loc(break_stmt.loc.clone(), self.get_current_module_file_path()),
+            })),
+            Statement::Continue(continue_stmt) => Some(TypedStatement::Continue(TypedContinue {
+                loc: SourceLoc::from_loc(continue_stmt.loc.clone(), self.get_current_module_file_path()),
+            })),
+            Statement::Typedef(typedef) => {
+                let typed_stmt = self.resolve_typedef(module_id, Some(local_scope.clone()), &typedef)?;
+                Some(typed_stmt)
+            }
+            // Invalid statements.
+            Statement::GlobalVariable(..)
+            | Statement::FuncDef(..)
+            | Statement::FuncDecl(..)
+            | Statement::Import(..) => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: ResolverDiagKind::InvalidStatement,
+                    location: Some(DiagLoc::new(SourceLoc::from_loc(
+                        stmt.get_loc(),
+                        self.get_current_module_file_path(),
+                    ))),
+                    hint: None,
+                });
+                None
+            }
+            Statement::Defer(_) => unreachable!("Handled directly in resolve_block_statement"),
+        }
     }
 
     fn resolve_identifier(
@@ -2235,161 +2190,6 @@ impl Resolver {
 
         Some(symbol_id)
     }
-
-    // fn resolve_local_module_import(
-    //     &mut self,
-    //     local_scope_opt: Option<LocalScopeRef>,
-    //     module_id: ModuleID,
-    //     module_import: &ModuleImport,
-    // ) -> Option<SymbolID> {
-    //     let local_option = {
-    //         if let Some(local_scope_rc) = local_scope_opt.clone() {
-    //             let symbol_id_option = module_import.as_identifier().and_then(|identifier| {
-    //                 let local_scope = local_scope_rc.borrow_mut();
-    //                 local_scope
-    //                     .resolve(&identifier.name)
-    //                     .cloned()
-    //                     .map(|local_symbol| local_symbol.get_symbol_id())
-    //             });
-    //             symbol_id_option
-    //         } else {
-    //             None
-    //         }
-    //     };
-
-    //     let symbol_id = match local_option {
-    //         Some(symbol_id) => symbol_id,
-    //         None => match self.resolve_module_import(module_id, module_import.clone()) {
-    //             Some(symbol_id) => symbol_id,
-    //             None => {
-    //                 self.reporter.report(Diag {
-    //                     level: DiagLevel::Error,
-    //                     kind: ResolverDiagKind::SymbolNotFound {
-    //                         name: module_segments_as_string(module_import.segments.clone()),
-    //                     },
-    //                     location: Some(DiagLoc::new(SourceLoc::from_loc(
-    //                         module_import.loc.clone(),
-    //                         self.get_current_module_file_path(),
-    //                     ))),
-    //                     hint: None,
-    //                 });
-    //                 return None;
-    //             }
-    //         },
-    //     };
-
-    //     Some(symbol_id)
-    // }
-
-    // fn resolve_module_import(&mut self, module_id: ModuleID, mut module_import: ModuleImport) -> Option<SymbolID> {
-    //     if let Some(identifier) = module_import.as_identifier() {
-    //         return self.resolve_local_module_import(None, module_id, &module_import);
-    //     }
-
-    //     let Some(last_segment) = module_import.segments.pop() else {
-    //         self.reporter.report(Diag {
-    //             level: DiagLevel::Error,
-    //             kind: ResolverDiagKind::ExpectedIdentifierInImport,
-    //             location: Some(DiagLoc::new(SourceLoc::from_loc(
-    //                 module_import.loc.clone(),
-    //                 self.get_current_module_file_path(),
-    //             ))),
-    //             hint: Some("Import path must include at least one symbol.".into()),
-    //         });
-    //         return None;
-    //     };
-
-    //     let Some(symbol_ident) = last_segment.as_identifier_opt() else {
-    //         self.reporter.report(Diag {
-    //             level: DiagLevel::Error,
-    //             kind: ResolverDiagKind::ExpectedIdentifierInImport,
-    //             location: Some(DiagLoc::new(SourceLoc::from_loc(
-    //                 module_import.loc,
-    //                 self.get_current_module_file_path(),
-    //             ))),
-    //             hint: Some("The last part of an import path must be a symbol name.".into()),
-    //         });
-    //         return None;
-    //     };
-    //     let symbol_name = symbol_ident.name;
-
-    //     let module_alias = module_segments_as_string(module_import.segments);
-    //     let Some(target_module_id) = self.get_module_alias(&module_alias) else {
-    //         self.reporter.report(Diag {
-    //             level: DiagLevel::Error,
-    //             kind: ResolverDiagKind::ModuleImportNotFound {
-    //                 module_name: module_alias,
-    //             },
-    //             location: Some(DiagLoc::new(SourceLoc::from_loc(
-    //                 module_import.loc.clone(),
-    //                 self.get_current_module_file_path(),
-    //             ))),
-    //             hint: None,
-    //         });
-    //         return None;
-    //     };
-
-    //     let Some(symbol_id) = self.lookup_symbol_id(target_module_id, &symbol_name) else {
-    //         self.reporter.report(Diag {
-    //             level: DiagLevel::Error,
-    //             kind: ResolverDiagKind::SymbolIsNotDefinedInModule {
-    //                 symbol_name,
-    //                 module_name: module_alias,
-    //             },
-    //             location: Some(DiagLoc::new(SourceLoc::from_loc(
-    //                 module_import.loc.clone(),
-    //                 self.get_current_module_file_path(),
-    //             ))),
-    //             hint: None,
-    //         });
-    //         return None;
-    //     };
-
-    //     Some(symbol_id)
-    // }
-
-    // fn resolve_identifier(
-    //     &mut self,
-    //     local_scope_opt: Option<LocalScopeRef>,
-    //     module_id: ModuleID,
-    //     identifier: &Identifier,
-    // ) -> Option<SymbolID> {
-    //     if let Some(local_scope_rc) = &local_scope_opt {
-    //         let local_scope = local_scope_rc.borrow();
-    //         if let Some(local_symbol) = local_scope.resolve(&identifier.name).cloned() {
-    //             return Some(local_symbol.get_symbol_id());
-    //         }
-    //     }
-
-    //     if let Some(symbol_id) = self.lookup_symbol_id(module_id, &identifier.name) {
-    //         return Some(symbol_id);
-    //     }
-
-    //     if let Some(symbol_id) = self.resolve_module_import(
-    //         module_id,
-    //         ModuleImport {
-    //             segments: vec![ModuleSegment::SubModule(identifier.clone())],
-    //             loc: identifier.loc.clone(),
-    //             span: identifier.span.clone(),
-    //         },
-    //     ) {
-    //         return Some(symbol_id);
-    //     }
-
-    //     self.reporter.report(Diag {
-    //         level: DiagLevel::Error,
-    //         kind: ResolverDiagKind::SymbolNotFound {
-    //             name: identifier.name.clone(),
-    //         },
-    //         location: Some(DiagLoc::new(SourceLoc::from_loc(
-    //             identifier.loc.clone(),
-    //             self.get_current_module_file_path(),
-    //         ))),
-    //         hint: None,
-    //     });
-
-    //     None
-    // }
 
     fn resolve_identifier_expr(
         &mut self,

@@ -14,7 +14,9 @@ use inkwell::{
     values::{BasicValue, BasicValueEnum, IntValue},
 };
 use resolver::{
-    scope::{LocalScopeRef, LocalSymbolKind, ResolvedEnum}, signatures::{StructSig, UnionSig}, typed_func_type_from_func_sig
+    scope::{LocalScopeRef, LocalSymbolKind, ResolvedEnum},
+    signatures::{StructSig, UnionSig},
+    typed_func_type_from_func_sig,
 };
 use std::collections::HashMap;
 use typed_ast::{
@@ -265,40 +267,42 @@ impl<'a> CodeGenBuilder<'a> {
 
         for stmt in &block_stmt.exprs {
             llvm_set_current_location!(&self, stmt.get_loc());
+            self.build_statement(local_scope_opt.clone(), stmt);
+        }
 
-            match stmt {
-                TypedStatement::Variable(typed_variable) => {
-                    self.build_local_variable(local_scope_opt.clone(), typed_variable, true);
-                }
-                TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
-                TypedStatement::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
-                TypedStatement::While(typed_while) => self.build_while(local_scope_opt.clone(), typed_while),
-                TypedStatement::Return(typed_return) => self.build_return(local_scope_opt.clone(), typed_return),
-                TypedStatement::Break(typed_break) => self.build_break(typed_break),
-                TypedStatement::Continue(typed_continue) => self.build_continue(typed_continue),
-                TypedStatement::Switch(typed_switch) => self.build_switch(local_scope_opt.clone(), typed_switch),
-                TypedStatement::Struct(typed_struct) => {
-                    self.build_local_struct_def(typed_struct);
-                }
-                TypedStatement::Enum(typed_enum) => {
-                    self.build_local_enum_def(typed_enum);
-                }
-                TypedStatement::Union(typed_union) => {
-                    self.build_union_def(typed_union);
-                }
-                TypedStatement::Expression(typed_expr) => {
-                    self.build_expr(local_scope_opt.clone(), typed_expr);
-                }
-                TypedStatement::BlockStatement(typed_block_statement) => {
-                    self.build_block_statement(typed_block_statement);
-                }
-                TypedStatement::Interface(_typed_interface) => todo!(),
-                // Skipped statements
-                TypedStatement::Typedef(_) => continue,
-                // Invalid statements
-                TypedStatement::FuncDef(_) => unreachable!(),
-                TypedStatement::FuncDecl(_) => unreachable!(),
-                TypedStatement::GlobalVariable(_) => unreachable!(),
+        for defer in block_stmt.defers.iter().rev() {
+            self.build_statement(local_scope_opt.clone(), &defer.operand);
+        }
+    }
+
+    pub(crate) fn build_statement(&mut self, local_scope_opt: Option<LocalScopeRef>, stmt: &TypedStatement) {
+        match stmt {
+            TypedStatement::Defer(..) => unreachable!(),
+            TypedStatement::Variable(typed_variable) => {
+                self.build_local_variable(local_scope_opt.clone(), typed_variable, true);
+            }
+            TypedStatement::If(typed_if) => self.build_if(local_scope_opt.clone(), typed_if),
+            TypedStatement::For(typed_for) => self.build_for(local_scope_opt.clone(), typed_for),
+            TypedStatement::While(typed_while) => self.build_while(local_scope_opt.clone(), typed_while),
+            TypedStatement::Return(typed_return) => self.build_return(local_scope_opt.clone(), typed_return),
+            TypedStatement::Break(typed_break) => self.build_break(typed_break),
+            TypedStatement::Continue(typed_continue) => self.build_continue(typed_continue),
+            TypedStatement::Switch(typed_switch) => self.build_switch(local_scope_opt.clone(), typed_switch),
+            TypedStatement::Struct(typed_struct) => self.build_local_struct_def(typed_struct),
+            TypedStatement::Enum(typed_enum) => self.build_local_enum_def(typed_enum),
+            TypedStatement::Union(typed_union) => self.build_union_def(typed_union),
+            TypedStatement::Expression(typed_expr) => {
+                self.build_expr(local_scope_opt.clone(), typed_expr);
+            }
+            TypedStatement::BlockStatement(typed_block_statement) => {
+                self.build_block_statement(typed_block_statement);
+            }
+            TypedStatement::Interface(_typed_interface) => todo!(),
+            // Skipped statements
+            TypedStatement::Typedef(_) => {}
+            // Invalid statements
+            TypedStatement::FuncDef(_) | TypedStatement::FuncDecl(_) | TypedStatement::GlobalVariable(_) => {
+                unreachable!()
             }
         }
     }

@@ -58,6 +58,7 @@ pub enum TokenKind {
     And,
     Or,
     // Keywords
+    Defer,
     Union,
     Interface,
     Function,

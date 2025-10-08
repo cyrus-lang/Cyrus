@@ -231,7 +231,7 @@ pub struct Identifier {
 
 impl Hash for Identifier {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state); 
+        self.name.hash(state);
     }
 }
 
@@ -399,6 +399,14 @@ pub enum Statement {
     Continue(Continue),
     Typedef(Typedef),
     GlobalVariable(GlobalVariable),
+    Defer(Defer),
+}
+
+#[derive(Debug, Clone)]
+pub struct Defer {
+    pub operand: Box<Statement>,
+    pub loc: Location,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -835,6 +843,7 @@ impl Statement {
             Statement::Continue(cont) => cont.loc.clone(),
             Statement::Typedef(typedef) => typedef.loc.clone(),
             Statement::GlobalVariable(global_variable) => global_variable.loc.clone(),
+            Statement::Defer(defer) => defer.loc.clone(),
             Statement::Expression(..) => unreachable!(),
         }
     }
