@@ -7,9 +7,9 @@ pub struct String {
     pub capacity: size_t;
 
     pub fn new(init: const char*) String {
-        #len = strlen(init);
-        #cap = len + 1;
-        #inst: String;
+        var len = strlen(init);
+        var cap = len + 1;
+        var inst: String;
         inst.data = malloc(cap);
         if (!inst.data) {
             panic("failed to allocate memory for string.");

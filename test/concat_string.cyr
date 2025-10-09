@@ -5,14 +5,14 @@
 import std::libc{printf, strlen, malloc, strcpy, strcat, free};
 
 pub fn concat(s1: const char*, s2: const char*) const char* {
-    #len1: size_t = strlen(s1);
-    #len2: size_t = strlen(s2);
+    var len1: size_t = strlen(s1);
+    var len2: size_t = strlen(s2);
 
     // +1 for null terminator
-    #total: size_t = len1 + len2 + 1;
+    var total: size_t = len1 + len2 + 1;
 
     // Allocate memory (raw C malloc)
-    #result = cast(char*, malloc(total));
+    var result = cast(char*, malloc(total));
 
     strcpy(result, s1);
     strcat(result, s2);
@@ -21,9 +21,9 @@ pub fn concat(s1: const char*, s2: const char*) const char* {
 }
 
 fn main() {
-    #hello = "Hello, ";
-    #world = "Cyrus!";
-    #combined = concat(hello, world);
+    var hello = "Hello, ";
+    var world = "Cyrus!";
+    var combined = concat(hello, world);
 
     printf("%s\n", combined);
     free(combined);

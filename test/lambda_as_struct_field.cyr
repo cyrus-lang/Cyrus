@@ -15,7 +15,7 @@ struct Route {
 }
 
 fn main() {
-    #route = Route {
+    var route = Route {
         handler: fn(req: int, res: int) void {
             printf("%d %d\n", req, res);
         }

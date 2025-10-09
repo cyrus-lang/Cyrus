@@ -4,9 +4,9 @@ pub struct Slice {
 	pub element_size: size_t;
 
 	pub inline fn index(self, idx: size_t) void* {
-		#base = cast(uintptr, self.data);
-		#offset = cast(uintptr, idx * self.element_size);
-		#result = base + offset;
+		var base = cast(uintptr, self.data);
+		var offset = cast(uintptr, idx * self.element_size);
+		var result = base + offset;
 		return cast(void*, result);
 	}
 }

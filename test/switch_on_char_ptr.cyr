@@ -3,11 +3,10 @@
 import std::libc;
 
 fn main() {
-    #value: char* = "Cyrus";
+    var value: char* = "Cyrus";
 
     switch (value) {
         case "Cyrus":
-        // case "Lang":
             libc::printf("value A: %s\n", value);
             break;
         case "Clang":

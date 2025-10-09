@@ -10,7 +10,7 @@
 
 // FIXME Isn't working due to analyzer issues.
 fn main() {
-//     #my_color: Color = Color.Custom(251, 187, 130);
+//     var my_color: Color = Color.Custom(251, 187, 130);
 
 // 	switch (my_color) {
 // 		case .Red:

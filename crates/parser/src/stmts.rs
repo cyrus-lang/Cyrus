@@ -60,7 +60,7 @@ impl Parser {
             match self.current_token().kind {
                 TokenKind::Defer => self.parse_defer(),
                 TokenKind::If => self.parse_if(),
-                TokenKind::Hashtag => self.parse_variable(),
+                TokenKind::Var => self.parse_variable(),
                 TokenKind::Return => self.parse_return(),
                 TokenKind::For => self.parse_for_loop(),
                 TokenKind::While => self.parse_while_loop(),
@@ -1019,11 +1019,16 @@ impl Parser {
         }))
     }
 
+    // ANCHOR
+    pub fn parse_grouped_tuple_export(&mut self) -> Result<Statement, ParserError> {
+        todo!();
+    }
+
     pub fn parse_variable(&mut self) -> Result<Statement, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        self.next_token(); // consume sharp token
+        self.expect_current(TokenKind::Var)?;
 
         let identifier = self.parse_identifier()?;
         self.next_token();
