@@ -315,13 +315,63 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         export_tuple_values: &TypedExportTupleValues,
     ) {
-        if let Some(typed_expr) = &export_tuple_values.rhs {
-            dbg!(export_tuple_values.ty.clone().unwrap());
-            dbg!(typed_expr);
+        let tuple_concrete_type = export_tuple_values
+            .ty
+            .clone()
+            .or_else(|| {
+                export_tuple_values
+                    .rhs
+                    .clone()
+                    .and_then(|typed_expr| typed_expr.concrete_type)
+            })
+            .expect("Type must either be explicitly provided or inferred from RHS");
 
-            todo!();
-        } else {
-            todo!();
+        let tuple_type = tuple_concrete_type.as_tuple_type().unwrap();
+
+        for (idx, symbol_id) in export_tuple_values.exports.iter().enumerate() {
+            let element_type = tuple_type.type_list.get(idx).unwrap();
+            let element_basic_type: BasicTypeEnum<'a> = self
+                .build_concrete_type(local_scope_opt.clone(), element_type.clone())
+                .try_into()
+                .unwrap();
+
+            let element_pointer = self
+                .llvmbuilder
+                .build_alloca(element_basic_type, "tuple_extracted_value")
+                .unwrap();
+
+            let element_basic_value: BasicValueEnum<'a>;
+
+            if let Some(typed_expr) = &export_tuple_values.rhs {
+                let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
+                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+
+                let tuple_struct_value = rvalue.as_basic_value().into_struct_value();
+
+                let basic_value = self
+                    .llvmbuilder
+                    .build_extract_value(tuple_struct_value, idx.try_into().unwrap(), "extractvalue")
+                    .unwrap();
+
+                element_basic_value = self
+                    .build_implicit_cast(
+                        local_scope_opt.clone(),
+                        element_type.clone(),
+                        InternalValue::new(element_type.clone(), InternalValueKind::RValue(basic_value)),
+                    )
+                    .as_basic_value();
+            } else {
+                element_basic_value = self.build_zero_init_value(element_basic_type);
+            }
+
+            self.llvmbuilder
+                .build_store(element_pointer, element_basic_value)
+                .unwrap();
+
+            self.insert_forward_decl_to_registry(
+                *symbol_id,
+                LocalIRValue::LValue(element_pointer, element_type.clone()),
+            );
         }
     }
 
