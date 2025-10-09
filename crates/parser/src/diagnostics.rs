@@ -23,6 +23,7 @@ pub enum ParserDiagKind {
     InvalidAssignOperator(TokenKind),
     NonArrayDataTypeForArrayConstruction,
     SingleElementTupleType,
+    IncompleteVariableDeclaration,
 }
 
 impl fmt::Display for ParserDiagKind {
@@ -80,6 +81,9 @@ impl fmt::Display for ParserDiagKind {
             ParserDiagKind::NonArrayDataTypeForArrayConstruction => {
                 write!(f, "Cannot use non-array type for array construction.")
             }
+            ParserDiagKind::IncompleteVariableDeclaration => {
+                write!(f, "Variable declaration requires an explicit type or an initializer expression.")
+            },
         }
     }
 }

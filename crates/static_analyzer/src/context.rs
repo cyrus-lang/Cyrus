@@ -172,6 +172,7 @@ impl<'a> AnalysisContext<'a> {
                 TypedStatement::Union(typed_union) => self.analyze_union(None, typed_union, false),
                 // Invalid top-level statements
                 TypedStatement::Variable(_)
+                | TypedStatement::ExportTupleValues(_)
                 | TypedStatement::BlockStatement(_)
                 | TypedStatement::Defer(_)
                 | TypedStatement::If(_)
@@ -213,6 +214,10 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_statement(&mut self, scope_id: ScopeID, typed_stmt: &mut TypedStatement) -> FlowState {
         match typed_stmt {
+            TypedStatement::ExportTupleValues(export_tuple_values) => {
+                self.analyze_export_tuple_values(Some(scope_id), export_tuple_values);
+                FlowState::Reachable
+            }
             TypedStatement::Variable(typed_variable) => {
                 self.analyze_variable(Some(scope_id), typed_variable);
                 FlowState::Reachable
@@ -269,6 +274,74 @@ impl<'a> AnalysisContext<'a> {
             | TypedStatement::GlobalVariable(_) => {
                 unreachable!()
             }
+        }
+    }
+
+    fn analyze_export_tuple_values(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        export_tuple_values: &mut TypedExportTupleValues,
+    ) {
+        if let Some(typed_expr) = &mut export_tuple_values.rhs {
+            let concrete_type =
+                match self.analyze_typed_expr_type(scope_id_opt, typed_expr, export_tuple_values.ty.clone()) {
+                    Some(concrete_type) => concrete_type,
+                    None => return,
+                };
+
+            if export_tuple_values.ty.is_none() {
+                export_tuple_values.ty = Some(concrete_type);
+            }
+        }
+
+        if let Some(concrete_type) = &mut export_tuple_values.ty {
+            *concrete_type =
+                match self.normalize_type(scope_id_opt, concrete_type.clone(), export_tuple_values.loc.clone()) {
+                    Some(normalized) => normalized,
+                    None => return,
+                };
+        }
+
+        let concrete_type = match self.normalize_type(
+            scope_id_opt,
+            export_tuple_values.ty.clone().unwrap(),
+            export_tuple_values.loc.clone(),
+        ) {
+            Some(concrete_type) => concrete_type,
+            None => return,
+        };
+
+        let tuple_type = match concrete_type.as_tuple_type() {
+            Some(tuple_type) => tuple_type.clone(),
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::TupleMemberAccessOnNonTupleOperand,
+                    location: Some(DiagLoc::new(export_tuple_values.loc.clone())),
+                    hint: None,
+                });
+                return;
+            }
+        };
+
+        if export_tuple_values.exports.len() != tuple_type.type_list.len() {
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch,
+                location: Some(DiagLoc::new(export_tuple_values.loc.clone())),
+                hint: None,
+            });
+            return;
+        }
+
+        // update type and rhs metadata in local scope
+
+        for (symbol_id, concrete_type) in export_tuple_values.exports.iter().zip(tuple_type.type_list) {
+            update_local_symbol!(self, scope_id_opt.unwrap(), *symbol_id,
+                LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                    resolved_variable.typed_variable.ty = Some(concrete_type);
+                }
+            )
         }
     }
 
