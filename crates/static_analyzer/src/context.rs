@@ -336,7 +336,11 @@ impl<'a> AnalysisContext<'a> {
 
         // update type and rhs metadata in local scope
 
-        for (symbol_id, concrete_type) in export_tuple_values.exports.iter().zip(tuple_type.type_list) {
+        for (symbol_id, mut concrete_type) in export_tuple_values.exports.iter().zip(tuple_type.type_list) {
+            if export_tuple_values.is_const && !matches!(concrete_type, ConcreteType::Const(..)) {
+                concrete_type = ConcreteType::Const(Box::new(concrete_type.clone()));
+            }
+
             update_local_symbol!(self, scope_id_opt.unwrap(), *symbol_id,
                 LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
                     resolved_variable.typed_variable.ty = Some(concrete_type);
@@ -913,6 +917,10 @@ impl<'a> AnalysisContext<'a> {
                 hint: None,
             });
             return;
+        }
+
+        if typed_global_var.is_const && !matches!(typed_global_var.ty, Some(ConcreteType::Const(..))) {
+            typed_global_var.ty = Some(ConcreteType::Const(Box::new(typed_global_var.ty.clone().unwrap())));
         }
 
         if let Some(expr) = &typed_global_var.expr {
@@ -1653,6 +1661,10 @@ impl<'a> AnalysisContext<'a> {
                         hint: None,
                     });
                 }
+            }
+
+            if typed_variable.is_const && !matches!(typed_variable.ty, Some(ConcreteType::Const(..))) {
+                typed_variable.ty = Some(ConcreteType::Const(Box::new(typed_variable.ty.clone().unwrap())));
             }
         }
 
