@@ -25,7 +25,7 @@ mod tests {
             location: Some(DiagLoc::new(SourceLoc {
                 line: 5,
                 column: 10,
-                file_path: "sample.cyr".to_string(),
+                file_path: "sample".to_string(),
             })),
             hint: Some("A simple example of hint message.".to_string()),
         };

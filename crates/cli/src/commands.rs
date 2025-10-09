@@ -408,7 +408,7 @@ fn get_entry_source_code_path(base_path: Option<String>, input_file_path: Option
     }
 
     let base = base_path.unwrap_or_default();
-    let main_file = env::current_dir().unwrap().join(&base).join("src/main.cyr");
+    let main_file = env::current_dir().unwrap().join(&base).join("src/main.cyrus");
 
     if !main_file.exists() {
         display_single_custom_diag!("Project.toml not found in the current directory.".to_string());
