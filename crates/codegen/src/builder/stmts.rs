@@ -20,9 +20,9 @@ use resolver::{
 };
 use std::collections::HashMap;
 use typed_ast::{
-    ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedEnumVariant, TypedExpression,
-    TypedExpressionKind, TypedFor, TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement, TypedStruct,
-    TypedSwitch, TypedSwitchCasePattern, TypedUnion, TypedWhile,
+    ModuleID, SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedEnumVariant, TypedExportTupleValues,
+    TypedExpression, TypedExpressionKind, TypedFor, TypedFuncVariadicParams, TypedIf, TypedReturn, TypedStatement,
+    TypedStruct, TypedSwitch, TypedSwitchCasePattern, TypedUnion, TypedWhile,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
 };
 
@@ -297,6 +297,9 @@ impl<'a> CodeGenBuilder<'a> {
             TypedStatement::BlockStatement(typed_block_statement) => {
                 self.build_block_statement(typed_block_statement);
             }
+            TypedStatement::ExportTupleValues(export_tuple_values) => {
+                self.build_export_tuple_values(local_scope_opt, export_tuple_values);
+            }
             TypedStatement::Interface(_typed_interface) => todo!(),
             // Skipped statements
             TypedStatement::Typedef(_) => {}
@@ -304,6 +307,21 @@ impl<'a> CodeGenBuilder<'a> {
             TypedStatement::FuncDef(_) | TypedStatement::FuncDecl(_) | TypedStatement::GlobalVariable(_) => {
                 unreachable!()
             }
+        }
+    }
+
+    fn build_export_tuple_values(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        export_tuple_values: &TypedExportTupleValues,
+    ) {
+        if let Some(typed_expr) = &export_tuple_values.rhs {
+            dbg!(export_tuple_values.ty.clone().unwrap());
+            dbg!(typed_expr);
+
+            todo!();
+        } else {
+            todo!();
         }
     }
 

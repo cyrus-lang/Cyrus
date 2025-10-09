@@ -795,6 +795,10 @@ impl Resolver {
                     while_stmt.loc.clone(),
                     self.get_current_module_file_path(),
                 )),
+                Statement::ExportTupleValues(export_tuple_values) => Err(SourceLoc::from_loc(
+                    export_tuple_values.loc.clone(),
+                    self.get_current_module_file_path(),
+                )),
                 Statement::Expression(..) => continue,
             };
 
@@ -1816,6 +1820,77 @@ impl Resolver {
         stmt: &Statement,
     ) -> Option<TypedStatement> {
         match stmt {
+            Statement::ExportTupleValues(export_tuple_values) => {
+                let var_type = export_tuple_values.ty.as_ref().and_then(|ty_spec| {
+                    self.resolve_type(
+                        Some(local_scope.clone()),
+                        module_id,
+                        ty_spec.clone(),
+                        export_tuple_values.loc.clone(),
+                        export_tuple_values.span.end,
+                    )
+                });
+
+                let typed_rhs = export_tuple_values
+                    .rhs
+                    .as_ref()
+                    .and_then(|expr| self.resolve_expr(module_id, Some(local_scope.clone()), expr));
+
+                let mut local_scope_ref = local_scope.borrow_mut();
+
+                let mut exports: Vec<SymbolID> = Vec::new();
+
+                for identifier in &export_tuple_values.exports {
+                    let symbol_id = generate_symbol_id();
+
+                    // do not store type and rhs for exported identifiers!
+                    // analyzer would infer it.
+                    let typed_variable = TypedVariable {
+                        symbol_id,
+                        name: identifier.as_string(),
+                        ty: None,
+                        rhs: None,
+                        loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                    };
+
+                    let resolved_var = ResolvedVariable {
+                        module_id,
+                        symbol_id,
+                        typed_variable: typed_variable.clone(),
+                    };
+
+                    if local_scope_ref.resolve(&identifier.name).is_some() {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: ResolverDiagKind::DuplicateSymbolInThisScope {
+                                symbol_name: identifier.name.clone(),
+                            },
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                identifier.loc.clone(),
+                                self.get_current_module_file_path(),
+                            ))),
+                            hint: None,
+                        });
+                        return None;
+                    }
+
+                    local_scope_ref.insert(
+                        identifier.as_string(),
+                        LocalSymbol::new(LocalSymbolKind::Variable(resolved_var)),
+                    );
+
+                    exports.push(symbol_id);
+                }
+
+                drop(local_scope_ref);
+
+                Some(TypedStatement::ExportTupleValues(TypedExportTupleValues {
+                    exports,
+                    ty: var_type,
+                    rhs: typed_rhs,
+                    loc: SourceLoc::from_loc(export_tuple_values.loc.clone(), self.get_current_module_file_path()),
+                }))
+            }
             Statement::Variable(variable) => {
                 let typed_var = self.declare_local_variable(module_id, local_scope.clone(), &variable)?;
                 Some(TypedStatement::Variable(typed_var))

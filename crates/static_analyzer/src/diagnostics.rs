@@ -90,9 +90,10 @@ pub enum AnalyzerDiagKind {
     TupleNonIntegerIndex,
     ArrayIndexOnNonArrayOperand,
     TupleMemberAccessOnNonTupleOperand,
+    TupleExportedValuesAndTupleElementsCountMismatch,
     TupleIndexOutOfRange {
         index: usize,
-        length: usize
+        length: usize,
     },
     ObjectHasNoFieldNamed {
         struct_name: String,
@@ -212,9 +213,16 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch => {
+                write!(f, "Mismatch between number of exported values and tuple elements.")
+            }
             AnalyzerDiagKind::TupleIndexOutOfRange { index, length } => {
-                write!(f, "Tuple member access with index {} exceeds tuple length {}.", index, length)
-            },
+                write!(
+                    f,
+                    "Tuple member access with index {} exceeds tuple length {}.",
+                    index, length
+                )
+            }
             AnalyzerDiagKind::PrivateFunctionCall { name } => {
                 write!(f, "Function '{}' is private and cannot be called.", name)
             }

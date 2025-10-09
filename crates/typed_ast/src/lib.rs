@@ -355,6 +355,7 @@ pub enum TypedStatement {
     Interface(TypedInterface),
     Expression(TypedExpression),
     Defer(TypedDefer),
+    ExportTupleValues(TypedExportTupleValues),
 }
 
 impl TypedStatement {
@@ -379,8 +380,17 @@ impl TypedStatement {
             TypedStatement::While(while_stmt) => while_stmt.loc.clone(),
             TypedStatement::Union(union_stmt) => union_stmt.loc.clone(),
             TypedStatement::Defer(typed_defer) => typed_defer.loc.clone(),
+            TypedStatement::ExportTupleValues(export_tuple_values) => export_tuple_values.loc.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedExportTupleValues {
+    pub exports: Vec<SymbolID>,
+    pub ty: Option<ConcreteType>,
+    pub rhs: Option<TypedExpression>,
+    pub loc: SourceLoc,
 }
 
 #[derive(Debug, Clone)]

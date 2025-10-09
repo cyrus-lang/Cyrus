@@ -1019,9 +1019,89 @@ impl Parser {
         }))
     }
 
-    // ANCHOR
     pub fn parse_grouped_tuple_export(&mut self) -> Result<Statement, ParserError> {
-        todo!();
+        let start = self.current_token().span.start;
+        let loc = self.current_token().loc.clone();
+
+        self.expect_current(TokenKind::LeftParen)?;
+
+        if self.current_token_is(TokenKind::RightParen) {
+            return Err(Diag {
+                kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
+                    self.file_name.clone(),
+                ))),
+                hint: None,
+            });
+        }
+
+        let mut exports: Vec<Identifier> = Vec::new();
+
+        loop {
+            let identifier = self.parse_identifier()?;
+            self.next_token();
+
+            exports.push(identifier);
+
+            match self.current_token().kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                    continue;
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+
+        self.expect_current(TokenKind::RightParen)?;
+
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Err(Diag {
+                kind: ParserDiagKind::IncompleteVariableDeclaration,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(
+                    self.current_token().loc.clone(),
+                    self.file_name.clone(),
+                ))),
+                hint: None,
+            });
+        }
+
+        let mut variable_type: Option<TypeSpecifier> = None;
+        if self.current_token_is(TokenKind::Colon) {
+            self.next_token(); // consume the colon
+
+            variable_type = Some(self.parse_type_specifier()?);
+            self.next_token();
+        }
+
+        if self.current_token_is(TokenKind::Semicolon) {
+            return Ok(Statement::ExportTupleValues(ExportTupleValues {
+                exports,
+                ty: variable_type,
+                rhs: None,
+                span: Span {
+                    start,
+                    end: self.current_token().span.end,
+                },
+                loc,
+            }));
+        }
+        self.expect_current(TokenKind::Assign)?;
+
+        let (expr, span) = self.parse_expression(Precedence::Lowest)?;
+        self.expect_peek(TokenKind::Semicolon)?;
+
+        Ok(Statement::ExportTupleValues(ExportTupleValues {
+            exports,
+            rhs: Some(expr),
+            span: Span { start, end: span.end },
+            ty: variable_type,
+            loc,
+        }))
     }
 
     pub fn parse_variable(&mut self) -> Result<Statement, ParserError> {
@@ -1030,20 +1110,21 @@ impl Parser {
 
         self.expect_current(TokenKind::Var)?;
 
+        // considered as group tuple export
+        if self.current_token_is(TokenKind::LeftParen) {
+            return self.parse_grouped_tuple_export();
+        }
+
         let identifier = self.parse_identifier()?;
         self.next_token();
 
         if self.current_token_is(TokenKind::Semicolon) {
-            return Ok(Statement::Variable(Variable {
-                identifier,
-                ty: None,
-                rhs: None,
-                span: Span {
-                    start,
-                    end: self.current_token().span.end,
-                },
-                loc,
-            }));
+            return Err(Diag {
+                kind: ParserDiagKind::IncompleteVariableDeclaration,
+                level: DiagLevel::Error,
+                location: Some(DiagLoc::new(SourceLoc::from_loc(loc, self.file_name.clone()))),
+                hint: None,
+            });
         }
 
         let mut variable_type: Option<TypeSpecifier> = None;

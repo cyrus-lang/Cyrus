@@ -82,7 +82,7 @@ pub enum Expression {
     SizeOfExpression(SizeOfExpression),
     Lambda(Lambda),
     Tuple(TupleValue),
-    TupleMemberAccess(TupleMemberAccess)
+    TupleMemberAccess(TupleMemberAccess),
 }
 
 #[derive(Debug, Clone)]
@@ -407,6 +407,7 @@ pub struct ArrayIndex {
 pub enum Statement {
     Interface(Interface),
     Variable(Variable),
+    ExportTupleValues(ExportTupleValues),
     Expression(Expression),
     If(If),
     Return(Return),
@@ -757,6 +758,15 @@ pub struct Variable {
 }
 
 #[derive(Debug, Clone)]
+pub struct ExportTupleValues {
+    pub exports: Vec<Identifier>,
+    pub ty: Option<TypeSpecifier>,
+    pub rhs: Option<Expression>,
+    pub span: Span,
+    pub loc: Location,
+}
+
+#[derive(Debug, Clone)]
 pub struct Assignment {
     pub lhs: Expression,
     pub rhs: Expression,
@@ -852,6 +862,7 @@ impl Statement {
         match self {
             Statement::Interface(interface) => interface.loc.clone(),
             Statement::Variable(variable) => variable.loc.clone(),
+            Statement::ExportTupleValues(export_tuple_values) => export_tuple_values.loc.clone(),
             Statement::If(if_stmt) => if_stmt.loc.clone(),
             Statement::Return(ret) => ret.loc.clone(),
             Statement::FuncDef(func_def) => func_def.loc.clone(),
