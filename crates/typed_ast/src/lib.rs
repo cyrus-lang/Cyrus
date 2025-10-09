@@ -390,6 +390,7 @@ pub struct TypedExportTupleValues {
     pub exports: Vec<SymbolID>,
     pub ty: Option<ConcreteType>,
     pub rhs: Option<TypedExpression>,
+    pub is_const: bool,
     pub loc: SourceLoc,
 }
 
@@ -496,6 +497,7 @@ pub struct TypedGlobalVariable {
     pub name: String,
     pub ty: Option<ConcreteType>,
     pub expr: Option<TypedExpression>,
+    pub is_const: bool,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
@@ -533,6 +535,7 @@ pub struct TypedVariable {
     pub name: String,
     pub ty: Option<ConcreteType>,
     pub rhs: Option<TypedExpression>,
+    pub is_const: bool,
     pub loc: SourceLoc,
 }
 

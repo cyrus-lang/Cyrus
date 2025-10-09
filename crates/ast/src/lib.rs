@@ -451,6 +451,7 @@ pub struct GlobalVariable {
     pub identifier: Identifier,
     pub type_specifier: Option<TypeSpecifier>,
     pub expr: Option<Expression>,
+    pub is_const: bool,
     pub loc: Location,
     pub span: Span,
 }
@@ -753,6 +754,7 @@ pub struct Variable {
     pub identifier: Identifier,
     pub ty: Option<TypeSpecifier>,
     pub rhs: Option<Expression>,
+    pub is_const: bool,
     pub span: Span,
     pub loc: Location,
 }
@@ -762,6 +764,7 @@ pub struct ExportTupleValues {
     pub exports: Vec<Identifier>,
     pub ty: Option<TypeSpecifier>,
     pub rhs: Option<Expression>,
+    pub is_const: bool,
     pub span: Span,
     pub loc: Location,
 }

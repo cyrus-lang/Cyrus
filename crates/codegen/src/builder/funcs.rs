@@ -118,6 +118,7 @@ impl<'a> CodeGenBuilder<'a> {
                         name: name.clone(),
                         ty: Some(concrete_type.clone()),
                         rhs: None,
+                        is_const: false,
                         loc,
                     },
                     false,

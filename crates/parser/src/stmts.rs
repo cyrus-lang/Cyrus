@@ -31,7 +31,7 @@ impl Parser {
                 return self.parse_union(Some(vis));
             } else if self.current_token_is(TokenKind::Typedef) {
                 return self.parse_typedef(Some(vis));
-            } else if let TokenKind::Identifier { .. } = self.current_token().kind {
+            } else if self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const) {
                 return self.parse_global_variable(Some(vis));
             } else if self.current_token_is(TokenKind::Interface) {
                 return self.parse_interface(Some(vis));
@@ -50,17 +50,15 @@ impl Parser {
             return self.parse_typedef(None);
         } else if self.current_token_is(TokenKind::Interface) {
             return self.parse_interface(None);
-        } else if let TokenKind::Identifier { .. } = self.current_token().kind {
-            if toplevel && (self.peek_token_is(TokenKind::Colon) || self.peek_token_is(TokenKind::Assign)) {
-                return self.parse_global_variable(None);
-            }
+        } else if (self.current_token_is(TokenKind::Var) || self.current_token_is(TokenKind::Const)) && toplevel {
+            return self.parse_global_variable(None);
         }
 
         if !toplevel {
             match self.current_token().kind {
+                TokenKind::Var | TokenKind::Const => self.parse_variable(),
                 TokenKind::Defer => self.parse_defer(),
                 TokenKind::If => self.parse_if(),
-                TokenKind::Var => self.parse_variable(),
                 TokenKind::Return => self.parse_return(),
                 TokenKind::For => self.parse_for_loop(),
                 TokenKind::While => self.parse_while_loop(),
@@ -1019,7 +1017,7 @@ impl Parser {
         }))
     }
 
-    pub fn parse_grouped_tuple_export(&mut self) -> Result<Statement, ParserError> {
+    pub fn parse_grouped_tuple_export(&mut self, is_const: bool) -> Result<Statement, ParserError> {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
@@ -1083,6 +1081,7 @@ impl Parser {
                 exports,
                 ty: variable_type,
                 rhs: None,
+                is_const,
                 span: Span {
                     start,
                     end: self.current_token().span.end,
@@ -1100,6 +1099,7 @@ impl Parser {
             rhs: Some(expr),
             span: Span { start, end: span.end },
             ty: variable_type,
+            is_const,
             loc,
         }))
     }
@@ -1108,11 +1108,18 @@ impl Parser {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        self.expect_current(TokenKind::Var)?;
+        let is_const;
+        if self.current_token_is(TokenKind::Const) {
+            self.next_token();
+            is_const = true;
+        } else {
+            self.expect_current(TokenKind::Var)?;
+            is_const = false;
+        }
 
         // considered as group tuple export
         if self.current_token_is(TokenKind::LeftParen) {
-            return self.parse_grouped_tuple_export();
+            return self.parse_grouped_tuple_export(is_const);
         }
 
         let identifier = self.parse_identifier()?;
@@ -1140,6 +1147,7 @@ impl Parser {
                 identifier,
                 ty: variable_type,
                 rhs: None,
+                is_const,
                 span: Span {
                     start,
                     end: self.current_token().span.end,
@@ -1155,8 +1163,9 @@ impl Parser {
         Ok(Statement::Variable(Variable {
             identifier,
             rhs: Some(expr),
-            span: Span { start, end: span.end },
             ty: variable_type,
+            is_const,
+            span: Span { start, end: span.end },
             loc,
         }))
     }
@@ -1366,6 +1375,16 @@ impl Parser {
     pub fn parse_global_variable(&mut self, vis: Option<AccessSpecifier>) -> Result<Statement, ParserError> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
+
+        let is_const;
+        if self.current_token_is(TokenKind::Const) {
+            self.next_token();
+            is_const = true;
+        } else {
+            self.expect_current(TokenKind::Var)?;
+            is_const = false;
+        }
+
         let identifier = self.parse_identifier()?;
         self.next_token();
 
@@ -1392,6 +1411,7 @@ impl Parser {
             identifier,
             type_specifier,
             expr,
+            is_const,
             loc,
             span: Span::new(start, self.current_token().span.end),
         }))

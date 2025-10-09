@@ -1124,6 +1124,7 @@ impl Resolver {
             ty: concrete_type,
             expr: typed_expr,
             vis: global_var.vis.clone(),
+            is_const: global_var.is_const,
             loc: SourceLoc::from_loc(global_var.loc.clone(), self.get_current_module_file_path()),
         }))
     }
@@ -1245,6 +1246,7 @@ impl Resolver {
                                 ))),
                             },
                             rhs: None,
+                            is_const: false,
                             loc: resolved_method.func_sig.loc.clone(),
                         },
                     }));
@@ -1452,6 +1454,7 @@ impl Resolver {
                                     name: func_param.identifier.name.clone(),
                                     ty: Some(param_type.clone()),
                                     rhs: None,
+                                    is_const: false,
                                     loc: SourceLoc::from_loc(
                                         func_param.loc.clone(),
                                         self.get_current_module_file_path(),
@@ -1503,6 +1506,7 @@ impl Resolver {
                                 name: identifier.name.clone(),
                                 ty: Some(variadic_type.clone()),
                                 rhs: None,
+                                is_const: false,
                                 loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
                             },
                         })),
@@ -1702,6 +1706,7 @@ impl Resolver {
             name: variable.identifier.name.clone(),
             ty: var_type.clone(),
             rhs: typed_rhs.clone(),
+            is_const: variable.is_const,
             loc: SourceLoc::from_loc(variable.loc.clone(), self.get_current_module_file_path()),
         };
 
@@ -1850,6 +1855,7 @@ impl Resolver {
                         name: identifier.as_string(),
                         ty: None,
                         rhs: None,
+                        is_const: false,
                         loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
                     };
 
@@ -1888,6 +1894,7 @@ impl Resolver {
                     exports,
                     ty: var_type,
                     rhs: typed_rhs,
+                    is_const: export_tuple_values.is_const,
                     loc: SourceLoc::from_loc(export_tuple_values.loc.clone(), self.get_current_module_file_path()),
                 }))
             }
@@ -1993,6 +2000,7 @@ impl Resolver {
                                         name: identifier.name.clone(),
                                         ty: None,
                                         rhs: None,
+                                        is_const: false,
                                         loc: SourceLoc::from_loc(
                                             identifier.loc.clone(),
                                             self.get_current_module_file_path(),
@@ -2025,6 +2033,7 @@ impl Resolver {
                                                     name: identifier.name.clone(),
                                                     ty: None,
                                                     rhs: None,
+                                                    is_const: false,
                                                     loc: SourceLoc::from_loc(
                                                         identifier.loc.clone(),
                                                         self.get_current_module_file_path(),
