@@ -83,8 +83,8 @@ build_dir = \"./build\"
     fs::create_dir(format!("{}/src", project_name))
         .map_err(|_| format!("Failed to create '{}/src' directory.", project_name))?;
 
-    let mut main_file = File::create(format!("{}/src/main.cyr", project_name))
-        .map_err(|_| format!("Failed to create '{}/src/main.cyr' file.", project_name))?;
+    let mut main_file = File::create(format!("{}/src/main.cyrus", project_name))
+        .map_err(|_| format!("Failed to create '{}/src/main.cyrus' file.", project_name))?;
 
     main_file
         .write("import std::io;\n\nfn main() {\n\tio::printfn(\"Hello World\n\");\n}".as_bytes())
@@ -135,13 +135,13 @@ version = \"{}\"
     fs::create_dir(format!("{}/src", project_name))
         .map_err(|_| format!("Failed to create '{}/src' directory.", project_name))?;
 
-    let mut main_file = File::create(format!("{}/src/lib.cyr", project_name))
-        .map_err(|_| format!("Failed to create '{}/src/lib.cyr' file.", project_name))?;
+    let mut main_file = File::create(format!("{}/src/lib.cyrus", project_name))
+        .map_err(|_| format!("Failed to create '{}/src/lib.cyrus' file.", project_name))?;
 
     main_file
         .write(
             "/*
-Welcome to your new library project! (lib.cyr)
+Welcome to your new library project! (lib.cyrus)
 
 You can start binding some functions in this library and do whatever you want.
 

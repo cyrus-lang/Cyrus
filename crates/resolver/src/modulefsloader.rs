@@ -54,7 +54,7 @@ impl ModuleLoader {
 
             let path_buf = Path::new(&module_file_path);
             if path_buf.is_dir() {
-                let index_path = path_buf.join("index.cyr");
+                let index_path = path_buf.join("index.cyrus");
                 if !index_path.exists() {
                     loaded_modules_list.push(Err(ResolverDiagKind::ModuleIndexNotFound {
                         module_name: module_segments_as_string(sub_import.segments.clone()),
@@ -134,7 +134,7 @@ impl ModuleLoader {
         for (idx, segment) in segments.iter().enumerate() {
             match segment {
                 ModuleSegment::SubModule(identifier) => {
-                    let file_path = format!("{}{}.cyr", module_file_path, identifier.name);
+                    let file_path = format!("{}{}.cyrus", module_file_path, identifier.name);
                     let dir_path = format!("{}{}/", module_file_path, identifier.name);
 
                     let file_exists = if Path::new(&file_path).exists() {
@@ -166,7 +166,7 @@ impl ModuleLoader {
                             module_file_path = dir_buf.to_str().unwrap().to_string();
                             if idx == segments.len() - 1 {
                                 // last segment (require index.cyr)
-                                let index_path = dir_buf.join("index.cyr");
+                                let index_path = dir_buf.join("index.cyrus");
                                 if !index_path.exists() {
                                     return Err(ResolverDiagKind::ModuleIndexNotFound {
                                         module_name: identifier.name.clone(),

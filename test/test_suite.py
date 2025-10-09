@@ -139,7 +139,7 @@ def main():
         passed_tests = []
         failed_tests = []
 
-        for test_file in tests_path.glob("*.cyr"):
+        for test_file in tests_path.glob("*.cyrus"):
             if test_file.is_file():
                 try:
                     with open(test_file, "r") as file:
