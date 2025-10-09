@@ -118,22 +118,27 @@ impl<'a> CodeGenBuilder<'a> {
     ) -> InternalValue<'a> {
         let mut const_elements = true;
 
+        let tuple_type = self.get_tuple_type_from_tuple_value(tuple_value);
+
         let basic_values: Vec<BasicValueEnum<'a>> = tuple_value
             .expr_list
             .iter()
-            .map(|expr| {
+            .enumerate()
+            .map(|(idx, expr)| {
+                let target_type = tuple_type.type_list.get(idx).unwrap();
+
                 let lvalue = self.build_expr(local_scope_opt.clone(), expr);
-                let rvalue = self
-                    .build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue)
-                    .as_basic_value();
-                if !self.is_basic_value_constant(rvalue) {
+                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+                let casted_rvalue = self.build_implicit_cast(local_scope_opt.clone(), target_type.clone(), rvalue);
+
+                if !self.is_basic_value_constant(casted_rvalue.as_basic_value()) {
                     const_elements = false;
                 }
-                rvalue
+
+                casted_rvalue.as_basic_value()
             })
             .collect();
 
-        let tuple_type = self.get_tuple_type_from_tuple_value(tuple_value);
         let tuple_struct_type = self
             .build_tuple_type(local_scope_opt.clone(), &tuple_type)
             .into_struct_type();

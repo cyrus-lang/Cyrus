@@ -1,6 +1,6 @@
-use diagcentral::{Diag, DiagLevel, DiagLoc};
-use std::fmt;
 use ast::source_loc::SourceLoc;
+use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag};
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum LexicalDiagKind {
@@ -42,7 +42,7 @@ impl fmt::Display for LexicalDiagKind {
 }
 
 pub fn lexer_invalid_char_error(file: String, line: usize, column: usize, ch: char) -> Diag<LexicalDiagKind> {
-    Diag {
+    display_single_diag!(Diag {
         level: DiagLevel::Error,
         kind: LexicalDiagKind::InvalidChar(ch),
         location: Some(DiagLoc::new(SourceLoc {
@@ -51,5 +51,5 @@ pub fn lexer_invalid_char_error(file: String, line: usize, column: usize, ch: ch
             line,
         })),
         hint: None,
-    }
+    });
 }

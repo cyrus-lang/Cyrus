@@ -212,7 +212,6 @@ impl Lexer {
                     loc,
                 };
             }
-            '#' => TokenKind::Hashtag,
             '^' => TokenKind::Caret,
             '"' => return self.read_string(None),
             '\'' => return self.read_char_literal(),
@@ -831,6 +830,7 @@ impl Lexer {
 
     fn lookup_identifier(&mut self, ident: String) -> TokenKind {
         match ident.as_str() {
+            "var" => TokenKind::Var,
             "defer" => TokenKind::Defer,
             "union" => TokenKind::Union,
             "interface" => TokenKind::Interface,

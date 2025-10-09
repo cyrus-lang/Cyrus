@@ -5,9 +5,9 @@
 import std::libc{printf};
 
 fn main() {
-    #list = char*[3] {"Cyrus", "Programming", "Language"};
+    var list = char*[3] {"Cyrus", "Programming", "Language"};
 
-    for (#i = 0; i < 3; i++) {
+    for (var i = 0; i < 3; i++) {
         switch (list[i]) {
             case "Cyrus":
                 printf("<%s/> ", list[i]);

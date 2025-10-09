@@ -4,7 +4,10 @@ use diagcentral::{Diag, DiagLevel, display_single_diag};
 use lexer::Lexer;
 use parser::Parser;
 use std::{
-    env, hash::{Hash, Hasher}, path::{Path, PathBuf}, rc::Rc
+    env,
+    hash::{Hash, Hasher},
+    path::{Path, PathBuf},
+    rc::Rc,
 };
 use utils::fs::find_file_from_sources;
 
@@ -212,12 +215,12 @@ impl Hash for ModuleAlias {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             ModuleAlias::Group(name) => {
-                0u8.hash(state); 
+                0u8.hash(state);
                 name.hash(state);
             }
             ModuleAlias::Single(singles) => {
                 1u8.hash(state);
-                singles.hash(state); 
+                singles.hash(state);
             }
         }
     }

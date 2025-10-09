@@ -14,8 +14,8 @@ struct Organization {
 }
 
 fn main() {
-    #users_len: size_t = 2;
-	#users: Person* = malloc(sizeof(Person) * users_len);
+    var users_len: size_t = 2;
+	var users: Person* = malloc(sizeof(Person) * users_len);
     users[0] = Person { id: 1, name: "Taha" };
     printf("%s %d\n", users[0].name, users[0].id);
     free(users);
