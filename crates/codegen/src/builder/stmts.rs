@@ -121,7 +121,7 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
                 TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
                 TypedStatement::Union(typed_union) => self.build_union_def(typed_union),
-                TypedStatement::Interface(_typed_interface) => todo!(),
+                TypedStatement::Interface(..) => continue,
                 TypedStatement::FuncDecl(_) => continue,
                 _ => continue,
             }
@@ -300,8 +300,8 @@ impl<'a> CodeGenBuilder<'a> {
             TypedStatement::ExportTupleValues(export_tuple_values) => {
                 self.build_export_tuple_values(local_scope_opt, export_tuple_values);
             }
-            TypedStatement::Interface(_typed_interface) => todo!(),
             // Skipped statements
+            TypedStatement::Interface(..) => {}
             TypedStatement::Typedef(_) => {}
             // Invalid statements
             TypedStatement::FuncDef(_) | TypedStatement::FuncDecl(_) | TypedStatement::GlobalVariable(_) => {

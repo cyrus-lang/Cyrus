@@ -444,4 +444,77 @@ impl Parser {
             span: Span::new(start, self.current_token().span.end),
         }))
     }
+
+    fn parse_generic_bounds(&mut self) -> Result<Vec<Bound>, ParserError> {
+        self.next_token();
+
+        let mut list: Vec<Bound> = Vec::new();
+
+        loop {
+            let symbol = self.parse_identifier()?;
+            self.next_token();
+
+            list.push(Bound {
+                symbol,
+                type_args: Vec::new(),
+            });
+
+            match self.current_token().kind {
+                TokenKind::Plus => {
+                    self.next_token();
+                    continue;
+                }
+                _ => break,
+            }
+        }
+
+        Ok(list)
+    }
+
+    pub fn parse_generic_params(&mut self) -> Result<GenericParamList, ParserError> {
+        self.expect_current(TokenKind::LessThan)?;
+
+        let mut generic_params: Vec<GenericParam> = Vec::new();
+
+        loop {
+            dbg!(self.current_token());
+            let param_name = self.parse_identifier()?;
+            self.next_token();
+
+            let bounds: Option<Vec<Bound>>;
+            if self.current_token_is(TokenKind::Colon) {
+                bounds = Some(self.parse_generic_bounds()?)
+            } else {
+                bounds = None;
+            }
+
+            let default;
+            if self.current_token_is(TokenKind::Assign) {
+                self.next_token();
+                
+                default = Some(self.parse_type_specifier()?);
+                self.next_token();
+            } else {
+                default = None;
+            }
+
+            generic_params.push(GenericParam {
+                param_name,
+                bounds,
+                default,
+            });
+
+            match self.current_token().kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                    continue;
+                }
+                _ => break,
+            }
+        }
+
+        self.expect_current(TokenKind::GreaterThan)?;
+
+        Ok(GenericParamList { generic_params })
+    }
 }

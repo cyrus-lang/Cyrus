@@ -29,7 +29,7 @@ impl<'a> CodeGenBuilder<'a> {
                     let struct_type = self.build_union_decl(&typed_union.name);
                     self.insert_forward_decl_to_registry(typed_union.symbol_id, LocalIRValue::Struct(struct_type));
                 }
-                TypedStatement::Interface(_typed_interface) => todo!(),
+                TypedStatement::Interface(..) => continue,
                 _ => continue,
             }
         }

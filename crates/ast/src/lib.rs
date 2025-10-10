@@ -582,6 +582,7 @@ pub struct Import {
 #[derive(Debug, Clone)]
 pub struct Struct {
     pub identifier: Identifier,
+    pub generic_params: Option<GenericParamList>,
     pub impls: Vec<Identifier>,
     pub fields: Vec<StructField>,
     pub methods: Vec<FuncDef>,
@@ -887,4 +888,28 @@ impl Statement {
             Statement::Expression(..) => unreachable!(),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericParamList {
+    pub generic_params: Vec<GenericParam>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericParam {
+    pub param_name: Identifier,
+    pub bounds: Option<Vec<Bound>>,
+    pub default: Option<TypeSpecifier>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Bound {
+    pub symbol: Identifier,
+    pub type_args: Vec<TypeArg>,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypeArg {
+    Positional(TypeSpecifier),
+    Named { key: Identifier, value: TypeSpecifier },
 }

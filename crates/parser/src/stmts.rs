@@ -357,6 +357,13 @@ impl Parser {
         let struct_name = self.parse_identifier()?;
         self.next_token(); // consume struct name
 
+        let generic_params;
+        if self.current_token_is(TokenKind::LessThan) {
+            generic_params = Some(self.parse_generic_params()?);
+        } else {
+            generic_params = None;
+        }
+
         let mut impls: Vec<Identifier> = Vec::new();
 
         if self.current_token_is(TokenKind::Colon) {
@@ -464,6 +471,7 @@ impl Parser {
 
         Ok(Statement::Struct(Struct {
             identifier: struct_name,
+            generic_params,
             impls,
             vis,
             fields,
