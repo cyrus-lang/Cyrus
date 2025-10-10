@@ -145,6 +145,28 @@ impl LocalOrGlobalSymbol {
         }
     }
 
+    pub fn as_method(&self) -> Option<&ResolvedMethod> {
+        match self {
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Method(resolved_method) => Some(resolved_method),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn as_interface(&self) -> Option<&ResolvedInterface> {
+        match self {
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Interface(resolved_interface) => Some(resolved_interface),
+                _ => None,
+            },
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Interface(resolved_interface) => Some(resolved_interface),
+                _ => None,
+            },
+        }
+    }
 
     pub fn as_struct(&self) -> Option<&ResolvedStruct> {
         match self {

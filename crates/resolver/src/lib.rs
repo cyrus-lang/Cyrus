@@ -871,6 +871,8 @@ impl Resolver {
             module_id,
             symbol_id: interface_symbol_id,
             interface_sig: InterfaceSig {
+                module_id,
+                symbol_id: interface_symbol_id,
                 name: interface.identifier.name.clone(),
                 methods: typed_methods.clone(),
                 vis: interface.vis.clone(),
@@ -1272,6 +1274,53 @@ impl Resolver {
         Some(methods)
     }
 
+    fn resolve_object_impls(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        module_id: ModuleID,
+        impls: &Vec<Identifier>,
+    ) -> Vec<TypedIdentifier> {
+        impls
+            .iter()
+            .filter_map(|identifier| {
+                let resolved = local_scope_opt
+                    .as_ref()
+                    .and_then(|local_scope| {
+                        local_scope
+                            .borrow()
+                            .resolve(&identifier.as_string())
+                            .map(|sym| LocalOrGlobalSymbol::LocalSymbol(sym.clone()))
+                    })
+                    .or_else(|| {
+                        self.lookup_symbol(module_id, &identifier.name)
+                            .map(LocalOrGlobalSymbol::GlobalSymbol)
+                    });
+
+                match resolved {
+                    Some(local_or_global_symbol) => Some(TypedIdentifier {
+                        name: identifier.as_string(),
+                        symbol_id: local_or_global_symbol.get_symbol_id(),
+                        loc: SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
+                    }),
+                    None => {
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: ResolverDiagKind::SymbolNotFound {
+                                name: identifier.as_string(),
+                            },
+                            location: Some(DiagLoc::new(SourceLoc::from_loc(
+                                identifier.loc.clone(),
+                                self.get_current_module_file_path(),
+                            ))),
+                            hint: None,
+                        });
+                        None
+                    }
+                }
+            })
+            .collect()
+    }
+
     fn resolve_struct(
         &mut self,
         module_id: ModuleID,
@@ -1307,40 +1356,7 @@ impl Resolver {
         self.check_duplicate_method_names(&struct_decl.identifier.name, struct_decl.methods.clone());
 
         let methods = self.resolve_methods(module_id, &struct_decl.methods, struct_symbol_id)?;
-
-        let impls: Vec<LocalOrGlobalSymbol> = struct_decl
-            .impls
-            .iter()
-            .filter_map(|identifier| {
-                let resolved = local_scope_opt
-                    .as_ref()
-                    .and_then(|local_scope| {
-                        local_scope
-                            .borrow()
-                            .resolve(&identifier.as_string())
-                            .map(|sym| LocalOrGlobalSymbol::LocalSymbol(sym.clone()))
-                    })
-                    .or_else(|| {
-                        self.lookup_symbol(module_id, &identifier.name)
-                            .map(LocalOrGlobalSymbol::GlobalSymbol)
-                    });
-
-                resolved.or_else(|| {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: ResolverDiagKind::SymbolNotFound {
-                            name: identifier.as_string(),
-                        },
-                        location: Some(DiagLoc::new(SourceLoc::from_loc(
-                            identifier.loc.clone(),
-                            self.get_current_module_file_path(),
-                        ))),
-                        hint: None,
-                    });
-                    None
-                })
-            })
-            .collect();
+        let impls = self.resolve_object_impls(local_scope_opt.clone(), module_id, &struct_decl.impls);
 
         let resolved_struct = ResolvedStruct {
             module_id,
@@ -1348,7 +1364,7 @@ impl Resolver {
             struct_sig: StructSig {
                 name: struct_decl.identifier.name.clone(),
                 fields: typed_struct_fields.clone(),
-                impls,
+                impls: impls.clone(),
                 packed: struct_decl.packed,
                 methods: methods.clone(),
                 vis: struct_decl.vis.clone(),
@@ -1376,6 +1392,7 @@ impl Resolver {
             fields: typed_struct_fields,
             methods,
             vis: struct_decl.vis.clone(),
+            impls,
             packed: struct_decl.packed,
             loc: SourceLoc::from_loc(struct_decl.loc.clone(), self.get_current_module_file_path()),
             is_local,

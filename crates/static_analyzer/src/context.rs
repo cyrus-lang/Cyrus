@@ -5,7 +5,7 @@ use resolver::{
     Resolver,
     scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     signatures::FuncSig,
-    typed_func_params_as_func_type_params,
+    typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
 use std::{
     cell::RefCell,
@@ -1079,6 +1079,110 @@ impl<'a> AnalysisContext<'a> {
         drop(global_symbols);
     }
 
+    fn analyze_object_impls_interface(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        object_name: String,
+        impls: &Vec<TypedIdentifier>,
+        method_ids: &HashMap<String, SymbolID>,
+    ) {
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        for identifier in impls {
+            let local_or_global_symbol = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), identifier.symbol_id)
+                .unwrap();
+
+            let resolved_interface = match local_or_global_symbol.as_interface() {
+                Some(resolved_interface) => resolved_interface,
+                None => {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::SymbolMustBeAnInterface {
+                            symbol_name: identifier.name.clone(),
+                        },
+                        location: Some(DiagLoc::new(identifier.loc.clone())),
+                        hint: None,
+                    });
+                    continue;
+                }
+            };
+
+            if resolved_interface.interface_sig.vis.is_private()
+                && resolved_interface.interface_sig.module_id != self.module_id
+            {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InternalSymbolAccess {
+                        symbol_name: identifier.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(identifier.loc.clone())),
+                    hint: None,
+                });
+                continue;
+            }
+
+            let method_decls = &resolved_interface.interface_sig.methods;
+
+            for func_decl in method_decls.clone() {
+                if !method_ids.contains_key(&func_decl.name) {
+                    // method missing
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::MissingInterfaceMethodImpl {
+                            object_name: object_name.clone(),
+                            method_name: func_decl.name.clone(),
+                            interface_name: identifier.name.clone(),
+                        },
+                        location: Some(DiagLoc::new(identifier.loc.clone())),
+                        hint: None,
+                    });
+                    continue;
+                }
+
+                let object_method_symbol_id = method_ids.get(&func_decl.name).unwrap();
+                let local_or_global_symbol = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt.clone(), *object_method_symbol_id)
+                    .unwrap();
+                let object_method = local_or_global_symbol.as_method().unwrap();
+
+                { // NOTE
+                    // we may need to change SelfModifier to something like a standalone ConcreteType
+                    // because currently we can't have `Self` type in interface which already became a paint in the ass.
+                    //
+                    // interface Person {
+                    //     fn display(&self) Self;
+                    // }
+                    //
+                    // struct Student : Person {
+                    //     name: char*;
+                    //     age: uint;
+                    //
+                    //     fn display(&self) Student { ... }
+                    // }
+                    //
+                    // Expected: Method signature must be considered valid here.
+                }
+
+                // method signature mismatch
+                if object_method.func_sig != typed_func_decl_as_func_sig(&func_decl) {
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::InterfaceMethodTypeMismatch {
+                            object_name: object_name.clone(),
+                            interface_name: identifier.name.clone(),
+                            method_name: func_decl.name.clone(),
+                        },
+                        location: Some(DiagLoc::new(object_method.func_sig.loc.clone())),
+                        hint: None,
+                    });
+                }
+            }
+        }
+    }
+
     pub(crate) fn analyze_struct(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1128,6 +1232,13 @@ impl<'a> AnalysisContext<'a> {
         }
 
         self.analyze_methods(self.module_id, &typed_struct.methods);
+
+        self.analyze_object_impls_interface(
+            scope_id_opt,
+            typed_struct.name.clone(),
+            &typed_struct.impls,
+            &typed_struct.methods,
+        );
 
         // update symbol entry
         update_struct_symbol_entry(self, &typed_struct);

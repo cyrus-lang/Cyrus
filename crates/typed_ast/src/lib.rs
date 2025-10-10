@@ -452,6 +452,7 @@ pub struct TypedStruct {
     pub name: String,
     pub fields: Vec<TypedStructField>,
     pub methods: HashMap<String, SymbolID>,
+    pub impls: Vec<TypedIdentifier>,
     pub vis: AccessSpecifier,
     pub packed: bool,
     pub loc: SourceLoc,

@@ -2,6 +2,22 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    InternalSymbolAccess {
+        symbol_name: String,
+    },
+    SymbolMustBeAnInterface {
+        symbol_name: String,
+    },
+    MissingInterfaceMethodImpl {
+        object_name: String,
+        method_name: String,
+        interface_name: String,
+    },
+    InterfaceMethodTypeMismatch {
+        method_name: String,
+        object_name: String,
+        interface_name: String,
+    },
     PrivateFunctionCall {
         name: String,
     },
@@ -213,6 +229,34 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::InterfaceMethodTypeMismatch {
+                method_name,
+                object_name,
+                interface_name,
+            } => {
+                write!(
+                    f,
+                    "Method '{}' implemented in object '{}' does not match the method from interface '{}'.",
+                    method_name, object_name, interface_name
+                )
+            }
+            AnalyzerDiagKind::InternalSymbolAccess { symbol_name } => {
+                write!(f, "Internal symbol '{}' is not accessible here.", symbol_name)
+            }
+            AnalyzerDiagKind::SymbolMustBeAnInterface { symbol_name } => {
+                write!(f, "'{}' must be an interface.", symbol_name)
+            }
+            AnalyzerDiagKind::MissingInterfaceMethodImpl {
+                object_name,
+                method_name,
+                interface_name,
+            } => {
+                write!(
+                    f,
+                    "Object '{}' does not implement required method '{}' from interface '{}'.",
+                    object_name, method_name, interface_name
+                )
+            }
             AnalyzerDiagKind::TupleExportedValuesAndTupleElementsCountMismatch => {
                 write!(f, "Mismatch between number of exported values and tuple elements.")
             }

@@ -1,7 +1,7 @@
 default: run
 
 static-analyzer:
-	cargo run -j24 -p static_analyzer -- ./tmp/main.cyrus $(ARGS)
+	cargo run -j24 -p static_analyzer -- ./tmp/main.cyrus --disable-warnings $(ARGS)
 
 emit-llvm:
 	cargo run -j24 -- emit-llvm ./tmp/main.cyrus -o ./tmp/llvmir/ --stdlib=./stdlib $(ARGS)
