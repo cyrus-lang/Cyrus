@@ -1673,6 +1673,7 @@ impl Resolver {
         }
 
         Some(TypedStatement::Typedef(TypedTypedef {
+            symbol_id,
             name: typedef.identifier.name.clone(),
             ty: concrete_type,
             vis: typedef.vis.clone(),

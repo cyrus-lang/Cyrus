@@ -505,6 +505,7 @@ pub struct TypedGlobalVariable {
 
 #[derive(Debug, Clone)]
 pub struct TypedTypedef {
+    pub symbol_id: SymbolID,
     pub name: String,
     pub ty: ConcreteType,
     pub vis: AccessSpecifier,

@@ -2,6 +2,9 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum AnalyzerDiagKind {
+    InfiniteRecursiveType {
+        type_name: String,
+    },
     InternalSymbolAccess {
         symbol_name: String,
     },
@@ -229,6 +232,13 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::InfiniteRecursiveType { type_name } => {
+                write!(
+                    f,
+                    "Type '{}' contains a field of its own type, causing infinite recursion.",
+                    type_name
+                )
+            }
             AnalyzerDiagKind::InterfaceMethodTypeMismatch {
                 method_name,
                 object_name,

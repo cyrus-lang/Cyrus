@@ -1228,6 +1228,23 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             };
 
+            if field
+                .ty
+                .as_struct_symbol_id()
+                .map(|symbol_id| symbol_id == typed_struct.symbol_id)
+                == Some(true)
+            {
+                let type_name = (self.symbol_formatter)(scope_id_opt)(typed_struct.symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InfiniteRecursiveType { type_name },
+                    location: Some(DiagLoc::new(field.loc.clone())),
+                    hint: None,
+                });
+                continue;
+            }
+
             field_names.push(field.name.clone());
         }
 
@@ -1291,6 +1308,23 @@ impl<'a> AnalysisContext<'a> {
                 None => continue,
             }
 
+            if field
+                .ty
+                .as_union_symbol_id()
+                .map(|symbol_id| symbol_id == typed_union.symbol_id)
+                == Some(true)
+            {
+                let type_name = (self.symbol_formatter)(scope_id_opt)(typed_union.symbol_id);
+
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::InfiniteRecursiveType { type_name },
+                    location: Some(DiagLoc::new(field.loc.clone())),
+                    hint: None,
+                });
+                continue;
+            }
+
             field_names.push(field.name.clone());
         }
 
@@ -1336,6 +1370,23 @@ impl<'a> AnalysisContext<'a> {
                                 Some(concrete_type) => concrete_type,
                                 None => continue,
                             };
+
+                        if field
+                            .field_type
+                            .as_enum_symbol_id()
+                            .map(|symbol_id| symbol_id == typed_enum.symbol_id)
+                            == Some(true)
+                        {
+                            let type_name = (self.symbol_formatter)(scope_id_opt)(typed_enum.symbol_id);
+
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: AnalyzerDiagKind::InfiniteRecursiveType { type_name },
+                                location: Some(DiagLoc::new(field.loc.clone())),
+                                hint: None,
+                            });
+                            continue;
+                        }
                     }
                     identifier
                 }

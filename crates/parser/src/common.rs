@@ -477,7 +477,6 @@ impl Parser {
         let mut generic_params: Vec<GenericParam> = Vec::new();
 
         loop {
-            dbg!(self.current_token());
             let param_name = self.parse_identifier()?;
             self.next_token();
 
