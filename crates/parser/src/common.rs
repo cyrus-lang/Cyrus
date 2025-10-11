@@ -445,7 +445,7 @@ impl Parser {
         }))
     }
 
-    fn parse_generic_bounds(&mut self) -> Result<Vec<Bound>, ParserError> {
+    fn parse_bounds(&mut self) -> Result<Vec<Bound>, ParserError> {
         self.next_token();
 
         let mut list: Vec<Bound> = Vec::new();
@@ -471,37 +471,37 @@ impl Parser {
         Ok(list)
     }
 
-    pub fn parse_generic_params(&mut self) -> Result<GenericParamList, ParserError> {
+    fn parse_generic_param(&mut self) -> Result<GenericParam, ParserError> {
+        let param_name = self.parse_identifier()?;
+
+        let bounds = if self.current_token_is(TokenKind::Colon) {
+            self.next_token();
+            Some(self.parse_bounds()?)
+        } else {
+            None
+        };
+
+        let default = if self.current_token_is(TokenKind::Assign) {
+            self.next_token(); // consume '='
+            Some(self.parse_type_specifier()?)
+        } else {
+            None
+        };
+
+        Ok(GenericParam {
+            param_name,
+            bounds,
+            default,
+        })
+    }
+
+    pub fn parse_generic_params(&mut self) -> Result<GenericParamsList, ParserError> {
         self.expect_current(TokenKind::LessThan)?;
 
-        let mut generic_params: Vec<GenericParam> = Vec::new();
+        let mut generic_params: GenericParamsList = GenericParamsList::new();
 
         loop {
-            let param_name = self.parse_identifier()?;
-            self.next_token();
-
-            let bounds: Option<Vec<Bound>>;
-            if self.current_token_is(TokenKind::Colon) {
-                bounds = Some(self.parse_generic_bounds()?)
-            } else {
-                bounds = None;
-            }
-
-            let default;
-            if self.current_token_is(TokenKind::Assign) {
-                self.next_token();
-                
-                default = Some(self.parse_type_specifier()?);
-                self.next_token();
-            } else {
-                default = None;
-            }
-
-            generic_params.push(GenericParam {
-                param_name,
-                bounds,
-                default,
-            });
+            generic_params.push(self.parse_generic_param()?);
 
             match self.current_token().kind {
                 TokenKind::Comma => {
@@ -512,8 +512,116 @@ impl Parser {
             }
         }
 
-        self.expect_current(TokenKind::GreaterThan)?;
+        self.expect_peek(TokenKind::GreaterThan)?;
+        self.next_token();
 
-        Ok(GenericParamList { generic_params })
+        Ok(generic_params)
+    }
+
+    pub(crate) fn parse_type_arg_list(&mut self) -> Result<Vec<TypeArg>, ParserError> {
+        self.expect_current(TokenKind::LessThan)?;
+
+        let mut args = Vec::new();
+
+        loop {
+            if let TokenKind::Identifier { .. } = self.current_token().kind {
+                if self.peek_token_is(TokenKind::Assign) {
+                    let key = self.parse_identifier()?;
+                    self.next_token(); // consume identifier
+                    self.expect_current(TokenKind::Assign)?;
+
+                    let val = self.parse_type_specifier()?;
+                    self.next_token();
+
+                    args.push(TypeArg::Named { key, value: val });
+                } else {
+                    // positional type arg
+                    let ty = self.parse_type_specifier()?;
+                    args.push(TypeArg::Positional(ty));
+                }
+            } else {
+                // positional type arg that is not an identifier
+                let ty = self.parse_type_specifier()?;
+                self.next_token();
+                args.push(TypeArg::Positional(ty));
+            }
+
+            match self.current_token().kind {
+                TokenKind::Comma => {
+                    self.next_token();
+                    continue;
+                }
+                TokenKind::GreaterThan => {
+                    // self.next_token();
+                    break;
+                }
+                _ => {
+                    return Err(Diag {
+                        kind: ParserDiagKind::InvalidToken(self.current_token().kind),
+                        level: DiagLevel::Error,
+                        location: Some(DiagLoc::new(SourceLoc::from_loc(
+                            self.current_token().loc.clone(),
+                            self.file_name.clone(),
+                        ))),
+                        hint: None,
+                    });
+                }
+            }
+        }
+
+        Ok(args)
+    }
+
+    fn current_expr_is_path_like(&self, last_parsed_expression: Expression) -> bool {
+        matches!(
+            last_parsed_expression,
+            Expression::Identifier(..) | Expression::ModuleImport(..)
+        )
+    }
+
+    pub fn is_type_arg_start(&mut self, last_parsed_expression: Expression) -> bool {
+        if !self.current_expr_is_path_like(last_parsed_expression) {
+            return false;
+        }
+
+        if !self.peek_token_is(TokenKind::LessThan) {
+            return false;
+        }
+
+        let mut i = 1; // token after '<'
+        let mut depth = 0;
+
+        while let Some(tok) = self.peek_n_token(i) {
+            match tok.kind {
+                TokenKind::LessThan => depth += 1,
+                TokenKind::GreaterThan => {
+                    if depth == 0 {
+                        return false; // unmatched `>`
+                    }
+                    depth -= 1;
+
+                    if depth == 0 {
+                        // reached the matching '>' for the first '<'
+                        // inspect the very next token after this '>'
+                        if let Some(next_tok) = self.peek_n_token(i + 1) {
+                            return matches!(
+                                next_tok.kind,
+                                TokenKind::LeftParen     // foo<T>()
+                                | TokenKind::LeftBrace   // Foo<T> {}
+                                | TokenKind::DoubleColon // Foo<T>::bar
+                            );
+                        } else {
+                            return false;
+                        }
+                    }
+                }
+                TokenKind::Semicolon | TokenKind::EOF => return false, // abort if new statement starts
+                _ => {}
+            }
+
+            i += 1;
+        }
+
+        false
     }
 }

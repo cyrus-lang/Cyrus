@@ -1,5 +1,5 @@
-use crate::{diagnostics::AnalyzerDiagKind, type_cache::TypeResolverCaches};
-use ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
+use crate::{diagnostics::AnalyzerDiagKind, generics::GenericMappingCtx, type_cache::TypeResolverCaches};
+use ast::{AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind, TypeArg, source_loc::SourceLoc};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
@@ -19,14 +19,6 @@ use typed_ast::{
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedFuncType},
     *,
 };
-
-#[allow(unused)]
-#[derive(Debug)]
-enum ControlContext {
-    For,
-    Switch,
-    While,
-}
 
 #[macro_export]
 macro_rules! update_global_symbol {
@@ -76,16 +68,7 @@ pub struct AnalysisContext<'a> {
     pub(crate) current_method_symbol_id: Option<SymbolID>,
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum FlowState {
-    // Execution can continue normally
-    Reachable,
-    // Execution cannot reach further statements (after return/break/continue)
-    Unreachable,
-    // This path definitely returned from the function
-    Returns,
+    pub(crate) generic_ctx_stack: Vec<GenericMappingCtx>,
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -149,6 +132,7 @@ impl<'a> AnalysisContext<'a> {
             current_method_symbol_id: None,
             entry_points,
             ty_caches: TypeResolverCaches::default(),
+            generic_ctx_stack: Vec::new(),
             disable_warnings,
         }
     }
@@ -1935,4 +1919,22 @@ impl<'a> AnalysisContext<'a> {
             unreachable!()
         }
     }
+}
+
+#[allow(unused)]
+#[derive(Debug)]
+enum ControlContext {
+    For,
+    Switch,
+    While,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum FlowState {
+    // Execution can continue normally
+    Reachable,
+    // Execution cannot reach further statements (after return/break/continue)
+    Unreachable,
+    // This path definitely returned from the function
+    Returns,
 }

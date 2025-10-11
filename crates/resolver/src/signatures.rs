@@ -1,8 +1,7 @@
 use ast::{AccessSpecifier, source_loc::SourceLoc};
 use std::collections::HashMap;
 use typed_ast::{
-    ModuleID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncDecl, TypedFuncParamKind, TypedFuncParams,
-    TypedIdentifier, TypedStructField, TypedUnionField, types::ConcreteType,
+    ModuleID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncDecl, TypedFuncParamKind, TypedFuncParams, TypedGenericParamsList, TypedIdentifier, TypedStructField, TypedUnionField, types::ConcreteType
 };
 
 #[derive(Debug, Clone)]
@@ -11,6 +10,7 @@ pub struct StructSig {
     pub fields: Vec<TypedStructField>,
     pub impls: Vec<TypedIdentifier>,
     pub methods: HashMap<String, SymbolID>,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub packed: bool,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,

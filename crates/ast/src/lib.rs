@@ -582,7 +582,7 @@ pub struct Import {
 #[derive(Debug, Clone)]
 pub struct Struct {
     pub identifier: Identifier,
-    pub generic_params: Option<GenericParamList>,
+    pub generic_params: Option<GenericParamsList>,
     pub impls: Vec<Identifier>,
     pub fields: Vec<StructField>,
     pub methods: Vec<FuncDef>,
@@ -596,6 +596,7 @@ pub struct Struct {
 pub struct StructInit {
     pub struct_name: ModuleImport,
     pub field_inits: Vec<FieldInit>,
+    pub type_args: Option<TypeArgs>,
     pub is_const: bool,
     pub loc: Location,
     pub span: Span,
@@ -890,10 +891,7 @@ impl Statement {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct GenericParamList {
-    pub generic_params: Vec<GenericParam>,
-}
+pub type GenericParamsList = Vec<GenericParam>;
 
 #[derive(Debug, Clone)]
 pub struct GenericParam {
@@ -913,3 +911,5 @@ pub enum TypeArg {
     Positional(TypeSpecifier),
     Named { key: Identifier, value: TypeSpecifier },
 }
+
+pub type TypeArgs = Vec<TypeArg>;

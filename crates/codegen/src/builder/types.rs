@@ -251,6 +251,7 @@ impl<'a> CodeGenBuilder<'a> {
         concrete_type: ConcreteType,
     ) -> AnyTypeEnum<'a> {
         match concrete_type {
+            ConcreteType::GenericParam(..) => todo!(), // FIXME
             ConcreteType::UnresolvedSymbol(symbol_id) => {
                 self.build_concrete_type_from_symbol_id(local_scope_opt, symbol_id)
             }

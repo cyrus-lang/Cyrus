@@ -1,4 +1,4 @@
-use crate::{ModuleID, SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams};
+use crate::{ModuleID, SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams, TypedIdentifier};
 use ast::{AccessSpecifier, token::TokenKind};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -12,6 +12,7 @@ pub enum ConcreteType {
     UnnamedStruct(TypedUnnamedStructType),
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
+    GenericParam(TypedIdentifier),
 }
 
 #[derive(Debug, Clone)]

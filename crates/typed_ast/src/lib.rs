@@ -275,6 +275,7 @@ pub struct TypedDereference {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedStructInit {
     pub symbol_id: SymbolID,
+    pub type_args: Option<TypedTypeArgs>,
     pub fields: Vec<TypedStructFieldInit>,
     pub is_const: bool,
     pub loc: SourceLoc,
@@ -668,6 +669,48 @@ pub struct TypedContinue {
     pub loc: SourceLoc,
 }
 
+pub type TypedGenericParamsList = Vec<TypedGenericParam>;
+
+#[derive(Debug, Clone)]
+pub struct TypedGenericParam {
+    pub param_name: Identifier,
+    pub bounds: Option<Vec<TypedBound>>,
+    pub default: Option<ConcreteType>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedBound {
+    pub symbol: Identifier,
+    pub type_args: Vec<TypedTypeArg>,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypedTypeArg {
+    Positional(ConcreteType),
+    Named { key: Identifier, value: ConcreteType },
+}
+
+pub type TypedTypeArgs = Vec<TypedTypeArg>;
+
+impl PartialEq for TypedTypeArg {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Positional(l0), Self::Positional(r0)) => l0 == r0,
+            (
+                Self::Named {
+                    key: l_key,
+                    value: l_value,
+                },
+                Self::Named {
+                    key: r_key,
+                    value: r_value,
+                },
+            ) => l_key.name == r_key.name && l_value == r_value,
+            _ => false,
+        }
+    }
+}
+
 impl PartialEq for TypedLambda {
     fn eq(&self, other: &Self) -> bool {
         self.params == other.params && self.return_type == other.return_type
@@ -683,5 +726,11 @@ impl PartialEq for TypedTupleValue {
 impl PartialEq for TypedTupleMemberAccess {
     fn eq(&self, other: &Self) -> bool {
         self.operand == other.operand && self.index == other.index
+    }
+}
+
+impl PartialEq for TypedIdentifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.symbol_id == other.symbol_id
     }
 }

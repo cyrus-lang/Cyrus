@@ -1,4 +1,4 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, update_global_symbol};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, update_global_symbol};
 use ast::{
     AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator},
@@ -1524,70 +1524,72 @@ impl<'a> AnalysisContext<'a> {
             .map(|field| field.name.clone())
             .collect();
 
-        for field_init in &mut struct_init.fields {
-            let field = resolved_struct
-                .struct_sig
-                .fields
-                .iter()
-                .find(|field| field.name == field_init.name);
+        generic_mapping_ctx_scope!(self, resolved_struct, struct_init, {
+            for field_init in &mut struct_init.fields {
+                let field = resolved_struct
+                    .struct_sig
+                    .fields
+                    .iter()
+                    .find(|field| field.name == field_init.name);
 
-            if field.is_none() {
-                let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
+                if field.is_none() {
+                    let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name,
-                        field_name: field_init.name.clone(),
-                    },
-                    location: Some(DiagLoc::new(field_init.loc.clone())),
-                    hint: None,
-                });
-                continue;
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                            struct_name,
+                            field_name: field_init.name.clone(),
+                        },
+                        location: Some(DiagLoc::new(field_init.loc.clone())),
+                        hint: None,
+                    });
+                    continue;
+                }
+
+                let field_target_type = field.unwrap().ty.clone();
+                let field_value_type = match self.analyze_typed_expr_type(
+                    scope_id_opt,
+                    &mut field_init.value,
+                    Some(field_target_type.clone()),
+                ) {
+                    Some(concrete_type) => concrete_type,
+                    None => continue,
+                };
+
+                if !self.check_type_mismatch(
+                    scope_id_opt,
+                    field_value_type.clone(),
+                    field_target_type.clone(),
+                    field_init.loc.clone(),
+                ) {
+                    let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
+                    let expected_type = format_concrete_type(field_target_type, &(self.symbol_formatter)(scope_id_opt));
+                    let found_type = format_concrete_type(field_value_type, &(self.symbol_formatter)(scope_id_opt));
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::StructFieldTypeMismatch {
+                            struct_name,
+                            field_name: field_init.name.clone(),
+                            expected_type,
+                            found_type,
+                        },
+                        location: Some(DiagLoc::new(struct_init.loc.clone())),
+                        hint: None,
+                    });
+                }
+
+                let missing_fields_idx = match missing_fields
+                    .iter()
+                    .position(|field_name| *field_name == field_init.name.clone())
+                {
+                    Some(idx) => idx,
+                    None => continue,
+                };
+                missing_fields.remove(missing_fields_idx);
             }
-
-            let field_target_type = field.unwrap().ty.clone();
-            let field_value_type = match self.analyze_typed_expr_type(
-                scope_id_opt,
-                &mut field_init.value,
-                Some(field_target_type.clone()),
-            ) {
-                Some(concrete_type) => concrete_type,
-                None => continue,
-            };
-
-            if !self.check_type_mismatch(
-                scope_id_opt,
-                field_value_type.clone(),
-                field_target_type.clone(),
-                field_init.loc.clone(),
-            ) {
-                let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
-                let expected_type = format_concrete_type(field_target_type, &(self.symbol_formatter)(scope_id_opt));
-                let found_type = format_concrete_type(field_value_type, &(self.symbol_formatter)(scope_id_opt));
-
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: AnalyzerDiagKind::StructFieldTypeMismatch {
-                        struct_name,
-                        field_name: field_init.name.clone(),
-                        expected_type,
-                        found_type,
-                    },
-                    location: Some(DiagLoc::new(struct_init.loc.clone())),
-                    hint: None,
-                });
-            }
-
-            let missing_fields_idx = match missing_fields
-                .iter()
-                .position(|field_name| *field_name == field_init.name.clone())
-            {
-                Some(idx) => idx,
-                None => continue,
-            };
-            missing_fields.remove(missing_fields_idx);
-        }
+        });
 
         if !missing_fields.is_empty() {
             let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);

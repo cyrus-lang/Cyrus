@@ -6,3 +6,4 @@ pub mod type_cache;
 mod type_checking;
 mod used_marker;
 mod const_fold;
+mod generics;

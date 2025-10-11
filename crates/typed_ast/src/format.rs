@@ -286,6 +286,7 @@ pub fn format_concrete_type<'a>(
 ) -> String {
     match concrete_type {
         ConcreteType::UnresolvedSymbol(..) => unreachable!(),
+        ConcreteType::GenericParam(identifier) => identifier.name.clone(),
         ConcreteType::ResolvedSymbol(resolved_symbol) => match resolved_symbol {
             ResolvedSymbol::Enum(symbol_id) => format_symbol(symbol_id),
             ResolvedSymbol::Typedef(symbol_id) => format_symbol(symbol_id),

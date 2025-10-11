@@ -9,9 +9,10 @@ use ast::format::module_segments_as_string;
 use ast::source_loc::SourceLoc;
 use ast::{
     AccessSpecifier, AddressOf, Array, ArrayIndex, Assignment, Cast, Dereference, FieldAccess, FuncCall, FuncParams,
-    FuncTypeVariadicParams, GlobalVariable, If, Import, InfixExpression, Interface, Lambda, Literal, MethodCall,
-    ModuleImport, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix, StructInit,
-    SwitchCasePattern, TupleMemberAccess, TupleValue, UnaryExpression, Union, UnnamedStructValue,
+    FuncTypeVariadicParams, GenericParamsList, GlobalVariable, If, Import, InfixExpression, Interface, Lambda, Literal,
+    MethodCall, ModuleImport, ModuleSegmentSingle, PrefixExpression, SelfModifierKind, SizeOfExpression, StringPrefix,
+    StructInit, SwitchCasePattern, TupleMemberAccess, TupleValue, TypeArg, TypeArgs, UnaryExpression, Union,
+    UnnamedStructValue,
 };
 use ast::{
     ArrayCapacity, BlockStatement, Enum, EnumVariant, Expression, FuncDecl, FuncDef, FuncParamKind, FuncVariadicParams,
@@ -429,8 +430,109 @@ impl Resolver {
         drop(module_aliases);
     }
 
+    fn resolve_type_args(
+        &mut self,
+        module_id: ModuleID,
+        local_scope_opt: Option<LocalScopeRef>,
+        type_args: &TypeArgs,
+        loc: Location,
+        span_end: usize,
+    ) -> TypedTypeArgs {
+        type_args
+            .iter()
+            .map(|type_arg| match type_arg {
+                TypeArg::Positional(type_specifier) => TypedTypeArg::Positional(
+                    self.resolve_type(
+                        &None,
+                        local_scope_opt.clone(),
+                        module_id,
+                        type_specifier.clone(),
+                        loc.clone(),
+                        span_end,
+                    )
+                    .unwrap(),
+                ),
+                TypeArg::Named { key, value } => {
+                    let value = self
+                        .resolve_type(
+                            &None,
+                            local_scope_opt.clone(),
+                            module_id,
+                            value.clone(),
+                            loc.clone(),
+                            span_end,
+                        )
+                        .unwrap();
+                    TypedTypeArg::Named {
+                        key: key.clone(),
+                        value,
+                    }
+                }
+            })
+            .collect()
+    }
+
+    fn resolve_generic_params(&mut self, generic_params: &GenericParamsList) -> TypedGenericParamsList {
+        generic_params
+            .iter()
+            .map(|generic_param| TypedGenericParam {
+                param_name: generic_param.param_name.clone(),
+                bounds: generic_param.bounds.clone().and_then(|bounds| {
+                    Some(
+                        bounds
+                            .iter()
+                            .map(|bound| TypedBound {
+                                symbol: bound.symbol.clone(),
+                                type_args: self.resolve_type_args(
+                                    self.current_module.unwrap(),
+                                    None,
+                                    &bound.type_args,
+                                    generic_param.param_name.loc.clone(),
+                                    generic_param.param_name.span.end,
+                                ),
+                            })
+                            .collect(),
+                    )
+                }),
+                default: generic_param.default.clone().and_then(|default_type_specifier| {
+                    self.resolve_type(
+                        &Some(generic_params.clone()),
+                        None,
+                        self.current_module.unwrap(),
+                        default_type_specifier,
+                        generic_param.param_name.loc.clone(),
+                        generic_param.param_name.span.end,
+                    )
+                }),
+            })
+            .collect()
+    }
+
+    fn resolve_generic_param_as_type(
+        &mut self,
+        generic_params_list_opt: &Option<GenericParamsList>,
+        identifier: &Identifier,
+    ) -> Option<ConcreteType> {
+        generic_params_list_opt.clone().and_then(|generic_params| {
+            generic_params
+                .iter()
+                .find(|param| param.param_name.as_string() == identifier.as_string())
+                .and_then(|generic_param| {
+                    Some(ConcreteType::GenericParam(TypedIdentifier {
+                        name: generic_param.param_name.as_string(),
+                        symbol_id: generate_symbol_id(),
+                        loc: SourceLoc::from_loc(
+                            generic_param.param_name.loc.clone(),
+                            self.get_current_module_file_path(),
+                        ),
+                    }))
+                })
+        })
+    }
+
     fn resolve_type(
         &mut self,
+        generic_params: &Option<GenericParamsList>,
         local_scope: Option<LocalScopeRef>,
         module_id: ModuleID,
         type_specifier: TypeSpecifier,
@@ -443,6 +545,7 @@ impl Resolver {
 
                 for element_type in &tuple_type.type_list {
                     match self.resolve_type(
+                        generic_params,
                         local_scope.clone(),
                         module_id,
                         element_type.clone(),
@@ -465,7 +568,14 @@ impl Resolver {
                     .list
                     .iter()
                     .filter_map(|param| {
-                        self.resolve_type(local_scope.clone(), module_id, param.clone(), loc.clone(), span_end)
+                        self.resolve_type(
+                            generic_params,
+                            local_scope.clone(),
+                            module_id,
+                            param.clone(),
+                            loc.clone(),
+                            span_end,
+                        )
                     })
                     .collect();
 
@@ -474,14 +584,21 @@ impl Resolver {
                         Some(Box::new(TypedFuncTypeVariadicParams::UntypedCStyle))
                     }
                     Some(FuncTypeVariadicParams::Typed(spec)) => {
-                        let ct =
-                            self.resolve_type(local_scope.clone(), module_id, spec.clone(), loc.clone(), span_end)?;
+                        let ct = self.resolve_type(
+                            generic_params,
+                            local_scope.clone(),
+                            module_id,
+                            spec.clone(),
+                            loc.clone(),
+                            span_end,
+                        )?;
                         Some(Box::new(TypedFuncTypeVariadicParams::Typed(ct)))
                     }
                     None => None,
                 };
 
                 let return_type = self.resolve_type(
+                    generic_params,
                     local_scope.clone(),
                     module_id,
                     *func_type.return_type.clone(),
@@ -503,15 +620,30 @@ impl Resolver {
                 })
             }
             TypeSpecifier::Const(inner) => {
-                let ct = self.resolve_type(local_scope, module_id, *inner.clone(), loc.clone(), span_end)?;
+                let ct = self.resolve_type(
+                    generic_params,
+                    local_scope,
+                    module_id,
+                    *inner.clone(),
+                    loc.clone(),
+                    span_end,
+                )?;
                 Ok(ConcreteType::Const(Box::new(ct)))
             }
             TypeSpecifier::Dereference(inner) => {
-                let ct = self.resolve_type(local_scope, module_id, *inner.clone(), loc.clone(), span_end)?;
+                let ct = self.resolve_type(
+                    generic_params,
+                    local_scope,
+                    module_id,
+                    *inner.clone(),
+                    loc.clone(),
+                    span_end,
+                )?;
                 Ok(ConcreteType::Pointer(Box::new(ct)))
             }
             TypeSpecifier::Array(array_spec) => {
                 let elem_type = self.resolve_type(
+                    generic_params,
                     local_scope.clone(),
                     module_id,
                     *array_spec.element_type.clone(),
@@ -547,6 +679,7 @@ impl Resolver {
                 let mut fields = Vec::new();
                 for field in &struct_spec.fields {
                     if let Some(ft) = self.resolve_type(
+                        generic_params,
                         local_scope.clone(),
                         module_id,
                         field.field_type.clone(),
@@ -574,8 +707,10 @@ impl Resolver {
                     name: "import".to_string(),
                 }),
             TypeSpecifier::Identifier(identifier) => self
-                .lookup_symbol_id(module_id, &identifier.name)
-                .map(ConcreteType::UnresolvedSymbol)
+                .resolve_generic_param_as_type(generic_params, identifier)
+                .or(self
+                    .lookup_symbol_id(module_id, &identifier.name)
+                    .map(ConcreteType::UnresolvedSymbol))
                 .ok_or(ResolverDiagKind::TypeNotFound {
                     name: identifier.name.clone(),
                 }),
@@ -922,6 +1057,7 @@ impl Resolver {
 
         for field in &union_decl.fields {
             match self.resolve_type(
+                &None, // FIXME Generic Params
                 local_scope_opt.clone(),
                 module_id,
                 field.ty.clone(),
@@ -1007,6 +1143,7 @@ impl Resolver {
                     let mut fields: Vec<TypedEnumValuedField> = Vec::new();
                     for valued_field in enum_valued_fields {
                         let field_type = match self.resolve_type(
+                            &None, // FIXME Generic Params
                             local_scope_opt.clone(),
                             module_id,
                             valued_field.field_type.clone(),
@@ -1091,7 +1228,7 @@ impl Resolver {
         let concrete_type = global_var
             .type_specifier
             .clone()
-            .and_then(|ty| self.resolve_type(None, module_id, ty, global_var.loc.clone(), global_var.span.end));
+            .and_then(|ty| self.resolve_type(&None, None, module_id, ty, global_var.loc.clone(), global_var.span.end));
 
         let typed_expr = global_var
             .expr
@@ -1338,6 +1475,7 @@ impl Resolver {
             .iter()
             .filter_map(|field| {
                 self.resolve_type(
+                    &struct_decl.generic_params,
                     local_scope_opt.clone(),
                     module_id,
                     field.ty.clone(),
@@ -1357,6 +1495,10 @@ impl Resolver {
 
         let methods = self.resolve_methods(module_id, &struct_decl.methods, struct_symbol_id)?;
         let impls = self.resolve_object_impls(local_scope_opt.clone(), module_id, &struct_decl.impls);
+        let generic_params = struct_decl
+            .generic_params
+            .clone()
+            .and_then(|generic_params| Some(self.resolve_generic_params(&generic_params)));
 
         let resolved_struct = ResolvedStruct {
             module_id,
@@ -1364,6 +1506,7 @@ impl Resolver {
             struct_sig: StructSig {
                 name: struct_decl.identifier.name.clone(),
                 fields: typed_struct_fields.clone(),
+                generic_params,
                 impls: impls.clone(),
                 packed: struct_decl.packed,
                 methods: methods.clone(),
@@ -1412,6 +1555,7 @@ impl Resolver {
         }));
 
         let return_type = self.resolve_type(
+            &None, // FIXME Generic Params
             local_scope_opt.clone(),
             module_id,
             return_type_specifier,
@@ -1438,6 +1582,7 @@ impl Resolver {
                 FuncParamKind::FuncParam(func_param) => {
                     let param_type = match &func_param.ty {
                         Some(type_specifier) => self.resolve_type(
+                            &None, // FIXME Generic Params
                             local_scope_opt.clone(),
                             module_id,
                             type_specifier.clone(),
@@ -1503,6 +1648,7 @@ impl Resolver {
             FuncVariadicParams::UntypedCStyle => Some(TypedFuncVariadicParams::UntypedCStyle),
             FuncVariadicParams::Typed(identifier, type_specifier) => {
                 let variadic_type = self.resolve_type(
+                    &None, // FIXME Generic Params
                     local_scope_opt.clone(),
                     module_id,
                     type_specifier.clone(),
@@ -1639,6 +1785,7 @@ impl Resolver {
         let symbol_id = self.lookup_symbol_id(module_id, &typedef.identifier.name)?;
 
         let concrete_type = self.resolve_type(
+            &None, // FIXME Generic Params
             local_scope_opt.clone(),
             module_id,
             typedef.type_specifier.clone(),
@@ -1704,6 +1851,7 @@ impl Resolver {
 
         let var_type = variable.ty.as_ref().and_then(|ty_spec| {
             self.resolve_type(
+                &None,
                 Some(local_scope_rc.clone()),
                 module_id,
                 ty_spec.clone(),
@@ -1846,6 +1994,7 @@ impl Resolver {
             Statement::ExportTupleValues(export_tuple_values) => {
                 let var_type = export_tuple_values.ty.as_ref().and_then(|ty_spec| {
                     self.resolve_type(
+                        &None,
                         Some(local_scope.clone()),
                         module_id,
                         ty_spec.clone(),
@@ -2459,6 +2608,7 @@ impl Resolver {
         };
 
         let return_type = self.resolve_type(
+            &None,
             Some(local_scope_rc),
             module_id,
             lambda.return_type.clone(),
@@ -2556,10 +2706,21 @@ impl Resolver {
             })
             .collect();
 
+        let type_args = struct_init.type_args.clone().and_then(|type_args| {
+            Some(self.resolve_type_args(
+                module_id,
+                local_scope_opt,
+                &type_args,
+                struct_init.loc.clone(),
+                struct_init.span.end,
+            ))
+        });
+
         Some(TypedExpression {
             kind: TypedExpressionKind::StructInit(TypedStructInit {
                 symbol_id,
                 fields: field_inits,
+                type_args,
                 is_const: struct_init.is_const,
                 loc: SourceLoc::from_loc(struct_init.loc.clone(), self.get_current_module_file_path()),
             }),
@@ -2606,6 +2767,7 @@ impl Resolver {
         arr: &Array,
     ) -> Option<TypedExpression> {
         let array_type = self.resolve_type(
+            &None,
             local_scope_opt.clone(),
             module_id,
             arr.data_type.clone(),
@@ -2682,6 +2844,7 @@ impl Resolver {
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &*cast.expr)?;
 
         let target_type = self.resolve_type(
+            &None,
             local_scope_opt,
             module_id,
             cast.target_type.clone(),
@@ -2718,6 +2881,7 @@ impl Resolver {
             }
             _ => {
                 let concrete_type = self.resolve_type(
+                    &None,
                     local_scope_opt,
                     module_id,
                     type_specifier.clone(),
@@ -2921,6 +3085,7 @@ impl Resolver {
         for field in &unnamed_struct_value.fields {
             let field_type = if let Some(type_specifier) = &field.field_type {
                 match self.resolve_type(
+                    &None,
                     local_scope_opt.clone(),
                     module_id,
                     type_specifier.clone(),

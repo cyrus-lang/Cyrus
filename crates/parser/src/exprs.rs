@@ -110,7 +110,8 @@ impl Parser {
                     self.next_token(); // consume const
                     let module_import = self.parse_module_import()?;
                     self.next_token();
-                    let mut struct_init = self.parse_struct_init(module_import)?;
+
+                    let mut struct_init = self.parse_struct_init(module_import, None)?;
                     struct_init.is_const = true;
                     Expression::StructInit(struct_init)
                 } else {
@@ -129,7 +130,7 @@ impl Parser {
                 let module_import = self.parse_module_import()?;
 
                 if self.current_token_is(TokenKind::LeftBrace) {
-                    Expression::StructInit(self.parse_struct_init(module_import)?)
+                    Expression::StructInit(self.parse_struct_init(module_import, None)?)
                 } else {
                     Expression::ModuleImport(module_import)
                 }
@@ -269,10 +270,18 @@ impl Parser {
             }
         };
 
+        let mut type_args_opt: Option<Vec<TypeArg>> = None;
+        if self.is_type_arg_start(expr.clone()) {
+            self.next_token(); // consume current token of expr
+
+            type_args_opt = Some(self.parse_type_arg_list()?);
+        }
+
         if self.peek_token_is(TokenKind::LeftBrace) {
             if let Expression::ModuleImport(module_import) = expr.clone() {
                 self.next_token(); // consume struct name
-                let struct_init = self.parse_struct_init(module_import)?;
+
+                let struct_init = self.parse_struct_init(module_import, type_args_opt)?;
 
                 return Ok(Expression::StructInit(struct_init));
             } else {
@@ -777,7 +786,11 @@ impl Parser {
         }))
     }
 
-    pub fn parse_struct_init(&mut self, struct_name: ModuleImport) -> Result<StructInit, ParserError> {
+    pub fn parse_struct_init(
+        &mut self,
+        struct_name: ModuleImport,
+        type_args: Option<TypeArgs>,
+    ) -> Result<StructInit, ParserError> {
         let loc = self.current_token().loc.clone();
         let start = self.current_token().span.start;
 
@@ -788,6 +801,7 @@ impl Parser {
             return Ok(StructInit {
                 struct_name,
                 field_inits,
+                type_args,
                 is_const: false,
                 loc,
                 span: Span {
@@ -851,6 +865,7 @@ impl Parser {
         Ok(StructInit {
             struct_name,
             field_inits,
+            type_args,
             is_const: false,
             loc,
             span: Span {
