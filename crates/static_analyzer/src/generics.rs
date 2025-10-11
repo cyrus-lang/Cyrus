@@ -18,27 +18,32 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn substitute_type(
         &self,
         concrete_type: ConcreteType,
-        mapping: &HashMap<Identifier, ConcreteType>,
+        generic_mapping_ctx: &GenericMappingCtx,
     ) -> ConcreteType {
         match concrete_type {
-            ConcreteType::GenericParam(param) => mapping
+            ConcreteType::GenericParam(param) => generic_mapping_ctx
+                .mapping
                 .iter()
                 .find(|(k, _)| k.as_string() == param.name)
                 .unwrap()
                 .1
                 .clone(),
-            ConcreteType::Pointer(inner) => ConcreteType::Pointer(Box::new(self.substitute_type(*inner, mapping))),
+            ConcreteType::Pointer(inner) => {
+                ConcreteType::Pointer(Box::new(self.substitute_type(*inner, generic_mapping_ctx)))
+            }
             ConcreteType::Array(inner) => ConcreteType::Array(TypedArrayType {
-                element_type: Box::new(self.substitute_type(*inner.element_type, mapping)),
+                element_type: Box::new(self.substitute_type(*inner.element_type, generic_mapping_ctx)),
                 capacity: inner.capacity,
                 loc: inner.loc.clone(),
             }),
-            ConcreteType::Const(inner) => ConcreteType::Const(Box::new(self.substitute_type(*inner, mapping))),
+            ConcreteType::Const(inner) => {
+                ConcreteType::Const(Box::new(self.substitute_type(*inner, generic_mapping_ctx)))
+            }
             ConcreteType::Tuple(tuple) => ConcreteType::Tuple(TypedTupleType {
                 type_list: tuple
                     .type_list
                     .into_iter()
-                    .map(|t| self.substitute_type(t, mapping))
+                    .map(|t| self.substitute_type(t, generic_mapping_ctx))
                     .collect(),
                 loc: tuple.loc.clone(),
             }),
@@ -47,9 +52,9 @@ impl<'a> AnalysisContext<'a> {
                     .params
                     .list
                     .into_iter()
-                    .map(|p| self.substitute_type(p, mapping))
+                    .map(|p| self.substitute_type(p, generic_mapping_ctx))
                     .collect();
-                let new_return = Box::new(self.substitute_type(*func.return_type, mapping));
+                let new_return = Box::new(self.substitute_type(*func.return_type, generic_mapping_ctx));
                 ConcreteType::FuncType(TypedFuncType {
                     def_module_id: func.def_module_id,
                     params: TypedFuncTypeParams {
@@ -67,7 +72,7 @@ impl<'a> AnalysisContext<'a> {
                     .iter()
                     .map(|f| TypedUnnamedStructTypeField {
                         field_name: f.field_name.clone(),
-                        field_type: Box::new(self.substitute_type(*f.field_type.clone(), mapping)),
+                        field_type: Box::new(self.substitute_type(*f.field_type.clone(), generic_mapping_ctx)),
                         loc: f.loc.clone(),
                     })
                     .collect();
@@ -129,14 +134,12 @@ impl<'a> AnalysisContext<'a> {
 
 #[macro_export]
 macro_rules! generic_mapping_ctx_scope {
-    ($self:ident, $resolved_struct:expr, $struct_init:expr, $body:block) => {{
-        let generic_mapping_ctx =
+    ($self:ident, $resolved_struct:expr, $struct_init:expr, $ctx:ident, $body:block) => {{
+        let $ctx =
             $self.get_generic_mapping_ctx(&$resolved_struct.struct_sig.generic_params, &$struct_init.type_args);
 
-        $self.generic_ctx_stack.push(generic_mapping_ctx);
-
-            $body
-
+        $self.generic_ctx_stack.push($ctx.clone());
+        $body
         $self.generic_ctx_stack.pop();
     }};
 }

@@ -12,7 +12,7 @@ use resolver::{
     Resolver, Visiting, generate_module_id,
     modulefsloader::{ModuleFilePath, ModuleLoaderOptions},
 };
-use static_analyzer::context::AnalysisContext;
+use static_analyzer::{context::AnalysisContext, monomorph::MonomorphRegistry};
 use std::{
     cell::RefCell,
     env, fs,
@@ -34,6 +34,7 @@ fn get_program_trees(
 ) -> (
     Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
     Rc<Resolver>,
+    Arc<Mutex<MonomorphRegistry>>,
 ) {
     // FIXME Would be implemented later.
     // Disabled temporarily.
@@ -79,6 +80,7 @@ fn get_program_trees(
     let entry_points = Arc::new(Mutex::new(Vec::new()));
     let final_program_trees: Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>;
     let program_trees = resolver.program_trees.lock().unwrap();
+    let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
 
     {
         for (_, _, module_id, typed_program_tree) in program_trees.iter() {
@@ -88,6 +90,7 @@ fn get_program_trees(
                     *module_id,
                     typed_program_tree.clone(),
                     entry_points.clone(),
+                    monomorph_registry.clone(),
                     options.disable_warnings,
                 );
                 analyzer.analyze();
@@ -103,7 +106,7 @@ fn get_program_trees(
     final_program_trees = program_trees.clone();
     drop(program_trees);
 
-    (final_program_trees, Rc::new(resolver))
+    (final_program_trees, Rc::new(resolver), monomorph_registry)
 }
 
 fn prepare_compilation(
@@ -115,6 +118,7 @@ fn prepare_compilation(
     String,
     Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
     Rc<Resolver>,
+    Arc<Mutex<MonomorphRegistry>>,
 ) {
     if file_path.is_some() {
         opts.disable_modulefs_cache = true;
@@ -124,13 +128,21 @@ fn prepare_compilation(
     let final_build_dir = get_final_build_directory_path(opts.base_path.clone(), opts.build_dir.clone());
     ensure_build_dir_subs(opts.base_path.clone(), final_build_dir.clone());
 
-    let (program_trees, resolver_rc) = get_program_trees(opts, file_path.clone());
+    let (program_trees, resolver_rc, monomorph_registry) = get_program_trees(opts, file_path.clone());
 
-    (opts.clone(), file_path, final_build_dir, program_trees, resolver_rc)
+    (
+        opts.clone(),
+        file_path,
+        final_build_dir,
+        program_trees,
+        resolver_rc,
+        monomorph_registry,
+    )
 }
 
 pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>) {
-    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
+        prepare_compilation(&mut options, file_path);
 
     let mut temp = env::temp_dir();
     temp.push(format!("exec_{}", generate_random_hex()));
@@ -148,7 +160,7 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
         context.display_target_machine_information();
     }
 
-    context.compile_modules(program_trees);
+    context.compile_modules(program_trees, monomorph_registry);
 
     match Command::new(&temp_file_path).output() {
         Ok(output) => {
@@ -181,7 +193,8 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
 }
 
 pub(crate) fn command_emit_llvm(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
+        prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate llvm-ir.".to_string());
@@ -195,7 +208,7 @@ pub(crate) fn command_emit_llvm(mut options: CodeGenOptions, file_path: Option<S
         resolver_rc,
         file_path,
     );
-    context.compile_modules(program_trees);
+    context.compile_modules(program_trees, monomorph_registry);
 }
 
 pub(crate) fn command_emit_bytecode(
@@ -203,7 +216,8 @@ pub(crate) fn command_emit_bytecode(
     file_path: Option<String>,
     output_path: Option<String>,
 ) {
-    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
+        prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
@@ -217,11 +231,12 @@ pub(crate) fn command_emit_bytecode(
         resolver_rc,
         file_path,
     );
-    context.compile_modules(program_trees);
+    context.compile_modules(program_trees, monomorph_registry);
 }
 
 pub(crate) fn command_emit_asm(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
+        prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output directory must be specified to generate bytecode.".to_string());
@@ -235,11 +250,12 @@ pub(crate) fn command_emit_asm(mut options: CodeGenOptions, file_path: Option<St
         resolver_rc,
         file_path,
     );
-    context.compile_modules(program_trees);
+    context.compile_modules(program_trees, monomorph_registry);
 }
 
 pub(crate) fn command_build(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
+        prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output must be specified to generate executable.".to_string());
@@ -252,11 +268,12 @@ pub(crate) fn command_build(mut options: CodeGenOptions, file_path: Option<Strin
         resolver_rc,
         file_path,
     );
-    context.compile_modules(program_trees);
+    context.compile_modules(program_trees, monomorph_registry);
 }
 
 pub(crate) fn command_object(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
+        prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output must be specified to generate object files.".to_string());
@@ -270,11 +287,12 @@ pub(crate) fn command_object(mut options: CodeGenOptions, file_path: Option<Stri
         resolver_rc,
         file_path,
     );
-    context.compile_modules(program_trees);
+    context.compile_modules(program_trees, monomorph_registry);
 }
 
 pub(crate) fn command_dylib(mut options: CodeGenOptions, file_path: Option<String>, output_path: Option<String>) {
-    let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
+    let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
+        prepare_compilation(&mut options, file_path);
 
     let output_path = output_path.unwrap_or_else(|| {
         display_single_custom_diag!("Output must be specified to generate object files.".to_string());
@@ -288,7 +306,7 @@ pub(crate) fn command_dylib(mut options: CodeGenOptions, file_path: Option<Strin
         resolver_rc,
         file_path,
     );
-    context.compile_modules(program_trees);
+    context.compile_modules(program_trees, monomorph_registry);
 }
 
 pub(crate) fn command_lex_only(file_path: String) {

@@ -14,7 +14,15 @@ use inkwell::{
     values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue},
 };
 use resolver::Resolver;
-use std::{cell::RefCell, collections::HashMap, fs, path::Path, rc::Rc};
+use static_analyzer::monomorph::MonomorphRegistry;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fs,
+    path::Path,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 use typed_ast::{ModuleID, TypedProgramTree, types::ConcreteType};
 
 pub struct CodeGenModule<'module> {
@@ -38,6 +46,7 @@ pub(crate) struct CodeGenBuilder<'a> {
     pub blockreg: BlockRegistry<'a>,
     pub resolver: Rc<Resolver>,
     pub dibuilder: CodeGenDIBuilder<'a>,
+    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
 }
 
 impl<'a> CodeGenBuilder<'a> {
@@ -64,6 +73,7 @@ impl<'module> CodeGenModule<'module> {
         module_id: ModuleID,
         module_name: String,
         module_file_path: String,
+        monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     ) -> CodeGenModuleOutput<'a> {
         let llvmmodule = self.ctx.create_module(&module_name);
         let builder = self.ctx.create_builder();
@@ -91,6 +101,7 @@ impl<'module> CodeGenModule<'module> {
             resolver: resolver_rc,
             blockreg: BlockRegistry::new(),
             dibuilder: CodeGenDIBuilder { dibuilder, dicompunit },
+            monomorph_registry,
         };
 
         let program_tree_borrowed = self.program_tree.borrow();

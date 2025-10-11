@@ -181,6 +181,7 @@ dependencies = [
  "resolver",
  "serde",
  "serde_json",
+ "static_analyzer",
  "toml",
  "typed_ast",
  "utils",

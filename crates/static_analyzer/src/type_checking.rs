@@ -1524,7 +1524,7 @@ impl<'a> AnalysisContext<'a> {
             .map(|field| field.name.clone())
             .collect();
 
-        generic_mapping_ctx_scope!(self, resolved_struct, struct_init, {
+        generic_mapping_ctx_scope!(self, resolved_struct, struct_init, generic_mapping_ctx, {
             for field_init in &mut struct_init.fields {
                 let field = resolved_struct
                     .struct_sig
@@ -1547,7 +1547,10 @@ impl<'a> AnalysisContext<'a> {
                     continue;
                 }
 
-                let field_target_type = field.unwrap().ty.clone();
+                let field_target_type = self.substitute_type(field.unwrap().ty.clone(), &generic_mapping_ctx);
+                
+                //  = field_target_type.clone();
+
                 let field_value_type = match self.analyze_typed_expr_type(
                     scope_id_opt,
                     &mut field_init.value,

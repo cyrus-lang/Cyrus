@@ -4,7 +4,7 @@ use ast::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     source_loc::SourceLoc,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 pub mod format;
 pub mod types;
@@ -587,13 +587,13 @@ pub enum TypedFuncVariadicParams {
     Typed(String, ConcreteType),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypedFuncTypeParams {
     pub list: Vec<ConcreteType>,
     pub variadic: Option<Box<TypedFuncTypeVariadicParams>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypedFuncTypeVariadicParams {
     UntypedCStyle,
     Typed(ConcreteType),
@@ -732,5 +732,14 @@ impl PartialEq for TypedTupleMemberAccess {
 impl PartialEq for TypedIdentifier {
     fn eq(&self, other: &Self) -> bool {
         self.symbol_id == other.symbol_id
+    }
+}
+
+impl Eq for TypedIdentifier {}
+
+impl Hash for TypedIdentifier {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.symbol_id.hash(state);
     }
 }

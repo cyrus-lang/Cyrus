@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 project_layout = { path = "../project_layout", version = "*" }
+static_analyzer = { path = "../static_analyzer", version = "*" }
 utils = { path = "../utils", version = "*" }
 typed_ast = { path = "../typed_ast", version = "*" }
 resolver = { path = "../resolver", version = "*" }

@@ -10,6 +10,7 @@ use inkwell::{
 };
 use project_layout::OBJECTS_FILENAME;
 use resolver::{Resolver, modulefsloader::ModuleFilePath};
+use static_analyzer::monomorph::MonomorphRegistry;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
@@ -244,6 +245,7 @@ impl CodeGenContext {
     pub fn compile_modules(
         &self,
         typed_modules: Vec<(String, ModuleFilePath, ModuleID, Rc<RefCell<TypedProgramTree>>)>,
+        monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
     ) {
         let build_manifest_guard = self.build_manifest.lock().unwrap();
 
@@ -288,6 +290,7 @@ impl CodeGenContext {
                         *module_id,
                         module_name.to_string(),
                         module_file_path.to_string(),
+                        monomorph_registry.clone(),
                     );
 
                     match self.output_kind.clone() {

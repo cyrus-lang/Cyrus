@@ -1,4 +1,4 @@
-use crate::{diagnostics::AnalyzerDiagKind, generics::GenericMappingCtx, type_cache::TypeResolverCaches};
+use crate::{diagnostics::AnalyzerDiagKind, generics::GenericMappingCtx, monomorph::MonomorphRegistry, type_cache::TypeResolverCaches};
 use ast::{AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind, TypeArg, source_loc::SourceLoc};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
@@ -69,6 +69,7 @@ pub struct AnalysisContext<'a> {
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
     pub(crate) generic_ctx_stack: Vec<GenericMappingCtx>,
+    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -77,6 +78,7 @@ impl<'a> AnalysisContext<'a> {
         module_id: ModuleID,
         ast: Rc<RefCell<TypedProgramTree>>,
         entry_points: Arc<Mutex<Vec<SourceLoc>>>,
+        monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         disable_warnings: bool,
     ) -> Self {
         let symbol_formatter = Box::new(
@@ -134,6 +136,7 @@ impl<'a> AnalysisContext<'a> {
             ty_caches: TypeResolverCaches::default(),
             generic_ctx_stack: Vec::new(),
             disable_warnings,
+            monomorph_registry,
         }
     }
 

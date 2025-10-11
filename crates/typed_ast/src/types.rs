@@ -1,7 +1,9 @@
+use std::hash::{Hash, Hasher};
+
 use crate::{ModuleID, SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams, TypedIdentifier};
 use ast::{AccessSpecifier, token::TokenKind};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ConcreteType {
     UnresolvedSymbol(SymbolID),
     ResolvedSymbol(ResolvedSymbol),
@@ -15,7 +17,7 @@ pub enum ConcreteType {
     GenericParam(TypedIdentifier),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct TypedTupleType {
     pub type_list: Vec<ConcreteType>,
     pub loc: SourceLoc,
@@ -30,7 +32,7 @@ pub struct TypedFuncType {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ResolvedSymbol {
     Enum(SymbolID),
     Union(SymbolID),
@@ -199,7 +201,7 @@ impl ConcreteType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BasicConcreteType {
     UIntPtr,
     IntPtr,
@@ -353,7 +355,7 @@ impl TryFrom<TokenKind> for ConcreteType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct TypedArrayType {
     pub element_type: Box<ConcreteType>,
     pub capacity: TypedArrayCapacity,
@@ -366,7 +368,7 @@ impl PartialEq for TypedArrayType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypedArrayCapacity {
     Fixed(TypedArrayFixedCapacityValue),
     Dynamic,
@@ -394,7 +396,7 @@ impl TypedArrayFixedCapacityValue {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedStructType {
     pub fields: Vec<TypedUnnamedStructTypeField>,
     pub packed: bool,
@@ -407,11 +409,25 @@ impl PartialEq for TypedUnnamedStructType {
     }
 }
 
-#[derive(Debug, Clone)]
+impl Hash for TypedUnnamedStructType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.fields.hash(state);
+        self.packed.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
 pub struct TypedUnnamedStructTypeField {
     pub field_name: String,
     pub field_type: Box<ConcreteType>,
     pub loc: SourceLoc,
+}
+
+impl Hash for TypedUnnamedStructTypeField {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.field_name.hash(state);
+        self.field_type.hash(state);
+    }
 }
 
 impl PartialEq for TypedUnnamedStructTypeField {
@@ -431,3 +447,37 @@ impl PartialEq for TypedTupleType {
         self.type_list == other.type_list
     }
 }
+
+impl Hash for TypedArrayFixedCapacityValue {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            TypedArrayFixedCapacityValue::Value(v) => v.hash(state),
+            TypedArrayFixedCapacityValue::Expr(_) => {
+                panic!("Requires a compile-time constant array size.");
+            }
+        }
+    }
+}
+
+impl Hash for TypedArrayType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.element_type.hash(state);
+        self.capacity.hash(state);
+    }
+}
+
+impl Hash for TypedFuncType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.params.hash(state);
+        self.return_type.hash(state);
+    }
+}
+
+impl Hash for TypedTupleType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.type_list.hash(state);
+    }
+}
+
+impl Eq for TypedArrayFixedCapacityValue {}
+impl Eq for TypedFuncType { }
