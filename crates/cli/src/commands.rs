@@ -129,7 +129,7 @@ fn prepare_compilation(
     (opts.clone(), file_path, final_build_dir, program_trees, resolver_rc)
 }
 
-pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>) {
+pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
     let (opts, file_path, final_build_dir, program_trees, resolver_rc) = prepare_compilation(&mut options, file_path);
 
     let mut temp = env::temp_dir();
@@ -150,7 +150,7 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
 
     context.compile_modules(program_trees);
 
-    match Command::new(&temp_file_path).output() {
+    match Command::new(&temp_file_path).args(program_args).output() {
         Ok(output) => {
             if let Err(e) = io::stdout().write_all(&output.stdout) {
                 eprintln!("Failed to write stdout: {e}");
