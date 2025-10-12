@@ -677,6 +677,7 @@ name = "typed_ast"
 version = "0.1.0"
 dependencies = [
  "ast",
+ "diagcentral",
 ]
 
 [[package]]

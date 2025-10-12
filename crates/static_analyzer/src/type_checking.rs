@@ -264,161 +264,54 @@ impl<'a> AnalysisContext<'a> {
         typed_literal: &mut TypedLiteral,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        match &typed_literal.kind {
+        let ty_opt = match &typed_literal.kind {
             LiteralKind::Integer(_, suffix_opt) => {
-                let inferred = self.infer_integer_type(typed_literal, suffix_opt, expected_type.clone());
-                typed_literal.ty = Some(inferred.clone());
-                Some(inferred)
-            }
-            LiteralKind::Float(_, suffix_opt) => {
-                let inferred = self.infer_float_type(typed_literal, suffix_opt, expected_type.clone());
-                typed_literal.ty = Some(inferred.clone());
-                Some(inferred)
-            }
-            LiteralKind::Bool(_) => {
-                let ty = ConcreteType::BasicType(BasicConcreteType::Bool);
-                typed_literal.ty = Some(ty.clone());
-                Some(ty)
-            }
-            LiteralKind::String(value, prefix_opt) => {
-                if let Some(prefix) = &prefix_opt {
-                    match prefix {
-                        StringPrefix::C => {}
-                        StringPrefix::B => {
-                            let ty = ConcreteType::Array(TypedArrayType {
-                                element_type: Box::new(ConcreteType::Const(Box::new(ConcreteType::BasicType(
-                                    BasicConcreteType::Char,
-                                )))),
-                                capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value.len())),
-                                loc: typed_literal.loc.clone(),
-                            });
-                            typed_literal.ty = Some(ty.clone());
-                            return Some(ty);
-                        }
+                match infer_integer_type(typed_literal, suffix_opt, expected_type.clone()) {
+                    Ok(ty) => Some(ty),
+                    Err(diag) => {
+                        self.reporter.report(diag);
+                        None
                     }
                 }
-
-                let ty = ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)));
-                typed_literal.ty = Some(ty.clone());
-                Some(ty)
             }
-            LiteralKind::Char(_) => {
-                let ty = ConcreteType::BasicType(BasicConcreteType::Char);
-                typed_literal.ty = Some(ty.clone());
-                Some(ty)
-            }
-            LiteralKind::Null => {
-                let ty = ConcreteType::BasicType(BasicConcreteType::Null);
-                typed_literal.ty = Some(ty.clone());
-                Some(ty)
-            }
-        }
-    }
-
-    fn infer_integer_type(
-        &mut self,
-        literal: &TypedLiteral,
-        suffix_opt: &Option<Box<TokenKind>>,
-        expected: Option<ConcreteType>,
-    ) -> ConcreteType {
-        if let Some(suffix) = suffix_opt {
-            match self.map_integer_suffix_to_type(&suffix) {
-                Some(ty) => ty,
-                None => {
-                    self.report_invalid_integer_suffix(&suffix, literal.loc.clone());
-                    ConcreteType::BasicType(BasicConcreteType::Int)
+            LiteralKind::Float(_, suffix_opt) => {
+                match infer_float_type(typed_literal, suffix_opt, expected_type.clone()) {
+                    Ok(ty) => Some(ty),
+                    Err(diag) => {
+                        self.reporter.report(diag);
+                        None
+                    }
                 }
             }
-        } else if let Some(ctx_ty) = expected {
-            if self.is_integer_type(ctx_ty.clone()) {
-                ctx_ty
-            } else {
-                ConcreteType::BasicType(BasicConcreteType::Int) // keep a safe default
+            LiteralKind::Bool(_) => Some(ConcreteType::BasicType(BasicConcreteType::Bool)),
+            LiteralKind::Char(_) => Some(ConcreteType::BasicType(BasicConcreteType::Char)),
+            LiteralKind::Null => Some(ConcreteType::BasicType(BasicConcreteType::Null)),
+            LiteralKind::String(value, prefix_opt) => {
+                let ty = if let Some(prefix) = prefix_opt {
+                    match prefix {
+                        StringPrefix::C => {
+                            ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)))
+                        }
+                        StringPrefix::B => ConcreteType::Array(TypedArrayType {
+                            element_type: Box::new(ConcreteType::Const(Box::new(ConcreteType::BasicType(
+                                BasicConcreteType::Char,
+                            )))),
+                            capacity: TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value.len())),
+                            loc: typed_literal.loc.clone(),
+                        }),
+                    }
+                } else {
+                    ConcreteType::Pointer(Box::new(ConcreteType::BasicType(BasicConcreteType::Char)))
+                };
+                Some(ty)
             }
-        } else {
-            ConcreteType::BasicType(BasicConcreteType::Int)
-        }
-    }
-
-    fn infer_float_type(
-        &mut self,
-        literal: &TypedLiteral,
-        suffix_opt: &Option<Box<TokenKind>>,
-        expected: Option<ConcreteType>,
-    ) -> ConcreteType {
-        if let Some(suffix) = suffix_opt {
-            match self.map_float_suffix_to_type(&suffix) {
-                Some(ty) => ty,
-                None => {
-                    self.report_invalid_float_suffix(&suffix, literal.loc.clone());
-                    ConcreteType::BasicType(BasicConcreteType::Float64)
-                }
-            }
-        } else if let Some(ctx_ty) = expected {
-            if self.is_float_type(ctx_ty.clone()) {
-                ctx_ty
-            } else {
-                ConcreteType::BasicType(BasicConcreteType::Float64) // keep a safe default
-            }
-        } else {
-            ConcreteType::BasicType(BasicConcreteType::Float64)
-        }
-    }
-
-    fn map_integer_suffix_to_type(&self, suffix: &TokenKind) -> Option<ConcreteType> {
-        let ty = match suffix {
-            TokenKind::UIntPtr => BasicConcreteType::UIntPtr,
-            TokenKind::IntPtr => BasicConcreteType::IntPtr,
-            TokenKind::SizeT => BasicConcreteType::SizeT,
-
-            TokenKind::Int => BasicConcreteType::Int,
-            TokenKind::Int8 => BasicConcreteType::Int8,
-            TokenKind::Int16 => BasicConcreteType::Int16,
-            TokenKind::Int32 => BasicConcreteType::Int32,
-            TokenKind::Int64 => BasicConcreteType::Int64,
-            TokenKind::Int128 => BasicConcreteType::Int128,
-
-            TokenKind::UInt => BasicConcreteType::UInt,
-            TokenKind::UInt8 => BasicConcreteType::UInt8,
-            TokenKind::UInt16 => BasicConcreteType::UInt16,
-            TokenKind::UInt32 => BasicConcreteType::UInt32,
-            TokenKind::UInt64 => BasicConcreteType::UInt64,
-            TokenKind::UInt128 => BasicConcreteType::UInt128,
-
-            _ => return None,
         };
 
-        Some(ConcreteType::BasicType(ty))
-    }
+        if let Some(ref ty) = ty_opt {
+            typed_literal.ty = Some(ty.clone());
+        }
 
-    fn map_float_suffix_to_type(&self, suffix: &TokenKind) -> Option<ConcreteType> {
-        let ty = match suffix {
-            TokenKind::Float16 => BasicConcreteType::Float16,
-            TokenKind::Float32 => BasicConcreteType::Float32,
-            TokenKind::Float64 => BasicConcreteType::Float64,
-            TokenKind::Float128 => BasicConcreteType::Float128,
-            _ => return None,
-        };
-
-        Some(ConcreteType::BasicType(ty))
-    }
-
-    fn report_invalid_integer_suffix(&mut self, suffix: &TokenKind, loc: SourceLoc) {
-        self.reporter.report(Diag {
-            level: DiagLevel::Error,
-            kind: AnalyzerDiagKind::InvalidIntegerLiteralSuffix,
-            location: Some(DiagLoc::new(loc)),
-            hint: Some(format!("Invalid suffix {:?} for integer literal.", suffix)),
-        });
-    }
-
-    fn report_invalid_float_suffix(&mut self, suffix: &TokenKind, loc: SourceLoc) {
-        self.reporter.report(Diag {
-            level: DiagLevel::Error,
-            kind: AnalyzerDiagKind::InvalidFloatLiteralSuffix,
-            location: Some(DiagLoc::new(loc)),
-            hint: Some(format!("Invalid suffix {:?} for float literal.", suffix)),
-        });
+        ty_opt
     }
 
     pub(crate) fn analyze_typed_expr_type(
@@ -492,7 +385,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
             }
             TypedExpressionKind::FieldAccess(field_access) => {
-                self.analyze_field_access_type(scope_id_opt, field_access, expected_type)
+                self.analyze_unknown_field_access_type(scope_id_opt, field_access, expected_type)
             }
             TypedExpressionKind::MethodCall(method_call) => {
                 self.analyze_method_call_expr_type(scope_id_opt, method_call, expected_type)
@@ -766,50 +659,6 @@ impl<'a> AnalysisContext<'a> {
             }
 
             Some(element_type.clone())
-        }
-    }
-
-    fn resolve_var_or_global_var_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        local_scope_opt: Option<LocalScopeRef>,
-        instance_symbol_id: SymbolID,
-        loc: SourceLoc,
-    ) -> Option<ConcreteType> {
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), instance_symbol_id)
-            .unwrap();
-
-        let concrete_type = match match &local_or_global_symbol {
-            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
-                let typed_variable = &local_symbol.as_variable().unwrap().typed_variable;
-
-                match &typed_variable.ty {
-                    Some(concrete_type) => self.normalize_type(scope_id_opt, concrete_type.clone(), loc.clone()),
-                    None => {
-                        let rhs = typed_variable.rhs.clone().unwrap();
-                        self.analyze_typed_expr_type(scope_id_opt, &mut rhs.clone(), None)
-                    }
-                }
-            }
-            LocalOrGlobalSymbol::GlobalSymbol(global_symbol) => match global_symbol.as_global_var() {
-                Some(resolved_global_var) => Some(resolved_global_var.global_var_sig.ty.clone().unwrap()),
-                None => None,
-            },
-        } {
-            Some(concrete_type) => Some(concrete_type),
-            None => None,
-        };
-
-        if concrete_type.is_some() {
-            let normalized_type = self
-                .normalize_type(scope_id_opt, concrete_type.unwrap(), loc.clone())
-                .unwrap();
-
-            Some(normalized_type)
-        } else {
-            None
         }
     }
 
@@ -1170,7 +1019,7 @@ impl<'a> AnalysisContext<'a> {
         )))
     }
 
-    fn analyze_field_access_type(
+    fn analyze_unknown_field_access_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         field_access: &mut TypedFieldAccess,
@@ -1203,7 +1052,7 @@ impl<'a> AnalysisContext<'a> {
                         *instance_symbol_id,
                     );
 
-                    let resolved_var_type = match self.resolve_var_or_global_var_type(
+                    let resolved_var_type = match self.analyze_var_or_global_var_type(
                         scope_id_opt,
                         local_scope_opt.clone(),
                         *instance_symbol_id,
@@ -1960,7 +1809,7 @@ impl<'a> AnalysisContext<'a> {
                         method_call.operand.concrete_type.clone().unwrap()
                     } else {
                         let resolved_var_type = self
-                            .resolve_var_or_global_var_type(
+                            .analyze_var_or_global_var_type(
                                 scope_id_opt,
                                 local_scope_opt.clone(),
                                 *instance_symbol_id,
@@ -2918,4 +2767,168 @@ impl<'a> AnalysisContext<'a> {
 
         Some(operand_type)
     }
+
+    fn analyze_var_or_global_var_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
+        instance_symbol_id: SymbolID,
+        loc: SourceLoc,
+    ) -> Option<ConcreteType> {
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), instance_symbol_id)
+            .unwrap();
+
+        let concrete_type = match match &local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
+                let typed_variable = &local_symbol.as_variable().unwrap().typed_variable;
+
+                match &typed_variable.ty {
+                    Some(concrete_type) => self.normalize_type(scope_id_opt, concrete_type.clone(), loc.clone()),
+                    None => {
+                        let rhs = typed_variable.rhs.clone().unwrap();
+                        self.analyze_typed_expr_type(scope_id_opt, &mut rhs.clone(), None)
+                    }
+                }
+            }
+            LocalOrGlobalSymbol::GlobalSymbol(global_symbol) => match global_symbol.as_global_var() {
+                Some(resolved_global_var) => Some(resolved_global_var.global_var_sig.ty.clone().unwrap()),
+                None => None,
+            },
+        } {
+            Some(concrete_type) => Some(concrete_type),
+            None => None,
+        };
+
+        if concrete_type.is_some() {
+            let normalized_type = self
+                .normalize_type(scope_id_opt, concrete_type.unwrap(), loc.clone())
+                .unwrap();
+
+            Some(normalized_type)
+        } else {
+            None
+        }
+    }
+}
+
+pub fn infer_integer_type(
+    literal: &TypedLiteral,
+    suffix_opt: &Option<Box<TokenKind>>,
+    expected: Option<ConcreteType>,
+) -> Result<ConcreteType, Diag<AnalyzerDiagKind>> {
+    if let Some(suffix) = suffix_opt {
+        match map_integer_suffix_to_type(&suffix) {
+            Some(ty) => Ok(ty),
+            None => Err(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidIntegerLiteralSuffix,
+                location: Some(DiagLoc::new(literal.loc.clone())),
+                hint: Some(format!("Invalid suffix {:?} for integer literal.", suffix)),
+            }),
+        }
+    } else if let Some(ctx_ty) = expected {
+        if is_integer_type(&ctx_ty) {
+            Ok(ctx_ty)
+        } else {
+            Ok(ConcreteType::BasicType(BasicConcreteType::Int)) // safe default
+        }
+    } else {
+        Ok(ConcreteType::BasicType(BasicConcreteType::Int))
+    }
+}
+
+pub fn infer_float_type(
+    literal: &TypedLiteral,
+    suffix_opt: &Option<Box<TokenKind>>,
+    expected: Option<ConcreteType>,
+) -> Result<ConcreteType, Diag<AnalyzerDiagKind>> {
+    if let Some(suffix) = suffix_opt {
+        match map_float_suffix_to_type(&suffix) {
+            Some(ty) => Ok(ty),
+            None => Err(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::InvalidFloatLiteralSuffix,
+                location: Some(DiagLoc::new(literal.loc.clone())),
+                hint: Some(format!("Invalid suffix {:?} for float literal.", suffix)),
+            }),
+        }
+    } else if let Some(ctx_ty) = expected {
+        if is_float_type(&ctx_ty) {
+            Ok(ctx_ty)
+        } else {
+            Ok(ConcreteType::BasicType(BasicConcreteType::Float64)) // safe default
+        }
+    } else {
+        Ok(ConcreteType::BasicType(BasicConcreteType::Float64))
+    }
+}
+
+fn map_integer_suffix_to_type(suffix: &TokenKind) -> Option<ConcreteType> {
+    let ty = match suffix {
+        TokenKind::UIntPtr => BasicConcreteType::UIntPtr,
+        TokenKind::IntPtr => BasicConcreteType::IntPtr,
+        TokenKind::SizeT => BasicConcreteType::SizeT,
+        TokenKind::Int => BasicConcreteType::Int,
+        TokenKind::Int8 => BasicConcreteType::Int8,
+        TokenKind::Int16 => BasicConcreteType::Int16,
+        TokenKind::Int32 => BasicConcreteType::Int32,
+        TokenKind::Int64 => BasicConcreteType::Int64,
+        TokenKind::Int128 => BasicConcreteType::Int128,
+        TokenKind::UInt => BasicConcreteType::UInt,
+        TokenKind::UInt8 => BasicConcreteType::UInt8,
+        TokenKind::UInt16 => BasicConcreteType::UInt16,
+        TokenKind::UInt32 => BasicConcreteType::UInt32,
+        TokenKind::UInt64 => BasicConcreteType::UInt64,
+        TokenKind::UInt128 => BasicConcreteType::UInt128,
+        _ => return None,
+    };
+    Some(ConcreteType::BasicType(ty))
+}
+
+fn map_float_suffix_to_type(suffix: &TokenKind) -> Option<ConcreteType> {
+    let ty = match suffix {
+        TokenKind::Float16 => BasicConcreteType::Float16,
+        TokenKind::Float32 => BasicConcreteType::Float32,
+        TokenKind::Float64 => BasicConcreteType::Float64,
+        TokenKind::Float128 => BasicConcreteType::Float128,
+        _ => return None,
+    };
+    Some(ConcreteType::BasicType(ty))
+}
+
+fn is_integer_type(ty: &ConcreteType) -> bool {
+    matches!(
+        ty,
+        ConcreteType::BasicType(
+            BasicConcreteType::Int
+                | BasicConcreteType::Int8
+                | BasicConcreteType::Int16
+                | BasicConcreteType::Int32
+                | BasicConcreteType::Int64
+                | BasicConcreteType::Int128
+                | BasicConcreteType::UInt
+                | BasicConcreteType::UInt8
+                | BasicConcreteType::UInt16
+                | BasicConcreteType::UInt32
+                | BasicConcreteType::UInt64
+                | BasicConcreteType::UInt128
+                | BasicConcreteType::IntPtr
+                | BasicConcreteType::UIntPtr
+                | BasicConcreteType::SizeT
+        )
+    )
+}
+
+fn is_float_type(ty: &ConcreteType) -> bool {
+    matches!(
+        ty,
+        ConcreteType::BasicType(
+            BasicConcreteType::Float16
+                | BasicConcreteType::Float32
+                | BasicConcreteType::Float64
+                | BasicConcreteType::Float128
+        )
+    )
 }
