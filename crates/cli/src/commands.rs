@@ -162,7 +162,7 @@ pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>
 
     context.compile_modules(program_trees, monomorph_registry);
 
-    match Command::new(&temp_file_path).output() {
+    match Command::new(&temp_file_path).args(program_args).output() {
         Ok(output) => {
             if let Err(e) = io::stdout().write_all(&output.stdout) {
                 eprintln!("Failed to write stdout: {e}");
