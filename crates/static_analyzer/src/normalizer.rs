@@ -21,7 +21,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
 
-        match &ty {
+        partial_match!(ty, {
             ConcreteType::UnresolvedSymbol(symbol_id)
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id))
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id))
@@ -36,23 +36,18 @@ impl<'a> AnalysisContext<'a> {
                     .resolve_local_or_global_symbol(local_scope_opt.clone(), *symbol_id)?;
 
                 // mark symbol used
-                match &local_or_global_symbol {
+                partial_match!(local_or_global_symbol, {
                     LocalOrGlobalSymbol::LocalSymbol(local_symbol) => {
-                        let local_scope_opt = self
-                            .resolver
-                            .get_scope_ref(self.module_id, local_symbol.get_symbol_id());
-
-                        if local_scope_opt.is_some() {
-                            self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
+                        if let Some(local_scope) = self.resolver.get_scope_ref(self.module_id, local_symbol.get_symbol_id()) {
+                            self.mark_local_symbol_used_once(local_scope, self.module_id, *symbol_id);
                         }
-                    }
+                    },
                     LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
                         self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
-                    }
-                }
-            }
-            _ => {}
-        }
+                    },
+                });
+            },
+        });
 
         match ty {
             ty @ ConcreteType::ResolvedGeneric(..) => Some(ty),

@@ -11,8 +11,8 @@ members = [
     "crates/cli",
     "crates/static_analyzer",
     "crates/resolver",
+    "crates/partialmatch",
 ]
 default-members = ["crates/cli"]
 
 resolver = "3"
-

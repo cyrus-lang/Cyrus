@@ -40,12 +40,14 @@ impl Parser {
         let mut bracket_count = 0;
 
         while let Some(tok) = self.peek_n_token(i) {
-            match &tok.kind {
-                TokenKind::LeftBracket => bracket_count += 1,
+            partial_match!(&tok.kind, {
+                TokenKind::LeftBracket => {
+                    bracket_count += 1;
+                },
                 TokenKind::RightBracket => {
                     if bracket_count == 0 {
-                        return false;
-                    } // unmatched
+                        return false; // unmatched
+                    }
                     bracket_count -= 1;
                     if bracket_count == 0 {
                         // next token after last closing bracket
@@ -55,9 +57,8 @@ impl Parser {
                             return false;
                         }
                     }
-                }
-                _ => {}
-            }
+                },
+            });
             i += 1;
         }
 
@@ -607,8 +608,10 @@ impl Parser {
         let mut depth = 0;
 
         while let Some(tok) = self.peek_n_token(i) {
-            match tok.kind {
-                TokenKind::LessThan => depth += 1,
+            partial_match!(tok.kind, {
+                TokenKind::LessThan => {
+                    depth += 1;
+                },
                 TokenKind::GreaterThan => {
                     if depth == 0 {
                         return false; // unmatched `>`
@@ -617,7 +620,6 @@ impl Parser {
 
                     if depth == 0 {
                         // reached the matching '>' for the first '<'
-                        // inspect the very next token after this '>'
                         if let Some(next_tok) = self.peek_n_token(i + 1) {
                             return matches!(
                                 next_tok.kind,
@@ -629,10 +631,11 @@ impl Parser {
                             return false;
                         }
                     }
-                }
-                TokenKind::Semicolon | TokenKind::EOF => return false, // abort if new statement starts
-                _ => {}
-            }
+                },
+                TokenKind::Semicolon | TokenKind::EOF => {
+                    return false; // abort if new statement starts
+                },
+            });
 
             i += 1;
         }

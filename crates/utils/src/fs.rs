@@ -6,29 +6,25 @@ use std::{
     process::exit,
 };
 
-// Reads the file and returns the file content and the name of the file.
+// Reads the file and returns its content and file name
 pub fn read_file(file_path: String) -> (String, String) {
-    let path = Path::new(file_path.as_str());
+    let path = Path::new(&file_path);
 
-    let mut file = match File::open(path) {
-        Ok(content) => content,
-        Err(_) => {
-            tui_error("No such file or directory.".to_string());
-            exit(1);
-        }
-    };
+    let mut file = File::open(path).unwrap_or_else(|_| {
+        tui_error("No such file or directory.".to_string());
+        exit(1);
+    });
 
     let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap_or_else(|err| {
+        tui_error(format!("Failed to read the file content: {}", err));
+        exit(1);
+    });
 
-    match file.read_to_string(&mut contents) {
-        Err(err) => {
-            tui_error(format!("Failed to read the file content: {}", err.to_string()));
-            exit(1);
-        }
-        _ => {}
-    }
-
-    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_else(|| {
+        tui_error("Failed to get the file name.".to_string());
+        exit(1);
+    });
 
     (contents, file_name.to_string())
 }

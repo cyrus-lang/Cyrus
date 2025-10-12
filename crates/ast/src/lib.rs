@@ -1,11 +1,12 @@
-use std::{
-    hash::{Hash, Hasher},
-    rc::Rc,
-};
+use partialmatch::partial_match;
 
 use crate::{
     operators::{InfixOperator, PrefixOperator, UnaryOperator},
     token::*,
+};
+use std::{
+    hash::{Hash, Hasher},
+    rc::Rc,
 };
 
 pub mod format;
@@ -50,9 +51,10 @@ impl ProgramTree {
     pub fn get_imports(&self) -> Vec<Import> {
         let mut imports: Vec<Import> = Vec::new();
 
-        self.body.iter().for_each(|stmt| match stmt {
-            Statement::Import(import) => imports.push(import.clone()),
-            _ => {}
+        self.body.iter().for_each(|stmt| {
+            partial_match!(stmt, {
+                Statement::Import(import) => { imports.push(import.clone()); },
+            })
         });
 
         imports
@@ -337,7 +339,7 @@ pub struct GenericInst {
     pub base: Box<TypeSpecifier>,
     pub type_args: TypeArgs,
     pub loc: Location,
-    pub span: Span
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

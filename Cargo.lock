@@ -73,6 +73,9 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 [[package]]
 name = "ast"
 version = "0.1.0"
+dependencies = [
+ "partialmatch",
+]
 
 [[package]]
 name = "bitflags"
@@ -391,6 +394,10 @@ dependencies = [
  "lexer",
  "utils",
 ]
+
+[[package]]
+name = "partialmatch"
+version = "0.1.0"
 
 [[package]]
 name = "ppv-lite86"
