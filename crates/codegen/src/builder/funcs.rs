@@ -106,7 +106,7 @@ impl<'a> CodeGenBuilder<'a> {
 
             let basic_value = fn_value.get_nth_param(param_idx.try_into().unwrap()).unwrap();
             if basic_value.is_pointer_value() {
-                self.insert_forward_decl_to_registry(
+                self.insert_ir_value(
                     local_param_symbol_id,
                     LocalIRValue::RValue(basic_value, ConcreteType::Pointer(Box::new(concrete_type))),
                 );

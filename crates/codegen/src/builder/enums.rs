@@ -502,7 +502,7 @@ impl<'a> CodeGenBuilder<'a> {
         let enum_name = typed_enum.name.clone();
 
         let (enum_struct_type, payload_type) = self.build_enum_struct_type(&typed_enum_as_enum_sig(typed_enum));
-        self.insert_forward_decl_to_registry(
+        self.insert_ir_value(
             typed_enum.symbol_id,
             LocalIRValue::Enum((enum_struct_type, payload_type)),
         );

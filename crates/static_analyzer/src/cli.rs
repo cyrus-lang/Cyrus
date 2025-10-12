@@ -2,7 +2,7 @@ use diagcentral::reporter::DiagReporter;
 use lexer::Lexer;
 use parser::Parser;
 use resolver::{Resolver, Visiting, generate_module_id, modulefsloader::ModuleLoaderOptions};
-use static_analyzer::context::AnalysisContext;
+use static_analyzer::{context::AnalysisContext, monomorph::MonomorphRegistry};
 use std::{
     env,
     process::exit,
@@ -51,11 +51,13 @@ pub fn main() {
 
             {
                 let entry_points = Arc::new(Mutex::new(Vec::new()));
+                let monomorph_registry = Arc::new(Mutex::new(MonomorphRegistry::new()));
                 let mut analyzer = AnalysisContext::new(
                     &resolver,
                     module_id,
                     typed_program_tree.clone(),
                     entry_points.clone(),
+                    monomorph_registry,
                     false,
                 );
                 analyzer.analyze();

@@ -1,5 +1,6 @@
-use crate::context::AnalysisContext;
+use crate::{context::AnalysisContext, with_monomorph_registry};
 use ast::Identifier;
+use resolver::scope::ResolvedStruct;
 use std::collections::HashMap;
 use typed_ast::{
     TypedFuncTypeParams, TypedGenericParamsList, TypedTypeArg, TypedTypeArgs,
@@ -15,6 +16,32 @@ pub(crate) struct GenericMappingCtx {
 }
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn normalize_type_args_and_register(
+        &mut self,
+        resolved_struct: &ResolvedStruct,
+        generic_mapping_ctx: &GenericMappingCtx,
+    ) {
+        if let Some(generic_params) = &resolved_struct.struct_sig.generic_params {
+            // normalize type arguments using current mapping
+            let normalized_type_args: Vec<ConcreteType> = generic_params
+                .iter()
+                .map(|param| {
+                    generic_mapping_ctx
+                        .mapping
+                        .get(&param.param_name)
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            panic!("Generic param '{}' not found in mapping", param.param_name.as_string())
+                        })
+                })
+                .collect();
+
+            with_monomorph_registry!(self, registry, {
+                registry.register(resolved_struct.symbol_id, normalized_type_args.clone());
+            });
+        }
+    }
+
     pub(crate) fn substitute_type(
         &self,
         concrete_type: ConcreteType,

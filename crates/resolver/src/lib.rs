@@ -1506,7 +1506,7 @@ impl Resolver {
             struct_sig: StructSig {
                 name: struct_decl.identifier.name.clone(),
                 fields: typed_struct_fields.clone(),
-                generic_params,
+                generic_params: generic_params.clone(),
                 impls: impls.clone(),
                 packed: struct_decl.packed,
                 methods: methods.clone(),
@@ -1534,6 +1534,7 @@ impl Resolver {
             name: struct_decl.identifier.name.clone(),
             fields: typed_struct_fields,
             methods,
+            generic_params,
             vis: struct_decl.vis.clone(),
             impls,
             packed: struct_decl.packed,

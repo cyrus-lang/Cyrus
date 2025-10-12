@@ -1,4 +1,7 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, update_global_symbol};
+use crate::{
+    context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, update_global_symbol,
+    with_monomorph_registry,
+};
 use ast::{
     AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator},
@@ -1548,8 +1551,6 @@ impl<'a> AnalysisContext<'a> {
                 }
 
                 let field_target_type = self.substitute_type(field.unwrap().ty.clone(), &generic_mapping_ctx);
-                
-                //  = field_target_type.clone();
 
                 let field_value_type = match self.analyze_typed_expr_type(
                     scope_id_opt,
@@ -1590,7 +1591,10 @@ impl<'a> AnalysisContext<'a> {
                     Some(idx) => idx,
                     None => continue,
                 };
+
                 missing_fields.remove(missing_fields_idx);
+
+                self.normalize_type_args_and_register(&resolved_struct, &generic_mapping_ctx);
             }
         });
 

@@ -8,7 +8,7 @@ use inkwell::{
     types::BasicTypeEnum,
     values::{GlobalValue, PointerValue},
 };
-use resolver::{signatures::GlobalVarSig, scope::LocalScopeRef};
+use resolver::{scope::LocalScopeRef, signatures::GlobalVarSig};
 use typed_ast::{TypedExpression, TypedGlobalVariable, TypedVariable, types::ConcreteType};
 
 impl<'a> CodeGenBuilder<'a> {
@@ -86,7 +86,7 @@ impl<'a> CodeGenBuilder<'a> {
             global_value.set_initializer(&zero_init_value);
         }
 
-        self.insert_forward_decl_to_registry(
+        self.insert_ir_value(
             global_var.symbol_id,
             LocalIRValue::GlobalValue(global_value, global_var.ty.clone().unwrap()),
         );
@@ -107,57 +107,54 @@ impl<'a> CodeGenBuilder<'a> {
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
         variable: &TypedVariable,
-        zero_init_by_default: bool
+        zero_init_by_default: bool,
     ) -> PointerValue<'a> {
-        let (basic_type, concrete_type): (BasicTypeEnum<'a>, ConcreteType) = {
-            if let Some(concrete_type) = &variable.ty {
-                (
-                    self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone())
-                        .try_into()
-                        .unwrap(),
-                    concrete_type.clone(),
-                )
-            } else {
-                match variable.rhs.clone().unwrap().concrete_type {
-                    Some(concrete_type) => (
-                        self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone())
-                            .try_into()
-                            .unwrap(),
-                        concrete_type,
-                    ),
-                    None => {
-                        let concrete_type = variable.rhs.clone().unwrap().concrete_type.unwrap();
-                        (
-                            self.build_concrete_type(local_scope_opt.clone(), concrete_type.clone())
-                                .try_into()
-                                .unwrap(),
-                            concrete_type,
-                        )
-                    }
-                }
-            }
+        let rhs_value_opt = variable.rhs.as_ref().map(|rhs_expr| {
+            let lvalue_r = self.build_expr(local_scope_opt.clone(), rhs_expr);
+            self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue_r)
+        });
+
+        let llvm_alloca_type: BasicTypeEnum<'a> = if let Some(ref rvalue) = rhs_value_opt {
+            rvalue.as_basic_value().get_type()
+        } else {
+            let var_type = variable
+                .ty
+                .clone()
+                .expect("Cannot infer type without RHS or explicit type");
+
+            self.build_concrete_type(local_scope_opt.clone(), var_type)
+                .try_into()
+                .unwrap()
         };
 
-        let alloca = self.llvmbuilder.build_alloca(basic_type, &variable.name).unwrap();
+        let alloca = self.llvmbuilder.build_alloca(llvm_alloca_type, &variable.name).unwrap();
 
-        if zero_init_by_default && variable.rhs.is_none() {
-            let zero_init_value = self.build_zero_init_value(basic_type);
+        let initial_concrete_type = variable
+            .ty
+            .clone()
+            .or_else(|| variable.rhs.as_ref().unwrap().concrete_type.clone())
+            .expect("Failed to derive type");
+
+        self.insert_ir_value(
+            variable.symbol_id,
+            LocalIRValue::LValue(alloca, initial_concrete_type.clone()),
+        );
+
+        if zero_init_by_default && rhs_value_opt.is_none() {
+            let zero_init_value = self.build_zero_init_value(llvm_alloca_type);
             self.llvmbuilder.build_store(alloca, zero_init_value).unwrap();
         }
 
-        self.insert_forward_decl_to_registry(variable.symbol_id, LocalIRValue::LValue(alloca, concrete_type));
-
-        if let Some(typed_expr) = &variable.rhs {
-            let lvalue = self.build_expr(local_scope_opt.clone(), typed_expr);
-            let mut rvalue = self.build_load_lvalue_to_rvalue(None, lvalue);
-
-            // implicit cast
-            if let Some(concrete_type) = &variable.ty {
-                rvalue = self.build_implicit_cast(local_scope_opt, concrete_type.clone(), rvalue);
+        if let Some(mut rvalue) = rhs_value_opt {
+            if let Some(expected_ty) = &variable.ty {
+                rvalue = self.build_implicit_cast(local_scope_opt.clone(), expected_ty.clone(), rvalue);
             }
 
-            let basic_rvalue = rvalue.as_basic_value();
-            self.llvmbuilder.build_store(alloca, basic_rvalue).unwrap();
+            let final_basic = rvalue.as_basic_value();
+            self.llvmbuilder.build_store(alloca, final_basic).unwrap();
+
+            dbg!(rvalue.value_type.clone());
+            // self.update_ir_value_type(variable.symbol_id, final_basic.get_type());
         }
 
         alloca

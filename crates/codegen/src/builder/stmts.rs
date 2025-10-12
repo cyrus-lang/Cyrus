@@ -118,11 +118,11 @@ impl<'a> CodeGenBuilder<'a> {
             match stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => self.build_global_var_def(typed_global_var),
                 TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
-                TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
                 TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
                 TypedStatement::Union(typed_union) => self.build_union_def(typed_union),
+                TypedStatement::Struct(..) => continue,
                 TypedStatement::Interface(..) => continue,
-                TypedStatement::FuncDecl(_) => continue,
+                TypedStatement::FuncDecl(..) => continue,
                 _ => continue,
             }
         }
@@ -137,7 +137,7 @@ impl<'a> CodeGenBuilder<'a> {
 
         let struct_type = self.llvmctx.struct_type(&field_types, typed_struct.packed);
 
-        self.insert_forward_decl_to_registry(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
+        self.insert_ir_value(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
     }
 
     pub(crate) fn build_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
@@ -151,7 +151,7 @@ impl<'a> CodeGenBuilder<'a> {
 
             let fn_value = self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone());
 
-            self.insert_forward_decl_to_registry(
+            self.insert_ir_value(
                 *method_symbol_id,
                 LocalIRValue::Func(
                     fn_value,
@@ -196,23 +196,6 @@ impl<'a> CodeGenBuilder<'a> {
         let struct_type = self.llvmctx.struct_type(&field_types, struct_sig.packed);
         struct_type.set_body(&field_types, struct_sig.packed);
         struct_type
-    }
-
-    fn build_struct_def(&mut self, typed_struct: &TypedStruct) {
-        let field_types: Vec<BasicTypeEnum<'a>> = typed_struct
-            .fields
-            .iter()
-            .map(|field| self.build_concrete_type(None, field.ty.clone()).try_into().unwrap())
-            .collect();
-
-        let irreg = self.irreg.borrow();
-        let local_ir_value = irreg.get(&typed_struct.symbol_id).unwrap();
-
-        let struct_type = local_ir_value.as_struct().unwrap().clone();
-        drop(irreg);
-
-        struct_type.set_body(&field_types, typed_struct.packed);
-        self.build_methods(typed_struct.module_id, &typed_struct.methods);
     }
 
     pub(crate) fn build_union_struct_type(&mut self, union_sig: &UnionSig) -> StructType<'a> {
@@ -368,7 +351,7 @@ impl<'a> CodeGenBuilder<'a> {
                 .build_store(element_pointer, element_basic_value)
                 .unwrap();
 
-            self.insert_forward_decl_to_registry(
+            self.insert_ir_value(
                 *symbol_id,
                 LocalIRValue::LValue(element_pointer, element_type.clone()),
             );

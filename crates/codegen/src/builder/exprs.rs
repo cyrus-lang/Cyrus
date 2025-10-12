@@ -13,18 +13,20 @@ use ast::{
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     debug_info::AsDIScope,
-    types::{BasicMetadataTypeEnum, BasicTypeEnum},
+    types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue},
 };
 use resolver::{
     scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind},
     typed_func_type_from_func_sig,
 };
+use static_analyzer::monomorph::{MonomorphID, MonomorphKey, NormalizedTypeArgs};
 use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedCast, TypedDereference,
     TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
     TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit,
-    TypedTupleMemberAccess, TypedTupleValue, TypedUnaryExpression, TypedUnnamedStructValue,
+    TypedTupleMemberAccess, TypedTupleValue, TypedTypeArg, TypedTypeArgs, TypedUnaryExpression,
+    TypedUnnamedStructValue,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedFuncType},
 };
 
@@ -553,13 +555,11 @@ impl<'a> CodeGenBuilder<'a> {
         local_scope_opt: Option<LocalScopeRef>,
         typed_struct_init: &TypedStructInit,
     ) -> InternalValue<'a> {
-        let struct_type = self
-            .build_concrete_type(
-                local_scope_opt.clone(),
-                ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(typed_struct_init.symbol_id)),
-            )
-            .into_struct_type();
-
+        let struct_type = self.get_or_declare_struct_monomorph(
+            local_scope_opt.clone(),
+            typed_struct_init.symbol_id,
+            &typed_struct_init.type_args,
+        );
         let mut struct_value = struct_type.get_undef();
 
         let mut all_const = true;

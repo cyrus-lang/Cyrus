@@ -14,20 +14,21 @@ impl<'a> CodeGenBuilder<'a> {
         for stmt in stmts {
             match stmt {
                 TypedStatement::Struct(typed_struct) => {
-                    let struct_type = self.build_struct_decl(&typed_struct.name);
-                    self.insert_forward_decl_to_registry(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
+                    if typed_struct.generic_params.is_none() {
+                        let struct_type = self.build_struct_decl(&typed_struct.name);
+                        self.insert_ir_value(typed_struct.symbol_id, LocalIRValue::Struct(struct_type));
+                    } else {
+                        // generics are generated when instantiated
+                    }
                 }
                 TypedStatement::Enum(typed_enum) => {
                     let struct_type = self.build_enum_decl(&typed_enum.name);
                     let payload_type = self.llvmctx.i32_type().array_type(0);
-                    self.insert_forward_decl_to_registry(
-                        typed_enum.symbol_id,
-                        LocalIRValue::Enum((struct_type, payload_type)),
-                    );
+                    self.insert_ir_value(typed_enum.symbol_id, LocalIRValue::Enum((struct_type, payload_type)));
                 }
                 TypedStatement::Union(typed_union) => {
                     let struct_type = self.build_union_decl(&typed_union.name);
-                    self.insert_forward_decl_to_registry(typed_union.symbol_id, LocalIRValue::Struct(struct_type));
+                    self.insert_ir_value(typed_union.symbol_id, LocalIRValue::Struct(struct_type));
                 }
                 TypedStatement::Interface(..) => continue,
                 _ => continue,
@@ -38,7 +39,7 @@ impl<'a> CodeGenBuilder<'a> {
             match stmt {
                 TypedStatement::GlobalVariable(typed_global_var) => {
                     let global_value = self.build_global_var_decl(typed_global_var);
-                    self.insert_forward_decl_to_registry(
+                    self.insert_ir_value(
                         typed_global_var.symbol_id,
                         LocalIRValue::GlobalValue(global_value, typed_global_var.ty.clone().unwrap()),
                     );
@@ -52,13 +53,13 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_def.return_type.clone(),
                         typed_func_def.vis.clone(),
                     );
-                    self.insert_forward_decl_to_registry(
+                    self.insert_ir_value(
                         typed_func_def.symbol_id,
                         LocalIRValue::Func(
                             fn_value,
-                            ConcreteType::FuncType(
-                                typed_func_type_from_func_sig(&typed_func_def_as_func_sig(typed_func_def)),
-                            ),
+                            ConcreteType::FuncType(typed_func_type_from_func_sig(&typed_func_def_as_func_sig(
+                                typed_func_def,
+                            ))),
                         ),
                     );
                 }
@@ -71,13 +72,13 @@ impl<'a> CodeGenBuilder<'a> {
                         typed_func_decl.return_type.clone(),
                         typed_func_decl.vis.clone(),
                     );
-                    self.insert_forward_decl_to_registry(
+                    self.insert_ir_value(
                         typed_func_decl.symbol_id,
                         LocalIRValue::Func(
                             fn_value,
-                            ConcreteType::FuncType(
-                                typed_func_type_from_func_sig(&typed_func_decl_as_func_sig(typed_func_decl)),
-                            ),
+                            ConcreteType::FuncType(typed_func_type_from_func_sig(&typed_func_decl_as_func_sig(
+                                typed_func_decl,
+                            ))),
                         ),
                     );
                 }
@@ -86,10 +87,17 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn insert_forward_decl_to_registry(&mut self, symbol_id: SymbolID, local_value: LocalIRValue<'a>) {
+    pub(crate) fn insert_ir_value(&mut self, symbol_id: SymbolID, local_value: LocalIRValue<'a>) {
         let mut irreg = self.irreg.borrow_mut();
         irreg.insert(symbol_id, local_value);
         drop(irreg);
+    }
+
+    pub(crate) fn get_ir_value(&mut self, symbol_id: SymbolID) -> Option<LocalIRValue<'a>> {
+        let irreg = self.irreg.borrow();
+        let opt = irreg.get(&symbol_id).cloned();
+        drop(irreg);
+        opt
     }
 
     pub(crate) fn get_or_declare_func(&mut self, symbol_id: SymbolID, func_sig: FuncSig) -> FunctionValue<'a> {
@@ -113,7 +121,7 @@ impl<'a> CodeGenBuilder<'a> {
                 );
                 fn_value.set_linkage(Linkage::External);
 
-                self.insert_forward_decl_to_registry(
+                self.insert_ir_value(
                     symbol_id,
                     LocalIRValue::Func(
                         fn_value,
@@ -128,17 +136,21 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn get_or_declare_struct(&mut self, symbol_id: SymbolID, struct_sig: &StructSig) -> StructType<'a> {
-        let irreg = self.irreg.borrow();
-        let local_ir_value_opt = irreg.get(&symbol_id).cloned();
-        drop(irreg);
+        if struct_sig.generic_params.is_none() {
+            let irreg = self.irreg.borrow();
+            let local_ir_value_opt = irreg.get(&symbol_id).cloned();
+            drop(irreg);
 
-        match local_ir_value_opt {
-            Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
-            None => {
-                let struct_type = self.build_struct_only_type(struct_sig);
-                self.insert_forward_decl_to_registry(symbol_id, LocalIRValue::Struct(struct_type));
-                struct_type
+            match local_ir_value_opt {
+                Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
+                None => {
+                    let struct_type = self.build_struct_only_type(struct_sig);
+                    self.insert_ir_value(symbol_id, LocalIRValue::Struct(struct_type));
+                    struct_type
+                }
             }
+        } else {
+            unreachable!("Generic struct used without type args!");
         }
     }
 
@@ -151,7 +163,7 @@ impl<'a> CodeGenBuilder<'a> {
             Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
             None => {
                 let struct_type = self.build_union_struct_type(union_sig);
-                self.insert_forward_decl_to_registry(symbol_id, LocalIRValue::Struct(struct_type));
+                self.insert_ir_value(symbol_id, LocalIRValue::Struct(struct_type));
                 struct_type
             }
         }
@@ -166,7 +178,7 @@ impl<'a> CodeGenBuilder<'a> {
             Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
             None => {
                 let (struct_type, payload_type) = self.build_enum_struct_type(enum_sig);
-                self.insert_forward_decl_to_registry(symbol_id, LocalIRValue::Enum((struct_type, payload_type)));
+                self.insert_ir_value(symbol_id, LocalIRValue::Enum((struct_type, payload_type)));
                 struct_type
             }
         }
