@@ -1,4 +1,4 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, update_global_symbol};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope};
 use ast::{
     AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator},

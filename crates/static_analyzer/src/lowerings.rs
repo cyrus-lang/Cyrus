@@ -1,34 +1,40 @@
+use crate::context::AnalysisContext;
 use ast::{
-    AssignmentKind, LiteralKind, operators::{InfixOperator, PrefixOperator}
+    AssignmentKind, LiteralKind,
+    operators::{InfixOperator, PrefixOperator},
 };
 use typed_ast::{
     ScopeID, TypedExpression, TypedExpressionKind, TypedInfixExpression, TypedLiteral, TypedPrefixExpression,
     ValueCategory,
     types::{BasicConcreteType, ConcreteType},
 };
-
-use crate::context::AnalysisContext;
+use utils::partial_match;
 
 impl<'a> AnalysisContext<'a> {
-    pub(crate) fn apply_possible_expr_lowerings(&mut self, scope_id_opt: Option<ScopeID>, typed_expr: &mut TypedExpression, expected_type: Option<ConcreteType>) {
-        match &mut typed_expr.kind {
+    pub(crate) fn apply_possible_expr_lowerings(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_expr: &mut TypedExpression,
+        expected_type: Option<ConcreteType>,
+    ) {
+        partial_match!(&mut typed_expr.kind, {
             TypedExpressionKind::Assignment(typed_assignment) => {
                 if typed_assignment.kind != AssignmentKind::Default {
                     typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
                 }
-            }
-            TypedExpressionKind::Prefix(prefix_expr) => match &prefix_expr.op {
-                PrefixOperator::Bang => {
-                    if let Some(lowered_typed_expr) =
-                        self.lower_prefix_bang_with_pointer_operand(scope_id_opt, expected_type.clone(), prefix_expr)
-                    {
-                        *typed_expr = lowered_typed_expr;
-                    };
-                }
-                _ => {}
             },
-            _ => {}
-        }
+            TypedExpressionKind::Prefix(prefix_expr) => {
+                partial_match!(prefix_expr.op, {
+                    PrefixOperator::Bang => {
+                        if let Some(lowered_typed_expr) =
+                            self.lower_prefix_bang_with_pointer_operand(scope_id_opt, expected_type.clone(), prefix_expr)
+                        {
+                            *typed_expr = lowered_typed_expr;
+                        }
+                    },
+                });
+            },
+        });
     }
 
     fn lower_prefix_bang_with_pointer_operand(
