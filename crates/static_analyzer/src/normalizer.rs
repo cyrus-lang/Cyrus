@@ -1,6 +1,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind};
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
+use partialmatch::partial_match;
 use resolver::scope::{LocalOrGlobalSymbol, LocalSymbolKind, ResolvedStruct, ResolvedTypedef, SymbolEntryKind};
 use typed_ast::{
     ScopeID, SymbolID, TypedFuncParamKind, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams,
@@ -21,7 +22,7 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         let local_scope_opt = scope_id_opt.and_then(|sid| self.resolver.get_scope_ref(self.module_id, sid));
 
-        partial_match!(ty, {
+        partial_match!(&ty, {
             ConcreteType::UnresolvedSymbol(symbol_id)
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(symbol_id))
             | ConcreteType::ResolvedSymbol(ResolvedSymbol::Typedef(symbol_id))

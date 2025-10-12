@@ -8,6 +8,7 @@ lexer = { path = "../lexer", version = "*" }
 ast = { path = "../ast", version = "*" }
 utils = { path = "../utils", version = "*" }
 diagcentral = { path = "../diagcentral", version = "*" }
+partialmatch = { path = "../partialmatch", version = "*" }
 
 [lib]
 name = "parser"

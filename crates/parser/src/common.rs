@@ -8,6 +8,7 @@ use ast::*;
 use diagcentral::Diag;
 use diagcentral::DiagLevel;
 use diagcentral::DiagLoc;
+use partialmatch::partial_match;
 
 impl Parser {
     pub fn parse_identifier(&mut self) -> Result<Identifier, Diag<ParserDiagKind>> {

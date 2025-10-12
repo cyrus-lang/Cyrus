@@ -1,14 +1,11 @@
 use crate::context::AnalysisContext;
-use ast::{
-    AssignmentKind, LiteralKind,
-    operators::{InfixOperator, PrefixOperator},
-};
+use ast::{AssignmentKind, LiteralKind, operators::{InfixOperator, PrefixOperator}};
+use partialmatch::partial_match;
 use typed_ast::{
     ScopeID, TypedExpression, TypedExpressionKind, TypedInfixExpression, TypedLiteral, TypedPrefixExpression,
     ValueCategory,
     types::{BasicConcreteType, ConcreteType},
 };
-use utils::partial_match;
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn apply_possible_expr_lowerings(

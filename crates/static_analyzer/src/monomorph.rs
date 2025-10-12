@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-
 use typed_ast::{SymbolID, types::ConcreteType};
 
 pub type MonomorphID = u32;

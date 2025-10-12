@@ -20,6 +20,7 @@ use ast::{
     token::{Location, Span, Token, TokenKind},
 };
 use diagcentral::{reporter::DiagReporter, *};
+use partialmatch::partial_match;
 use rand::Rng;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
