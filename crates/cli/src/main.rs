@@ -289,6 +289,9 @@ enum Commands {
 
         #[clap(flatten)]
         linker_options: LinkerCompilerOptions,
+
+        #[clap(last = true)]
+        program_args: Vec<String>
     },
 
     #[clap(about = "Fetches a library into vendor directory.", display_order = 2)]
@@ -405,10 +408,11 @@ pub fn main() {
             file_path,
             compiler_options,
             linker_options,
+            program_args,
         } => {
             let mut codegen_options = compiler_options.to_compiler_options();
             codegen_options.linker_options = linker_options.to_compiler_linker_options();
-            command_run(codegen_options, file_path);
+            command_run(codegen_options, file_path , program_args);
         }
         Commands::EmitLLVM {
             file_path,
