@@ -252,7 +252,7 @@ impl<'a> CodeGenBuilder<'a> {
     ) -> AnyTypeEnum<'a> {
         match concrete_type {
             ConcreteType::GenericParam(..) => unreachable!(),
-            ConcreteType::ResolvedGeneric(ref resolved_generic) => {
+            ConcreteType::GenericType(ref resolved_generic) => {
                 self.build_resolved_generic_type(local_scope_opt, resolved_generic)
             }
             ConcreteType::UnresolvedSymbol(symbol_id) => {

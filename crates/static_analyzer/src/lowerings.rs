@@ -1,9 +1,12 @@
 use crate::context::AnalysisContext;
-use ast::{AssignmentKind, LiteralKind, operators::{InfixOperator, PrefixOperator}};
+use ast::{
+    AssignmentKind, LiteralKind,
+    operators::{InfixOperator, PrefixOperator},
+};
 use partialmatch::partial_match;
 use typed_ast::{
-    ScopeID, TypedExpression, TypedExpressionKind, TypedInfixExpression, TypedLiteral, TypedPrefixExpression,
-    ValueCategory,
+    ScopeID, TypedAssignment, TypedExpression, TypedExpressionKind, TypedInfixExpression, TypedLiteral,
+    TypedPrefixExpression, ValueCategory,
     types::{BasicConcreteType, ConcreteType},
 };
 
@@ -78,5 +81,26 @@ impl<'a> AnalysisContext<'a> {
         } else {
             None
         }
+    }
+
+    pub(crate) fn lower_assign_to_infix_expr(&self, assign: &mut TypedAssignment) -> TypedExpressionKind {
+        let infix_expr = TypedExpressionKind::Infix(TypedInfixExpression {
+            op: assign.kind.to_infix_operator(),
+            lhs: assign.lhs.clone(),
+            rhs: assign.rhs.clone(),
+            loc: assign.loc.clone(),
+        });
+
+        TypedExpressionKind::Assignment(TypedAssignment {
+            lhs: assign.lhs.clone(),
+            rhs: Box::new(TypedExpression {
+                kind: infix_expr,
+                concrete_type: None,
+                loc: assign.loc.clone(),
+                value_category: ValueCategory::Rvalue,
+            }),
+            kind: AssignmentKind::Default,
+            loc: assign.loc.clone(),
+        })
     }
 }

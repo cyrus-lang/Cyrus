@@ -1,13 +1,11 @@
-use std::hash::{Hash, Hasher};
-
 use crate::{ModuleID, SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams, TypedIdentifier, TypedTypeArgs};
 use ast::{AccessSpecifier, token::TokenKind};
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ConcreteType {
     UnresolvedSymbol(SymbolID),
     ResolvedSymbol(ResolvedSymbol),
-    ResolvedGeneric(ResolvedGeneric),
     BasicType(BasicConcreteType),
     Array(TypedArrayType),
     Const(Box<ConcreteType>),
@@ -15,11 +13,52 @@ pub enum ConcreteType {
     UnnamedStruct(TypedUnnamedStructType),
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
+    GenericType(GenericType),
     GenericParam(TypedIdentifier),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ResolvedGeneric {
+pub enum BasicConcreteType {
+    UIntPtr,
+    IntPtr,
+    SizeT,
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    UInt,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+    Char,
+    Bool,
+    Void,
+    Null,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ResolvedSymbol {
+    Enum(SymbolID),
+    Union(SymbolID),
+    Typedef(SymbolID),
+    NamedStruct(SymbolID),
+    Interface(SymbolID),
+    GlobalVar(SymbolID),
+    Variable(SymbolID),
+    Func(SymbolID),
+    Method(SymbolID),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GenericType {
     pub base: SymbolID,
     pub type_args: TypedTypeArgs,
     pub is_const: bool,
@@ -40,19 +79,6 @@ pub struct TypedFuncType {
     pub loc: SourceLoc,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ResolvedSymbol {
-    Enum(SymbolID),
-    Union(SymbolID),
-    Typedef(SymbolID),
-    NamedStruct(SymbolID),
-    Interface(SymbolID),
-    GlobalVar(SymbolID),
-    Variable(SymbolID),
-    Func(SymbolID),
-    Method(SymbolID),
-}
-
 impl ResolvedSymbol {
     pub fn get_symbol_id(&self) -> SymbolID {
         match self {
@@ -70,28 +96,44 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
+    pub fn is_integer(&self) -> bool {
+        match self.get_const_inner() {
+            ConcreteType::BasicType(basic) => basic.is_integer(),
+            ConcreteType::Const(inner) => matches!(&**inner, ConcreteType::BasicType(b) if b.is_integer()),
+            _ => false,
+        }
+    }
+
+    pub fn is_float(&self) -> bool {
+        match self.get_const_inner() {
+            ConcreteType::BasicType(basic) => basic.is_float(),
+            ConcreteType::Const(inner) => matches!(&**inner, ConcreteType::BasicType(b) if b.is_float()),
+            _ => false,
+        }
+    }
+
     pub fn is_enum(&self) -> bool {
-        matches!(self, ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..)))
+        matches!(self.get_const_inner(), ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..)))
     }
 
     pub fn is_bool(&self) -> bool {
-        matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
+        matches!(self.get_const_inner(), ConcreteType::BasicType(BasicConcreteType::Bool))
     }
 
     pub fn is_array(&self) -> bool {
-        matches!(self, ConcreteType::Array(..))
+        matches!(self.get_const_inner(), ConcreteType::Array(..))
     }
 
     pub fn is_const(&self) -> bool {
-        matches!(self, ConcreteType::Const(_))
+        matches!(self.get_const_inner(), ConcreteType::Const(_))
     }
 
     pub fn is_void(&self) -> bool {
-        matches!(self, ConcreteType::BasicType(BasicConcreteType::Void))
+        matches!(self.get_const_inner(), ConcreteType::BasicType(BasicConcreteType::Void))
     }
 
     pub fn is_pointer(&self) -> bool {
-        matches!(self, ConcreteType::Pointer(..))
+        matches!(self.get_const_inner(), ConcreteType::Pointer(..))
     }
 
     pub fn as_unresolved_symbol(&self) -> Option<SymbolID> {
@@ -102,7 +144,7 @@ impl ConcreteType {
     }
 
     pub fn as_tuple_type(&self) -> Option<&TypedTupleType> {
-        match &self {
+        match &self.get_const_inner() {
             ConcreteType::Tuple(tuple_type) => Some(tuple_type),
             _ => None,
         }
@@ -216,67 +258,40 @@ impl ConcreteType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum BasicConcreteType {
-    UIntPtr,
-    IntPtr,
-    SizeT,
-    Int,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    Int128,
-    UInt,
-    UInt8,
-    UInt16,
-    UInt32,
-    UInt64,
-    UInt128,
-    Float16,
-    Float32,
-    Float64,
-    Float128,
-    Char,
-    Bool,
-    Void,
-    Null,
-}
-
 impl BasicConcreteType {
     pub fn is_bool(&self) -> bool {
         matches!(self, BasicConcreteType::Bool)
     }
 
-    pub fn is_float(&self) -> bool {
-        match self {
-            BasicConcreteType::Float16
-            | BasicConcreteType::Float32
-            | BasicConcreteType::Float64
-            | BasicConcreteType::Float128 => true,
-            _ => false,
-        }
+    pub fn is_integer(&self) -> bool {
+        matches!(
+            self,
+            BasicConcreteType::UIntPtr
+                | BasicConcreteType::IntPtr
+                | BasicConcreteType::SizeT
+                | BasicConcreteType::Int
+                | BasicConcreteType::Int8
+                | BasicConcreteType::Int16
+                | BasicConcreteType::Int32
+                | BasicConcreteType::Int64
+                | BasicConcreteType::Int128
+                | BasicConcreteType::UInt
+                | BasicConcreteType::UInt8
+                | BasicConcreteType::UInt16
+                | BasicConcreteType::UInt32
+                | BasicConcreteType::UInt64
+                | BasicConcreteType::UInt128
+        )
     }
 
-    pub fn is_integer(&self) -> bool {
-        match self {
-            BasicConcreteType::UIntPtr
-            | BasicConcreteType::UInt
-            | BasicConcreteType::UInt8
-            | BasicConcreteType::UInt16
-            | BasicConcreteType::UInt32
-            | BasicConcreteType::UInt64
-            | BasicConcreteType::UInt128
-            | BasicConcreteType::SizeT
-            | BasicConcreteType::IntPtr
-            | BasicConcreteType::Int
-            | BasicConcreteType::Int8
-            | BasicConcreteType::Int16
-            | BasicConcreteType::Int32
-            | BasicConcreteType::Int64
-            | BasicConcreteType::Int128 => true,
-            _ => false,
-        }
+    pub fn is_float(&self) -> bool {
+        matches!(
+            self,
+            BasicConcreteType::Float16
+                | BasicConcreteType::Float32
+                | BasicConcreteType::Float64
+                | BasicConcreteType::Float128
+        )
     }
 
     pub fn is_signed(&self) -> bool {

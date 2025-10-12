@@ -362,9 +362,9 @@ pub fn format_concrete_type<'a>(
                     .join(", ")
             )
         }
-        ConcreteType::ResolvedGeneric(resolved_generic) => {
-            let base = format_symbol(resolved_generic.base);
-            let type_args = resolved_generic
+        ConcreteType::GenericType(generic_type) => {
+            let base = format_symbol(generic_type.base);
+            let type_args = generic_type
                 .type_args
                 .iter()
                 .map(|type_arg| match type_arg {

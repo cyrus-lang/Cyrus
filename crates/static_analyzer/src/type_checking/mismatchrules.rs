@@ -1,0 +1,187 @@
+use crate::context::AnalysisContext;
+use ast::source_loc::SourceLoc;
+use typed_ast::{
+    ScopeID,
+    types::{BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType},
+};
+
+impl<'a> AnalysisContext<'a> {
+    pub(crate) fn check_type_mismatch(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        value_type: ConcreteType,
+        target_type: ConcreteType,
+        loc: SourceLoc,
+    ) -> bool {
+        match (
+            value_type.get_const_inner().clone(),
+            target_type.get_const_inner().clone(),
+        ) {
+            (ConcreteType::ResolvedSymbol(resolved_symbol1), ConcreteType::ResolvedSymbol(resolved_symbol2)) => {
+                resolved_symbol1 == resolved_symbol2
+            }
+            (ConcreteType::BasicType(basic_concrete_type1), ConcreteType::BasicType(basic_concrete_type2)) => {
+                self.check_basic_type_mismatch(basic_concrete_type1, basic_concrete_type2)
+            }
+            (ConcreteType::Array(array_type1), ConcreteType::Array(array_type2)) => {
+                let valid_capacity = self.check_const_str_to_array_assignment(array_type1.clone(), array_type2.clone());
+
+                valid_capacity
+                    && self.check_type_mismatch(scope_id_opt, *array_type1.element_type, *array_type2.element_type, loc)
+            }
+            (ConcreteType::Pointer(inner_concrete_type1), ConcreteType::Pointer(inner_concrete_type2)) => {
+                if let Some(arr_type) = inner_concrete_type1.as_array_type() {
+                    *arr_type.element_type == *inner_concrete_type2
+                } else {
+                    (inner_concrete_type1.is_void() || inner_concrete_type2.is_void())
+                        || self.check_type_mismatch(scope_id_opt, *inner_concrete_type1, *inner_concrete_type2, loc)
+                }
+            }
+            (ConcreteType::UnnamedStruct(unnamed_struct1), ConcreteType::UnnamedStruct(unnamed_struct2)) => {
+                let packed = unnamed_struct1.packed == unnamed_struct2.packed;
+                let mut fields = true;
+                for (field1, field2) in unnamed_struct1.fields.iter().zip(unnamed_struct2.fields) {
+                    if *field1 != field2 {
+                        fields = false;
+                        break;
+                    }
+                }
+                packed && fields
+            }
+            (ConcreteType::GenericType(resolved_generic1), ConcreteType::GenericType(resolved_generic2)) => {
+                resolved_generic1.base == resolved_generic2.base
+                    && resolved_generic1.type_args == resolved_generic2.type_args
+            }
+            (ConcreteType::FuncType(func_type1), ConcreteType::FuncType(func_type2)) => func_type1 == func_type2,
+            (ConcreteType::Tuple(tuple_type1), ConcreteType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
+            (ConcreteType::BasicType(BasicConcreteType::Null), ConcreteType::Pointer(..)) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn check_basic_type_mismatch(&self, value: BasicConcreteType, target: BasicConcreteType) -> bool {
+        use BasicConcreteType::*;
+
+        match (value, target) {
+            // Same type is always compatible
+            (a, b) if a == b => true,
+
+            // Integer compatibility (widening is allowed)
+            (Int8, Int16 | Int32 | Int64 | Int128 | Int) => true,
+            (Int16, Int32 | Int64 | Int128 | Int) => true,
+            (Int32, Int64 | Int128 | Int) => true,
+            (Int64, Int128) => true,
+            (Int, Int64 | Int128) => true,
+
+            (UInt8, UInt16 | UInt32 | UInt64 | UInt128 | UInt) => true,
+            (UInt16, UInt32 | UInt64 | UInt128 | UInt) => true,
+            (UInt32, UInt64 | UInt128 | UInt) => true,
+            (UInt64, UInt128) => true,
+            (UInt, UInt64 | UInt128) => true,
+
+            // Cross unsigned-to-signed conversions (only if target is wider)
+            (UInt8, Int16 | Int32 | Int64 | Int128 | Int) => true,
+            (UInt16, Int32 | Int64 | Int128 | Int) => true,
+            (UInt32, Int64 | Int128 | Int) => true,
+            (UInt64, Int128 | Int) => true,
+
+            // Floating-point widening
+            (Float16, Float32 | Float64 | Float128) => true,
+            (Float32, Float64 | Float128) => true,
+            (Float64, Float128) => true,
+
+            // Pointer int compatibility (if same bit width)
+            (UIntPtr, IntPtr) | (IntPtr, UIntPtr) => true,
+
+            // Integer to intptr (safe if value fits)
+            (
+                BasicConcreteType::Int | BasicConcreteType::Int8 | BasicConcreteType::Int16 | BasicConcreteType::Int32,
+                BasicConcreteType::IntPtr,
+            ) => true,
+
+            // Unsigned to intptr (less safe, maybe allow some)
+            (
+                BasicConcreteType::UInt
+                | BasicConcreteType::UInt8
+                | BasicConcreteType::UInt16
+                | BasicConcreteType::UInt32,
+                BasicConcreteType::UIntPtr,
+            ) => true,
+
+            (Null, Null) => true,
+
+            // char to int
+            (Char, Int8 | Int16 | Int32 | Int64 | Int128 | Int) => true,
+
+            // int8 to char
+            (Int8, Char) => true,
+
+            // Bool to Int
+            (Bool, Int8 | UInt8) => true,
+
+            (Bool, Bool) => true,
+
+            _ => false,
+        }
+    }
+
+    fn check_const_str_to_array_assignment(&self, value_type: TypedArrayType, target_type: TypedArrayType) -> bool {
+        match (value_type.capacity, target_type.capacity) {
+            (
+                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(value_capacity)),
+                TypedArrayCapacity::Fixed(TypedArrayFixedCapacityValue::Value(target_capacity)),
+            ) => value_capacity == target_capacity,
+            _ => false, // not valid
+        }
+    }
+
+    pub(crate) fn check_explicit_typecast(&mut self, value_type: ConcreteType, target_type: ConcreteType) -> bool {
+        match (value_type, target_type) {
+            // Same type, always fine
+            (a, b) if a == b => true,
+
+            // Any integer to any integer
+            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
+                if value.is_integer() && target.is_integer() =>
+            {
+                true
+            }
+
+            // Any float to any float
+            (ConcreteType::BasicType(value), ConcreteType::BasicType(target))
+                if value.is_float() && target.is_float() =>
+            {
+                true
+            }
+
+            // Bool to anything integer-ish (common in C-style languages)
+            (ConcreteType::BasicType(BasicConcreteType::Bool), ConcreteType::BasicType(target))
+                if target.is_integer() =>
+            {
+                true
+            }
+
+            // Char to integer and back
+            (ConcreteType::BasicType(BasicConcreteType::Char), ConcreteType::BasicType(target))
+                if target.is_integer() =>
+            {
+                true
+            }
+            (ConcreteType::BasicType(value), ConcreteType::BasicType(BasicConcreteType::Char))
+                if value.is_integer() =>
+            {
+                true
+            }
+
+            // void* <-> intptr/uintptr
+            (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::IntPtr))
+            | (ConcreteType::Pointer(..), ConcreteType::BasicType(BasicConcreteType::UIntPtr))
+            | (ConcreteType::BasicType(BasicConcreteType::IntPtr), ConcreteType::Pointer(..))
+            | (ConcreteType::BasicType(BasicConcreteType::UIntPtr), ConcreteType::Pointer(..)) => true,
+
+            (ConcreteType::FuncType(..), ConcreteType::Pointer(pointer_type)) => pointer_type.is_void(),
+
+            _ => false,
+        }
+    }
+}

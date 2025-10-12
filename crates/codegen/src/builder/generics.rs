@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use typed_ast::{
     SymbolID, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedStructField, TypedTypeArg, TypedTypeArgs,
     types::{
-        ConcreteType, ResolvedGeneric, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
+        ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
     },
 };
@@ -18,7 +18,7 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_resolved_generic_type(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        resolved_generic: &ResolvedGeneric,
+        resolved_generic: &GenericType,
     ) -> AnyTypeEnum<'a> {
         let local_or_global_symbol = self
             .resolver

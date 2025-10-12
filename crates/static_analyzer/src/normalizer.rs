@@ -51,7 +51,7 @@ impl<'a> AnalysisContext<'a> {
         });
 
         match ty {
-            ty @ ConcreteType::ResolvedGeneric(..) => Some(ty),
+            ty @ ConcreteType::GenericType(..) => Some(ty),
             ty @ ConcreteType::GenericParam(..) => Some(ty),
             ConcreteType::UnresolvedSymbol(symbol_id) => {
                 self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
@@ -379,14 +379,12 @@ impl<'a> AnalysisContext<'a> {
         symbol_id: SymbolID,
         loc: SourceLoc,
     ) -> Option<ConcreteType> {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
-
         if let Some(cached) = self.ty_caches.cache.get(&symbol_id) {
             return Some(cached.clone());
         }
 
         if !self.ty_caches.push(symbol_id) {
-            let symbol = formatter_closure(symbol_id);
+            let symbol = (self.symbol_formatter)(scope_id_opt)(symbol_id);
             self.report_cyclic_type_def(symbol, loc);
             return None;
         }

@@ -642,8 +642,6 @@ impl<'a> AnalysisContext<'a> {
     }
 
     fn analyze_return(&mut self, scope_id: ScopeID, typed_return: &mut TypedReturn) -> FlowState {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(Some(scope_id));
-
         let func_type = self.current_func.clone().unwrap();
         let return_type = self
             .normalize_type(Some(scope_id), *func_type.return_type, typed_return.loc.clone())
@@ -660,8 +658,8 @@ impl<'a> AnalysisContext<'a> {
             if let Some(concrete_type) =
                 self.analyze_typed_expr_type(Some(scope_id), typed_expr, Some(return_type.clone()))
             {
-                let expected = format_concrete_type(return_type.clone(), &formatter_closure);
-                let got = format_concrete_type(concrete_type.clone(), &formatter_closure);
+                let expected = format_concrete_type(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
+                let got = format_concrete_type(concrete_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
 
                 if !self.check_type_mismatch(Some(scope_id), concrete_type, return_type, typed_return.loc.clone()) {
                     self.reporter.report(Diag {
@@ -673,7 +671,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if !return_type.is_void() && typed_return.argument.is_none() {
-            let argument_type = format_concrete_type(return_type.clone(), &formatter_closure);
+            let argument_type = format_concrete_type(return_type.clone(), &(self.symbol_formatter)(Some(scope_id)));
 
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1785,30 +1783,7 @@ impl<'a> AnalysisContext<'a> {
         drop(local_scope);
     }
 
-    pub(crate) fn lower_assign_to_infix_expr(&self, assign: &mut TypedAssignment) -> TypedExpressionKind {
-        let infix_expr = TypedExpressionKind::Infix(TypedInfixExpression {
-            op: assign.kind.to_infix_operator(),
-            lhs: assign.lhs.clone(),
-            rhs: assign.rhs.clone(),
-            loc: assign.loc.clone(),
-        });
-
-        TypedExpressionKind::Assignment(TypedAssignment {
-            lhs: assign.lhs.clone(),
-            rhs: Box::new(TypedExpression {
-                kind: infix_expr,
-                concrete_type: None,
-                loc: assign.loc.clone(),
-                value_category: ValueCategory::Rvalue,
-            }),
-            kind: AssignmentKind::Default,
-            loc: assign.loc.clone(),
-        })
-    }
-
     pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignment) {
-        let formatter_closure: Box<dyn Fn(SymbolID) -> String + 'a> = (self.symbol_formatter)(scope_id_opt);
-
         let lhs_type = match self.analyze_typed_expr_type(scope_id_opt, &mut assign.lhs, None) {
             Some(concrete_type) => concrete_type,
             None => return,
@@ -1831,8 +1806,8 @@ impl<'a> AnalysisContext<'a> {
 
         if assign.kind == AssignmentKind::Default {
             if !self.check_type_mismatch(scope_id_opt, rhs_type.clone(), lhs_type.clone(), assign.loc.clone()) {
-                let lhs_type = format_concrete_type(lhs_type, &formatter_closure);
-                let rhs_type = format_concrete_type(rhs_type, &formatter_closure);
+                let lhs_type = format_concrete_type(lhs_type, &(self.symbol_formatter)(scope_id_opt));
+                let rhs_type = format_concrete_type(rhs_type, &(self.symbol_formatter)(scope_id_opt));
 
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
