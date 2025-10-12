@@ -1,12 +1,15 @@
 use crate::{
-    diagnostics::AnalyzerDiagKind, generics::GenericMappingCtx, monomorph::MonomorphRegistry,
+    diagnostics::AnalyzerDiagKind,
+    flowstate::{ControlContext, FlowState},
+    generics::GenericMappingCtx,
+    monomorph::MonomorphRegistry,
     type_cache::TypeResolverCaches,
 };
 use ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
-use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
+use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use resolver::{
     Resolver,
-    scope::{LocalOrGlobalSymbol, LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
+    scope::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     signatures::FuncSig,
     typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
@@ -66,13 +69,13 @@ pub struct AnalysisContext<'a> {
     pub module_id: ModuleID,
     pub symbol_formatter: Box<dyn Fn(Option<ScopeID>) -> Box<dyn Fn(SymbolID) -> String + 'a> + 'a>,
     pub ty_caches: TypeResolverCaches,
-    control_stack: Vec<ControlContext>,
     pub(crate) current_func: Option<TypedFuncType>,
     pub(crate) current_method_symbol_id: Option<SymbolID>,
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
     pub(crate) generic_ctx_stack: Vec<GenericMappingCtx>,
     pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
+    control_stack: Vec<ControlContext>,
 }
 
 impl<'a> AnalysisContext<'a> {
@@ -84,47 +87,7 @@ impl<'a> AnalysisContext<'a> {
         monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
         disable_warnings: bool,
     ) -> Self {
-        let symbol_formatter = Box::new(
-            move |scope_id_opt: Option<ScopeID>| -> Box<dyn Fn(SymbolID) -> String> {
-                Box::new(move |symbol_id: SymbolID| -> String {
-                    let local_scope_opt =
-                        scope_id_opt.and_then(|scope_id| resolver.get_scope_ref(module_id, scope_id).clone());
-
-                    let local_or_global_symbol = resolver
-                        .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
-                        .unwrap();
-
-                    match local_or_global_symbol {
-                        LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
-                            LocalSymbolKind::Variable(resolved_variable) => {
-                                resolved_variable.typed_variable.name.clone()
-                            }
-                            LocalSymbolKind::Struct(resolved_struct) => resolved_struct.struct_sig.name.clone(),
-                            LocalSymbolKind::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
-                            LocalSymbolKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
-                            LocalSymbolKind::Interface(resolved_interface) => {
-                                resolved_interface.interface_sig.name.clone()
-                            }
-                            LocalSymbolKind::Union(resolved_union) => resolved_union.union_sig.name.clone(),
-                        },
-                        LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
-                            SymbolEntryKind::Method(resolved_method) => resolved_method.func_sig.name.clone(),
-                            SymbolEntryKind::Func(resolved_function) => resolved_function.func_sig.name.clone(),
-                            SymbolEntryKind::Typedef(resolved_typedef) => resolved_typedef.typedef_sig.name.clone(),
-                            SymbolEntryKind::GlobalVar(resolved_global_var) => {
-                                resolved_global_var.global_var_sig.name.clone()
-                            }
-                            SymbolEntryKind::Struct(resolved_struct) => resolved_struct.struct_sig.name.clone(),
-                            SymbolEntryKind::Enum(resolved_enum) => resolved_enum.enum_sig.name.clone(),
-                            SymbolEntryKind::Interface(resolved_interface) => {
-                                resolved_interface.interface_sig.name.clone()
-                            }
-                            SymbolEntryKind::Union(resolved_union) => resolved_union.union_sig.name.clone(),
-                        },
-                    }
-                })
-            },
-        );
+        let symbol_formatter = Self::build_symbol_formatter(resolver, module_id);
 
         Self {
             ast,
@@ -184,20 +147,16 @@ impl<'a> AnalysisContext<'a> {
 
     pub(crate) fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) -> FlowState {
         let mut state = FlowState::Reachable;
-
         for typed_stmt in &mut block_stmt.exprs {
             if state == FlowState::Unreachable {
                 self.report_unreachable_block_diag(typed_stmt);
                 break;
             }
-
             state = self.analyze_statement(block_stmt.scope_id, typed_stmt);
         }
-
         for defer in &mut block_stmt.defers {
             self.analyze_statement(block_stmt.scope_id, &mut defer.operand);
         }
-
         self.analyze_local_unused_symbols(block_stmt.scope_id);
         state
     }
@@ -336,45 +295,6 @@ impl<'a> AnalysisContext<'a> {
                     resolved_variable.typed_variable.ty = Some(concrete_type);
                 }
             )
-        }
-    }
-
-    pub fn check_entry_points(entry_points_arc: Arc<Mutex<Vec<SourceLoc>>>) {
-        let entry_points = entry_points_arc.lock().unwrap();
-        let mut entry_points_clone = entry_points.clone();
-
-        if entry_points.len() == 0 {
-            display_single_diag!(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::MissingEntryPoint,
-                location: None,
-                hint: None,
-            });
-        } else if entry_points.len() > 1 {
-            let loc = entry_points_clone.pop().unwrap();
-
-            display_single_diag!(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::MultipleEntryPoints,
-                location: Some(DiagLoc::new(loc)),
-                hint: {
-                    if let Some(another_decl_loc) = entry_points_clone.pop() {
-                        Some(format!("Another declaration is at {}.", another_decl_loc))
-                    } else {
-                        None
-                    }
-                },
-            });
-        }
-
-        drop(entry_points);
-    }
-
-    fn merge_flow_state(&self, a: FlowState, b: FlowState) -> FlowState {
-        match (a, b) {
-            (FlowState::Returns, FlowState::Returns) => FlowState::Returns,
-            (FlowState::Unreachable, FlowState::Unreachable) => FlowState::Unreachable,
-            _ => FlowState::Reachable,
         }
     }
 
@@ -1925,22 +1845,4 @@ impl<'a> AnalysisContext<'a> {
             unreachable!()
         }
     }
-}
-
-#[allow(unused)]
-#[derive(Debug)]
-enum ControlContext {
-    For,
-    Switch,
-    While,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum FlowState {
-    // Execution can continue normally
-    Reachable,
-    // Execution cannot reach further statements (after return/break/continue)
-    Unreachable,
-    // This path definitely returned from the function
-    Returns,
 }

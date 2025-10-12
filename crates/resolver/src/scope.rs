@@ -128,6 +128,19 @@ pub enum LocalOrGlobalSymbol {
 }
 
 impl LocalOrGlobalSymbol {
+    pub fn is_kind_of_variable(&self) -> bool {
+        match self {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.kind {
+                LocalSymbolKind::Variable(..) => true,
+                _ => false,
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.kind {
+                SymbolEntryKind::GlobalVar(..) => true,
+                _ => false,
+            },
+        }
+    }
+
     pub fn get_symbol_id(&self) -> SymbolID {
         match self {
             LocalOrGlobalSymbol::LocalSymbol(local_symbol) => local_symbol.get_symbol_id(),

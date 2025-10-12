@@ -95,6 +95,9 @@ pub enum AnalyzerDiagKind {
         name: String,
         expected: String,
     },
+    UnknownSymbol {
+        symbol_name: String,
+    },
     UnusedSymbol {
         symbol_name: String,
     },
@@ -232,6 +235,9 @@ pub enum AnalyzerDiagKind {
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::UnknownSymbol { symbol_name } => {
+                write!(f, "Unknown symbol '{}'.", symbol_name)
+            }
             AnalyzerDiagKind::InfiniteRecursiveType { type_name } => {
                 write!(
                     f,

@@ -421,80 +421,16 @@ impl<'a> AnalysisContext<'a> {
         });
     }
 
-    fn lower_prefix_bang_with_pointer_operand(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        expected_type: Option<ConcreteType>,
-        prefix_expr: &mut TypedPrefixExpression,
-    ) -> Option<TypedExpression> {
-        let operand_type =
-            match self.analyze_typed_expr_type(scope_id_opt, &mut prefix_expr.operand, expected_type.clone()) {
-                Some(concrete_type) => concrete_type,
-                None => return None,
-            };
-
-        let null_literal_expr = TypedExpression {
-            kind: TypedExpressionKind::Literal(TypedLiteral {
-                ty: Some(ConcreteType::Pointer(Box::new(ConcreteType::BasicType(
-                    BasicConcreteType::Void,
-                )))),
-                kind: LiteralKind::Null,
-                loc: prefix_expr.loc.clone(),
-            }),
-            value_category: ValueCategory::Rvalue,
-            concrete_type: None,
-            loc: prefix_expr.loc.clone(),
-        };
-
-        if operand_type.is_pointer() {
-            let lhs = prefix_expr.operand.clone();
-
-            let new_infix_expr = TypedExpressionKind::Infix(TypedInfixExpression {
-                op: InfixOperator::Equal,
-                lhs,
-                rhs: Box::new(null_literal_expr),
-                loc: prefix_expr.loc.clone(),
-            });
-
-            Some(TypedExpression {
-                kind: new_infix_expr,
-                value_category: ValueCategory::Rvalue,
-                concrete_type: None,
-                loc: prefix_expr.loc.clone(),
-            })
-        } else {
-            None
-        }
-    }
-
     pub(crate) fn analyze_typed_expr_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExpression,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
-        // lowering
-        match &mut typed_expr.kind {
-            TypedExpressionKind::Assignment(typed_assignment) => {
-                if typed_assignment.kind != AssignmentKind::Default {
-                    typed_expr.kind = self.lower_assign_to_infix_expr(typed_assignment);
-                }
-            }
-            TypedExpressionKind::Prefix(prefix_expr) => match &prefix_expr.op {
-                PrefixOperator::Bang => {
-                    if let Some(lowered_typed_expr) =
-                        self.lower_prefix_bang_with_pointer_operand(scope_id_opt, expected_type.clone(), prefix_expr)
-                    {
-                        *typed_expr = lowered_typed_expr;
-                    };
-                }
-                _ => {}
-            },
-            _ => {}
-        }
+        self.apply_possible_expr_lowerings(scope_id_opt, typed_expr, expected_type.clone());
 
         let concrete_type = match &mut typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id, ..) => {
+            TypedExpressionKind::Symbol(symbol_id, loc) => {
                 let local_scope_ref_opt = {
                     if let Some(scope_id) = scope_id_opt {
                         self.resolver.get_scope_ref(self.module_id, scope_id)
@@ -507,46 +443,16 @@ impl<'a> AnalysisContext<'a> {
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_ref_opt, *symbol_id)?;
 
-                // mark symbol used
-                match &local_or_global_symbol {
-                    LocalOrGlobalSymbol::LocalSymbol(..) => {
-                        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt?);
-                        self.mark_local_symbol_used_once(local_scope_opt.unwrap(), self.module_id, *symbol_id);
-                    }
-                    LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => {
-                        if let Some(mut resolved_global_var) = symbol_entry.as_global_var().cloned() {
-                            if scope_id_opt.is_none()
-                                && !resolved_global_var.global_var_sig.ty.clone().unwrap().is_const()
-                            {
-                                self.reporter.report(Diag {
-                                    level: DiagLevel::Error,
-                                    kind: AnalyzerDiagKind::ValueIsNotACompTimeConst,
-                                    location: Some(DiagLoc::new(typed_expr.loc.clone())),
-                                    hint: None,
-                                });
-                                return None;
-                            }
+                if !local_or_global_symbol.is_kind_of_variable() {
+                    let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
 
-                            if let Some(concrete_type) = &resolved_global_var.global_var_sig.ty {
-                                resolved_global_var.global_var_sig.ty = Some(
-                                    self.normalize_type(scope_id_opt, concrete_type.clone(), typed_expr.loc.clone())
-                                        .unwrap(),
-                                );
-                            }
-
-                            if let Some(mut typed_expr) = resolved_global_var.global_var_sig.rhs.clone() {
-                                self.analyze_typed_expr_type(scope_id_opt, &mut typed_expr, expected_type);
-
-                                update_global_symbol!(self, resolved_global_var.module_id, resolved_global_var.symbol_id,
-                                    SymbolEntryKind::GlobalVar(global_var) => global_var, {
-                                        global_var.global_var_sig.rhs = Some(typed_expr);
-                                    }
-                                );
-                            }
-                        }
-
-                        self.mark_symbol_used_once(symbol_entry.get_module_id(), symbol_entry.get_symbol_id());
-                    }
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::UnknownSymbol { symbol_name },
+                        location: Some(DiagLoc::new(loc.clone())),
+                        hint: None,
+                    });
+                    return None;
                 }
 
                 self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
@@ -1275,6 +1181,9 @@ impl<'a> AnalysisContext<'a> {
                 Some(concrete_type) => Some(concrete_type),
                 None => return None,
             };
+
+        // FIXME concrete type must be substituted before get into this scene.
+        dbg!(field_access.operand.concrete_type.clone());
 
         if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
             field_access.operand.concrete_type

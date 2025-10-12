@@ -22,7 +22,7 @@ pub enum ConcreteType {
 pub struct ResolvedGeneric {
     pub base: SymbolID,
     pub type_args: TypedTypeArgs,
-    pub is_const: bool
+    pub is_const: bool,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -70,13 +70,37 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
+    pub fn is_enum(&self) -> bool {
+        matches!(self, ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..)))
+    }
+
+    pub fn is_bool(&self) -> bool {
+        matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
+    }
+
+    pub fn is_array(&self) -> bool {
+        matches!(self, ConcreteType::Array(..))
+    }
+
+    pub fn is_const(&self) -> bool {
+        matches!(self, ConcreteType::Const(_))
+    }
+
+    pub fn is_void(&self) -> bool {
+        matches!(self, ConcreteType::BasicType(BasicConcreteType::Void))
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        matches!(self, ConcreteType::Pointer(..))
+    }
+
     pub fn as_unresolved_symbol(&self) -> Option<SymbolID> {
         match &self {
             ConcreteType::UnresolvedSymbol(symbol_id) => Some(*symbol_id),
             _ => None,
         }
     }
-    
+
     pub fn as_tuple_type(&self) -> Option<&TypedTupleType> {
         match &self {
             ConcreteType::Tuple(tuple_type) => Some(tuple_type),
@@ -115,30 +139,6 @@ impl ConcreteType {
             ConcreteType::BasicType(BasicConcreteType::Char) => true,
             _ => false,
         }
-    }
-
-    pub fn is_enum(&self) -> bool {
-        matches!(self, ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..)))
-    }
-
-    pub fn is_bool(&self) -> bool {
-        matches!(self, ConcreteType::BasicType(BasicConcreteType::Bool))
-    }
-
-    pub fn is_array(&self) -> bool {
-        matches!(self, ConcreteType::Array(..))
-    }
-
-    pub fn is_const(&self) -> bool {
-        matches!(self, ConcreteType::Const(_))
-    }
-
-    pub fn is_void(&self) -> bool {
-        matches!(self, ConcreteType::BasicType(BasicConcreteType::Void))
-    }
-
-    pub fn is_pointer(&self) -> bool {
-        matches!(self, ConcreteType::Pointer(..))
     }
 
     pub fn as_basic_type(&self) -> Option<&BasicConcreteType> {
@@ -495,4 +495,4 @@ impl Hash for TypedTupleType {
 }
 
 impl Eq for TypedArrayFixedCapacityValue {}
-impl Eq for TypedFuncType { }
+impl Eq for TypedFuncType {}
