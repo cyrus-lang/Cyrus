@@ -1,12 +1,13 @@
 use std::hash::{Hash, Hasher};
 
-use crate::{ModuleID, SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams, TypedIdentifier};
+use crate::{ModuleID, SourceLoc, SymbolID, TypedExpression, TypedFuncTypeParams, TypedIdentifier, TypedTypeArgs};
 use ast::{AccessSpecifier, token::TokenKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ConcreteType {
     UnresolvedSymbol(SymbolID),
     ResolvedSymbol(ResolvedSymbol),
+    ResolvedGeneric(ResolvedGeneric),
     BasicType(BasicConcreteType),
     Array(TypedArrayType),
     Const(Box<ConcreteType>),
@@ -15,6 +16,13 @@ pub enum ConcreteType {
     FuncType(TypedFuncType),
     Tuple(TypedTupleType),
     GenericParam(TypedIdentifier),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResolvedGeneric {
+    pub base: SymbolID,
+    pub type_args: TypedTypeArgs,
+    pub is_const: bool
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -62,6 +70,13 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
+    pub fn as_unresolved_symbol(&self) -> Option<SymbolID> {
+        match &self {
+            ConcreteType::UnresolvedSymbol(symbol_id) => Some(*symbol_id),
+            _ => None,
+        }
+    }
+    
     pub fn as_tuple_type(&self) -> Option<&TypedTupleType> {
         match &self {
             ConcreteType::Tuple(tuple_type) => Some(tuple_type),

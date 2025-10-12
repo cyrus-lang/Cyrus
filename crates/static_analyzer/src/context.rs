@@ -1,5 +1,8 @@
-use crate::{diagnostics::AnalyzerDiagKind, generics::GenericMappingCtx, monomorph::MonomorphRegistry, type_cache::TypeResolverCaches};
-use ast::{AccessSpecifier, AssignmentKind, Identifier, LiteralKind, SelfModifierKind, TypeArg, source_loc::SourceLoc};
+use crate::{
+    diagnostics::AnalyzerDiagKind, generics::GenericMappingCtx, monomorph::MonomorphRegistry,
+    type_cache::TypeResolverCaches,
+};
+use ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source_loc::SourceLoc};
 use diagcentral::{Diag, DiagLevel, DiagLoc, display_single_diag, reporter::DiagReporter};
 use resolver::{
     Resolver,
@@ -69,7 +72,7 @@ pub struct AnalysisContext<'a> {
     pub disable_warnings: bool,
     pub entry_points: Arc<Mutex<Vec<SourceLoc>>>,
     pub(crate) generic_ctx_stack: Vec<GenericMappingCtx>,
-    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>
+    pub monomorph_registry: Arc<Mutex<MonomorphRegistry>>,
 }
 
 impl<'a> AnalysisContext<'a> {

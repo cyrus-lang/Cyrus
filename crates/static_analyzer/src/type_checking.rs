@@ -1,7 +1,4 @@
-use crate::{
-    context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, update_global_symbol,
-    with_monomorph_registry,
-};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, update_global_symbol};
 use ast::{
     AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, StringPrefix,
     operators::{InfixOperator, PrefixOperator},
@@ -19,8 +16,8 @@ use typed_ast::{
     format::{format_concrete_type, format_func_type, format_typed_expr},
     types::{
         BasicConcreteType::{self, *},
-        ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
-        TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
+        ConcreteType, ResolvedGeneric, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
+        TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
     },
     *,
 };
@@ -67,6 +64,10 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
                 packed && fields
+            }
+            (ConcreteType::ResolvedGeneric(resolved_generic1), ConcreteType::ResolvedGeneric(resolved_generic2)) => {
+                resolved_generic1.base == resolved_generic2.base
+                    && resolved_generic1.type_args == resolved_generic2.type_args
             }
             (ConcreteType::FuncType(func_type1), ConcreteType::FuncType(func_type2)) => func_type1 == func_type2,
             (ConcreteType::Tuple(tuple_type1), ConcreteType::Tuple(tuple_type2)) => tuple_type1 == tuple_type2,
@@ -1614,14 +1615,22 @@ impl<'a> AnalysisContext<'a> {
 
         struct_init.symbol_id = normalized.as_struct_symbol_id().unwrap();
 
-        if struct_init.is_const {
-            Some(ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(
-                ResolvedSymbol::NamedStruct(struct_init.symbol_id),
+        let pure_struct_type = if struct_init.is_const {
+            ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
+                struct_init.symbol_id,
             ))))
         } else {
-            Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(
-                struct_init.symbol_id,
-            )))
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id))
+        };
+
+        if let Some(type_args) = &struct_init.type_args {
+            Some(ConcreteType::ResolvedGeneric(ResolvedGeneric {
+                base: struct_init.symbol_id,
+                type_args: type_args.clone(),
+                is_const: struct_init.is_const,
+            }))
+        } else {
+            Some(pure_struct_type)
         }
     }
 

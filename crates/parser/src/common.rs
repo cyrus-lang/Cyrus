@@ -92,7 +92,22 @@ impl Parser {
             }
         }
 
-        Ok(base_type)
+        if self.peek_token_is(TokenKind::LessThan) {
+            let start = self.peek_token().span.start;
+            let loc = self.peek_token().loc.clone();
+
+            self.next_token();
+            let type_args = self.parse_type_arg_list()?;
+
+            Ok(TypeSpecifier::GenericInst(GenericInst {
+                base: Box::new(base_type),
+                type_args,
+                loc,
+                span: Span::new(start, self.current_token().span.end),
+            }))
+        } else {
+            Ok(base_type)
+        }
     }
 
     pub fn parse_func_type_params(&mut self) -> Result<FuncTypeParams, ParserError> {

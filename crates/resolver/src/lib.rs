@@ -27,8 +27,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use typed_ast::types::{
-    BasicConcreteType, ConcreteType, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType, TypedFuncType,
-    TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
+    BasicConcreteType, ConcreteType, ResolvedGeneric, TypedArrayCapacity, TypedArrayFixedCapacityValue, TypedArrayType,
+    TypedFuncType, TypedTupleType, TypedUnnamedStructType, TypedUnnamedStructTypeField,
 };
 use typed_ast::{SymbolID, *};
 
@@ -540,6 +540,32 @@ impl Resolver {
         span_end: usize,
     ) -> Option<ConcreteType> {
         let result = match &type_specifier {
+            TypeSpecifier::GenericInst(generic_inst) => {
+                let base = self.resolve_type(
+                    generic_params,
+                    local_scope.clone(),
+                    module_id,
+                    *generic_inst.base.clone(),
+                    loc.clone(),
+                    span_end,
+                )?;
+
+                let is_const = base.is_const();
+                if let Some(symbol_id) = base.get_const_inner().as_unresolved_symbol() {
+                    let type_args =
+                        self.resolve_type_args(module_id, local_scope, &generic_inst.type_args, loc.clone(), span_end);
+
+                    Ok(ConcreteType::ResolvedGeneric(ResolvedGeneric {
+                        base: symbol_id,
+                        type_args,
+                        is_const,
+                    }))
+                } else {
+                    Err(ResolverDiagKind::TypeDoesNotAcceptTypeArgs {
+                        type_name: generic_inst.base.to_string(),
+                    })
+                }
+            }
             TypeSpecifier::Tuple(tuple_type) => {
                 let mut type_list: Vec<ConcreteType> = Vec::new();
 

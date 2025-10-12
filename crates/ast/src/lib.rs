@@ -312,6 +312,7 @@ pub enum TypeSpecifier {
     UnnamedStruct(UnnamedStructType),
     FuncType(Box<FuncType>),
     Tuple(TupleType),
+    GenericInst(GenericInst),
 }
 
 impl TypeSpecifier {
@@ -326,8 +327,17 @@ impl TypeSpecifier {
             TypeSpecifier::UnnamedStruct(struct_type) => (struct_type.loc.clone(), struct_type.span.end),
             TypeSpecifier::FuncType(func_type) => (func_type.loc.clone(), func_type.span.end),
             TypeSpecifier::Tuple(tuple_type) => (tuple_type.loc.clone(), tuple_type.span.end),
+            TypeSpecifier::GenericInst(generic_inst) => (generic_inst.loc.clone(), generic_inst.span.end),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericInst {
+    pub base: Box<TypeSpecifier>,
+    pub type_args: TypeArgs,
+    pub loc: Location,
+    pub span: Span
 }
 
 #[derive(Debug, Clone)]

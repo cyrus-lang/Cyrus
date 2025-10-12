@@ -9,7 +9,7 @@ use inkwell::{
     values::{GlobalValue, PointerValue},
 };
 use resolver::{scope::LocalScopeRef, signatures::GlobalVarSig};
-use typed_ast::{TypedExpression, TypedGlobalVariable, TypedVariable, types::ConcreteType};
+use typed_ast::{TypedExpression, TypedGlobalVariable, TypedVariable};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn get_or_declare_global_var(&mut self, global_var_sig: GlobalVarSig) -> GlobalValue<'a> {
@@ -133,7 +133,7 @@ impl<'a> CodeGenBuilder<'a> {
             .ty
             .clone()
             .or_else(|| variable.rhs.as_ref().unwrap().concrete_type.clone())
-            .expect("Failed to derive type");
+            .unwrap();
 
         self.insert_ir_value(
             variable.symbol_id,
@@ -152,9 +152,6 @@ impl<'a> CodeGenBuilder<'a> {
 
             let final_basic = rvalue.as_basic_value();
             self.llvmbuilder.build_store(alloca, final_basic).unwrap();
-
-            dbg!(rvalue.value_type.clone());
-            // self.update_ir_value_type(variable.symbol_id, final_basic.get_type());
         }
 
         alloca

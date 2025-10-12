@@ -161,6 +161,18 @@ impl fmt::Display for TypeSpecifier {
                         .join(", ")
                 )
             }
+            TypeSpecifier::GenericInst(generic_inst) => {
+                let type_args = generic_inst
+                    .type_args
+                    .iter()
+                    .map(|type_arg| match type_arg {
+                        TypeArg::Positional(type_specifier) => type_specifier.to_string(),
+                        TypeArg::Named { value, .. } => value.to_string(),
+                    })
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                write!(f, "{}<{}>", generic_inst.base, type_args)
+            }
         }
     }
 }
@@ -327,7 +339,7 @@ impl fmt::Display for Expression {
             }
             Expression::TupleMemberAccess(tuple_member_access) => {
                 write!(f, "{}.{}", tuple_member_access.operand, tuple_member_access.index)
-            },
+            }
         }
     }
 }

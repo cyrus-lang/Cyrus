@@ -685,7 +685,7 @@ pub struct TypedBound {
     pub type_args: Vec<TypedTypeArg>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash)]
 pub enum TypedTypeArg {
     Positional(ConcreteType),
     Named { key: Identifier, value: ConcreteType },

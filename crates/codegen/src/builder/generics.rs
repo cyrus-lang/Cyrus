@@ -1,5 +1,5 @@
 use crate::builder::module::{CodeGenBuilder, LocalIRValue};
-use inkwell::types::StructType;
+use inkwell::types::{AnyTypeEnum, StructType};
 use resolver::{scope::LocalScopeRef, signatures::StructSig};
 use static_analyzer::{
     monomorph::{MonomorphKey, NormalizedTypeArgs},
@@ -9,12 +9,34 @@ use std::collections::HashMap;
 use typed_ast::{
     SymbolID, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedStructField, TypedTypeArg, TypedTypeArgs,
     types::{
-        ConcreteType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
+        ConcreteType, ResolvedGeneric, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
     },
 };
 
 impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn build_resolved_generic_type(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        resolved_generic: &ResolvedGeneric,
+    ) -> AnyTypeEnum<'a> {
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), resolved_generic.base)
+            .unwrap();
+
+        if local_or_global_symbol.as_struct().is_some() {
+            self.get_or_declare_struct_monomorph(
+                local_scope_opt,
+                resolved_generic.base,
+                &Some(resolved_generic.type_args.clone()),
+            )
+            .into()
+        } else {
+            unreachable!()
+        }
+    }
+
     pub(crate) fn get_or_declare_struct_monomorph(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,

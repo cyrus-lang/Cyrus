@@ -2,7 +2,7 @@ use ast::{AssignmentKind, LiteralKind, StringPrefix, operators::UnaryOperator};
 
 use crate::{
     SymbolID, TypedExpression, TypedExpressionKind, TypedFuncParamKind, TypedFuncTypeVariadicParams,
-    TypedFuncVariadicParams, TypedLambda,
+    TypedFuncVariadicParams, TypedLambda, TypedTypeArg,
     types::{
         BasicConcreteType, ConcreteType, ResolvedSymbol, TypedArrayCapacity, TypedArrayFixedCapacityValue,
         TypedFuncType, TypedUnnamedStructType,
@@ -361,6 +361,21 @@ pub fn format_concrete_type<'a>(
                     .collect::<Vec<String>>()
                     .join(", ")
             )
+        }
+        ConcreteType::ResolvedGeneric(resolved_generic) => {
+            let base = format_symbol(resolved_generic.base);
+            let type_args = resolved_generic
+                .type_args
+                .iter()
+                .map(|type_arg| match type_arg {
+                    TypedTypeArg::Positional(concrete_type) => {
+                        format_concrete_type(concrete_type.clone(), format_symbol)
+                    }
+                    TypedTypeArg::Named { value, .. } => format_concrete_type(value.clone(), format_symbol),
+                })
+                .collect::<Vec<String>>()
+                .join(", ");
+            format!("{}<{}>", base, type_args)
         }
     }
 }

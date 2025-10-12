@@ -55,7 +55,8 @@ impl<'a> AnalysisContext<'a> {
         }
 
         match ty {
-            ty @ ConcreteType::GenericParam(..) => Some(ty), 
+            ty @ ConcreteType::ResolvedGeneric(..) => Some(ty),
+            ty @ ConcreteType::GenericParam(..) => Some(ty),
             ConcreteType::UnresolvedSymbol(symbol_id) => {
                 self.resolver.resolve_local_or_global_symbol(local_scope_opt, symbol_id);
 

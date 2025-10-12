@@ -3,6 +3,9 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum ResolverDiagKind {
+    TypeDoesNotAcceptTypeArgs {
+        type_name: String
+    },
     ExpectedIdentifierInImport,
     DuplicateModule {
         module_name: String,
@@ -87,6 +90,9 @@ pub enum ResolverDiagKind {
 impl fmt::Display for ResolverDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ResolverDiagKind::TypeDoesNotAcceptTypeArgs { type_name } => {
+                write!(f, "Type '{}' does not accept any type arguments.", type_name)
+            }
             ResolverDiagKind::ExpectedIdentifierInImport => {
                 write!(
                     f,

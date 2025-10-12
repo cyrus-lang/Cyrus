@@ -13,20 +13,18 @@ use ast::{
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     debug_info::AsDIScope,
-    types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType},
+    types::{BasicMetadataTypeEnum, BasicTypeEnum},
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue},
 };
 use resolver::{
     scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind},
     typed_func_type_from_func_sig,
 };
-use static_analyzer::monomorph::{MonomorphID, MonomorphKey, NormalizedTypeArgs};
 use typed_ast::{
     SymbolID, TypedAddressOf, TypedArray, TypedArrayIndex, TypedAssignment, TypedCast, TypedDereference,
     TypedExpression, TypedExpressionKind, TypedFieldAccess, TypedFuncCall, TypedFuncParamKind, TypedInfixExpression,
     TypedLiteral, TypedMethodCall, TypedPrefixExpression, TypedSizeOfExpression, TypedStructInit,
-    TypedTupleMemberAccess, TypedTupleValue, TypedTypeArg, TypedTypeArgs, TypedUnaryExpression,
-    TypedUnnamedStructValue,
+    TypedTupleMemberAccess, TypedTupleValue, TypedUnaryExpression, TypedUnnamedStructValue,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedFuncType},
 };
 
