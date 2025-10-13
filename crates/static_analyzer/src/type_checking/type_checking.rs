@@ -829,6 +829,8 @@ impl<'a> AnalysisContext<'a> {
             }
         });
 
+        // REVIEW you can even refactor this by converting it into a func 
+        // called `resolve_member_access_kind`
         let object_symbol_id = {
             let operand_type = match &field_access.operand.kind {
                 TypedExpressionKind::Symbol(instance_symbol_id, ..) => {
@@ -1133,74 +1135,7 @@ impl<'a> AnalysisContext<'a> {
             Some(pure_struct_type)
         }
     }
-
-    fn analyze_address_of_expr_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        address_of: &mut TypedAddressOf,
-    ) -> Option<ConcreteType> {
-        if !address_of.operand.is_lvalue() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::AddressOfRvalue,
-                location: Some(DiagLoc::new(address_of.loc.clone())),
-                hint: None,
-            });
-            return None;
-        }
-
-        let operand_inner_type = address_of.operand.concrete_type.clone();
-        let operand_type = match self.analyze_typed_expr_type(scope_id_opt, &mut address_of.operand, operand_inner_type)
-        {
-            Some(concrete_type) => concrete_type,
-            None => return None,
-        };
-
-        Some(ConcreteType::Pointer(Box::new(operand_type)))
-    }
-
-    fn analyze_dereference_expr_type(
-        &mut self,
-        scope_id_opt: Option<ScopeID>,
-        dereference: &mut TypedDereference,
-    ) -> Option<ConcreteType> {
-        let operand_inner_type = dereference.operand.concrete_type.clone();
-        let operand_type =
-            match self.analyze_typed_expr_type(scope_id_opt, &mut dereference.operand, operand_inner_type) {
-                Some(concrete_type) => concrete_type,
-                None => return None,
-            };
-
-        dereference.operand.concrete_type = Some(operand_type.clone());
-
-        if !dereference.operand.is_lvalue() || operand_type.as_func_type().is_some() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::DerefNonPointerValue,
-                location: Some(DiagLoc::new(dereference.loc.clone())),
-                hint: None,
-            });
-            return None;
-        }
-
-        let pointer_inner_type = match operand_type {
-            ConcreteType::Pointer(concrete_type) => *concrete_type,
-            _ => unreachable!(),
-        };
-
-        if pointer_inner_type.is_void() {
-            self.reporter.report(Diag {
-                level: DiagLevel::Error,
-                kind: AnalyzerDiagKind::DerefVoidPointerValue,
-                location: Some(DiagLoc::new(dereference.loc.clone())),
-                hint: Some("Cast 'void*' to a concrete pointer type before dereferencing it.".to_string()),
-            });
-            return None;
-        }
-
-        Some(pointer_inner_type)
-    }
-
+    
     fn check_func_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,

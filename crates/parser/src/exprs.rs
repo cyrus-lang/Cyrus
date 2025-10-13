@@ -150,7 +150,7 @@ impl Parser {
                 let loc = self.current_token().loc.clone();
                 self.next_token();
                 Expression::Dereference(Dereference {
-                    expr: Box::new(self.parse_prefix_expression()?),
+                    expr: Box::new(self.parse_expression(Precedence::Lowest)?.0),
                     span: Span::new(start, self.current_token().span.end),
                     loc,
                 })
