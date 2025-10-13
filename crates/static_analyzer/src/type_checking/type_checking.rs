@@ -1072,61 +1072,12 @@ impl<'a> AnalysisContext<'a> {
                     }
                 };
 
-                match self.substitute_type(field.ty.clone(), &generic_mapping_ctx) {
-                    Some(field_target_type) => {
-                        match self.analyze_typed_expr_type(
-                            scope_id_opt,
-                            &mut field_init.value,
-                            Some(field_target_type.clone()),
-                        ) {
-                            Some(field_value_type) => {
-                                if !self.check_type_mismatch(
-                                    scope_id_opt,
-                                    field_value_type.clone(),
-                                    field_target_type.clone(),
-                                    field_init.loc.clone(),
-                                ) {
-                                    let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
-                                    let expected_type =
-                                        format_concrete_type(field_target_type, &(self.symbol_formatter)(scope_id_opt));
-                                    let found_type =
-                                        format_concrete_type(field_value_type, &(self.symbol_formatter)(scope_id_opt));
-
-                                    self.reporter.report(Diag {
-                                        level: DiagLevel::Error,
-                                        kind: AnalyzerDiagKind::StructFieldTypeMismatch {
-                                            struct_name,
-                                            field_name: field_init.name.clone(),
-                                            expected_type,
-                                            found_type,
-                                        },
-                                        location: Some(DiagLoc::new(struct_init.loc.clone())),
-                                        hint: None,
-                                    });
-                                    continue;
-                                }
-                                field_value_type
-                            }
-                            None => continue,
-                        }
-                    }
-                    None => match self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, None) {
-                        Some(field_value_type) => {
-                            partial_match!(field.ty.as_generic_param(), {
-                                Some(generic_param) => {
-                                    generic_mapping_ctx.insert_custom(generic_param.name.clone(), field_value_type);
-                                }
-                            });
-                            match self.substitute_type(field.ty.clone(), &generic_mapping_ctx) {
-                                Some(concrete_type) => concrete_type,
-                                None => continue,
-                            }
-                        }
-                        None => continue,
-                    },
-                };
-
-                // TODO Check for explicit type args required.
+                self.substitute_type_or_infer_with(
+                    scope_id_opt,
+                    field.ty.clone(),
+                    &mut field_init.value,
+                    &mut generic_mapping_ctx,
+                )?;
 
                 let missing_fields_idx = match missing_fields
                     .iter()

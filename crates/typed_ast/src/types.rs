@@ -181,11 +181,13 @@ impl ConcreteType {
         }
     }
 
-    pub fn as_rvalue(&self, lvalue: bool) -> Self {
+    pub fn as_rvalue(&self, lvalue: bool) -> ConcreteType {
         if lvalue {
             match self {
                 ConcreteType::Array(typed_array_type) => *typed_array_type.element_type.clone(),
-                ConcreteType::Pointer(concrete_type) => concrete_type.get_pointer_inner().unwrap(),
+                ConcreteType::Pointer(concrete_type) => {
+                    concrete_type.get_pointer_inner().unwrap_or(*concrete_type.clone())
+                }
                 _ => self.clone(),
             }
         } else {

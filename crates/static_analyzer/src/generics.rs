@@ -5,7 +5,9 @@ use partialmatch::partial_match;
 use resolver::signatures::StructSig;
 use std::collections::HashMap;
 use typed_ast::{
-    SymbolID, TypedFieldAccess, TypedFuncTypeParams, TypedGenericParamsList, TypedTypeArg, TypedTypeArgs,
+    ScopeID, SymbolID, TypedExpression, TypedFieldAccess, TypedFuncTypeParams, TypedGenericParamsList, TypedTypeArg,
+    TypedTypeArgs,
+    format::format_concrete_type,
     types::{
         ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
@@ -89,25 +91,54 @@ impl<'a> AnalysisContext<'a> {
             .collect()
     }
 
-    // pub(crate) fn substitute_type_or_infer_with(
-    //     &self,
-    //     concrete_type: ConcreteType,
-    //     generic_mapping_ctx: &GenericMappingCtx,
-    //     infer: Option<&TypedExpression>,
-    // ) -> ConcreteType {
-    //     if let Some(field_target_type) = self.substitute_type(field.ty.clone(), &generic_mapping_ctx) {
-    //         match self.analyze_typed_expr_type(
-    //             scope_id_opt,
-    //             &mut field_init.value,
-    //             Some(field_target_type.clone()),
-    //         ) {
-    //             Some(concrete_type) => return concrete_type,
-    //             None => {}
-    //         };
-    //     }
-
-    //     todo!();
-    // }
+    pub(crate) fn substitute_type_or_infer_with(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        ty: ConcreteType,
+        expr: &mut TypedExpression,
+        generic_mapping_ctx: &mut GenericMappingCtx,
+    ) -> Option<ConcreteType> {
+        match self.substitute_type(ty.clone(), generic_mapping_ctx) {
+            Some(substituted) => {
+                // analyze the expression with the expected substituted type
+                if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, Some(substituted.clone())) {
+                    if !self.check_type_mismatch(scope_id_opt, expr_type.clone(), substituted.clone(), expr.loc.clone())
+                    {
+                        let expected_type =
+                            format_concrete_type(substituted.clone(), &(self.symbol_formatter)(scope_id_opt));
+                        let found_type =
+                            format_concrete_type(expr_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::AssignmentTypeMismatch {
+                                lhs_type: expected_type,
+                                rhs_type: found_type,
+                            },
+                            location: Some(DiagLoc::new(expr.loc.clone())),
+                            hint: None,
+                        });
+                        return None;
+                    }
+                    Some(substituted)
+                } else {
+                    None
+                }
+            }
+            None => {
+                // could not substitute: attempt to infer from expression
+                if let Some(expr_type) = self.analyze_typed_expr_type(scope_id_opt, expr, None) {
+                    partial_match!(ty.as_generic_param(), {
+                        Some(generic_param) => {
+                            generic_mapping_ctx.insert_custom(generic_param.name.clone(), expr_type.clone());
+                        }
+                    });
+                    self.substitute_type(ty, generic_mapping_ctx)
+                } else {
+                    None
+                }
+            }
+        }
+    }
 
     pub(crate) fn substitute_type(
         &self,
