@@ -73,7 +73,7 @@ impl<'a> AnalysisContext<'a> {
         ty_opt
     }
 
-    fn analyze_typed_expr_type_non_terminal(
+    pub(crate) fn analyze_typed_expr_type_non_terminal(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExpression,
@@ -1252,12 +1252,12 @@ impl<'a> AnalysisContext<'a> {
         let is_variadic = func_sig.params.variadic.is_some();
         let mut expected_args_len = func_sig.params.list.len();
 
-        // If this is an instance method call, `&self` will be pushed later
+        // if this is an instance method call, self modifier will be pushed later
         if instance_method_call && !func_sig.params.list.is_empty() {
             expected_args_len = expected_args_len.saturating_sub(1);
         }
 
-        // Check argument count
+        // check argument count
         if (!is_variadic && args.len() != expected_args_len) || (is_variadic && args.len() < expected_args_len) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1272,7 +1272,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        // Handle variadic arguments
+        // handle variadic arguments
         if is_variadic {
             let static_params_len = func_sig.params.list.len();
             let variadic_args = &mut args[static_params_len..];
@@ -1312,14 +1312,14 @@ impl<'a> AnalysisContext<'a> {
                     }
                     TypedFuncVariadicParams::UntypedCStyle => {
                         for arg in variadic_args.iter_mut() {
-                            let _ = self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone());
+                            self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone());
                         }
                     }
                 }
             }
         }
 
-        // Analyze static arguments
+        // analyze static arguments
         let start_idx = if instance_method_call { 1 } else { 0 };
         for (param_idx, (param, arg)) in func_sig
             .params
@@ -1366,7 +1366,7 @@ impl<'a> AnalysisContext<'a> {
             }
         }
 
-        // Check for duplicate parameter names
+        // check for duplicate parameter names
         self.check_duplicate_param_names(
             &func_sig.params.list,
             func_sig.params.variadic.as_ref(),
@@ -1387,7 +1387,7 @@ impl<'a> AnalysisContext<'a> {
         let expected_args_len = func_type.params.list.len();
         let func_name = format_func_type(func_type, &(self.symbol_formatter)(scope_id_opt));
 
-        // Check argument count
+        // check argument count
         if (!is_variadic && args.len() != expected_args_len) || (is_variadic && args.len() < expected_args_len) {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
@@ -1402,7 +1402,7 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        // Handle variadic arguments
+        // handle variadic arguments
         if is_variadic {
             let static_params_len = func_type.params.list.len();
             let variadic_args = &mut args[static_params_len..];
@@ -1442,14 +1442,14 @@ impl<'a> AnalysisContext<'a> {
                     }
                     TypedFuncTypeVariadicParams::UntypedCStyle => {
                         for arg in variadic_args.iter_mut() {
-                            let _ = self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone());
+                            self.analyze_typed_expr_type(scope_id_opt, arg, arg.concrete_type.clone());
                         }
                     }
                 }
             }
         }
 
-        // Analyze static arguments
+        // analyze static arguments
         let start_idx = 0;
         for (param_idx, (param, arg)) in func_type
             .params
@@ -1488,7 +1488,9 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
     ) -> Option<ConcreteType> {
-        let operand_concrete_type = self.analyze_typed_expr_type(scope_id_opt, &mut func_call.operand, None)?;
+        let operand_concrete_type =
+            self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
+
         if let Some(mut func_type) = operand_concrete_type.as_func_type().cloned() {
             if let Some(vis) = &func_type.vis_opt {
                 if vis.is_private() && func_type.def_module_id != Some(self.module_id) {
@@ -1547,11 +1549,14 @@ impl<'a> AnalysisContext<'a> {
         let method_name = method_call.method_name.clone();
         let loc = method_call.loc.clone();
 
-        method_call.operand.concrete_type =
-            match self.analyze_typed_expr_type(scope_id_opt, &mut method_call.operand, expected_type.clone()) {
-                Some(concrete_type) => Some(concrete_type),
-                None => return None,
-            };
+        method_call.operand.concrete_type = match self.analyze_typed_expr_type_non_terminal(
+            scope_id_opt,
+            &mut method_call.operand,
+            expected_type.clone(),
+        ) {
+            Some(concrete_type) => Some(concrete_type),
+            None => return None,
+        };
 
         if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
             method_call.operand.concrete_type
@@ -1603,7 +1608,11 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
                 _ => {
-                    match self.analyze_typed_expr_type(scope_id_opt, &mut method_call.operand, expected_type.clone()) {
+                    match self.analyze_typed_expr_type_non_terminal(
+                        scope_id_opt,
+                        &mut method_call.operand,
+                        expected_type.clone(),
+                    ) {
                         Some(concrete_type) => concrete_type,
                         None => return None,
                     }

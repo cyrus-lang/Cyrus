@@ -140,7 +140,7 @@ fn prepare_compilation(
     )
 }
 
-pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>) {
+pub(crate) fn command_run(mut options: CodeGenOptions, file_path: Option<String>, program_args: Vec<String>) {
     let (opts, file_path, final_build_dir, program_trees, resolver_rc, monomorph_registry) =
         prepare_compilation(&mut options, file_path);
 
