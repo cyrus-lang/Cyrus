@@ -1,5 +1,8 @@
 use colorized::{Color, Colors};
-use console::user_attended;
+
+fn user_attended() -> bool {
+    console::user_attended() && crate::ANSI.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 pub fn tui_compiled(file_name: String) {
     if user_attended() {

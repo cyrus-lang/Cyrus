@@ -134,6 +134,20 @@ struct CompilerOptions {
     help = "Set the code model for code generation."
     )]
     code_model: CodeModel,
+
+    #[clap(
+        long,
+        value_enum,
+        default_value_t = Ansi::On,
+        help = "Controls whether ANSI color codes are used in terminal output. Possible values: on, off. Default: on."
+    )]
+    ansi: Ansi,
+}
+
+#[derive(Deserialize, Debug, Clone, ValueEnum)]
+pub enum Ansi {
+    On,
+    Off,
 }
 
 #[derive(Deserialize, Debug, Clone, ValueEnum)]
@@ -213,6 +227,11 @@ impl Sanitizer {
 
 impl CompilerOptions {
     pub fn to_compiler_options(&self) -> CodeGenOptions {
+
+        if matches!(self.ansi, Ansi::Off) {
+            utils::ANSI.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+        
         CodeGenOptions {
             sanitizer: self.sanitizer.iter().map(|s| s.to_compiler_sanitizer()).collect(),
             linker_flags: self.linkerflags.clone(),
