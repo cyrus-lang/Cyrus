@@ -183,8 +183,7 @@ impl<'a> CodeGenBuilder<'a> {
             if func_name == "main" || use_func_real_name {
                 func_name
             } else {
-                let module_name = self.get_module_name(module_id.unwrap());
-                make_func_abi_name(module_name, func_name, vis)
+                make_func_abi_name(&self.get_module_name(module_id.unwrap()), &func_name, vis)
             }
         };
 

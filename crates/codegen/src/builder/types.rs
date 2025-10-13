@@ -1,15 +1,17 @@
 use super::module::CodeGenBuilder;
 use crate::builder::{
+    abi::generate_struct_abi_name,
     module::LocalIRValue,
     values::{InternalValue, InternalValueKind},
 };
 use inkwell::{
     AddressSpace,
-    types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType},
+    types::{AnyTypeEnum, BasicType, BasicTypeEnum, PointerType, StructType},
     values::{AnyValue, AnyValueEnum},
 };
 use resolver::{
     scope::{LocalOrGlobalSymbol, LocalScopeRef, LocalSymbolKind, SymbolEntryKind},
+    signatures::StructSig,
     typed_func_type_from_func_sig,
 };
 use typed_ast::{
@@ -96,53 +98,22 @@ impl<'a> CodeGenBuilder<'a> {
         InternalValue::new(target_type, InternalValueKind::RValue(any_value.try_into().unwrap()))
     }
 
-    fn build_concrete_type_declare_fresh(&mut self, local_or_global_symbol: LocalOrGlobalSymbol) -> LocalIRValue<'a> {
-        match &local_or_global_symbol {
-            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
-                LocalSymbolKind::Struct(resolved_struct) => {
-                    let struct_type =
-                        self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig);
+    pub(crate) fn build_struct_only_type(&mut self, struct_sig: &StructSig) -> StructType<'a> {
+        let llvm_struct_name = generate_struct_abi_name(&self.get_module_name(self.module_id), &struct_sig.name);
+        let struct_type = self
+            .llvmctx
+            .get_struct_type(&llvm_struct_name)
+            .or_else(|| Some(self.llvmctx.opaque_struct_type(&llvm_struct_name)))
+            .unwrap();
 
-                    LocalIRValue::Struct(struct_type)
-                }
-                LocalSymbolKind::Enum(_resolved_enum) => todo!(),
-                _ => {
-                    unreachable!()
-                }
-            },
-            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
-                SymbolEntryKind::Typedef(..) => {
-                    unreachable!()
-                }
-                SymbolEntryKind::Func(..) | SymbolEntryKind::Interface(..) => {
-                    unreachable!()
-                }
-                SymbolEntryKind::Method(resolved_method) => {
-                    let fn_value =
-                        self.get_or_declare_func(resolved_method.symbol_id, resolved_method.func_sig.clone());
-                    LocalIRValue::Func(
-                        fn_value,
-                        ConcreteType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
-                    )
-                }
-                SymbolEntryKind::GlobalVar(resolved_global_var) => {
-                    let global_value = self.get_or_declare_global_var(resolved_global_var.global_var_sig.clone());
-                    LocalIRValue::GlobalValue(global_value, resolved_global_var.global_var_sig.ty.clone().unwrap())
-                }
-                SymbolEntryKind::Struct(resolved_struct) => {
-                    let struct_type =
-                        self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig);
+        let field_types: Vec<BasicTypeEnum<'a>> = struct_sig
+            .fields
+            .iter()
+            .map(|field| self.build_concrete_type(None, field.ty.clone()).try_into().unwrap())
+            .collect();
 
-                    LocalIRValue::Struct(struct_type)
-                }
-                SymbolEntryKind::Enum(resolved_enum) => {
-                    LocalIRValue::Struct(self.get_or_declare_enum(resolved_enum.symbol_id, &resolved_enum.enum_sig))
-                }
-                SymbolEntryKind::Union(resolved_union) => {
-                    LocalIRValue::Struct(self.get_or_declare_union(resolved_union.symbol_id, &resolved_union.union_sig))
-                }
-            },
-        }
+        struct_type.set_body(&field_types, struct_sig.packed);
+        struct_type
     }
 
     pub(crate) fn build_concrete_type_from_symbol_id(
@@ -297,17 +268,9 @@ impl<'a> CodeGenBuilder<'a> {
 
     pub(crate) fn get_tuple_type_from_tuple_value(&self, tuple_value: &TypedTupleValue) -> TypedTupleType {
         TypedTupleType {
-            type_list: self.get_elements_type_from_tuple_value(tuple_value),
+            type_list: get_elements_type_from_tuple_value(tuple_value),
             loc: tuple_value.loc.clone(),
         }
-    }
-
-    fn get_elements_type_from_tuple_value(&self, tuple_value: &TypedTupleValue) -> Vec<ConcreteType> {
-        tuple_value
-            .expr_list
-            .iter()
-            .map(|expr| expr.concrete_type.clone().unwrap())
-            .collect()
     }
 
     pub(crate) fn build_tuple_type(
@@ -376,4 +339,61 @@ impl<'a> CodeGenBuilder<'a> {
             BasicConcreteType::Void => AnyTypeEnum::VoidType(self.llvmctx.void_type()),
         }
     }
+
+    fn build_concrete_type_declare_fresh(&mut self, local_or_global_symbol: LocalOrGlobalSymbol) -> LocalIRValue<'a> {
+        match &local_or_global_symbol {
+            LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match &local_symbol.kind {
+                LocalSymbolKind::Struct(resolved_struct) => {
+                    let struct_type =
+                        self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig);
+
+                    LocalIRValue::Struct(struct_type)
+                }
+                LocalSymbolKind::Enum(_resolved_enum) => todo!(),
+                _ => {
+                    unreachable!()
+                }
+            },
+            LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match &symbol_entry.kind {
+                SymbolEntryKind::Typedef(..) => {
+                    unreachable!()
+                }
+                SymbolEntryKind::Func(..) | SymbolEntryKind::Interface(..) => {
+                    unreachable!()
+                }
+                SymbolEntryKind::Method(resolved_method) => {
+                    let fn_value =
+                        self.get_or_declare_func(resolved_method.symbol_id, resolved_method.func_sig.clone());
+                    LocalIRValue::Func(
+                        fn_value,
+                        ConcreteType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
+                    )
+                }
+                SymbolEntryKind::GlobalVar(resolved_global_var) => {
+                    let global_value = self.get_or_declare_global_var(resolved_global_var.global_var_sig.clone());
+                    LocalIRValue::GlobalValue(global_value, resolved_global_var.global_var_sig.ty.clone().unwrap())
+                }
+                SymbolEntryKind::Struct(resolved_struct) => {
+                    let struct_type =
+                        self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig);
+
+                    LocalIRValue::Struct(struct_type)
+                }
+                SymbolEntryKind::Enum(resolved_enum) => {
+                    LocalIRValue::Struct(self.get_or_declare_enum(resolved_enum.symbol_id, &resolved_enum.enum_sig))
+                }
+                SymbolEntryKind::Union(resolved_union) => {
+                    LocalIRValue::Struct(self.get_or_declare_union(resolved_union.symbol_id, &resolved_union.union_sig))
+                }
+            },
+        }
+    }
+}
+
+fn get_elements_type_from_tuple_value(tuple_value: &TypedTupleValue) -> Vec<ConcreteType> {
+    tuple_value
+        .expr_list
+        .iter()
+        .map(|expr| expr.concrete_type.clone().unwrap())
+        .collect()
 }

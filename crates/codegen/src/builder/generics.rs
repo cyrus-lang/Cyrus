@@ -1,8 +1,11 @@
-use crate::builder::module::{CodeGenBuilder, LocalIRValue};
-use inkwell::types::{AnyTypeEnum, StructType};
+use crate::builder::{
+    abi::generate_monomorphic_struct_abi_name,
+    module::{CodeGenBuilder, LocalIRValue},
+};
+use inkwell::types::{AnyTypeEnum, BasicTypeEnum, StructType};
 use resolver::{scope::LocalScopeRef, signatures::StructSig};
 use static_analyzer::{
-    monomorph::{MonomorphKey, NormalizedTypeArgs},
+    monomorph::{MonomorphID, MonomorphKey, NormalizedTypeArgs},
     with_monomorph_registry,
 };
 use std::collections::HashMap;
@@ -66,13 +69,14 @@ impl<'a> CodeGenBuilder<'a> {
             let substituted_struct_sig =
                 self.substitute_struct_sig_generic_params(resolved_struct.struct_sig.clone(), &key.normalized_args);
 
-            match self
+            let struct_type_opt = self
                 .get_ir_value(monomorph_id)
-                .and_then(|local_ir_value| local_ir_value.as_struct().cloned())
-            {
+                .and_then(|local_ir_value| local_ir_value.as_struct().cloned());
+
+            match struct_type_opt {
                 Some(struct_type) => struct_type,
                 None => {
-                    let struct_type = self.build_struct_only_type(&substituted_struct_sig);
+                    let struct_type = self.build_monomorphic_struct_type(&substituted_struct_sig, monomorph_id);
                     self.insert_ir_value(monomorph_id, LocalIRValue::Struct(struct_type));
                     struct_type
                 }
@@ -80,6 +84,29 @@ impl<'a> CodeGenBuilder<'a> {
         } else {
             self.get_or_declare_struct(symbol_id, &resolved_struct.struct_sig)
         }
+    }
+
+    pub(crate) fn build_monomorphic_struct_type(
+        &mut self,
+        struct_sig: &StructSig,
+        monomorph_id: MonomorphID,
+    ) -> StructType<'a> {
+        let llvm_struct_name =
+            generate_monomorphic_struct_abi_name(&self.get_module_name(self.module_id), &struct_sig.name, monomorph_id);
+        let monomorphic_struct_type = self
+            .llvmctx
+            .get_struct_type(&llvm_struct_name)
+            .or_else(|| Some(self.llvmctx.opaque_struct_type(&llvm_struct_name)))
+            .unwrap();
+
+        let field_types: Vec<BasicTypeEnum<'a>> = struct_sig
+            .fields
+            .iter()
+            .map(|field| self.build_concrete_type(None, field.ty.clone()).try_into().unwrap())
+            .collect();
+
+        monomorphic_struct_type.set_body(&field_types, struct_sig.packed);
+        monomorphic_struct_type
     }
 
     pub(crate) fn substitute_struct_sig_generic_params(

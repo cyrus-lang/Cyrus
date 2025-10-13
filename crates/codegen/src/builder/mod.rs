@@ -11,3 +11,5 @@ mod abi;
 mod forward_decls;
 mod dibuilder;
 mod generics;
+mod irreg;
+mod controlflow;

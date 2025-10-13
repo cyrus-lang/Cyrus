@@ -17,8 +17,11 @@ impl<'a> CodeGenBuilder<'a> {
             .build_concrete_type(None, global_var_sig.ty.unwrap())
             .try_into()
             .unwrap();
-        let module_name = self.get_module_name(global_var_sig.module_id);
-        let abi_name = make_global_var_abi_name(module_name, global_var_sig.name, global_var_sig.vis.clone());
+        let abi_name = make_global_var_abi_name(
+            &self.get_module_name(global_var_sig.module_id),
+            &global_var_sig.name,
+            &global_var_sig.vis,
+        );
 
         let llvmmodule = self.llvmmodule.borrow_mut();
         let global_value = match llvmmodule.get_global(&abi_name) {
@@ -48,8 +51,11 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         let global_var_type: BasicTypeEnum<'a> = global_var_type.unwrap().try_into().unwrap();
-        let module_name = self.get_module_name(global_var.module_id);
-        let abi_name = make_global_var_abi_name(module_name, global_var.name.clone(), global_var.vis.clone());
+        let abi_name = make_global_var_abi_name(
+            &self.get_module_name(global_var.module_id),
+            &global_var.name,
+            &global_var.vis,
+        );
 
         let llvmmodule = self.llvmmodule.borrow();
         let global_var_value = llvmmodule.add_global(global_var_type, None, &abi_name);

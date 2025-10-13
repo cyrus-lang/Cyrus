@@ -3297,6 +3297,41 @@ pub fn typed_func_type_from_func_sig(func_sig: &FuncSig) -> TypedFuncType {
     }
 }
 
+pub fn typed_struct_as_struct_sig(typed_struct: &TypedStruct) -> StructSig {
+    StructSig {
+        name: typed_struct.name.clone(),
+        fields: typed_struct.fields.clone(),
+        impls: typed_struct.impls.clone(),
+        methods: typed_struct.methods.clone(),
+        generic_params: typed_struct.generic_params.clone(),
+        packed: typed_struct.packed,
+        vis: typed_struct.vis.clone(),
+        loc: typed_struct.loc.clone(),
+    }
+}
+
+pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnum) -> EnumSig {
+    EnumSig {
+        symbol_id: typed_enum.symbol_id,
+        name: typed_enum.name.clone(),
+        methods: typed_enum.methods.clone(),
+        variants: typed_enum.variants.clone(),
+        vis: typed_enum.vis.clone(),
+        loc: typed_enum.loc.clone(),
+    }
+}
+
+pub fn typed_union_as_union_sig(typed_union: &TypedUnion) -> UnionSig {
+    UnionSig {
+        symbol_id: typed_union.symbol_id,
+        name: typed_union.name.clone(),
+        fields: typed_union.fields.clone(),
+        methods: typed_union.methods.clone(),
+        vis: typed_union.vis.clone(),
+        loc: typed_union.loc.clone(),
+    }
+}
+
 fn make_method_resolve_name(struct_symbol_id: SymbolID, method_name: String) -> String {
     format!("{}{}", struct_symbol_id, method_name)
 }

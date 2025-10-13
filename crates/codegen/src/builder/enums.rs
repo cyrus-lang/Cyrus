@@ -1,5 +1,5 @@
 use crate::builder::{
-    abi::generate_enum_variant_abi_name,
+    abi::{generate_enum_abi_name, generate_enum_variant_abi_name},
     module::{CodeGenBuilder, LocalIRValue},
     values::{InternalValue, InternalValueKind},
 };
@@ -11,8 +11,8 @@ use inkwell::{
     values::{ArrayValue, BasicValue, BasicValueEnum, IntValue, StructValue},
 };
 use resolver::{
-    signatures::EnumSig,
     scope::{LocalScopeRef, ResolvedEnum},
+    signatures::EnumSig,
 };
 use typed_ast::{
     TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue,
@@ -415,9 +415,9 @@ impl<'a> CodeGenBuilder<'a> {
             TypedEnumVariant::Identifier(..) => {}
             TypedEnumVariant::Valued(identifier, typed_expr) => {
                 let abi_name = generate_enum_variant_abi_name(
-                    self.get_module_name(resolved_enum.module_id),
-                    resolved_enum.enum_sig.name.clone(),
-                    identifier.as_string(),
+                    &self.get_module_name(resolved_enum.module_id),
+                    &resolved_enum.enum_sig.name,
+                    &identifier.as_string(),
                 );
 
                 let module = self.llvmmodule.borrow();
@@ -450,7 +450,8 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn build_enum_struct_type(&mut self, enum_sig: &EnumSig) -> (StructType<'a>, ArrayType<'a>) {
-        let enum_opaque_struct = self.llvmctx.opaque_struct_type(&enum_sig.name);
+        let llvm_struct_name = generate_enum_abi_name(&self.get_module_name(self.module_id), &enum_sig.name);
+        let enum_opaque_struct = self.llvmctx.opaque_struct_type(&llvm_struct_name);
 
         let mut payload_size = 0;
 
@@ -518,9 +519,9 @@ impl<'a> CodeGenBuilder<'a> {
                     basic_rvalue.get_type(),
                     None,
                     &generate_enum_variant_abi_name(
-                        self.get_module_name(self.module_id),
-                        enum_name.clone(),
-                        identifier.name.clone(),
+                        &self.get_module_name(self.module_id),
+                        &enum_name,
+                        &identifier.name,
                     ),
                 );
                 global_value.set_linkage(Linkage::External);
