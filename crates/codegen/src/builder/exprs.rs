@@ -13,7 +13,7 @@ use ast::{
 use inkwell::{
     AddressSpace, FloatPredicate, IntPredicate,
     debug_info::AsDIScope,
-    types::{BasicMetadataTypeEnum, BasicTypeEnum},
+    types::{BasicMetadataTypeEnum, BasicTypeEnum, StructType},
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue},
 };
 use resolver::{
@@ -57,9 +57,7 @@ impl<'a> CodeGenBuilder<'a> {
                 self.build_struct_init(local_scope_opt, typed_struct_init)
             }
             TypedExpressionKind::FuncCall(typed_func_call) => self.build_func_call(local_scope_opt, typed_func_call),
-            TypedExpressionKind::FieldAccess(typed_field_access) => {
-                self.build_field_access(local_scope_opt, typed_field_access)
-            }
+            TypedExpressionKind::FieldAccess(field_access) => self.build_field_access(local_scope_opt, field_access),
             TypedExpressionKind::ArrayIndex(typed_array_index) => {
                 self.build_array_index(local_scope_opt, typed_array_index)
             }
@@ -395,13 +393,13 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_union_field_access(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        typed_field_access: &TypedFieldAccess,
+        field_access: &TypedFieldAccess,
     ) -> InternalValue<'a> {
         let lvalue_pointer = self
-            .build_expr(local_scope_opt.clone(), &typed_field_access.operand)
+            .build_expr(local_scope_opt.clone(), &field_access.operand)
             .as_basic_value()
             .into_pointer_value();
-        let field_type = typed_field_access.field_ty.clone().unwrap();
+        let field_type = field_access.field_ty.clone().unwrap();
 
         InternalValue::new(field_type.clone(), InternalValueKind::LValue(lvalue_pointer))
     }
@@ -409,9 +407,9 @@ impl<'a> CodeGenBuilder<'a> {
     fn build_field_access(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        typed_field_access: &TypedFieldAccess,
+        field_access: &TypedFieldAccess,
     ) -> InternalValue<'a> {
-        let mut lvalue = match &typed_field_access.operand.kind {
+        let mut lvalue = match &field_access.operand.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => {
                 let local_or_global_symbol = self
                     .resolver
@@ -422,81 +420,60 @@ impl<'a> CodeGenBuilder<'a> {
                     return self.build_construct_enum_variant_no_field(
                         local_scope_opt,
                         resolved_enum,
-                        typed_field_access.field_name.clone(),
+                        field_access.field_name.clone(),
                     );
                 } else {
                     self.build_lvalue_with_symbol_id(local_scope_opt.clone(), *symbol_id)
                 }
             }
-            _ => self.build_expr(local_scope_opt.clone(), &typed_field_access.operand),
+            _ => self.build_expr(local_scope_opt.clone(), &field_access.operand),
         };
 
-        let operand_concrete_type = typed_field_access.operand.concrete_type.clone().unwrap();
+        let operand_ty = field_access.operand.concrete_type.clone().unwrap();
 
-        if operand_concrete_type.is_pointer() && typed_field_access.is_fat_arrow {
+        if operand_ty.is_pointer() && field_access.is_fat_arrow {
             lvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
         }
 
         let lvalue_pointer = lvalue.as_basic_value().into_pointer_value();
 
-        let struct_type = match typed_field_access.object_symbol_id {
-            Some(object_symbol_id) => {
-                let local_or_global_symbol = self
-                    .resolver
-                    .resolve_local_or_global_symbol(local_scope_opt.clone(), object_symbol_id)
-                    .unwrap();
+        if let Some(symbol_id) = field_access.object_symbol_id {
+            let local_or_global_symbol = self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
+                .unwrap();
 
+            if let Some(..) = local_or_global_symbol.as_union() {
                 // handle union field access
-                if let Some(..) = local_or_global_symbol.as_union() {
-                    return self.build_union_field_access(local_scope_opt.clone(), typed_field_access);
-                }
-
-                // handle struct field access
-                let resolved_struct = match &local_or_global_symbol {
-                    LocalOrGlobalSymbol::LocalSymbol(local_symbol) => match local_symbol.as_struct() {
-                        Some(resolved_struct) => resolved_struct,
-                        None => {
-                            let _resolved_enum = local_symbol.as_enum().unwrap();
-                            todo!();
-                        }
-                    },
-                    LocalOrGlobalSymbol::GlobalSymbol(symbol_entry) => match symbol_entry.as_struct() {
-                        Some(resolved_struct) => resolved_struct,
-                        None => {
-                            let _resolved_enum = symbol_entry.as_enum().unwrap();
-                            todo!();
-                        }
-                    },
-                };
-
-                let struct_type = self.get_or_declare_struct(
-                    typed_field_access.object_symbol_id.unwrap(),
-                    &resolved_struct.struct_sig,
-                );
-
-                struct_type
+                return self.build_union_field_access(local_scope_opt.clone(), field_access);
             }
-            None => {
-                // handle unnamed struct field access
-                let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
-                self.build_concrete_type(local_scope_opt, rvalue.value_type)
-                    .try_into()
-                    .unwrap()
-            }
-        };
+        }
+
+        let pointee_struct_ty: StructType<'a>;
+        if field_access.object_symbol_id.is_none() {
+            // handle unnamed struct field access
+            let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+            pointee_struct_ty = self
+                .build_concrete_type(local_scope_opt, rvalue.value_type)
+                .try_into()
+                .unwrap();
+        } else {
+            let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
+            pointee_struct_ty = rvalue.as_basic_value().get_type().into_struct_type();
+        }
 
         let extracted_value = self
             .llvmbuilder
             .build_struct_gep(
-                struct_type,
+                pointee_struct_ty,
                 lvalue_pointer,
-                typed_field_access.field_index.unwrap().try_into().unwrap(),
+                field_access.field_index.unwrap().try_into().unwrap(),
                 "struct_gep",
             )
             .unwrap();
 
         InternalValue::new(
-            typed_field_access.field_ty.clone().unwrap(),
+            field_access.field_ty.clone().unwrap(),
             InternalValueKind::LValue(extracted_value),
         )
     }

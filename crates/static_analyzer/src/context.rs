@@ -487,20 +487,20 @@ impl<'a> AnalysisContext<'a> {
             return FlowState::Reachable;
         }
 
-        let operand_concrete_type = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_switch.operand, None) {
+        let operand_ty = match self.analyze_typed_expr_type(scope_id_opt, &mut typed_switch.operand, None) {
             Some(concrete_type) => concrete_type,
             None => return FlowState::Reachable,
         };
 
         // If operand is an enum → delegate to specialized analyzer
         if matches!(
-            operand_concrete_type,
+            operand_ty,
             ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..))
         ) {
             return self.analyze_switch_on_enum(
                 scope_id_opt,
                 typed_switch,
-                operand_concrete_type.as_enum_symbol_id().unwrap(),
+                operand_ty.as_enum_symbol_id().unwrap(),
             );
         }
 
@@ -517,11 +517,11 @@ impl<'a> AnalysisContext<'a> {
                     if !self.check_type_mismatch(
                         scope_id_opt,
                         pattern_concrete_type.clone(),
-                        operand_concrete_type.clone(),
+                        operand_ty.clone(),
                         typed_switch.loc.clone(),
                     ) {
                         let operand_type =
-                            format_concrete_type(operand_concrete_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                            format_concrete_type(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
                         let pattern_type =
                             format_concrete_type(pattern_concrete_type, &(self.symbol_formatter)(scope_id_opt));
 
@@ -539,7 +539,7 @@ impl<'a> AnalysisContext<'a> {
                 }
                 TypedSwitchCasePattern::Identifier(..) | TypedSwitchCasePattern::EnumVariant(..) => {
                     let expr_type =
-                        format_concrete_type(operand_concrete_type.clone(), &(self.symbol_formatter)(scope_id_opt));
+                        format_concrete_type(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,

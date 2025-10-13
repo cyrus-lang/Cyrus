@@ -163,16 +163,16 @@ pub fn format_typed_expr<'a>(
                 format_typed_exprs(&typed_func_call.args, format_symbol)
             )
         }
-        TypedExpressionKind::FieldAccess(typed_field_access) => {
+        TypedExpressionKind::FieldAccess(field_access) => {
             let mut fmt = String::new();
-            let operand_fmt = &format_typed_expr(&typed_field_access.operand, format_symbol);
+            let operand_fmt = &format_typed_expr(&field_access.operand, format_symbol);
             fmt.push_str(operand_fmt);
-            if typed_field_access.is_fat_arrow {
+            if field_access.is_fat_arrow {
                 fmt.push_str("->");
             } else {
                 fmt.push_str(".");
             }
-            fmt.push_str(&typed_field_access.field_name);
+            fmt.push_str(&field_access.field_name);
             fmt
         }
         TypedExpressionKind::TupleMemberAccess(tuple_member_access) => {

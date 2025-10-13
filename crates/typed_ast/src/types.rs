@@ -96,6 +96,13 @@ impl ResolvedSymbol {
 }
 
 impl ConcreteType {
+    pub fn as_generic_type(&self) -> Option<&GenericType> {
+        match self {
+            ConcreteType::GenericType(generic_type) => Some(generic_type),
+            _ => None,
+        }
+    }
+
     pub fn is_integer(&self) -> bool {
         match self.get_const_inner() {
             ConcreteType::BasicType(basic) => basic.is_integer(),
@@ -113,7 +120,10 @@ impl ConcreteType {
     }
 
     pub fn is_enum(&self) -> bool {
-        matches!(self.get_const_inner(), ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..)))
+        matches!(
+            self.get_const_inner(),
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..))
+        )
     }
 
     pub fn is_bool(&self) -> bool {

@@ -1,11 +1,12 @@
 use crate::{context::AnalysisContext, with_monomorph_registry};
 use ast::Identifier;
-use resolver::scope::ResolvedStruct;
+use partialmatch::partial_match;
+use resolver::signatures::StructSig;
 use std::collections::HashMap;
 use typed_ast::{
-    TypedFuncTypeParams, TypedGenericParamsList, TypedTypeArg, TypedTypeArgs,
+    SymbolID, TypedFieldAccess, TypedFuncTypeParams, TypedGenericParamsList, TypedTypeArg, TypedTypeArgs,
     types::{
-        ConcreteType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
+        ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
     },
 };
@@ -16,12 +17,42 @@ pub(crate) struct GenericMappingCtx {
 }
 
 impl<'a> AnalysisContext<'a> {
+    pub(crate) fn substitute_field_access_type(
+        &self,
+        field_access: &mut TypedFieldAccess,
+        struct_sig: &StructSig,
+        generic_type_opt: Option<&GenericType>,
+    ) {
+        partial_match!((generic_type_opt, field_access.operand.concrete_type.clone()), {
+            (Some(generic_type), Some(operand_ty)) => {
+                let mapping_ctx = self.get_generic_mapping_ctx(&struct_sig.generic_params, &Some(generic_type.type_args.clone()));
+                field_access.operand.concrete_type = Some(self.substitute_type(operand_ty, &mapping_ctx));
+            }
+        })
+    }
+
+    pub(crate) fn substitute_struct_type_args(
+        &mut self,
+        struct_sig: &mut StructSig,
+        generic_type_opt: Option<&GenericType>,
+    ) {
+        partial_match!(generic_type_opt, {
+            Some(generic_type) => {
+                let mapping_ctx = self.get_generic_mapping_ctx(&struct_sig.generic_params, &Some(generic_type.type_args.clone()));
+                struct_sig.fields.iter_mut().for_each(|field| {
+                    field.ty = self.substitute_type(field.ty.clone(), &mapping_ctx);
+                });
+            }
+        })
+    }
+
     pub(crate) fn normalize_type_args_and_register(
         &mut self,
-        resolved_struct: &ResolvedStruct,
+        symbol_id: SymbolID,
+        generic_params: &Option<TypedGenericParamsList>,
         generic_mapping_ctx: &GenericMappingCtx,
     ) {
-        if let Some(generic_params) = &resolved_struct.struct_sig.generic_params {
+        if let Some(generic_params) = &generic_params {
             // normalize type arguments using current mapping
             let normalized_type_args: Vec<ConcreteType> = generic_params
                 .iter()
@@ -31,13 +62,13 @@ impl<'a> AnalysisContext<'a> {
                         .get(&param.param_name)
                         .cloned()
                         .unwrap_or_else(|| {
-                            panic!("Generic param '{}' not found in mapping", param.param_name.as_string())
+                            panic!("Generic param '{}' not found in mapping.", param.param_name.as_string())
                         })
                 })
                 .collect();
 
             with_monomorph_registry!(self, registry, {
-                registry.register(resolved_struct.symbol_id, normalized_type_args.clone());
+                registry.register(symbol_id, normalized_type_args.clone());
             });
         }
     }
@@ -120,11 +151,11 @@ impl<'a> AnalysisContext<'a> {
         type_args_opt: &Option<TypedTypeArgs>,
     ) -> GenericMappingCtx {
         if generic_params_opt.is_some() && type_args_opt.is_none() {
-            panic!("Generic parameters provided but type arguments missing");
+            panic!("Generic parameters provided but type arguments missing"); // FIXME Change to AnalyzerDiagKind
         }
 
         if generic_params_opt.is_none() && type_args_opt.is_some() {
-            panic!("Type arguments provided but generic parameters missing");
+            panic!("Type arguments provided but generic parameters missing"); // FIXME Change to AnalyzerDiagKind
         }
 
         if let (Some(generic_params), Some(type_args)) = (generic_params_opt, type_args_opt) {
@@ -133,7 +164,7 @@ impl<'a> AnalysisContext<'a> {
                     "Generic parameters count ({}) does not match type arguments count ({})",
                     generic_params.len(),
                     type_args.len()
-                );
+                ); // FIXME Change to AnalyzerDiagKind
             }
 
             let mapping = generic_params
