@@ -1,6 +1,4 @@
-use crate::{
-    context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, with_monomorph_registry,
-};
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope};
 use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use partialmatch::partial_match;
@@ -904,7 +902,7 @@ impl<'a> AnalysisContext<'a> {
             .as_struct()
             .map(|resolved_struct| {
                 let mut struct_sig = resolved_struct.struct_sig.clone();
-                self.substitute_struct_type_args(&mut struct_sig, generic_type_opt);
+                self.substitute_struct_type_args(&mut struct_sig, generic_type_opt, field_access.loc.clone());
                 self.substitute_field_access_type(field_access, &struct_sig, generic_type_opt);
 
                 self.analyze_struct_field_access_type(
@@ -1146,9 +1144,7 @@ impl<'a> AnalysisContext<'a> {
                     &generic_mapping_ctx,
                 ) {
                     struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
-                } else {
-                    panic!("explicit type args required")
-                };
+                }
             }
         });
 

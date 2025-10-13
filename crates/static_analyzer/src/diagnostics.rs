@@ -230,11 +230,22 @@ pub enum AnalyzerDiagKind {
     MissingEntryPoint,
     ConstVariableMustBeInitialized,
     InvalidUsageOfTheConcreteType,
+    GenericArityMismatch {
+        expected: usize, 
+        provided: usize
+    },
+    UnexpectedTypeArgs,
 }
 
 impl fmt::Display for AnalyzerDiagKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            AnalyzerDiagKind::UnexpectedTypeArgs => {
+                write!(f, "Type arguments supplied to a non-generic type.")
+            }
+            AnalyzerDiagKind::GenericArityMismatch { expected, provided } => {
+                write!(f, "Generic arity mismatch because this type expects {} generic parameters but {} arguments were supplied.", expected, provided)
+            }
             AnalyzerDiagKind::UnknownSymbol { symbol_name } => {
                 write!(f, "Unknown symbol '{}'.", symbol_name)
             }

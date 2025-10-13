@@ -463,7 +463,7 @@ impl Parser {
     }
 
     fn parse_bounds(&mut self) -> Result<Vec<Bound>, ParserError> {
-        self.next_token();
+        self.expect_current(TokenKind::Colon)?;
 
         let mut list: Vec<Bound> = Vec::new();
 
@@ -490,17 +490,20 @@ impl Parser {
 
     fn parse_generic_param(&mut self) -> Result<GenericParam, ParserError> {
         let param_name = self.parse_identifier()?;
+        self.next_token();
 
         let bounds = if self.current_token_is(TokenKind::Colon) {
-            self.next_token();
+            self.next_token(); // consume identifier
             Some(self.parse_bounds()?)
         } else {
             None
         };
 
         let default = if self.current_token_is(TokenKind::Assign) {
-            self.next_token(); // consume '='
-            Some(self.parse_type_specifier()?)
+            self.next_token(); // consume assign
+            let type_specifier = self.parse_type_specifier()?;
+            self.next_token();
+            Some(type_specifier)
         } else {
             None
         };
@@ -529,9 +532,7 @@ impl Parser {
             }
         }
 
-        self.expect_peek(TokenKind::GreaterThan)?;
-        self.next_token();
-
+        self.expect_current(TokenKind::GreaterThan)?;
         Ok(generic_params)
     }
 

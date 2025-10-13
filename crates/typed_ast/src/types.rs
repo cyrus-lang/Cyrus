@@ -209,7 +209,6 @@ impl ConcreteType {
 
     pub fn get_const_inner(&self) -> &ConcreteType {
         match self {
-            ConcreteType::UnresolvedSymbol(_) => unreachable!(),
             ConcreteType::Const(concrete_type) => concrete_type,
             concrete_type @ _ => concrete_type,
         }

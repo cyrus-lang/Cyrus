@@ -1,5 +1,6 @@
-use crate::{context::AnalysisContext, with_monomorph_registry};
-use ast::Identifier;
+use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomorph_registry};
+use ast::source_loc::SourceLoc;
+use diagcentral::{Diag, DiagLevel, DiagLoc};
 use partialmatch::partial_match;
 use resolver::signatures::StructSig;
 use std::collections::HashMap;
@@ -18,14 +19,14 @@ pub(crate) struct GenericMappingCtx {
 
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn substitute_field_access_type(
-        &self,
+        &mut self,
         field_access: &mut TypedFieldAccess,
         struct_sig: &StructSig,
         generic_type_opt: Option<&GenericType>,
     ) {
         partial_match!((generic_type_opt, field_access.operand.concrete_type.clone()), {
             (Some(generic_type), Some(operand_ty)) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(&struct_sig.generic_params, &Some(generic_type.type_args.clone()));
+                let mapping_ctx = self.get_generic_mapping_ctx(&struct_sig.generic_params, &Some(generic_type.type_args.clone()), field_access.loc.clone());
                 field_access.operand.concrete_type = self.substitute_type(operand_ty, &mapping_ctx);
             }
         })
@@ -35,10 +36,11 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         struct_sig: &mut StructSig,
         generic_type_opt: Option<&GenericType>,
+        loc: SourceLoc,
     ) {
         partial_match!(generic_type_opt, {
             Some(generic_type) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(&struct_sig.generic_params, &Some(generic_type.type_args.clone()));
+                let mapping_ctx = self.get_generic_mapping_ctx(&struct_sig.generic_params, &Some(generic_type.type_args.clone()), loc);
                 struct_sig.fields.iter_mut().for_each(|field| {
                     if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx){
                         field.ty = concrete_type;
@@ -186,20 +188,25 @@ impl<'a> AnalysisContext<'a> {
     }
 
     pub(crate) fn get_generic_mapping_ctx(
-        &self,
+        &mut self,
         generic_params_opt: &Option<TypedGenericParamsList>,
         type_args_opt: &Option<TypedTypeArgs>,
+        loc: SourceLoc,
     ) -> GenericMappingCtx {
         let mut mapping = HashMap::new();
 
         if let Some(generic_params) = generic_params_opt {
             if let Some(type_args) = type_args_opt.as_ref().map(|args| args.clone()) {
                 if generic_params.len() != type_args.len() {
-                    panic!(
-                        "Generic parameters count ({}) does not match type arguments count ({})",
-                        generic_params.len(),
-                        type_args.len()
-                    ); // TODO: proper AnalyzerDiagKind
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::GenericArityMismatch {
+                            expected: generic_params.len(),
+                            provided: type_args.len(),
+                        },
+                        location: Some(DiagLoc::new(loc.clone())),
+                        hint: None,
+                    });
                 }
 
                 for (param, arg) in generic_params.iter().zip(type_args.iter()) {
@@ -211,7 +218,12 @@ impl<'a> AnalysisContext<'a> {
                 }
             }
         } else if type_args_opt.is_some() {
-            panic!("Type arguments provided but no generic parameters exist"); // TODO: proper AnalyzerDiagKind
+            self.reporter.report(Diag {
+                level: DiagLevel::Error,
+                kind: AnalyzerDiagKind::UnexpectedTypeArgs,
+                location: Some(DiagLoc::new(loc.clone())),
+                hint: Some("Remove the arguments or add generic parameters to the type.".to_string()),
+            });
         }
 
         GenericMappingCtx { mapping }
@@ -222,7 +234,7 @@ impl<'a> AnalysisContext<'a> {
 macro_rules! generic_mapping_ctx_scope {
     ($self:ident, $resolved_struct:expr, $struct_init:expr, $ctx:ident, $body:block) => {{
         let mut $ctx =
-            $self.get_generic_mapping_ctx(&$resolved_struct.struct_sig.generic_params, &$struct_init.type_args);
+            $self.get_generic_mapping_ctx(&$resolved_struct.struct_sig.generic_params, &$struct_init.type_args, $struct_init.loc.clone());
 
         $self.generic_ctx_stack.push($ctx.clone());
         $body
