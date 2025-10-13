@@ -103,6 +103,13 @@ impl ConcreteType {
         }
     }
 
+    pub fn as_generic_param(&self) -> Option<&TypedIdentifier> {
+        match self {
+            ConcreteType::GenericParam(typed_identifier) => Some(typed_identifier),
+            _ => None,
+        }
+    }
+
     pub fn is_integer(&self) -> bool {
         match self.get_const_inner() {
             ConcreteType::BasicType(basic) => basic.is_integer(),

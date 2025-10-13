@@ -1,4 +1,6 @@
-use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope};
+use crate::{
+    context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope, with_monomorph_registry,
+};
 use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use partialmatch::partial_match;
@@ -513,11 +515,7 @@ impl<'a> AnalysisContext<'a> {
         result
     }
 
-    fn validate_union_field_access(
-        &mut self,
-        operand_ty: ConcreteType,
-        field_access: &TypedFieldAccess,
-    ) -> bool {
+    fn validate_union_field_access(&mut self, operand_ty: ConcreteType, field_access: &TypedFieldAccess) -> bool {
         let mut result = true;
 
         if operand_ty.is_pointer() && !field_access.is_fat_arrow {
@@ -1053,60 +1051,84 @@ impl<'a> AnalysisContext<'a> {
 
         generic_mapping_ctx_scope!(self, resolved_struct, struct_init, generic_mapping_ctx, {
             for field_init in &mut struct_init.fields {
-                let field = resolved_struct
+                let field = match resolved_struct
                     .struct_sig
                     .fields
                     .iter()
-                    .find(|field| field.name == field_init.name);
+                    .find(|field| field.name == field_init.name)
+                {
+                    Some(field) => field,
+                    None => {
+                        let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
-                if field.is_none() {
-                    let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
-
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                            struct_name,
-                            field_name: field_init.name.clone(),
-                        },
-                        location: Some(DiagLoc::new(field_init.loc.clone())),
-                        hint: None,
-                    });
-                    continue;
-                }
-
-                let field_target_type = self.substitute_type(field.unwrap().ty.clone(), &generic_mapping_ctx);
-
-                let field_value_type = match self.analyze_typed_expr_type(
-                    scope_id_opt,
-                    &mut field_init.value,
-                    Some(field_target_type.clone()),
-                ) {
-                    Some(concrete_type) => concrete_type,
-                    None => continue,
+                        self.reporter.report(Diag {
+                            level: DiagLevel::Error,
+                            kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                                struct_name,
+                                field_name: field_init.name.clone(),
+                            },
+                            location: Some(DiagLoc::new(field_init.loc.clone())),
+                            hint: None,
+                        });
+                        continue;
+                    }
                 };
 
-                if !self.check_type_mismatch(
-                    scope_id_opt,
-                    field_value_type.clone(),
-                    field_target_type.clone(),
-                    field_init.loc.clone(),
-                ) {
-                    let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
-                    let expected_type = format_concrete_type(field_target_type, &(self.symbol_formatter)(scope_id_opt));
-                    let found_type = format_concrete_type(field_value_type, &(self.symbol_formatter)(scope_id_opt));
+                match self.substitute_type(field.ty.clone(), &generic_mapping_ctx) {
+                    Some(field_target_type) => {
+                        match self.analyze_typed_expr_type(
+                            scope_id_opt,
+                            &mut field_init.value,
+                            Some(field_target_type.clone()),
+                        ) {
+                            Some(field_value_type) => {
+                                if !self.check_type_mismatch(
+                                    scope_id_opt,
+                                    field_value_type.clone(),
+                                    field_target_type.clone(),
+                                    field_init.loc.clone(),
+                                ) {
+                                    let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
+                                    let expected_type =
+                                        format_concrete_type(field_target_type, &(self.symbol_formatter)(scope_id_opt));
+                                    let found_type =
+                                        format_concrete_type(field_value_type, &(self.symbol_formatter)(scope_id_opt));
 
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: AnalyzerDiagKind::StructFieldTypeMismatch {
-                            struct_name,
-                            field_name: field_init.name.clone(),
-                            expected_type,
-                            found_type,
-                        },
-                        location: Some(DiagLoc::new(struct_init.loc.clone())),
-                        hint: None,
-                    });
-                }
+                                    self.reporter.report(Diag {
+                                        level: DiagLevel::Error,
+                                        kind: AnalyzerDiagKind::StructFieldTypeMismatch {
+                                            struct_name,
+                                            field_name: field_init.name.clone(),
+                                            expected_type,
+                                            found_type,
+                                        },
+                                        location: Some(DiagLoc::new(struct_init.loc.clone())),
+                                        hint: None,
+                                    });
+                                    continue;
+                                }
+                                field_value_type
+                            }
+                            None => continue,
+                        }
+                    }
+                    None => match self.analyze_typed_expr_type(scope_id_opt, &mut field_init.value, None) {
+                        Some(field_value_type) => {
+                            partial_match!(field.ty.as_generic_param(), {
+                                Some(generic_param) => {
+                                    generic_mapping_ctx.insert_custom(generic_param.name.clone(), field_value_type);
+                                }
+                            });
+                            match self.substitute_type(field.ty.clone(), &generic_mapping_ctx) {
+                                Some(concrete_type) => concrete_type,
+                                None => continue,
+                            }
+                        }
+                        None => continue,
+                    },
+                };
+
+                // TODO Check for explicit type args required.
 
                 let missing_fields_idx = match missing_fields
                     .iter()
@@ -1118,11 +1140,15 @@ impl<'a> AnalysisContext<'a> {
 
                 missing_fields.remove(missing_fields_idx);
 
-                self.normalize_type_args_and_register(
+                if let Some(type_args) = self.normalize_type_args_and_register(
                     resolved_struct.symbol_id,
                     &resolved_struct.struct_sig.generic_params,
                     &generic_mapping_ctx,
-                );
+                ) {
+                    struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
+                } else {
+                    panic!("explicit type args required")
+                };
             }
         });
 
@@ -1475,8 +1501,7 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         func_call: &mut TypedFuncCall,
     ) -> Option<ConcreteType> {
-        let operand_ty =
-            self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
+        let operand_ty = self.analyze_typed_expr_type_non_terminal(scope_id_opt, &mut func_call.operand, None)?;
 
         if let Some(mut func_type) = operand_ty.as_func_type().cloned() {
             if let Some(vis) = &func_type.vis_opt {
