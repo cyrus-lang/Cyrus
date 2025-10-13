@@ -1,6 +1,7 @@
 use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, generic_mapping_ctx_scope};
 use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_loc::SourceLoc, token::TokenKind};
 use diagcentral::{Diag, DiagLevel, DiagLoc};
+use partialmatch::partial_match;
 use resolver::{
     scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, ResolvedUnion, SymbolEntryKind},
     signatures::FuncSig,
@@ -72,7 +73,7 @@ impl<'a> AnalysisContext<'a> {
         ty_opt
     }
 
-    pub(crate) fn analyze_typed_expr_type(
+    fn analyze_typed_expr_type_non_terminal(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &mut TypedExpression,
@@ -81,7 +82,7 @@ impl<'a> AnalysisContext<'a> {
         self.apply_possible_expr_lowerings(scope_id_opt, typed_expr, expected_type.clone());
 
         let concrete_type = match &mut typed_expr.kind {
-            TypedExpressionKind::Symbol(symbol_id, loc) => {
+            TypedExpressionKind::Symbol(symbol_id, ..) => {
                 let local_scope_ref_opt = {
                     if let Some(scope_id) = scope_id_opt {
                         self.resolver.get_scope_ref(self.module_id, scope_id)
@@ -93,18 +94,6 @@ impl<'a> AnalysisContext<'a> {
                 let local_or_global_symbol = self
                     .resolver
                     .resolve_local_or_global_symbol(local_scope_ref_opt, *symbol_id)?;
-
-                // if !local_or_global_symbol.is_kind_of_variable() {
-                //     let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
-
-                //     self.reporter.report(Diag {
-                //         level: DiagLevel::Error,
-                //         kind: AnalyzerDiagKind::UnknownSymbol { symbol_name },
-                //         location: Some(DiagLoc::new(loc.clone())),
-                //         hint: None,
-                //     });
-                //     return None;
-                // }
 
                 self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
             }
@@ -181,6 +170,43 @@ impl<'a> AnalysisContext<'a> {
         }
 
         normalized_type
+    }
+
+    pub(crate) fn analyze_typed_expr_type(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        typed_expr: &mut TypedExpression,
+        expected_type: Option<ConcreteType>,
+    ) -> Option<ConcreteType> {
+        partial_match!(&typed_expr.kind, {
+            TypedExpressionKind::Symbol(symbol_id, _) => {
+                let local_scope_ref_opt = {
+                    if let Some(scope_id) = scope_id_opt {
+                        self.resolver.get_scope_ref(self.module_id, scope_id)
+                    } else {
+                        None
+                    }
+                };
+
+                let local_or_global_symbol = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_ref_opt, *symbol_id)?;
+
+                if !local_or_global_symbol.is_kind_of_variable() {
+                    let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
+
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::UnknownSymbol { symbol_name },
+                        location: Some(DiagLoc::new(typed_expr.loc.clone())),
+                        hint: None,
+                    });
+                    return None;
+                }
+            }
+        });
+
+        self.analyze_typed_expr_type_non_terminal(scope_id_opt, typed_expr, expected_type)
     }
 
     pub(crate) fn check_expr_type_must_be_condition(&mut self, concrete_type: ConcreteType, loc: SourceLoc) {
