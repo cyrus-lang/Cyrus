@@ -15,8 +15,7 @@ use inkwell::{
 use resolver::{scope::LocalScopeRef, signatures::UnionSig, typed_func_type_from_func_sig, typed_struct_as_struct_sig};
 use std::collections::HashMap;
 use typed_ast::{
-    ModuleID, SymbolID, TypedBlockStatement, TypedExportTupleValues, TypedFuncVariadicParams, TypedStatement,
-    TypedUnion, types::ConcreteType,
+    ModuleID, SymbolID, TypedBlockStatement, TypedExportTupleValues, TypedFuncVariadicParams, TypedStatement, TypedStruct, TypedUnion, types::ConcreteType
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -31,11 +30,7 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::FuncDef(typed_func_def) => self.build_func_def(typed_func_def),
                 TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
                 TypedStatement::Union(typed_union) => self.build_union_def(typed_union),
-                TypedStatement::Struct(typed_struct) => {
-                    if typed_struct.generic_params.is_none() {
-                        self.get_or_declare_struct(typed_struct.symbol_id, &typed_struct_as_struct_sig(typed_struct));
-                    }
-                }
+                TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
                 TypedStatement::Interface(..) => continue,
                 TypedStatement::FuncDecl(..) => continue,
                 _ => continue,
@@ -185,6 +180,15 @@ impl<'a> CodeGenBuilder<'a> {
             TypedStatement::FuncDef(_) | TypedStatement::FuncDecl(_) | TypedStatement::GlobalVariable(_) => {
                 unreachable!()
             }
+        }
+    }
+
+    fn build_struct_def(&mut self, typed_struct: &TypedStruct) {
+        if typed_struct.generic_params.is_none() {
+            self.get_or_declare_struct(typed_struct.symbol_id, &typed_struct_as_struct_sig(typed_struct));
+            self.build_methods(typed_struct.module_id, &typed_struct.methods);
+        } else {
+            // generic struct is generated at use time
         }
     }
 
