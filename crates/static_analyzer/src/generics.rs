@@ -2,10 +2,10 @@ use crate::{context::AnalysisContext, diagnostics::AnalyzerDiagKind, with_monomo
 use ast::source_loc::SourceLoc;
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use partialmatch::partial_match;
-use resolver::signatures::StructSig;
+use resolver::signatures::{EnumSig, StructSig, UnionSig};
 use std::collections::HashMap;
 use typed_ast::{
-    ScopeID, SymbolID, TypedExpression, TypedFieldAccess, TypedFuncTypeParams, TypedGenericParamsList, TypedTypeArg,
+    ScopeID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncTypeParams, TypedGenericParamsList, TypedTypeArg,
     TypedTypeArgs,
     format::format_concrete_type,
     types::{
@@ -22,14 +22,15 @@ pub(crate) struct GenericMappingCtx {
 impl<'a> AnalysisContext<'a> {
     pub(crate) fn substitute_field_access_type(
         &mut self,
-        field_access: &mut TypedFieldAccess,
-        struct_sig: &StructSig,
+        field_access_operand: &mut TypedExpression,
+        generic_params: &Option<TypedGenericParamsList>,
         generic_type_opt: Option<&GenericType>,
+        loc: SourceLoc,
     ) {
-        partial_match!((generic_type_opt, field_access.operand.concrete_type.clone()), {
+        partial_match!((generic_type_opt, field_access_operand.concrete_type.clone()), {
             (Some(generic_type), Some(operand_ty)) => {
-                let mapping_ctx = self.get_generic_mapping_ctx(&struct_sig.generic_params, &Some(generic_type.type_args.clone()), field_access.loc.clone());
-                field_access.operand.concrete_type = self.substitute_type(operand_ty, &mapping_ctx);
+                let mapping_ctx = self.get_generic_mapping_ctx(&generic_params, &Some(generic_type.type_args.clone()), loc);
+                field_access_operand.concrete_type = self.substitute_type(operand_ty, &mapping_ctx);
             }
         })
     }
@@ -46,6 +47,53 @@ impl<'a> AnalysisContext<'a> {
                 struct_sig.fields.iter_mut().for_each(|field| {
                     if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx){
                         field.ty = concrete_type;
+                    }
+                });
+            }
+        })
+    }
+
+    pub(crate) fn substitute_union_type_args(
+        &mut self,
+        union_sig: &mut UnionSig,
+        generic_type_opt: Option<&GenericType>,
+        loc: SourceLoc,
+    ) {
+        partial_match!(generic_type_opt, {
+            Some(generic_type) => {
+                let mapping_ctx = self.get_generic_mapping_ctx(&union_sig.generic_params, &Some(generic_type.type_args.clone()), loc);
+                union_sig.fields.iter_mut().for_each(|field| {
+                    if let Some(concrete_type) = self.substitute_type(field.ty.clone(), &mapping_ctx){
+                        field.ty = concrete_type;
+                    }
+                });
+            }
+        })
+    }
+
+    pub(crate) fn substitute_enum_type_args(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        enum_sig: &mut EnumSig,
+        generic_type_opt: Option<&GenericType>,
+        loc: SourceLoc,
+    ) {
+        partial_match!(generic_type_opt, {
+            Some(generic_type) => {
+                let mapping_ctx = self.get_generic_mapping_ctx(&enum_sig.generic_params, &Some(generic_type.type_args.clone()), loc);
+                enum_sig.variants.iter_mut().for_each(|variant| {
+                    match variant {
+                        TypedEnumVariant::Identifier(..) => {},
+                        TypedEnumVariant::Valued(_, typed_expr) => {
+                            self.analyze_typed_expr_type(scope_id_opt, typed_expr, None).inspect(|concrete_type| {
+                                self.substitute_type(concrete_type.clone(), &mapping_ctx);
+                            });
+                        },
+                        TypedEnumVariant::Variant(_, typed_enum_valued_fields) => {
+                            for valued_field in typed_enum_valued_fields {
+                                self.substitute_type(valued_field.field_type.clone(), &mapping_ctx);
+                            }
+                        },
                     }
                 });
             }
@@ -263,9 +311,9 @@ impl<'a> AnalysisContext<'a> {
 
 #[macro_export]
 macro_rules! generic_mapping_ctx_scope {
-    ($self:ident, $resolved_struct:expr, $struct_init:expr, $ctx:ident, $body:block) => {{
+    ($self:ident, $generic_params:expr, $struct_init:expr, $ctx:ident, $body:block) => {{
         let mut $ctx =
-            $self.get_generic_mapping_ctx(&$resolved_struct.struct_sig.generic_params, &$struct_init.type_args, $struct_init.loc.clone());
+            $self.get_generic_mapping_ctx(&$generic_params, &$struct_init.type_args, $struct_init.loc.clone());
 
         $self.generic_ctx_stack.push($ctx.clone());
         $body

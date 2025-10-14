@@ -418,6 +418,7 @@ pub struct TypedEnum {
     pub name: String,
     pub variants: Vec<TypedEnumVariant>,
     pub methods: HashMap<String, SymbolID>,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
@@ -468,6 +469,7 @@ pub struct TypedUnion {
     pub name: String,
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }

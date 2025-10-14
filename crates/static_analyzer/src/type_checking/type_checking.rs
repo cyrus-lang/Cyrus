@@ -7,7 +7,7 @@ use resolver::{
         LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
         SymbolEntryKind,
     },
-    signatures::FuncSig,
+    signatures::{FuncSig, UnionSig},
     typed_func_params_as_func_type_params,
 };
 use std::collections::HashMap;
@@ -543,7 +543,7 @@ impl<'a> AnalysisContext<'a> {
     fn analyze_union_field_access_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
-        resolved_union: &ResolvedUnion,
+        union_sig: &UnionSig,
         field_access: &mut TypedFieldAccess,
         expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
@@ -554,8 +554,7 @@ impl<'a> AnalysisContext<'a> {
 
         field_access.operand.concrete_type = Some(operand_type.clone());
 
-        let union_field_idx = match resolved_union
-            .union_sig
+        let union_field_idx = match union_sig
             .fields
             .iter()
             .position(|field| *field.name == field_access.field_name.clone())
@@ -565,7 +564,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                        struct_name: resolved_union.union_sig.name.clone(),
+                        struct_name: union_sig.name.clone(),
                         field_name: field_access.field_name.clone(),
                     },
                     location: Some(DiagLoc::new(field_access.loc.clone())),
@@ -575,7 +574,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let union_field = &resolved_union.union_sig.fields[union_field_idx];
+        let union_field = &union_sig.fields[union_field_idx];
         let union_field_type = match self.normalize_type(scope_id_opt, union_field.ty.clone(), field_access.loc.clone())
         {
             Some(concrete_type) => concrete_type,
@@ -600,7 +599,7 @@ impl<'a> AnalysisContext<'a> {
 
         field_access.field_index = Some(union_field_idx);
         field_access.field_ty = Some(union_field_type);
-        field_access.object_symbol_id = Some(resolved_union.symbol_id);
+        field_access.object_symbol_id = Some(union_sig.symbol_id);
 
         Some(union_field.ty.clone())
     }
@@ -809,10 +808,6 @@ impl<'a> AnalysisContext<'a> {
         expected_type: Option<ConcreteType>,
         loc: SourceLoc,
     ) -> Option<MemberAccessKind> {
-        if let Some(enum_symbol_id) = operand.concrete_type.clone().unwrap().as_enum_symbol_id() {
-            return Some(MemberAccessKind::Enum(enum_symbol_id))
-        }
-
         let operand_type = match &operand.kind {
             TypedExpressionKind::Symbol(instance_symbol_id, ..) => {
                 let resolved_var_type = match self.analyze_var_or_global_var_type(
@@ -869,7 +864,12 @@ impl<'a> AnalysisContext<'a> {
             .or_else(|| {
                 local_or_global_symbol
                     .as_union()
-                    .and_then(|resolved_union| Some(MemberAccessKind::Union(Box::new(resolved_union.clone()))))
+                    .map(|resolved_union| MemberAccessKind::Union(Box::new(resolved_union.clone())))
+            })
+            .or_else(|| {
+                local_or_global_symbol
+                    .as_enum()
+                    .map(|resolved_enum| MemberAccessKind::Enum(Box::new(resolved_enum.clone())))
             })
     }
 
@@ -918,7 +918,12 @@ impl<'a> AnalysisContext<'a> {
                 MemberAccessKind::NamedStruct(resolved_struct) => {
                     let mut struct_sig = resolved_struct.struct_sig.clone();
                     self.substitute_struct_type_args(&mut struct_sig, generic_type_opt, field_access.loc.clone());
-                    self.substitute_field_access_type(field_access, &struct_sig, generic_type_opt);
+                    self.substitute_field_access_type(
+                        &mut field_access.operand,
+                        &struct_sig.generic_params,
+                        generic_type_opt,
+                        field_access.loc.clone(),
+                    );
                     self.analyze_struct_field_access_type(
                         scope_id_opt,
                         field_access,
@@ -928,11 +933,32 @@ impl<'a> AnalysisContext<'a> {
                         resolved_struct.symbol_id,
                     )
                 }
-                MemberAccessKind::Enum(enum_symbol_id) => {
-                    self.analyze_enum_variant_no_field(local_scope_opt.clone(), enum_symbol_id, &field_access)
+                MemberAccessKind::Enum(resolved_enum) => {
+                    let mut enum_sig = resolved_enum.enum_sig.clone();
+                    self.substitute_enum_type_args(
+                        scope_id_opt,
+                        &mut enum_sig,
+                        generic_type_opt,
+                        field_access.loc.clone(),
+                    );
+                    self.substitute_field_access_type(
+                        &mut field_access.operand,
+                        &enum_sig.generic_params,
+                        generic_type_opt,
+                        field_access.loc.clone(),
+                    );
+                    self.analyze_enum_variant_no_field(local_scope_opt.clone(), enum_sig.symbol_id, &field_access)
                 }
                 MemberAccessKind::Union(resolved_union) => {
-                    self.analyze_union_field_access_type(scope_id_opt, &resolved_union, field_access, expected_type)
+                    let mut union_sig = resolved_union.union_sig.clone();
+                    self.substitute_union_type_args(&mut union_sig, generic_type_opt, field_access.loc.clone());
+                    self.substitute_field_access_type(
+                        &mut field_access.operand,
+                        &union_sig.generic_params,
+                        generic_type_opt,
+                        field_access.loc.clone(),
+                    );
+                    self.analyze_union_field_access_type(scope_id_opt, &union_sig, field_access, expected_type)
                 }
             },
             None => not_supports_fields!(self, field_access.loc.clone()),
@@ -984,12 +1010,68 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let field = &mut struct_init.fields[0];
-        self.analyze_typed_expr_type(scope_id_opt, &mut field.value, expected_type);
+        let field_init = &mut struct_init.fields[0];
+        let field = match resolved_union
+            .union_sig
+            .fields
+            .iter()
+            .find(|field| field.name == field_init.name)
+        {
+            Some(union_field) => union_field,
+            None => {
+                self.reporter.report(Diag {
+                    level: DiagLevel::Error,
+                    kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                        struct_name: resolved_union.union_sig.name.clone(),
+                        field_name: field_init.name.clone(),
+                    },
+                    location: Some(DiagLoc::new(struct_init.loc.clone())),
+                    hint: None,
+                });
+                return None;
+            }
+        };
 
-        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(
-            resolved_union.symbol_id,
-        )))
+        generic_mapping_ctx_scope!(
+            self,
+            resolved_union.union_sig.generic_params,
+            struct_init,
+            generic_mapping_ctx,
+            {
+                self.substitute_type_or_infer_with(
+                    scope_id_opt,
+                    field.ty.clone(),
+                    &mut field_init.value,
+                    &mut generic_mapping_ctx,
+                )?;
+
+                if let Some(type_args) = self.normalize_type_args_and_register(
+                    resolved_union.symbol_id,
+                    &resolved_union.union_sig.generic_params,
+                    &generic_mapping_ctx,
+                ) {
+                    struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
+                }
+            }
+        );
+
+        let pure_union_type = if struct_init.is_const {
+            ConcreteType::Const(Box::new(ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(
+                struct_init.symbol_id,
+            ))))
+        } else {
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::Union(struct_init.symbol_id))
+        };
+
+        if let Some(type_args) = &struct_init.type_args {
+            Some(ConcreteType::GenericType(GenericType {
+                base: struct_init.symbol_id,
+                type_args: type_args.clone(),
+                is_const: struct_init.is_const,
+            }))
+        } else {
+            Some(pure_union_type)
+        }
     }
 
     fn analyze_struct_init_expr_type(
@@ -1062,57 +1144,63 @@ impl<'a> AnalysisContext<'a> {
             .map(|field| field.name.clone())
             .collect();
 
-        generic_mapping_ctx_scope!(self, resolved_struct, struct_init, generic_mapping_ctx, {
-            for field_init in &mut struct_init.fields {
-                let field = match resolved_struct
-                    .struct_sig
-                    .fields
-                    .iter()
-                    .find(|field| field.name == field_init.name)
-                {
-                    Some(field) => field,
-                    None => {
-                        let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
+        generic_mapping_ctx_scope!(
+            self,
+            resolved_struct.struct_sig.generic_params,
+            struct_init,
+            generic_mapping_ctx,
+            {
+                for field_init in &mut struct_init.fields {
+                    let field = match resolved_struct
+                        .struct_sig
+                        .fields
+                        .iter()
+                        .find(|field| field.name == field_init.name)
+                    {
+                        Some(field) => field,
+                        None => {
+                            let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
 
-                        self.reporter.report(Diag {
-                            level: DiagLevel::Error,
-                            kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
-                                struct_name,
-                                field_name: field_init.name.clone(),
-                            },
-                            location: Some(DiagLoc::new(field_init.loc.clone())),
-                            hint: None,
-                        });
-                        continue;
+                            self.reporter.report(Diag {
+                                level: DiagLevel::Error,
+                                kind: AnalyzerDiagKind::ObjectHasNoFieldNamed {
+                                    struct_name,
+                                    field_name: field_init.name.clone(),
+                                },
+                                location: Some(DiagLoc::new(field_init.loc.clone())),
+                                hint: None,
+                            });
+                            continue;
+                        }
+                    };
+
+                    self.substitute_type_or_infer_with(
+                        scope_id_opt,
+                        field.ty.clone(),
+                        &mut field_init.value,
+                        &mut generic_mapping_ctx,
+                    )?;
+
+                    let missing_fields_idx = match missing_fields
+                        .iter()
+                        .position(|field_name| *field_name == field_init.name.clone())
+                    {
+                        Some(idx) => idx,
+                        None => continue,
+                    };
+
+                    missing_fields.remove(missing_fields_idx);
+
+                    if let Some(type_args) = self.normalize_type_args_and_register(
+                        resolved_struct.symbol_id,
+                        &resolved_struct.struct_sig.generic_params,
+                        &generic_mapping_ctx,
+                    ) {
+                        struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
                     }
-                };
-
-                self.substitute_type_or_infer_with(
-                    scope_id_opt,
-                    field.ty.clone(),
-                    &mut field_init.value,
-                    &mut generic_mapping_ctx,
-                )?;
-
-                let missing_fields_idx = match missing_fields
-                    .iter()
-                    .position(|field_name| *field_name == field_init.name.clone())
-                {
-                    Some(idx) => idx,
-                    None => continue,
-                };
-
-                missing_fields.remove(missing_fields_idx);
-
-                if let Some(type_args) = self.normalize_type_args_and_register(
-                    resolved_struct.symbol_id,
-                    &resolved_struct.struct_sig.generic_params,
-                    &generic_mapping_ctx,
-                ) {
-                    struct_init.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
                 }
             }
-        });
+        );
 
         if !missing_fields.is_empty() {
             let struct_name = (self.symbol_formatter)(scope_id_opt)(struct_init.symbol_id);
@@ -1975,7 +2063,7 @@ enum MemberAccessKind {
     UnnamedStruct(Box<TypedUnnamedStructType>),
     NamedStruct(Box<ResolvedStruct>),
     Union(Box<ResolvedUnion>),
-    Enum(SymbolID),
+    Enum(Box<ResolvedEnum>),
 }
 
 fn infer_integer_type(

@@ -1,23 +1,12 @@
 use super::module::{CodeGenBuilder, LocalIRValue};
 use crate::{
-    builder::{
-        abi::generate_union_abi_name,
-        values::{InternalValue, InternalValueKind},
-    },
+    builder::values::{InternalValue, InternalValueKind},
     llvm_set_current_location,
 };
-
 use inkwell::debug_info::AsDIScope;
-use inkwell::{
-    types::{AnyType, BasicTypeEnum, StructType},
-    values::BasicValueEnum,
-};
-use resolver::{scope::LocalScopeRef, signatures::UnionSig, typed_func_type_from_func_sig, typed_struct_as_struct_sig};
-use std::collections::HashMap;
-use typed_ast::{
-    ModuleID, SymbolID, TypedBlockStatement, TypedExportTupleValues, TypedFuncVariadicParams, TypedStatement,
-    TypedStruct, TypedUnion, types::ConcreteType,
-};
+use inkwell::{types::BasicTypeEnum, values::BasicValueEnum};
+use resolver::{scope::LocalScopeRef, typed_struct_as_struct_sig};
+use typed_ast::{TypedBlockStatement, TypedExportTupleValues, TypedStatement, TypedStruct};
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_toplevel_statements(&mut self, stmts: &Vec<TypedStatement>) {
@@ -36,97 +25,6 @@ impl<'a> CodeGenBuilder<'a> {
                 _ => continue,
             }
         }
-    }
-
-    pub(crate) fn build_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
-        for method_symbol_id in methods.values() {
-            let symbol_entry = self
-                .resolver
-                .lookup_symbol_entry_with_id(module_id, *method_symbol_id)
-                .unwrap();
-
-            let resolved_method = symbol_entry.as_method().unwrap().clone();
-
-            let fn_value = self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone());
-
-            self.insert_ir_value(
-                *method_symbol_id,
-                LocalIRValue::Func(
-                    fn_value,
-                    ConcreteType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
-                ),
-            );
-
-            self.blockreg.current_func_ref = Some(fn_value.clone());
-
-            let entry_block = self.llvmctx.append_basic_block(fn_value, "entry");
-            self.blockreg.current_block_ref = Some(entry_block);
-            self.llvmbuilder.position_at_end(entry_block);
-
-            let local_scope_opt = self
-                .resolver
-                .get_scope_ref(module_id, resolved_method.func_body.clone().unwrap().scope_id);
-
-            self.build_func_params(local_scope_opt, &resolved_method.func_sig.params, fn_value);
-
-            if let Some(variadic_params) = &resolved_method.func_sig.params.variadic {
-                if let TypedFuncVariadicParams::Typed(_, _) = variadic_params {
-                    todo!();
-                }
-            }
-
-            self.build_block_statement(&resolved_method.func_body.clone().unwrap());
-
-            let current_block = self.blockreg.current_block_ref.unwrap();
-            if !self.is_block_terminated(current_block) {
-                self.llvmbuilder.build_return(None).unwrap();
-            }
-        }
-    }
-
-    pub(crate) fn build_union_struct_type(&mut self, union_sig: &UnionSig) -> StructType<'a> {
-        let llvm_struct_name = generate_union_abi_name(&self.get_module_name(self.module_id), &union_sig.name.clone());
-        let union_opaque_struct = self.llvmctx.opaque_struct_type(&llvm_struct_name);
-
-        let field_types: Vec<BasicTypeEnum<'a>> = union_sig
-            .fields
-            .iter()
-            .map(|field| self.build_concrete_type(None, field.ty.clone()).try_into().unwrap())
-            .collect();
-
-        let mut largest_field_type: BasicTypeEnum = BasicTypeEnum::IntType(self.llvmctx.bool_type());
-
-        field_types.iter().for_each(|basic_type| {
-            let largest_store_size = self
-                .llvmtm
-                .get_target_data()
-                .get_store_size(&largest_field_type.as_any_type_enum());
-
-            let field_store_size = self
-                .llvmtm
-                .get_target_data()
-                .get_store_size(&basic_type.as_any_type_enum());
-
-            if field_store_size > largest_store_size {
-                largest_field_type = basic_type.clone();
-            }
-        });
-
-        union_opaque_struct.set_body(&[largest_field_type], true);
-        union_opaque_struct
-    }
-
-    pub(crate) fn build_union_def(&mut self, typed_union: &TypedUnion) {
-        let union_struct_type = self.build_union_struct_type(&typed_union_as_union_sig(typed_union));
-
-        let irreg = self.irreg.borrow();
-        let local_ir_value = irreg.get(&typed_union.symbol_id).unwrap();
-        let struct_type = local_ir_value.as_struct().unwrap().clone();
-        drop(irreg);
-        struct_type.set_body(&union_struct_type.get_field_types(), true);
-        self.build_methods(typed_union.module_id, &typed_union.methods);
-
-        self.build_methods(typed_union.module_id, &typed_union.methods);
     }
 
     pub(crate) fn build_block_statement(&mut self, block_stmt: &TypedBlockStatement) {
@@ -252,16 +150,5 @@ impl<'a> CodeGenBuilder<'a> {
 
             self.insert_ir_value(*symbol_id, LocalIRValue::LValue(element_pointer, element_type.clone()));
         }
-    }
-}
-
-fn typed_union_as_union_sig(typed_union: &TypedUnion) -> UnionSig {
-    UnionSig {
-        symbol_id: typed_union.symbol_id,
-        name: typed_union.name.clone(),
-        fields: typed_union.fields.clone(),
-        methods: typed_union.methods.clone(),
-        vis: typed_union.vis.clone(),
-        loc: typed_union.loc.clone(),
     }
 }

@@ -12,7 +12,7 @@ use inkwell::{
 };
 use resolver::{
     scope::{LocalScopeRef, ResolvedEnum},
-    signatures::EnumSig,
+    signatures::EnumSig, typed_enum_as_enum_sig,
 };
 use typed_ast::{
     TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedUnnamedStructValue,
@@ -535,16 +535,5 @@ impl<'a> CodeGenBuilder<'a> {
 
     pub(crate) fn build_local_enum_def(&self, _typed_enum: &TypedEnum) {
         todo!();
-    }
-}
-
-fn typed_enum_as_enum_sig(typed_enum: &TypedEnum) -> EnumSig {
-    EnumSig {
-        symbol_id: typed_enum.symbol_id,
-        name: typed_enum.name.clone(),
-        methods: typed_enum.methods.clone(),
-        variants: typed_enum.variants.clone(),
-        vis: typed_enum.vis.clone(),
-        loc: typed_enum.loc.clone(),
     }
 }

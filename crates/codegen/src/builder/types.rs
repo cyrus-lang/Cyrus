@@ -98,8 +98,11 @@ impl<'a> CodeGenBuilder<'a> {
         InternalValue::new(target_type, InternalValueKind::RValue(any_value.try_into().unwrap()))
     }
 
-    pub(crate) fn build_struct_only_type(&mut self, struct_sig: &StructSig) -> StructType<'a> {
-        let llvm_struct_name = generate_struct_abi_name(&self.get_module_name(self.module_id), &struct_sig.name);
+    pub(crate) fn build_struct_type(&mut self, struct_sig: &StructSig, custom_name: Option<String>) -> StructType<'a> {
+        let llvm_struct_name = custom_name.unwrap_or(generate_struct_abi_name(
+            &self.get_module_name(self.module_id),
+            &struct_sig.name,
+        ));
         let struct_type = self
             .llvmctx
             .get_struct_type(&llvm_struct_name)

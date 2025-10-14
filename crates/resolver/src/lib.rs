@@ -1067,7 +1067,7 @@ impl Resolver {
 
         for field in &union_decl.fields {
             match self.resolve_type(
-                &None, // FIXME Generic Params
+                &union_decl.generic_params,
                 local_scope_opt.clone(),
                 module_id,
                 field.ty.clone(),
@@ -1091,6 +1091,10 @@ impl Resolver {
             Some(methods) => methods,
             None => return None,
         };
+        let generic_params = union_decl
+            .generic_params
+            .clone()
+            .and_then(|generic_params| Some(self.resolve_generic_params(&generic_params)));
 
         let resolved_union = ResolvedUnion {
             module_id,
@@ -1100,6 +1104,7 @@ impl Resolver {
                 name: union_decl.identifier.name.clone(),
                 fields: typed_union_fields.clone(),
                 methods: methods.clone(),
+                generic_params: generic_params.clone(),
                 vis: union_decl.vis.clone(),
                 loc: SourceLoc::from_loc(union_decl.loc.clone(), self.get_current_module_file_path()),
             },
@@ -1126,6 +1131,7 @@ impl Resolver {
             name: union_decl.identifier.name.clone(),
             fields: typed_union_fields,
             methods,
+            generic_params,
             vis: union_decl.vis.clone(),
             loc: SourceLoc::from_loc(union_decl.identifier.loc.clone(), self.get_current_module_file_path()),
             is_local: is_local,
@@ -1153,7 +1159,7 @@ impl Resolver {
                     let mut fields: Vec<TypedEnumValuedField> = Vec::new();
                     for valued_field in enum_valued_fields {
                         let field_type = match self.resolve_type(
-                            &None, // FIXME Generic Params
+                            &enum_decl.generic_params, 
                             local_scope_opt.clone(),
                             module_id,
                             valued_field.field_type.clone(),
@@ -1193,6 +1199,10 @@ impl Resolver {
             Some(methods) => methods,
             None => return None,
         };
+        let generic_params = enum_decl
+            .generic_params
+            .clone()
+            .and_then(|generic_params| Some(self.resolve_generic_params(&generic_params)));
 
         let resolved_enum = ResolvedEnum {
             module_id,
@@ -1202,6 +1212,7 @@ impl Resolver {
                 name: enum_decl.identifier.name.clone(),
                 methods: methods.clone(),
                 variants: variants.clone(),
+                generic_params: generic_params.clone(),
                 vis: enum_decl.vis.clone(),
                 loc: SourceLoc::from_loc(enum_decl.loc.clone(), self.get_current_module_file_path()),
             },
@@ -1228,6 +1239,7 @@ impl Resolver {
             name: enum_decl.identifier.name.clone(),
             variants,
             methods,
+            generic_params,
             vis: enum_decl.vis.clone(),
             loc: SourceLoc::from_loc(enum_decl.identifier.loc.clone(), self.get_current_module_file_path()),
             is_local,
@@ -3316,6 +3328,7 @@ pub fn typed_enum_as_enum_sig(typed_enum: &TypedEnum) -> EnumSig {
         name: typed_enum.name.clone(),
         methods: typed_enum.methods.clone(),
         variants: typed_enum.variants.clone(),
+        generic_params: typed_enum.generic_params.clone(),
         vis: typed_enum.vis.clone(),
         loc: typed_enum.loc.clone(),
     }
@@ -3327,6 +3340,7 @@ pub fn typed_union_as_union_sig(typed_union: &TypedUnion) -> UnionSig {
         name: typed_union.name.clone(),
         fields: typed_union.fields.clone(),
         methods: typed_union.methods.clone(),
+        generic_params: typed_union.generic_params.clone(),
         vis: typed_union.vis.clone(),
         loc: typed_union.loc.clone(),
     }

@@ -76,11 +76,19 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     fn build_enum_forward_decl(&mut self, typed_enum: &TypedEnum) {
-        self.get_or_declare_enum(typed_enum.symbol_id, &typed_enum_as_enum_sig(typed_enum));
+        if typed_enum.generic_params.is_none() {
+            self.get_or_declare_enum(typed_enum.symbol_id, &typed_enum_as_enum_sig(typed_enum));
+        } else {
+            // generic enum are generated at use site
+        }
     }
 
     fn build_union_forward_decl(&mut self, typed_union: &TypedUnion) {
-        self.get_or_declare_union(typed_union.symbol_id, &typed_union_as_union_sig(typed_union));
+        if typed_union.generic_params.is_none() {
+            self.get_or_declare_union(typed_union.symbol_id, &typed_union_as_union_sig(typed_union));
+        } else {
+            // generic union are generated at use site
+        }
     }
 
     fn build_struct_forward_decl(&mut self, typed_struct: &TypedStruct) {

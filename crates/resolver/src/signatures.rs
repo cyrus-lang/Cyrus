@@ -1,7 +1,8 @@
 use ast::{AccessSpecifier, source_loc::SourceLoc};
 use std::collections::HashMap;
 use typed_ast::{
-    ModuleID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncDecl, TypedFuncParamKind, TypedFuncParams, TypedGenericParamsList, TypedIdentifier, TypedStructField, TypedUnionField, types::ConcreteType
+    ModuleID, SymbolID, TypedEnumVariant, TypedExpression, TypedFuncDecl, TypedFuncParamKind, TypedFuncParams,
+    TypedGenericParamsList, TypedIdentifier, TypedStructField, TypedUnionField, types::ConcreteType,
 };
 
 #[derive(Debug, Clone)]
@@ -22,6 +23,7 @@ pub struct UnionSig {
     pub name: String,
     pub fields: Vec<TypedUnionField>,
     pub methods: HashMap<String, SymbolID>,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }
@@ -43,6 +45,7 @@ pub struct EnumSig {
     pub name: String,
     pub methods: HashMap<String, SymbolID>,
     pub variants: Vec<TypedEnumVariant>,
+    pub generic_params: Option<TypedGenericParamsList>,
     pub vis: AccessSpecifier,
     pub loc: SourceLoc,
 }

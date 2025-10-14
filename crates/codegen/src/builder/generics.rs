@@ -1,21 +1,96 @@
 use crate::builder::{
-    abi::generate_monomorphic_struct_abi_name,
+    abi::{generate_monomorphic_struct_abi_name, generate_monomorphic_union_abi_name},
     module::{CodeGenBuilder, LocalIRValue},
 };
-use inkwell::types::{AnyTypeEnum, BasicTypeEnum, StructType};
-use resolver::{scope::LocalScopeRef, signatures::StructSig};
+use inkwell::types::{AnyTypeEnum, StructType};
+use resolver::{
+    scope::{LocalScopeRef, ResolvedEnum, ResolvedStruct, ResolvedUnion},
+    signatures::{StructSig, UnionSig},
+};
 use static_analyzer::{
-    monomorph::{MonomorphID, MonomorphKey, NormalizedTypeArgs},
+    monomorph::{MonomorphKey, NormalizedTypeArgs},
     with_monomorph_registry,
 };
 use std::collections::HashMap;
 use typed_ast::{
     SymbolID, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedStructField, TypedTypeArg, TypedTypeArgs,
+    TypedUnionField,
     types::{
         ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
     },
 };
+
+trait GenericMonomorphTarget<'a> {
+    fn build_monomorph(
+        &self,
+        codegen: &mut CodeGenBuilder<'a>,
+        local_scope_opt: Option<LocalScopeRef>,
+        symbol_id: SymbolID,
+        typed_args: &Option<TypedTypeArgs>,
+    ) -> AnyTypeEnum<'a>;
+}
+
+impl<'a> GenericMonomorphTarget<'a> for ResolvedUnion {
+    fn build_monomorph(
+        &self,
+        codegen: &mut CodeGenBuilder<'a>,
+        local_scope_opt: Option<LocalScopeRef>,
+        symbol_id: SymbolID,
+        typed_args: &Option<TypedTypeArgs>,
+    ) -> AnyTypeEnum<'a> {
+        let local_or_global_symbol = codegen
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .unwrap();
+
+        let resolved_union = local_or_global_symbol.as_union().unwrap();
+        codegen
+            .get_or_declare_union_monomorph(resolved_union, typed_args)
+            .into()
+    }
+}
+
+impl<'a> GenericMonomorphTarget<'a> for ResolvedStruct {
+    fn build_monomorph(
+        &self,
+        codegen: &mut CodeGenBuilder<'a>,
+        local_scope_opt: Option<LocalScopeRef>,
+        symbol_id: SymbolID,
+        typed_args: &Option<TypedTypeArgs>,
+    ) -> AnyTypeEnum<'a> {
+        let local_or_global_symbol = codegen
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .unwrap();
+
+        let resolved_struct = local_or_global_symbol.as_struct().unwrap();
+        codegen
+            .get_or_declare_struct_monomorph(resolved_struct, typed_args)
+            .into()
+    }
+}
+
+impl<'a> GenericMonomorphTarget<'a> for ResolvedEnum {
+    fn build_monomorph(
+        &self,
+        codegen: &mut CodeGenBuilder<'a>,
+        local_scope_opt: Option<LocalScopeRef>,
+        symbol_id: SymbolID,
+        typed_args: &Option<TypedTypeArgs>,
+    ) -> AnyTypeEnum<'a> {
+        let local_or_global_symbol = codegen
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
+            .unwrap();
+
+        // let resolved_struct = local_or_global_symbol.as_struct().unwrap();
+        // codegen
+        //     .get_or_declare_struct_monomorph(resolved_struct, typed_args)
+        //     .into()
+        todo!();
+    }
+}
 
 impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn build_resolved_generic_type(
@@ -28,30 +103,87 @@ impl<'a> CodeGenBuilder<'a> {
             .resolve_local_or_global_symbol(local_scope_opt.clone(), resolved_generic.base)
             .unwrap();
 
-        if local_or_global_symbol.as_struct().is_some() {
-            self.get_or_declare_struct_monomorph(
+        if let Some(resolved) = local_or_global_symbol.as_struct() {
+            return resolved.build_monomorph(
+                self,
                 local_scope_opt,
                 resolved_generic.base,
                 &Some(resolved_generic.type_args.clone()),
-            )
-            .into()
+            );
+        }
+
+        if let Some(resolved) = local_or_global_symbol.as_enum() {
+            return resolved.build_monomorph(
+                self,
+                local_scope_opt,
+                resolved_generic.base,
+                &Some(resolved_generic.type_args.clone()),
+            );
+        }
+
+        if let Some(resolved) = local_or_global_symbol.as_union() {
+            return resolved.build_monomorph(
+                self,
+                local_scope_opt,
+                resolved_generic.base,
+                &Some(resolved_generic.type_args.clone()),
+            );
+        }
+
+        unreachable!("Unsupported generic monomorph target");
+    }
+
+    pub(crate) fn get_or_declare_union_monomorph(
+        &mut self,
+        resolved_union: &ResolvedUnion,
+        typed_args: &Option<TypedTypeArgs>,
+    ) -> StructType<'a> {
+        if let Some(_) = &resolved_union.union_sig.generic_params {
+            let typed_args = typed_args.as_ref().expect("Generic struct used without type args!");
+
+            let normalized_args: NormalizedTypeArgs = typed_args
+                .iter()
+                .map(|type_arg| match type_arg {
+                    TypedTypeArg::Positional(concrete_type) => concrete_type.clone(),
+                    TypedTypeArg::Named { value, .. } => value.clone(),
+                })
+                .collect();
+
+            let key = MonomorphKey::new(resolved_union.symbol_id, normalized_args);
+            let monomorph_id = with_monomorph_registry!(self, ctx, { ctx.get_with_key(key.clone()).unwrap() });
+
+            let substituted_sig =
+                self.substitute_union_sig_generic_params(resolved_union.union_sig.clone(), &key.normalized_args);
+
+            // insert to irreg
+
+            let struct_type_opt = self
+                .get_ir_value(monomorph_id)
+                .and_then(|local_ir_value| local_ir_value.as_struct().cloned());
+
+            match struct_type_opt {
+                Some(struct_type) => struct_type,
+                None => {
+                    let llvm_struct_name = generate_monomorphic_union_abi_name(
+                        &self.get_module_name(self.module_id),
+                        &resolved_union.union_sig.name,
+                        monomorph_id,
+                    );
+                    let struct_type = self.build_union_type(&substituted_sig, Some(llvm_struct_name));
+                    self.insert_ir_value(monomorph_id, LocalIRValue::Struct(struct_type));
+                    struct_type
+                }
+            }
         } else {
-            unreachable!()
+            self.get_or_declare_union(resolved_union.symbol_id, &resolved_union.union_sig)
         }
     }
 
     pub(crate) fn get_or_declare_struct_monomorph(
         &mut self,
-        local_scope_opt: Option<LocalScopeRef>,
-        symbol_id: SymbolID,
+        resolved_struct: &ResolvedStruct,
         typed_args: &Option<TypedTypeArgs>,
     ) -> StructType<'a> {
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt.clone(), symbol_id)
-            .unwrap();
-        let resolved_struct = local_or_global_symbol.as_struct().unwrap();
-
         if let Some(_) = &resolved_struct.struct_sig.generic_params {
             let typed_args = typed_args.as_ref().expect("Generic struct used without type args!");
 
@@ -62,12 +194,14 @@ impl<'a> CodeGenBuilder<'a> {
                     TypedTypeArg::Named { value, .. } => value.clone(),
                 })
                 .collect();
-            let key = MonomorphKey::new(symbol_id, normalized_args);
+            let key = MonomorphKey::new(resolved_struct.symbol_id, normalized_args);
 
             let monomorph_id = with_monomorph_registry!(self, ctx, { ctx.get_with_key(key.clone()).unwrap() });
 
-            let substituted_struct_sig =
+            let substituted_sig =
                 self.substitute_struct_sig_generic_params(resolved_struct.struct_sig.clone(), &key.normalized_args);
+
+            // insert to irreg
 
             let struct_type_opt = self
                 .get_ir_value(monomorph_id)
@@ -76,37 +210,50 @@ impl<'a> CodeGenBuilder<'a> {
             match struct_type_opt {
                 Some(struct_type) => struct_type,
                 None => {
-                    let struct_type = self.build_monomorphic_struct_type(&substituted_struct_sig, monomorph_id);
+                    let llvm_struct_name = generate_monomorphic_struct_abi_name(
+                        &self.get_module_name(self.module_id),
+                        &resolved_struct.struct_sig.name,
+                        monomorph_id,
+                    );
+                    let struct_type = self.build_struct_type(&substituted_sig, Some(llvm_struct_name));
                     self.insert_ir_value(monomorph_id, LocalIRValue::Struct(struct_type));
                     struct_type
                 }
             }
         } else {
-            self.get_or_declare_struct(symbol_id, &resolved_struct.struct_sig)
+            self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig)
         }
     }
 
-    pub(crate) fn build_monomorphic_struct_type(
+    pub(crate) fn substitute_union_sig_generic_params(
         &mut self,
-        struct_sig: &StructSig,
-        monomorph_id: MonomorphID,
-    ) -> StructType<'a> {
-        let llvm_struct_name =
-            generate_monomorphic_struct_abi_name(&self.get_module_name(self.module_id), &struct_sig.name, monomorph_id);
-        let monomorphic_struct_type = self
-            .llvmctx
-            .get_struct_type(&llvm_struct_name)
-            .or_else(|| Some(self.llvmctx.opaque_struct_type(&llvm_struct_name)))
-            .unwrap();
+        mut union_sig: UnionSig,
+        normalized_args: &NormalizedTypeArgs,
+    ) -> UnionSig {
+        let Some(generic_params) = &union_sig.generic_params else {
+            return union_sig.clone();
+        };
 
-        let field_types: Vec<BasicTypeEnum<'a>> = struct_sig
+        let mut subst_map: HashMap<String, ConcreteType> = HashMap::new();
+
+        for (param, arg) in generic_params.iter().zip(normalized_args.iter()) {
+            subst_map.insert(param.param_name.to_string(), arg.clone());
+        }
+
+        let substituted_fields: Vec<TypedUnionField> = union_sig
             .fields
             .iter()
-            .map(|field| self.build_concrete_type(None, field.ty.clone()).try_into().unwrap())
+            .cloned()
+            .map(|mut field| {
+                let substituted_ty = self.substitute_concrete_type(&field.ty, &subst_map);
+                field.ty = substituted_ty;
+                field
+            })
             .collect();
 
-        monomorphic_struct_type.set_body(&field_types, struct_sig.packed);
-        monomorphic_struct_type
+        union_sig.generic_params = None;
+        union_sig.fields = substituted_fields;
+        union_sig
     }
 
     pub(crate) fn substitute_struct_sig_generic_params(
@@ -118,14 +265,6 @@ impl<'a> CodeGenBuilder<'a> {
             return struct_sig.clone();
         };
 
-        assert_eq!(
-            generic_params.len(),
-            normalized_args.len(),
-            "Generic parameter count mismatch for struct '{}'.",
-            struct_sig.name
-        );
-
-        use std::collections::HashMap;
         let mut subst_map: HashMap<String, ConcreteType> = HashMap::new();
 
         for (param, arg) in generic_params.iter().zip(normalized_args.iter()) {

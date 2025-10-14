@@ -17,7 +17,7 @@ use inkwell::{
     values::{ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, IntValue, PointerValue},
 };
 use resolver::{
-    scope::{LocalOrGlobalSymbol, LocalScopeRef, SymbolEntryKind},
+    scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedUnion, SymbolEntryKind},
     typed_func_type_from_func_sig,
 };
 use typed_ast::{
@@ -53,9 +53,7 @@ impl<'a> CodeGenBuilder<'a> {
             TypedExpressionKind::Dereference(typed_dereference) => {
                 self.build_dereference(local_scope_opt, typed_dereference)
             }
-            TypedExpressionKind::StructInit(typed_struct_init) => {
-                self.build_struct_init(local_scope_opt, typed_struct_init)
-            }
+            TypedExpressionKind::StructInit(struct_init) => self.build_struct_init(local_scope_opt, struct_init),
             TypedExpressionKind::FuncCall(typed_func_call) => self.build_func_call(local_scope_opt, typed_func_call),
             TypedExpressionKind::FieldAccess(field_access) => self.build_field_access(local_scope_opt, field_access),
             TypedExpressionKind::ArrayIndex(typed_array_index) => {
@@ -536,20 +534,33 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
+    fn build_union_init(&self, resolved_union: &ResolvedUnion, struct_init: &TypedStructInit) -> InternalValue<'a> {
+        let mut ctx = self.monomorph_registry.lock().unwrap();
+        dbg!(ctx.clone());
+        todo!();
+    }
+
     fn build_struct_init(
         &mut self,
         local_scope_opt: Option<LocalScopeRef>,
-        typed_struct_init: &TypedStructInit,
+        struct_init: &TypedStructInit,
     ) -> InternalValue<'a> {
-        let struct_type = self.get_or_declare_struct_monomorph(
-            local_scope_opt.clone(),
-            typed_struct_init.symbol_id,
-            &typed_struct_init.type_args,
-        );
+        let local_or_global_symbol = self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt.clone(), struct_init.symbol_id)
+            .unwrap();
+
+        if let Some(resolved_union) = local_or_global_symbol.as_union() {
+            return self.build_union_init(resolved_union, struct_init);
+        }
+
+        let resolved_struct = local_or_global_symbol.as_struct().unwrap();
+
+        let struct_type = self.get_or_declare_struct_monomorph(resolved_struct, &struct_init.type_args);
         let mut struct_value = struct_type.get_undef();
 
         let mut all_const = true;
-        let field_values: Vec<BasicValueEnum<'a>> = typed_struct_init
+        let field_values: Vec<BasicValueEnum<'a>> = struct_init
             .fields
             .iter()
             .map(|field_init| {
@@ -576,7 +587,7 @@ impl<'a> CodeGenBuilder<'a> {
         }
 
         InternalValue::new(
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(typed_struct_init.symbol_id)),
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id)),
             InternalValueKind::RValue(struct_value.as_basic_value_enum()),
         )
     }

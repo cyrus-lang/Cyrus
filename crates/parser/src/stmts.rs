@@ -179,9 +179,18 @@ impl Parser {
         let start = self.current_token().span.start;
         let loc = self.current_token().loc.clone();
 
-        self.next_token(); // consume union token
+        self.expect_current(TokenKind::Union)?;
+
         let identifier = self.parse_identifier()?;
         self.next_token();
+
+        let generic_params;
+        if self.current_token_is(TokenKind::LessThan) {
+            generic_params = Some(self.parse_generic_params()?);
+        } else {
+            generic_params = None;
+        }
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         if self.current_token_is(TokenKind::RightBrace) {
@@ -189,6 +198,7 @@ impl Parser {
                 identifier,
                 methods: Vec::new(),
                 fields: Vec::new(),
+                generic_params,
                 vis: vis.unwrap_or(AccessSpecifier::Internal),
                 loc,
                 span: Span::new(start, self.current_token().span.end),
@@ -254,6 +264,7 @@ impl Parser {
             identifier,
             methods,
             fields,
+            generic_params,
             vis: vis.unwrap_or(AccessSpecifier::Internal),
             loc,
             span: Span::new(start, self.current_token().span.end),
@@ -270,6 +281,13 @@ impl Parser {
         let enum_name = self.parse_identifier()?;
         self.next_token(); // consume enum name
 
+        let generic_params;
+        if self.current_token_is(TokenKind::LessThan) {
+            generic_params = Some(self.parse_generic_params()?);
+        } else {
+            generic_params = None;
+        }
+
         self.expect_current(TokenKind::LeftBrace)?;
 
         let mut enum_fields: Vec<EnumVariant> = Vec::new();
@@ -278,6 +296,7 @@ impl Parser {
             return Ok(Statement::Enum(Enum {
                 identifier: enum_name,
                 variants: enum_fields,
+                generic_params,
                 methods: Vec::new(),
                 vis,
                 loc,
@@ -340,6 +359,7 @@ impl Parser {
         Ok(Statement::Enum(Enum {
             identifier: enum_name,
             variants: enum_fields,
+            generic_params,
             methods,
             vis,
             loc,

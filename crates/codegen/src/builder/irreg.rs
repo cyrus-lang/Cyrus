@@ -64,7 +64,7 @@ impl<'a> CodeGenBuilder<'a> {
             match local_ir_value_opt {
                 Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
                 None => {
-                    let struct_type = self.build_struct_only_type(struct_sig);
+                    let struct_type = self.build_struct_type(struct_sig, None);
                     self.insert_ir_value(symbol_id, LocalIRValue::Struct(struct_type));
                     struct_type
                 }
@@ -75,32 +75,40 @@ impl<'a> CodeGenBuilder<'a> {
     }
 
     pub(crate) fn get_or_declare_union(&mut self, symbol_id: SymbolID, union_sig: &UnionSig) -> StructType<'a> {
-        let irreg = self.irreg.borrow();
-        let local_ir_value_opt = irreg.get(&symbol_id).cloned();
-        drop(irreg);
+        if union_sig.generic_params.is_none() {
+            let irreg = self.irreg.borrow();
+            let local_ir_value_opt = irreg.get(&symbol_id).cloned();
+            drop(irreg);
 
-        match local_ir_value_opt {
-            Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
-            None => {
-                let struct_type = self.build_union_struct_type(union_sig);
-                self.insert_ir_value(symbol_id, LocalIRValue::Struct(struct_type));
-                struct_type
+            match local_ir_value_opt {
+                Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
+                None => {
+                    let struct_type = self.build_union_type(union_sig, None);
+                    self.insert_ir_value(symbol_id, LocalIRValue::Struct(struct_type));
+                    struct_type
+                }
             }
+        } else {
+            unreachable!("Generic union used without type args!");
         }
     }
 
     pub(crate) fn get_or_declare_enum(&mut self, symbol_id: SymbolID, enum_sig: &EnumSig) -> StructType<'a> {
-        let irreg = self.irreg.borrow();
-        let local_ir_value_opt = irreg.get(&symbol_id).cloned();
-        drop(irreg);
+        if enum_sig.generic_params.is_none() {
+            let irreg = self.irreg.borrow();
+            let local_ir_value_opt = irreg.get(&symbol_id).cloned();
+            drop(irreg);
 
-        match local_ir_value_opt {
-            Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
-            None => {
-                let (struct_type, payload_type) = self.build_enum_struct_type(enum_sig);
-                self.insert_ir_value(symbol_id, LocalIRValue::Enum((struct_type, payload_type)));
-                struct_type
+            match local_ir_value_opt {
+                Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
+                None => {
+                    let (struct_type, payload_type) = self.build_enum_struct_type(enum_sig);
+                    self.insert_ir_value(symbol_id, LocalIRValue::Enum((struct_type, payload_type)));
+                    struct_type
+                }
             }
+        } else {
+            unreachable!("Generic enum used without type args!");
         }
     }
 }

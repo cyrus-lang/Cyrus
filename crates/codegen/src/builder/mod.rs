@@ -13,3 +13,4 @@ mod dibuilder;
 mod generics;
 mod irreg;
 mod controlflow;
+mod unions;

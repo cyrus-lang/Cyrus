@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::module::CodeGenBuilder;
 use crate::builder::{
     abi::make_func_abi_name,
@@ -15,14 +17,58 @@ use inkwell::{
     types::{AsTypeRef, BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
     values::{AnyValueEnum, FunctionValue},
 };
-use resolver::scope::LocalScopeRef;
+use resolver::{scope::LocalScopeRef, typed_func_type_from_func_sig};
 use typed_ast::{
-    ModuleID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams,
-    TypedFuncVariadicParams, TypedLambda, TypedVariable,
-    types::{ConcreteType, TypedFuncType},
+    ModuleID, SymbolID, TypedFuncDef, TypedFuncParamKind, TypedFuncParams, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedFuncVariadicParams, TypedLambda, TypedVariable, types::{ConcreteType, TypedFuncType}
 };
 
 impl<'a> CodeGenBuilder<'a> {
+    pub(crate) fn build_methods(&mut self, module_id: ModuleID, methods: &HashMap<String, SymbolID>) {
+        for method_symbol_id in methods.values() {
+            let symbol_entry = self
+                .resolver
+                .lookup_symbol_entry_with_id(module_id, *method_symbol_id)
+                .unwrap();
+
+            let resolved_method = symbol_entry.as_method().unwrap().clone();
+
+            let fn_value = self.get_or_declare_func(*method_symbol_id, resolved_method.func_sig.clone());
+
+            self.insert_ir_value(
+                *method_symbol_id,
+                LocalIRValue::Func(
+                    fn_value,
+                    ConcreteType::FuncType(typed_func_type_from_func_sig(&resolved_method.func_sig)),
+                ),
+            );
+
+            self.blockreg.current_func_ref = Some(fn_value.clone());
+
+            let entry_block = self.llvmctx.append_basic_block(fn_value, "entry");
+            self.blockreg.current_block_ref = Some(entry_block);
+            self.llvmbuilder.position_at_end(entry_block);
+
+            let local_scope_opt = self
+                .resolver
+                .get_scope_ref(module_id, resolved_method.func_body.clone().unwrap().scope_id);
+
+            self.build_func_params(local_scope_opt, &resolved_method.func_sig.params, fn_value);
+
+            if let Some(variadic_params) = &resolved_method.func_sig.params.variadic {
+                if let TypedFuncVariadicParams::Typed(_, _) = variadic_params {
+                    todo!();
+                }
+            }
+
+            self.build_block_statement(&resolved_method.func_body.clone().unwrap());
+
+            let current_block = self.blockreg.current_block_ref.unwrap();
+            if !self.is_block_terminated(current_block) {
+                self.llvmbuilder.build_return(None).unwrap();
+            }
+        }
+    }
+
     pub(crate) fn build_lambda_expr(&mut self, lambda: &TypedLambda) -> InternalValue<'a> {
         let fn_type = self.build_func_type(
             get_func_type_params_from_func_params(&lambda.params),

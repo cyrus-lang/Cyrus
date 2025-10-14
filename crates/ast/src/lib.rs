@@ -161,6 +161,7 @@ pub struct UnnamedStructTypeField {
 pub struct Union {
     pub identifier: Identifier,
     pub fields: Vec<UnionField>,
+    pub generic_params: Option<GenericParamsList>,
     pub methods: Vec<FuncDef>,
     pub vis: AccessSpecifier,
     pub loc: Location,
@@ -179,6 +180,7 @@ pub struct UnionField {
 pub struct Enum {
     pub identifier: Identifier,
     pub variants: Vec<EnumVariant>,
+    pub generic_params: Option<GenericParamsList>,
     pub methods: Vec<FuncDef>,
     pub vis: AccessSpecifier,
     pub loc: Location,
