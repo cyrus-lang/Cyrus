@@ -429,9 +429,10 @@ impl<'a> CodeGenBuilder<'a> {
             _ => self.build_expr(local_scope_opt.clone(), &field_access.operand),
         };
 
-        let operand_ty = field_access.operand.concrete_type.clone().unwrap();
+        let mut operand_ty = field_access.operand.concrete_type.clone().unwrap();
 
         if operand_ty.is_pointer() && field_access.is_fat_arrow {
+            operand_ty = operand_ty.as_rvalue(true); // unwraps the pointer type
             lvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
         }
 
@@ -459,7 +460,17 @@ impl<'a> CodeGenBuilder<'a> {
                 .unwrap();
         } else {
             let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
-            pointee_struct_ty = rvalue.as_basic_value().get_type().into_struct_type();
+            let rvalue_basic_type = rvalue.as_basic_value().get_type();
+            if rvalue_basic_type.is_struct_type() {
+                // it tries to get struct type because generic types are monomorphic
+                // and pointee_struct_ty cannot be generated through operant_ty.
+                pointee_struct_ty = rvalue_basic_type.into_struct_type();
+            } else {
+                pointee_struct_ty = self
+                    .build_concrete_type(local_scope_opt.clone(), operand_ty)
+                    .try_into()
+                    .unwrap();
+            }
         }
 
         let extracted_value = self

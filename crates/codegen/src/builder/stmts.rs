@@ -15,7 +15,8 @@ use inkwell::{
 use resolver::{scope::LocalScopeRef, signatures::UnionSig, typed_func_type_from_func_sig, typed_struct_as_struct_sig};
 use std::collections::HashMap;
 use typed_ast::{
-    ModuleID, SymbolID, TypedBlockStatement, TypedExportTupleValues, TypedFuncVariadicParams, TypedStatement, TypedStruct, TypedUnion, types::ConcreteType
+    ModuleID, SymbolID, TypedBlockStatement, TypedExportTupleValues, TypedFuncVariadicParams, TypedStatement,
+    TypedStruct, TypedUnion, types::ConcreteType,
 };
 
 impl<'a> CodeGenBuilder<'a> {
@@ -31,8 +32,7 @@ impl<'a> CodeGenBuilder<'a> {
                 TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
                 TypedStatement::Union(typed_union) => self.build_union_def(typed_union),
                 TypedStatement::Struct(typed_struct) => self.build_struct_def(typed_struct),
-                TypedStatement::Interface(..) => continue,
-                TypedStatement::FuncDecl(..) => continue,
+                TypedStatement::Interface(..) | TypedStatement::FuncDecl(..) => {}
                 _ => continue,
             }
         }

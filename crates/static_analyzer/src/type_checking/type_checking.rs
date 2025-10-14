@@ -3,7 +3,10 @@ use ast::{AccessSpecifier, LiteralKind, SelfModifierKind, StringPrefix, source_l
 use diagcentral::{Diag, DiagLevel, DiagLoc};
 use partialmatch::partial_match;
 use resolver::{
-    scope::{LocalOrGlobalSymbol, LocalScopeRef, ResolvedMethod, ResolvedUnion, SymbolEntryKind},
+    scope::{
+        LocalOrGlobalSymbol, LocalScopeRef, ResolvedEnum, ResolvedMethod, ResolvedStruct, ResolvedUnion,
+        SymbolEntryKind,
+    },
     signatures::FuncSig,
     typed_func_params_as_func_type_params,
 };
@@ -798,6 +801,78 @@ impl<'a> AnalysisContext<'a> {
         )))
     }
 
+    fn resolve_member_access_kind(
+        &mut self,
+        scope_id_opt: Option<ScopeID>,
+        local_scope_opt: Option<LocalScopeRef>,
+        operand: &mut TypedExpression,
+        expected_type: Option<ConcreteType>,
+        loc: SourceLoc,
+    ) -> Option<MemberAccessKind> {
+        if let Some(enum_symbol_id) = operand.concrete_type.clone().unwrap().as_enum_symbol_id() {
+            return Some(MemberAccessKind::Enum(enum_symbol_id))
+        }
+
+        let operand_type = match &operand.kind {
+            TypedExpressionKind::Symbol(instance_symbol_id, ..) => {
+                let resolved_var_type = match self.analyze_var_or_global_var_type(
+                    scope_id_opt,
+                    local_scope_opt.clone(),
+                    *instance_symbol_id,
+                    loc.clone(),
+                ) {
+                    Some(concrete_type) => concrete_type,
+                    None => return None,
+                };
+
+                resolved_var_type.clone()
+            }
+            _ => match self.analyze_typed_expr_type(scope_id_opt, operand, expected_type.clone()) {
+                Some(concrete_type) => concrete_type,
+                None => return None,
+            },
+        };
+
+        let object_symbol_id = match match operand_type.get_const_inner() {
+            ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
+            ConcreteType::Pointer(concrete_type) => {
+                if concrete_type.is_void() {
+                    return None;
+                } else if let Some(unnamed_struct_type) = concrete_type.as_unnamed_struct() {
+                    return Some(MemberAccessKind::UnnamedStruct(Box::new(unnamed_struct_type)));
+                }
+
+                self.extract_object_symbol_id(scope_id_opt, *concrete_type.clone(), loc.clone())
+            }
+            ConcreteType::UnnamedStruct(unnamed_struct_type) => {
+                return Some(MemberAccessKind::UnnamedStruct(Box::new(unnamed_struct_type.clone())));
+            }
+            ConcreteType::GenericType(generic_type) => Some(generic_type.base),
+            _ => None,
+        } {
+            Some(symbol_id) => symbol_id,
+            None => return None,
+        };
+
+        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+        let local_or_global_symbol = match self
+            .resolver
+            .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
+        {
+            Some(local_or_global_symbol) => local_or_global_symbol,
+            None => return None,
+        };
+
+        local_or_global_symbol
+            .as_struct()
+            .map(|resolved_struct| MemberAccessKind::NamedStruct(Box::new(resolved_struct.clone())))
+            .or_else(|| {
+                local_or_global_symbol
+                    .as_union()
+                    .and_then(|resolved_union| Some(MemberAccessKind::Union(Box::new(resolved_union.clone()))))
+            })
+    }
+
     fn analyze_unknown_field_access_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -815,6 +890,7 @@ impl<'a> AnalysisContext<'a> {
                 return None;
             }};
         }
+
         let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
 
         let concrete_type =
@@ -822,108 +898,45 @@ impl<'a> AnalysisContext<'a> {
         field_access.operand.concrete_type = Some(concrete_type.get_const_inner().clone());
         let operand_ty = concrete_type.get_const_inner();
 
-        // direct field access (called static fields, sometimes)
-        partial_match!(operand_ty.as_enum_symbol_id(), {
-            Some(enum_symbol_id) => {
-                return self.analyze_enum_variant_no_field(local_scope_opt.clone(), enum_symbol_id, &field_access);
-            }
-        });
-
-        // REVIEW you can even refactor this by converting it into a func 
-        // called `resolve_member_access_kind`
-        let object_symbol_id = {
-            let operand_type = match &field_access.operand.kind {
-                TypedExpressionKind::Symbol(instance_symbol_id, ..) => {
-                    let resolved_var_type = match self.analyze_var_or_global_var_type(
-                        scope_id_opt,
-                        local_scope_opt.clone(),
-                        *instance_symbol_id,
-                        field_access.loc.clone(),
-                    ) {
-                        Some(concrete_type) => concrete_type,
-                        None => {
-                            not_supports_fields!(self, field_access.loc.clone());
-                        }
-                    };
-
-                    resolved_var_type.clone()
-                }
-                _ => match self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())
-                {
-                    Some(concrete_type) => concrete_type,
-                    None => return None,
-                },
-            };
-
-            match match operand_type {
-                ConcreteType::ResolvedSymbol(resolved_symbol) => Some(resolved_symbol.get_symbol_id()),
-                ConcreteType::Pointer(concrete_type) => {
-                    if concrete_type.is_void() {
-                        not_supports_fields!(self, field_access.loc.clone());
-                    } else if let Some(unnamed_struct_type) = concrete_type.as_unnamed_struct() {
-                        return self.analyze_unnamed_struct_field_access_type(
-                            scope_id_opt,
-                            &unnamed_struct_type,
-                            field_access,
-                            expected_type.clone(),
-                        );
-                    }
-
-                    self.extract_object_symbol_id(scope_id_opt, *concrete_type.clone(), field_access.loc.clone())
-                }
-                ConcreteType::UnnamedStruct(unnamed_struct_type) => {
-                    return self.analyze_unnamed_struct_field_access_type(
-                        scope_id_opt,
-                        &unnamed_struct_type,
-                        field_access,
-                        expected_type.clone(),
-                    );
-                }
-                ConcreteType::GenericType(generic_type) => Some(generic_type.base),
-                _ => None,
-            } {
-                Some(symbol_id) => symbol_id,
-                None => not_supports_fields!(self, field_access.loc.clone()),
-            }
-        };
-
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
-        let local_or_global_symbol = match self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
-        {
-            Some(local_or_global_symbol) => local_or_global_symbol,
-            None => not_supports_fields!(self, field_access.loc.clone()),
-        };
-
         // multiplex field access
-
         let generic_type_opt = operand_ty.as_generic_type();
 
-        local_or_global_symbol
-            .as_struct()
-            .map(|resolved_struct| {
-                let mut struct_sig = resolved_struct.struct_sig.clone();
-                self.substitute_struct_type_args(&mut struct_sig, generic_type_opt, field_access.loc.clone());
-                self.substitute_field_access_type(field_access, &struct_sig, generic_type_opt);
-
-                self.analyze_struct_field_access_type(
+        match self.resolve_member_access_kind(
+            scope_id_opt,
+            local_scope_opt.clone(),
+            &mut field_access.operand,
+            expected_type.clone(),
+            field_access.loc.clone(),
+        ) {
+            Some(member_access_kind) => match member_access_kind {
+                MemberAccessKind::UnnamedStruct(unnamed_struct_type) => self.analyze_unnamed_struct_field_access_type(
                     scope_id_opt,
+                    &unnamed_struct_type,
                     field_access,
-                    struct_sig.name.clone(),
-                    struct_sig.fields.clone(),
-                    struct_sig.methods.clone(),
-                    resolved_struct.symbol_id,
-                )
-            })
-            .or_else(|| {
-                local_or_global_symbol.as_union().map(|resolved_union| {
-                    self.analyze_union_field_access_type(scope_id_opt, resolved_union, field_access, expected_type)
-                })
-            })
-            .unwrap_or_else(|| {
-                not_supports_fields!(self, field_access.loc.clone());
-            })
+                    expected_type.clone(),
+                ),
+                MemberAccessKind::NamedStruct(resolved_struct) => {
+                    let mut struct_sig = resolved_struct.struct_sig.clone();
+                    self.substitute_struct_type_args(&mut struct_sig, generic_type_opt, field_access.loc.clone());
+                    self.substitute_field_access_type(field_access, &struct_sig, generic_type_opt);
+                    self.analyze_struct_field_access_type(
+                        scope_id_opt,
+                        field_access,
+                        struct_sig.name.clone(),
+                        struct_sig.fields.clone(),
+                        struct_sig.methods.clone(),
+                        resolved_struct.symbol_id,
+                    )
+                }
+                MemberAccessKind::Enum(enum_symbol_id) => {
+                    self.analyze_enum_variant_no_field(local_scope_opt.clone(), enum_symbol_id, &field_access)
+                }
+                MemberAccessKind::Union(resolved_union) => {
+                    self.analyze_union_field_access_type(scope_id_opt, &resolved_union, field_access, expected_type)
+                }
+            },
+            None => not_supports_fields!(self, field_access.loc.clone()),
+        }
     }
 
     fn analyze_union_init_expr_type(
@@ -1135,7 +1148,7 @@ impl<'a> AnalysisContext<'a> {
             Some(pure_struct_type)
         }
     }
-    
+
     fn check_func_call(
         &mut self,
         scope_id_opt: Option<ScopeID>,
@@ -1955,6 +1968,14 @@ impl<'a> AnalysisContext<'a> {
             None
         }
     }
+}
+
+#[derive(Debug, Clone)]
+enum MemberAccessKind {
+    UnnamedStruct(Box<TypedUnnamedStructType>),
+    NamedStruct(Box<ResolvedStruct>),
+    Union(Box<ResolvedUnion>),
+    Enum(SymbolID),
 }
 
 fn infer_integer_type(
