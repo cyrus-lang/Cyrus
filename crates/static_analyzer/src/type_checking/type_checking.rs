@@ -135,7 +135,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_unnamed_struct_value_expr_type(scope_id_opt, typed_unnamed_struct_value)
             }
             TypedExpressionKind::FieldAccess(field_access) => {
-                self.analyze_unknown_field_access_type(scope_id_opt, field_access, expected_type)
+                self.analyze_field_access_type(scope_id_opt, field_access, expected_type)
             }
             TypedExpressionKind::MethodCall(method_call) => {
                 self.analyze_method_call_expr_type(scope_id_opt, method_call, expected_type)
@@ -873,7 +873,7 @@ impl<'a> AnalysisContext<'a> {
             })
     }
 
-    fn analyze_unknown_field_access_type(
+    fn analyze_field_access_type(
         &mut self,
         scope_id_opt: Option<ScopeID>,
         field_access: &mut TypedFieldAccess,
