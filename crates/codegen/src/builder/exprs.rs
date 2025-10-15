@@ -534,10 +534,41 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    fn build_union_init(&self, resolved_union: &ResolvedUnion, struct_init: &TypedStructInit) -> InternalValue<'a> {
-        let mut ctx = self.monomorph_registry.lock().unwrap();
-        dbg!(ctx.clone());
-        todo!();
+    fn build_union_init(&mut self, local_scope_opt: Option<LocalScopeRef>, resolved_union: &ResolvedUnion, struct_init: &TypedStructInit) -> InternalValue<'a> {
+        let struct_type = self.get_or_declare_union_monomorph(resolved_union, &struct_init.type_args);
+        let mut struct_value = struct_type.get_undef();
+
+        let mut all_const = true;
+        let field_values: Vec<BasicValueEnum<'a>> = struct_init
+            .fields
+            .iter()
+            .map(|field_init| {
+                let field_lvalue = self.build_expr(local_scope_opt.clone(), &field_init.value);
+                let field_rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), field_lvalue);
+                let field_basic_value = field_rvalue.as_basic_value();
+                if !self.is_basic_value_constant(field_basic_value) {
+                    all_const = false;
+                }
+                field_basic_value
+            })
+            .collect();
+
+        if all_const {
+            struct_value = struct_type.const_named_struct(&field_values);
+        } else {
+            field_values.iter().enumerate().for_each(|(index, field_value)| {
+                struct_value = self
+                    .llvmbuilder
+                    .build_insert_value(struct_value, *field_value, index.try_into().unwrap(), "insert")
+                    .unwrap()
+                    .into_struct_value();
+            });
+        }
+
+        InternalValue::new(
+            ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(struct_init.symbol_id)),
+            InternalValueKind::RValue(struct_value.as_basic_value_enum()),
+        )
     }
 
     fn build_struct_init(
@@ -551,7 +582,7 @@ impl<'a> CodeGenBuilder<'a> {
             .unwrap();
 
         if let Some(resolved_union) = local_or_global_symbol.as_union() {
-            return self.build_union_init(resolved_union, struct_init);
+            return self.build_union_init(local_scope_opt.clone(), resolved_union, struct_init);
         }
 
         let resolved_struct = local_or_global_symbol.as_struct().unwrap();
