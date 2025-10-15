@@ -53,12 +53,8 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_expr: &TypedExpression,
-    ) -> Option<i64> {
-        let local_scope_opt = if let Some(scope_id) = scope_id_opt {
-            self.resolver.get_scope_ref(self.module_id, scope_id)
-        } else {
-            None
-        };
+    ) -> Option<i64> {  
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         let integer_result = match &typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => {

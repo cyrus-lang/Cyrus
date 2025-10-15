@@ -148,7 +148,8 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
         let local_or_global_symbol = self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
@@ -368,7 +369,9 @@ impl<'a> AnalysisContext<'a> {
             let lhs_type_str = format_concrete_type(lhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
             let rhs_type_str = format_concrete_type(rhs_type.clone(), &(self.symbol_formatter)(scope_id_opt));
 
-            let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+            let local_scope_opt =
+                scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
             match self.analyze_compare_enums(local_scope_opt, lhs_type.clone(), rhs_type.clone()) {
                 Some(concrete_type) => return Some(concrete_type),
                 None => {

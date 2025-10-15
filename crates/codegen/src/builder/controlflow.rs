@@ -5,7 +5,6 @@ use crate::builder::{
 use ast::LiteralKind;
 use inkwell::{
     basic_block::BasicBlock,
-    types::{ArrayType, StructType},
     values::{BasicValue, BasicValueEnum, IntValue},
 };
 use resolver::scope::{LocalScopeRef, LocalSymbolKind, ResolvedEnum};
@@ -13,7 +12,7 @@ use std::collections::HashMap;
 use typed_ast::{
     SymbolID, TypedBlockStatement, TypedBreak, TypedContinue, TypedEnumVariant, TypedExpression, TypedExpressionKind,
     TypedFor, TypedIf, TypedReturn, TypedSwitch, TypedSwitchCasePattern, TypedWhile,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol},
+    types::{BasicConcreteType, ConcreteType},
 };
 
 #[derive(Debug, Clone)]
@@ -440,20 +439,20 @@ impl<'a> CodeGenBuilder<'a> {
                         .i32_type()
                         .const_int(variant_idx.try_into().unwrap(), false);
 
-                    let enum_struct_type =
-                        if let Some(generic_type) = operand_rvalue.value_type.as_generic_type() {
-                            self.get_or_declare_enum_monomorph(resolved_enum, &Some(generic_type.type_args.clone())).0
-                        } else {
-                            let enum_valued_fields = match &resolved_enum.enum_sig.variants[variant_idx] {
-                                TypedEnumVariant::Variant(_, enum_valued_fields) => enum_valued_fields,
-                                _ => unreachable!(),
-                            };
-
-                            self.build_enum_valued_field_variant_struct_type(
-                                local_scope_opt.clone(),
-                                enum_valued_fields.clone(),
-                            )
+                    let enum_struct_type = if let Some(generic_type) = operand_rvalue.value_type.as_generic_type() {
+                        self.get_or_declare_enum_monomorph(resolved_enum, &Some(generic_type.type_args.clone()))
+                            .0
+                    } else {
+                        let enum_valued_fields = match &resolved_enum.enum_sig.variants[variant_idx] {
+                            TypedEnumVariant::Variant(_, enum_valued_fields) => enum_valued_fields,
+                            _ => unreachable!(),
                         };
+
+                        self.build_enum_valued_field_variant_struct_type(
+                            local_scope_opt.clone(),
+                            enum_valued_fields.clone(),
+                        )
+                    };
 
                     let enum_struct_value = operand_rvalue.as_basic_value().into_struct_value();
                     let buffer = self.build_enum_extract_payload(enum_struct_value);

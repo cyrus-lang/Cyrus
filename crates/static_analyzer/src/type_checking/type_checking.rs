@@ -86,17 +86,12 @@ impl<'a> AnalysisContext<'a> {
 
         let concrete_type = match &mut typed_expr.kind {
             TypedExpressionKind::Symbol(symbol_id, ..) => {
-                let local_scope_ref_opt = {
-                    if let Some(scope_id) = scope_id_opt {
-                        self.resolver.get_scope_ref(self.module_id, scope_id)
-                    } else {
-                        None
-                    }
-                };
+                let local_scope_opt =
+                    scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
                 let local_or_global_symbol = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_ref_opt, *symbol_id)?;
+                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)?;
 
                 self.resolve_full_type_from_local_or_global_symbol(scope_id_opt, local_or_global_symbol)
             }
@@ -183,17 +178,11 @@ impl<'a> AnalysisContext<'a> {
     ) -> Option<ConcreteType> {
         partial_match!(&typed_expr.kind, {
             TypedExpressionKind::Symbol(symbol_id, _) => {
-                let local_scope_ref_opt = {
-                    if let Some(scope_id) = scope_id_opt {
-                        self.resolver.get_scope_ref(self.module_id, scope_id)
-                    } else {
-                        None
-                    }
-                };
+                let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
                 let local_or_global_symbol = self
                     .resolver
-                    .resolve_local_or_global_symbol(local_scope_ref_opt, *symbol_id)?;
+                    .resolve_local_or_global_symbol(local_scope_opt, *symbol_id)?;
 
                 if !local_or_global_symbol.is_kind_of_variable() {
                     let symbol_name = (self.symbol_formatter)(scope_id_opt)(*symbol_id);
@@ -891,7 +880,8 @@ impl<'a> AnalysisContext<'a> {
             None => return None,
         };
 
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
         let local_or_global_symbol = match self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)
@@ -933,7 +923,7 @@ impl<'a> AnalysisContext<'a> {
             }};
         }
 
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         let concrete_type =
             self.analyze_typed_expr_type(scope_id_opt, &mut field_access.operand, expected_type.clone())?;
@@ -1011,14 +1001,11 @@ impl<'a> AnalysisContext<'a> {
             return None;
         }
 
-        let local_scope_opt = self
-            .resolver
-            .get_scope_ref(self.module_id, scope_id_opt.unwrap())
-            .unwrap();
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         let local_or_global_symbol = self
             .resolver
-            .resolve_local_or_global_symbol(Some(local_scope_opt), union_symbol_id)
+            .resolve_local_or_global_symbol(local_scope_opt, union_symbol_id)
             .unwrap();
 
         let resolved_union = match local_or_global_symbol.as_union() {
@@ -1581,7 +1568,9 @@ impl<'a> AnalysisContext<'a> {
         if let Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id))) =
             method_call.operand.concrete_type
         {
-            let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+            let local_scope_opt =
+                scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
             let local_or_global_symbol = self
                 .resolver
                 .resolve_local_or_global_symbol(local_scope_opt.clone(), enum_symbol_id)
@@ -1610,7 +1599,8 @@ impl<'a> AnalysisContext<'a> {
         let object_symbol_id = {
             let operand_type = match &method_call.operand.kind {
                 TypedExpressionKind::Symbol(instance_symbol_id, ..) => {
-                    let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+                    let local_scope_opt =
+                        scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
                     self.mark_local_symbol_used_once(
                         local_scope_opt.clone().unwrap(),
@@ -1675,7 +1665,8 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
         let local_or_global_symbol = match self
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, object_symbol_id)

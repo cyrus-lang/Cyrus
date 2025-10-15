@@ -332,13 +332,8 @@ impl<'a> AnalysisContext<'a> {
         symbol_id: SymbolID,
         loc: SourceLoc,
     ) -> Option<ResolvedStruct> {
-        let local_scope_opt = {
-            if let Some(scope_id) = scope_id_opt {
-                Some(self.resolver.get_scope_ref(self.module_id, scope_id).unwrap())
-            } else {
-                None
-            }
-        };
+        let local_scope_opt =
+            scope_id_opt.map(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id).unwrap());
 
         match match self.normalize_type(scope_id_opt, ConcreteType::UnresolvedSymbol(symbol_id), loc.clone())? {
             ConcreteType::ResolvedSymbol(ResolvedSymbol::NamedStruct(symbol_id)) => {

@@ -9,7 +9,7 @@ use ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use resolver::{
     Resolver,
-    scope::{LocalSymbol, LocalSymbolKind, ResolvedEnum, ResolvedVariable, SymbolEntryKind},
+    scope::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
     signatures::{EnumSig, FuncSig},
     typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
@@ -22,7 +22,7 @@ use std::{
 };
 use typed_ast::{
     format::format_concrete_type,
-    types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedFuncType},
+    types::{BasicConcreteType, ConcreteType, TypedFuncType},
     *,
 };
 
@@ -290,11 +290,13 @@ impl<'a> AnalysisContext<'a> {
                 concrete_type = ConcreteType::Const(Box::new(concrete_type.clone()));
             }
 
-            update_local_symbol!(self, scope_id_opt.unwrap(), *symbol_id,
-                LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
-                    resolved_variable.typed_variable.ty = Some(concrete_type);
-                }
-            )
+            scope_id_opt.inspect(|scope_id| {
+                update_local_symbol!(self, *scope_id, *symbol_id,
+                    LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                        resolved_variable.typed_variable.ty = Some(concrete_type);
+                    }
+                );
+            });
         }
     }
 
@@ -304,8 +306,6 @@ impl<'a> AnalysisContext<'a> {
         typed_switch: &mut TypedSwitch,
         enum_sig: &mut EnumSig,
     ) -> FlowState {
-        let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
-
         let mut branch_states = Vec::new();
 
         // Here instead of a simple for, we need peekable iterator to check next case
@@ -1725,10 +1725,7 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        let local_scope_rc = self
-            .resolver
-            .get_scope_ref(self.module_id, scope_id_opt.unwrap())
-            .unwrap();
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
 
         if let Some(concrete_type) = &typed_variable.ty {
             typed_variable.ty = self.normalize_type(scope_id_opt, concrete_type.clone(), typed_variable.loc.clone());
@@ -1793,16 +1790,18 @@ impl<'a> AnalysisContext<'a> {
             });
         }
 
-        let mut local_scope = local_scope_rc.borrow_mut();
-        local_scope.insert(
-            typed_variable.name.clone(),
-            LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
-                module_id: self.module_id,
-                symbol_id: typed_variable.symbol_id,
-                typed_variable: typed_variable.clone(),
-            })),
-        );
-        drop(local_scope);
+        local_scope_opt.inspect(|local_scope| {
+            let mut local_scope_ref = local_scope.borrow_mut();
+            local_scope_ref.insert(
+                typed_variable.name.clone(),
+                LocalSymbol::new(LocalSymbolKind::Variable(ResolvedVariable {
+                    module_id: self.module_id,
+                    symbol_id: typed_variable.symbol_id,
+                    typed_variable: typed_variable.clone(),
+                })),
+            );
+            drop(local_scope_ref);
+        });
     }
 
     pub(crate) fn analyze_assignment(&mut self, scope_id_opt: Option<ScopeID>, assign: &mut TypedAssignment) {

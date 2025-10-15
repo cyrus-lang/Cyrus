@@ -16,7 +16,7 @@ use resolver::{
     typed_enum_as_enum_sig,
 };
 use typed_ast::{
-    TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedTypeArgs, TypedUnnamedStructValue,
+    TypedEnum, TypedEnumValuedField, TypedEnumVariant, TypedExpression, TypedTypeArgs,
     TypedUnnamedStructValueField,
     types::{BasicConcreteType, ConcreteType, ResolvedSymbol, TypedUnnamedStructType, TypedUnnamedStructTypeField},
 };
@@ -332,22 +332,9 @@ impl<'a> CodeGenBuilder<'a> {
                     });
                 }
 
-                let unnamed_struct_type = TypedUnnamedStructType {
-                    fields: fields
-                        .iter()
-                        .map(|field| TypedUnnamedStructTypeField {
-                            field_name: field.field_name.clone(),
-                            field_type: Box::new(field.field_type.clone().unwrap()),
-                            loc: field.loc.clone(),
-                        })
-                        .collect(),
-                    packed: false,
-                    loc: SourceLoc::default(),
-                };
-
                 let mut payload_value = enum_payload_type.const_zero();
 
-                for (idx, valued_field) in enum_valued_fields.iter().enumerate() {
+                for (idx, _) in enum_valued_fields.iter().enumerate() {
                     let arg_val = self
                         .build_expr(local_scope_opt.clone(), &args[idx])
                         .as_basic_value()
