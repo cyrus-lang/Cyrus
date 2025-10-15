@@ -1,11 +1,13 @@
 use crate::builder::{
-    abi::{generate_monomorphic_struct_abi_name, generate_monomorphic_union_abi_name},
+    abi::{
+        generate_monomorphic_enum_abi_name, generate_monomorphic_struct_abi_name, generate_monomorphic_union_abi_name,
+    },
     module::{CodeGenBuilder, LocalIRValue},
 };
-use inkwell::types::{AnyTypeEnum, StructType};
+use inkwell::types::{AnyTypeEnum, ArrayType, StructType};
 use resolver::{
     scope::{LocalScopeRef, ResolvedEnum, ResolvedStruct, ResolvedUnion},
-    signatures::{StructSig, UnionSig},
+    signatures::{EnumSig, StructSig, UnionSig},
 };
 use static_analyzer::{
     monomorph::{MonomorphKey, NormalizedTypeArgs},
@@ -13,8 +15,8 @@ use static_analyzer::{
 };
 use std::collections::HashMap;
 use typed_ast::{
-    SymbolID, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedStructField, TypedTypeArg, TypedTypeArgs,
-    TypedUnionField,
+    SymbolID, TypedEnumVariant, TypedFuncTypeParams, TypedFuncTypeVariadicParams, TypedStructField, TypedTypeArg,
+    TypedTypeArgs, TypedUnionField,
     types::{
         ConcreteType, GenericType, TypedArrayType, TypedFuncType, TypedTupleType, TypedUnnamedStructType,
         TypedUnnamedStructTypeField,
@@ -27,7 +29,7 @@ trait GenericMonomorphTarget<'a> {
         codegen: &mut CodeGenBuilder<'a>,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
-        typed_args: &Option<TypedTypeArgs>,
+        type_args: &Option<TypedTypeArgs>,
     ) -> AnyTypeEnum<'a>;
 }
 
@@ -37,7 +39,7 @@ impl<'a> GenericMonomorphTarget<'a> for ResolvedUnion {
         codegen: &mut CodeGenBuilder<'a>,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
-        typed_args: &Option<TypedTypeArgs>,
+        type_args: &Option<TypedTypeArgs>,
     ) -> AnyTypeEnum<'a> {
         let local_or_global_symbol = codegen
             .resolver
@@ -45,9 +47,7 @@ impl<'a> GenericMonomorphTarget<'a> for ResolvedUnion {
             .unwrap();
 
         let resolved_union = local_or_global_symbol.as_union().unwrap();
-        codegen
-            .get_or_declare_union_monomorph(resolved_union, typed_args)
-            .into()
+        codegen.get_or_declare_union_monomorph(resolved_union, type_args).into()
     }
 }
 
@@ -57,7 +57,7 @@ impl<'a> GenericMonomorphTarget<'a> for ResolvedStruct {
         codegen: &mut CodeGenBuilder<'a>,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
-        typed_args: &Option<TypedTypeArgs>,
+        type_args: &Option<TypedTypeArgs>,
     ) -> AnyTypeEnum<'a> {
         let local_or_global_symbol = codegen
             .resolver
@@ -66,7 +66,7 @@ impl<'a> GenericMonomorphTarget<'a> for ResolvedStruct {
 
         let resolved_struct = local_or_global_symbol.as_struct().unwrap();
         codegen
-            .get_or_declare_struct_monomorph(resolved_struct, typed_args)
+            .get_or_declare_struct_monomorph(resolved_struct, type_args)
             .into()
     }
 }
@@ -77,18 +77,16 @@ impl<'a> GenericMonomorphTarget<'a> for ResolvedEnum {
         codegen: &mut CodeGenBuilder<'a>,
         local_scope_opt: Option<LocalScopeRef>,
         symbol_id: SymbolID,
-        typed_args: &Option<TypedTypeArgs>,
+        type_args: &Option<TypedTypeArgs>,
     ) -> AnyTypeEnum<'a> {
         let local_or_global_symbol = codegen
             .resolver
             .resolve_local_or_global_symbol(local_scope_opt, symbol_id)
             .unwrap();
 
-        // let resolved_struct = local_or_global_symbol.as_struct().unwrap();
-        // codegen
-        //     .get_or_declare_struct_monomorph(resolved_struct, typed_args)
-        //     .into()
-        todo!();
+        let resolved_enum = local_or_global_symbol.as_enum().unwrap();
+        let enum_struct_type = codegen.get_or_declare_enum_monomorph(resolved_enum, type_args).0;
+        enum_struct_type.into()
     }
 }
 
@@ -133,15 +131,65 @@ impl<'a> CodeGenBuilder<'a> {
         unreachable!("Unsupported generic monomorph target");
     }
 
+    pub(crate) fn get_or_declare_enum_monomorph(
+        &mut self,
+        resolved_enum: &ResolvedEnum,
+        type_args: &Option<TypedTypeArgs>,
+    ) -> (StructType<'a>, ArrayType<'a>) {
+        if let Some(_) = &resolved_enum.enum_sig.generic_params {
+            let type_args = type_args.as_ref().expect("Generic struct used without type args!");
+
+            let normalized_args: NormalizedTypeArgs = type_args
+                .iter()
+                .map(|type_arg| match type_arg {
+                    TypedTypeArg::Positional(concrete_type) => concrete_type.clone(),
+                    TypedTypeArg::Named { value, .. } => value.clone(),
+                })
+                .collect();
+
+            let key = MonomorphKey::new(resolved_enum.symbol_id, normalized_args);
+            let monomorph_id = with_monomorph_registry!(self, ctx, {
+                ctx.get_with_key(key.clone())
+                    .unwrap_or_else(|| ctx.register(resolved_enum.symbol_id, key.normalized_args.clone()))
+            });
+
+            let substituted_sig =
+                self.substitute_enum_sig_generic_params(resolved_enum.enum_sig.clone(), &key.normalized_args);
+
+            // insert to irreg
+
+            let enum_type_opt = self.get_ir_value(monomorph_id).and_then(|local_ir_value| {
+                let (struct_type, payload_type) = local_ir_value.as_enum().unwrap();
+                Some((struct_type.clone(), payload_type.clone()))
+            });
+
+            match enum_type_opt {
+                Some(enum_type) => enum_type,
+                None => {
+                    let llvm_struct_name = generate_monomorphic_enum_abi_name(
+                        &self.get_module_name(self.module_id),
+                        &resolved_enum.enum_sig.name,
+                        monomorph_id,
+                    );
+                    let (struct_type, payload_type) = self.build_enum_type(&substituted_sig, Some(llvm_struct_name));
+                    self.insert_ir_value(monomorph_id, LocalIRValue::Enum((struct_type, payload_type)));
+                    (struct_type, payload_type)
+                }
+            }
+        } else {
+            self.get_or_declare_enum(resolved_enum.symbol_id, &resolved_enum.enum_sig)
+        }
+    }
+
     pub(crate) fn get_or_declare_union_monomorph(
         &mut self,
         resolved_union: &ResolvedUnion,
-        typed_args: &Option<TypedTypeArgs>,
+        type_args: &Option<TypedTypeArgs>,
     ) -> StructType<'a> {
         if let Some(_) = &resolved_union.union_sig.generic_params {
-            let typed_args = typed_args.as_ref().expect("Generic struct used without type args!");
+            let type_args = type_args.as_ref().expect("Generic struct used without type args!");
 
-            let normalized_args: NormalizedTypeArgs = typed_args
+            let normalized_args: NormalizedTypeArgs = type_args
                 .iter()
                 .map(|type_arg| match type_arg {
                     TypedTypeArg::Positional(concrete_type) => concrete_type.clone(),
@@ -150,7 +198,10 @@ impl<'a> CodeGenBuilder<'a> {
                 .collect();
 
             let key = MonomorphKey::new(resolved_union.symbol_id, normalized_args);
-            let monomorph_id = with_monomorph_registry!(self, ctx, { ctx.get_with_key(key.clone()).unwrap() });
+            let monomorph_id = with_monomorph_registry!(self, ctx, {
+                ctx.get_with_key(key.clone())
+                    .unwrap_or_else(|| ctx.register(resolved_union.symbol_id, key.normalized_args.clone()))
+            });
 
             let substituted_sig =
                 self.substitute_union_sig_generic_params(resolved_union.union_sig.clone(), &key.normalized_args);
@@ -182,21 +233,24 @@ impl<'a> CodeGenBuilder<'a> {
     pub(crate) fn get_or_declare_struct_monomorph(
         &mut self,
         resolved_struct: &ResolvedStruct,
-        typed_args: &Option<TypedTypeArgs>,
+        type_args: &Option<TypedTypeArgs>,
     ) -> StructType<'a> {
         if let Some(_) = &resolved_struct.struct_sig.generic_params {
-            let typed_args = typed_args.as_ref().expect("Generic struct used without type args!");
+            let type_args = type_args.as_ref().expect("Generic struct used without type args!");
 
-            let normalized_args: NormalizedTypeArgs = typed_args
+            let normalized_args: NormalizedTypeArgs = type_args
                 .iter()
                 .map(|type_arg| match type_arg {
                     TypedTypeArg::Positional(concrete_type) => concrete_type.clone(),
                     TypedTypeArg::Named { value, .. } => value.clone(),
                 })
                 .collect();
-            let key = MonomorphKey::new(resolved_struct.symbol_id, normalized_args);
 
-            let monomorph_id = with_monomorph_registry!(self, ctx, { ctx.get_with_key(key.clone()).unwrap() });
+            let key = MonomorphKey::new(resolved_struct.symbol_id, normalized_args);
+            let monomorph_id = with_monomorph_registry!(self, ctx, {
+                ctx.get_with_key(key.clone())
+                    .unwrap_or_else(|| ctx.register(resolved_struct.symbol_id, key.normalized_args.clone()))
+            });
 
             let substituted_sig =
                 self.substitute_struct_sig_generic_params(resolved_struct.struct_sig.clone(), &key.normalized_args);
@@ -223,6 +277,42 @@ impl<'a> CodeGenBuilder<'a> {
         } else {
             self.get_or_declare_struct(resolved_struct.symbol_id, &resolved_struct.struct_sig)
         }
+    }
+
+    pub(crate) fn substitute_enum_sig_generic_params(
+        &mut self,
+        mut enum_sig: EnumSig,
+        normalized_args: &NormalizedTypeArgs,
+    ) -> EnumSig {
+        let Some(generic_params) = &enum_sig.generic_params else {
+            return enum_sig.clone();
+        };
+
+        let mut subst_map: HashMap<String, ConcreteType> = HashMap::new();
+
+        for (param, arg) in generic_params.iter().zip(normalized_args.iter()) {
+            subst_map.insert(param.param_name.to_string(), arg.clone());
+        }
+
+        let substituted_variants: Vec<TypedEnumVariant> = enum_sig
+            .variants
+            .iter()
+            .cloned()
+            .map(|variant| match variant {
+                TypedEnumVariant::Identifier(..) | TypedEnumVariant::Valued(..) => variant,
+                TypedEnumVariant::Variant(identifier, mut valued_fields) => {
+                    for valued_field in &mut valued_fields {
+                        let substituted_ty = self.substitute_concrete_type(&valued_field.field_type, &subst_map);
+                        valued_field.field_type = substituted_ty;
+                    }
+                    TypedEnumVariant::Variant(identifier, valued_fields)
+                }
+            })
+            .collect();
+
+        enum_sig.generic_params = None;
+        enum_sig.variants = substituted_variants;
+        enum_sig
     }
 
     pub(crate) fn substitute_union_sig_generic_params(

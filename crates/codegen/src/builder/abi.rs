@@ -56,3 +56,11 @@ pub(crate) fn generate_monomorphic_union_abi_name(
 ) -> String {
     format!("{}_{}@{}", module_name, union_name, monomorph_id)
 }
+
+pub(crate) fn generate_monomorphic_enum_abi_name(
+    module_name: &String,
+    enum_name: &String,
+    monomorph_id: MonomorphID,
+) -> String {
+    format!("{}_{}@{}", module_name, enum_name, monomorph_id)
+}

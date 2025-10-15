@@ -32,6 +32,7 @@ impl Parser {
 
             if self.peek_token_is(TokenKind::Dot) || self.peek_token_is(TokenKind::FatArrow) {
                 self.next_token();
+
                 left = self.parse_field_access(left)?;
                 continue;
             }
@@ -282,7 +283,6 @@ impl Parser {
                 self.next_token(); // consume struct name
 
                 let struct_init = self.parse_struct_init(module_import, type_args_opt)?;
-
                 return Ok(Expression::StructInit(struct_init));
             } else {
                 return Err(Diag {
@@ -682,6 +682,7 @@ impl Parser {
         operand: Expression,
         method_name: Identifier,
         is_fat_arrow: bool,
+        type_args: Option<TypeArgs>,
         start: usize,
         loc: Location,
     ) -> Result<Expression, ParserError> {
@@ -708,6 +709,7 @@ impl Parser {
             is_fat_arrow,
             operand: Box::new(operand),
             method_name,
+            type_args,
             args,
             span: Span::new(start, self.current_token().span.end),
             loc,
@@ -738,10 +740,22 @@ impl Parser {
         if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
             let identifier = self.parse_identifier()?;
 
+            let mut type_args_opt: Option<Vec<TypeArg>> = None;
+            if self.is_type_arg_start(operand.clone()) {
+                self.next_token(); // consume current token of expr
+
+                type_args_opt = Some(self.parse_type_arg_list()?);
+            }
+
             if self.peek_token_is(TokenKind::LeftParen) {
                 self.next_token(); // consume identifier
-                return self.parse_method_call(operand, identifier, is_fat_arrow, start, loc);
+
+                return self.parse_method_call(operand, identifier, is_fat_arrow, type_args_opt, start, loc);
             }
+        }
+
+        if matches!(self.current_token().kind, TokenKind::Identifier { .. }) {
+            let identifier = self.parse_identifier()?;
 
             Ok(Expression::FieldAccess(FieldAccess {
                 is_fat_arrow,

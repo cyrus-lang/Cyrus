@@ -1,5 +1,9 @@
 use crate::builder::module::{CodeGenBuilder, LocalIRValue};
-use inkwell::{module::Linkage, types::StructType, values::FunctionValue};
+use inkwell::{
+    module::Linkage,
+    types::{ArrayType, StructType},
+    values::FunctionValue,
+};
 use resolver::{
     signatures::{EnumSig, FuncSig, StructSig, UnionSig},
     typed_func_type_from_func_sig,
@@ -93,18 +97,25 @@ impl<'a> CodeGenBuilder<'a> {
         }
     }
 
-    pub(crate) fn get_or_declare_enum(&mut self, symbol_id: SymbolID, enum_sig: &EnumSig) -> StructType<'a> {
+    pub(crate) fn get_or_declare_enum(
+        &mut self,
+        symbol_id: SymbolID,
+        enum_sig: &EnumSig,
+    ) -> (StructType<'a>, ArrayType<'a>) {
         if enum_sig.generic_params.is_none() {
             let irreg = self.irreg.borrow();
             let local_ir_value_opt = irreg.get(&symbol_id).cloned();
             drop(irreg);
 
             match local_ir_value_opt {
-                Some(local_ir_value) => *local_ir_value.as_struct().unwrap(),
+                Some(local_ir_value) => {
+                    let (struct_type, payload_type) = local_ir_value.as_enum().unwrap();
+                    (struct_type.clone(), payload_type.clone())
+                }
                 None => {
-                    let (struct_type, payload_type) = self.build_enum_struct_type(enum_sig);
+                    let (struct_type, payload_type) = self.build_enum_type(enum_sig, None);
                     self.insert_ir_value(symbol_id, LocalIRValue::Enum((struct_type, payload_type)));
-                    struct_type
+                    (struct_type, payload_type)
                 }
             }
         } else {

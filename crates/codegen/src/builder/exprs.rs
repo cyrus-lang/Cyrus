@@ -534,7 +534,12 @@ impl<'a> CodeGenBuilder<'a> {
         )
     }
 
-    fn build_union_init(&mut self, local_scope_opt: Option<LocalScopeRef>, resolved_union: &ResolvedUnion, struct_init: &TypedStructInit) -> InternalValue<'a> {
+    fn build_union_init(
+        &mut self,
+        local_scope_opt: Option<LocalScopeRef>,
+        resolved_union: &ResolvedUnion,
+        struct_init: &TypedStructInit,
+    ) -> InternalValue<'a> {
         let struct_type = self.get_or_declare_union_monomorph(resolved_union, &struct_init.type_args);
         let mut struct_value = struct_type.get_undef();
 
@@ -772,11 +777,14 @@ impl<'a> CodeGenBuilder<'a> {
                     .find(|variant| variant.get_identifier().as_string() == method_call.method_name);
 
                 if variant_opt.is_some() {
+                    // ANCHOR
+                    //
                     return self.build_construct_enum_variant(
                         local_scope_opt,
                         resolved_enum,
                         method_call.method_name.clone(),
                         &method_call.args,
+                        &method_call.type_args,
                     );
                 } else {
                     (resolved_enum.enum_sig.methods.clone(), resolved_enum.module_id)

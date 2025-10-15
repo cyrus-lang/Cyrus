@@ -126,7 +126,7 @@ impl<'a> AnalysisContext<'a> {
                 self.analyze_dereference_expr_type(scope_id_opt, typed_dereference)
             }
             TypedExpressionKind::StructInit(struct_init) => {
-                self.analyze_struct_init_expr_type(scope_id_opt, struct_init, expected_type)
+                self.analyze_struct_init_expr_type(scope_id_opt, struct_init)
             }
             TypedExpressionKind::FuncCall(typed_func_call) => {
                 self.analyze_func_call_expr_type(scope_id_opt, typed_func_call)
@@ -709,6 +709,7 @@ impl<'a> AnalysisContext<'a> {
         enum_symbol_id: SymbolID,
         enum_variant: &TypedEnumVariant,
         method_call: &mut TypedMethodCall,
+        resolved_enum: &ResolvedEnum,
     ) -> Option<ConcreteType> {
         let valued_fields = match enum_variant {
             TypedEnumVariant::Variant(_, valued_fields) => {
@@ -741,12 +742,53 @@ impl<'a> AnalysisContext<'a> {
             }
         };
 
-        for (typed_expr, enum_valued_field) in method_call.args.iter_mut().zip(valued_fields) {
-            typed_expr.concrete_type =
-                self.analyze_typed_expr_type(scope_id_opt, typed_expr, Some(enum_valued_field.field_type.clone()));
-        }
+        let operand_ty = method_call.operand.concrete_type.clone().unwrap();
+        let generic_type_opt = operand_ty.as_generic_type();
 
-        Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)))
+        let mut enum_sig = resolved_enum.enum_sig.clone();
+        self.substitute_enum_type_args(scope_id_opt, &mut enum_sig, generic_type_opt, method_call.loc.clone());
+        self.substitute_field_access_type(
+            &mut method_call.operand,
+            &enum_sig.generic_params,
+            generic_type_opt,
+            method_call.loc.clone(),
+        );
+
+        generic_mapping_ctx_scope!(
+            self,
+            resolved_enum.enum_sig.generic_params,
+            method_call.type_args,
+            method_call.loc.clone(),
+            generic_mapping_ctx,
+            {
+                for (typed_expr, enum_valued_field) in method_call.args.iter_mut().zip(valued_fields) {
+                    typed_expr.concrete_type = self.substitute_type_or_infer_with(
+                        scope_id_opt,
+                        enum_valued_field.field_type.clone(),
+                        typed_expr,
+                        &mut generic_mapping_ctx,
+                    );
+                }
+
+                if let Some(type_args) = self.normalize_type_args_and_register(
+                    enum_symbol_id,
+                    &resolved_enum.enum_sig.generic_params,
+                    &generic_mapping_ctx,
+                ) {
+                    method_call.type_args = Some(self.inferred_types_as_positional_type_args(type_args));
+                }
+            }
+        );
+
+        if let Some(type_args) = &method_call.type_args {
+            Some(ConcreteType::GenericType(GenericType {
+                base: resolved_enum.symbol_id,
+                type_args: type_args.clone(),
+                is_const: false,
+            }))
+        } else {
+            Some(ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(enum_symbol_id)))
+        }
     }
 
     fn analyze_enum_variant_no_field(
@@ -899,6 +941,7 @@ impl<'a> AnalysisContext<'a> {
         let operand_ty = concrete_type.get_const_inner();
 
         // multiplex field access
+
         let generic_type_opt = operand_ty.as_generic_type();
 
         match self.resolve_member_access_kind(
@@ -934,20 +977,7 @@ impl<'a> AnalysisContext<'a> {
                     )
                 }
                 MemberAccessKind::Enum(resolved_enum) => {
-                    let mut enum_sig = resolved_enum.enum_sig.clone();
-                    self.substitute_enum_type_args(
-                        scope_id_opt,
-                        &mut enum_sig,
-                        generic_type_opt,
-                        field_access.loc.clone(),
-                    );
-                    self.substitute_field_access_type(
-                        &mut field_access.operand,
-                        &enum_sig.generic_params,
-                        generic_type_opt,
-                        field_access.loc.clone(),
-                    );
-                    self.analyze_enum_variant_no_field(local_scope_opt.clone(), enum_sig.symbol_id, &field_access)
+                    self.analyze_enum_variant_no_field(local_scope_opt.clone(), resolved_enum.symbol_id, &field_access)
                 }
                 MemberAccessKind::Union(resolved_union) => {
                     let mut union_sig = resolved_union.union_sig.clone();
@@ -970,7 +1000,6 @@ impl<'a> AnalysisContext<'a> {
         scope_id_opt: Option<ScopeID>,
         union_symbol_id: SymbolID,
         struct_init: &mut TypedStructInit,
-        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         if struct_init.fields.len() > 1 || struct_init.fields.len() == 0 {
             self.reporter.report(Diag {
@@ -1035,7 +1064,8 @@ impl<'a> AnalysisContext<'a> {
         generic_mapping_ctx_scope!(
             self,
             resolved_union.union_sig.generic_params,
-            struct_init,
+            struct_init.type_args,
+            struct_init.loc.clone(),
             generic_mapping_ctx,
             {
                 self.substitute_type_or_infer_with(
@@ -1078,7 +1108,6 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         struct_init: &mut TypedStructInit,
-        expected_type: Option<ConcreteType>,
     ) -> Option<ConcreteType> {
         let normalized = self
             .normalize_type(
@@ -1092,12 +1121,7 @@ impl<'a> AnalysisContext<'a> {
             Some(symbol_id) => symbol_id,
             None => {
                 if let Some(union_symbol_id) = normalized.as_union_symbol_id() {
-                    return self.analyze_union_init_expr_type(
-                        scope_id_opt,
-                        union_symbol_id,
-                        struct_init,
-                        expected_type,
-                    );
+                    return self.analyze_union_init_expr_type(scope_id_opt, union_symbol_id, struct_init);
                 } else {
                     let symbol_name = format_concrete_type(normalized, &(self.symbol_formatter)(scope_id_opt));
 
@@ -1147,7 +1171,8 @@ impl<'a> AnalysisContext<'a> {
         generic_mapping_ctx_scope!(
             self,
             resolved_struct.struct_sig.generic_params,
-            struct_init,
+            struct_init.type_args,
+            struct_init.loc.clone(),
             generic_mapping_ctx,
             {
                 for field_init in &mut struct_init.fields {
@@ -1569,8 +1594,16 @@ impl<'a> AnalysisContext<'a> {
                 .iter()
                 .find(|variant| variant.get_identifier().as_string() == method_call.method_name);
 
+            method_call.object_symbol_id = Some(resolved_enum.symbol_id);
+
             if let Some(enum_variant) = enum_variant_opt {
-                return self.analyze_enum_variant(scope_id_opt, enum_symbol_id, enum_variant, method_call);
+                return self.analyze_enum_variant(
+                    scope_id_opt,
+                    enum_symbol_id,
+                    enum_variant,
+                    method_call,
+                    resolved_enum,
+                );
             }
         }
 

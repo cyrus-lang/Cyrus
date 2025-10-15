@@ -9,8 +9,8 @@ use ast::{AccessSpecifier, AssignmentKind, LiteralKind, SelfModifierKind, source
 use diagcentral::{Diag, DiagLevel, DiagLoc, reporter::DiagReporter};
 use resolver::{
     Resolver,
-    scope::{LocalSymbol, LocalSymbolKind, ResolvedVariable, SymbolEntryKind},
-    signatures::FuncSig,
+    scope::{LocalSymbol, LocalSymbolKind, ResolvedEnum, ResolvedVariable, SymbolEntryKind},
+    signatures::{EnumSig, FuncSig},
     typed_func_decl_as_func_sig, typed_func_params_as_func_type_params,
 };
 use std::{
@@ -302,17 +302,11 @@ impl<'a> AnalysisContext<'a> {
         &mut self,
         scope_id_opt: Option<ScopeID>,
         typed_switch: &mut TypedSwitch,
-        enum_symbol_id: SymbolID,
+        enum_sig: &mut EnumSig,
     ) -> FlowState {
-        let mut branch_states = Vec::new();
-
         let local_scope_opt = self.resolver.get_scope_ref(self.module_id, scope_id_opt.unwrap());
-        let local_or_global_symbol = self
-            .resolver
-            .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
-            .unwrap();
 
-        let mut resolved_enum = local_or_global_symbol.as_enum().unwrap().clone();
+        let mut branch_states = Vec::new();
 
         // Here instead of a simple for, we need peekable iterator to check next case
 
@@ -329,7 +323,7 @@ impl<'a> AnalysisContext<'a> {
                             self.reporter.report(Diag {
                                 level: DiagLevel::Error,
                                 kind: AnalyzerDiagKind::DuplicateEnumVariantName {
-                                    enum_name: resolved_enum.enum_sig.name.clone(),
+                                    enum_name: enum_sig.name.clone(),
                                     variant_name: valued_field.as_string(),
                                 },
                                 location: Some(DiagLoc::new(loc.clone())),
@@ -354,8 +348,7 @@ impl<'a> AnalysisContext<'a> {
                 }
             };
 
-            let mut variant_opt = resolved_enum
-                .enum_sig
+            let mut variant_opt = enum_sig
                 .variants
                 .iter_mut()
                 .find(|variant| variant.get_identifier().as_string() == *identifier);
@@ -364,7 +357,7 @@ impl<'a> AnalysisContext<'a> {
                 self.reporter.report(Diag {
                     level: DiagLevel::Error,
                     kind: AnalyzerDiagKind::NoSuchEnumVariant {
-                        enum_name: resolved_enum.enum_sig.name.clone(),
+                        enum_name: enum_sig.name.clone(),
                         variant_name: identifier.clone(),
                     },
                     location: Some(DiagLoc::new(typed_switch.loc.clone())),
@@ -408,10 +401,7 @@ impl<'a> AnalysisContext<'a> {
                                 enum_valued_field.field_type = match self.normalize_type(
                                     scope_id_opt,
                                     enum_valued_field.field_type.clone(),
-                                    SourceLoc::from_loc(
-                                        identifier.loc.clone(),
-                                        resolved_enum.enum_sig.loc.file_path.clone(),
-                                    ),
+                                    SourceLoc::from_loc(identifier.loc.clone(), enum_sig.loc.file_path.clone()),
                                 ) {
                                     Some(concrete_type) => concrete_type,
                                     None => continue,
@@ -492,16 +482,49 @@ impl<'a> AnalysisContext<'a> {
             None => return FlowState::Reachable,
         };
 
-        // If operand is an enum → delegate to specialized analyzer
-        if matches!(
-            operand_ty,
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..))
-        ) {
-            return self.analyze_switch_on_enum(
-                scope_id_opt,
-                typed_switch,
-                operand_ty.as_enum_symbol_id().unwrap(),
-            );
+        let local_scope_opt = scope_id_opt.and_then(|scope_id| self.resolver.get_scope_ref(self.module_id, scope_id));
+
+        match if let Some(enum_symbol_id) = operand_ty.as_enum_symbol_id() {
+            Some((enum_symbol_id, None))
+        } else if let Some(generic_type) = operand_ty.as_generic_type() {
+            match self
+                .resolver
+                .resolve_local_or_global_symbol(local_scope_opt.clone(), generic_type.base)
+                .and_then(|local_or_global_symbol| {
+                    let resolved_enum = local_or_global_symbol.as_enum();
+                    resolved_enum.cloned()
+                })
+                .map(|resolved_enum| resolved_enum.symbol_id)
+                .map(|enum_symbol_id| enum_symbol_id)
+            {
+                Some(enum_symbol_id) => Some((enum_symbol_id, Some(generic_type))),
+                None => {
+                    let expr_type = (self.symbol_formatter)(scope_id_opt)(generic_type.base);
+                    self.reporter.report(Diag {
+                        level: DiagLevel::Error,
+                        kind: AnalyzerDiagKind::SwitchOperandIsNotEnum { expr_type },
+                        location: Some(DiagLoc::new(typed_switch.loc.clone())),
+                        hint: None,
+                    });
+                    return FlowState::Reachable;
+                }
+            }
+        } else {
+            None
+        } {
+            Some((enum_symbol_id, generic_type_opt)) => {
+                let local_or_global_symbol = self
+                    .resolver
+                    .resolve_local_or_global_symbol(local_scope_opt, enum_symbol_id)
+                    .unwrap();
+
+                let resolved_enum = local_or_global_symbol.as_enum().unwrap();
+                let mut enum_sig = resolved_enum.enum_sig.clone();
+                self.substitute_enum_type_args(scope_id_opt, &mut enum_sig, generic_type_opt, typed_switch.loc.clone());
+
+                return self.analyze_switch_on_enum(scope_id_opt, typed_switch, &mut enum_sig);
+            }
+            None => {}
         }
 
         let mut branch_states = Vec::new();
@@ -538,8 +561,7 @@ impl<'a> AnalysisContext<'a> {
                     }
                 }
                 TypedSwitchCasePattern::Identifier(..) | TypedSwitchCasePattern::EnumVariant(..) => {
-                    let expr_type =
-                        format_concrete_type(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
+                    let expr_type = format_concrete_type(operand_ty.clone(), &(self.symbol_formatter)(scope_id_opt));
 
                     self.reporter.report(Diag {
                         level: DiagLevel::Error,

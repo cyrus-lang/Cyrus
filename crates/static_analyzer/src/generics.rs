@@ -91,7 +91,9 @@ impl<'a> AnalysisContext<'a> {
                         },
                         TypedEnumVariant::Variant(_, typed_enum_valued_fields) => {
                             for valued_field in typed_enum_valued_fields {
-                                self.substitute_type(valued_field.field_type.clone(), &mapping_ctx);
+                                if let Some(substituted_type) = self.substitute_type(valued_field.field_type.clone(), &mapping_ctx) {
+                                    valued_field.field_type = substituted_type;
+                                }
                             }
                         },
                     }
@@ -311,9 +313,9 @@ impl<'a> AnalysisContext<'a> {
 
 #[macro_export]
 macro_rules! generic_mapping_ctx_scope {
-    ($self:ident, $generic_params:expr, $struct_init:expr, $ctx:ident, $body:block) => {{
+    ($self:ident, $generic_params:expr, $type_args:expr, $loc:expr, $ctx:ident, $body:block) => {{
         let mut $ctx =
-            $self.get_generic_mapping_ctx(&$generic_params, &$struct_init.type_args, $struct_init.loc.clone());
+            $self.get_generic_mapping_ctx(&$generic_params, &$type_args, $loc);
 
         $self.generic_ctx_stack.push($ctx.clone());
         $body

@@ -60,7 +60,7 @@ impl<'a> CodeGenBuilder<'a> {
             TypedStatement::Struct(typed_struct) => {
                 self.get_or_declare_struct(typed_struct.symbol_id, &typed_struct_as_struct_sig(typed_struct));
             }
-            TypedStatement::Enum(typed_enum) => self.build_local_enum_def(typed_enum),
+            TypedStatement::Enum(typed_enum) => self.build_enum_def(typed_enum),
             TypedStatement::Union(typed_union) => self.build_union_def(typed_union),
             TypedStatement::Expression(typed_expr) => {
                 self.build_expr(local_scope_opt.clone(), typed_expr);

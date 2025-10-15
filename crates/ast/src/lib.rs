@@ -239,6 +239,7 @@ pub struct MethodCall {
     pub operand: Box<Expression>,
     pub method_name: Identifier,
     pub args: Vec<Expression>,
+    pub type_args: Option<TypeArgs>,
     pub span: Span,
     pub loc: Location,
 }

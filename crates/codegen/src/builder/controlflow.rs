@@ -5,6 +5,7 @@ use crate::builder::{
 use ast::LiteralKind;
 use inkwell::{
     basic_block::BasicBlock,
+    types::{ArrayType, StructType},
     values::{BasicValue, BasicValueEnum, IntValue},
 };
 use resolver::scope::{LocalScopeRef, LocalSymbolKind, ResolvedEnum};
@@ -113,16 +114,10 @@ impl<'a> CodeGenBuilder<'a> {
         let lvalue = self.build_expr(local_scope_opt.clone(), &switch.operand);
         let rvalue = self.build_load_lvalue_to_rvalue(local_scope_opt.clone(), lvalue);
 
-        if matches!(
-            rvalue.value_type,
-            ConcreteType::ResolvedSymbol(ResolvedSymbol::Enum(..))
-        ) {
-            return self.build_switch_on_enum(
-                local_scope_opt.clone(),
-                switch,
-                rvalue.clone(),
-                rvalue.value_type.as_enum_symbol_id().unwrap(),
-            );
+        if let Some(enum_symbol_id) = rvalue.value_type.as_enum_symbol_id() {
+            return self.build_switch_on_enum(local_scope_opt.clone(), switch, rvalue.clone(), enum_symbol_id);
+        } else if let Some(generic_type) = rvalue.value_type.as_generic_type() {
+            return self.build_switch_on_enum(local_scope_opt.clone(), switch, rvalue.clone(), generic_type.base);
         }
 
         // Temporarily remove reference to the loop-blocks. It's state must be returned after building the switch statement.
@@ -445,15 +440,21 @@ impl<'a> CodeGenBuilder<'a> {
                         .i32_type()
                         .const_int(variant_idx.try_into().unwrap(), false);
 
-                    let enum_valued_fields = match &resolved_enum.enum_sig.variants[variant_idx] {
-                        TypedEnumVariant::Variant(_, enum_valued_fields) => enum_valued_fields,
-                        _ => unreachable!(),
-                    };
+                    let enum_struct_type =
+                        if let Some(generic_type) = operand_rvalue.value_type.as_generic_type() {
+                            self.get_or_declare_enum_monomorph(resolved_enum, &Some(generic_type.type_args.clone())).0
+                        } else {
+                            let enum_valued_fields = match &resolved_enum.enum_sig.variants[variant_idx] {
+                                TypedEnumVariant::Variant(_, enum_valued_fields) => enum_valued_fields,
+                                _ => unreachable!(),
+                            };
 
-                    let enum_struct_type = self.build_enum_valued_field_variant_struct_type(
-                        local_scope_opt.clone(),
-                        enum_valued_fields.clone(),
-                    );
+                            self.build_enum_valued_field_variant_struct_type(
+                                local_scope_opt.clone(),
+                                enum_valued_fields.clone(),
+                            )
+                        };
+
                     let enum_struct_value = operand_rvalue.as_basic_value().into_struct_value();
                     let buffer = self.build_enum_extract_payload(enum_struct_value);
                     let payload_struct_value = self.copy_buffer_to_struct(buffer, enum_struct_type);

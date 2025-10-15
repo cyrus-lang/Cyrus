@@ -1159,7 +1159,7 @@ impl Resolver {
                     let mut fields: Vec<TypedEnumValuedField> = Vec::new();
                     for valued_field in enum_valued_fields {
                         let field_type = match self.resolve_type(
-                            &enum_decl.generic_params, 
+                            &enum_decl.generic_params,
                             local_scope_opt.clone(),
                             module_id,
                             valued_field.field_type.clone(),
@@ -2692,12 +2692,23 @@ impl Resolver {
             .filter_map(|arg| self.resolve_expr(module_id, local_scope_opt.clone(), arg))
             .collect();
 
+        let type_args = method_call.type_args.clone().and_then(|type_args| {
+            Some(self.resolve_type_args(
+                module_id,
+                local_scope_opt,
+                &type_args,
+                method_call.loc.clone(),
+                method_call.span.end,
+            ))
+        });
+
         Some(TypedExpression {
             kind: TypedExpressionKind::MethodCall(TypedMethodCall {
                 operand: Box::new(operand),
                 object_symbol_id: None,
                 method_name: method_call.method_name.name.clone(),
                 is_fat_arrow: method_call.is_fat_arrow,
+                type_args,
                 loc: SourceLoc::from_loc(method_call.loc.clone(), self.get_current_module_file_path()),
                 args,
             }),
@@ -2765,7 +2776,7 @@ impl Resolver {
 
         let operand = self.resolve_expr(module_id, local_scope_opt.clone(), &func_call.operand)?;
 
-        let typed_args: Vec<TypedExpression> = func_call
+        let type_args: Vec<TypedExpression> = func_call
             .args
             .iter()
             .filter_map(|arg| self.resolve_expr(module_id, local_scope_opt.clone(), arg))
@@ -2774,7 +2785,7 @@ impl Resolver {
         Some(TypedExpression {
             kind: TypedExpressionKind::FuncCall(TypedFuncCall {
                 operand: Box::new(operand),
-                args: typed_args,
+                args: type_args,
                 loc: SourceLoc::from_loc(func_call.loc.clone(), self.get_current_module_file_path()),
             }),
             value_category: ValueCategory::Rvalue,

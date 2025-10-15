@@ -82,8 +82,11 @@ impl fmt::Display for ParserDiagKind {
                 write!(f, "Cannot use non-array type for array construction.")
             }
             ParserDiagKind::IncompleteVariableDeclaration => {
-                write!(f, "Variable declaration requires an explicit type or an initializer expression.")
-            },
+                write!(
+                    f,
+                    "Variable declaration requires an explicit type or an initializer expression."
+                )
+            }
         }
     }
 }

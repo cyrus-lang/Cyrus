@@ -312,6 +312,7 @@ pub struct TypedMethodCall {
     pub object_symbol_id: Option<SymbolID>,
     pub method_name: String,
     pub args: Vec<TypedExpression>,
+    pub type_args: Option<TypedTypeArgs>,
     pub is_fat_arrow: bool,
     pub loc: SourceLoc,
 }

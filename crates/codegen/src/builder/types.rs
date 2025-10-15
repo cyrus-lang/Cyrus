@@ -383,7 +383,7 @@ impl<'a> CodeGenBuilder<'a> {
                     LocalIRValue::Struct(struct_type)
                 }
                 SymbolEntryKind::Enum(resolved_enum) => {
-                    LocalIRValue::Struct(self.get_or_declare_enum(resolved_enum.symbol_id, &resolved_enum.enum_sig))
+                    LocalIRValue::Enum(self.get_or_declare_enum(resolved_enum.symbol_id, &resolved_enum.enum_sig))
                 }
                 SymbolEntryKind::Union(resolved_union) => {
                     LocalIRValue::Struct(self.get_or_declare_union(resolved_union.symbol_id, &resolved_union.union_sig))
