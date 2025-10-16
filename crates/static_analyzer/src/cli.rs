@@ -58,7 +58,7 @@ pub fn main() {
                     typed_program_tree.clone(),
                     entry_points.clone(),
                     monomorph_registry,
-                    false,
+                    true,
                 );
                 analyzer.analyze();
                 DiagReporter::display(&analyzer.reporter);
@@ -69,7 +69,7 @@ pub fn main() {
                 AnalysisContext::check_entry_points(entry_points);
             }
 
-            dbg!(typed_program_tree);
+            // dbg!(typed_program_tree);
         }
         Err(errors) => {
             parser.display_parser_errors(errors.clone());

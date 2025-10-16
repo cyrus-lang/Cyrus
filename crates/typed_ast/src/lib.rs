@@ -660,7 +660,7 @@ pub struct TypedSwitchCase {
 pub enum TypedSwitchCasePattern {
     Expression(TypedExpression, SourceLoc),
     Identifier(String, SourceLoc),
-    EnumVariant(String, Vec<Identifier>, SourceLoc),
+    EnumVariant(String, Vec<TypedIdentifier>, SourceLoc),
 }
 
 #[derive(Debug, Clone)]

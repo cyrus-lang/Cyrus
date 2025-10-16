@@ -1984,15 +1984,11 @@ impl Resolver {
                             operand: Box::new(typed_stmt),
                             loc: SourceLoc::from_loc(defer.loc.clone(), self.get_current_module_file_path()),
                         });
-                    } else {
-                        continue;
                     }
                 }
                 _ => {
                     if let Some(typed_stmt) = self.resolve_statement(module_id, scope_id, local_scope.clone(), stmt) {
                         typed_body.push(typed_stmt);
-                    } else {
-                        continue;
                     }
                 }
             }
@@ -2232,7 +2228,14 @@ impl Resolver {
                                             })),
                                         );
                                         drop(case_scope);
-                                        identifier.clone()
+                                        TypedIdentifier {
+                                            name: identifier.name.clone(),
+                                            symbol_id,
+                                            loc: SourceLoc::from_loc(
+                                                identifier.loc.clone(),
+                                                self.get_current_module_file_path(),
+                                            ),
+                                        }
                                     })
                                     .collect(),
                                 SourceLoc::from_loc(identifier.loc.clone(), self.get_current_module_file_path()),
@@ -2256,7 +2259,7 @@ impl Resolver {
                     let body_scope = LocalScope::deep_clone(&local_scope);
                     self.insert_scope_ref(module_id, body_scope_id, body_scope.clone());
 
-                    Some(self.resolve_block_statement(scope_id, body_scope.clone(), &default_case)?)
+                    Some(self.resolve_block_statement(body_scope_id, body_scope.clone(), &default_case)?)
                 } else {
                     None
                 };

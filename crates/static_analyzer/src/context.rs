@@ -148,15 +148,28 @@ impl<'a> AnalysisContext<'a> {
     pub(crate) fn analyze_block_statement(&mut self, block_stmt: &mut TypedBlockStatement) -> FlowState {
         let mut state = FlowState::Reachable;
         for typed_stmt in &mut block_stmt.exprs {
-            if state == FlowState::Unreachable {
-                self.report_unreachable_block_diag(typed_stmt);
-                break;
+            let stmt_state = self.analyze_statement(block_stmt.scope_id, typed_stmt);
+
+            match stmt_state {
+                FlowState::Reachable => {
+                    state = self.merge_flow_state(state, FlowState::Reachable);
+                }
+                FlowState::Unreachable => {
+                    self.report_unreachable_block_diag(typed_stmt);
+                    state = FlowState::Unreachable;
+                    break;
+                }
+                FlowState::Returns => {
+                    state = FlowState::Returns;
+                    break;
+                }
             }
-            state = self.analyze_statement(block_stmt.scope_id, typed_stmt);
         }
+
         for defer in &mut block_stmt.defers {
             self.analyze_statement(block_stmt.scope_id, &mut defer.operand);
         }
+
         self.analyze_local_unused_symbols(block_stmt.scope_id);
         state
     }
@@ -308,11 +321,10 @@ impl<'a> AnalysisContext<'a> {
     ) -> FlowState {
         let mut branch_states = Vec::new();
 
-        // Here instead of a simple for, we need peekable iterator to check next case
+        for i in 0..typed_switch.cases.len() {
+            let case = &mut typed_switch.cases[i];
 
-        let mut iter = typed_switch.cases.iter_mut().peekable();
-
-        while let Some(case) = iter.next() {
+            // check symbol name duplication
             let identifier = match &case.pattern {
                 TypedSwitchCasePattern::Identifier(identifier, _) => identifier,
                 TypedSwitchCasePattern::EnumVariant(identifier, valued_fields, loc) => {
@@ -324,7 +336,7 @@ impl<'a> AnalysisContext<'a> {
                                 level: DiagLevel::Error,
                                 kind: AnalyzerDiagKind::DuplicateEnumVariantName {
                                     enum_name: enum_sig.name.clone(),
-                                    variant_name: valued_field.as_string(),
+                                    variant_name: valued_field.name.clone(),
                                 },
                                 location: Some(DiagLoc::new(loc.clone())),
                                 hint: None,
@@ -332,7 +344,7 @@ impl<'a> AnalysisContext<'a> {
                             continue;
                         }
 
-                        field_names.push(valued_field.as_string());
+                        field_names.push(valued_field.name.clone());
                     }
 
                     identifier
@@ -393,8 +405,6 @@ impl<'a> AnalysisContext<'a> {
                     Some(typed_enum_variant) => match typed_enum_variant {
                         TypedEnumVariant::Variant(identifier, enum_valued_fields) => {
                             // normalize and then update valued_field type in local scope
-                            let local_scope_rc =
-                                self.resolver.get_scope_ref(self.module_id, case.body.scope_id).unwrap();
 
                             for (enum_valued_field_idx, enum_valued_field) in enum_valued_fields.iter_mut().enumerate()
                             {
@@ -407,17 +417,16 @@ impl<'a> AnalysisContext<'a> {
                                     None => continue,
                                 };
 
-                                let mut local_scope = local_scope_rc.borrow_mut();
-                                let valued_field = &valued_fields[enum_valued_field_idx];
-                                let local_symbol = local_scope.resolve_mut(&valued_field.name).unwrap();
-                                match &mut local_symbol.kind {
-                                    LocalSymbolKind::Variable(resolved_variable) => {
-                                        resolved_variable.typed_variable.ty =
-                                            Some(enum_valued_field.field_type.clone());
-                                    }
-                                    _ => unreachable!(),
+                                // update local variable concrete type (exported symbol)
+                                {
+                                    let valued_field = &valued_fields[enum_valued_field_idx];
+
+                                    update_local_symbol!(self, case.body.scope_id, valued_field.symbol_id,
+                                        LocalSymbolKind::Variable(resolved_variable) => resolved_variable, {
+                                            resolved_variable.typed_variable.ty = Some(enum_valued_field.field_type.clone());
+                                        }
+                                    );
                                 }
-                                drop(local_scope);
                             }
                         }
                         _ => unreachable!(),
@@ -429,8 +438,10 @@ impl<'a> AnalysisContext<'a> {
             let body_flow_state = self.analyze_block_statement(&mut case.body);
             branch_states.push(body_flow_state);
 
+            // use the normalized state for fallthrough detection
             if body_flow_state == FlowState::Reachable {
-                if let Some(next_case) = iter.next() {
+                if i + 1 < typed_switch.cases.len() {
+                    let next_case = &typed_switch.cases[i + 1];
                     if let TypedSwitchCasePattern::EnumVariant(..) = &next_case.pattern {
                         self.reporter.report(Diag {
                             level: DiagLevel::Error,
@@ -452,19 +463,25 @@ impl<'a> AnalysisContext<'a> {
 
         self.control_stack.pop();
 
-        // final decision
-        if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
-            FlowState::Returns
-        } else {
-            // merge states
-            branch_states
-                .into_iter()
-                .reduce(|a, b| self.merge_flow_state(a, b))
-                .unwrap_or(FlowState::Unreachable)
-        }
+        // FIXME
+        todo!();
+        // // final decision
+        // let final_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+        //     FlowState::Returns
+        // } else {
+        //     branch_states
+        //         .into_iter()
+        //         .reduce(|a, b| self.merge_flow_state(a, b))
+        //         .unwrap_or(FlowState::Unreachable)
+        // };
+
+        // self.control_stack.pop();
+        // final_state
     }
 
     fn analyze_switch(&mut self, scope_id_opt: Option<ScopeID>, typed_switch: &mut TypedSwitch) -> FlowState {
+        dbg!(typed_switch.operand.loc.clone());
+
         self.control_stack.push(ControlContext::Switch);
 
         if typed_switch.cases.is_empty() {
@@ -584,16 +601,32 @@ impl<'a> AnalysisContext<'a> {
             branch_states.push(FlowState::Reachable);
         }
 
+        let mut branch_states = Vec::new();
+
+        // normalize each case body
+        for case in &mut typed_switch.cases {
+            let body_flow_state = self.analyze_block_statement(&mut case.body);
+            branch_states.push(body_flow_state);
+        }
+
+        // default case
+        if let Some(default_case) = &mut typed_switch.default_case {
+            let body_flow_state = self.analyze_block_statement(default_case);
+            branch_states.push(body_flow_state);
+        } else {
+            branch_states.push(FlowState::Reachable);
+        }
+
         self.control_stack.pop();
 
-        if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
+        // final merge
+        let flow_state = if branch_states.iter().all(|s| matches!(s, FlowState::Returns)) {
             FlowState::Returns
         } else {
-            branch_states
-                .into_iter()
-                .reduce(|a, b| self.merge_flow_state(a, b))
-                .unwrap_or(FlowState::Unreachable)
-        }
+            FlowState::Reachable
+        };
+
+        flow_state
     }
 
     fn analyze_if_stmt(
@@ -656,7 +689,7 @@ impl<'a> AnalysisContext<'a> {
             self.analyze_typed_expr_type(scope_id_opt, typed_expr, typed_expr.concrete_type.clone());
         }
 
-        self.control_stack.push(ControlContext::For);
+        self.control_stack.push(ControlContext::Loop);
         self.analyze_block_statement(&mut typed_for.body);
         self.control_stack.pop();
 
@@ -706,33 +739,37 @@ impl<'a> AnalysisContext<'a> {
         FlowState::Returns
     }
 
-    fn analyze_break(&mut self, typed_break: &TypedBreak) {
-        if self.control_stack.len() == 0 {
-            // break cannot be used outside of a for/switch statement
+    fn analyze_break(&mut self, typed_break: &TypedBreak) -> FlowState {
+        if self.control_stack.is_empty() {
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InvalidBreakStatement,
                 location: Some(DiagLoc::new(typed_break.loc.clone())),
                 hint: None,
             });
+            FlowState::Reachable
+        } else {
+            FlowState::Unreachable
         }
     }
 
-    fn analyze_continue(&mut self, typed_continue: &TypedContinue) {
+    fn analyze_continue(&mut self, typed_continue: &TypedContinue) -> FlowState {
         let inside_loop = self
             .control_stack
             .iter()
             .rev()
-            .any(|ctx| matches!(ctx, ControlContext::For));
+            .any(|ctx| matches!(ctx, ControlContext::Loop));
 
         if !inside_loop {
-            // cannot be used outside of a loop
             self.reporter.report(Diag {
                 level: DiagLevel::Error,
                 kind: AnalyzerDiagKind::InvalidContinueStatement,
                 location: Some(DiagLoc::new(typed_continue.loc.clone())),
                 hint: None,
             });
+            FlowState::Reachable
+        } else {
+            FlowState::Unreachable
         }
     }
 
